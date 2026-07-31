@@ -1595,7 +1595,9 @@ async function maybeUpdateAllAboutMeFromChat(
   history: Message[],
   force = false,
   chatId?: ChatId | string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   const store = useAllAboutMeStore.getState();
   if (!force && !store.needsLearningUpdate()) return;
   const existingMarkdown = store.markdown.trim();
@@ -1626,10 +1628,13 @@ async function maybeUpdateAllAboutMeFromChat(
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.25,
           max_output_tokens: 1800,
+          signal,
         });
+        signal?.throwIfAborted();
         return response.text;
       },
     );
+    signal?.throwIfAborted();
     useAllAboutMeStore.getState().applyLearningRevision(revised);
     if (activityId && chatId) {
       const summary = summarizeAllAboutMeLearningChange(existingMarkdown, revised);
@@ -1654,6 +1659,15 @@ async function maybeUpdateAllAboutMeFromChat(
       },
     });
   } catch (err) {
+    if (signal?.aborted || isAbortError(err)) {
+      if (activityId && chatId) {
+        useChatActivityStore.getState().update(chatId, activityId, {
+          status: 'cancelled',
+          title: 'AllAboutMe.md learning cancelled',
+        });
+      }
+      return;
+    }
     if (activityId && chatId) {
       useChatActivityStore.getState().update(chatId, activityId, {
         status: 'error',
@@ -2223,10 +2237,204 @@ async function createRuntimeKernelTurn(input: {
  * Subscribe to the chat composer events. Returns an unsubscribe function that
  * removes listeners and aborts any in-flight runs.
  */
+export type RuntimeListenerStop = (() => void) & {
+  /**
+   * Waits for send handlers and canonical cancellation requests owned by this
+   * listener, including profile learning and already-started streaming writes.
+   * Detached notifications remain outside this narrow contract.
+   */
+  whenIdle: () => Promise<void>;
+};
+
+function isAbortError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  try {
+    return (error as { name?: unknown }).name === 'AbortError';
+  } catch {
+    return false;
+  }
+}
+
+function safeErrorMessage(error: unknown, fallback = 'unknown'): string {
+  try {
+    const message = (error as { message?: unknown } | null)?.message;
+    return typeof message === 'string' && message.length > 0 ? message : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeErrorDetail(error: unknown): unknown {
+  try {
+    if (error instanceof Error) {
+      return {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      };
+    }
+    return String(error);
+  } catch {
+    return 'uninspectable_error';
+  }
+}
+
+/** @internal Per-listener ownership for awaited canonical cancellation effects. */
+export function createRuntimeCancellationTaskTracker(
+  onFailure: (error: unknown) => void,
+): Readonly<{
+  request(requestCancellation: (() => Promise<unknown>) | undefined): void;
+  hasPending(): boolean;
+  snapshot(): readonly Promise<unknown>[];
+  whenIdle(): Promise<void>;
+}> {
+  const tasks = new Set<Promise<unknown>>();
+  const request = (requestCancellation: (() => Promise<unknown>) | undefined): void => {
+    if (!requestCancellation) return;
+    let task: Promise<unknown>;
+    try {
+      task = Promise.resolve(requestCancellation());
+    } catch (error) {
+      onFailure(error);
+      return;
+    }
+    tasks.add(task);
+    void task.then(
+      () => tasks.delete(task),
+      (error: unknown) => {
+        tasks.delete(task);
+        onFailure(error);
+      },
+    );
+  };
+  return Object.freeze({
+    request,
+    hasPending: () => tasks.size > 0,
+    snapshot: () => [...tasks],
+    async whenIdle() {
+      while (tasks.size > 0) await Promise.allSettled([...tasks]);
+    },
+  });
+}
+
+function guardShadowCompilationDeps(
+  deps: JarvisShadowCompilationDeps,
+  signal: AbortSignal,
+): {
+  deps: JarvisShadowCompilationDeps;
+  abortError: () => unknown | null;
+} {
+  let dependencyAbortError: unknown | null = null;
+
+  const throwIfCancelled = (): void => {
+    if (dependencyAbortError !== null) throw dependencyAbortError;
+    try {
+      signal.throwIfAborted();
+    } catch (error) {
+      dependencyAbortError = error;
+      throw error;
+    }
+  };
+  const guard = <Args extends unknown[], Result>(
+    operation: (...args: Args) => Promise<Result>,
+  ): ((...args: Args) => Promise<Result>) => {
+    return async (...args) => {
+      throwIfCancelled();
+      try {
+        const result = await operation(...args);
+        throwIfCancelled();
+        return result;
+      } catch (error) {
+        if (isAbortError(error) && dependencyAbortError === null) {
+          dependencyAbortError = error;
+        }
+        throw error;
+      }
+    };
+  };
+  const guardSync = <Args extends unknown[], Result>(
+    operation: (...args: Args) => Result,
+  ): ((...args: Args) => Result) => {
+    return (...args) => {
+      throwIfCancelled();
+      try {
+        const result = operation(...args);
+        throwIfCancelled();
+        return result;
+      } catch (error) {
+        if (isAbortError(error) && dependencyAbortError === null) {
+          dependencyAbortError = error;
+        }
+        throw error;
+      }
+    };
+  };
+
+  return {
+    deps: {
+      ...deps,
+      createPersistedRun: guard(deps.createPersistedRun),
+      buildEnvelope: guard(deps.buildEnvelope),
+      compilePrompt: guardSync(deps.compilePrompt),
+      transitionRun: guard(deps.transitionRun),
+    },
+    abortError: () => dependencyAbortError,
+  };
+}
+
+async function cancelPersistedShadowRun(
+  deps: JarvisShadowCompilationDeps,
+  turn: JarvisShadowTurnInput,
+): Promise<void> {
+  let completedAt = 0;
+  try {
+    const candidate = deps.now();
+    if (Number.isFinite(candidate) && candidate >= 0) completedAt = candidate;
+  } catch {
+    // Cancellation still uses the exact run identity when the observational
+    // shadow clock is unavailable.
+  }
+  const event = {
+    idempotencyKey: `shadow:${turn.attempt.runId}:cancelled`,
+    title: 'Shadow cancelled',
+    safeSummary: 'Observational shadow run cancelled.',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt: completedAt,
+  };
+  for (const expectedStatus of ['queued', 'running'] as const) {
+    try {
+      await deps.transitionRun({
+        accountId: turn.run.accountId,
+        runId: turn.attempt.runId,
+        expectedStatus,
+        nextStatus: 'cancelled',
+        completedAt,
+        event,
+      });
+      return;
+    } catch {
+      // A compare-and-set conflict can mean the allocation has not landed,
+      // the compile advanced queued -> running, or another terminal winner
+      // already committed. Try only the other cancellable source state.
+    }
+  }
+  devConsole.log({
+    channel: 'ai',
+    level: 'warn',
+    message: 'JARVIS shadow cancellation found no cancellable persisted state',
+    detail: {
+      requestId: turn.attempt.requestId,
+      runId: turn.attempt.runId,
+      errorCategory: 'shadow_cancellation_conflict',
+    },
+  });
+}
+
 export function startRuntimeListener(
   bindings: RuntimeBindings,
   options: RuntimeOptions = {},
-): () => void {
+): RuntimeListenerStop {
   const sendEventName = options.eventName ?? 'jarvis:send';
   const cancelEventName = options.cancelEventName ?? 'jarvis:cancel';
   const flushIntervalMs = options.flushIntervalMs ?? 120;
@@ -2236,24 +2444,33 @@ export function startRuntimeListener(
   const activeControllers = new Set<AbortController>();
   const canonicalCancellations = new Map<MessageId, () => Promise<unknown>>();
   const canonicalCancellationOwners = new Map<AbortController, () => Promise<unknown>>();
+  const activeSendTasks = new Set<Promise<void>>();
+  const activeOwnedTasks = new Set<Promise<unknown>>();
   let defaultShadowDepsPromise: Promise<JarvisShadowCompilationDeps> | null = null;
 
-  const requestCanonicalCancellation = (
-    requestCancellation: (() => Promise<unknown>) | undefined,
-  ): void => {
-    if (!requestCancellation) return;
-    void requestCancellation().catch((error: unknown) => {
-      devConsole.log({
-        channel: 'ai',
-        level: 'warn',
-        message: 'Canonical AI cancellation request failed safely',
-        detail: { error: error instanceof Error ? error.message : String(error) },
-      });
-    });
+  const trackListenerOwnedTask = <T>(task: Promise<T>): Promise<T> => {
+    activeOwnedTasks.add(task);
+    void task.then(
+      () => activeOwnedTasks.delete(task),
+      () => activeOwnedTasks.delete(task),
+    );
+    return task;
   };
 
+  const logCanonicalCancellationFailure = (error: unknown): void => {
+    devConsole.log({
+      channel: 'ai',
+      level: 'warn',
+      message: 'Canonical AI cancellation request failed safely',
+      detail: { error: safeErrorMessage(error) },
+    });
+  };
+  const cancellationTaskTracker = createRuntimeCancellationTaskTracker(
+    logCanonicalCancellationFailure,
+  );
+
   const abortTrackedRun = (messageId: MessageId, controller: AbortController): void => {
-    requestCanonicalCancellation(
+    cancellationTaskTracker.request(
       canonicalCancellations.get(messageId) ?? canonicalCancellationOwners.get(controller),
     );
     controller.abort();
@@ -2262,7 +2479,7 @@ export function startRuntimeListener(
   const abortAllTrackedRuns = (): number => {
     const count = activeControllers.size;
     for (const requestCancellation of new Set(canonicalCancellationOwners.values())) {
-      requestCanonicalCancellation(requestCancellation);
+      cancellationTaskTracker.request(requestCancellation);
     }
     for (const controller of activeControllers) controller.abort();
     inFlight.clear();
@@ -2372,6 +2589,19 @@ export function startRuntimeListener(
       releaseVoiceTurnWithoutReply(detail, chatId);
       dispatchRunState(chatId, 'error', `kernel_runtime_setup_${stage}`);
       releaseOperationTracking();
+    };
+    const stopEarlyIfAborted = (stage: 'routing_history'): boolean => {
+      if (!controller.signal.aborted) return false;
+      devConsole.log({
+        channel: 'ai',
+        level: 'warn',
+        message: 'AI cancelled before provider dispatch',
+        detail: { chatId, stage },
+      });
+      releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'cancelled');
+      releaseOperationTracking();
+      return true;
     };
 
     const authState = useAuthStore.getState();
@@ -2891,6 +3121,7 @@ export function startRuntimeListener(
         failEarlySetup('context', error);
         return;
       }
+      if (stopEarlyIfAborted('routing_history')) return;
       const providerBoundHistory = toLLMMessages(routingHistory, undefined, false);
       const lastHistoryMessage = providerBoundHistory.at(-1);
       if (
@@ -2998,6 +3229,7 @@ export function startRuntimeListener(
     let lastFlush = 0;
     let pending = false;
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const pendingStreamingWrites = new Set<Promise<void>>();
     const voiceSettings = useAuthStore.getState();
     let streamingVoice: StreamingVoiceSession | null = null;
     let lastSpeechDeltaAt = 0;
@@ -3007,6 +3239,7 @@ export function startRuntimeListener(
 
     const flushSpeechDelta = () => {
       speechDeltaTimer = null;
+      if (controller.signal.aborted) return;
       if (!streamingVoice || !acc || !canVoiceModuleSpeak()) return;
       lastSpeechDeltaAt = Date.now();
       streamingVoice.onDelta(acc);
@@ -3041,6 +3274,18 @@ export function startRuntimeListener(
       }
     };
     const shouldSpeakReply = detail.speakReply === true;
+    let streamingVoiceTurnEnded = false;
+    const stopStreamingVoiceTurn = () => {
+      if (streamingVoice) {
+        streamingVoice.stop();
+        registerActiveStreamingVoiceSession(null);
+        streamingVoice = null;
+      }
+      if (shouldSpeakReply && !streamingVoiceTurnEnded) {
+        streamingVoiceTurnEnded = true;
+        window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
+      }
+    };
     const stackSteps = stepsForPreset(stackPreset, stackTaskType, authState.stackCustomSteps);
     let activeKernelMode: JarvisKernelMode | null = null;
     let shadowCompilation: Extract<JarvisShadowCompilationResult, { ok: true }> | null = null;
@@ -3073,12 +3318,26 @@ export function startRuntimeListener(
       }
       pending = false;
       lastFlush = Date.now();
+      if (controller.signal.aborted) return;
       if (placeholderId) {
         // Fire-and-forget: ordering of writes is preserved by the underlying
         // store; the final awaited write below stamps the canonical version.
-        void bindings.updateMessage(placeholderId, {
-          parts: [{ kind: 'text', text: acc }],
-        });
+        const write = trackListenerOwnedTask(
+          bindings.updateMessage(placeholderId, {
+            parts: [{ kind: 'text', text: acc }],
+          }),
+        );
+        pendingStreamingWrites.add(write);
+        void write.then(
+          () => pendingStreamingWrites.delete(write),
+          () => pendingStreamingWrites.delete(write),
+        );
+      }
+    };
+
+    const settleStreamingWrites = async () => {
+      while (pendingStreamingWrites.size > 0) {
+        await Promise.allSettled([...pendingStreamingWrites]);
       }
     };
 
@@ -3102,6 +3361,12 @@ export function startRuntimeListener(
       }
       pending = false;
     };
+    const cancelScheduledStreamingEffects = () => {
+      cancelPendingFlush();
+      cancelSpeechDelta();
+      stopStreamingVoiceTurn();
+    };
+    controller.signal.addEventListener('abort', cancelScheduledStreamingEffects, { once: true });
 
     try {
       dispatchKernelSmokeRuntimeStage('execution');
@@ -3132,6 +3397,7 @@ export function startRuntimeListener(
             );
           }
           const history = await bindings.getMessages(chatId);
+          controller.signal.throwIfAborted();
           const userMessage = [...history].reverse().find((message) => message.role === 'user');
           if (!userMessage) throw new Error('kernel_user_message_missing');
           const includeImages = modelSupportsVision(runnable.model.provider, runnable.model.model);
@@ -3195,6 +3461,7 @@ export function startRuntimeListener(
               capturedAt,
             });
             const boundPlan = await host.bindHiveStackPlan({ plan });
+            controller.signal.throwIfAborted();
             if (boundPlan.kind === 'account_authority_revoked') {
               throw new Error('kernel_account_authority_revoked');
             }
@@ -3306,7 +3573,9 @@ export function startRuntimeListener(
                 }
                 const { result, handle } = started.value;
                 try {
+                  controller.signal.throwIfAborted();
                   const ready = await handle.commitResponseReady();
+                  controller.signal.throwIfAborted();
                   if (ready.kind === 'account_authority_revoked') {
                     throw new Error('kernel_account_authority_revoked');
                   }
@@ -3314,6 +3583,7 @@ export function startRuntimeListener(
                     throw new Error(`voice_response_ready_${ready.value.reason}`);
                   }
                   const playback = await handle.runValidatedPlayback();
+                  controller.signal.throwIfAborted();
                   if (playback.kind === 'account_authority_revoked') {
                     throw new Error('kernel_account_authority_revoked');
                   }
@@ -3340,6 +3610,7 @@ export function startRuntimeListener(
             canonicalProviderId = response.provider.providerId;
             canonicalModelId = response.provider.modelId;
           }
+          controller.signal.throwIfAborted();
           if (canonicalVoiceCancelled) {
             useAgentStore.getState().setRunState(agent.id, 'idle');
             useAgentStore.getState().setVerb(agent.id, undefined);
@@ -3353,26 +3624,12 @@ export function startRuntimeListener(
             updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
             return;
           }
-          useAgentStore.getState().setRunState(agent.id, 'done');
-          useAgentStore.getState().setVerb(agent.id, undefined);
-          useChatActivityStore.getState().update(chatId, agentActivityId, {
-            status: 'done',
-            title: `@${agent.slug} finished`,
-            subtitle: `${canonicalProviderId}/${canonicalModelId}`,
-            ts: Date.now(),
-          });
-          dispatchRunState(chatId, 'done');
-          updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
           try {
             await maybeRenameChat(chatId as ChatId, canonicalDisplayText);
           } catch {
             // Canonical persistence is complete; tab naming remains best-effort.
           }
-          void notifyDone(
-            'jarvis',
-            `${agent.name} done`,
-            deriveChatTitle(canonicalDisplayText) || 'The AI response is complete.',
-          );
+          controller.signal.throwIfAborted();
           const canonicalInspector = retrievedResponseContext
             ? buildContextResponseInspector(
                 projectId ? String(projectId) : null,
@@ -3400,11 +3657,28 @@ export function startRuntimeListener(
               });
             }
           }
+          controller.signal.throwIfAborted();
           if (streamingVoice && canonicalSpokenText && canVoiceModuleSpeak()) {
             await streamingVoice.onComplete(canonicalSpokenText);
             registerActiveStreamingVoiceSession(null);
             streamingVoice = null;
           }
+          controller.signal.throwIfAborted();
+          useAgentStore.getState().setRunState(agent.id, 'done');
+          useAgentStore.getState().setVerb(agent.id, undefined);
+          useChatActivityStore.getState().update(chatId, agentActivityId, {
+            status: 'done',
+            title: `@${agent.slug} finished`,
+            subtitle: `${canonicalProviderId}/${canonicalModelId}`,
+            ts: Date.now(),
+          });
+          dispatchRunState(chatId, 'done');
+          updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
+          void notifyDone(
+            'jarvis',
+            `${agent.name} done`,
+            deriveChatTitle(canonicalDisplayText) || 'The AI response is complete.',
+          );
           return;
         }
       }
@@ -3427,6 +3701,7 @@ export function startRuntimeListener(
 
       // Read the now-current history; pass it (sans placeholder) to the model.
       const history = await bindings.getMessages(chatId);
+      controller.signal.throwIfAborted();
       const includeImages =
         stackStepsEarly.length > 0
           ? stackStepsEarly.every((step) => modelSupportsVision(step.provider, step.model))
@@ -3443,11 +3718,23 @@ export function startRuntimeListener(
           interactionMode,
           speakReply: detail.speakReply === true,
         });
+        controller.signal.throwIfAborted();
+        let shadowResult: JarvisShadowCompilationResult | null = null;
         try {
           activeShadowDeps = await resolveShadowDeps();
-          const shadowResult = await compileJarvisShadowTurn(shadowTurn, activeShadowDeps);
-          if (shadowResult.ok) shadowCompilation = shadowResult;
-        } catch {
+          controller.signal.throwIfAborted();
+          const guardedShadowDeps = guardShadowCompilationDeps(activeShadowDeps, controller.signal);
+          shadowResult = await compileJarvisShadowTurn(shadowTurn, guardedShadowDeps.deps);
+          const dependencyAbortError = guardedShadowDeps.abortError();
+          if (dependencyAbortError !== null) throw dependencyAbortError;
+        } catch (error) {
+          if (isAbortError(error)) {
+            if (activeShadowDeps) {
+              await cancelPersistedShadowRun(activeShadowDeps, shadowTurn);
+            }
+            throw error;
+          }
+          controller.signal.throwIfAborted();
           activeShadowDeps = null;
           devConsole.log({
             channel: 'ai',
@@ -3460,6 +3747,8 @@ export function startRuntimeListener(
             },
           });
         }
+        controller.signal.throwIfAborted();
+        if (shadowResult?.ok) shadowCompilation = shadowResult;
       }
 
       useAgentStore.getState().setRunState(agent.id, 'streaming');
@@ -3493,6 +3782,7 @@ export function startRuntimeListener(
           'Hive requires the canonical JARVIS kernel runtime.',
         );
       }
+      controller.signal.throwIfAborted();
       const response = await runAgent({
         agent: runnable,
         messages: llmMessages,
@@ -3513,6 +3803,7 @@ export function startRuntimeListener(
         workingDirectory: projectId ? (getStoredProjectRoot(projectId) ?? undefined) : undefined,
         signal: controller.signal,
         onChunk: (chunk) => {
+          if (controller.signal.aborted) return;
           if (chunk.delta && chunk.delta.length > 0) {
             acc += chunk.delta;
             scheduleFlush();
@@ -3521,11 +3812,15 @@ export function startRuntimeListener(
           if (chunk.done) flushNow();
         },
       });
+      controller.signal.throwIfAborted();
 
       await mirrorShadowOutcome('completed', true);
+      controller.signal.throwIfAborted();
 
       // Make sure no scheduled flush fires after the canonical write below.
       cancelPendingFlush();
+      await settleStreamingWrites();
+      controller.signal.throwIfAborted();
 
       // Force a final write with whatever the provider says is canonical.
       // textToParts() splits the text on action-proposal fences so the
@@ -3555,8 +3850,10 @@ export function startRuntimeListener(
           model: response.model,
         },
       });
+      controller.signal.throwIfAborted();
 
       if (detail.autoApproveActions && isProtectedJarvis) {
+        controller.signal.throwIfAborted();
         try {
           await autoApprovePendingActions(placeholder.id, chatId);
         } catch (approveErr) {
@@ -3567,18 +3864,8 @@ export function startRuntimeListener(
             detail: { agent: agent.slug, messageId: placeholder.id },
           });
         }
+        controller.signal.throwIfAborted();
       }
-
-      useAgentStore.getState().setRunState(agent.id, 'done');
-      useAgentStore.getState().setVerb(agent.id, undefined);
-      useChatActivityStore.getState().update(chatId, agentActivityId, {
-        status: 'done',
-        title: `@${agent.slug} finished`,
-        subtitle: `${response.provider}/${response.model} · ${response.usage.input_tokens}+${response.usage.output_tokens} tokens`,
-        ts: Date.now(),
-      });
-      dispatchRunState(chatId, 'done');
-      updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
 
       // Auto-name the chat from its first assistant reply.
       //
@@ -3600,34 +3887,17 @@ export function startRuntimeListener(
       } catch {
         // Auto-naming is best-effort; never let it break the run.
       }
+      controller.signal.throwIfAborted();
       if (isProtectedJarvis) {
-        void maybeUpdateAllAboutMeFromChat(
+        await maybeUpdateAllAboutMeFromChat(
           runnable,
           history,
           detail.forceAllAboutMeUpdate === true,
           detail.chatId,
+          controller.signal,
         );
+        controller.signal.throwIfAborted();
       }
-
-      devConsole.log({
-        channel: 'ai',
-        level: 'info',
-        message: `AI done ← @${agent.slug} (${response.usage.input_tokens}+${response.usage.output_tokens} tok, $${response.usage.cost_usd.toFixed(4)})`,
-        durationMs: Date.now() - aiStart,
-        detail: {
-          agent: agent.slug,
-          provider: response.provider,
-          model: response.model,
-          usage: response.usage,
-          textChars: finalText.length,
-          partCount: finalParts.length,
-        },
-      });
-      void notifyDone(
-        'jarvis',
-        `${agent.name} done`,
-        deriveChatTitle(finalText) || 'The AI response is complete.',
-      );
       if (streamingVoice) {
         try {
           cancelSpeechDelta();
@@ -3649,27 +3919,50 @@ export function startRuntimeListener(
           streamingVoice = null;
         }
       }
+      controller.signal.throwIfAborted();
+
+      useAgentStore.getState().setRunState(agent.id, 'done');
+      useAgentStore.getState().setVerb(agent.id, undefined);
+      useChatActivityStore.getState().update(chatId, agentActivityId, {
+        status: 'done',
+        title: `@${agent.slug} finished`,
+        subtitle: `${response.provider}/${response.model} · ${response.usage.input_tokens}+${response.usage.output_tokens} tokens`,
+        ts: Date.now(),
+      });
+      dispatchRunState(chatId, 'done');
+      updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
+
+      devConsole.log({
+        channel: 'ai',
+        level: 'info',
+        message: `AI done ← @${agent.slug} (${response.usage.input_tokens}+${response.usage.output_tokens} tok, $${response.usage.cost_usd.toFixed(4)})`,
+        durationMs: Date.now() - aiStart,
+        detail: {
+          agent: agent.slug,
+          provider: response.provider,
+          model: response.model,
+          usage: response.usage,
+          textChars: finalText.length,
+          partCount: finalParts.length,
+        },
+      });
+      void notifyDone(
+        'jarvis',
+        `${agent.name} done`,
+        deriveChatTitle(finalText) || 'The AI response is complete.',
+      );
     } catch (err) {
-      cancelSpeechDelta();
-      streamingVoice?.stop();
-      registerActiveStreamingVoiceSession(null);
-      streamingVoice = null;
-      if (shouldSpeakReply) {
-        window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
-      }
+      stopStreamingVoiceTurn();
       // Cancel any pending flush before stamping the suffix or it'll overwrite us.
       cancelPendingFlush();
+      await settleStreamingWrites();
 
-      const aborted =
-        (err instanceof DOMException && err.name === 'AbortError') ||
-        (err as Error)?.name === 'AbortError';
+      const aborted = isAbortError(err);
 
       await mirrorShadowOutcome(aborted ? 'cancelled' : 'failed', true);
 
       if (placeholderId) {
-        const suffix = aborted
-          ? '_[cancelled]_'
-          : `_Error: ${(err as Error)?.message ?? 'unknown'}_`;
+        const suffix = aborted ? '_[cancelled]_' : `_Error: ${safeErrorMessage(err)}_`;
         const sep = acc.length > 0 ? '\n\n' : '';
         try {
           await bindings.updateMessage(placeholderId, {
@@ -3698,7 +3991,7 @@ export function startRuntimeListener(
       useChatActivityStore.getState().update(chatId, agentActivityId, {
         status: aborted ? 'cancelled' : 'error',
         title: aborted ? `@${agent.slug} cancelled` : `@${agent.slug} failed`,
-        subtitle: aborted ? 'Cancelled by user' : ((err as Error)?.message ?? 'Unknown error'),
+        subtitle: aborted ? 'Cancelled by user' : safeErrorMessage(err, 'Unknown error'),
         ts: Date.now(),
       });
       dispatchRunState(
@@ -3717,19 +4010,17 @@ export function startRuntimeListener(
         level: aborted ? 'warn' : 'error',
         message: aborted
           ? `AI cancelled @${agent.slug}`
-          : `AI error @${agent.slug}: ${(err as Error)?.message ?? 'unknown'}`,
+          : `AI error @${agent.slug}: ${safeErrorMessage(err)}`,
         durationMs: Date.now() - aiStart,
         detail: {
           agent: agent.slug,
           aborted,
           partialChars: acc.length,
-          error:
-            err instanceof Error
-              ? { name: err.name, message: err.message, stack: err.stack }
-              : String(err),
+          error: safeErrorDetail(err),
         },
       });
     } finally {
+      controller.signal.removeEventListener('abort', cancelScheduledStreamingEffects);
       if (placeholderId && inFlight.get(placeholderId) === controller) {
         inFlight.delete(placeholderId);
       }
@@ -3771,13 +4062,45 @@ export function startRuntimeListener(
     }
   };
 
-  window.addEventListener(sendEventName, handleSend as EventListener);
+  const handleSendEvent = (event: Event): void => {
+    let resolveTrackedTask!: () => void;
+    let rejectTrackedTask!: (reason?: unknown) => void;
+    const trackedTask = new Promise<void>((resolve, reject) => {
+      resolveTrackedTask = resolve;
+      rejectTrackedTask = reject;
+    });
+    activeSendTasks.add(trackedTask);
+    void trackedTask.then(
+      () => activeSendTasks.delete(trackedTask),
+      () => activeSendTasks.delete(trackedTask),
+    );
+    void handleSend(event).then(
+      () => resolveTrackedTask(),
+      (error: unknown) => rejectTrackedTask(error),
+    );
+  };
+
+  window.addEventListener(sendEventName, handleSendEvent);
   window.addEventListener(cancelEventName, handleCancel as EventListener);
 
-  return () => {
-    window.removeEventListener(sendEventName, handleSend as EventListener);
+  const stop = (() => {
+    window.removeEventListener(sendEventName, handleSendEvent);
     window.removeEventListener(cancelEventName, handleCancel as EventListener);
     stopPromptForgeContextBridge();
     abortAllTrackedRuns();
+  }) as RuntimeListenerStop;
+  stop.whenIdle = async () => {
+    while (
+      activeSendTasks.size > 0 ||
+      activeOwnedTasks.size > 0 ||
+      cancellationTaskTracker.hasPending()
+    ) {
+      await Promise.allSettled([
+        ...activeSendTasks,
+        ...activeOwnedTasks,
+        ...cancellationTaskTracker.snapshot(),
+      ]);
+    }
   };
+  return stop;
 }

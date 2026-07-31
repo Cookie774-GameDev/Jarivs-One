@@ -6,12 +6,21 @@ import type { AgentId, ChatId, MessageId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import { getChatActivityEvents, useChatActivityStore } from '@/features/chat/activity';
+import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
 import { useVoiceStore } from '@/features/voice/store';
+import { useAgentStore } from '@/stores/agents';
 import { createVoiceSessionBinding } from '@/features/voice/voiceSessionBinding';
+import { STREAMING_VOICE_END_EVENT } from '@/features/voice/speechSynthesis';
 import { toast } from '@/components/ui/toast';
 import { writeConnectionPickerStates } from './connectionState';
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
+import {
+  activateKernelSmokeBinding,
+  clearKernelSmokeBinding,
+  KERNEL_SMOKE_RUNTIME_STAGE_EVENT,
+} from '@/lib/ai/providers/kernelSmoke';
 import { toJarvisApprovalRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
 import type {
   JarvisApprovalV1,
@@ -19,6 +28,10 @@ import type {
   JarvisContextItem,
   JarvisRun,
 } from '@/lib/jarvis/contracts';
+import type {
+  JarvisKernelRuntime,
+  JarvisKernelRuntimeComposition,
+} from '@/lib/jarvis/kernelRuntime';
 import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import {
   createJarvisActionCatalog,
@@ -34,6 +47,7 @@ import type { CanonicalPluginArtifactCapability } from '@/features/plugins/runti
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
   chatGetById: vi.fn(),
+  chatUpdate: vi.fn(),
   getProjectContextBlock: vi.fn(),
   getProjectContextTreeBlock: vi.fn(),
   getConnectedFilesBlock: vi.fn(),
@@ -60,6 +74,9 @@ const mocks = vi.hoisted(() => ({
   voiceCanSpeak: true,
   nativeFetch: vi.fn(),
   buildRoutedMcpTaskContext: vi.fn(),
+  kernelRuntimeInterceptor: null as
+    | ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition)
+    | null,
 }));
 
 vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
@@ -87,7 +104,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db')>();
   return {
     ...actual,
-    chatRepo: { getById: mocks.chatGetById, update: vi.fn() },
+    chatRepo: { getById: mocks.chatGetById, update: mocks.chatUpdate },
   };
 });
 
@@ -104,6 +121,19 @@ vi.mock('@/features/voice/streamingVoice', () => ({
   createCanonicalVoicePlaybackAdapter: () => Object.freeze({ prepare: () => null }),
   createStreamingVoiceSession: () => mocks.streamingSession,
 }));
+
+vi.mock('@/lib/jarvis/kernelRuntime', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/jarvis/kernelRuntime')>();
+  return {
+    ...actual,
+    createJarvisKernelRuntime: (
+      input: Parameters<typeof actual.createJarvisKernelRuntime>[0],
+    ): JarvisKernelRuntimeComposition => {
+      const composition = actual.createJarvisKernelRuntime(input);
+      return mocks.kernelRuntimeInterceptor?.(composition) ?? composition;
+    },
+  };
+});
 
 vi.mock('@/features/terminals/agentContext', () => ({
   buildAgentTerminalContext: () => '',
@@ -143,6 +173,7 @@ vi.mock('./context', () => ({
 import {
   createCanonicalProviderEvidenceAuthority,
   createJarvisCommandCenterHostPort,
+  createRuntimeCancellationTaskTracker,
   executeApprovalThenActivateTerminalHandoff,
   executeInstalledJarvisRegisteredAction,
   handleInstalledJarvisKernelClientRequest,
@@ -176,7 +207,11 @@ function agent(id: string, slug: string, systemPrompt: string, builtin = slug ==
   };
 }
 
-const activeStoppers: Array<() => void> = [];
+type TrackedStopper = (() => void) & {
+  whenIdle: () => Promise<void>;
+};
+
+const activeStoppers: TrackedStopper[] = [];
 
 describe('startRuntimeListener agent routing', () => {
   beforeEach(() => {
@@ -184,6 +219,7 @@ describe('startRuntimeListener agent routing', () => {
     mocks.runAgent.mockReset();
     mocks.nativeFetch.mockReset();
     mocks.buildRoutedMcpTaskContext.mockReset();
+    mocks.kernelRuntimeInterceptor = null;
     mocks.voiceCanSpeak = true;
     try {
       localStorage.clear();
@@ -228,15 +264,23 @@ describe('startRuntimeListener agent routing', () => {
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    const stopped: TrackedStopper[] = [];
     while (activeStoppers.length > 0) {
-      activeStoppers.pop()!();
+      const stop = activeStoppers.pop()!;
+      stop();
+      stopped.push(stop);
     }
+    await Promise.all(stopped.map((stop) => stop.whenIdle()));
   });
 
-  function trackListener(stop: () => void): () => void {
+  function trackListener<T extends TrackedStopper>(stop: T): T {
     activeStoppers.push(stop);
     return stop;
+  }
+
+  function trackCleanup(cleanup: () => void): TrackedStopper {
+    return trackListener(Object.assign(cleanup, { whenIdle: async () => undefined }));
   }
 
   it('activates the terminal surface only after the durable handoff resolves', async () => {
@@ -338,7 +382,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-approval-presentation',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
 
     try {
       await expect(
@@ -2035,6 +2079,98 @@ describe('startRuntimeListener agent routing', () => {
     return deps;
   }
 
+  function statefulShadowHarness() {
+    let now = 100;
+    const runs = new Map<string, JarvisRun>();
+    const deps: JarvisShadowCompilationDeps = {
+      createPersistedRun: vi.fn(async (input) => {
+        const run: JarvisRun = {
+          ...input,
+          id: input.id!,
+          status: 'queued',
+          createdAt: now,
+          updatedAt: now,
+        };
+        runs.set(run.id, run);
+        return run;
+      }),
+      buildEnvelope: vi.fn(
+        async (input) =>
+          ({
+            schemaVersion: 1,
+            requestId: input.attempt.requestId,
+            runId: input.attempt.runId,
+            accountId: input.accountId,
+            agent: input.agent,
+          }) as never,
+      ),
+      compilePrompt: vi.fn(() => ({
+        schemaVersion: 1 as const,
+        layers: [],
+        systemText: 'STATEFUL SHADOW PROMPT MUST NOT DISPATCH',
+        promptHash: 'e'.repeat(64),
+        identityVersion: 1,
+        profileRevisionId: 'shadow-runtime-profile',
+        diagnostics: { totalChars: 0, omittedSourceRefs: [], warnings: [] },
+      })),
+      transitionRun: vi.fn(async (input) => {
+        const current = runs.get(input.runId);
+        if (
+          !current ||
+          current.accountId !== input.accountId ||
+          current.status !== input.expectedStatus
+        ) {
+          throw new Error('Jarvis run transition conflict');
+        }
+        const next: JarvisRun = {
+          ...current,
+          status: input.nextStatus,
+          updatedAt: now,
+          ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),
+        };
+        runs.set(next.id, next);
+        return next;
+      }),
+      recordDiagnostic: vi.fn(),
+      now: vi.fn(() => now++),
+    };
+    return {
+      deps,
+      runs,
+      statuses: () => [...runs.values()].map((run) => run.status),
+      seedRun(id: string, accountId: string, status: JarvisRun['status']) {
+        runs.set(id, {
+          id,
+          accountId,
+          source: 'typed_chat',
+          status,
+          agentId: 'agent_jarvis',
+          identityVersion: 1,
+          profileRevisionId: 'shadow-runtime-profile',
+          model: {
+            providerId: 'mock',
+            modelId: 'mock-default',
+            connectionMode: 'local',
+            capabilities: {},
+            capturedAt: now,
+          },
+          createdAt: now,
+          updatedAt: now,
+        });
+      },
+    };
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, reject, resolve };
+  }
+
   function runtimeInterlocks() {
     return {
       assertCanonicalAccountIdentity: vi.fn(),
@@ -2044,6 +2180,16 @@ describe('startRuntimeListener agent routing', () => {
       assertPrivateSyncBoundary: vi.fn(),
       assertSelectedPromptTransportSupported: vi.fn(),
     };
+  }
+
+  function interceptNextKernelRuntime(
+    wrapKernel: (kernel: JarvisKernelRuntime) => JarvisKernelRuntime,
+  ): void {
+    mocks.kernelRuntimeInterceptor = (composition) =>
+      Object.freeze({
+        ...composition,
+        kernel: wrapKernel(composition.kernel),
+      });
   }
 
   function kernelRuntimeBindings(selectedAgent: Agent) {
@@ -2185,6 +2331,58 @@ describe('startRuntimeListener agent routing', () => {
     expect(() => port.retryLogicalRun('run-command-center')).toThrow('account_epoch_revoked');
     expect(requestCancellation).not.toHaveBeenCalled();
     expect(retry).not.toHaveBeenCalled();
+  });
+
+  it.each(['resolve', 'reject'] as const)(
+    'keeps canonical cancellation in listener idleness until deferred %s',
+    async (outcome) => {
+      const cancellation = deferred<unknown>();
+      const failures: unknown[] = [];
+      const tracker = createRuntimeCancellationTaskTracker((error) => failures.push(error));
+      tracker.request(() => cancellation.promise);
+      let settled = false;
+      const idle = tracker.whenIdle().then(() => {
+        settled = true;
+      });
+
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      if (outcome === 'resolve') {
+        cancellation.resolve({ kind: 'cancelled' });
+      } else {
+        cancellation.reject(new Error('canonical cancellation rejected'));
+      }
+      await idle;
+
+      expect(settled).toBe(true);
+      expect(failures).toHaveLength(outcome === 'reject' ? 1 : 0);
+    },
+  );
+
+  it('isolates canonical cancellation idleness between two listener-owned trackers', async () => {
+    const firstCancellation = deferred<unknown>();
+    const secondCancellation = deferred<unknown>();
+    const first = createRuntimeCancellationTaskTracker(() => undefined);
+    const second = createRuntimeCancellationTaskTracker(() => undefined);
+    first.request(() => firstCancellation.promise);
+    second.request(() => secondCancellation.promise);
+    let firstSettled = false;
+    let secondSettled = false;
+    const firstIdle = first.whenIdle().then(() => {
+      firstSettled = true;
+    });
+    const secondIdle = second.whenIdle().then(() => {
+      secondSettled = true;
+    });
+
+    firstCancellation.resolve({ kind: 'cancelled' });
+    await firstIdle;
+    expect(firstSettled).toBe(true);
+    expect(secondSettled).toBe(false);
+
+    secondCancellation.resolve({ kind: 'cancelled' });
+    await secondIdle;
+    expect(secondSettled).toBe(true);
   });
 
   it('runs explicit shadow mode as one observational compile plus one unchanged legacy dispatch', async () => {
@@ -2412,7 +2610,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-installed-kernel-host',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, {
         jarvisInterlocks: runtimeInterlocks(),
@@ -2687,7 +2885,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID,
       now,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, {
         jarvisInterlocks: runtimeInterlocks(),
@@ -2895,7 +3093,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID,
       now,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, {
         jarvisInterlocks: runtimeInterlocks(),
@@ -3001,7 +3199,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-installed-hive-host',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
     );
@@ -3046,6 +3244,117 @@ describe('startRuntimeListener agent routing', () => {
       );
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
     } finally {
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('does not start canonical Hive workers when cancellation wins during plan binding', async () => {
+    useAuthStore.setState({
+      apiKeys: {
+        google: 'google-test',
+        openrouter: 'openrouter-test',
+        deepseek: 'deepseek-test',
+        openai: 'openai-test',
+      },
+      chatModelSelection: { mode: 'hive', hiveId: 'balanced' },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-hive-bind-cancellation'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_hive_bind_cancel' as never,
+      title: 'Hive bind cancellation',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const bindSettled = deferred<void>();
+    const releaseBind = deferred<void>();
+    let openWorkerCalls = 0;
+    interceptNextKernelRuntime((kernel) => {
+      const bindHiveStackPlan = kernel.bindHiveStackPlan.bind(kernel);
+      return Object.freeze({
+        ...kernel,
+        async bindHiveStackPlan(input: Parameters<JarvisKernelRuntime['bindHiveStackPlan']>[0]) {
+          const outcome = await bindHiveStackPlan(input);
+          bindSettled.resolve();
+          await releaseBind.promise;
+          return outcome;
+        },
+        openHiveWorker(input: Parameters<JarvisKernelRuntime['openHiveWorker']>[0]) {
+          openWorkerCalls += 1;
+          return kernel.openHiveWorker(input);
+        },
+      });
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-hive-bind-cancel',
+      now: () => 10,
+    });
+    trackCleanup(disposeHost);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Cancel before any protected Hive worker starts.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      await bindSettled.promise;
+
+      stop();
+      stop();
+      let idleSettled = false;
+      const idle = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      expect(idleSettled).toBe(false);
+
+      releaseBind.resolve();
+      await idle;
+
+      expect(openWorkerCalls).toBe(0);
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+      expect(mocks.notifyDone).not.toHaveBeenCalled();
+      expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+      expect(getChatActivityEvents(harness.chatId).at(-1)?.status).toBe('cancelled');
+    } finally {
+      releaseBind.resolve();
+      await stop.whenIdle();
       disposeHost();
       database.close();
       await database.delete();
@@ -3112,7 +3421,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-hive-cancel',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
     );
@@ -3227,7 +3536,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-early-cancel',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     const stop = trackListener(
       startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
     );
@@ -3259,6 +3568,1010 @@ describe('startRuntimeListener agent routing', () => {
       await database.delete();
     }
   }, 15_000);
+
+  it('rechecks cancellation ownership after awaited history before provider dispatch', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    type KernelHistory = Awaited<ReturnType<typeof harness.bindings.getMessages>>;
+    let resolveHistory!: (messages: KernelHistory) => void;
+    harness.bindings.getMessages.mockReturnValueOnce(
+      new Promise<KernelHistory>((resolve) => {
+        resolveHistory = resolve;
+      }),
+    );
+    const stop = trackListener(startRuntimeListener(harness.bindings));
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Never dispatch after history ownership is revoked.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(harness.bindings.getMessages).toHaveBeenCalledOnce());
+
+    stop();
+    resolveHistory([
+      {
+        id: 'msg_kernel_user' as MessageId,
+        chat_id: harness.chatId,
+        role: 'user',
+        parts: [{ kind: 'text', text: 'Never dispatch after history ownership is revoked.' }],
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+
+    await stop.whenIdle();
+    expect(mocks.devLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: 'warn',
+        message: 'AI cancelled @apple',
+      }),
+    );
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('contains an error object whose name getter throws without breaking listener cleanup', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    const hostileError = Object.create(null);
+    Object.defineProperty(hostileError, 'name', {
+      get() {
+        throw new Error('hostile name getter');
+      },
+    });
+    mocks.runAgent.mockRejectedValueOnce(hostileError);
+    const stop = trackListener(startRuntimeListener(harness.bindings));
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Contain the hostile provider error.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await stop.whenIdle();
+
+    expect(harness.updateMessage).toHaveBeenCalledWith(
+      'msg_kernel_assistant',
+      expect.objectContaining({
+        parts: [{ kind: 'text', text: expect.stringContaining('Error:') }],
+      }),
+    );
+    expect(useAgentStore.getState().runStates[selectedAgent.id]).toBe('error');
+    expect(useAgentStore.getState().verbs[selectedAgent.id]).toBeUndefined();
+  });
+
+  it('registers send work before an accepted-stage observer can await listener idleness', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    const chatGate = deferred<undefined>();
+    mocks.chatGetById.mockReturnValueOnce(chatGate.promise);
+    activateKernelSmokeBinding({
+      nativePid: 1234,
+      cdpPort: 9222,
+      profileSha256: 'a'.repeat(64),
+      nonce: 'b'.repeat(64),
+    });
+    const stop = trackListener(startRuntimeListener(harness.bindings));
+    let idleSettled = false;
+    let idlePromise: Promise<void> | undefined;
+    const onStage = (event: Event) => {
+      const { stage } = (event as CustomEvent<{ stage: string }>).detail;
+      if (stage !== 'accepted') return;
+      stop();
+      idlePromise = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+    };
+    window.addEventListener(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, onStage);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Stop reentrantly at accepted.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      expect(idlePromise).toBeDefined();
+      await Promise.resolve();
+      expect(idleSettled).toBe(false);
+
+      chatGate.resolve(undefined);
+      await idlePromise;
+      expect(idleSettled).toBe(true);
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+    } finally {
+      chatGate.resolve(undefined);
+      await idlePromise;
+      window.removeEventListener(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, onStage);
+      clearKernelSmokeBinding();
+    }
+  });
+
+  it('stops automatic routing immediately after a suspended history read loses ownership', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    type KernelHistory = Awaited<ReturnType<typeof harness.bindings.getMessages>>;
+    let resolveRoutingHistory!: (messages: KernelHistory) => void;
+    harness.bindings.getMessages.mockReturnValueOnce(
+      new Promise<KernelHistory>((resolve) => {
+        resolveRoutingHistory = resolve;
+      }),
+    );
+    useAuthStore.setState({
+      automaticModelRoutingEnabled: true,
+      apiKeys: { google: 'test-google-key', xai: 'test-xai-key' },
+      chatModelSelection: selectionFromOption('xai', 'grok-2-1212'),
+    });
+    writeConnectionPickerStates({
+      'google-gemini-api': { available: true, auth: 'authenticated' },
+      'xai-api': { available: true, auth: 'authenticated' },
+    });
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-cancelled-route');
+    const stop = trackListener(startRuntimeListener(harness.bindings));
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Do not route this cancelled image turn.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+          automaticModelRoutingEligible: true,
+          imageAttachments: [
+            {
+              id: 'cancelled-route-image',
+              name: 'cancelled.png',
+              mimeType: 'image/png',
+              data: 'data:image/png;base64,AA==',
+            },
+          ],
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(harness.bindings.getMessages).toHaveBeenCalledOnce());
+
+    stop();
+    resolveRoutingHistory([]);
+    await stop.whenIdle();
+
+    expect(info).not.toHaveBeenCalledWith('Automatic model routing', expect.any(String));
+    expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('does not start shadow persistence after stop during shadow-turn hashing', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const shadow = shadowHarness();
+    type KernelHistory = Awaited<ReturnType<typeof harness.bindings.getMessages>>;
+    let resolveHistory!: (messages: KernelHistory) => void;
+    harness.bindings.getMessages.mockReturnValueOnce(
+      new Promise<KernelHistory>((resolve) => {
+        resolveHistory = resolve;
+      }),
+    );
+    let resolveDigest!: (value: ArrayBuffer) => void;
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Stop while the shadow identity is hashing.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(harness.bindings.getMessages).toHaveBeenCalledOnce());
+
+      const digest = vi.spyOn(globalThis.crypto.subtle, 'digest');
+      const realDigest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+      digest
+        .mockImplementationOnce(
+          () =>
+            new Promise<ArrayBuffer>((resolve) => {
+              resolveDigest = resolve;
+            }) as never,
+        )
+        .mockImplementation(realDigest as never);
+      resolveHistory([
+        {
+          id: 'msg_kernel_user' as MessageId,
+          chat_id: harness.chatId,
+          role: 'user',
+          parts: [{ kind: 'text', text: 'Stop while the shadow identity is hashing.' }],
+          created_at: 1,
+          updated_at: 1,
+        },
+      ]);
+      await vi.waitFor(() => expect(digest).toHaveBeenCalled());
+
+      stop();
+      resolveDigest(new Uint8Array(32).buffer);
+      await stop.whenIdle();
+
+      expect(shadow.createPersistedRun).not.toHaveBeenCalled();
+      expect(shadow.transitionRun).not.toHaveBeenCalled();
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+      digest.mockRestore();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('does not start shadow envelope work after stop during persisted-run creation', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const statefulShadow = statefulShadowHarness();
+    statefulShadow.seedRun('foreign-run', 'foreign-account', 'completed');
+    const shadow = statefulShadow.deps;
+    const createPersistedRun = vi.mocked(shadow.createPersistedRun);
+    const createPersistedRunImplementation = createPersistedRun.getMockImplementation()!;
+    const createGate = deferred<void>();
+    createPersistedRun.mockImplementationOnce(async (input) => {
+      await createGate.promise;
+      return createPersistedRunImplementation(input);
+    });
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Stop while the shadow run is being created.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(createPersistedRun).toHaveBeenCalledOnce());
+
+    stop();
+    createGate.resolve(undefined);
+    await stop.whenIdle();
+
+    expect(statefulShadow.statuses()).toEqual(['completed', 'cancelled']);
+    expect(statefulShadow.runs.get('foreign-run')?.status).toBe('completed');
+    expect(shadow.buildEnvelope).not.toHaveBeenCalled();
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('does not compile or transition after stop during shadow envelope creation', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const statefulShadow = statefulShadowHarness();
+    statefulShadow.seedRun('foreign-run', 'foreign-account', 'completed');
+    const shadow = statefulShadow.deps;
+    const buildEnvelope = vi.mocked(shadow.buildEnvelope);
+    const buildEnvelopeImplementation = buildEnvelope.getMockImplementation()!;
+    const buildGate = deferred<void>();
+    buildEnvelope.mockImplementationOnce(async (input) => {
+      await buildGate.promise;
+      return buildEnvelopeImplementation(input);
+    });
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Stop while the shadow envelope is being created.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(buildEnvelope).toHaveBeenCalledOnce());
+
+    stop();
+    buildGate.resolve(undefined);
+    await stop.whenIdle();
+
+    expect(statefulShadow.statuses()).toEqual(['completed', 'cancelled']);
+    expect(statefulShadow.runs.get('foreign-run')?.status).toBe('completed');
+    expect(shadow.compilePrompt).not.toHaveBeenCalled();
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('does not start another shadow transition after stop during the running transition', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const statefulShadow = statefulShadowHarness();
+    statefulShadow.seedRun('foreign-run', 'foreign-account', 'completed');
+    const shadow = statefulShadow.deps;
+    const transitionRun = vi.mocked(shadow.transitionRun);
+    const transitionRunImplementation = transitionRun.getMockImplementation()!;
+    const transitionGate = deferred<void>();
+    transitionRun.mockImplementationOnce(async (input) => {
+      await transitionGate.promise;
+      return transitionRunImplementation(input);
+    });
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Stop while the shadow run transitions to running.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(transitionRun).toHaveBeenCalledOnce());
+
+    stop();
+    transitionGate.resolve(undefined);
+    await stop.whenIdle();
+
+    expect(statefulShadow.statuses()).toEqual(['completed', 'cancelled']);
+    expect(statefulShadow.runs.get('foreign-run')?.status).toBe('completed');
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('durably cancels the exact queued shadow run when stop occurs during compilation', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const statefulShadow = statefulShadowHarness();
+    statefulShadow.seedRun('foreign-run', 'foreign-account', 'completed');
+    const shadow = statefulShadow.deps;
+    const compilePrompt = vi.mocked(shadow.compilePrompt);
+    const compilePromptImplementation = compilePrompt.getMockImplementation()!;
+    let stop!: ReturnType<typeof startKernelAwareRuntimeListener>;
+    compilePrompt.mockImplementationOnce((input) => {
+      stop();
+      return compilePromptImplementation(input);
+    });
+    stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Stop while the shadow prompt is compiling.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await stop.whenIdle();
+
+    expect(compilePrompt).toHaveBeenCalledOnce();
+    expect(statefulShadow.statuses()).toEqual(['completed', 'cancelled']);
+    expect(statefulShadow.runs.get('foreign-run')?.status).toBe('completed');
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it.each(['completed', 'failed'] as const)(
+    'does not corrupt a shadow run when %s wins the cancellation CAS race',
+    async (winningStatus) => {
+      const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+      const harness = kernelRuntimeBindings(protectedJarvis);
+      const statefulShadow = statefulShadowHarness();
+      const shadow = statefulShadow.deps;
+      const transitionRun = vi.mocked(shadow.transitionRun);
+      const transitionImplementation = transitionRun.getMockImplementation()!;
+      transitionRun.mockImplementation(async (input) => {
+        if (input.nextStatus === 'cancelled') {
+          const current = statefulShadow.runs.get(input.runId)!;
+          statefulShadow.runs.set(input.runId, { ...current, status: winningStatus });
+        }
+        return transitionImplementation(input);
+      });
+      const compilePrompt = vi.mocked(shadow.compilePrompt);
+      const compileImplementation = compilePrompt.getMockImplementation()!;
+      let stop!: ReturnType<typeof startKernelAwareRuntimeListener>;
+      compilePrompt.mockImplementationOnce((input) => {
+        stop();
+        stop();
+        return compileImplementation(input);
+      });
+      stop = trackListener(
+        startRuntimeListener(harness.bindings, {
+          jarvisKernelMode: 'shadow',
+          jarvisShadow: shadow,
+          jarvisInterlocks: runtimeInterlocks(),
+        }),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: `Let ${winningStatus} win the shadow cancellation race.`,
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      await stop.whenIdle();
+
+      expect(statefulShadow.statuses()).toEqual([winningStatus]);
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+      expect(mocks.devLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'JARVIS shadow cancellation found no cancellable persisted state',
+          detail: expect.objectContaining({ errorCategory: 'shadow_cancellation_conflict' }),
+        }),
+      );
+    },
+  );
+
+  it('propagates a shadow prompt compilation AbortError without an infrastructure fallback', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const shadow = shadowHarness();
+    vi.mocked(shadow.compilePrompt).mockImplementationOnce(() => {
+      throw new DOMException('Shadow prompt compilation cancelled', 'AbortError');
+    });
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Propagate the shadow cancellation.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+        },
+      }),
+    );
+    await stop.whenIdle();
+
+    expect(shadow.transitionRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'runtime-test-account',
+        expectedStatus: 'queued',
+        nextStatus: 'cancelled',
+      }),
+    );
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(mocks.devLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'JARVIS shadow infrastructure failed safely' }),
+    );
+    expect(mocks.devLog).toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'warn', message: 'AI cancelled @jarvis' }),
+    );
+  });
+
+  it('cancels text and speech effects scheduled by a pre-abort chunk while the provider hangs', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    const providerGate = deferred<Awaited<ReturnType<typeof mocks.runAgent>>>();
+    let providerInput!: Parameters<typeof mocks.runAgent>[0];
+    mocks.runAgent.mockImplementationOnce((input) => {
+      providerInput = input;
+      return providerGate.promise;
+    });
+    const stop = trackListener(startRuntimeListener(harness.bindings, { flushIntervalMs: 120 }));
+    let fakeTimersActive = false;
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Cancel already scheduled streaming effects.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+
+      vi.useFakeTimers({ now: 1_000 });
+      fakeTimersActive = true;
+      providerInput.onChunk({ delta: 'PRE_ABORT_VISIBLE', done: false });
+      providerInput.onChunk({ delta: '_SCHEDULED_BUT_CANCELLED', done: false });
+      const messageWritesAtAbort = harness.updateMessage.mock.calls.length;
+      const voiceDeltasAtAbort = mocks.streamingSession.onDelta.mock.calls.length;
+
+      stop();
+      expect(providerInput.signal.aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(harness.updateMessage).toHaveBeenCalledTimes(messageWritesAtAbort);
+      expect(mocks.streamingSession.onDelta).toHaveBeenCalledTimes(voiceDeltasAtAbort);
+      expect(JSON.stringify(harness.updateMessage.mock.calls)).not.toContain(
+        'SCHEDULED_BUT_CANCELLED',
+      );
+    } finally {
+      providerGate.resolve({
+        text: 'LATE PROVIDER RESULT',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
+      await stop.whenIdle();
+      if (fakeTimersActive) vi.useRealTimers();
+    }
+  });
+
+  it('stops active playback and ends the voice turn exactly once before a hanging provider settles', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    const providerGate = deferred<Awaited<ReturnType<typeof mocks.runAgent>>>();
+    let providerInput!: Parameters<typeof mocks.runAgent>[0];
+    mocks.runAgent.mockImplementationOnce((input) => {
+      providerInput = input;
+      return providerGate.promise;
+    });
+    let voiceEndEvents = 0;
+    const onVoiceEnd = () => {
+      voiceEndEvents += 1;
+    };
+    window.addEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+    const stop = trackListener(startRuntimeListener(harness.bindings));
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Stop active playback before the provider settles.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+      providerInput.onChunk({ delta: 'ACTIVE_PLAYBACK', done: false });
+      expect(mocks.streamingSession.onDelta).toHaveBeenCalledOnce();
+
+      stop();
+      stop();
+
+      expect(providerInput.signal.aborted).toBe(true);
+      expect(mocks.streamingSession.stop).toHaveBeenCalledOnce();
+      expect(mocks.streamingSession.haltPlayback).not.toHaveBeenCalled();
+      expect(voiceEndEvents).toBe(1);
+
+      providerGate.resolve({
+        text: 'LATE PROVIDER RESULT',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
+      await stop.whenIdle();
+      expect(mocks.streamingSession.stop).toHaveBeenCalledOnce();
+      expect(voiceEndEvents).toBe(1);
+    } finally {
+      providerGate.resolve({
+        text: 'LATE PROVIDER RESULT',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
+      await stop.whenIdle();
+      window.removeEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+    }
+  });
+
+  it('cancels the durable final write and all downstream success effects when ownership is revoked', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const finalWriteGate = deferred<void>();
+    let finalWriteStarted = false;
+    let durableParts: Part[] = [];
+    const updateMessage = vi.mocked(
+      harness.bindings.updateMessage as Parameters<
+        typeof startKernelAwareRuntimeListener
+      >[0]['updateMessage'],
+    );
+    updateMessage.mockImplementation(async (_messageId, patch) => {
+      if (patch.usage && !finalWriteStarted) {
+        finalWriteStarted = true;
+        await finalWriteGate.promise;
+      }
+      if (patch.parts) durableParts = patch.parts;
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'SUCCESS MUST NOT BECOME DURABLE',
+      usage: { input_tokens: 2, output_tokens: 3, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    mocks.chatGetById.mockResolvedValue({
+      id: harness.chatId,
+      title: 'New chat',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    useAllAboutMeStore.setState({
+      markdown: '# AllAboutMe.md\n\nUNCHANGED PROFILE',
+      source: 'quiz',
+      updatedAt: 1,
+      totalUserMessages: 9,
+      lastUpdatedAtMessageCount: 0,
+      learningEnabled: true,
+    });
+    useChatActivityStore.getState().clearChat(harness.chatId);
+    useJarvisInteractionStore.setState({
+      agentsByChat: {
+        parent_chat: [
+          {
+            agentId: 'structured_agent',
+            name: 'Structured agent',
+            parentChatId: 'parent_chat',
+            childChatId: harness.chatId,
+            task: 'Final-write cancellation',
+            modelLabel: 'mock',
+            status: 'thinking',
+            filesTouched: [],
+            lockedFiles: [],
+            createdAt: '2026-07-30T00:00:00.000Z',
+            updatedAt: '2026-07-30T00:00:00.000Z',
+          },
+        ],
+      },
+    });
+    const runStates: Array<{ status?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'legacy',
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Cancel while the final write is suspended.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+            forceAllAboutMeUpdate: true,
+            structuredContext: {
+              kind: 'subagents',
+              payload: { parentChatId: 'parent_chat', agentId: 'structured_agent' },
+            },
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(finalWriteStarted).toBe(true));
+
+      const chatUpdatesAtAbort = mocks.chatUpdate.mock.calls.length;
+      stop();
+      finalWriteGate.resolve(undefined);
+      await stop.whenIdle();
+
+      expect(JSON.stringify(durableParts)).toContain('[cancelled]');
+      expect(JSON.stringify(durableParts)).not.toContain('SUCCESS MUST NOT BECOME DURABLE');
+      expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+      expect(mocks.chatUpdate).toHaveBeenCalledTimes(chatUpdatesAtAbort);
+      expect(mocks.notifyDone).not.toHaveBeenCalled();
+      expect(mocks.streamingSession.onComplete).not.toHaveBeenCalled();
+      expect(useAllAboutMeStore.getState().markdown).toBe('# AllAboutMe.md\n\nUNCHANGED PROFILE');
+      expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+      expect(getChatActivityEvents(harness.chatId).at(-1)?.status).toBe('cancelled');
+      expect(useJarvisInteractionStore.getState().agentsForChat('parent_chat')[0]?.status).toBe(
+        'cancelled',
+      );
+      expect(runStates.some(({ status }) => status === 'done')).toBe(false);
+      expect(mocks.devLog).not.toHaveBeenCalledWith(
+        expect.objectContaining({ level: 'info', message: expect.stringContaining('AI done') }),
+      );
+    } finally {
+      finalWriteGate.resolve(undefined);
+      await stop.whenIdle();
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
+  });
+
+  it('keeps listener idleness open until a stale streaming write is safely superseded', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    const streamingWriteGate = deferred<void>();
+    const streamingWriteStarted = deferred<void>();
+    let firstWrite = true;
+    let durableParts: Part[] = [];
+    const updateMessage = vi.mocked(
+      harness.bindings.updateMessage as Parameters<
+        typeof startKernelAwareRuntimeListener
+      >[0]['updateMessage'],
+    );
+    updateMessage.mockImplementation(async (_messageId, patch) => {
+      if (firstWrite) {
+        firstWrite = false;
+        streamingWriteStarted.resolve(undefined);
+        await streamingWriteGate.promise;
+      }
+      if (patch.parts) durableParts = patch.parts;
+    });
+    mocks.runAgent.mockImplementationOnce(async (input) => {
+      input.onChunk({ delta: 'STALE_STREAMING_WRITE', done: false });
+      return {
+        text: 'FINAL SUCCESS',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      };
+    });
+    const stop = trackListener(startRuntimeListener(harness.bindings));
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Cancel while a streaming write is suspended.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      await streamingWriteStarted.promise;
+
+      stop();
+      let idleSettled = false;
+      const idle = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+      const earlyOutcome = await Promise.race([
+        idle.then(() => 'idle' as const),
+        (async () => {
+          for (let index = 0; index < 20; index += 1) await Promise.resolve();
+          return 'blocked' as const;
+        })(),
+      ]);
+      expect(earlyOutcome).toBe('blocked');
+      expect(idleSettled).toBe(false);
+
+      streamingWriteGate.resolve(undefined);
+      await idle;
+      expect(JSON.stringify(durableParts)).toContain('[cancelled]');
+      expect(JSON.stringify(durableParts)).toContain('STALE_STREAMING_WRITE');
+      expect(JSON.stringify(durableParts)).not.toContain('FINAL SUCCESS');
+    } finally {
+      streamingWriteGate.resolve(undefined);
+      await stop.whenIdle();
+    }
+  });
+
+  it('tracks profile learning and rejects its stale revision after listener teardown', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const profileGate = deferred<Awaited<ReturnType<typeof mocks.runAgent>>>();
+    mocks.runAgent
+      .mockResolvedValueOnce({
+        text: 'MAIN RESPONSE',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      })
+      .mockImplementationOnce(() => profileGate.promise);
+    useAllAboutMeStore.setState({
+      markdown: '# AllAboutMe.md\n\nUNCHANGED PROFILE',
+      source: 'quiz',
+      updatedAt: 1,
+      totalUserMessages: 9,
+      lastUpdatedAtMessageCount: 0,
+      learningEnabled: true,
+    });
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'legacy',
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Cancel profile learning before it commits.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            forceAllAboutMeUpdate: true,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
+
+      stop();
+      let idleSettled = false;
+      const idle = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+      const earlyOutcome = await Promise.race([
+        idle.then(() => 'idle' as const),
+        (async () => {
+          for (let index = 0; index < 20; index += 1) await Promise.resolve();
+          return 'blocked' as const;
+        })(),
+      ]);
+      expect(earlyOutcome).toBe('blocked');
+      expect(idleSettled).toBe(false);
+
+      profileGate.resolve({
+        text: '# AllAboutMe.md\n\nCHANGED PROFILE',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
+      await idle;
+      expect(useAllAboutMeStore.getState().markdown).toBe('# AllAboutMe.md\n\nUNCHANGED PROFILE');
+      expect(
+        getChatActivityEvents(harness.chatId).find(({ kind }) => kind === 'tool')?.status,
+      ).toBe('cancelled');
+      expect(mocks.notifyDone).not.toHaveBeenCalled();
+      expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+    } finally {
+      profileGate.resolve({
+        text: '# AllAboutMe.md\n\nCHANGED PROFILE',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
+      await stop.whenIdle();
+    }
+  });
+
+  it('does not persist or mirror success when the provider resolves after abort', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const shadow = shadowHarness();
+    const providerGate = deferred<Awaited<ReturnType<typeof mocks.runAgent>>>();
+    let providerInput!: Parameters<typeof mocks.runAgent>[0];
+    mocks.runAgent.mockImplementationOnce((input) => {
+      providerInput = input;
+      return providerGate.promise;
+    });
+    useAllAboutMeStore.setState({
+      markdown: '# AllAboutMe.md\n\nUNCHANGED PROFILE',
+      source: 'quiz',
+      updatedAt: 1,
+      totalUserMessages: 9,
+      lastUpdatedAtMessageCount: 0,
+      learningEnabled: true,
+    });
+    mocks.chatGetById.mockResolvedValue({
+      id: harness.chatId,
+      title: 'New chat',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    useChatActivityStore.getState().clearChat(harness.chatId);
+    useJarvisInteractionStore.setState({
+      agentsByChat: {
+        parent_chat: [
+          {
+            agentId: 'structured_agent',
+            name: 'Structured agent',
+            parentChatId: 'parent_chat',
+            childChatId: harness.chatId,
+            task: 'Late provider cancellation',
+            modelLabel: 'mock',
+            status: 'thinking',
+            filesTouched: [],
+            lockedFiles: [],
+            createdAt: '2026-07-30T00:00:00.000Z',
+            updatedAt: '2026-07-30T00:00:00.000Z',
+          },
+        ],
+      },
+    });
+    const runStates: Array<{ status?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId: harness.chatId,
+          text: 'Ignore a late successful provider result.',
+          cancellationKey: 'msg_kernel_user' as MessageId,
+          speakReply: true,
+          forceAllAboutMeUpdate: true,
+          structuredContext: {
+            kind: 'subagents',
+            payload: { parentChatId: 'parent_chat', agentId: 'structured_agent' },
+          },
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+
+    const chatUpdatesAtAbort = mocks.chatUpdate.mock.calls.length;
+    stop();
+    expect(providerInput.signal.aborted).toBe(true);
+    providerInput.onChunk({ delta: 'POST_ABORT_CHUNK', done: false });
+    providerInput.onChunk({ delta: '', done: true });
+    providerGate.resolve({
+      text: 'LATE SUCCESS MUST NOT PERSIST',
+      usage: { input_tokens: 2, output_tokens: 3, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    await stop.whenIdle();
+    window.removeEventListener('jarvis:run-state', onRunState);
+
+    expect(shadow.transitionRun).not.toHaveBeenCalledWith(
+      expect.objectContaining({ nextStatus: 'completed' }),
+    );
+    expect(harness.bindings.updateMessage).not.toHaveBeenCalledWith(
+      'msg_kernel_assistant',
+      expect.objectContaining({ usage: expect.any(Object) }),
+    );
+    expect(JSON.stringify(harness.bindings.updateMessage.mock.calls)).not.toContain(
+      'LATE SUCCESS MUST NOT PERSIST',
+    );
+    expect(JSON.stringify(harness.bindings.updateMessage.mock.calls)).not.toContain(
+      'POST_ABORT_CHUNK',
+    );
+    expect(mocks.streamingSession.onDelta).not.toHaveBeenCalled();
+    expect(mocks.streamingSession.onComplete).not.toHaveBeenCalled();
+    expect(mocks.notifyDone).not.toHaveBeenCalled();
+    expect(mocks.chatUpdate).toHaveBeenCalledTimes(chatUpdatesAtAbort);
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+    expect(useAllAboutMeStore.getState().markdown).toBe('# AllAboutMe.md\n\nUNCHANGED PROFILE');
+    expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+    expect(getChatActivityEvents(harness.chatId).at(-1)?.status).toBe('cancelled');
+    expect(useJarvisInteractionStore.getState().agentsForChat('parent_chat')[0]?.status).toBe(
+      'cancelled',
+    );
+    expect(runStates.some(({ status }) => status === 'done')).toBe(false);
+    expect(mocks.devLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ level: 'info', message: expect.stringContaining('AI done') }),
+    );
+  });
 
   it('releases early cancellation ownership when agent resolution rejects', async () => {
     const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
@@ -3304,6 +4617,556 @@ describe('startRuntimeListener agent routing', () => {
       window.removeEventListener('jarvis:run-state', onRunState);
     }
   });
+
+  it('does not commit a canonical voice response when cancellation wins during voice start', async () => {
+    useAuthStore.setState({
+      apiKeys: { openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'Canonical voice response.',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'openai',
+      model: 'gpt-5.5',
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-voice-start-cancellation'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_voice_start_cancel' as never,
+      title: 'Voice start cancellation',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const voiceSessionId = 'vsession_runtime_voice_start_cancel';
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: voiceSessionId,
+        accountId: 'runtime-test-account',
+        chatId: harness.chatId,
+        startedAt: 1,
+      }),
+    );
+    const startSettled = deferred<void>();
+    const releaseStart = deferred<void>();
+    let commitCalls = 0;
+    let disposeCalls = 0;
+    interceptNextKernelRuntime((kernel) => {
+      const startVoiceTurn = kernel.startVoiceTurn.bind(kernel);
+      return Object.freeze({
+        ...kernel,
+        async startVoiceTurn(input: Parameters<JarvisKernelRuntime['startVoiceTurn']>[0]) {
+          const outcome = await startVoiceTurn(input);
+          if (outcome.kind === 'account_authority_revoked') return outcome;
+          const originalHandle = outcome.value.handle;
+          const handle = Object.freeze({
+            ...originalHandle,
+            commitResponseReady() {
+              commitCalls += 1;
+              return originalHandle.commitResponseReady();
+            },
+            dispose() {
+              disposeCalls += 1;
+              originalHandle.dispose();
+            },
+          });
+          startSettled.resolve();
+          await releaseStart.promise;
+          return Object.freeze({
+            ...outcome,
+            value: Object.freeze({ ...outcome.value, handle }),
+          });
+        },
+      });
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-voice-start-cancel',
+      now: () => 10,
+    });
+    trackCleanup(disposeHost);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+    let voiceEndEvents = 0;
+    const onVoiceEnd = () => {
+      voiceEndEvents += 1;
+    };
+    window.addEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'runtime-test-account',
+            voiceSessionId,
+            chatId: harness.chatId,
+            text: 'Cancel after canonical voice start settles.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+          },
+        }),
+      );
+      await startSettled.promise;
+      const activeRunId = useVoiceStore.getState().session?.activeRunId;
+      expect(activeRunId).toBeDefined();
+
+      stop();
+      stop();
+      expect(voiceEndEvents).toBe(1);
+      let idleSettled = false;
+      const idle = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      expect(idleSettled).toBe(false);
+
+      releaseStart.resolve();
+      await idle;
+
+      expect(commitCalls).toBe(0);
+      expect(disposeCalls).toBe(1);
+      expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
+      expect(
+        await database.jarvis_events
+          .where('run_id')
+          .equals(activeRunId!)
+          .filter((event) => event.status === 'cancellation_requested')
+          .count(),
+      ).toBe(1);
+      expect(mocks.notifyDone).not.toHaveBeenCalled();
+      expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+      expect(getChatActivityEvents(harness.chatId).at(-1)?.status).toBe('cancelled');
+    } finally {
+      window.removeEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+      releaseStart.resolve();
+      await stop.whenIdle();
+      disposeHost();
+      useVoiceStore.getState().reset();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('does not start canonical playback when cancellation wins during response-ready commit', async () => {
+    useAuthStore.setState({
+      apiKeys: { openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'Canonical voice response.',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'openai',
+      model: 'gpt-5.5',
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-voice-ready-cancellation'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_voice_ready_cancel' as never,
+      title: 'Voice ready cancellation',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const voiceSessionId = 'vsession_runtime_voice_ready_cancel';
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: voiceSessionId,
+        accountId: 'runtime-test-account',
+        chatId: harness.chatId,
+        startedAt: 1,
+      }),
+    );
+    const readySettled = deferred<void>();
+    const releaseReady = deferred<void>();
+    let playbackCalls = 0;
+    let disposeCalls = 0;
+    interceptNextKernelRuntime((kernel) => {
+      const startVoiceTurn = kernel.startVoiceTurn.bind(kernel);
+      return Object.freeze({
+        ...kernel,
+        async startVoiceTurn(input: Parameters<JarvisKernelRuntime['startVoiceTurn']>[0]) {
+          const outcome = await startVoiceTurn(input);
+          if (outcome.kind === 'account_authority_revoked') return outcome;
+          const originalHandle = outcome.value.handle;
+          const handle = Object.freeze({
+            ...originalHandle,
+            async commitResponseReady() {
+              const ready = await originalHandle.commitResponseReady();
+              readySettled.resolve();
+              await releaseReady.promise;
+              return ready;
+            },
+            runValidatedPlayback() {
+              playbackCalls += 1;
+              return originalHandle.runValidatedPlayback();
+            },
+            dispose() {
+              disposeCalls += 1;
+              originalHandle.dispose();
+            },
+          });
+          return Object.freeze({
+            ...outcome,
+            value: Object.freeze({ ...outcome.value, handle }),
+          });
+        },
+      });
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-voice-ready-cancel',
+      now: () => 10,
+    });
+    trackCleanup(disposeHost);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+    let voiceEndEvents = 0;
+    const onVoiceEnd = () => {
+      voiceEndEvents += 1;
+    };
+    window.addEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'runtime-test-account',
+            voiceSessionId,
+            chatId: harness.chatId,
+            text: 'Cancel after the canonical response-ready commit settles.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+          },
+        }),
+      );
+      await readySettled.promise;
+      const activeRunId = useVoiceStore.getState().session?.activeRunId;
+      expect(activeRunId).toBeDefined();
+
+      stop();
+      stop();
+      expect(voiceEndEvents).toBe(1);
+      let idleSettled = false;
+      const idle = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      expect(idleSettled).toBe(false);
+
+      releaseReady.resolve();
+      await idle;
+
+      expect(playbackCalls).toBe(0);
+      expect(disposeCalls).toBe(1);
+      expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
+      expect(
+        await database.jarvis_events
+          .where('run_id')
+          .equals(activeRunId!)
+          .filter((event) => event.status === 'cancellation_requested')
+          .count(),
+      ).toBe(1);
+      expect(mocks.notifyDone).not.toHaveBeenCalled();
+      expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+      expect(getChatActivityEvents(harness.chatId).at(-1)?.status).toBe('cancelled');
+    } finally {
+      window.removeEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+      releaseReady.resolve();
+      await stop.whenIdle();
+      disposeHost();
+      useVoiceStore.getState().reset();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('does not consume a real validated-playback outcome whose delivery loses ownership', async () => {
+    useAuthStore.setState({
+      apiKeys: { openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'Canonical voice response.',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'openai',
+      model: 'gpt-5.5',
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-voice-playback-cancellation'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_voice_playback_cancel' as never,
+      title: 'Voice playback cancellation',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const voiceSessionId = 'vsession_runtime_voice_playback_cancel';
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: voiceSessionId,
+        accountId: 'runtime-test-account',
+        chatId: harness.chatId,
+        startedAt: 1,
+      }),
+    );
+    const playbackSettled = deferred<void>();
+    const releasePlayback = deferred<void>();
+    let playbackCalls = 0;
+    let playbackOutcomeReads = 0;
+    let disposeCalls = 0;
+    interceptNextKernelRuntime((kernel) => {
+      const startVoiceTurn = kernel.startVoiceTurn.bind(kernel);
+      return Object.freeze({
+        ...kernel,
+        async startVoiceTurn(input: Parameters<JarvisKernelRuntime['startVoiceTurn']>[0]) {
+          const outcome = await startVoiceTurn(input);
+          if (outcome.kind === 'account_authority_revoked') return outcome;
+          const originalHandle = outcome.value.handle;
+          const handle = Object.freeze({
+            ...originalHandle,
+            commitResponseReady() {
+              return originalHandle.commitResponseReady();
+            },
+            async runValidatedPlayback() {
+              playbackCalls += 1;
+              const playback = await originalHandle.runValidatedPlayback();
+              playbackSettled.resolve();
+              await releasePlayback.promise;
+              return new Proxy(playback, {
+                get(target, property, receiver) {
+                  // Promise resolution probes `then` while delivering any object.
+                  // Count only runtime consumption of the playback outcome itself.
+                  if (property !== 'then') playbackOutcomeReads += 1;
+                  return Reflect.get(target, property, receiver);
+                },
+              });
+            },
+            dispose() {
+              disposeCalls += 1;
+              originalHandle.dispose();
+            },
+          });
+          return Object.freeze({
+            ...outcome,
+            value: Object.freeze({ ...outcome.value, handle }),
+          });
+        },
+      });
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-voice-playback-cancel',
+      now: () => 10,
+    });
+    trackCleanup(disposeHost);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+    let voiceEndEvents = 0;
+    const onVoiceEnd = () => {
+      voiceEndEvents += 1;
+    };
+    window.addEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'runtime-test-account',
+            voiceSessionId,
+            chatId: harness.chatId,
+            text: 'Cancel while validated playback outcome delivery is suspended.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+          },
+        }),
+      );
+      await vi.waitFor(() => {
+        const runtimeError = mocks.devLog.mock.calls
+          .map(([entry]) => entry)
+          .find((entry) => entry?.level === 'error');
+        if (runtimeError) throw new Error(JSON.stringify(runtimeError));
+        expect(playbackCalls).toBe(1);
+      });
+      await playbackSettled.promise;
+      const activeRunId = useVoiceStore.getState().session?.activeRunId;
+      expect(activeRunId).toBeDefined();
+
+      stop();
+      stop();
+      expect(voiceEndEvents).toBe(1);
+      let idleSettled = false;
+      const idle = stop.whenIdle().then(() => {
+        idleSettled = true;
+      });
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+      expect(idleSettled).toBe(false);
+
+      releasePlayback.resolve();
+      await idle;
+
+      expect(playbackOutcomeReads).toBe(0);
+      expect(disposeCalls).toBe(1);
+      expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
+      expect(mocks.notifyDone).not.toHaveBeenCalled();
+      expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
+      expect(getChatActivityEvents(harness.chatId).at(-1)?.status).toBe('cancelled');
+    } finally {
+      window.removeEventListener(STREAMING_VOICE_END_EVENT, onVoiceEnd);
+      releasePlayback.resolve();
+      await stop.whenIdle();
+      disposeHost();
+      useVoiceStore.getState().reset();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
 
   it('allocates no run or fallback effects when account changes during awaited canonical voice setup', async () => {
     useAuthStore.setState({
@@ -3387,7 +5250,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-voice-account-switch',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
     );
@@ -3487,7 +5350,7 @@ describe('startRuntimeListener agent routing', () => {
       randomUUID: () => 'runtime-voice-failed-run-release',
       now: () => 10,
     });
-    trackListener(disposeHost);
+    trackCleanup(disposeHost);
     trackListener(
       startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
     );
