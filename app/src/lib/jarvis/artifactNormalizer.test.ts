@@ -149,6 +149,84 @@ describe('verified artifact normalizer', () => {
     expect(value.localReference).toBeUndefined();
   });
 
+  it('accepts an exact canonical digest result reference for a verified URI artifact', async () => {
+    const value = await normalize(
+      draft({
+        artifact: {
+          ...draft().artifact,
+          kind: 'link',
+          title: 'GitHub repository octocat/hello-world',
+        },
+        backing: { kind: 'uri', uri: 'https://github.com/octocat/hello-world' },
+      }),
+      binding({
+        producerId: 'plugin_result',
+        resultRef: 'jresult_d0f876a4712126a3cc3efc9e1593ff9732b4a314f6e8000c8d9921e1a8f9e3fa',
+      }),
+    );
+
+    expect(value).toMatchObject({
+      kind: 'link',
+      title: 'GitHub repository octocat/hello-world',
+      uri: 'https://github.com/octocat/hello-world',
+    });
+  });
+
+  it('accepts canonical artifact, run, and request UUIDs without exempting credential-shaped IDs', async () => {
+    const value = await normalize(
+      draft(),
+      binding({
+        artifactId: 'jart_fc2a37b0-7ad7-40f1-a257-64c86469c02a',
+        runId: 'jrun_189bed26-7b33-4547-a151-a2eddba1712a',
+        requestId: 'jreq_fc2a37b0-7ad7-40f1-a257-64c86469c02a',
+      }),
+    );
+
+    expect(value).toMatchObject({
+      id: 'jart_fc2a37b0-7ad7-40f1-a257-64c86469c02a',
+      runId: 'jrun_189bed26-7b33-4547-a151-a2eddba1712a',
+      requestId: 'jreq_fc2a37b0-7ad7-40f1-a257-64c86469c02a',
+    });
+
+    await expect(
+      canonicalizeArtifactDraftInternal({
+        binding: binding({
+          requestId: 'jreq_gho_SyntheticCredentialValue1234567890',
+        }),
+        draft: draft(),
+      }),
+    ).rejects.toThrow('artifact_secret_rejected');
+  });
+
+  it.each([
+    'jresult_d0f876a4712126a3cc3efc9e1593ff9732b4a314f6e8000c8d9921e1a8f9e3fa',
+    'jreq_fc2a37b0-7ad7-40f1-a257-64c86469c02a',
+  ])('does not exempt canonical identifier text in artifact metadata: %s', async (title) => {
+    await expect(
+      canonicalizeArtifactDraftInternal({
+        binding: binding(),
+        draft: draft({
+          artifact: {
+            ...draft().artifact,
+            title,
+          },
+        }),
+      }),
+    ).rejects.toThrow('artifact_secret_rejected');
+  });
+
+  it.each([
+    ['GitHub OAuth token', 'gho_SyntheticCredentialValue1234567890'],
+    ['digitless raw credential', 'AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKl+/'],
+  ])('rejects a secret-bearing plugin result reference: %s', async (_label, resultRef) => {
+    await expect(
+      canonicalizeArtifactDraftInternal({
+        binding: binding({ producerId: 'plugin_result', resultRef }),
+        draft: draft({ backing: { kind: 'uri', uri: 'https://example.test/artifact' } }),
+      }),
+    ).rejects.toThrow('artifact_secret_rejected');
+  });
+
   it.each(['http://example.test', 'file:///C:/private.txt', 'artifact label', 'javascript:x'])(
     'rejects untrusted or unparsable URI backing: %s',
     async (uri) => {

@@ -35,6 +35,10 @@ const ARTIFACT_STATES = new Set(['ready', 'partial', 'quarantined']);
 const LOCAL_REFERENCE_KINDS = new Set(['path', 'blob_key', 'message_part']);
 const FORBIDDEN_RESULT_REFS =
   /^(?:queued|planned(?:[-_:]|$)|capability(?:[-_:]|$)|source-only(?:[-_:]|$))/i;
+const CANONICAL_PLUGIN_RESULT_REF = /^jresult_[a-f0-9]{64}$/;
+const CANONICAL_ARTIFACT_UUID = /^jart_[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+const CANONICAL_RUN_UUID = /^jrun_[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+const CANONICAL_REQUEST_UUID = /^jreq_[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 /** @internal Imported only by artifactRuntimeInternals.ts and focused tests. */
 export type CanonicalArtifactMaterial = Readonly<{
   artifact: JarvisArtifactV1;
@@ -84,7 +88,12 @@ function validateBinding(binding: ArtifactPreDigestBinding): void {
     fail('artifact_binding_invalid');
   }
   if (FORBIDDEN_RESULT_REFS.test(binding.resultRef)) fail('artifact_result_not_verified');
-  assertArtifactSecretFree(binding.resultRef);
+  if (
+    binding.producerId !== 'plugin_result' ||
+    !CANONICAL_PLUGIN_RESULT_REF.test(binding.resultRef)
+  ) {
+    assertArtifactSecretFree(binding.resultRef);
+  }
 }
 
 function assertArtifactSecretFree(value: string | Uint8Array | undefined): void {
@@ -95,8 +104,23 @@ function assertArtifactSecretFree(value: string | Uint8Array | undefined): void 
   }
 }
 
-function assertArtifactMetadataSecretFree(value: unknown): void {
+function isCanonicalArtifactStructuralId(path: readonly string[], value: string): boolean {
+  if (path.length !== 1) return false;
+  switch (path[0]) {
+    case 'id':
+      return CANONICAL_ARTIFACT_UUID.test(value);
+    case 'runId':
+      return CANONICAL_RUN_UUID.test(value);
+    case 'requestId':
+      return CANONICAL_REQUEST_UUID.test(value);
+    default:
+      return false;
+  }
+}
+
+function assertArtifactMetadataSecretFree(value: unknown, path: readonly string[] = []): void {
   if (typeof value === 'string') {
+    if (isCanonicalArtifactStructuralId(path, value)) return;
     assertArtifactSecretFree(value);
     if (value.includes('://')) {
       let parsed: URL | undefined;
@@ -115,11 +139,13 @@ function assertArtifactMetadataSecretFree(value: unknown): void {
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) assertArtifactMetadataSecretFree(item);
+    for (const item of value) assertArtifactMetadataSecretFree(item, [...path, '[]']);
     return;
   }
   if (!isPlainRecord(value)) return;
-  for (const item of Object.values(value)) assertArtifactMetadataSecretFree(item);
+  for (const [key, item] of Object.entries(value)) {
+    assertArtifactMetadataSecretFree(item, [...path, key]);
+  }
 }
 
 function copySourceRefs(value: JarvisArtifactDraft['artifact']['sourceRefs'], accountId: string) {
