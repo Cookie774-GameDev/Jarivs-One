@@ -1,12 +1,4 @@
 {
   "schemaVersion": "vibespace.added-line-secret-allowlist.v1",
-  "entries": [
-    {
-      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
-      "line": 219,
-      "ruleId": "GITHUB_TOKEN",
-      "fingerprint": "4aea0f2162411fdc81920e7134fd8cc2602734b712bc0bc59077621051e4b2e6",
-      "justification": "Synthetic credential-shaped plugin output used only to prove the artifact normalizer rejects credential-bearing payloads."
-    }
-  ]
+  "entries": []
 }
