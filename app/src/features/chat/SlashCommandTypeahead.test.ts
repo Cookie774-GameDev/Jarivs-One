@@ -109,14 +109,14 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(findSlashCommandDef('redo')?.cmd).toBe('redo');
   });
 
-  it('includes the local /theme utility command', () => {
+  it('advertises Sakura in the local /theme utility command', () => {
     expect(findSlashCommandDef('theme')).toMatchObject({
       cmd: 'theme',
       category: 'utility',
       takesArg: true,
-      description: 'Switch Jarvis Core, VibeSpace, Default, or MonoChrome',
-      argPlaceholder: 'jarvis | vibespace | default | monochrome',
+      description: 'Switch Jarvis Core, VibeSpace, Default, MonoChrome, or Sakura',
+      argPlaceholder: 'jarvis | vibespace | default | monochrome | sakura',
     });
-    expect(JSON.stringify(findSlashCommandDef('theme'))).not.toMatch(/\blight\b/i);
+    expect(JSON.stringify(findSlashCommandDef('theme'))).not.toMatch(/\b(?:light|dusk|blossom)\b/i);
   });
 });

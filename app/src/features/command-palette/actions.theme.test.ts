@@ -7,10 +7,11 @@ describe('command palette theme actions', () => {
     useUIStore.setState({ theme: 'default' });
   });
 
-  it('exposes MonoChrome and no retired Light theme surface', () => {
+  it('exposes Sakura and MonoChrome without retired or unauthorized theme surfaces', () => {
     const themeActions = getAllActions().filter(
       (action) => action.page === 'theme' || action.id === 'theme',
     );
+    expect(themeActions.map(({ id }) => id)).toContain('theme-sakura');
     expect(themeActions.map(({ id }) => id)).toContain('theme-monochrome');
     expect(themeActions.map(({ id }) => id)).not.toContain('theme-light');
     expect(
@@ -22,7 +23,7 @@ describe('command palette theme actions', () => {
           keywords,
         })),
       ),
-    ).not.toMatch(/\blight\b/i);
+    ).not.toMatch(/\b(?:light|dusk|blossom)\b/i);
   });
 
   it('selects MonoChrome and preserves palette-close behavior', () => {
@@ -33,5 +34,20 @@ describe('command palette theme actions', () => {
 
     expect(useUIStore.getState().theme).toBe('monochrome');
     expect(closePalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies Sakura before closing the palette', () => {
+    const stateObservedAtClose: string[] = [];
+    const closePalette = vi.fn(() => {
+      stateObservedAtClose.push(useUIStore.getState().theme);
+    });
+    const action = getAllActions().find(({ id }) => id === 'theme-sakura')!;
+
+    action.perform({ closePalette, pushPage: vi.fn() });
+
+    expect(useUIStore.getState().theme).toBe('sakura');
+    expect(document.documentElement.dataset.theme).toBe('sakura');
+    expect(document.documentElement.dataset.themePreference).toBe('sakura');
+    expect(stateObservedAtClose).toEqual(['sakura']);
   });
 });

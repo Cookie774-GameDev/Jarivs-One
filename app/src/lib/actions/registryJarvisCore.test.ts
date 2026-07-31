@@ -49,9 +49,14 @@ describe('Jarvis canonical core actions', () => {
     }).find((item) => item.id === 'settings.update')!;
     await routed.run({ setting: 'theme', value: 'monochrome' }, { source: 'ai' });
     expect(resolvedIds).toContain('theme.monochrome');
+    await routed.run({ setting: 'theme', value: 'SAKURA' }, { source: 'ai' });
+    expect(resolvedIds).toContain('theme.sakura');
 
     const result = await routed.run({ setting: 'theme', value: 'light' }, { source: 'ai' });
     expect(result.ok).toBe(false);
+    await expect(
+      routed.run({ setting: 'theme', value: 'dusk' }, { source: 'ai' }),
+    ).resolves.toMatchObject({ ok: false });
   });
 
   it('registers every stable action id exactly once', () => {

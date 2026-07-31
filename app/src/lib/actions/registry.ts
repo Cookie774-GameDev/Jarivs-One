@@ -47,9 +47,11 @@ import {
   Clock,
   AlarmClock,
   FileText,
+  Flower2,
 } from 'lucide-react';
 
-import { useUIStore, type Route } from '@/stores/ui';
+import { flushUiStatePersistence, useUIStore, type Route } from '@/stores/ui';
+import { resolveDocumentTheme, THEME_STORAGE_KEY } from '@/features/appearance/themeContract';
 import { useAuthStore } from '@/stores/auth';
 import {
   enqueueTerminalCommand,
@@ -399,9 +401,9 @@ const SETTINGS_ACTIONS: ActionDef[] = [
 ];
 
 /**
- * Theme actions. `setTheme` flips `data-theme` on `documentElement`
- * synchronously (see `stores/ui.ts:199-202`), so no follow-up is
- * needed.
+ * Theme actions. `setTheme` applies the document attributes and publishes
+ * synchronization synchronously. Actions that promise verified persistence
+ * flush the store's existing debounced persistence boundary before success.
  */
 const THEME_ACTIONS: ActionDef[] = [
   {
@@ -450,6 +452,48 @@ const THEME_ACTIONS: ActionDef[] = [
     run: async () => {
       useUIStore.getState().setTheme('monochrome');
       return ok('Theme: MonoChrome.');
+    },
+  },
+  {
+    id: 'theme.sakura',
+    category: 'theme',
+    label: 'Switch to Sakura theme',
+    description: 'Set the workspace to the cel-painted dusk palette.',
+    icon: Flower2,
+    params: [],
+    run: async () => {
+      useUIStore.getState().setTheme('sakura');
+      flushUiStatePersistence();
+
+      const stateTheme = useUIStore.getState().theme;
+      const documentTheme = document.documentElement.dataset.theme;
+      const preference = document.documentElement.dataset.themePreference;
+      let persistedTheme: unknown;
+      try {
+        const payload = JSON.parse(localStorage.getItem(THEME_STORAGE_KEY) ?? 'null');
+        persistedTheme =
+          payload && typeof payload === 'object' && !Array.isArray(payload)
+            ? payload.state?.theme
+            : undefined;
+      } catch {
+        persistedTheme = undefined;
+      }
+
+      if (
+        stateTheme !== 'sakura' ||
+        documentTheme !== resolveDocumentTheme('sakura') ||
+        preference !== 'sakura' ||
+        persistedTheme !== 'sakura'
+      ) {
+        return fail('Theme Sakura could not be verified.');
+      }
+
+      return ok('Theme: Sakura.', {
+        theme: stateTheme,
+        documentTheme,
+        preference,
+        persistedTheme,
+      });
     },
   },
   {

@@ -1284,6 +1284,7 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
           default: 'theme.dark',
           dark: 'theme.dark',
           monochrome: 'theme.monochrome',
+          sakura: 'theme.sakura',
         };
         if (setting === 'theme' && themeActionIds[value]) {
           return runRequired(resolveLegacy, themeActionIds[value], {}, ctx);

@@ -261,11 +261,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
   {
     cmd: 'theme',
-    description: 'Switch Jarvis Core, VibeSpace, Default, or MonoChrome',
+    description: 'Switch Jarvis Core, VibeSpace, Default, MonoChrome, or Sakura',
     icon: Palette,
     category: 'utility',
     takesArg: true,
-    argPlaceholder: 'jarvis | vibespace | default | monochrome',
+    argPlaceholder: 'jarvis | vibespace | default | monochrome | sakura',
   },
   {
     cmd: 'undo',

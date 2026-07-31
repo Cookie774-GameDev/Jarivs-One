@@ -5,6 +5,7 @@ import {
   CheckSquare,
   Code,
   FileText,
+  Flower2,
   History,
   Grid2X2Plus,
   LayoutGrid,
@@ -208,10 +209,10 @@ const STATIC_ACTIONS: Action[] = [
   {
     id: 'theme',
     label: 'Theme...',
-    description: 'Jarvis Core, VibeSpace, Default, or MonoChrome',
+    description: 'Jarvis Core, VibeSpace, Default, MonoChrome, or Sakura',
     icon: Palette,
     page: 'root',
-    keywords: ['jarvis', 'vibespace', 'default', 'monochrome', 'appearance', 'color'],
+    keywords: ['jarvis', 'vibespace', 'default', 'monochrome', 'sakura', 'appearance', 'color'],
     perform: ({ pushPage }) => pushPage('theme'),
   },
   {
@@ -385,6 +386,17 @@ const STATIC_ACTIONS: Action[] = [
     keywords: ['orange', 'black', 'reference'],
     perform: ({ closePalette }) => {
       useUIStore.getState().setTheme('jarvis');
+      closePalette();
+    },
+  },
+  {
+    id: 'theme-sakura',
+    label: 'Sakura',
+    icon: Flower2,
+    page: 'theme',
+    keywords: ['cel-painted', 'flower'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setTheme('sakura');
       closePalette();
     },
   },

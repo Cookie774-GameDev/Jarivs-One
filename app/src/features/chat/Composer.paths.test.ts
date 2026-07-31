@@ -70,7 +70,7 @@ describe('composer queued-run notice', () => {
 describe('composer mention and slash confirmation helpers', () => {
   it('shows only current canonical theme choices while parser aliases remain compatible', () => {
     expect(getThemeCommandHelp()).toBe(
-      'Available themes: Jarvis Core, VibeSpace, Default, MonoChrome. Use /theme <name>.',
+      'Available themes: Jarvis Core, VibeSpace, Default, MonoChrome, Sakura. Use /theme <name>.',
     );
     expect(getThemeCommandHelp()).not.toMatch(
       /(?:,\s|\bthemes:\s)(?:Light|Dark|Core|Vibe|Terminal)(?:,|\.)/,
