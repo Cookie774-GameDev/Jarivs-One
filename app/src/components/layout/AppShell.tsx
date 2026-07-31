@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { useUIStore } from '@/stores/ui';
+import { resolveTheme, useUIStore } from '@/stores/ui';
+import { SakuraBackdrop } from '@/features/appearance/sakura';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
@@ -39,6 +40,8 @@ export function AppShell({ children }: AppShellProps) {
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const chatMode = useUIStore((s) => s.chatMode);
   const route = useUIStore((s) => s.route);
+  const theme = useUIStore((s) => s.theme);
+  const sakuraActive = resolveTheme(theme) === 'sakura';
   const workbenchFullscreen = route === 'workbench' || isWorkbenchDetachedSearch();
 
   // Workbench owns the entire app chrome (full screen surface).
@@ -50,14 +53,23 @@ export function AppShell({ children }: AppShellProps) {
       >
         <TooltipProvider delayDuration={400}>
           <div
-            className="flex h-full w-full flex-col bg-background text-foreground"
+            className={`relative isolate flex h-full w-full flex-col overflow-hidden text-foreground ${
+              sakuraActive ? 'bg-transparent' : 'bg-background'
+            }`}
             data-monochrome-surface="app-shell"
+            data-sakura-shell={sakuraActive ? 'true' : undefined}
             data-workbench-fullscreen="true"
             data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
           >
-            <main aria-label="Workbench window" className="min-h-0 min-w-0 flex-1 overflow-hidden">
-              {children}
-            </main>
+            {sakuraActive && <SakuraBackdrop route={route} />}
+            <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+              <main
+                aria-label="Workbench window"
+                className="min-h-0 min-w-0 flex-1 overflow-hidden"
+              >
+                {children}
+              </main>
+            </div>
           </div>
         </TooltipProvider>
       </MotionConfig>
@@ -68,25 +80,31 @@ export function AppShell({ children }: AppShellProps) {
     <MotionConfig reducedMotion="user" transition={{ type: 'spring', stiffness: 400, damping: 30 }}>
       <TooltipProvider delayDuration={400}>
         <div
-          className="flex h-full w-full flex-col bg-background text-foreground"
+          className={`relative isolate flex h-full w-full flex-col overflow-hidden text-foreground ${
+            sakuraActive ? 'bg-transparent' : 'bg-background'
+          }`}
           data-monochrome-surface="app-shell"
+          data-sakura-shell={sakuraActive ? 'true' : undefined}
         >
-          <TopBar />
+          {sakuraActive && <SakuraBackdrop route={route} />}
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+            <TopBar />
 
-          <div className="flex min-h-0 flex-1">
-            <NavPane />
+            <div className="flex min-h-0 flex-1">
+              <NavPane />
 
-            <div className="flex min-w-0 flex-1 flex-col">
-              <TabStrip />
-              <main aria-label="Workspace" className="min-h-0 min-w-0 flex-1 overflow-auto">
-                {children}
-              </main>
-              {chatMode === 'council' && <CouncilActivityStrip />}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <TabStrip />
+                <main aria-label="Workspace" className="min-h-0 min-w-0 flex-1 overflow-auto">
+                  {children}
+                </main>
+                {chatMode === 'council' && <CouncilActivityStrip />}
+              </div>
+
+              <AnimatePresence initial={false}>
+                {inspectorOpen && <Inspector key="inspector" />}
+              </AnimatePresence>
             </div>
-
-            <AnimatePresence initial={false}>
-              {inspectorOpen && <Inspector key="inspector" />}
-            </AnimatePresence>
           </div>
         </div>
       </TooltipProvider>

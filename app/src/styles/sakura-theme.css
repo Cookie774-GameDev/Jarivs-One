@@ -173,3 +173,93 @@ html[data-theme='sakura'] .bg-destructive {
     outline-color: Highlight;
   }
 }
+
+/*
+ * The scenic host is one inert sibling beneath app-owned chrome. Night Ink is
+ * always painted first so SVG/filter/animation support is never required for
+ * a legible shell.
+ */
+html[data-theme='sakura'] [data-sakura-backdrop] {
+  contain: strict;
+  background: var(--sakura-night);
+  isolation: isolate;
+}
+
+html[data-theme='sakura'] [data-sakura-scene] {
+  opacity: 0.72;
+  transform: scale(1.015);
+  transform-origin: 50% 50%;
+  transition: opacity var(--duration-base) var(--ease-standard);
+}
+
+html[data-theme='sakura'] [data-sakura-intensity='open'] [data-sakura-scene] {
+  opacity: 0.86;
+}
+
+html[data-theme='sakura'] [data-sakura-intensity='quiet'] [data-sakura-scene] {
+  opacity: 0.48;
+}
+
+html[data-theme='sakura'] [data-sakura-rendering='static'] [data-sakura-scene] {
+  transform: none;
+  transition: none;
+}
+
+html[data-theme='sakura'] [data-sakura-rendering='static'] {
+  background: var(--sakura-night-2);
+}
+
+html[data-theme='sakura'] [data-sakura-petal] {
+  top: -4%;
+  left: var(--sakura-petal-left);
+  width: var(--sakura-petal-size);
+  height: var(--sakura-petal-size);
+  border-radius: 80% 18% 72% 28%;
+  background: var(--sakura-pink);
+  box-shadow: 0 0 0 1px hsl(var(--sakura-ivory-hsl) / 0.12);
+  opacity: 0;
+  animation: sakura-petal-drift var(--sakura-petal-duration) linear infinite;
+  animation-delay: var(--sakura-petal-delay);
+  will-change: transform, opacity;
+}
+
+html[data-theme='sakura'] [data-sakura-paused='true'] [data-sakura-petal] {
+  animation-play-state: paused;
+}
+
+@keyframes sakura-petal-drift {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -6vh, 0) rotate(0deg);
+  }
+
+  12% {
+    opacity: 0.58;
+  }
+
+  76% {
+    opacity: 0.42;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--sakura-petal-sway), 112vh, 0) rotate(310deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-petals] {
+    display: none;
+  }
+
+  html[data-theme='sakura'] [data-sakura-scene] {
+    transform: none;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-backdrop] {
+    display: none;
+  }
+}

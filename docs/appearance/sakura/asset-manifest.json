@@ -76,5 +76,21 @@
       "mayCopy": false,
       "testOnly": false
     }
+  ],
+  "productionAssets": [
+    {
+      "path": "app/src/features/appearance/sakura/sakura-scene.svg",
+      "type": "image/svg+xml",
+      "origin": "original-vibespace-vector",
+      "referenceCopyPolicy": "informed-only-no-copied-geometry",
+      "referenceInputs": ["preview.png", "style-board.png", "STYLE_SPEC.md", "index.html"],
+      "viewBox": "0 0 1920 1080",
+      "preserveAspectRatio": "xMidYMid slice",
+      "depthGroups": 7,
+      "bytes": 4627,
+      "sha256": "CBB43245089C220FA144A77907D7BAF307233220D3BAEE28DD7CAE95A53471E0",
+      "runtimeNetworkFetch": false,
+      "notes": "Original broad-shape cel-painted dusk scene. Reference palette, depth recipe, and restraint informed the design; no prototype path geometry, screenshots, text, or runtime content were copied."
+    }
   ]
 }

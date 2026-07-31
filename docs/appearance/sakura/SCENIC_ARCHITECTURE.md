@@ -1,23 +1,24 @@
 # Sakura scenic architecture
 
-Status: derived future architecture; no asset, host, or runtime exists in Phase A.
+Status: SK2 production scenic host and original local vector asset are active;
+later route/component styling and performance traces remain pending.
 
-## Proposed boundary
+## Production boundary
 
-Create a future Sakura-only scene host mounted beside, not inside, route content. It must:
+The Sakura-only scene host is mounted beside, not inside, route content. It:
 
-- mount only when resolved document theme is `sakura`;
-- be `aria-hidden`, inert, and `pointer-events:none`;
-- sit below production shell/content and never cover portals, focus rings, or Pixel Pet;
-- expose bounded route intensity without reading or changing route data;
-- unmount cleanly on every other theme;
-- pause nonessential work when the document is hidden; and
-- render an opaque Night fallback before optional SVG, transparency, blur, or grain.
+- mounts only when resolved document theme is `sakura`;
+- is `aria-hidden`, inert, and `pointer-events:none`;
+- sits below production shell/content and never covers portals, focus rings, or Pixel Pet;
+- exposes bounded route intensity without reading or changing route data;
+- unmounts cleanly on every other theme;
+- pauses nonessential work when the document is hidden; and
+- renders an opaque Night fallback before optional SVG, transparency, blur, or grain.
 
-Likely future seams are `app/src/components/layout/AppShell.tsx` for the host boundary, a new
-theme-scoped feature under `app/src/features/appearance/` or a narrowly owned Sakura feature,
-and a future `app/src/styles/sakura-theme.css` imported after generic styles. These paths are
-proposals, not authorized writes.
+The host boundary is `app/src/components/layout/AppShell.tsx`; its pure scene,
+petal, visibility, performance, and route-intensity implementation is under
+`app/src/features/appearance/sakura/`. Scenic selectors remain Sakura-root
+scoped in `app/src/styles/sakura-theme.css`.
 
 ## Layer model
 
@@ -29,9 +30,12 @@ proposals, not authorized writes.
 6. Night Ink foreground;
 7. optional small pavilion/lantern and sparse petals.
 
-Use original, optimized vector shapes. Do not copy reference artwork or the prototype file
-wholesale. Keep shape count and filters bounded; blur only fog/glow/distant atmosphere.
-Decorative layers must not influence layout or accessible name computation.
+The shipped `sakura-scene.svg` uses seven original, optimized broad-shape
+vector groups with the frozen `0 0 1920 1080` / `xMidYMid slice` crop. The
+reference palette and depth recipe informed it, but no prototype path geometry,
+screenshot, mock/runtime content, or text was copied. Exact provenance, bytes,
+and SHA-256 are frozen in `asset-manifest.json`. Decorative layers do not
+influence layout or accessible name computation.
 
 ## Intensity
 
