@@ -3,26 +3,26 @@ title: VibeSpace MonoChrome evidence index
 ledgerId: vibespace-monochrome-evidence-index
 schemaVersion: 1
 baselineCommit: 10ade2cb205be6aae93e239e8debd9eaf584b6de
-privacy: repository-relative paths and synthetic fixtures only
+privacy: repository-relative sanitized evidence and synthetic fixtures; private frames excluded
 ---
 
 # MonoChrome evidence index
 
 This index separates completed proof from planned, unavailable, and blocked
 work. A command is `PASS` only when it ran successfully against the recorded
-commit and inputs. Worker changes and future commands remain `NOT_RUN` until
-the coordinator independently executes and verifies them. The absent exact
-reference recording blocks measured calibration only; it does not convert any
-unrun MC9 matrix row into a pass.
+commit or explicitly identified working tree and inputs. Future commands remain
+`NOT_RUN` until independently executed and verified. The authorized reference
+recording is now source-locked measured evidence; private source bytes and
+frames remain outside tracked artifacts.
 
 ## Status summary
 
 | Status                  | Count |
 | ----------------------- | ----: |
-| PASS                    |     1 |
+| PASS                    |     3 |
 | FAIL                    |     0 |
 | BLOCKED                 |     0 |
-| BLOCKED_MISSING_SOURCE  |     1 |
+| BLOCKED_MISSING_SOURCE  |     0 |
 | SKIPPED_NOT_APPLICABLE  |     0 |
 | UNAVAILABLE_BY_MANIFEST |     1 |
 | NOT_RUN                 |    16 |
@@ -34,7 +34,7 @@ unrun MC9 matrix row into a pass.
   "schemaVersion": 1,
   "ledgerId": "vibespace-monochrome-evidence-index",
   "baselineCommit": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-  "generatedAtUtc": "2026-07-29T23:03:37.4512285Z",
+  "generatedAtUtc": "2026-07-31T01:49:36.9833531Z",
   "records": [
     {
       "id": "MC8A-REFERENCE-CONTRACT",
@@ -44,38 +44,44 @@ unrun MC9 matrix row into a pass.
       "status": "PASS",
       "command": "node --test scripts/visual-monochrome/reference-artifacts.test.mjs",
       "cwd": ".",
-      "testedCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
+      "testedCommitSha": null,
+      "testedTreeKind": "working_tree",
       "provenanceCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-      "startedAtUtc": "2026-07-29T23:03:34.3232363Z",
-      "finishedAtUtc": "2026-07-29T23:03:37.4512285Z",
-      "durationMs": 3128,
+      "startedAtUtc": "2026-07-30T05:02:20.8634790Z",
+      "finishedAtUtc": "2026-07-30T05:02:32.7288441Z",
+      "durationMs": 11865,
       "exitCode": 0,
       "environment": {
         "platform": "windows",
         "runtime": "node",
-        "inputScope": "the fourteen MC8A paths matched the recorded commit before execution"
+        "inputScope": "the measured fourteen-path MC8A/MC8B contract in the task199 working tree"
       },
-      "fixtureIds": ["complete-measured-contract", "blocked-missing-source-contract"],
+      "fixtureIds": ["measured-reference-contract", "blocked-status-negative-contract"],
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [
         {
           "path": "scripts/visual-monochrome/reference-artifacts.test.mjs",
-          "sha256": "ECC9C2C129BC1244172C2038473CF4D62CF40043B55F41DEAE7BFD06763FE2D9",
+          "sha256": "171F0E1D36CB15175A511FCA82DAE0BD7F4499B307E90556F692CA2DEE7CB28D",
           "result": "22 tests passed, 0 failed"
         },
         {
+          "path": "scripts/visual-monochrome/analyze-reference.mjs",
+          "sha256": "AA8DEC28FA5247A165BD3D4B7570060BA7C5016F057DFF7BB23BC5669F0125C2",
+          "result": "exact-basename guarded analyzer and staged validator exercised"
+        },
+        {
           "path": "docs/appearance/monochrome/FRAME_MANIFEST.json",
-          "sha256": "3C2EA291D6B174027854767D42FCBCA3F239047BAF1B2D28838EE8F5551C9B04",
-          "result": "validated blocked-source manifest"
+          "sha256": "76227264B006F7A606521E5ECEFB0B71FC5C086E3FC602544C8F7693BAC0A9C4",
+          "result": "validated source-locked measured manifest"
         },
         {
           "path": "docs/appearance/monochrome/reference-spec.json",
-          "sha256": "9C6C0AB03715D0852E147B70B2BD8A88E38D9AD08C2BAB66AF399BC7A47B9415",
-          "result": "validated blocked-source specification"
+          "sha256": "4D0FDC1CFE72D0034D65E90A55C57F368AC2E2AB613BEAD42461A540C2C72AF9",
+          "result": "validated measured ROI, typography, geometry, motion, and motif specification"
         }
       ],
-      "reviewer": "main coordinator after independent task-100 acceptance",
+      "reviewer": "task199 working-tree analyzer and contract run",
       "severityCounts": [
         { "severity": "critical", "count": 0 },
         { "severity": "important", "count": 0 },
@@ -89,39 +95,223 @@ unrun MC9 matrix row into a pass.
         "097 corrected",
         "098 rejected",
         "099 corrected",
-        "100 accepted"
+        "100 accepted",
+        "199 measured-source migration"
       ],
-      "cleanup": "No process, browser, service, user-data, or external-state mutation."
+      "cleanup": "No browser, service, user profile, or external state was used; synthetic test artifacts were removed."
     },
     {
       "id": "MC8B-VIDEO-CALIBRATION",
       "requirementIds": ["MC-029"],
       "reviewDomain": "measured reference fidelity",
       "surface": "video-derived palette, geometry, typography, and motion",
-      "status": "BLOCKED_MISSING_SOURCE",
-      "command": "",
+      "status": "PASS",
+      "command": "node --test scripts/visual-monochrome/reference-artifacts.test.mjs",
       "cwd": ".",
       "testedCommitSha": null,
+      "testedTreeKind": "working_tree",
       "provenanceCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-      "startedAtUtc": null,
-      "finishedAtUtc": null,
-      "durationMs": null,
-      "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "not started" },
-      "fixtureIds": [],
-      "fixtureHashes": [],
+      "startedAtUtc": "2026-07-30T05:02:20.8634790Z",
+      "finishedAtUtc": "2026-07-30T05:02:32.7288441Z",
+      "durationMs": 11865,
+      "exitCode": 0,
+      "environment": {
+        "platform": "windows",
+        "runtime": "node 24 plus ffmpeg 8.1.1",
+        "inputScope": "authorized exact basename; 3449336 bytes; SHA-256 B7C1EF966BC3BB118472F8EFD7334A5AF792DEB3DFF240105886F05F4043F6C1"
+      },
+      "fixtureIds": ["authorized-recording-measurement", "isolated-synthetic-analyzer"],
+      "fixtureHashes": ["B7C1EF966BC3BB118472F8EFD7334A5AF792DEB3DFF240105886F05F4043F6C1"],
       "mockedProviders": [],
       "evidence": [
         {
           "path": "docs/appearance/monochrome/REFERENCE_ANALYSIS.md",
-          "result": "truthful blocked contract"
+          "sha256": "858FCA2231D8FADCD7CAA671C5850B6AF0A5938C5B045D3FC5753F275E551265",
+          "result": "source-locked measured method, limitations, and privacy record"
+        },
+        {
+          "path": "docs/appearance/monochrome/FRAME_MANIFEST.json",
+          "sha256": "76227264B006F7A606521E5ECEFB0B71FC5C086E3FC602544C8F7693BAC0A9C4",
+          "result": "395 extracted frames, 22 sanitized selected-frame records"
+        },
+        {
+          "path": "docs/appearance/monochrome/design-tokens.json",
+          "sha256": "0AE1E765E145F9A5E276AFE36A7A8D22E45B651EA7D3EEDB9FD789B40DE1AAD6",
+          "result": "15 palette tokens with three rectangular ROI samples each"
+        },
+        {
+          "path": "docs/appearance/monochrome/reference-spec.json",
+          "sha256": "4D0FDC1CFE72D0034D65E90A55C57F368AC2E2AB613BEAD42461A540C2C72AF9",
+          "result": "45 ROIs, 72 WOFF2 metric candidates, five geometry metrics, and six motion samples"
+        },
+        {
+          "path": "docs/appearance/monochrome/DESIGN.md",
+          "sha256": "BA29A41B0833C9D1B518F40FAAECE5F40E09879C1DF2B68672A397BC132337BC",
+          "result": "measured authority and conservative design decisions"
+        },
+        {
+          "path": "docs/appearance/monochrome/component-mapping.md",
+          "sha256": "88363E39E1BB0BAD02A6C75E433BEEC387562D1A1B326B9F6A7A4E830C37FD77",
+          "result": "three measured motif/frame mappings"
+        },
+        {
+          "path": "scripts/visual-monochrome/analyze-reference.mjs",
+          "sha256": "AA8DEC28FA5247A165BD3D4B7570060BA7C5016F057DFF7BB23BC5669F0125C2",
+          "result": "guarded ffprobe/ffmpeg measurement, WOFF2 parsing, staged schema validation, and sanitized publication"
         }
       ],
-      "reviewer": "unassigned until source becomes available",
-      "severityCounts": [],
-      "blockerReason": "The exact source Screen Recording 2026-07-16 220632(1).mp4 is unavailable; no measurement may be inferred or fabricated.",
-      "retryLineage": [],
-      "cleanup": "No source media, extracted frames, or private screenshots were committed."
+      "reviewer": "task199 working-tree measured-reference run",
+      "severityCounts": [
+        { "severity": "critical", "count": 0 },
+        { "severity": "important", "count": 0 },
+        { "severity": "minor", "count": 0 }
+      ],
+      "blockerReason": null,
+      "retryLineage": ["199 exact authorized basename and source hash"],
+      "cleanup": "Private source bytes were unchanged; extracted frames remain only in the ignored task199 artifact root. Browser typography rasterization was not run."
+    },
+    {
+      "id": "MC9-STRUCTURAL-MANIFEST",
+      "requirementIds": ["VS-PR30-MC-EVIDENCE-INDEX", "MC-024"],
+      "reviewDomain": "structural visual authority",
+      "surface": "frozen B0 identities and current MC9 screenshot path corpus",
+      "status": "PASS",
+      "command": "node --test tests/visual/monochrome/baseline-manifest.test.ts tests/visual/monochrome/fixture-manifest.test.ts tests/visual/monochrome/route-manifest.test.ts tests/visual/monochrome/shell-overlay-manifest.test.ts tests/visual/monochrome/native-window-manifest.test.ts",
+      "cwd": ".",
+      "testedCommitSha": null,
+      "testedTreeKind": "working_tree",
+      "provenanceCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
+      "startedAtUtc": "2026-07-31T01:49:23.3028454Z",
+      "finishedAtUtc": "2026-07-31T01:49:36.9833531Z",
+      "durationMs": 13681,
+      "exitCode": 0,
+      "environment": {
+        "platform": "windows",
+        "runtime": "node 24",
+        "inputScope": "canonical transitive working-tree content, grouped B0 PNG bytes, current capability JSON content, MC9 PNG filenames, and immutable Git inputs; no browser, native runtime, external service, or B0 replay execution"
+      },
+      "inputIdentity": {
+        "schemaVersion": 1,
+        "kind": "canonical-transitive-input-manifest",
+        "testedTreeKind": "working_tree",
+        "canonicalization": "UTF-8 JSON; POSIX repository-relative paths; lexicographic order; uppercase SHA-256",
+        "entryCount": 301,
+        "groupCount": 6,
+        "aggregateSha256": "D4DFDF81675DE148481379962A4C12483EBFA80523B6CCB082B10536C0EA2225",
+        "groups": [
+          {
+            "id": "working-tree-files",
+            "mode": "repository-relative-path-and-content-sha256",
+            "entryCount": 130,
+            "sha256": "BF729F59B49F317D6DCD0F379D3B5222B5ECBA56348D4D966BA7D70E01B54E51"
+          },
+          {
+            "id": "b0-png-content",
+            "mode": "repository-relative-path-and-content-sha256",
+            "entryCount": 10,
+            "sha256": "C3FB8314CEB1348B0783AC00226FD953C72477277C533DCE23253CFDA5CDB05B"
+          },
+          {
+            "id": "current-capability-json-content",
+            "mode": "repository-relative-path-and-content-sha256",
+            "entryCount": 5,
+            "sha256": "FFA467A7338041D35F540229554C2F9F8ED735B58CD2889405526C69C7499483"
+          },
+          {
+            "id": "mc9-png-filenames",
+            "mode": "repository-relative-filename-only",
+            "entryCount": 111,
+            "sha256": "06B6DC0524799615E94662EA9625BA55A6DD65A54028E6CD905CEE4468EC0E30"
+          },
+          {
+            "id": "immutable-git-commits",
+            "mode": "commit-object-identity",
+            "entryCount": 3,
+            "sha256": "7F36753C739985BF70DE391964CFD7C1ED0F94CB5C45488C828625D22522BBA2"
+          },
+          {
+            "id": "immutable-git-files",
+            "mode": "commit-path-and-content-sha256",
+            "entryCount": 42,
+            "sha256": "C3B4F3086A384DF8BCC9087836E675712E24DD29671EC62DB2803E38FE4602B5"
+          }
+        ],
+        "capturedAtUtc": "2026-07-31T01:49:14.7923752Z",
+        "verifiedAtUtc": "2026-07-31T01:49:48.2178281Z",
+        "beforeAggregateSha256": "D4DFDF81675DE148481379962A4C12483EBFA80523B6CCB082B10536C0EA2225",
+        "afterAggregateSha256": "D4DFDF81675DE148481379962A4C12483EBFA80523B6CCB082B10536C0EA2225"
+      },
+      "fixtureIds": ["frozen-b0-corpus", "mc9-111-structural-corpus"],
+      "fixtureHashes": [
+        "C3FB8314CEB1348B0783AC00226FD953C72477277C533DCE23253CFDA5CDB05B",
+        "06B6DC0524799615E94662EA9625BA55A6DD65A54028E6CD905CEE4468EC0E30"
+      ],
+      "mockedProviders": [],
+      "evidence": [
+        {
+          "path": "tests/visual/monochrome/baseline-manifest.test.ts",
+          "sha256": "A281BAD5B466E40CBA39997AD4AE3BBA7C50040A8638D4F277CF3913963B1763",
+          "result": "7 tests passed; MC9 declared and actual PNG closure is exactly 111 with no missing, orphan, duplicate, reordered, or unsafe path"
+        },
+        {
+          "path": "tests/visual/monochrome/baseline-manifest.ts",
+          "sha256": "8B5050EDA2866251057B4248EA75FA6C1CF280EA8CD8CB5EA9533EBE350B226B",
+          "result": "10 frozen B0 capture identities and one deterministic 111-entry MC9 path authority"
+        },
+        {
+          "path": "tests/visual/monochrome/fixture-manifest.test.ts",
+          "sha256": "4DA5309CCB549F75929942EC05917684E1B80A22B89CCEB4AD822B13FB10EE86",
+          "result": "5 tests passed, including fixture-hash and cross-authority path closure"
+        },
+        {
+          "path": "tests/visual/monochrome/fixture-manifest.ts",
+          "sha256": "5994A5EF08D14517E100C0C886F54478BAB1FCB462ABD0C17AF4BB695A7A778E",
+          "result": "three deterministic fixture identities and hashes"
+        },
+        {
+          "path": "tests/visual/monochrome/native-window-manifest.test.ts",
+          "sha256": "6003E47B4F0EE728E8765778FDCE41AE1CDEB16379ABC3FB800B971F413A3562",
+          "result": "11 structural tests passed; this is not a native runtime or platform PASS"
+        },
+        {
+          "path": "tests/visual/monochrome/native-window-manifest.ts",
+          "sha256": "7B5798B275EEF62FEFC2D64B5B2807A8F9E6E5784B5843CCC9789DEC396B9069",
+          "result": "four production capability identities and six native surface declarations"
+        },
+        {
+          "path": "tests/visual/monochrome/route-manifest.test.ts",
+          "sha256": "9890206ECBE01AC269972C0A15BA519EC3944DAF4F96321BCFCCD48A2BDB03F3",
+          "result": "9 structural route-authority tests passed"
+        },
+        {
+          "path": "tests/visual/monochrome/route-manifest.ts",
+          "sha256": "4F66450D444663E119AAD4E0E2817AF91FE60F9B883B56321541095784F730CA",
+          "result": "86 stable route, settings, overlay, detached, native, access, embedded, development, and unavailable entries"
+        },
+        {
+          "path": "tests/visual/monochrome/shell-overlay-manifest.test.ts",
+          "sha256": "2AA6AEA49744E1A5693736480DD8CC0E5031776EF6735FA7CB002A86C2701B4B",
+          "result": "6 shell and overlay structural tests passed"
+        },
+        {
+          "path": "tests/visual/monochrome/shell-overlay-manifest.ts",
+          "sha256": "C750735EE79FDC4143B289494EC0BF93B6A5C29EFA22DA0B3F022F0B61D05CF8",
+          "result": "31 stable shell, overlay, and dispatch surfaces"
+        }
+      ],
+      "reviewer": "Task344 implementation evidence revalidated and transitively input-bound by Task350R1",
+      "severityCounts": [
+        { "severity": "critical", "count": 0 },
+        { "severity": "important", "count": 0 },
+        { "severity": "minor", "count": 0 }
+      ],
+      "blockerReason": null,
+      "retryLineage": [
+        "Task344 RED 21/26 then GREEN 38/38",
+        "Task350 fresh structural replay 38/38",
+        "Task350R1 canonical pre/post input identity and fresh structural replay 38/38"
+      ],
+      "cleanup": "Canonical input identity was unchanged before and after the command. No browser, native application, external service, snapshot regeneration, or B0 replay ran; no process remained."
     },
     {
       "id": "MC9-FIXED-ENVIRONMENT",
@@ -560,9 +750,12 @@ unrun MC9 matrix row into a pass.
 ## Interpretation
 
 - `PASS` means the exact recorded command completed with exit code zero.
+- `MC9-STRUCTURAL-MANIFEST` proves identifier and path closure only. It does
+  not prove browser pixels, native behavior, platform behavior, external
+  services, or the pending replay evidence.
 - `NOT_RUN` never implies partial success.
-- `BLOCKED_MISSING_SOURCE` is limited to evidence that requires the unavailable
-  exact recording.
+- `BLOCKED_MISSING_SOURCE` is retained for future evidence whose exact required
+  source is absent; no current record uses it.
 - `SKIPPED_NOT_APPLICABLE` may be used only after recording the exact
   environment and reason for a platform scenario.
 - `UNAVAILABLE_BY_MANIFEST` may be used only when an accepted literal manifest

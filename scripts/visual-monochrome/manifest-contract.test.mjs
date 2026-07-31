@@ -1,16 +1,134 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import * as primitiveAuthority from '../../app/src/features/appearance/monochromePrimitiveManifest.ts';
 import * as fixtureAuthority from '../../tests/visual/monochrome/fixture-manifest.ts';
-import { MONOCHROME_NATIVE_WINDOW_MANIFEST } from '../../tests/visual/monochrome/native-window-manifest.ts';
+import {
+  MONOCHROME_BASELINE_MANIFEST,
+  MONOCHROME_MC9_BASELINE_MANIFEST,
+} from '../../tests/visual/monochrome/baseline-manifest.ts';
+import {
+  MONOCHROME_NATIVE_WINDOW_MANIFEST,
+  validateMonochromeNativeWindowManifest,
+} from '../../tests/visual/monochrome/native-window-manifest.ts';
 import * as routeAuthority from '../../tests/visual/monochrome/route-manifest.ts';
 import * as shellAuthority from '../../tests/visual/monochrome/shell-overlay-manifest.ts';
 
 const SOURCE_COMMIT = '7eb708e184ee4f054a49d3e70d73e80fd4eb97ae';
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const FRAME_MANIFEST_PATH = path.join(REPO_ROOT, 'docs/appearance/monochrome/FRAME_MANIFEST.json');
+const FRAME_SCHEMA_PATH = path.join(
+  REPO_ROOT,
+  'docs/appearance/monochrome/schemas/frame-manifest.schema.json',
+);
+const FRAME_SCHEMA_SHA256 = 'AB4C3BA00B2E8ABBD6A4B1223705DA94F6039A8BEB06BC1230EEEF12AE17B546';
+
+function validateFrameAuthority(manifest, schema) {
+  const errors = [];
+  const frameIds = manifest.frames.map(({ id }) => id);
+  const frameNumbers = manifest.frames.map(({ frameNumber }) => frameNumber);
+  const timestamps = manifest.frames.map(({ timestampMs }) => timestampMs);
+  const measuredBranch = schema.oneOf?.find(
+    (branch) => branch.properties?.status?.const === 'measured',
+  );
+
+  if (manifest.status !== 'measured') errors.push('frame manifest status drift');
+  if (manifest.sourceSha256 !== manifest.source?.sha256) {
+    errors.push('frame manifest source hash drift');
+  }
+  if (!/^[A-F0-9]{64}$/u.test(manifest.sourceSha256)) {
+    errors.push('frame manifest source hash format drift');
+  }
+  if (
+    manifest.expectedFileName !== path.posix.basename(manifest.expectedFileName) ||
+    manifest.expectedFileName.includes('..')
+  ) {
+    errors.push('unsafe frame source filename');
+  }
+  if (manifest.frames.length !== 22) errors.push('selected frame closure drift');
+  if (manifest.sampling?.sampleCount !== 395) errors.push('sample count drift');
+  if (new Set(frameIds).size !== frameIds.length) errors.push('duplicate frame id');
+  if (new Set(frameNumbers).size !== frameNumbers.length) errors.push('duplicate frame number');
+  if (!frameIds.every((value, index) => index === 0 || frameIds[index - 1] < value)) {
+    errors.push('frame id order drift');
+  }
+  if (!frameNumbers.every((value, index) => index === 0 || frameNumbers[index - 1] < value)) {
+    errors.push('frame number order drift');
+  }
+  if (!timestamps.every((value, index) => index === 0 || timestamps[index - 1] < value)) {
+    errors.push('frame timestamp order drift');
+  }
+  if (
+    manifest.frames.some(
+      ({ frameNumber, timestampMs }) =>
+        frameNumber >= manifest.sampling.sampleCount || timestampMs >= manifest.source.durationMs,
+    )
+  ) {
+    errors.push('frame bounds drift');
+  }
+  if (
+    schema.properties?.schemaVersion?.const !== 1 ||
+    schema.properties?.artifactId?.const !== 'frame-manifest' ||
+    measuredBranch?.properties?.frames?.minItems !== 1
+  ) {
+    errors.push('frame schema drift');
+  }
+  return errors;
+}
+
+test('measured frame authority is source-locked, unique, ordered, bounded, and schema-bound', () => {
+  const manifest = JSON.parse(readFileSync(FRAME_MANIFEST_PATH, 'utf8'));
+  const schemaSource = readFileSync(FRAME_SCHEMA_PATH);
+  const schema = JSON.parse(schemaSource.toString('utf8'));
+  assert.deepEqual(validateFrameAuthority(manifest, schema), []);
+  assert.equal(
+    createHash('sha256').update(schemaSource).digest('hex').toUpperCase(),
+    FRAME_SCHEMA_SHA256,
+  );
+  assert.equal(MONOCHROME_BASELINE_MANIFEST.captures.length, 10);
+  assert.equal(MONOCHROME_MC9_BASELINE_MANIFEST.entries.length, 111);
+});
+
+test('frame authority rejects duplicate, missing, orphan, unsafe, stale-hash, and schema drift', () => {
+  const manifest = JSON.parse(readFileSync(FRAME_MANIFEST_PATH, 'utf8'));
+  const schema = JSON.parse(readFileSync(FRAME_SCHEMA_PATH, 'utf8'));
+  const mutations = [
+    { ...manifest, frames: manifest.frames.slice(1) },
+    {
+      ...manifest,
+      frames: [...manifest.frames, { ...manifest.frames.at(-1), id: 'frame.orphan' }],
+    },
+    { ...manifest, frames: [...manifest.frames, manifest.frames[0]] },
+    { ...manifest, expectedFileName: '../private.mp4' },
+    { ...manifest, sourceSha256: '0'.repeat(64) },
+  ];
+  for (const mutation of mutations) {
+    assert.notDeepEqual(validateFrameAuthority(mutation, schema), []);
+  }
+  const schemaDrift = structuredClone(schema);
+  schemaDrift.properties.schemaVersion.const = 2;
+  assert.match(validateFrameAuthority(manifest, schemaDrift).join('\n'), /schema drift/iu);
+});
+
+test('Tauri macOS private API feature and application config stay aligned', () => {
+  const cargo = readFileSync(path.join(REPO_ROOT, 'app/src-tauri/Cargo.toml'), 'utf8');
+  const config = JSON.parse(
+    readFileSync(path.join(REPO_ROOT, 'app/src-tauri/tauri.conf.json'), 'utf8'),
+  );
+  const featureEnabled =
+    /tauri\s*=\s*\{[^}\r\n]*features\s*=\s*\[[^\]]*["']macos-private-api["']/u.test(cargo);
+
+  assert.equal(featureEnabled, true, 'the frozen Cargo feature must remain explicit');
+  assert.equal(
+    config.app?.macOSPrivateApi,
+    true,
+    'Tauri build contract requires app.macOSPrivateApi=true when the Cargo feature is enabled',
+  );
+});
 
 const requiredAuthorities = [
   '../../tests/visual/monochrome/fixture-manifest.ts',
@@ -993,6 +1111,202 @@ test('manifest contract inventories every source-commit production capability tu
     ]),
     discovered,
   );
+});
+
+const CAPABILITIES_DIRECTORY = 'app/src-tauri/capabilities';
+const TEST_ONLY_CAPABILITY_FILES = ['monochrome-test.json'];
+const PRODUCTION_CAPABILITY_IDENTIFIERS = [
+  'default',
+  'pet-mini-panel',
+  'pet-overlay',
+  'workbench-window',
+];
+const TEST_ONLY_CAPABILITY_IDENTIFIER = 'monochrome-test';
+const MONOCHROME_TEST_ALLOWED_PERMISSIONS = [
+  'core:default',
+  'core:event:default',
+  'core:window:default',
+  'core:webview:default',
+  'core:app:default',
+  'core:path:default',
+  'os:default',
+  'dialog:allow-open',
+];
+const MONOCHROME_TEST_FORBIDDEN_PERMISSION_TOKENS = [
+  'notification',
+  'process',
+  'updater',
+  'shell',
+  'http',
+  'global-shortcut',
+  'deep-link',
+  'autostart',
+  'create-webview-window',
+];
+
+function canonicalCapabilityHash(raw) {
+  return createHash('sha256').update(raw.replace(/\r\n/gu, '\n')).digest('hex').toUpperCase();
+}
+
+function currentCapabilityEntries() {
+  const directory = path.join(REPO_ROOT, CAPABILITIES_DIRECTORY);
+  return readdirSync(directory)
+    .filter((file) => file.endsWith('.json'))
+    .sort()
+    .map((file) => {
+      const raw = readFileSync(path.join(directory, file), 'utf8');
+      const parsed = JSON.parse(raw);
+      return {
+        file,
+        identifier: parsed.identifier,
+        windows: parsed.windows,
+        sha256: canonicalCapabilityHash(raw),
+        permissions: (parsed.permissions ?? []).map((permission) =>
+          typeof permission === 'string' ? permission : (permission?.identifier ?? ''),
+        ),
+      };
+    });
+}
+
+function productionCapabilityTuples(entries) {
+  return entries.map(({ file, identifier, windows }) => [file, identifier, windows]);
+}
+
+test('current production capability closure stays byte/tuple closed while one test-only capability is permitted', () => {
+  const entries = currentCapabilityEntries();
+  const production = entries.filter((entry) => !TEST_ONLY_CAPABILITY_FILES.includes(entry.file));
+  const testOnly = entries.filter((entry) => TEST_ONLY_CAPABILITY_FILES.includes(entry.file));
+
+  assert.deepEqual(
+    productionCapabilityTuples(production),
+    MONOCHROME_NATIVE_WINDOW_MANIFEST.capabilities.map(({ file, identifier, windows }) => [
+      file,
+      identifier,
+      windows,
+    ]),
+  );
+  assert.deepEqual(
+    production.map((entry) => entry.identifier).sort(),
+    [...PRODUCTION_CAPABILITY_IDENTIFIERS].sort(),
+  );
+
+  assert.equal(testOnly.length, 1, 'expected exactly one classified test-only capability');
+  assert.deepEqual(
+    testOnly.map((entry) => entry.file),
+    TEST_ONLY_CAPABILITY_FILES,
+  );
+  assert.equal(testOnly[0].identifier, TEST_ONLY_CAPABILITY_IDENTIFIER);
+
+  assert.equal(
+    production.some((entry) => entry.identifier === TEST_ONLY_CAPABILITY_IDENTIFIER),
+    false,
+    'production auto-discovery must never include monochrome-test',
+  );
+  assert.equal(
+    production.some((entry) => entry.file === 'monochrome-test.json'),
+    false,
+  );
+  const productionIdentifiers = new Set(production.map((entry) => entry.identifier));
+  assert.equal(productionIdentifiers.has(TEST_ONLY_CAPABILITY_IDENTIFIER), false);
+});
+
+test('current test-only capability is least-privilege and base config pins the production allowlist', () => {
+  const entries = currentCapabilityEntries();
+  const testOnly = entries.find((entry) => entry.file === 'monochrome-test.json');
+  assert.ok(testOnly, 'missing monochrome-test.json');
+  assert.deepEqual(
+    [...testOnly.permissions].sort(),
+    [...MONOCHROME_TEST_ALLOWED_PERMISSIONS].sort(),
+  );
+  for (const token of MONOCHROME_TEST_FORBIDDEN_PERMISSION_TOKENS) {
+    assert.equal(
+      testOnly.permissions.some((permission) => permission.includes(token)),
+      false,
+      `forbidden permission present: ${token}`,
+    );
+  }
+  const config = JSON.parse(
+    readFileSync(path.join(REPO_ROOT, 'app/src-tauri/tauri.conf.json'), 'utf8'),
+  );
+  const allowlist = config?.app?.security?.capabilities;
+  assert.ok(Array.isArray(allowlist), 'missing app.security.capabilities allowlist');
+  assert.deepEqual([...allowlist].sort(), [...PRODUCTION_CAPABILITY_IDENTIFIERS].sort());
+  assert.equal(allowlist.includes(TEST_ONLY_CAPABILITY_IDENTIFIER), false);
+});
+
+test('production capability closure rejects removal, test-capability append, and permission broadening', () => {
+  const entries = currentCapabilityEntries();
+  const production = entries.filter((entry) => !TEST_ONLY_CAPABILITY_FILES.includes(entry.file));
+  const frozenTuples = MONOCHROME_NATIVE_WINDOW_MANIFEST.capabilities.map(
+    ({ file, identifier, windows }) => [file, identifier, windows],
+  );
+
+  assert.notDeepEqual(productionCapabilityTuples(production.slice(1)), frozenTuples);
+
+  const testOnlyEntry = {
+    file: 'monochrome-test.json',
+    identifier: 'monochrome-test',
+    windows: ['monochrome-test'],
+    sha256: '0'.repeat(64),
+  };
+  const productionSnapshots = production.map(({ file, identifier, windows, sha256 }) => ({
+    file,
+    identifier,
+    windows,
+    sha256,
+  }));
+  const manifest = MONOCHROME_NATIVE_WINDOW_MANIFEST;
+  const errors = validateMonochromeNativeWindowManifest(
+    { ...manifest, capabilities: [...manifest.capabilities, testOnlyEntry] },
+    productionSnapshots,
+    [...productionSnapshots, testOnlyEntry],
+    manifest.surfaces,
+    manifest.surfaces,
+  );
+  assert.match(errors.join('\n'), /test window|monochrome test|closure|drift/iu);
+
+  const testOnly = entries.find((entry) => entry.file === 'monochrome-test.json');
+  const broadened = [...testOnly.permissions, 'updater:default'];
+  assert.equal(
+    broadened.some((permission) =>
+      MONOCHROME_TEST_FORBIDDEN_PERMISSION_TOKENS.some((token) => permission.includes(token)),
+    ),
+    true,
+    'broadened permission set must trip the forbidden-token guard',
+  );
+});
+
+test('every MonoChrome visual snapshot is gated by computed style invariants before writing', () => {
+  const source = readFileSync(
+    path.join(REPO_ROOT, 'tests/visual/monochrome/monochrome.visual.spec.ts'),
+    'utf8',
+  );
+  const captureToken = 'await expect(page).toHaveScreenshot';
+  const captureIndexes = [];
+  for (let offset = source.indexOf(captureToken); offset !== -1; ) {
+    captureIndexes.push(offset);
+    offset = source.indexOf(captureToken, offset + captureToken.length);
+  }
+
+  assert.equal(
+    captureIndexes.length,
+    3,
+    'the visual authority must retain its three capture loops',
+  );
+  for (const captureIndex of captureIndexes) {
+    const testStart = source.lastIndexOf('    test(`', captureIndex);
+    assert.notEqual(testStart, -1, 'each snapshot must remain inside an explicit test');
+    const preparationIndex = source.indexOf('prepareDeterministicPage', testStart);
+    const metricsIndex = source.indexOf('collectStyleMetrics', preparationIndex);
+    const invariantIndex = source.indexOf('assertMonochromeInvariants', metricsIndex);
+
+    assert.ok(
+      preparationIndex < metricsIndex &&
+        metricsIndex < invariantIndex &&
+        invariantIndex < captureIndex,
+      'a snapshot write must follow deterministic preparation, computed metrics, and invariant proof',
+    );
+  }
 });
 
 test('privileged side-effect inventory freezes every required callsite in stable order', () => {

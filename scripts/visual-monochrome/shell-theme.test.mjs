@@ -39,7 +39,10 @@ test('MC5 exposes stable semantic hooks without changing accessible labels or ro
   assert.match(read(files.topBar), /aria-label="Application header"/u);
   assert.match(read(files.navPane), /aria-label="Navigation"/u);
   assert.match(read(files.inspector), /aria-label="Inspector"/u);
-  assert.match(read(files.tabStrip), /aria-label="Open chats"/u);
+  assert.match(
+    read(files.tabStrip),
+    /aria-label=\{tabs\.length > 0 \? 'Open chats' : undefined\}/u,
+  );
   assert.match(read(files.pageRouter), /data-terminal-route-cache/u);
 });
 
