@@ -623,6 +623,18 @@ Deno.test(
   },
 );
 
+Deno.test('checkout rejects conflicting metadata and projected user identities', () => {
+  const p = makeProjection({
+    userId: UID,
+    metadata: { supabase_user_id: UID2, access_product: 'vibespace_access' },
+  });
+
+  const r = rec({ projection: p, current: null, config: makeConfig() });
+
+  assertEquals(r.kind, 'invalid');
+  assertEquals(r.reason, 'cross_user_metadata');
+});
+
 Deno.test(
   'a subscription id that does not match the current entitlement fails closed (subscription_mismatch)',
   () => {
@@ -646,6 +658,773 @@ Deno.test(
     assertEquals(r.reason, 'subscription_mismatch');
   },
 );
+
+Deno.test('newer same-customer checkout replaces a terminal subscription binding', () => {
+  const eventCreated = T0 + DAY;
+  const projection = makeProjection({
+    eventId: 'evt_terminal_repurchase_checkout',
+    eventCreated,
+    subscriptionId: 'sub_REPLACEMENT',
+    subscription: {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: eventCreated,
+      currentPeriodEnd: eventCreated + 30 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    },
+  });
+  const current = makeCurrent({
+    status: 'locked',
+    providerStatus: 'canceled',
+    providerStatusUpdatedAt: iso(T0),
+    accessEndedAt: iso(T0),
+    graceStartedAt: iso(T0),
+    graceEndsAt: iso(T0),
+    lockedAt: iso(T0),
+    revision: 7,
+  });
+
+  const result = rec({ projection, current, config: makeConfig() });
+
+  assertEquals(result.kind, 'apply');
+  assertEquals(result.status, 'active');
+  assertEquals(result.entitlement, {
+    table: 'app_access_entitlements',
+    op: 'upsert',
+    key: { user_id: UID },
+    set: {
+      status: 'active',
+      provider_status: 'active',
+      provider_status_updated_at: iso(eventCreated),
+      stripe_customer_id: CUS,
+      stripe_subscription_id: 'sub_REPLACEMENT',
+      stripe_price_id: KNOWN[0],
+      current_period_start: iso(eventCreated),
+      current_period_end: iso(eventCreated + 30 * DAY),
+      cancel_at_period_end: false,
+      last_payment_status: 'succeeded',
+      access_ended_at: null,
+      trial_started_at: null,
+      trial_ends_at: null,
+      grace_started_at: null,
+      grace_ends_at: null,
+      locked_at: null,
+    },
+    expected_revision: 7,
+    expected_provider_status_updated_at: iso(T0),
+  });
+  assertEquals(result.events, [
+    {
+      table: 'app_access_events',
+      op: 'insert',
+      set: {
+        user_id: UID,
+        event_type: 'payment_succeeded',
+        provider_event_id: 'evt_terminal_repurchase_checkout',
+        stripe_subscription_id: 'sub_REPLACEMENT',
+        status: 'active',
+        reason: 'checkout_completed',
+        occurred_at: iso(eventCreated),
+      },
+    },
+  ]);
+});
+
+Deno.test('newer terminal checkout can establish a null subscription binding', () => {
+  const eventCreated = T0 + DAY;
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_null_binding_checkout',
+      eventCreated,
+      subscriptionId: 'sub_REPLACEMENT',
+      subscription: {
+        status: 'active',
+        cancelAtPeriodEnd: false,
+        currentPeriodStart: eventCreated,
+        currentPeriodEnd: eventCreated + 30 * DAY,
+        trialStart: null,
+        trialEnd: null,
+        endedAt: null,
+      },
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      stripeSubscriptionId: null,
+      accessEndedAt: iso(T0),
+      graceStartedAt: iso(T0),
+      graceEndsAt: iso(T0),
+      lockedAt: iso(T0),
+      revision: 19,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'apply');
+  assertEquals(result.entitlement, {
+    table: 'app_access_entitlements',
+    op: 'upsert',
+    key: { user_id: UID },
+    set: {
+      status: 'active',
+      provider_status: 'active',
+      provider_status_updated_at: iso(eventCreated),
+      stripe_customer_id: CUS,
+      stripe_subscription_id: 'sub_REPLACEMENT',
+      stripe_price_id: KNOWN[0],
+      current_period_start: iso(eventCreated),
+      current_period_end: iso(eventCreated + 30 * DAY),
+      cancel_at_period_end: false,
+      last_payment_status: 'succeeded',
+      access_ended_at: null,
+      trial_started_at: null,
+      trial_ends_at: null,
+      grace_started_at: null,
+      grace_ends_at: null,
+      locked_at: null,
+    },
+    expected_revision: 19,
+    expected_provider_status_updated_at: iso(T0),
+  });
+  assertEquals(result.events, [
+    {
+      table: 'app_access_events',
+      op: 'insert',
+      set: {
+        user_id: UID,
+        event_type: 'payment_succeeded',
+        provider_event_id: 'evt_terminal_null_binding_checkout',
+        stripe_subscription_id: 'sub_REPLACEMENT',
+        status: 'active',
+        reason: 'checkout_completed',
+        occurred_at: iso(eventCreated),
+      },
+    },
+  ]);
+});
+
+Deno.test('nonterminal null binding cannot acquire a projected subscription', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_active_null_binding',
+      eventCreated: T0 + DAY,
+      subscriptionId: 'sub_REPLACEMENT',
+    }),
+    current: makeCurrent({
+      providerStatusUpdatedAt: iso(T0),
+      stripeSubscriptionId: null,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'nonterminal null binding carries no command');
+});
+
+Deno.test('terminal null binding requires an existing exact customer', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_null_customer_binding',
+      eventCreated: T0 + DAY,
+      subscriptionId: 'sub_REPLACEMENT',
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'unbound customer carries no command');
+});
+
+Deno.test('terminal null binding requires an explicit matching projected user', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_implicit_user_binding',
+      eventCreated: T0 + DAY,
+      subscriptionId: 'sub_REPLACEMENT',
+      userId: null,
+      metadata: null,
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      stripeSubscriptionId: null,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'implicit current user carries no command');
+});
+
+Deno.test('terminal null binding rejects a disallowed event family', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_null_binding_update',
+      eventType: 'customer.subscription.updated',
+      eventCreated: T0 + DAY,
+      subscriptionId: 'sub_REPLACEMENT',
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      stripeSubscriptionId: null,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'disallowed null binding carries no command');
+});
+
+Deno.test('stale terminal null binding cannot acquire a projected subscription', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_stale_null_binding',
+      eventCreated: T0 - 1,
+      subscriptionId: 'sub_REPLACEMENT',
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      stripeSubscriptionId: null,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'stale null binding carries no command');
+});
+
+Deno.test('equal-time terminal null binding cannot acquire a projected subscription', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_equal_null_binding',
+      eventCreated: T0,
+      subscriptionId: 'sub_REPLACEMENT',
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      stripeSubscriptionId: null,
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'equal-time null binding carries no command');
+});
+
+Deno.test(
+  'created-first checkout rejects non-newer delivery and converges newer without replay or restoration',
+  () => {
+    const terminal = makeCurrent({
+      status: 'locked',
+      providerStatus: 'unpaid',
+      providerStatusUpdatedAt: iso(T0),
+      accessEndedAt: iso(T0),
+      graceStartedAt: iso(T0),
+      graceEndsAt: iso(T0),
+      lockedAt: iso(T0),
+      revision: 11,
+    });
+    const createdAt = T0 + DAY;
+    const createdProjection = makeProjection({
+      eventId: 'evt_repurchase_created_first',
+      eventType: 'customer.subscription.created',
+      eventCreated: createdAt,
+      subscriptionId: 'sub_REPLACEMENT',
+      userId: UID,
+      metadata: { supabase_user_id: UID, access_product: 'vibespace_access' },
+    });
+
+    const created = rec({
+      projection: createdProjection,
+      current: terminal,
+      config: makeConfig(),
+    });
+
+    assertEquals(created.kind, 'apply');
+    assertEquals(created.entitlement, {
+      table: 'app_access_entitlements',
+      op: 'upsert',
+      key: { user_id: UID },
+      set: {
+        status: 'active',
+        provider_status: 'active',
+        provider_status_updated_at: iso(createdAt),
+        stripe_customer_id: CUS,
+        stripe_subscription_id: 'sub_REPLACEMENT',
+        stripe_price_id: KNOWN[0],
+        current_period_start: iso(T0),
+        current_period_end: iso(T0 + 30 * DAY),
+        cancel_at_period_end: false,
+        last_payment_status: 'succeeded',
+        access_ended_at: null,
+        trial_started_at: null,
+        trial_ends_at: null,
+        grace_started_at: null,
+        grace_ends_at: null,
+        locked_at: null,
+      },
+      expected_revision: 11,
+      expected_provider_status_updated_at: iso(T0),
+    });
+    assertEquals(created.events, [
+      {
+        table: 'app_access_events',
+        op: 'insert',
+        set: {
+          user_id: UID,
+          event_type: 'payment_succeeded',
+          provider_event_id: 'evt_repurchase_created_first',
+          stripe_subscription_id: 'sub_REPLACEMENT',
+          status: 'active',
+          reason: 'subscription_created',
+          occurred_at: iso(createdAt),
+        },
+      },
+    ]);
+
+    const rebound = makeCurrent({
+      status: 'active',
+      providerStatus: 'active',
+      providerStatusUpdatedAt: iso(createdAt),
+      stripeSubscriptionId: 'sub_REPLACEMENT',
+      currentPeriodStart: iso(T0),
+      currentPeriodEnd: iso(T0 + 30 * DAY),
+      revision: 12,
+    });
+    const expandedSubscription = {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0,
+      currentPeriodEnd: T0 + 31 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    };
+
+    // Catches removing the older-event provider ordering guard.
+    const olderCheckout = rec({
+      projection: makeProjection({
+        eventId: 'evt_checkout_delivered_older_than_created',
+        eventCreated: createdAt - 1,
+        subscriptionId: 'sub_REPLACEMENT',
+        subscription: expandedSubscription,
+      }),
+      current: rebound,
+      config: makeConfig(),
+    });
+    assertEquals(olderCheckout, {
+      kind: 'stale',
+      reason: 'out_of_order',
+      eventId: 'evt_checkout_delivered_older_than_created',
+    });
+
+    // Catches allowing an equal-time checkout to broaden access.
+    const equalCheckout = rec({
+      projection: makeProjection({
+        eventId: 'evt_checkout_equal_created',
+        eventCreated: createdAt,
+        subscriptionId: 'sub_REPLACEMENT',
+        subscription: expandedSubscription,
+      }),
+      current: rebound,
+      config: makeConfig(),
+    });
+    assertEquals(equalCheckout, {
+      kind: 'stale',
+      reason: 'equal_time_access_broadening',
+      eventId: 'evt_checkout_equal_created',
+    });
+
+    // Catches losing the strictly-newer convergence path or its CAS/audit data.
+    const checkoutAt = createdAt + 1;
+    const newerCheckout = rec({
+      projection: makeProjection({
+        eventId: 'evt_repurchase_checkout_after_created',
+        eventCreated: checkoutAt,
+        subscriptionId: 'sub_REPLACEMENT',
+        subscription: expandedSubscription,
+      }),
+      current: rebound,
+      config: makeConfig(),
+    });
+    assertEquals(newerCheckout.kind, 'apply');
+    assertEquals(newerCheckout.entitlement, {
+      table: 'app_access_entitlements',
+      op: 'upsert',
+      key: { user_id: UID },
+      set: {
+        status: 'active',
+        provider_status: 'active',
+        provider_status_updated_at: iso(checkoutAt),
+        stripe_customer_id: CUS,
+        stripe_subscription_id: 'sub_REPLACEMENT',
+        stripe_price_id: KNOWN[0],
+        current_period_start: iso(T0),
+        current_period_end: iso(T0 + 31 * DAY),
+        cancel_at_period_end: false,
+        last_payment_status: 'succeeded',
+        access_ended_at: null,
+        trial_started_at: null,
+        trial_ends_at: null,
+        grace_started_at: null,
+        grace_ends_at: null,
+        locked_at: null,
+      },
+      expected_revision: 12,
+      expected_provider_status_updated_at: iso(createdAt),
+    });
+    assertEquals(newerCheckout.events, [
+      {
+        table: 'app_access_events',
+        op: 'insert',
+        set: {
+          user_id: UID,
+          event_type: 'payment_succeeded',
+          provider_event_id: 'evt_repurchase_checkout_after_created',
+          stripe_subscription_id: 'sub_REPLACEMENT',
+          status: 'active',
+          reason: 'checkout_completed',
+          occurred_at: iso(checkoutAt),
+        },
+      },
+    ]);
+
+    // Catches duplicate provider delivery emitting another command or audit.
+    const replay = rec({
+      projection: makeProjection({
+        eventId: 'evt_repurchase_checkout_after_created',
+        eventCreated: checkoutAt,
+        subscriptionId: 'sub_REPLACEMENT',
+        subscription: expandedSubscription,
+      }),
+      current: rebound,
+      config: makeConfig(),
+      eventAlreadyProcessed: true,
+    });
+    assertEquals(replay, {
+      kind: 'duplicate',
+      eventId: 'evt_repurchase_checkout_after_created',
+    });
+
+    // Catches checkout restoring the old binding after the replacement is active.
+    const oldBinding = rec({
+      projection: makeProjection({
+        eventId: 'evt_checkout_restore_old_subscription',
+        eventCreated: checkoutAt + 1,
+        subscriptionId: SUB,
+        subscription: expandedSubscription,
+      }),
+      current: rebound,
+      config: makeConfig(),
+    });
+    assertEquals(oldBinding, {
+      kind: 'invalid',
+      reason: 'subscription_mismatch',
+      eventId: 'evt_checkout_restore_old_subscription',
+    });
+  },
+);
+
+Deno.test(
+  'checkout-first then subscription.created converges across older equal newer and replay delivery',
+  () => {
+    const checkoutAt = T0 + DAY;
+    const replacementId = 'sub_CHECKOUT_FIRST';
+    const terminal = makeCurrent({
+      status: 'locked',
+      providerStatus: 'unpaid',
+      providerStatusUpdatedAt: iso(T0),
+      accessEndedAt: iso(T0),
+      graceStartedAt: iso(T0),
+      graceEndsAt: iso(T0),
+      lockedAt: iso(T0),
+      revision: 30,
+    });
+    const subscription = {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 + DAY / 2,
+      currentPeriodEnd: T0 + 30 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    };
+    const checkout = rec({
+      projection: makeProjection({
+        eventId: 'evt_checkout_first',
+        eventCreated: checkoutAt,
+        subscriptionId: replacementId,
+        subscription,
+      }),
+      current: terminal,
+      config: makeConfig(),
+    });
+
+    assertEquals(checkout.kind, 'apply');
+    assertEquals(checkout.entitlement.set.stripe_subscription_id, replacementId);
+    assertEquals(checkout.entitlement.set.provider_status_updated_at, iso(checkoutAt));
+    assertEquals(checkout.entitlement.expected_revision, 30);
+    assertEquals(checkout.events.length, 1);
+    assertEquals(checkout.events[0].set.provider_event_id, 'evt_checkout_first');
+
+    const afterCheckout = makeCurrent({
+      status: 'active',
+      providerStatus: 'active',
+      providerStatusUpdatedAt: iso(checkoutAt),
+      stripeSubscriptionId: replacementId,
+      currentPeriodStart: iso(T0 + DAY / 2),
+      currentPeriodEnd: iso(T0 + 30 * DAY),
+      accessEndedAt: null,
+      graceStartedAt: null,
+      graceEndsAt: null,
+      lockedAt: null,
+      revision: 31,
+    });
+    const older = rec({
+      projection: makeProjection({
+        eventId: 'evt_created_delivered_late',
+        eventType: 'customer.subscription.created',
+        eventCreated: checkoutAt - 1,
+        subscriptionId: replacementId,
+        subscription,
+      }),
+      current: afterCheckout,
+      config: makeConfig(),
+    });
+    assertEquals(older.kind, 'stale');
+    assertEquals(older.reason, 'out_of_order');
+    assert(older.entitlement === undefined, 'older created event carries no command');
+    assert(older.events === undefined, 'older created event carries no audit');
+
+    for (const row of [
+      {
+        eventId: 'evt_created_equal_checkout',
+        eventCreated: checkoutAt,
+        expectedProviderTime: iso(checkoutAt),
+      },
+      {
+        eventId: 'evt_created_newer_checkout',
+        eventCreated: checkoutAt + 1,
+        expectedProviderTime: iso(checkoutAt + 1),
+      },
+    ]) {
+      const result = rec({
+        projection: makeProjection({
+          eventId: row.eventId,
+          eventType: 'customer.subscription.created',
+          eventCreated: row.eventCreated,
+          subscriptionId: replacementId,
+          subscription,
+        }),
+        current: afterCheckout,
+        config: makeConfig(),
+      });
+      assertEquals(result.kind, 'apply');
+      assertEquals(result.entitlement, {
+        table: 'app_access_entitlements',
+        op: 'upsert',
+        key: { user_id: UID },
+        set: {
+          status: 'active',
+          provider_status: 'active',
+          provider_status_updated_at: row.expectedProviderTime,
+          stripe_customer_id: CUS,
+          stripe_subscription_id: replacementId,
+          stripe_price_id: KNOWN[0],
+          current_period_start: iso(T0 + DAY / 2),
+          current_period_end: iso(T0 + 30 * DAY),
+          cancel_at_period_end: false,
+          last_payment_status: 'succeeded',
+          access_ended_at: null,
+          trial_started_at: null,
+          trial_ends_at: null,
+          grace_started_at: null,
+          grace_ends_at: null,
+          locked_at: null,
+        },
+        expected_revision: 31,
+        expected_provider_status_updated_at: iso(checkoutAt),
+      });
+      assertEquals(result.events, [
+        {
+          table: 'app_access_events',
+          op: 'insert',
+          set: {
+            user_id: UID,
+            event_type: 'payment_succeeded',
+            provider_event_id: row.eventId,
+            stripe_subscription_id: replacementId,
+            status: 'active',
+            reason: 'subscription_created',
+            occurred_at: row.expectedProviderTime,
+          },
+        },
+      ]);
+    }
+
+    const replay = rec({
+      projection: makeProjection({
+        eventId: 'evt_created_newer_checkout',
+        eventType: 'customer.subscription.created',
+        eventCreated: checkoutAt + 1,
+        subscriptionId: replacementId,
+        subscription,
+      }),
+      current: afterCheckout,
+      config: makeConfig(),
+      eventAlreadyProcessed: true,
+    });
+    assertEquals(replay, {
+      kind: 'duplicate',
+      eventId: 'evt_created_newer_checkout',
+    });
+
+    const oldBinding = rec({
+      projection: makeProjection({
+        eventId: 'evt_old_subscription_restore',
+        eventType: 'customer.subscription.created',
+        eventCreated: checkoutAt + 2,
+        subscriptionId: SUB,
+        subscription,
+      }),
+      current: afterCheckout,
+      config: makeConfig(),
+    });
+    assertEquals(oldBinding.kind, 'invalid');
+    assertEquals(oldBinding.reason, 'subscription_mismatch');
+    assert(oldBinding.entitlement === undefined, 'old binding restoration carries no command');
+  },
+);
+
+Deno.test('terminal replacement rejects a different customer before subscription mismatch', () => {
+  const projection = makeProjection({
+    eventId: 'evt_terminal_cross_customer',
+    eventCreated: T0 + DAY,
+    customerId: 'cus_OTHER',
+    subscriptionId: 'sub_REPLACEMENT',
+  });
+  const current = makeCurrent({
+    status: 'locked',
+    providerStatus: 'canceled',
+    providerStatusUpdatedAt: iso(T0),
+  });
+
+  const result = rec({ projection, current, config: makeConfig() });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'customer_mismatch');
+  assert(result.entitlement === undefined, 'cross-customer replacement carries no command');
+});
+
+Deno.test('nonterminal state cannot bind a different subscription', () => {
+  const projection = makeProjection({
+    eventId: 'evt_active_new_subscription',
+    eventCreated: T0 + DAY,
+    subscriptionId: 'sub_REPLACEMENT',
+  });
+
+  const result = rec({
+    projection,
+    current: makeCurrent({ providerStatusUpdatedAt: iso(T0) }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'nonterminal mismatch carries no command');
+});
+
+Deno.test('terminal state cannot rebind through a disallowed event family', () => {
+  const result = rec({
+    projection: makeProjection({
+      eventId: 'evt_terminal_update_new_subscription',
+      eventType: 'customer.subscription.updated',
+      eventCreated: T0 + DAY,
+      userId: UID,
+      subscriptionId: 'sub_REPLACEMENT',
+    }),
+    current: makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+    }),
+    config: makeConfig(),
+  });
+
+  assertEquals(result.kind, 'invalid');
+  assertEquals(result.reason, 'subscription_mismatch');
+  assert(result.entitlement === undefined, 'disallowed replacement carries no command');
+});
+
+Deno.test('stale and equal-time terminal replacements cannot broaden access', () => {
+  const current = makeCurrent({
+    status: 'locked',
+    providerStatus: 'incomplete_expired',
+    providerStatusUpdatedAt: iso(T0),
+    accessEndedAt: iso(T0),
+    graceStartedAt: iso(T0),
+    graceEndsAt: iso(T0),
+    lockedAt: iso(T0),
+  });
+
+  for (const eventCreated of [T0 - 1, T0]) {
+    const result = rec({
+      projection: makeProjection({
+        eventId: eventCreated === T0 ? 'evt_equal_replacement' : 'evt_stale_replacement',
+        eventCreated,
+        subscriptionId: 'sub_REPLACEMENT',
+      }),
+      current,
+      config: makeConfig(),
+    });
+
+    assert(result.kind !== 'apply', 'stale/equal replacement must not apply');
+    assertEquals(result.reason, 'subscription_mismatch');
+    assert(result.entitlement === undefined, 'stale/equal replacement carries no command');
+  }
+});
+
+Deno.test('mutation events require projected customer and subscription identities', () => {
+  for (const missing of [
+    { customerId: null, want: 'no_customer' },
+    { subscriptionId: null, want: 'no_subscription' },
+  ]) {
+    const p = makeProjection({
+      eventType: 'customer.subscription.updated',
+      userId: null,
+      metadata: null,
+      ...missing,
+    });
+
+    const r = rec({ projection: p, current: makeCurrent(), config: makeConfig() });
+
+    assertEquals(r.kind, 'invalid');
+    assertEquals(r.reason, missing.want);
+  }
+});
 
 Deno.test('a subscription event with no current entitlement fails closed as no_entitlement', () => {
   const p = makeProjection({

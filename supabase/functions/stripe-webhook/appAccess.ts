@@ -749,6 +749,9 @@ export function reconcileAppAccessEvent(input: any): any {
     metadata && typeof metadata.supabase_user_id === 'string' ? metadata.supabase_user_id : null;
   const projUser =
     typeof projection.userId === 'string' && projection.userId !== '' ? projection.userId : null;
+  if (metaUser && projUser && metaUser !== projUser) {
+    return deepFreeze({ kind: 'invalid', reason: 'cross_user_metadata', eventId: rawEventId });
+  }
   let userId;
   if (current) {
     userId = current.userId;
@@ -771,12 +774,34 @@ export function reconcileAppAccessEvent(input: any): any {
   }
   const projSubId = strOrNull(projection.subscriptionId);
   const projCusId = strOrNull(projection.customerId);
+  if (!projCusId) {
+    return deepFreeze({ kind: 'invalid', reason: 'no_customer', eventId: rawEventId });
+  }
+  if (!projSubId) {
+    return deepFreeze({ kind: 'invalid', reason: 'no_subscription', eventId: rawEventId });
+  }
   if (current) {
-    if (projSubId && current.stripeSubscriptionId && projSubId !== current.stripeSubscriptionId) {
-      return deepFreeze({ kind: 'invalid', reason: 'subscription_mismatch', eventId: rawEventId });
-    }
     if (projCusId && current.stripeCustomerId && projCusId !== current.stripeCustomerId) {
       return deepFreeze({ kind: 'invalid', reason: 'customer_mismatch', eventId: rawEventId });
+    }
+    if (projSubId !== current.stripeSubscriptionId) {
+      const currentProviderUnix = unixFromIso(current.providerStatusUpdatedAt);
+      const isTerminalRepurchase =
+        (eventType === 'checkout.session.completed' ||
+          eventType === 'customer.subscription.created') &&
+        ENDED_STATUSES.indexOf(current.providerStatus) !== -1 &&
+        (metaUser === current.userId || projUser === current.userId) &&
+        current.stripeCustomerId != null &&
+        projCusId === current.stripeCustomerId &&
+        currentProviderUnix !== null &&
+        eventCreated > currentProviderUnix;
+      if (!isTerminalRepurchase) {
+        return deepFreeze({
+          kind: 'invalid',
+          reason: 'subscription_mismatch',
+          eventId: rawEventId,
+        });
+      }
     }
   }
 
