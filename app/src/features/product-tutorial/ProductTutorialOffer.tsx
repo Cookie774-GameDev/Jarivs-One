@@ -1,18 +1,11 @@
 /**
  * First-run choice: take the 5-step product tour or skip it.
  */
-import { motion } from 'motion/react';
-import {
-  Bot,
-  CalendarDays,
-import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
-  Map as MapIcon,
-  MessageSquare,
-  Sparkles,
-  Wand2,
-} from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
+import { Bot, CalendarDays, Map as MapIcon, MessageSquare, Sparkles, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 interface ProductTutorialOfferProps {
   onStart: () => void;
@@ -23,9 +16,6 @@ const spring = { type: 'spring' as const, stiffness: 320, damping: 28, mass: 0.8
 
 const HIGHLIGHTS = [
   { icon: MessageSquare, label: 'Chat & actions' },
-  const reducedMotion = useReducedMotion();
-  const themeMotionTransition = useThemeMotionTransition(spring);
-
   { icon: CalendarDays, label: 'Scheduling' },
   { icon: Sparkles, label: 'Talk & replies' },
   { icon: MapIcon, label: 'Context map' },
@@ -33,6 +23,9 @@ const HIGHLIGHTS = [
 ] as const;
 
 export function ProductTutorialOffer({ onStart, onSkip }: ProductTutorialOfferProps) {
+  const reducedMotion = useReducedMotion();
+  const themeMotionTransition = useThemeMotionTransition(spring);
+
   return (
     <div
       className="fixed inset-0 z-[90] flex items-center justify-center p-6 bg-background/70 backdrop-blur-sm"
@@ -83,8 +76,8 @@ export function ProductTutorialOffer({ onStart, onSkip }: ProductTutorialOfferPr
           Quick tour?
         </h1>
         <p className="mt-3 text-center text-body text-muted-foreground max-w-md mx-auto">
-          Five easy steps. Chat with Jarvis, schedule, hear him reply, explore
-          the context map, and set up agents, skills, and settings.
+          Five easy steps. Chat with Jarvis, schedule, hear him reply, explore the context map, and
+          set up agents, skills, and settings.
         </p>
 
         <ul className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2">

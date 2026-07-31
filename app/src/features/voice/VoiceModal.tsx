@@ -862,6 +862,7 @@ export function VoiceModal() {
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-drag-row::after]:!hidden',
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!shadow-none',
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!shadow-none',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![background-image:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![filter:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:!shadow-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![transform:none]',
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-shell::before]:!hidden',
           showCommandCenter ? 'w-[26.25rem]' : 'w-[17.875rem]',
         )}
@@ -934,7 +935,7 @@ export function VoiceModal() {
           onClick={() => setShowCommandCenter((visible) => !visible)}
           aria-expanded={showCommandCenter}
           aria-controls={commandCenterRegionId}
-          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted"
         >
           <span className="shrink-0 font-medium text-foreground">Command Center</span>
           {showCommandCenter ? (
@@ -962,7 +963,9 @@ export function VoiceModal() {
               transition={commandCenterTransition}
               className="overflow-hidden"
               onKeyDown={handleCommandCenterEscape}
-              data-motion-kind={reducedMotion ? 'none' : 'spring'}
+              data-motion-kind={
+                reducedMotion ? 'none' : theme === 'sakura' ? 'instant-layout' : 'spring'
+              }
             >
               <JarvisVoiceTranscript
                 messages={messages}

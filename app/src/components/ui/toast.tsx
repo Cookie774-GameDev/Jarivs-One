@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
@@ -68,18 +68,21 @@ const variantStyles: Record<ToastVariant, { ring: string; icon: React.ReactNode 
   info: { ring: 'border-info/30', icon: <Info className="h-4 w-4 text-info" /> },
   success: { ring: 'border-success/30', icon: <Check className="h-4 w-4 text-success" /> },
   warning: { ring: 'border-warning/30', icon: <AlertTriangle className="h-4 w-4 text-warning" /> },
-  destructive: { ring: 'border-destructive/30', icon: <AlertTriangle className="h-4 w-4 text-destructive" /> },
+  destructive: {
+    ring: 'border-destructive/30',
+    icon: <AlertTriangle className="h-4 w-4 text-destructive" />,
+  },
 };
 
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
-
-  return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
   const reducedMotion = useReducedMotion();
   const themeMotionTransition = useThemeMotionTransition(LEGACY_TOAST_TRANSITION);
   const themeMotionLayout = useThemeMotionLayout(true);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {toasts.map((t) => {
           const style = variantStyles[t.variant];
@@ -96,7 +99,8 @@ export function Toaster() {
               exit={reducedMotion ? undefined : { opacity: 0, x: 16, scale: 0.96 }}
               transition={themeMotionTransition}
               className={cn(
-                'pointer-events-auto rounded-md border bg-elevated shadow-2xl px-3 py-2.5 min-w-[280px] max-w-[420px]',
+                'pointer-events-auto rounded-md border bg-elevated shadow-2xl px-3 py-2.5 min-w-[280px] max-w-[420px] motion-reduce:!transform-none motion-reduce:!opacity-100 motion-reduce:!transition-none',
+                '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
                 'flex items-start gap-2.5',
                 style.ring,
               )}
@@ -105,7 +109,9 @@ export function Toaster() {
               <div className="flex-1 min-w-0">
                 {t.title && <div className="text-ui-strong text-foreground">{t.title}</div>}
                 {t.description && (
-                  <div className="text-secondary text-muted-foreground mt-0.5 break-words">{t.description}</div>
+                  <div className="text-secondary text-muted-foreground mt-0.5 break-words">
+                    {t.description}
+                  </div>
                 )}
               </div>
               <button

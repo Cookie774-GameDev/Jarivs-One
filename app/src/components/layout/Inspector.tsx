@@ -440,7 +440,8 @@ export function Inspector() {
                                   className={cn(
                                     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
                                     'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                                    active && 'bg-muted ring-1 ring-accent-copper/35',
+                                    active &&
+                                      'bg-muted ring-1 ring-accent-copper/35 [html[data-theme=monochrome]_&]:ring-0',
                                   )}
                                 >
                                   <MessageSquare
@@ -662,7 +663,11 @@ function InspectorContextPanel({
 
   return (
     <div
-      className={cn('flex flex-col gap-4', dragOver && 'ring-1 ring-accent-copper/40 rounded-lg')}
+      className={cn(
+        'flex flex-col gap-4',
+        dragOver &&
+          'ring-1 ring-accent-copper/40 rounded-lg [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:outline [html[data-theme=monochrome]_&]:outline-1 [html[data-theme=monochrome]_&]:outline-accent-copper',
+      )}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault();
@@ -781,7 +786,7 @@ function InspectorContextPanel({
 
       {contextMenu ? (
         <div
-          className="fixed z-[90] min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-lg"
+          className="fixed z-[90] min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-lg [html[data-theme=monochrome]_&]:shadow-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
         >
@@ -1507,7 +1512,9 @@ function WorkspaceTasksSection({
               <span
                 className={cn(
                   'h-2 w-2 rounded-full shrink-0',
-                  t.status === 'working' ? 'bg-accent-cyan animate-pulse' : 'bg-accent-copper',
+                  t.status === 'working'
+                    ? 'bg-accent-cyan animate-pulse [html[data-theme=monochrome]_&]:animate-none'
+                    : 'bg-accent-copper',
                 )}
                 aria-hidden
               />
@@ -1713,7 +1720,7 @@ function StripCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-paper p-3 shadow-soft">
+    <section className="rounded-lg border border-border bg-paper p-3 shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
       <header className="mb-2 flex items-center justify-between gap-2">
         <span className="text-metadata uppercase tracking-wide text-muted-foreground">
           {eyebrow}
@@ -1850,7 +1857,10 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
           body="No open to-dos. Add one on the Kanban page or from Trace."
         />
       ) : (
-        <details open className="group rounded-lg border border-border bg-paper p-3 shadow-soft">
+        <details
+          open
+          className="group rounded-lg border border-border bg-paper p-3 shadow-soft [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
             <span className="text-metadata uppercase tracking-wide text-muted-foreground">
               To-do
@@ -1886,7 +1896,7 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
       )}
 
       {milestones.length > 0 ? (
-        <details className="group rounded-lg border border-border bg-paper p-3 shadow-soft">
+        <details className="group rounded-lg border border-border bg-paper p-3 shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
             <span className="text-metadata uppercase tracking-wide text-muted-foreground">
               Recent milestones
@@ -2101,7 +2111,7 @@ function HistoryContextPanel({ workspaceId }: { workspaceId: WorkspaceId | null 
               onClick={() => onJump(c)}
               className={cn(
                 'group flex w-full items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5 text-left transition-colors',
-                'hover:bg-paper hover:ring-1 hover:ring-accent-copper/40',
+                'hover:bg-paper hover:ring-1 hover:ring-accent-copper/40 [html[data-theme=monochrome]_&]:hover:ring-0',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
               )}
             >

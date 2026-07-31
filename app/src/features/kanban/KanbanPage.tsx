@@ -268,7 +268,7 @@ function ChecklistCard({
     >
       <div
         className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-px opacity-60',
+          'pointer-events-none absolute inset-x-0 top-0 h-px opacity-60 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid [html[data-theme=monochrome]_&]:opacity-100',
           accent === 'copper'
             ? 'bg-gradient-to-r from-transparent via-accent-copper/60 to-transparent'
             : 'bg-gradient-to-r from-transparent via-accent-sage/60 to-transparent',
@@ -276,7 +276,7 @@ function ChecklistCard({
       />
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-paper shadow-soft">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-paper shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none">
             {icon}
           </span>
           <div>
@@ -308,10 +308,18 @@ function ChecklistCard({
               onAdd();
             }
           }}
+          aria-label={`New item for ${title}`}
           placeholder={placeholder}
           className="h-8 text-secondary"
         />
-        <Button type="button" size="sm" variant="accent" onClick={onAdd} disabled={!draft.trim()}>
+        <Button
+          type="button"
+          size="sm"
+          variant="accent"
+          onClick={onAdd}
+          disabled={!draft.trim()}
+          aria-label={`Add item to ${title}`}
+        >
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -387,9 +395,9 @@ function ChecklistRow({
         <motion.span
           aria-hidden
           className="pointer-events-none absolute inset-0 rounded-lg bg-accent-copper/10"
-          initial={{ opacity: 0.7, scale: 0.96 }}
-          animate={{ opacity: 0, scale: 1.04 }}
-          transition={{ duration: 0.85 }}
+          initial={reducedMotion ? false : { opacity: 0.7, scale: 0.96 }}
+          animate={reducedMotion ? undefined : { opacity: 0, scale: 1.04 }}
+          transition={reducedMotion ? undefined : { duration: 0.85 }}
         />
       ) : null}
       <button

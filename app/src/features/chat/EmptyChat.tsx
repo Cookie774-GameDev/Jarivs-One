@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Mic, Plus } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { renderHotkey } from '@/lib/utils';
@@ -26,35 +26,26 @@ export function EmptyChat({ onNewChat }: EmptyChatProps) {
     }
     window.dispatchEvent(new CustomEvent('jarvis:new-chat'));
   };
-
-  return (
-    <div className="flex h-full w-full items-center justify-center p-8">
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={spring}
-        className="flex flex-col items-center gap-5 text-center max-w-[44ch]"
+  const content = (
+    <>
+      <div
+        data-monochrome-empty-accent="true"
+        className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-elevated [html[data-theme=monochrome]_&]:!bg-none"
+        style={{
+          backgroundImage:
+            'radial-gradient(ellipse at center, hsl(var(--accent-cyan) / 0.12), transparent 70%)',
+        }}
       >
-        <div
-          className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border bg-elevated"
-          style={{
-            backgroundImage:
-              'radial-gradient(ellipse at center, hsl(var(--accent-cyan) / 0.12), transparent 70%)',
-          }}
-        >
-          <Mic className="h-7 w-7 text-accent-cyan" />
-        </div>
+        <Mic className="h-7 w-7 text-accent-cyan" />
+      </div>
 
-        <div className="flex flex-col gap-1.5">
-          <h2 className="text-page-title text-foreground">Jarvis is ready.</h2>
-          <p className="text-body text-muted-foreground">
-            Try saying{' '}
-            <span className="text-foreground">
-              "Hey Jarvis, what can you do?"
-            </span>{' '}
-            or start a fresh chat below.
-          </p>
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <h2 className="text-page-title text-foreground">Jarvis is ready.</h2>
+        <p className="text-body text-muted-foreground">
+          Try saying <span className="text-foreground">"Hey Jarvis, what can you do?"</span> or
+          start a fresh chat below.
+        </p>
+      </div>
 
       <div className="flex items-center gap-2">
         <Button variant="accent" onClick={handleNewChat}>

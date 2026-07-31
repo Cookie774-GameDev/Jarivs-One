@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ArrowRight, Check, Lock, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import { HiveModelIcon } from '@/components/brand';
 import { Badge } from '@/components/ui/badge';
@@ -84,7 +84,8 @@ export function Hive() {
   };
 
   return (
-    <div className="mc7f-settings-hive relative -m-4 overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top_left,rgba(217,119,87,0.22),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.45),transparent)] p-4 [html[data-theme=monochrome]_&]:m-0 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
+    <div className="mc7f-settings-hive relative -m-4 overflow-hidden rounded-[28px] p-4 [html[data-theme=monochrome]_&]:m-0 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(217,119,87,0.22),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.45),transparent)] [html[data-theme=monochrome]_&]:hidden" />
       <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(115deg,transparent,rgba(255,255,255,0.04),transparent)] [html[data-theme=monochrome]_&]:hidden" />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
@@ -93,14 +94,18 @@ export function Hive() {
         <motion.div
           aria-hidden
           className="absolute -right-24 -top-24 h-60 w-60 rounded-full bg-orange-400/20 blur-3xl [html[data-theme=monochrome]_&]:hidden"
-          animate={{ scale: [1, 1.12, 1], opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reducedMotion ? undefined : { scale: [1, 1.12, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={
+            reducedMotion ? undefined : { duration: 7, repeat: Infinity, ease: 'easeInOut' }
+          }
         />
         <motion.div
           aria-hidden
           className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-blue-500/15 blur-3xl [html[data-theme=monochrome]_&]:hidden"
-          animate={{ scale: [1.1, 1, 1.1], opacity: [0.4, 0.7, 0.4] }}
-          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reducedMotion ? undefined : { scale: [1.1, 1, 1.1], opacity: [0.4, 0.7, 0.4] }}
+          transition={
+            reducedMotion ? undefined : { duration: 9, repeat: Infinity, ease: 'easeInOut' }
+          }
         />
         <div className="relative z-10 flex flex-col gap-3">
           <Badge className="w-fit border-accent-copper/40 bg-accent-copper/10 text-accent-copper">
@@ -108,8 +113,10 @@ export function Hive() {
           </Badge>
           <div className="flex items-center gap-4">
             <motion.div
-              animate={{ y: [0, -4, 0] }}
-              transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
+              animate={reducedMotion ? undefined : { y: [0, -4, 0] }}
+              transition={
+                reducedMotion ? undefined : { duration: 4.5, repeat: Infinity, ease: 'easeInOut' }
+              }
             >
               <HiveModelIcon size={64} />
             </motion.div>
@@ -152,8 +159,8 @@ export function Hive() {
         <motion.button
           type="button"
           onClick={activate}
-          whileHover={{ y: -2 }}
-          whileTap={{ scale: 0.99 }}
+          whileHover={reducedMotion ? undefined : { y: -2 }}
+          whileTap={reducedMotion ? undefined : { scale: 0.99 }}
           aria-label={
             isActive
               ? 'Hive is your active chat model'
@@ -178,17 +185,23 @@ export function Hive() {
                 key="burst"
                 aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-3xl bg-accent-copper/15"
-                initial={{ opacity: 0.85, scale: 0.96 }}
-                animate={{ opacity: 0, scale: 1.06 }}
-                transition={{ duration: 1 }}
+                initial={reducedMotion ? false : { opacity: 0.85, scale: 0.96 }}
+                animate={reducedMotion ? undefined : { opacity: 0, scale: 1.06 }}
+                transition={reducedMotion ? undefined : { duration: 1 }}
               />
             ) : null}
           </AnimatePresence>
 
           <div className="relative flex items-center gap-4">
             <motion.div
-              animate={burst ? { rotate: [0, -8, 8, 0], scale: [1, 1.15, 1] } : {}}
-              transition={{ duration: 0.7 }}
+              animate={
+                reducedMotion
+                  ? undefined
+                  : burst
+                    ? { rotate: [0, -8, 8, 0], scale: [1, 1.15, 1] }
+                    : {}
+              }
+              transition={reducedMotion ? undefined : { duration: 0.7 }}
             >
               <HiveModelIcon size={40} />
             </motion.div>

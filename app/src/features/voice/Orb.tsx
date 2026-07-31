@@ -35,10 +35,10 @@ export interface OrbProps {
   className?: string;
   /** Optional stable role label for screen readers. */
   ariaLabel?: string;
+  /** Visual treatment. Defaults to the ambient layered presentation. */
+  presentation?: 'default' | 'monochrome-flat';
 }
 
-interface StateStyle {
-  scale: number;
 const LEGACY_ORB_STATE_TRANSITION = Object.freeze({
   type: 'spring',
   stiffness: 220,
@@ -51,6 +51,8 @@ const LEGACY_ORB_HALO_TRANSITION = Object.freeze({
   damping: 24,
 } as const);
 
+interface StateStyle {
+  scale: number;
   brightness: number;
   haloScale: number;
   haloOpacity: number;
@@ -141,48 +143,57 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbProps) {
+export function Orb({
+  state = 'idle',
+  size = 200,
+  className,
+  ariaLabel,
+  presentation = 'default',
+}: OrbProps) {
   const style = STYLES[state];
   const reducedMotion = usePrefersReducedMotion();
+  const stateTransition = useThemeMotionTransition(LEGACY_ORB_STATE_TRANSITION);
+  const haloTransition = useThemeMotionTransition(LEGACY_ORB_HALO_TRANSITION);
   const active = state === 'listening' || state === 'thinking' || state === 'speaking';
+  const flat = presentation === 'monochrome-flat';
 
   return (
     <motion.div
       role="img"
       aria-label={ariaLabel ?? `Voice orb (${state})`}
       data-orb-motion={reducedMotion ? 'reduced' : active ? 'active' : 'idle'}
+      data-orb-presentation={presentation}
       className={cn('relative shrink-0 select-none pointer-events-none', className)}
-  const stateTransition = useThemeMotionTransition(LEGACY_ORB_STATE_TRANSITION);
-  const haloTransition = useThemeMotionTransition(LEGACY_ORB_HALO_TRANSITION);
       style={{
         width: size,
         height: size,
-        filter: reducedMotion
-          ? `brightness(${style.brightness}) saturate(${style.saturation}) hue-rotate(${style.hueShift}deg)`
-          : undefined,
+        filter:
+          reducedMotion && !flat
+            ? `brightness(${style.brightness}) saturate(${style.saturation}) hue-rotate(${style.hueShift}deg)`
+            : undefined,
       }}
       animate={
         reducedMotion
           ? undefined
-          : {
-              scale: style.scale,
-              filter: `brightness(${style.brightness}) saturate(${style.saturation}) hue-rotate(${style.hueShift}deg)`,
-            }
+          : flat
+            ? { scale: style.scale }
+            : {
+                scale: style.scale,
+                filter: `brightness(${style.brightness}) saturate(${style.saturation}) hue-rotate(${style.hueShift}deg)`,
+              }
       }
-      transition={
-        reducedMotion ? undefined : { type: 'spring', stiffness: 220, damping: 22, mass: 0.8 }
-      }
+      transition={stateTransition}
     >
       {/* Layer 1 - Outer halo. Extends well beyond the orb bounds for ambient bloom. */}
       <motion.div
         aria-hidden
         className="absolute rounded-full pointer-events-none"
         style={{
-          inset: '-40%',
-          background:
-            'radial-gradient(circle, hsl(var(--accent-amber) / 0.5) 0%, hsl(var(--accent-copper) / 0.3) 35%, transparent 70%)',
-          filter: 'blur(34px)',
-      transition={stateTransition}
+          inset: flat ? '-18%' : '-40%',
+          background: flat
+            ? 'hsl(var(--foreground) / 0.08)'
+            : 'radial-gradient(circle, hsl(var(--accent-amber) / 0.5) 0%, hsl(var(--accent-copper) / 0.3) 35%, transparent 70%)',
+          filter: flat ? undefined : 'blur(34px)',
           willChange: 'transform, opacity',
         }}
         animate={
@@ -209,9 +220,10 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
         aria-hidden
         className="absolute inset-0 rounded-full"
         style={{
-          background:
-            'conic-gradient(from 0deg, hsl(var(--accent-amber)) 0deg, hsl(var(--accent-copper)) 120deg, hsl(var(--accent-amber)) 240deg, hsl(var(--accent-copper)) 360deg)',
-          filter: 'blur(10px)',
+          background: flat
+            ? 'hsl(var(--foreground) / 0.16)'
+            : 'conic-gradient(from 0deg, hsl(var(--accent-amber)) 0deg, hsl(var(--accent-copper)) 120deg, hsl(var(--accent-amber)) 240deg, hsl(var(--accent-copper)) 360deg)',
+          filter: flat ? undefined : 'blur(10px)',
           opacity: 0.78,
           willChange: 'transform',
         }}
@@ -229,10 +241,13 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
         className="absolute rounded-full"
         style={{
           inset: '12%',
-          background:
-            'radial-gradient(circle at 32% 30%, hsl(0 0% 100% / 0.18) 0%, hsl(var(--accent-amber) / 0.58) 28%, hsl(var(--accent-copper) / 0.86) 70%, hsl(var(--accent-copper) / 0.96) 100%)',
-          boxShadow:
-            'inset 0 0 28px hsl(var(--accent-amber) / 0.48), inset 0 -10px 28px hsl(var(--accent-copper) / 0.56)',
+          background: flat
+            ? 'hsl(var(--accent-copper) / 0.72)'
+            : 'radial-gradient(circle at 32% 30%, hsl(0 0% 100% / 0.18) 0%, hsl(var(--accent-amber) / 0.58) 28%, hsl(var(--accent-copper) / 0.86) 70%, hsl(var(--accent-copper) / 0.96) 100%)',
+          border: flat ? '2px solid hsl(var(--foreground) / 0.6)' : undefined,
+          boxShadow: flat
+            ? undefined
+            : 'inset 0 0 28px hsl(var(--accent-amber) / 0.48), inset 0 -10px 28px hsl(var(--accent-copper) / 0.56)',
         }}
       />
 
@@ -245,9 +260,10 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
           left: '22%',
           width: '32%',
           height: '20%',
-          background:
-            'radial-gradient(ellipse at center, hsl(0 0% 100% / 0.55) 0%, hsl(0 0% 100% / 0.1) 60%, transparent 100%)',
-          filter: 'blur(6px)',
+          background: flat
+            ? 'hsl(var(--foreground) / 0.28)'
+            : 'radial-gradient(ellipse at center, hsl(0 0% 100% / 0.55) 0%, hsl(0 0% 100% / 0.1) 60%, transparent 100%)',
+          filter: flat ? undefined : 'blur(6px)',
         }}
       />
 
@@ -256,8 +272,10 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
         aria-hidden
         className="absolute inset-[10%] rounded-full"
         style={{
-          border: '1px solid hsl(0 0% 100% / 0.08)',
-          boxShadow: '0 0 0 1px hsl(var(--accent-copper) / 0.2)',
+          border: flat
+            ? '2px solid hsl(var(--foreground) / 0.55)'
+            : '1px solid hsl(0 0% 100% / 0.08)',
+          boxShadow: flat ? undefined : '0 0 0 1px hsl(var(--accent-copper) / 0.2)',
         }}
       />
     </motion.div>

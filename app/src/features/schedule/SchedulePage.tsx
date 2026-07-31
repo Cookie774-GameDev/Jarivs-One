@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import {
   Bell,
   CalendarDays,
@@ -436,21 +436,24 @@ export function SchedulePage() {
 
   // Pick a day from the mini-calendar: pre-fill the new-event form for 9–10am
   // that day and jump the timeline to it if anything is already scheduled.
-  const handleSelectDay = React.useCallback((dayMs: number) => {
-    const start = new Date(dayMs);
-    start.setHours(9, 0, 0, 0);
-    const startMs = start.getTime();
-    setStartInput(toLocalDateTimeInput(startMs));
-    setEndInput(toLocalDateTimeInput(defaultEventEndMs(startMs)));
-    const key = localDayKey(startMs);
-    setSelectedDayKey(key);
-    setCalendarOpen(false);
-    requestAnimationFrame(() => {
-      document
-        .getElementById(`schedule-day-${key}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, []);
+  const handleSelectDay = React.useCallback(
+    (dayMs: number) => {
+      const start = new Date(dayMs);
+      start.setHours(9, 0, 0, 0);
+      const startMs = start.getTime();
+      setStartInput(toLocalDateTimeInput(startMs));
+      setEndInput(toLocalDateTimeInput(defaultEventEndMs(startMs)));
+      const key = localDayKey(startMs);
+      setSelectedDayKey(key);
+      setCalendarOpen(false);
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`schedule-day-${key}`)
+          ?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      });
+    },
+    [reducedMotion],
+  );
 
   const applyParse = React.useCallback((raw: string) => {
     if (!raw.trim()) return;
@@ -703,7 +706,7 @@ export function SchedulePage() {
   return (
     <div
       data-monochrome-route="schedule"
-      className="flex h-full min-h-0 flex-col bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
+      className="flex h-full min-h-0 flex-col bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
     >
       <header
         data-monochrome-surface="schedule-header"
@@ -712,8 +715,10 @@ export function SchedulePage() {
         <motion.div
           aria-hidden
           className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-accent-copper/10 blur-3xl [html[data-theme=monochrome]_&]:hidden"
-          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reducedMotion ? undefined : { scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={
+            reducedMotion ? undefined : { duration: 8, repeat: Infinity, ease: 'easeInOut' }
+          }
         />
         <div className="relative flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -817,9 +822,11 @@ export function SchedulePage() {
           ) : timeline.length === 0 ? (
             <div className="flex h-72 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
               <motion.div
-                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-panel shadow-soft"
-                animate={{ y: [0, -6, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-panel shadow-soft motion-reduce:!transform-none [html[data-theme=monochrome]_&]:!transform-none"
+                animate={reducedMotion ? undefined : { y: [0, -6, 0] }}
+                transition={
+                  reducedMotion ? undefined : { duration: 4, repeat: Infinity, ease: 'easeInOut' }
+                }
               >
                 <CalendarDays className="h-7 w-7 text-accent-copper" />
               </motion.div>
@@ -834,7 +841,7 @@ export function SchedulePage() {
                 <section key={group.dayKey} id={`schedule-day-${group.dayKey}`}>
                   <div
                     className={cn(
-                      'sticky top-0 z-10 flex items-center gap-2 border-b border-border/80 px-4 py-2.5 backdrop-blur-sm',
+                      'sticky top-0 z-10 flex items-center gap-2 border-b border-border/80 px-4 py-2.5 backdrop-blur-sm [html[data-theme=monochrome]_&]:backdrop-blur-none',
                       group.dayKey === todayKey
                         ? 'bg-accent-copper/10'
                         : group.dayKey === selectedDayKey
@@ -1109,21 +1116,23 @@ export function SchedulePage() {
               <div className="flex items-center gap-3">
                 <Switch
                   id="event-allday"
+                  aria-labelledby="event-allday-label"
                   checked={allDay}
                   onCheckedChange={(v) => setAllDay(Boolean(v))}
                 />
-                <Label htmlFor="event-allday" className="cursor-pointer">
+                <Label id="event-allday-label" htmlFor="event-allday" className="cursor-pointer">
                   All day
                 </Label>
               </div>
             ) : null}
 
             <div>
-              <Label htmlFor="event-desc">
+              <Label id="event-desc-label" htmlFor="event-desc">
                 {scheduleMode === 'jarvis' ? 'System prompt' : 'Notes'}
               </Label>
               <Textarea
                 id="event-desc"
+                aria-labelledby="event-desc-label"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={
@@ -1352,13 +1361,17 @@ function JarvisActionsList({
   events: EventRow[];
   onOpen: (event: EventRow) => void;
 }) {
+  const reducedMotion = useReducedMotion();
+
   if (events.length === 0) {
     return (
       <div className="flex h-72 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
         <motion.div
-          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent-violet/30 bg-accent-violet/10 shadow-soft"
-          animate={{ y: [0, -6, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent-violet/30 bg-accent-violet/10 shadow-soft motion-reduce:!transform-none [html[data-theme=monochrome]_&]:!transform-none"
+          animate={reducedMotion ? undefined : { y: [0, -6, 0] }}
+          transition={
+            reducedMotion ? undefined : { duration: 4, repeat: Infinity, ease: 'easeInOut' }
+          }
         >
           <Sparkles className="h-7 w-7 text-accent-violet" />
         </motion.div>

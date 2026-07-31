@@ -35,6 +35,7 @@
  */
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion } from 'motion/react';
 import { Pin, Plus, X } from 'lucide-react';
@@ -54,8 +55,8 @@ import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
-
 import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
@@ -69,12 +70,12 @@ interface TabModel {
 
 const ROOT_PROJECT_KEY = '__root__';
 const projectChatMemory = new Map<string, ChatId | null>();
-
 const LEGACY_TAB_TRANSITION = Object.freeze({
   type: 'spring',
   stiffness: 400,
   damping: 30,
 } as const);
+
 function projectMemoryKey(projectId: ProjectId | null): string {
   return projectId ?? ROOT_PROJECT_KEY;
 }
@@ -322,12 +323,14 @@ export function TabStrip() {
 
   return (
     <div
-      role="tablist"
-      aria-label="Open chats"
       data-monochrome-surface="tab-strip"
       className="flex h-8 shrink-0 items-stretch gap-1 border-b border-border bg-panel px-2"
     >
-      <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-hidden">
+      <div
+        role={tabs.length > 0 ? 'tablist' : undefined}
+        aria-label={tabs.length > 0 ? 'Open chats' : undefined}
+        className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-hidden"
+      >
         <AnimatePresence initial={false}>
           {tabs.map((tab) => (
             <TabItem
@@ -385,11 +388,11 @@ interface TabItemProps {
 }
 
 function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel }: TabItemProps) {
+  const themeMotionTransition = useThemeMotionTransition(LEGACY_TAB_TRANSITION);
+  const themeMotionLayout = useThemeMotionLayout(true);
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(tab.title);
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
-  const themeMotionTransition = useThemeMotionTransition(LEGACY_TAB_TRANSITION);
-  const themeMotionLayout = useThemeMotionLayout(true);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync the draft when the underlying title changes (e.g. AI auto-name).
@@ -444,7 +447,7 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
           setMenu({ x: e.clientX, y: e.clientY });
         }}
         className={cn(
-          'group flex h-7 max-w-[220px] shrink-0 cursor-default select-none items-center gap-1.5 self-center rounded-md border border-transparent px-2 text-secondary transition-colors',
+          'group flex h-7 max-w-[220px] shrink-0 cursor-default select-none items-center gap-1.5 self-center rounded-md border border-transparent px-2 text-secondary transition-colors motion-reduce:!transform-none motion-reduce:!opacity-100',
           active
             ? 'bg-elevated text-foreground border-border'
             : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
@@ -499,33 +502,35 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
           <X className="h-3 w-3" />
         </button>
       </motion.div>
-      {menu && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-[200] cursor-default bg-transparent"
-            aria-label="Dismiss menu"
-            onClick={() => setMenu(null)}
-          />
-          <div
-            className="fixed z-[210] min-w-[180px] rounded-lg border border-border bg-panel p-1 shadow-lg"
-            style={{ left: menu.x, top: menu.y }}
-            role="menu"
-          >
+      {menu &&
+        createPortal(
+          <>
             <button
               type="button"
-              className="w-full rounded px-2.5 py-1.5 text-left text-metadata hover:bg-accent-copper/10"
-              role="menuitem"
-              onClick={() => {
-                setMenu(null);
-                onSendToPetPanel?.();
-              }}
+              className="fixed inset-0 z-[200] cursor-default bg-transparent"
+              aria-label="Dismiss menu"
+              onClick={() => setMenu(null)}
+            />
+            <div
+              className="fixed z-[210] min-w-[180px] rounded-lg border border-border bg-panel p-1 shadow-lg"
+              style={{ left: menu.x, top: menu.y }}
+              role="menu"
             >
-              Send to Pet panel
-            </button>
-          </div>
-        </>
-      )}
+              <button
+                type="button"
+                className="w-full rounded px-2.5 py-1.5 text-left text-metadata hover:bg-accent-copper/10"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  onSendToPetPanel?.();
+                }}
+              >
+                Send to Pet panel
+              </button>
+            </div>
+          </>,
+          document.body,
+        )}
     </>
   );
 }
