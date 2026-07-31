@@ -9,11 +9,11 @@ describe('Appearance theme selector', () => {
     useUIStore.setState({ theme: 'default' });
   });
 
-  it('renders exactly four accessible theme choices and applies VibeSpace', () => {
+  it('renders exactly five accessible theme choices and applies VibeSpace', () => {
     useUIStore.setState({ theme: 'default' });
     render(<Appearance />);
 
-    expect(screen.getAllByRole('radio')).toHaveLength(4);
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
     expect(screen.getByRole('radio', { name: /Default/ }).getAttribute('aria-checked')).toBe(
       'true',
     );
@@ -21,6 +21,19 @@ describe('Appearance theme selector', () => {
     fireEvent.click(screen.getByRole('radio', { name: /VibeSpace/ }));
     expect(useUIStore.getState().theme).toBe('vibespace');
     expect(document.documentElement.dataset.theme).toBe('vibespace');
+  });
+
+  it('offers Sakura as the cel-painted fifth choice and applies it', () => {
+    render(<Appearance />);
+
+    const sakura = screen.getByRole('radio', { name: /Sakura/ });
+    expect(sakura.textContent).toContain('Cel-painted dusk workspace.');
+    expect(sakura.querySelector('svg')?.getAttribute('class')).toMatch(/\blucide\b/);
+
+    fireEvent.click(sakura);
+    expect(useUIStore.getState().theme).toBe('sakura');
+    expect(document.documentElement.dataset.theme).toBe('sakura');
+    expect(document.documentElement.dataset.themePreference).toBe('sakura');
   });
 
   it('offers MonoChrome as the terminal-inspired fourth choice without surfacing Light', () => {

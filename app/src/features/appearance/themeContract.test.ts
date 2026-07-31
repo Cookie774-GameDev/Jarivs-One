@@ -1,6 +1,8 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   SELECTABLE_THEME_IDS,
+  THEME_COMMAND_ALIASES,
+  THEME_DEFINITIONS,
   normalizePersistedTheme,
   parseSelectableTheme,
   parseThemeCommandArgument,
@@ -11,9 +13,25 @@ import type { ResolvedDocumentTheme, SelectableTheme } from './themeContract';
 
 describe('canonical theme contract', () => {
   it('exposes the exact selectable theme order', () => {
-    expect(SELECTABLE_THEME_IDS).toEqual(['jarvis', 'vibespace', 'default', 'monochrome']);
+    expect(SELECTABLE_THEME_IDS).toEqual([
+      'jarvis',
+      'vibespace',
+      'default',
+      'monochrome',
+      'sakura',
+    ]);
     expectTypeOf<Parameters<typeof resolveDocumentTheme>[0]>().toEqualTypeOf<SelectableTheme>();
     expectTypeOf<ReturnType<typeof resolveDocumentTheme>>().toEqualTypeOf<ResolvedDocumentTheme>();
+  });
+
+  it('publishes Sakura with its exact product copy as the fifth opt-in theme', () => {
+    expect(THEME_DEFINITIONS.at(-1)).toEqual({
+      id: 'sakura',
+      label: 'Sakura',
+      description: 'Cel-painted dusk workspace.',
+    });
+    expect(normalizePersistedTheme('sakura')).toBe('sakura');
+    expect(normalizePersistedTheme('dusk')).toBe('default');
   });
 
   it('parses only canonical selectable theme identifiers', () => {
@@ -43,6 +61,7 @@ describe('canonical theme contract', () => {
     expect(resolveDocumentTheme('vibespace')).toBe('vibespace');
     expect(resolveDocumentTheme('default')).toBe('dark');
     expect(resolveDocumentTheme('monochrome')).toBe('monochrome');
+    expect(resolveDocumentTheme('sakura')).toBe('sakura');
   });
 
   it('parses command aliases case-insensitively after trimming', () => {
@@ -58,13 +77,17 @@ describe('canonical theme contract', () => {
       mono: 'monochrome',
       terminal: 'monochrome',
       light: 'monochrome',
+      sakura: 'sakura',
+      'sakura dusk': 'sakura',
     } as const;
+
+    expect(THEME_COMMAND_ALIASES).toEqual(aliases);
 
     for (const [alias, theme] of Object.entries(aliases)) {
       expect(parseThemeCommandArgument(`  ${alias.toUpperCase()}  `)).toBe(theme);
     }
 
-    for (const value of ['system', 'unknown', '']) {
+    for (const value of ['dusk', 'blossom', 'system', 'unknown', '']) {
       expect(parseThemeCommandArgument(value)).toBeNull();
     }
   });

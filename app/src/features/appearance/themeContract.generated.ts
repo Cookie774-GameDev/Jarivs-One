@@ -5,7 +5,13 @@ export const THEME_STORAGE_KEY = 'jarvis-ui';
 export const UI_STORE_VERSION = 5;
 export const THEME_FALLBACK_ID = 'default';
 
-export const SELECTABLE_THEME_IDS = ['jarvis', 'vibespace', 'default', 'monochrome'] as const;
+export const SELECTABLE_THEME_IDS = [
+  'jarvis',
+  'vibespace',
+  'default',
+  'monochrome',
+  'sakura',
+] as const;
 export type SelectableTheme = (typeof SELECTABLE_THEME_IDS)[number];
 
 export const THEME_DEFINITIONS = [
@@ -13,6 +19,7 @@ export const THEME_DEFINITIONS = [
   { id: 'vibespace', label: 'VibeSpace', description: 'Pastel origami workspace.' },
   { id: 'default', label: 'Default', description: 'Warm, focused dark workspace.' },
   { id: 'monochrome', label: 'MonoChrome', description: 'Terminal-inspired developer console.' },
+  { id: 'sakura', label: 'Sakura', description: 'Cel-painted dusk workspace.' },
 ] as const;
 export type ThemeDefinition = (typeof THEME_DEFINITIONS)[number];
 
@@ -21,6 +28,7 @@ export const DOCUMENT_THEME_BY_ID = {
   vibespace: 'vibespace',
   default: 'dark',
   monochrome: 'monochrome',
+  sakura: 'sakura',
 } as const;
 export type ResolvedDocumentTheme =
   (typeof DOCUMENT_THEME_BY_ID)[keyof typeof DOCUMENT_THEME_BY_ID];
@@ -48,4 +56,6 @@ export const THEME_COMMAND_ALIASES = {
   mono: 'monochrome',
   terminal: 'monochrome',
   light: 'monochrome',
+  sakura: 'sakura',
+  'sakura dusk': 'sakura',
 } as const;

@@ -26,13 +26,19 @@ test('source contract carries the complete accepted theme policy', () => {
   assert.equal(source.fallbackTheme, 'default');
   assert.deepEqual(
     source.selectableThemes.map(({ id }) => id),
-    ['jarvis', 'vibespace', 'default', 'monochrome'],
+    ['jarvis', 'vibespace', 'default', 'monochrome', 'sakura'],
   );
+  assert.deepEqual(source.selectableThemes.at(-1), {
+    id: 'sakura',
+    label: 'Sakura',
+    description: 'Cel-painted dusk workspace.',
+  });
   assert.deepEqual(source.documentThemes, {
     jarvis: 'jarvis',
     vibespace: 'vibespace',
     default: 'dark',
     monochrome: 'monochrome',
+    sakura: 'sakura',
   });
   assert.deepEqual(source.persistedLegacyThemes, {
     light: 'monochrome',
@@ -40,6 +46,21 @@ test('source contract carries the complete accepted theme policy', () => {
     system: 'default',
   });
   assert.deepEqual(source.syncLegacyThemes, { light: 'monochrome' });
+  assert.deepEqual(source.commandAliases, {
+    jarvis: 'jarvis',
+    'jarvis core': 'jarvis',
+    core: 'jarvis',
+    vibespace: 'vibespace',
+    vibe: 'vibespace',
+    default: 'default',
+    dark: 'default',
+    monochrome: 'monochrome',
+    mono: 'monochrome',
+    terminal: 'monochrome',
+    light: 'monochrome',
+    sakura: 'sakura',
+    'sakura dusk': 'sakura',
+  });
 });
 
 test('generated TypeScript and prepaint assets are current', () => {
@@ -54,6 +75,7 @@ test('generated TypeScript and prepaint assets are current', () => {
   const prepaint = readFileSync(prepaintPath, 'utf8');
 
   assert.match(generated, /monochrome/);
+  assert.match(generated, /Cel-painted dusk workspace\./);
   assert.match(prepaint, /data-theme-preference/);
   assert.doesNotMatch(prepaint, /prefers-color-scheme/);
   assert.doesNotMatch(prepaint, /matchMedia/);
@@ -62,6 +84,7 @@ test('generated TypeScript and prepaint assets are current', () => {
 test('generated prepaint normalizes storage without system media authority', () => {
   const prepaint = readFileSync(prepaintPath, 'utf8');
   const cases = [
+    ['sakura', 'sakura', 'sakura'],
     ['light', 'monochrome', 'monochrome'],
     ['dark', 'default', 'dark'],
     ['system', 'default', 'dark'],

@@ -1,0 +1,175 @@
+/*
+ * Sakura's activation layer contains only palette, semantic, typography,
+ * material, and accessibility tokens. Scenic art and route/component styling
+ * are separate locked phases.
+ */
+html[data-theme='sakura'] {
+  color-scheme: dark;
+
+  /* Exact Phase A palette authority. */
+  --sakura-night: #140e30;
+  --sakura-night-2: #232051;
+  --sakura-indigo: #2f2b71;
+  --sakura-periwinkle: #4e518a;
+  --sakura-orchid: #916285;
+  --sakura-lavender: #a082aa;
+  --sakura-pink: #eeabb7;
+  --sakura-coral: #ef6f88;
+  --sakura-peach: #f5cec8;
+  --sakura-ivory: #fff7f2;
+  --sakura-gold: #ffd978;
+  --sakura-mint: #9ed0b8;
+  --sakura-destructive: #b33a55;
+
+  /* Lossless channel forms for existing hsl(var(--token)) consumers. */
+  --sakura-night-hsl: 250.588235 54.83871% 12.156863%;
+  --sakura-night-2-hsl: 243.673469 43.362832% 22.156863%;
+  --sakura-indigo-hsl: 243.428571 44.871795% 30.588235%;
+  --sakura-periwinkle-hsl: 237 27.777778% 42.352941%;
+  --sakura-orchid-hsl: 315.319149 19.341564% 47.647059%;
+  --sakura-lavender-hsl: 285 19.047619% 58.823529%;
+  --sakura-pink-hsl: 349.253731 66.336634% 80.196078%;
+  --sakura-coral-hsl: 348.28125 80% 68.627451%;
+  --sakura-peach-hsl: 8 69.230769% 87.254902%;
+  --sakura-ivory-hsl: 23.076923 100% 97.45098%;
+  --sakura-gold-hsl: 43.111111 100% 73.529412%;
+  --sakura-mint-hsl: 151.2 34.722222% 71.764706%;
+  --sakura-destructive-hsl: 346.61157 51.054852% 46.470588%;
+
+  /* Existing application semantics. */
+  --background: var(--sakura-night-hsl);
+  --background-warm: var(--sakura-night-hsl);
+  --panel: var(--sakura-night-2-hsl);
+  --elevated: var(--sakura-indigo-hsl);
+  --paper-soft: var(--sakura-night-2-hsl);
+  --paper-done: var(--sakura-night-hsl);
+  --surface-warm: var(--sakura-indigo-hsl);
+  --ambient-deep: var(--sakura-night-hsl);
+
+  --foreground: var(--sakura-ivory-hsl);
+  --muted: var(--sakura-night-2-hsl);
+  --muted-foreground: var(--sakura-peach-hsl);
+  --ink-faint: var(--sakura-peach-hsl);
+  --ink-soft: var(--sakura-ivory-hsl);
+
+  --border: var(--sakura-ivory-hsl) / 0.39;
+  --border-mid: var(--sakura-ivory-hsl) / 0.52;
+  --line-soft: var(--sakura-ivory-hsl) / 0.19;
+  --input: var(--sakura-ivory-hsl) / 0.39;
+  --ring: var(--sakura-pink-hsl);
+
+  --accent: var(--sakura-pink-hsl);
+  --accent-foreground: var(--sakura-night-hsl);
+  --accent-cyan: var(--sakura-pink-hsl);
+  --accent-violet: var(--sakura-lavender-hsl);
+  --accent-copper: var(--sakura-coral-hsl);
+  --accent-amber: var(--sakura-gold-hsl);
+  --accent-amber-soft: var(--sakura-gold-hsl) / 0.18;
+
+  --rose: var(--sakura-pink-hsl);
+  --terracotta: var(--sakura-coral-hsl);
+  --honey: var(--sakura-gold-hsl);
+  --sage: var(--sakura-mint-hsl);
+  --sage-deep: var(--sakura-mint-hsl);
+  --lavender: var(--sakura-lavender-hsl);
+  --cream: var(--sakura-ivory-hsl);
+
+  --primary: var(--sakura-coral-hsl);
+  --primary-foreground: var(--sakura-night-hsl);
+  --secondary: var(--sakura-periwinkle-hsl);
+  --secondary-foreground: var(--sakura-ivory-hsl);
+  --destructive: var(--sakura-destructive-hsl);
+  --destructive-foreground: var(--sakura-ivory-hsl);
+  --destructive-border: var(--sakura-ivory-hsl);
+  --destructive-border-alpha: 0.52;
+  --success: var(--sakura-mint-hsl);
+  --warning: var(--sakura-gold-hsl);
+  --info: var(--sakura-pink-hsl);
+
+  --crit: var(--sakura-destructive-hsl);
+  --crit-bg: var(--sakura-night-2-hsl);
+  --high: var(--sakura-coral-hsl);
+  --high-bg: var(--sakura-night-2-hsl);
+  --med: var(--sakura-gold-hsl);
+  --med-bg: var(--sakura-night-2-hsl);
+  --low: var(--sakura-mint-hsl);
+  --low-bg: var(--sakura-night-2-hsl);
+  --info-sev: var(--sakura-pink-hsl);
+  --info-bg: var(--sakura-night-2-hsl);
+
+  /* Bounded material and geometry authority. */
+  --sakura-panel-alpha: 0.82;
+  --sakura-panel-alpha-strong: 0.91;
+  --sakura-card-alpha: 0.07;
+  --sakura-decorative-border-alpha: 0.19;
+  --sakura-decorative-border-strong-alpha: 0.32;
+  --sakura-essential-border-alpha: 0.39;
+  --sakura-blur: 16px;
+  --sakura-radius-feature: 23px;
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow-soft: 0 12px 30px hsl(var(--sakura-night-hsl) / 0.28);
+  --shadow-lift: 0 18px 48px hsl(var(--sakura-night-hsl) / 0.38);
+  --shadow-cozy: 0 22px 64px -18px hsl(var(--sakura-indigo-hsl) / 0.68);
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --duration-fast: 180ms;
+  --duration-base: 220ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bloom-image: none;
+}
+
+html[data-theme='sakura'] body {
+  background-color: hsl(var(--background));
+  background-image: var(--bloom-image);
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+}
+
+html[data-theme='sakura'] ::selection {
+  background: hsl(var(--sakura-pink-hsl) / 0.42);
+  color: hsl(var(--sakura-night-hsl));
+}
+
+html[data-theme='sakura'] input,
+html[data-theme='sakura'] textarea,
+html[data-theme='sakura'] [contenteditable='true'] {
+  caret-color: hsl(var(--sakura-coral-hsl));
+}
+
+html[data-theme='sakura'] :focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+html[data-theme='sakura'] .bg-destructive {
+  box-shadow: 0 0 0 1px hsl(var(--destructive-border) / var(--destructive-border-alpha));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] *,
+  html[data-theme='sakura'] *::before,
+  html[data-theme='sakura'] *::after {
+    animation: none;
+    scroll-behavior: auto;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] {
+    forced-color-adjust: auto;
+  }
+
+  html[data-theme='sakura'] body {
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  html[data-theme='sakura'] :focus-visible {
+    outline-color: Highlight;
+  }
+}

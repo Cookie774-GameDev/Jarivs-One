@@ -22,13 +22,19 @@
       "id": "monochrome",
       "label": "MonoChrome",
       "description": "Terminal-inspired developer console."
+    },
+    {
+      "id": "sakura",
+      "label": "Sakura",
+      "description": "Cel-painted dusk workspace."
     }
   ],
   "documentThemes": {
     "jarvis": "jarvis",
     "vibespace": "vibespace",
     "default": "dark",
-    "monochrome": "monochrome"
+    "monochrome": "monochrome",
+    "sakura": "sakura"
   },
   "persistedLegacyThemes": {
     "light": "monochrome",
@@ -49,6 +55,8 @@
     "monochrome": "monochrome",
     "mono": "monochrome",
     "terminal": "monochrome",
-    "light": "monochrome"
+    "light": "monochrome",
+    "sakura": "sakura",
+    "sakura dusk": "sakura"
   }
 }

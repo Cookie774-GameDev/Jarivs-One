@@ -49,6 +49,7 @@ describe('theme cross-window messages', () => {
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'vibespace' })).toBe('vibespace');
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'default' })).toBe('default');
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'monochrome' })).toBe('monochrome');
+    expect(parseThemeSyncMessage({ kind: 'theme', theme: 'sakura' })).toBe('sakura');
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'light' })).toBe('monochrome');
   });
 
@@ -90,11 +91,37 @@ describe('theme cross-window messages', () => {
     expect(setState).toHaveBeenCalledTimes(1);
   });
 
+  it('applies one Sakura detached update without echoing and releases its listener', () => {
+    const channel = new FakeChannel();
+    const setState = vi.spyOn(useUIStore, 'setState');
+    const stop = startThemeSync(
+      (theme) => applyThemeSyncToApplication(theme, document, useUIStore),
+      () => channel,
+    );
+
+    channel.emit({ kind: 'theme', theme: 'sakura' });
+
+    expect(document.documentElement.dataset.theme).toBe('sakura');
+    expect(document.documentElement.dataset.themePreference).toBe('sakura');
+    expect(useUIStore.getState().theme).toBe('sakura');
+    expect(setState).toHaveBeenCalledOnce();
+    expect(channel.posted).toEqual([]);
+
+    stop();
+    expect(channel.listeners.size).toBe(0);
+    expect(channel.closeCount).toBe(1);
+  });
+
   it('publishes only canonical ids on a fresh channel and closes it', () => {
     const canonicalChannel = new FakeChannel();
     publishThemePreference('monochrome', () => canonicalChannel);
     expect(canonicalChannel.posted).toEqual([{ kind: 'theme', theme: 'monochrome' }]);
     expect(canonicalChannel.closeCount).toBe(1);
+
+    const sakuraChannel = new FakeChannel();
+    publishThemePreference('sakura', () => sakuraChannel);
+    expect(sakuraChannel.posted).toEqual([{ kind: 'theme', theme: 'sakura' }]);
+    expect(sakuraChannel.closeCount).toBe(1);
 
     const legacyChannel = new FakeChannel();
     publishThemePreference('light' as never, () => legacyChannel);

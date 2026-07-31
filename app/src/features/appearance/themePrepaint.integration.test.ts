@@ -59,6 +59,7 @@ describe('theme prepaint startup contract', () => {
   });
 
   it.each([
+    ['sakura', 'sakura', 'sakura'],
     ['monochrome', 'monochrome', 'monochrome'],
     ['light', 'monochrome', 'monochrome'],
     ['dark', 'default', 'dark'],

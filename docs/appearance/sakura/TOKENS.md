@@ -1,29 +1,32 @@
 # Sakura semantic token specification
 
-`design-tokens.json` is the machine-readable Phase A proposal. It is not a production contract
-until the gated SK0B implementation integrates it with the shared theme contract.
+Status: production token layer active; later Sakura phases pending.
+
+`design-tokens.json` is the machine-readable authority now integrated by the gated SK0B
+stylesheet and shared theme contract. The scene, route, primitive, and final acceptance remain
+pending and must pass their own later gates.
 
 ## Authoritative palette roles
 
-| Role | Value | Allowed intent |
-|---|---:|---|
-| Night / Night2 | `#140E30` / `#232051` | strongest and secondary ink surfaces |
-| Indigo / Periwinkle | `#2F2B71` / `#4E518A` | depth and secondary surfaces |
-| Orchid / Lavender | `#916285` / `#A082AA` | atmospheric/accent support |
-| Pink | `#EEABB7` | active and selected state |
-| Coral | `#EF6F88` | primary action, not destructive |
-| Peach | `#F5CEC8` | sky/pale control/highlight |
-| Ivory | `#FFF7F2` | primary foreground |
-| Gold | `#FFD978` | warning, attention, next action |
-| Mint | `#9ED0B8` | success/online only |
-| Derived destructive | `#B33A55` | destructive surface only |
+| Role                |                 Value | Allowed intent                       |
+| ------------------- | --------------------: | ------------------------------------ |
+| Night / Night2      | `#140E30` / `#232051` | strongest and secondary ink surfaces |
+| Indigo / Periwinkle | `#2F2B71` / `#4E518A` | depth and secondary surfaces         |
+| Orchid / Lavender   | `#916285` / `#A082AA` | atmospheric/accent support           |
+| Pink                |             `#EEABB7` | active and selected state            |
+| Coral               |             `#EF6F88` | primary action, not destructive      |
+| Peach               |             `#F5CEC8` | sky/pale control/highlight           |
+| Ivory               |             `#FFF7F2` | primary foreground                   |
+| Gold                |             `#FFD978` | warning, attention, next action      |
+| Mint                |             `#9ED0B8` | success/online only                  |
+| Derived destructive |             `#B33A55` | destructive surface only             |
 
-## Future generic semantic mapping
+## Activated generic semantic mapping
 
-Future Sakura CSS should be scoped under `html[data-theme='sakura']` and map existing generic
-variables (`--background`, `--panel`, `--elevated`, `--border`, `--ring`, `--foreground`,
-`--muted-foreground`, `--primary`, status variables, radii, and shadows). A dedicated Sakura
-stylesheet may add scene/material variables, but components should consume semantics instead
+Sakura CSS is scoped under `html[data-theme='sakura']` and maps existing generic variables
+(`--background`, `--panel`, `--elevated`, `--border`, `--ring`, `--foreground`,
+`--muted-foreground`, `--primary`, status variables, radii, and shadows). The dedicated
+stylesheet also exposes bounded material variables, while components consume semantics instead
 of raw palette values.
 
 Coral primary controls use dark Night text. Destructive controls use `#B33A55` with Ivory

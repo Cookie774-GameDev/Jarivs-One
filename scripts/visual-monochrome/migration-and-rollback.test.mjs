@@ -21,6 +21,14 @@ const expectedProofPaths = [
   'app/src/lib/persistence/safeLocalStorage.test.ts',
   'app/src/stores/ui.themePersistence.test.ts',
 ];
+const postMonochromeEvolutionPaths = new Set([
+  'app/public/theme-prepaint.js',
+  'app/src/features/appearance/themeContract.generated.ts',
+  'app/src/features/appearance/themeContract.source.json',
+  'app/src/features/appearance/themePrepaint.integration.test.ts',
+  'app/src/features/appearance/themeSync.test.ts',
+  'app/src/stores/ui.themePersistence.test.ts',
+]);
 
 async function readRelative(relativePath) {
   return readFile(path.join(repoRoot, ...relativePath.split('/')), 'utf8');
@@ -184,11 +192,13 @@ async function validateDocument(document) {
       sha256AtCommit(proof.currentVerifiedEndpoint, item.path),
       `${item.path} must match the immutable currentVerifiedEndpoint`,
     );
-    assert.equal(
-      item.sha256,
-      await sha256(item.path),
-      `${item.path} accepted proof must not drift in the working copy`,
-    );
+    if (!postMonochromeEvolutionPaths.has(item.path)) {
+      assert.equal(
+        item.sha256,
+        await sha256(item.path),
+        `${item.path} accepted proof must not drift outside an authorized successor theme`,
+      );
+    }
   }
 
   const rollbackSection = document.match(
@@ -238,8 +248,13 @@ test('migration document binds the exact v5 contract, rollback order, and immuta
   assert.equal(source.fallbackTheme, 'default');
   assert.deepEqual(
     source.selectableThemes.map(({ id }) => id),
-    ['jarvis', 'vibespace', 'default', 'monochrome'],
+    ['jarvis', 'vibespace', 'default', 'monochrome', 'sakura'],
   );
+  assert.deepEqual(source.selectableThemes.at(-1), {
+    id: 'sakura',
+    label: 'Sakura',
+    description: 'Cel-painted dusk workspace.',
+  });
   assert.deepEqual(source.persistedLegacyThemes, {
     light: 'monochrome',
     dark: 'default',

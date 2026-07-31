@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { SELECTABLE_THEMES, migrateThemePreference, parseThemeCommandArgument } from './themes';
 
 describe('appearance theme registry', () => {
-  it('exposes the four supported themes in product order', () => {
+  it('exposes the five supported themes in product order', () => {
     expect(SELECTABLE_THEMES.map((theme) => theme.id)).toEqual([
       'jarvis',
       'vibespace',
       'default',
       'monochrome',
+      'sakura',
     ]);
   });
 
@@ -33,6 +34,11 @@ describe('appearance theme registry', () => {
         label: 'MonoChrome',
         description: 'Terminal-inspired developer console.',
       },
+      {
+        id: 'sakura',
+        label: 'Sakura',
+        description: 'Cel-painted dusk workspace.',
+      },
     ]);
   });
 
@@ -41,6 +47,8 @@ describe('appearance theme registry', () => {
     expect(migrateThemePreference('dark')).toBe('default');
     expect(migrateThemePreference('system')).toBe('default');
     expect(migrateThemePreference('vibespace')).toBe('vibespace');
+    expect(migrateThemePreference('sakura')).toBe('sakura');
+    expect(migrateThemePreference('dusk')).toBe('default');
     expect(migrateThemePreference('unknown')).toBe('default');
   });
 
@@ -50,6 +58,9 @@ describe('appearance theme registry', () => {
     expect(parseThemeCommandArgument('dark')).toBe('default');
     expect(parseThemeCommandArgument('light')).toBe('monochrome');
     expect(parseThemeCommandArgument('terminal')).toBe('monochrome');
+    expect(parseThemeCommandArgument('sakura')).toBe('sakura');
+    expect(parseThemeCommandArgument('  SAKURA DUSK  ')).toBe('sakura');
+    expect(parseThemeCommandArgument('dusk')).toBeNull();
     expect(parseThemeCommandArgument('nope')).toBeNull();
   });
 });

@@ -51,6 +51,24 @@ describe('UI store theme persistence', () => {
     expect(migrated).not.toBe(persistedUiFixture);
   });
 
+  it('preserves canonical Sakura and unrelated keys during current-version hydration', () => {
+    const currentState = useUIStore.getState();
+    const persisted = {
+      ...persistedUiFixture,
+      theme: 'sakura',
+      futurePersistedKey: { deeply: { nested: ['sakura-sentinel', 47] } },
+    };
+
+    const migrated = migratePersistedUiState(persisted, 5);
+    const merged = mergePersistedUiState(migrated, currentState);
+
+    expect(merged.theme).toBe('sakura');
+    expect((merged as unknown as Record<string, unknown>).futurePersistedKey).toEqual(
+      persisted.futurePersistedKey,
+    );
+    expect(merged.setTheme).toBe(currentState.setTheme);
+  });
+
   it('always validates current-version hydration while retaining state methods and keys', () => {
     const currentState = useUIStore.getState();
     const merged = mergePersistedUiState(

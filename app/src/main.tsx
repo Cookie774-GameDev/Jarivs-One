@@ -24,6 +24,7 @@ import './styles/globals.css';
 import './styles/vibespace-theme.css';
 import './styles/origami-chat.css';
 import './styles/monochrome-theme.css';
+import './styles/sakura-theme.css';
 import './features/workbench/registerCommandActions';
 import { useUIStore } from './stores/ui';
 import { applyThemeSyncToApplication, startThemeSync } from './features/appearance/themeSync';

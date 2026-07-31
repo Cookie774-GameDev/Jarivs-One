@@ -1,4 +1,4 @@
-import { Cpu, Moon, Sparkles, Terminal } from 'lucide-react';
+import { Cpu, Flower2, Moon, Sparkles, Terminal } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -10,6 +10,7 @@ const THEME_ICONS: Record<SelectableTheme, typeof Terminal> = {
   vibespace: Sparkles,
   default: Moon,
   monochrome: Terminal,
+  sakura: Flower2,
 };
 
 const DENSITIES: { id: 'compact' | 'cozy'; label: string; description: string }[] = [
