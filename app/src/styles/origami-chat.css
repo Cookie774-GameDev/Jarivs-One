@@ -537,26 +537,6 @@ html[data-theme='vibespace']
 html[data-theme='vibespace']
   body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
   [data-vibespace-page='chat']
-  h1,
-html[data-theme='vibespace']
-  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
-  [data-vibespace-page='chat']
-  h2,
-html[data-theme='vibespace']
-  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
-  [data-vibespace-page='chat']
-  h3 {
-  color: var(--vs-ink);
-  font-family: Fraunces, ui-serif, Georgia, serif;
-}
-
-html[data-theme='vibespace']
-  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
-  [data-vibespace-page='chat']
-  code,
-html[data-theme='vibespace']
-  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
-  [data-vibespace-page='chat']
   .kbd {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
@@ -564,6 +544,7 @@ html[data-theme='vibespace']
 html[data-theme='vibespace']
   body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
   .origami-chat-decor {
+  display: block;
   position: fixed;
   inset: 0;
   z-index: 3;
@@ -640,6 +621,82 @@ html[data-theme='vibespace']
   outline: 2px solid var(--vs-coral-deep);
   outline-offset: 3px;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vs-paper-0) 82%, transparent);
+}
+
+@media (forced-colors: active) {
+  html[data-theme='vibespace'] body:has(main[aria-label='Workspace'] [data-vibespace-page='chat']) {
+    forced-color-adjust: auto;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    header[aria-label='Application header'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button:hover,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button.bg-muted,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button[class*='ring-accent'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    [aria-current='page'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    aside[aria-label='Inspector'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-testid='jarvis-session-panel'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-tour='chat-composer'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .jarvis-voice-panel {
+    background-image: none !important;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat']::before {
+    display: none;
+    background: none;
+    mix-blend-mode: normal;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .origami-chat-decor {
+    display: none;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat']
+    :focus-visible,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .jarvis-voice-panel
+    :focus-visible {
+    outline-color: Highlight;
+    box-shadow: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

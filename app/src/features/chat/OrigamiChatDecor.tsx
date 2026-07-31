@@ -1,6 +1,11 @@
+import { useUIStore } from '@/stores/ui';
+
 export function OrigamiChatDecor() {
+  const theme = useUIStore((state) => state.theme);
+  if (theme !== 'vibespace') return null;
+
   return (
-    <div aria-hidden="true" className="origami-chat-decor" data-testid="origami-chat-decor">
+    <div aria-hidden="true" className="origami-chat-decor hidden" data-testid="origami-chat-decor">
       <img
         alt=""
         className="origami-chat-decor__ribbon"

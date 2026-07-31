@@ -286,4 +286,62 @@ describe('VibeSpace Origami Chat palette contract', () => {
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     expect(css).not.toMatch(/pointer-events:\s*auto/);
   });
+
+  it('removes decorative paint and uses system focus colors in forced-colors Chat', () => {
+    const css = readCss();
+    let forcedColorsCss = '';
+
+    postcss.parse(css).walkAtRules('media', (atRule) => {
+      if (atRule.params.replace(/\s+/gu, '') === '(forced-colors:active)') {
+        forcedColorsCss = atRule.toString();
+      }
+    });
+
+    expect(forcedColorsCss, 'missing the VibeSpace Chat forced-colors contract').not.toBe('');
+
+    const paintedSurfaceRule = rules(forcedColorsCss).find((rule) =>
+      rule.selectors.some((selector) =>
+        normalizeSelector(selector).endsWith("header[aria-label='application header']"),
+      ),
+    );
+    const expectedPaintedSurfaces = [
+      "header[aria-label='application header']",
+      "[data-nav-pane='true']",
+      "[data-nav-pane='true'] button",
+      "[data-nav-pane='true'] button:hover",
+      "[data-nav-pane='true'] button.bg-muted",
+      "[data-nav-pane='true'] button[class*='ring-accent']",
+      "[data-nav-pane='true'] [aria-current='page']",
+      "aside[aria-label='inspector']",
+      "[data-vibespace-page='chat']",
+      "[data-testid='jarvis-session-panel']",
+      "[data-tour='chat-composer']",
+      '.jarvis-voice-panel',
+    ];
+
+    for (const surface of expectedPaintedSurfaces) {
+      expect(
+        paintedSurfaceRule?.selectors.some(
+          (selector) => normalizeSelector(selector) === `${CHAT_ROUTE_SCOPE} ${surface}`,
+        ),
+        `missing forced-colors paint reset for ${surface}`,
+      ).toBe(true);
+    }
+    expect(paintedSurfaceRule?.toString()).toContain('background-image: none !important');
+
+    const grain = exactRule(
+      forcedColorsCss,
+      `${CHAT_ROUTE_SCOPE} [data-vibespace-page='chat']::before`,
+    );
+    expect(grain?.toString()).toContain('display: none');
+    expect(grain?.toString()).toContain('mix-blend-mode: normal');
+
+    const decor = exactRule(forcedColorsCss, `${CHAT_ROUTE_SCOPE} .origami-chat-decor`);
+    expect(decor?.toString()).toContain('display: none');
+
+    const focus = ruleFor(forcedColorsCss, ':focus-visible');
+    expect(focus?.toString()).toContain('outline-color: highlight');
+    expect(focus?.toString()).toContain('box-shadow: none');
+    expect(forcedColorsCss).not.toMatch(/\*\s*(?:::before|::after)?\s*\{/u);
+  });
 });

@@ -11,15 +11,29 @@ vi.mock('./chatLifecycle', () => ({
 }));
 
 vi.mock('./ChatThread', () => ({
-  ChatThread: () => <div data-testid="chat-thread">Thread</div>,
+  ChatThread: ({
+    chatId,
+    fixtureMessages,
+  }: {
+    chatId: string;
+    fixtureMessages?: readonly unknown[];
+  }) => (
+    <div
+      data-testid="chat-thread"
+      data-chat-id={chatId}
+      data-fixture-message-count={fixtureMessages?.length ?? 0}
+    >
+      Thread
+    </div>
+  ),
 }));
 
 vi.mock('./Composer', () => ({
-  Composer: () => <div data-testid="chat-composer">Composer</div>,
-}));
-
-vi.mock('./EmptyChat', () => ({
-  EmptyChat: () => <div data-testid="empty-chat">Empty chat</div>,
+  Composer: ({ chatId }: { chatId: string }) => (
+    <div data-testid="chat-composer" data-chat-id={chatId}>
+      Composer
+    </div>
+  ),
 }));
 
 function deferred<T>() {
@@ -39,11 +53,15 @@ function expectOrigamiRoot(container: HTMLElement) {
 describe('ChatView Origami route scope', () => {
   beforeEach(() => {
     ensureActiveChatMock.mockReset();
+    delete document.documentElement.dataset.monochromeChatState;
+    delete document.documentElement.dataset.monochromeChatFixture;
     useUIStore.setState({ activeChatId: null });
     usePetPresentationStore.setState({ chats: {} });
   });
 
   afterEach(() => {
+    delete document.documentElement.dataset.monochromeChatState;
+    delete document.documentElement.dataset.monochromeChatFixture;
     cleanup();
   });
 
@@ -78,7 +96,7 @@ describe('ChatView Origami route scope', () => {
       await pending.promise;
     });
 
-    expect(await screen.findByTestId('empty-chat')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Jarvis is ready.' })).toBeTruthy();
     expectOrigamiRoot(container);
   });
 
@@ -94,7 +112,7 @@ describe('ChatView Origami route scope', () => {
     });
 
     await waitFor(() => expect(screen.getByText(/Could not open a chat yet/)).toBeTruthy());
-    expect(screen.getByTestId('empty-chat')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Jarvis is ready.' })).toBeTruthy();
     expectOrigamiRoot(container);
   });
 
@@ -104,7 +122,43 @@ describe('ChatView Origami route scope', () => {
     const { container } = render(<ChatView />);
 
     await waitFor(() => expect(screen.getByText(/Could not open a chat yet/)).toBeTruthy());
-    expect(screen.getByTestId('empty-chat')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Jarvis is ready.' })).toBeTruthy();
     expectOrigamiRoot(container);
+  });
+
+  it('renders the real empty Chat without ensuring persistence for the exact visual marker', () => {
+    document.documentElement.dataset.monochromeChatState = 'empty-state';
+    ensureActiveChatMock.mockResolvedValue('unexpected-chat');
+
+    const { container } = render(<ChatView />);
+
+    expect(ensureActiveChatMock).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-vibespace-empty-chat]')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Jarvis is ready.' })).toBeTruthy();
+  });
+
+  it('keeps the exact visual empty state isolated from an existing active Chat', () => {
+    document.documentElement.dataset.monochromeChatState = 'empty-state';
+    useUIStore.setState({ activeChatId: 'persisted-chat' });
+
+    const { container } = render(<ChatView />);
+
+    expect(container.querySelector('[data-vibespace-empty-chat]')).not.toBeNull();
+    expect(screen.queryByTestId('chat-thread')).toBeNull();
+    expect(screen.queryByTestId('chat-composer')).toBeNull();
+  });
+
+  it('replays the exact visual chat fixture without asking persistence to create a chat', () => {
+    document.documentElement.dataset.monochromeChatFixture = 'chat';
+    ensureActiveChatMock.mockResolvedValue('unexpected-chat');
+
+    render(<ChatView />);
+
+    expect(ensureActiveChatMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId('chat-thread').getAttribute('data-chat-id')).toBe('fixture-chat-001');
+    expect(screen.getByTestId('chat-thread').getAttribute('data-fixture-message-count')).toBe('2');
+    expect(screen.getByTestId('chat-composer').getAttribute('data-chat-id')).toBe(
+      'fixture-chat-001',
+    );
   });
 });
