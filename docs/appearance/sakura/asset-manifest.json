@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "generatedFor": "VS-PR30-SOL-SAKURA-PHASE-A-DOCS-20260730-392",
+  "referenceRoot": "C:\\Users\\viper\\Downloads\\VibeSpace-Sakura-UI-Preview (1)\\VibeSpace-Sakura-UI-Preview",
+  "copyPolicy": "Reference-only. No source file or binary is copied into the repository.",
+  "files": [
+    {
+      "name": "AGENT_PROMPT.md",
+      "type": "text/markdown",
+      "bytes": 5666,
+      "sha256": "1D915D6F443057630897545E78F2F2C655A717E45BE391E56AB335CC1324609F",
+      "dimensions": null,
+      "purpose": "Historical standalone-prototype brief",
+      "mayInformProduction": true,
+      "mayCopy": false,
+      "testOnly": false
+    },
+    {
+      "name": "index.html",
+      "type": "text/html",
+      "bytes": 65889,
+      "sha256": "76611A6BBFF4E0744F30EB95F254FAFE036DC035D6E9E5957066F0780B342FA3",
+      "dimensions": null,
+      "purpose": "Richest interactive component, route, motion, and inline-SVG prototype",
+      "mayInformProduction": true,
+      "mayCopy": false,
+      "testOnly": false
+    },
+    {
+      "name": "preview.png",
+      "type": "image/png",
+      "bytes": 737075,
+      "sha256": "EDBC3BE0E7867F5817E6FC7F4BA76CDE0DF65BA29FA62E6B8973AE2FFF74839F",
+      "dimensions": {
+        "width": 1440,
+        "height": 900
+      },
+      "purpose": "Complete-shell visual authority",
+      "mayInformProduction": true,
+      "mayCopy": false,
+      "testOnly": false
+    },
+    {
+      "name": "README.md",
+      "type": "text/markdown",
+      "bytes": 1158,
+      "sha256": "229E08F161219BF2CDE3B5B3FA92B2C545E778E40D461ABF340CDB90E363D956",
+      "dimensions": null,
+      "purpose": "Package inventory and interaction notes",
+      "mayInformProduction": true,
+      "mayCopy": false,
+      "testOnly": false
+    },
+    {
+      "name": "STYLE_SPEC.md",
+      "type": "text/markdown",
+      "bytes": 3966,
+      "sha256": "8C021BBFBEA21728CDDF5328360F8665248DAAC897EB5F8230A493580CE2F9D2",
+      "dimensions": null,
+      "purpose": "Visual-language authority",
+      "mayInformProduction": true,
+      "mayCopy": false,
+      "testOnly": false
+    },
+    {
+      "name": "style-board.png",
+      "type": "image/png",
+      "bytes": 439423,
+      "sha256": "F6B698D83634612D5A2C6BBA4EBE1F4B88872BAFA10FE00736C9C755EEC5EA44",
+      "dimensions": {
+        "width": 1440,
+        "height": 900
+      },
+      "purpose": "Palette, typography, material, and restraint reference",
+      "mayInformProduction": true,
+      "mayCopy": false,
+      "testOnly": false
+    }
+  ]
+}

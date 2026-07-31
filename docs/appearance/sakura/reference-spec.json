@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "status": "phase-a-reference-analysis",
+  "authorityOrder": [
+    "VibeSpace_Sakura_Appearance_Master_Goal.md",
+    "STYLE_SPEC.md",
+    "preview.png",
+    "style-board.png",
+    "index.html",
+    "README.md",
+    "AGENT_PROMPT.md"
+  ],
+  "functionalAuthority": "live VibeSpace repository",
+  "shippingVariant": "Sakura Dusk",
+  "excludedVariants": ["Moonlit Wisteria", "Lantern Mist"],
+  "referenceViewport": { "width": 1440, "height": 900 },
+  "observedPrototypeGeometry": {
+    "shellInsetPx": 14,
+    "shellRadiusPx": 24,
+    "topBarPx": 48,
+    "sidebarExpandedPx": 226,
+    "sidebarCollapsedPx": 64,
+    "tabStripPx": 40,
+    "inspectorPx": 278,
+    "minimumPrototypeViewport": { "width": 880, "height": 600 },
+    "responsiveBreakpointsPx": [1120, 920]
+  },
+  "targetProductionGeometry": {
+    "sidebarExpandedPx": 240,
+    "sidebarCollapsedPx": 56,
+    "note": "Production structure is authoritative; prototype measurements guide appearance, not behavior."
+  },
+  "scene": {
+    "depthLayers": { "minimum": 5, "maximum": 7 },
+    "rendering": "broad cel-painted color masses with crisp silhouettes",
+    "blurLimitedTo": ["fog", "glow", "distant atmosphere"],
+    "motifs": ["peach-to-indigo sky", "mountain layers", "mist or water", "ink foreground", "restrained pavilion or lantern", "sparse petals"]
+  },
+  "evidenceClasses": {
+    "authoritative": "Explicit master-goal or STYLE_SPEC requirement",
+    "observed": "Directly read or visually inspected reference-package fact",
+    "measured": "Task390 WCAG color-math result or verified file/image metadata",
+    "derived": "Recommended production mapping that preserves authority",
+    "pending": "Requires later production implementation or browser/native evidence"
+  },
+  "productionState": "No Sakura production implementation is claimed by this document."
+}
