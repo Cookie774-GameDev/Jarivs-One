@@ -62,7 +62,7 @@ export function AppShell({ children }: AppShellProps) {
             className={
               sakuraActive
                 ? 'relative isolate flex h-full w-full flex-col overflow-hidden bg-transparent text-foreground'
-                : 'flex h-full w-full flex-col bg-background text-foreground'
+                : 'relative isolate flex h-full w-full flex-col overflow-hidden bg-background text-foreground'
             }
             data-monochrome-surface="app-shell"
             data-sakura-shell={sakuraActive ? 'true' : undefined}
@@ -74,7 +74,7 @@ export function AppShell({ children }: AppShellProps) {
               className={
                 sakuraActive
                   ? 'sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col'
-                  : 'contents'
+                  : 'relative z-10 flex min-h-0 min-w-0 flex-1 flex-col'
               }
               data-sakura-shell-frame={sakuraActive ? 'true' : undefined}
               data-sakura-shell-boundary={sakuraActive ? 'workbench' : undefined}
@@ -100,7 +100,7 @@ export function AppShell({ children }: AppShellProps) {
           className={
             sakuraActive
               ? 'relative isolate flex h-full w-full flex-col overflow-hidden bg-transparent text-foreground'
-              : 'flex h-full w-full flex-col bg-background text-foreground'
+              : 'relative isolate flex h-full w-full flex-col overflow-hidden bg-background text-foreground'
           }
           data-monochrome-surface="app-shell"
           data-sakura-shell={sakuraActive ? 'true' : undefined}
@@ -110,7 +110,7 @@ export function AppShell({ children }: AppShellProps) {
             className={
               sakuraActive
                 ? 'sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col'
-                : 'contents'
+                : 'relative z-10 flex min-h-0 min-w-0 flex-1 flex-col'
             }
             data-sakura-shell-frame={sakuraActive ? 'true' : undefined}
             data-sakura-shell-boundary={sakuraActive ? 'application' : undefined}
@@ -121,7 +121,7 @@ export function AppShell({ children }: AppShellProps) {
               className={
                 sakuraActive
                   ? 'sakura-shell-body relative flex min-h-0 min-w-0 flex-1'
-                  : 'flex min-h-0 flex-1'
+                  : 'relative flex min-h-0 min-w-0 flex-1'
               }
               data-sakura-shell-body={sakuraActive ? 'true' : undefined}
             >

@@ -15,6 +15,12 @@ vi.mock('@/components/ui/tooltip', () => ({
 
 import { AppShell } from './AppShell';
 
+function expectClassTokens(element: Element | null | undefined, tokens: readonly string[]) {
+  expect(element?.getAttribute('class')?.split(/\s+/u)).toEqual(
+    expect.arrayContaining([...tokens]),
+  );
+}
+
 describe('AppShell Sakura scenic host', () => {
   beforeEach(() => {
     useUIStore.setState(useUIStore.getInitialState(), true);
@@ -68,7 +74,7 @@ describe('AppShell Sakura scenic host', () => {
   });
 
   it.each(['default', 'jarvis', 'vibespace', 'monochrome'] as const)(
-    'keeps Sakura stacking and wrapper semantics out of the %s theme',
+    'preserves baseline shell geometry without Sakura markers in the %s theme',
     (theme) => {
       useUIStore.setState({ theme });
       const rendered = render(
@@ -83,20 +89,36 @@ describe('AppShell Sakura scenic host', () => {
       const frame = body?.parentElement;
 
       expect(shell?.getAttribute('data-sakura-shell')).toBeNull();
-      expect(shell?.classList.contains('isolate')).toBe(false);
+      expectClassTokens(shell, [
+        'relative',
+        'isolate',
+        'flex',
+        'h-full',
+        'w-full',
+        'flex-col',
+        'overflow-hidden',
+      ]);
       expect(frame?.getAttribute('data-sakura-shell-frame')).toBeNull();
       expect(frame?.getAttribute('data-sakura-shell-boundary')).toBeNull();
       expect(frame?.classList.contains('sakura-shell-frame')).toBe(false);
-      expect(frame?.classList.contains('relative')).toBe(false);
-      expect(frame?.classList.contains('z-10')).toBe(false);
+      expectClassTokens(frame, [
+        'relative',
+        'z-10',
+        'flex',
+        'min-h-0',
+        'min-w-0',
+        'flex-1',
+        'flex-col',
+      ]);
+      expect(frame?.classList.contains('contents')).toBe(false);
       expect(body?.getAttribute('data-sakura-shell-body')).toBeNull();
       expect(body?.classList.contains('sakura-shell-body')).toBe(false);
-      expect(body?.classList.contains('relative')).toBe(false);
+      expectClassTokens(body, ['relative', 'flex', 'min-h-0', 'min-w-0', 'flex-1']);
       expect(workspace?.getAttribute('data-sakura-workspace')).toBeNull();
     },
   );
 
-  it('keeps Sakura stacking semantics out of a non-Sakura full-screen Workbench', () => {
+  it('preserves baseline full-screen Workbench geometry without Sakura markers', () => {
     useUIStore.setState({ route: 'workbench', theme: 'vibespace' });
     const rendered = render(
       <AppShell>
@@ -109,12 +131,28 @@ describe('AppShell Sakura scenic host', () => {
     const frame = workspace?.parentElement;
 
     expect(shell?.getAttribute('data-sakura-shell')).toBeNull();
-    expect(shell?.classList.contains('isolate')).toBe(false);
+    expectClassTokens(shell, [
+      'relative',
+      'isolate',
+      'flex',
+      'h-full',
+      'w-full',
+      'flex-col',
+      'overflow-hidden',
+    ]);
     expect(frame?.getAttribute('data-sakura-shell-frame')).toBeNull();
     expect(frame?.getAttribute('data-sakura-shell-boundary')).toBeNull();
     expect(frame?.classList.contains('sakura-shell-frame')).toBe(false);
-    expect(frame?.classList.contains('relative')).toBe(false);
-    expect(frame?.classList.contains('z-10')).toBe(false);
+    expectClassTokens(frame, [
+      'relative',
+      'z-10',
+      'flex',
+      'min-h-0',
+      'min-w-0',
+      'flex-1',
+      'flex-col',
+    ]);
+    expect(frame?.classList.contains('contents')).toBe(false);
     expect(workspace?.getAttribute('data-sakura-workspace')).toBeNull();
   });
 
