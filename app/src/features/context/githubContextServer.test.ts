@@ -13,7 +13,7 @@ function serverDependencies(overrides: Record<string, unknown> = {}) {
       permissions: { contents: 'read', metadata: 'read' },
     })),
     createInstallationToken: vi.fn(async ({ repositoryIds }: { repositoryIds?: string[] }) => ({
-      token: 'ghs_SyntheticServerOnlyInstallationToken123456',
+      token: 'ghs_________________________',
       expires_at: new Date(NOW + 3_600_000).toISOString(),
       repositories: (repositoryIds ?? ['101']).map((id) => ({
         id,
@@ -129,7 +129,7 @@ describe('GitHub Context authenticated server proxy', () => {
     for (const expiresAt of [NOW, NOW + 3_600_001]) {
       const dependencies = serverDependencies({
         createInstallationToken: vi.fn(async () => ({
-          token: 'ghs_SyntheticServerOnlyInstallationToken123456',
+          token: 'ghs_________________________',
           expires_at: new Date(expiresAt).toISOString(),
           repositories: [],
         })),
@@ -223,7 +223,7 @@ describe('GitHub Context authenticated server proxy', () => {
   it('fails closed when a narrowed grant omits or substitutes the repository', async () => {
     const dependencies = serverDependencies({
       createInstallationToken: vi.fn(async () => ({
-        token: 'ghs_SyntheticServerOnlyInstallationToken123456',
+        token: 'ghs_________________________',
         expires_at: new Date(NOW + 3_600_000).toISOString(),
         repositories: [{ id: 999, full_name: 'other/repository' }],
       })),
