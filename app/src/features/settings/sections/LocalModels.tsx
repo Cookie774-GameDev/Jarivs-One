@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import '@/features/local-models/sakura-local-models.css';
 import {
   AlertTriangle,
   Check,
@@ -456,7 +457,7 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
   }
 
   return (
-    <div className="mc7f-settings-local-models flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
+    <div className="mc7f-settings-local-models flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <h2 className="text-page-title text-foreground">Local Models</h2>
         <p className="mt-1 text-secondary text-muted-foreground">

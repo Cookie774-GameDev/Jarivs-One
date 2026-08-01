@@ -1,4 +1,5 @@
 import * as React from 'react';
+import './sakura-plugins.css';
 import {
   CheckCircle2,
   ExternalLink,
@@ -149,7 +150,7 @@ export function Plugins() {
           const connectionState = connection?.state ?? defaultConnectionState(plugin);
           const badgeLabel = statusBadgeLabel(plugin, connectionState);
           return (
-            <Card key={plugin.id} data-testid={`plugin-card-${plugin.id}`}>
+            <Card key={plugin.id} data-testid={`plugin-card-${plugin.id}`} data-sakura-surface="plugin-card" data-sakura-state={connectionState}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -232,7 +233,7 @@ export function Plugins() {
       </div>
 
       {visible.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center text-secondary text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border p-10 text-center text-secondary text-muted-foreground" data-sakura-state="empty">
           No plugins match this search.
         </div>
       )}
@@ -363,7 +364,7 @@ function PluginSetupDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="sakura-plugin-dialog max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PluginLogo plugin={plugin} size="sm" />
@@ -407,7 +408,7 @@ function PluginSetupDialog({
           )}
 
           {plugin.credentialUrl && (
-            <div className="relative overflow-hidden rounded-2xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/10 via-elevated to-purple-500/10 p-4">
+            <div className="mc7f-plugins-credential-hero relative overflow-hidden rounded-2xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/10 via-elevated to-purple-500/10 p-4 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:bg-none">
               <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-accent-cyan/20 blur-3xl [html[data-theme=monochrome]_&]:hidden" />
               <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>

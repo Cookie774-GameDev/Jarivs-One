@@ -1,0 +1,42 @@
+html[data-theme='sakura'] .mc7f-plugins {
+  border-left: 2px solid hsl(var(--sakura-pink-hsl) / 0.72);
+  padding-left: 1rem;
+}
+html[data-theme='sakura'] .mc7f-plugins h2,
+html[data-theme='sakura'] .mc7f-plugins h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+html[data-theme='sakura'] .mc7f-plugins [data-sakura-surface='plugin-card'],
+html[data-theme='sakura'] .sakura-plugin-dialog {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background: var(--sakura-panel-strong-fallback);
+  box-shadow: var(--shadow-soft);
+}
+html[data-theme='sakura'] .mc7f-plugins [data-sakura-state='connected'] {
+  box-shadow: inset 3px 0 0 hsl(var(--success));
+}
+html[data-theme='sakura'] .mc7f-plugins [data-sakura-state='error'],
+html[data-theme='sakura'] .sakura-plugin-dialog [role='alert'] {
+  border-color: hsl(var(--destructive) / 0.7);
+}
+html[data-theme='sakura'] .mc7f-plugins [data-sakura-state='empty'] {
+  background: hsl(var(--sakura-night-hsl) / 0.72);
+}
+html[data-theme='sakura'] .sakura-plugin-dialog input {
+  background: hsl(var(--sakura-night-hsl) / 0.92);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] .mc7f-plugins *,
+  html[data-theme='sakura'] .sakura-plugin-dialog * {
+    animation: none;
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  html[data-theme='sakura'] .mc7f-plugins [data-sakura-surface],
+  html[data-theme='sakura'] .sakura-plugin-dialog {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

@@ -1,0 +1,38 @@
+html[data-theme='sakura'] .sakura-clock-panel {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  border-radius: var(--sakura-radius-feature);
+  background: var(--sakura-panel-strong-fallback);
+  box-shadow: var(--shadow-soft);
+}
+html[data-theme='sakura'] .sakura-clock-panel h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+html[data-theme='sakura'] .sakura-clock-panel [data-sakura-surface] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background: hsl(var(--sakura-night-hsl) / 0.86);
+}
+html[data-theme='sakura'] .sakura-clock-panel [data-sakura-state='empty'] {
+  border-style: dashed;
+}
+html[data-theme='sakura'] .sakura-clock-panel [data-sakura-state='urgent'] {
+  border-color: hsl(var(--warning) / 0.7);
+  box-shadow: inset 3px 0 0 hsl(var(--warning));
+}
+html[data-theme='sakura'] .sakura-clock-panel :disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] .sakura-clock-panel * {
+    animation: none;
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  html[data-theme='sakura'] .sakura-clock-panel,
+  html[data-theme='sakura'] .sakura-clock-panel [data-sakura-surface] {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+}

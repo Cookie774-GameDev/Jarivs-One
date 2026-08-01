@@ -1,0 +1,38 @@
+html[data-theme='sakura'] .wallpaper-library {
+  color: hsl(var(--sakura-ivory-hsl));
+}
+html[data-theme='sakura'] .wallpaper-library-header,
+html[data-theme='sakura'] .wallpaper-library-filters,
+html[data-theme='sakura'] .wallpaper-library-card,
+html[data-theme='sakura'] .wallpaper-library-confirm {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background-color: var(--sakura-panel-strong-fallback);
+  box-shadow: var(--shadow-soft);
+}
+html[data-theme='sakura'] .wallpaper-library h1,
+html[data-theme='sakura'] .wallpaper-library h2,
+html[data-theme='sakura'] .wallpaper-library h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+html[data-theme='sakura'] .wallpaper-library-filters .is-active {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.5);
+  box-shadow: inset 0 2px 0 hsl(var(--sakura-pink-hsl));
+}
+html[data-theme='sakura'] .wallpaper-library-card.is-locked {
+  border-color: hsl(var(--warning) / 0.6);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] .wallpaper-library * {
+    animation: none;
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  html[data-theme='sakura'] .wallpaper-library-header,
+  html[data-theme='sakura'] .wallpaper-library-card,
+  html[data-theme='sakura'] .wallpaper-library-confirm {
+    border-color: CanvasText;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+}

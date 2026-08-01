@@ -1,4 +1,5 @@
 import * as React from 'react';
+import './sakura-wallpaper-library.css';
 import { Download, Search, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
