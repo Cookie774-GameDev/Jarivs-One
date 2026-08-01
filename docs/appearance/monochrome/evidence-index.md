@@ -3,6 +3,7 @@ title: VibeSpace MonoChrome evidence index
 ledgerId: vibespace-monochrome-evidence-index
 schemaVersion: 1
 baselineCommit: 10ade2cb205be6aae93e239e8debd9eaf584b6de
+currentAuthorityCommit: 49365b8268e0adefd7eb7df06330addd15e780f3
 privacy: repository-relative sanitized evidence and synthetic fixtures; private frames excluded
 ---
 
@@ -11,9 +12,31 @@ privacy: repository-relative sanitized evidence and synthetic fixtures; private 
 This index separates completed proof from planned, unavailable, and blocked
 work. A command is `PASS` only when it ran successfully against the recorded
 commit or explicitly identified working tree and inputs. Future commands remain
-`NOT_RUN` until independently executed and verified. The authorized reference
-recording is now source-locked measured evidence; private source bytes and
-frames remain outside tracked artifacts.
+`NOT_RUN` until independently executed and verified. The current frozen
+authority is source HEAD `49365b8268e0adefd7eb7df06330addd15e780f3`;
+the legacy `baselineCommit` and per-record `provenanceCommitSha` fields preserve
+ledger ancestry and are not the current tested-source claim. The authorized
+reference recording remains source-locked measured evidence; private source
+bytes and frames remain outside tracked artifacts.
+
+## Frozen authority boundary
+
+Task529 reuses accepted evidence; it did not rerun a browser, native
+application, external service, or the broader MC9 matrix.
+
+- Task516 created ten B0-R1 captures plus one designed skip, then passed the
+  two-case Settings trace, a separate fresh VibeSpace Settings replay, the
+  complete scoped 11-test normal replay, and the 26-test B0 contract. The
+  Settings origins were exactly `91/146/154`, computed transform was `none`,
+  and all ten captures received parent visual inspection.
+- Task528 executed the final clean frozen-source proof: 26 B0 replay-contract
+  tests, 46 Playwright configuration-contract tests, and seven baseline/MC9
+  tests, for 79/79 total. The clean named Windows worktree had empty tracked
+  status and staging.
+- Browser capture/replay evidence above is an accepted B0-R1 subset. It does
+  not convert any broader visual, accessibility, behavior, native, platform,
+  release, performance, security, external-service, or final-matrix row below
+  from `NOT_RUN`.
 
 ## Status summary
 
@@ -34,7 +57,46 @@ frames remain outside tracked artifacts.
   "schemaVersion": 1,
   "ledgerId": "vibespace-monochrome-evidence-index",
   "baselineCommit": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-  "generatedAtUtc": "2026-07-31T01:49:36.9833531Z",
+  "generatedAtUtc": "2026-08-01T10:59:30.6514636Z",
+  "currentAuthority": {
+    "sourceCommitSha": "49365b8268e0adefd7eb7df06330addd15e780f3",
+    "b0R1AuthorityCommitSha": "9904684a1a6f9d73ad9c7d4035765528fd0deebf",
+    "discoveryCountContractCommitSha": "a412e3461bb5b46cfcb020bf42fccdbfedcb4314",
+    "canonicalTextHashContractCommitSha": "49365b8268e0adefd7eb7df06330addd15e780f3",
+    "evidenceDisposition": "REUSED_ACCEPTED_EVIDENCE",
+    "task529Execution": "documentation/hash/path/diff verification only; no browser or authority regeneration",
+    "manifest": {
+      "path": "tests/visual/monochrome/b0-r1.manifest.json",
+      "schemaVersion": 2,
+      "sha256": "b14b1c65f9db3e49a7ab747d604f83a8596e4b849f2daa798bf73e4dc7e378ed",
+      "captureCount": 10,
+      "sourceInputFileCount": 2304,
+      "sourceInputSha256": "2a1b182acf56cefdb249be85748c1c631da34148e75d1969fa21c6a4f955714c",
+      "dirtyInputs": [],
+      "readinessVersion": "b0-r1-content-pixel-quiescent-v4",
+      "styleAuthorityVersion": "computed-theme-capture-geometry-font-v2",
+      "browser": "Edge 150.0.4078.105",
+      "immutableB0TreeSha256": "1c0946f05b0dc5d467ba40bb73204a99e7a22737ab0eff71910bb0230bd48231"
+    },
+    "acceptedPublicationEvidence": {
+      "executedBy": "Task516 final-v5",
+      "creation": "10 captures passed plus 1 designed skip",
+      "settingsTrace": "2/2 passed; y origins 91/146/154; transform none; full-frame equality",
+      "freshVibeSpaceSettings": "1/1 passed",
+      "scopedNormalReplay": "11/11 passed",
+      "focusedB0Contract": "26/26 passed",
+      "parentVisualInspection": "10/10 nonblank correct surfaces inspected"
+    },
+    "cleanFrozenVerification": {
+      "executedBy": "Task528 clean named Windows worktree",
+      "b0ReplayContract": "26/26 passed",
+      "playwrightConfigurationContract": "46/46 passed",
+      "baselineAndMc9Contract": "7/7 passed",
+      "aggregate": "79/79 passed",
+      "trackedStatus": "empty",
+      "staging": "empty"
+    }
+  },
   "records": [
     {
       "id": "MC8A-REFERENCE-CONTRACT",
@@ -181,9 +243,9 @@ frames remain outside tracked artifacts.
       "testedCommitSha": null,
       "testedTreeKind": "working_tree",
       "provenanceCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-      "startedAtUtc": "2026-07-31T01:49:23.3028454Z",
-      "finishedAtUtc": "2026-07-31T01:49:36.9833531Z",
-      "durationMs": 13681,
+      "startedAtUtc": "2026-08-01T10:59:10.0054636Z",
+      "finishedAtUtc": "2026-08-01T10:59:30.6514636Z",
+      "durationMs": 20646,
       "exitCode": 0,
       "environment": {
         "platform": "windows",
@@ -197,13 +259,13 @@ frames remain outside tracked artifacts.
         "canonicalization": "UTF-8 JSON; POSIX repository-relative paths; lexicographic order; uppercase SHA-256",
         "entryCount": 301,
         "groupCount": 6,
-        "aggregateSha256": "D4DFDF81675DE148481379962A4C12483EBFA80523B6CCB082B10536C0EA2225",
+        "aggregateSha256": "FA682AAB0C2551C4AEE2A92B68B106BA42D536249FB625207197CBD3299BB760",
         "groups": [
           {
             "id": "working-tree-files",
             "mode": "repository-relative-path-and-content-sha256",
             "entryCount": 130,
-            "sha256": "BF729F59B49F317D6DCD0F379D3B5222B5ECBA56348D4D966BA7D70E01B54E51"
+            "sha256": "FDD27D3BE7A032D4A5EE468F850DB261042162A750DD995C3A928FF82A056359"
           },
           {
             "id": "b0-png-content",
@@ -236,10 +298,10 @@ frames remain outside tracked artifacts.
             "sha256": "C3B4F3086A384DF8BCC9087836E675712E24DD29671EC62DB2803E38FE4602B5"
           }
         ],
-        "capturedAtUtc": "2026-07-31T01:49:14.7923752Z",
-        "verifiedAtUtc": "2026-07-31T01:49:48.2178281Z",
-        "beforeAggregateSha256": "D4DFDF81675DE148481379962A4C12483EBFA80523B6CCB082B10536C0EA2225",
-        "afterAggregateSha256": "D4DFDF81675DE148481379962A4C12483EBFA80523B6CCB082B10536C0EA2225"
+        "capturedAtUtc": "2026-08-01T10:59:09.9965345Z",
+        "verifiedAtUtc": "2026-08-01T10:59:30.6672375Z",
+        "beforeAggregateSha256": "FA682AAB0C2551C4AEE2A92B68B106BA42D536249FB625207197CBD3299BB760",
+        "afterAggregateSha256": "FA682AAB0C2551C4AEE2A92B68B106BA42D536249FB625207197CBD3299BB760"
       },
       "fixtureIds": ["frozen-b0-corpus", "mc9-111-structural-corpus"],
       "fixtureHashes": [
@@ -250,7 +312,7 @@ frames remain outside tracked artifacts.
       "evidence": [
         {
           "path": "tests/visual/monochrome/baseline-manifest.test.ts",
-          "sha256": "A281BAD5B466E40CBA39997AD4AE3BBA7C50040A8638D4F277CF3913963B1763",
+          "sha256": "C7A4896A6004DF6FF2957D3AE88F5C41C83E6BF5E86536B3979118581AA82ACB",
           "result": "7 tests passed; MC9 declared and actual PNG closure is exactly 111 with no missing, orphan, duplicate, reordered, or unsafe path"
         },
         {
@@ -280,12 +342,12 @@ frames remain outside tracked artifacts.
         },
         {
           "path": "tests/visual/monochrome/route-manifest.test.ts",
-          "sha256": "9890206ECBE01AC269972C0A15BA519EC3944DAF4F96321BCFCCD48A2BDB03F3",
+          "sha256": "6216C819781D389217EEEB7C499BAD48FCE1BA394CC765F741666649C4D08545",
           "result": "9 structural route-authority tests passed"
         },
         {
           "path": "tests/visual/monochrome/route-manifest.ts",
-          "sha256": "4F66450D444663E119AAD4E0E2817AF91FE60F9B883B56321541095784F730CA",
+          "sha256": "BD587AD6E542AEEAB054118A0FDF3993D6BEEC912601AA6B7362AB1A6E6BA754",
           "result": "86 stable route, settings, overlay, detached, native, access, embedded, development, and unavailable entries"
         },
         {
@@ -299,7 +361,7 @@ frames remain outside tracked artifacts.
           "result": "31 stable shell, overlay, and dispatch surfaces"
         }
       ],
-      "reviewer": "Task344 implementation evidence revalidated and transitively input-bound by Task350R1",
+      "reviewer": "Task344 implementation evidence revalidated and transitively input-bound by Task529",
       "severityCounts": [
         { "severity": "critical", "count": 0 },
         { "severity": "important", "count": 0 },
@@ -309,7 +371,8 @@ frames remain outside tracked artifacts.
       "retryLineage": [
         "Task344 RED 21/26 then GREEN 38/38",
         "Task350 fresh structural replay 38/38",
-        "Task350R1 canonical pre/post input identity and fresh structural replay 38/38"
+        "Task350R1 canonical pre/post input identity and fresh structural replay 38/38",
+        "Task529 final-ledger rebind structural replay 38/38"
       ],
       "cleanup": "Canonical input identity was unchanged before and after the command. No browser, native application, external service, snapshot regeneration, or B0 replay ran; no process remained."
     },
@@ -327,14 +390,17 @@ frames remain outside tracked artifacts.
       "finishedAtUtc": null,
       "durationMs": null,
       "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "implementation active" },
+      "environment": {
+        "platform": "windows",
+        "runtime": "not run for this full checkpoint at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3"
+      },
       "fixtureIds": ["frozen-route-manifest", "frozen-native-window-manifest"],
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "Implementation is active and the focused command has not been independently run against an accepted MC9 commit.",
+      "blockerReason": "The exact native-session and manifest-contract command was not part of the accepted clean 79-test authority boundary and has not been executed for this full checkpoint at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "No harness process has been started by this ledger task."
     },
@@ -352,14 +418,17 @@ frames remain outside tracked artifacts.
       "finishedAtUtc": null,
       "durationMs": null,
       "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "implementation active" },
+      "environment": {
+        "platform": "windows",
+        "runtime": "B0-R1 subset accepted; complete visual matrix not run"
+      },
       "fixtureIds": ["frozen-route-manifest", "synthetic-account-free-fixtures"],
       "fixtureHashes": [],
       "mockedProviders": ["deterministic local provider fixtures"],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "The Playwright suite and style-metrics collector are not yet accepted or executed.",
+      "blockerReason": "Task516 accepted ten full-frame B0-R1 captures, but the complete visual grep and style-metrics route/state matrix were not executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "Future artifacts remain confined to the ignored MonoChrome artifact root."
     },
@@ -377,14 +446,17 @@ frames remain outside tracked artifacts.
       "finishedAtUtc": null,
       "durationMs": null,
       "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "implementation active" },
+      "environment": {
+        "platform": "windows",
+        "runtime": "B0-R1 ordinary-theme subset accepted; complete preserved-theme matrix not run"
+      },
       "fixtureIds": ["B0-preserved-theme-baselines", "origami-acceptance-oracle"],
       "fixtureHashes": [],
       "mockedProviders": ["deterministic local provider fixtures"],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "No accepted MC9 preserved-theme or Origami comparison run exists yet.",
+      "blockerReason": "Task516 accepted the ten-capture Default, Jarvis, and VibeSpace/Origami B0-R1 subset, but the exact preserved-theme grep and complete route matrix were not executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "No baseline image is updated by this index."
     },
@@ -402,14 +474,17 @@ frames remain outside tracked artifacts.
       "finishedAtUtc": null,
       "durationMs": null,
       "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "implementation active" },
+      "environment": {
+        "platform": "windows",
+        "runtime": "not run for this full checkpoint at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3"
+      },
       "fixtureIds": ["synthetic-account-free-fixtures"],
       "fixtureHashes": [],
       "mockedProviders": ["deterministic local provider fixtures", "billing test fixtures"],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "The functional matrix has not been run against an accepted MC9 integration.",
+      "blockerReason": "The complete behavior matrix was not part of the accepted B0-R1 or clean 79-test authority boundary and has not been executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "No live provider, billing, database, or user account was contacted."
     },
@@ -427,14 +502,17 @@ frames remain outside tracked artifacts.
       "finishedAtUtc": null,
       "durationMs": null,
       "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "implementation active" },
+      "environment": {
+        "platform": "windows",
+        "runtime": "not run for this full checkpoint at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3"
+      },
       "fixtureIds": ["frozen-route-manifest", "primitive-workbench"],
       "fixtureHashes": [],
       "mockedProviders": ["deterministic local provider fixtures"],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "Axe, keyboard, focus, contrast, target-size, forced-color, reduced-motion, and zoom runs remain pending.",
+      "blockerReason": "The complete accessibility grep, including axe, keyboard, focus, contrast, target-size, forced-color, reduced-motion, and zoom coverage, was not executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "No browser session has been started by this ledger task."
     },
@@ -452,14 +530,17 @@ frames remain outside tracked artifacts.
       "finishedAtUtc": null,
       "durationMs": null,
       "exitCode": null,
-      "environment": { "platform": "windows", "runtime": "implementation active" },
+      "environment": {
+        "platform": "windows",
+        "runtime": "not run for this checkpoint at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3"
+      },
       "fixtureIds": ["frozen-native-window-manifest"],
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "The native-session validator has not run against an accepted MC9 integration.",
+      "blockerReason": "The validate-only native-session command was not part of the accepted clean 79-test authority boundary and has not been executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "Validate-only must not launch a native process or mutate profiles, ports, registry, credentials, or user paths."
     },
@@ -482,9 +563,9 @@ frames remain outside tracked artifacts.
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "The contained native Windows session has not run against an accepted MC9 integration.",
+      "blockerReason": "The contained native Windows session was outside the accepted clean 79-test authority boundary and has not been executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "The future run must clean only its exact nonce-bound process, port, app-data root, and artifact root."
     },
@@ -507,7 +588,7 @@ frames remain outside tracked artifacts.
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
       "blockerReason": "No optimized executable has been built or launched for this checkpoint.",
       "retryLineage": [],
@@ -532,7 +613,7 @@ frames remain outside tracked artifacts.
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
       "blockerReason": "No unsigned NSIS artifact has been built for this checkpoint.",
       "retryLineage": [],
@@ -582,7 +663,7 @@ frames remain outside tracked artifacts.
       "fixtureHashes": [],
       "mockedProviders": ["deterministic local provider fixtures"],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
       "blockerReason": "No WebKit preview run exists for this checkpoint.",
       "retryLineage": [],
@@ -659,7 +740,7 @@ frames remain outside tracked artifacts.
       "evidence": [],
       "reviewer": "pending independent reviews",
       "severityCounts": [],
-      "blockerReason": "The accepted MC9 integration and its measured traces do not exist yet.",
+      "blockerReason": "The B0-R1 authority and clean 79-test boundary do not include comprehensive performance traces, dependency analysis, SAST, stress/load, or external-service security proof; no single supported repository runner closes this checkpoint.",
       "retryLineage": [],
       "cleanup": "No live provider page, credential value, or private data is in scope."
     },
@@ -712,9 +793,9 @@ frames remain outside tracked artifacts.
       "fixtureHashes": [],
       "mockedProviders": ["deterministic local provider fixtures"],
       "evidence": [],
-      "reviewer": "pending coordinator verification",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "The development registration and production-absence assertions have not run against an accepted MC9 integration.",
+      "blockerReason": "The development registration and production-absence assertions were not part of the accepted clean 79-test authority boundary and have not been executed at frozen source HEAD 49365b8268e0adefd7eb7df06330addd15e780f3.",
       "retryLineage": [],
       "cleanup": "Workbench evidence must never register the route in a production build or production navigation."
     },
@@ -737,9 +818,9 @@ frames remain outside tracked artifacts.
       "fixtureHashes": [],
       "mockedProviders": [],
       "evidence": [],
-      "reviewer": "pending coordinator and independent review",
+      "reviewer": "Task529 frozen-authority scope audit",
       "severityCounts": [],
-      "blockerReason": "The final matrix starts only after all MC9 implementation slices are integrated and independently verified.",
+      "blockerReason": "Task528's clean 79/79 proof covers only the B0 replay, Playwright configuration, and baseline/MC9 authority contracts; the full TypeScript, Vitest, Vite, Rust, native, platform, release, external-service, performance, and security matrix was not executed as one frozen-source gate.",
       "retryLineage": [],
       "cleanup": "Only exact owned processes and disposable artifacts may be cleaned during future runs."
     }
@@ -752,7 +833,9 @@ frames remain outside tracked artifacts.
 - `PASS` means the exact recorded command completed with exit code zero.
 - `MC9-STRUCTURAL-MANIFEST` proves identifier and path closure only. It does
   not prove browser pixels, native behavior, platform behavior, external
-  services, or the pending replay evidence.
+  services, or B0-R1 replay evidence. The separate frozen-authority block
+  records accepted Task516 browser evidence and Task528's clean 79/79
+  contract proof.
 - `NOT_RUN` never implies partial success.
 - `BLOCKED_MISSING_SOURCE` is retained for future evidence whose exact required
   source is absent; no current record uses it.
