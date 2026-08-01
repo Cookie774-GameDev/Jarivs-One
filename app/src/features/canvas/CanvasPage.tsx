@@ -183,6 +183,7 @@ import {
   type CanvasShape,
   type CanvasShapeKind,
 } from './shapes';
+import './sakura-canvas.css';
 
 type CanvasTool = 'select' | 'lasso' | 'hand' | 'note';
 type CanvasPlacementField = 'x' | 'y' | 'width' | 'height' | 'rotation';
@@ -3154,10 +3155,13 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   return (
     <div
       data-monochrome-route="canvas"
+      data-sakura-route="canvas"
+      data-sakura-intensity="quiet"
       className="mc7d-canvas flex h-full min-h-0 w-full flex-col bg-background text-foreground"
     >
       <header
         data-monochrome-surface="canvas-header"
+        data-sakura-surface="canvas-header"
         className="flex min-h-14 items-center gap-3 border-b border-border bg-background px-4 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
       >
         <div className="min-w-0 flex-1">
@@ -3183,6 +3187,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
         <div
           data-monochrome-surface="canvas-layout-switcher"
+          data-sakura-surface="canvas-layout-switcher"
           className="inline-flex rounded-md border border-border p-1 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-mono"
           aria-label="Canvas layout"
         >
@@ -3214,6 +3219,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             aria-label="Canvas template manager"
             aria-busy={templatePersistenceBusy}
             data-monochrome-surface="canvas-templates"
+            data-sakura-surface="canvas-templates"
             className="absolute right-0 top-11 z-50 max-h-[70vh] w-[32rem] space-y-4 overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <p role="status" aria-label="Custom template persistence status" className="sr-only">
@@ -3416,6 +3422,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             role="search"
             aria-label="Current canvas search"
             data-monochrome-surface="canvas-search"
+            data-sakura-surface="canvas-search"
             className="absolute right-0 top-11 z-50 w-96 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <input
@@ -3504,6 +3511,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             role="group"
             aria-label="Presentation organizer"
             data-monochrome-surface="canvas-frames"
+            data-sakura-surface="canvas-frames"
             className="absolute right-0 top-11 z-50 w-80 space-y-2 rounded-lg border border-border bg-background p-3 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <p className="text-xs text-muted-foreground">
@@ -3667,6 +3675,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             role="group"
             aria-label="Visual export settings"
             data-monochrome-surface="canvas-export"
+            data-sakura-surface="canvas-export"
             className="absolute right-0 top-11 z-50 w-64 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <label className="block space-y-1 text-xs">
@@ -3960,6 +3969,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       <div hidden={presentation.status === 'presenting'} className="flex min-h-0 flex-1">
         <aside
           data-monochrome-surface="canvas-tool-rail"
+          data-sakura-surface="canvas-tool-rail"
           className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border bg-background py-3 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none"
         >
           <div
@@ -4045,6 +4055,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           role="region"
           aria-label="Canvas workspace"
           data-monochrome-surface="canvas-workspace"
+          data-sakura-content="canvas-workspace"
           data-monochrome-state={`${document.layoutMode}:${selected.ids.length > 0 ? 'selected' : 'idle'}`}
           data-layout={document.layoutMode}
           data-camera-x={camera.x}
@@ -4072,6 +4083,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             <div className="absolute inset-0 flex items-center justify-center p-8">
               <div
                 data-monochrome-surface="canvas-empty-state"
+                data-sakura-surface="canvas-empty-state"
                 className="max-w-sm rounded-xl border border-dashed border-border bg-background/90 p-8 text-center shadow-sm [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-solid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
               >
                 <StickyNote aria-hidden className="mx-auto mb-3 text-muted-foreground" />
@@ -4205,6 +4217,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   role="group"
                   aria-label="Selected object resize and rotation handles"
                   data-monochrome-surface="canvas-selection"
+                  data-sakura-surface="canvas-selection"
                   className="pointer-events-none absolute border border-ring [html[data-theme=monochrome]_&]:border-2"
                   style={{
                     left: selectedPlacement.x,
@@ -4308,6 +4321,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               role="region"
               aria-label="Canvas minimap"
               data-monochrome-surface="canvas-minimap"
+              data-sakura-surface="canvas-minimap"
               onPointerDown={(event) => event.stopPropagation()}
               onWheel={(event) => event.stopPropagation()}
               className="absolute bottom-4 right-4 h-28 w-44 overflow-hidden rounded-lg border border-border bg-background/95 p-2 shadow-sm [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
@@ -4339,6 +4353,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
           <div
             data-monochrome-surface="canvas-control-dock"
+            data-sakura-surface="canvas-control-dock"
             className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-sm [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none"
           >
             {document.layoutMode === 'edgeless' ? (
@@ -4478,6 +4493,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             id="canvas-object-outline"
             aria-label="Canvas outline panel"
             data-monochrome-surface="canvas-outline"
+            data-sakura-surface="canvas-outline"
             className="w-72 shrink-0 overflow-auto border-l border-border bg-background [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -4496,6 +4512,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             role="region"
             aria-label="Canvas properties panel"
             data-monochrome-surface="canvas-inspector"
+            data-sakura-surface="canvas-inspector"
             data-monochrome-state={
               selected.ids.length === 0
                 ? 'canvas'

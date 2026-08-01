@@ -8,6 +8,7 @@ import type {
   PromptForgeStatus,
 } from './contracts';
 import type { PromptForgeModelOption } from './modelSelection';
+import './sakura-prompt-forge.css';
 
 export interface PromptForgeControlProps {
   status: PromptForgeStatus;
@@ -68,6 +69,8 @@ export function PromptForgeControl({
     <div
       data-monochrome-surface="prompt-forge"
       data-monochrome-state={status}
+      data-sakura-surface="prompt-forge"
+      data-sakura-state={status}
       className="mc7d-prompt-forge flex items-center gap-0.5 [html[data-theme=monochrome]_&]:font-mono"
     >
       <Hint label={tooltip} hotkey={HOTKEYS.PROMPT_FORGE}>
@@ -112,7 +115,7 @@ export function PromptForgeControl({
             aria-label="Configure Prompt Forge"
             data-monochrome-state={privacyMode}
             className={cn(
-              'h-6 w-4 px-0 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
+              'h-6 min-h-6 w-6 min-w-6 shrink-0 px-0 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
               privacyMode === 'local_only' && 'text-success',
             )}
           >
@@ -128,6 +131,7 @@ export function PromptForgeControl({
           align={compact ? 'start' : 'center'}
           sideOffset={8}
           data-monochrome-surface="prompt-forge-settings"
+          data-sakura-surface="prompt-forge-settings"
           className="w-[min(360px,92vw)] space-y-4 p-3 [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-panel [[data-theme=monochrome]_&]:font-mono [[data-theme=monochrome]_&]:shadow-none"
         >
           <section>

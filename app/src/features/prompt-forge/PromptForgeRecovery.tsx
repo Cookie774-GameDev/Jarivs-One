@@ -3,6 +3,7 @@ import { History, Play, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import type { PromptForgeJob } from './contracts';
+import './sakura-prompt-forge.css';
 
 export interface PromptForgeRecoveryProps {
   job: PromptForgeJob;
@@ -61,6 +62,8 @@ export function PromptForgeRecovery({
       role="status"
       aria-live="polite"
       aria-label="Interrupted Prompt Forge upgrade"
+      data-sakura-surface="prompt-forge-recovery"
+      data-sakura-state={job.status}
       className={cn(
         'relative mb-2 overflow-hidden rounded-lg border border-accent-copper/30 bg-accent-copper/5',
         compact ? 'px-2.5 py-2' : 'px-3 py-2.5',

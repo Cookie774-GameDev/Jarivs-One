@@ -3,6 +3,7 @@ import { Check, Copy, RefreshCw, RotateCcw, ShieldCheck, Sparkles, X } from 'luc
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import type { PromptForgeJob } from './contracts';
+import './sakura-prompt-forge.css';
 
 type ReviewTab = 'upgraded' | 'original' | 'changes' | 'sources';
 type DiffPart = Readonly<{ kind: 'same' | 'added' | 'removed'; text: string }>;
@@ -108,10 +109,14 @@ export function PromptForgeReview({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
+        data-sakura-surface="prompt-forge-review"
         className="flex h-[min(720px,90vh)] w-[min(920px,94vw)] max-w-4xl flex-col gap-0 overflow-hidden border-border/90 bg-elevated p-0"
         aria-label="Prompt Forge review"
       >
-        <header className="relative shrink-0 border-b border-border bg-background/75 px-5 py-4 pr-14">
+        <header
+          data-sakura-surface="prompt-forge-review-header"
+          className="relative shrink-0 border-b border-border bg-background/75 px-5 py-4 pr-14"
+        >
           <div
             aria-hidden
             className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-accent-cyan via-accent-violet to-accent-copper"
@@ -152,6 +157,7 @@ export function PromptForgeReview({
         <div
           role="tablist"
           aria-label="Prompt Forge review views"
+          data-sakura-surface="prompt-forge-review-tabs"
           className="flex shrink-0 gap-1 border-b border-border bg-panel/60 px-4 pt-2"
         >
           {TABS.map((item) => (
@@ -181,7 +187,10 @@ export function PromptForgeReview({
           ))}
         </div>
 
-        <main className="min-h-0 flex-1 overflow-auto bg-background p-4">
+        <main
+          data-sakura-content="prompt-forge-review-content"
+          className="min-h-0 flex-1 overflow-auto bg-background p-4"
+        >
           {tab === 'upgraded' ? (
             <section
               id="prompt-forge-panel-upgraded"
@@ -336,7 +345,10 @@ export function PromptForgeReview({
           </div>
         ) : null}
 
-        <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-elevated px-4 py-3">
+        <footer
+          data-sakura-surface="prompt-forge-review-footer"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-elevated px-4 py-3"
+        >
           <Button
             type="button"
             size="sm"
