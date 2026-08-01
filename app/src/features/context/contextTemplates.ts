@@ -103,8 +103,8 @@ const BUILTIN_DEFINITIONS = [
     description: 'Define a feature, its constraints, behavior, acceptance evidence, and rollout.',
     body: `# {{title}}
 
-**Project:** {{project}}  
-**Date:** {{date}}  
+**Project:** {{project}}\u0020\u0020
+**Date:** {{date}}\u0020\u0020
 **Context Map:** {{context_map}}
 
 ## Problem
@@ -128,8 +128,8 @@ State the user-visible behavior, boundaries, failure modes, and non-goals.
     description: 'Capture a reproducible defect with impact, evidence, and verification.',
     body: `# {{title}}
 
-**Project:** {{project}}  
-**Observed:** {{date}} {{time}}  
+**Project:** {{project}}\u0020\u0020
+**Observed:** {{date}} {{time}}\u0020\u0020
 **Active file:** {{active_file}}
 
 ## Impact
@@ -153,8 +153,8 @@ Attach logs, screenshots, failing tests, root cause, corrected behavior, and reg
     description: 'Document a scoped security issue without exposing sensitive material.',
     body: `# {{title}}
 
-**Repository:** {{github_repository}}  
-**Branch:** {{github_branch}}  
+**Repository:** {{github_repository}}\u0020\u0020
+**Branch:** {{github_branch}}\u0020\u0020
 **Commit:** {{github_sha}}
 
 ## Finding
@@ -176,8 +176,8 @@ Define the smallest safe correction, negative tests, migration implications, and
     description: 'Record an architectural choice, alternatives, consequences, and review triggers.',
     body: `# {{title}}
 
-**Status:** Proposed  
-**Date:** {{date}}  
+**Status:** Proposed\u0020\u0020
+**Date:** {{date}}\u0020\u0020
 **Project:** {{project}}
 
 ## Context
@@ -203,9 +203,9 @@ List benefits, tradeoffs, migration work, observability needs, and conditions th
     description: 'Track release readiness, rollback evidence, communication, and follow-up.',
     body: `# {{title}}
 
-**Repository:** {{github_repository}}  
-**Branch:** {{github_branch}}  
-**Candidate SHA:** {{github_sha}}  
+**Repository:** {{github_repository}}\u0020\u0020
+**Branch:** {{github_branch}}\u0020\u0020
+**Candidate SHA:** {{github_sha}}\u0020\u0020
 **Date:** {{date}}
 
 ## Readiness
@@ -227,8 +227,8 @@ List benefits, tradeoffs, migration work, observability needs, and conditions th
     description: 'Preserve a question, sources, observations, uncertainty, and next steps.',
     body: `# {{title}}
 
-**Project:** {{project}}  
-**Date:** {{date}}  
+**Project:** {{project}}\u0020\u0020
+**Date:** {{date}}\u0020\u0020
 **Context Map:** {{context_map}}
 
 ## Question
@@ -254,8 +254,8 @@ List the smallest experiments, decisions, or follow-up research needed.
     description: 'Capture agenda, decisions, actions, and unresolved questions.',
     body: `# {{title}}
 
-**Date:** {{date}} {{time}}  
-**Project:** {{project}}  
+**Date:** {{date}} {{time}}\u0020\u0020
+**Project:** {{project}}\u0020\u0020
 **Active agent:** {{active_agent}}
 
 ## Attendees and Agenda
@@ -285,8 +285,8 @@ List unresolved issues and the person responsible for follow-up.
     description: 'Document commands, observed output, hypotheses, and safe conclusions.',
     body: `# {{title}}
 
-**Terminal:** {{active_terminal}}  
-**Project:** {{project}}  
+**Terminal:** {{active_terminal}}\u0020\u0020
+**Project:** {{project}}\u0020\u0020
 **Date:** {{date}} {{time}}
 
 ## Symptom
@@ -312,8 +312,8 @@ Record the verified root cause, applied correction, focused checks, and remainin
     description: 'Review a pull request for correctness, security, tests, and integration risk.',
     body: `# GitHub PR Review: {{title}}
 
-**Repository:** {{github_repository}}  
-**Branch:** {{github_branch}}  
+**Repository:** {{github_repository}}\u0020\u0020
+**Branch:** {{github_branch}}\u0020\u0020
 **SHA:** {{github_sha}}
 
 ## Scope
@@ -339,8 +339,8 @@ State ready, changes requested, or blocked, with remaining risks and owners.
     description: 'Compare models against the same task, evidence, cost, and quality criteria.',
     body: `# {{title}}
 
-**Project:** {{project}}  
-**Date:** {{date}}  
+**Project:** {{project}}\u0020\u0020
+**Date:** {{date}}\u0020\u0020
 **Active agent:** {{active_agent}}
 
 ## Evaluation Contract
@@ -366,8 +366,8 @@ Choose the best fit by workload and record fallback or routing conditions.
     description: 'Specify an authorized Prompt Forge objective and its acceptance evidence.',
     body: `# {{title}}
 
-**Project:** {{project}}  
-**Context Map:** {{context_map}}  
+**Project:** {{project}}\u0020\u0020
+**Context Map:** {{context_map}}\u0020\u0020
 **Date:** {{date}}
 
 ## Objective
@@ -393,8 +393,8 @@ Define focused development checks and the exhaustive final evidence required bef
     description: 'Summarize verified development progress and next actions for one local day.',
     body: `# Daily Development Log — {{date}}
 
-**Project:** {{project}}  
-**Context Map:** {{context_map}}  
+**Project:** {{project}}\u0020\u0020
+**Context Map:** {{context_map}}\u0020\u0020
 **Active branch:** {{github_branch}}
 
 ## Completed
@@ -421,8 +421,8 @@ Record the smallest unblocked next actions without claiming unfinished work is c
       'Plan a visual canvas with goals, nodes, connections, layout, and review criteria.',
     body: `# {{title}}
 
-**Project:** {{project}}  
-**Context Map:** {{context_map}}  
+**Project:** {{project}}\u0020\u0020
+**Context Map:** {{context_map}}\u0020\u0020
 **Date:** {{date}}
 
 ## Canvas Goal
