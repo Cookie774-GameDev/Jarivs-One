@@ -1,5 +1,5 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { Loader2, AlertCircle, Network, Terminal, Zap, type LucideIcon } from 'lucide-react';
 import { scrollPickerItemIntoView } from './pickerScroll';

@@ -282,6 +282,7 @@ export function ChatActivityTimeline({
       data-testid="jarvis-session-panel"
       className={cn(
         'overflow-hidden rounded-xl border border-accent-copper/30 bg-panel/85 shadow-soft',
+        '[html[data-theme=monochrome]_&]:shadow-none',
         compact ? 'mx-1' : 'mx-0',
       )}
       aria-label="Jarvis session"

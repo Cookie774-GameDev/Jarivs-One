@@ -71,8 +71,14 @@ describe('ModelPickerTypeahead smoke transports', () => {
 
     const nativeControl = container.querySelector('[data-sik-evidence="model.transport-native"]');
     const cliControl = container.querySelector('[data-sik-evidence="model.transport-cli"]');
+    const surface = container.querySelector<HTMLElement>('.jarvis-slash-dropdown');
     expect(nativeControl).not.toBeNull();
     expect(cliControl).not.toBeNull();
+    expect(surface).not.toBeNull();
+    expect(surface?.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+    expect(surface?.className).toContain('[html[data-theme=monochrome]_&]:backdrop-blur-none');
+    expect(surface?.className).toContain('[html[data-theme=monochrome]_&_*]:bg-none');
+    expect(surface?.className).toContain('[html[data-theme=monochrome]_&_*]:shadow-none');
     fireEvent.click(cliControl!);
     expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli);
   });

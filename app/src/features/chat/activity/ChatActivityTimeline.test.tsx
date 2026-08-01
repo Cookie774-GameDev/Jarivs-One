@@ -15,7 +15,10 @@ describe('ChatActivityTimeline always-visible session panel', () => {
   it('renders the Jarvis session dashboard even with no activity events', () => {
     render(<ChatActivityTimeline chatId="chat_empty" />);
 
-    expect(screen.getByTestId('jarvis-session-panel')).toBeTruthy();
+    const panel = screen.getByTestId('jarvis-session-panel');
+    expect(panel).toBeTruthy();
+    expect(panel.className).toContain('shadow-soft');
+    expect(panel.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
     expect(screen.getByLabelText('Jarvis session')).toBeTruthy();
     expect(screen.getByText('Jarvis session')).toBeTruthy();
     expect(screen.getByText(/Ready — send a message/i)).toBeTruthy();
