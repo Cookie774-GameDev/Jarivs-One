@@ -39,6 +39,7 @@ const MAX_STREAM_SIZE_PART = 8000;
 export interface ChatThreadProps {
   chatId: ChatId | string;
   compact?: boolean;
+  fixtureMessages?: readonly Message[];
 }
 
 function useCurrentCanonicalRun(
@@ -134,8 +135,9 @@ function roughPayloadSize(value: unknown): number {
  * streaming - but only if the user is already near the bottom. If the user
  * has scrolled up to read history, we do not yank them.
  */
-export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
-  const messages = useChatMessages(chatId);
+export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThreadProps) {
+  const persistedMessages = useChatMessages(fixtureMessages ? null : chatId);
+  const messages = fixtureMessages ?? persistedMessages;
   const commandCenterBinding = useJarvisCommandCenterBinding();
   const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
     Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
@@ -272,6 +274,7 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
       aria-live="polite"
       aria-relevant="additions text"
       data-tour="chat-thread"
+      data-sakura-surface="message-scroll"
       data-sik-evidence={
         KERNEL_SMOKE_ENABLED && hasCanonicalRun ? SIK_EVIDENCE.chatRunShell : undefined
       }
@@ -285,6 +288,7 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
         data-sik-evidence={
           KERNEL_SMOKE_ENABLED && commandCenterBinding ? SIK_EVIDENCE.chatRuntimeReady : undefined
         }
+        data-sakura-surface="message-stack"
         className={
           compact
             ? 'flex w-full flex-col gap-3 px-2 py-3'
@@ -331,13 +335,13 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
   );
 }
 
-function extractAgentCards(messages: Message[]) {
+function extractAgentCards(messages: readonly Message[]) {
   return messages.flatMap((message) =>
     message.parts.flatMap((part) => (part.kind === 'agent_card' ? [part.agent] : [])),
   );
 }
 
-function detectCreatorDraftKind(messages: Message[]): JarvisCreatorKind | undefined {
+function detectCreatorDraftKind(messages: readonly Message[]): JarvisCreatorKind | undefined {
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.kind !== 'question_block') continue;
@@ -350,7 +354,10 @@ function detectCreatorDraftKind(messages: Message[]): JarvisCreatorKind | undefi
 
 function ThreadHint() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+    <div
+      data-sakura-surface="thread-empty"
+      className="flex flex-col items-center justify-center gap-3 py-12 text-center"
+    >
       <div className="rounded-full border border-border bg-elevated p-3">
         <Sparkles className="h-5 w-5 text-accent-cyan" />
       </div>

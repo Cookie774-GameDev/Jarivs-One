@@ -135,4 +135,22 @@ describe('ChatThread creator push-button scoping', () => {
     expect(screen.queryByRole('button', { name: /Push to agent/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /Push to skill/i })).toBeNull();
   });
+
+  it('marks only app-owned message chrome and leaves authored payload nodes unmarked', () => {
+    mockState.messages = [
+      message({
+        id: 'msg_payload' as Message['id'],
+        role: 'user',
+        parts: [{ kind: 'text', text: 'Keep my authored payload unchanged' }],
+      }),
+    ];
+
+    const { container } = renderThread();
+
+    expect(screen.getByRole('log').getAttribute('data-sakura-surface')).toBe('message-scroll');
+    expect(container.querySelector('[data-sakura-surface="message-stack"]')).not.toBeNull();
+    expect(
+      screen.getByText('Keep my authored payload unchanged').hasAttribute('data-sakura-surface'),
+    ).toBe(false);
+  });
 });

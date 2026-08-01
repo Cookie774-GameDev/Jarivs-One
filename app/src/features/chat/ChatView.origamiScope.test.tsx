@@ -48,6 +48,7 @@ function expectOrigamiRoot(container: HTMLElement) {
   const root = container.querySelector("[data-vibespace-page='chat']");
   expect(root).not.toBeNull();
   expect(root?.getAttribute('data-vibespace-page')).toBe('chat');
+  expect(root?.getAttribute('data-sakura-surface')).toBe('chat-route');
 }
 
 describe('ChatView Origami route scope', () => {
