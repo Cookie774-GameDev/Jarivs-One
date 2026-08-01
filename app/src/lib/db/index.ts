@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V8 migrations are purely additive. Dexie replays each version's store
+ * V1 → V9 migrations preserve every existing row. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V8.
+ * New installs open directly on V9.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -38,6 +38,7 @@ import {
   STORES_V6,
   STORES_V7,
   STORES_V8,
+  STORES_V9,
   type CanvasAssetRow,
   type CanvasCameraRow,
   type CanvasDocumentRow,
@@ -65,6 +66,8 @@ import {
   type JarvisIdentityRevisionRow,
   type JarvisProfileRow,
   type JarvisRunRow,
+  type MemoryEvidenceHistoryRow,
+  type MemoryEvidenceRow,
   type Project,
   type PromptForgeJobRow,
   type SettingsRow,
@@ -90,7 +93,7 @@ export class JarvisDexie extends Dexie {
   messages!: EntityTable<Message, 'id'>;
   agents!: EntityTable<Agent, 'id'>;
   tasks!: EntityTable<Task, 'id'>;
-  memory_items!: EntityTable<MemoryItem, 'id'>;
+  memory_items!: EntityTable<MemoryItem | MemoryEvidenceRow, 'id'>;
   settings!: EntityTable<SettingsRow, 'key'>;
   sync_queue!: EntityTable<SyncQueueRow, 'id'>;
 
@@ -149,6 +152,9 @@ export class JarvisDexie extends Dexie {
   canvas_tombstones!: EntityTable<CanvasTombstoneRow, 'id'>;
   canvas_recovery!: EntityTable<CanvasRecoveryRow, 'id'>;
 
+  // V9 curated memory evidence history (memory items remain in memory_items)
+  memory_evidence_history!: EntityTable<MemoryEvidenceHistoryRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -160,6 +166,7 @@ export class JarvisDexie extends Dexie {
     this.version(6).stores(STORES_V6);
     this.version(7).stores(STORES_V7);
     this.version(8).stores(STORES_V8);
+    this.version(9).stores(STORES_V9);
   }
 }
 
@@ -220,6 +227,8 @@ export type {
   ContextAssetRow,
   ContextEmbeddingRow,
   PromptForgeJobRow,
+  MemoryEvidenceRow,
+  MemoryEvidenceHistoryRow,
   CanvasDocumentRow,
   CanvasPageRow,
   CanvasObjectRow,

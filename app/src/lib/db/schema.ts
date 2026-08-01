@@ -28,6 +28,7 @@ import type {
 } from '@/features/context/contentContracts';
 import type { ContextEmbeddingRecordV1 } from '@/features/context/semanticSearch';
 import type { PromptForgeJob } from '@/features/prompt-forge/contracts';
+import type { MemoryEvidenceItem } from '@/features/jarvis-memory/types';
 import type {
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
@@ -338,6 +339,22 @@ export type ContextAssetRow = ContextAssetV2;
 export type ContextEmbeddingRow = ContextEmbeddingRecordV1;
 export type PromptForgeJobRow = PromptForgeJob;
 
+export type MemoryEvidenceRow = MemoryEvidenceItem & {
+  schemaVersion: 1;
+  recordKind: 'evidence';
+  revision: number;
+};
+
+export type MemoryEvidenceHistoryRow = {
+  id: string;
+  evidenceId: string;
+  ownerId: string;
+  revision: number;
+  action: 'created' | 'updated' | 'deleted';
+  snapshot: MemoryEvidenceRow;
+  createdAt: number;
+};
+
 export type ContextMigrationBackupRow = {
   version: 1;
   id: string;
@@ -576,8 +593,8 @@ export type CanvasRecoveryRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 8 for the Infinite Idea Canvas tables. */
-export const DB_VERSION = 8;
+/** Current schema version — bumped to 9 for durable curated memory evidence. */
+export const DB_VERSION = 9;
 
 /**
  * Dexie store schema strings.
@@ -729,6 +746,21 @@ export const STORES_V8 = {
     'id, accountId, documentId, kind, status, [accountId+documentId], [documentId+status], [documentId+kind], createdAt',
 } as const;
 
-export const STORES = STORES_V8;
+/**
+ * V9 keeps the legacy memory indexes so pre-existing readers and rows remain
+ * valid, adds account-scoped evidence indexes to that same store, and adds an
+ * append-only revision history. Rows without `recordKind: "evidence"` remain
+ * byte-for-byte intact and are intentionally invisible to the evidence repo.
+ */
+// prettier-ignore
+export const STORES_V9 = {
+  ...STORES_V8,
+  memory_items:
+    'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at, recordKind, ownerId, profileId, workspaceId, projectId, status, category, [ownerId+status], [ownerId+workspaceId], [ownerId+workspaceId+projectId], updatedAt',
+  memory_evidence_history:
+    'id, evidenceId, ownerId, revision, &[evidenceId+revision], [ownerId+evidenceId], createdAt',
+} as const;
+
+export const STORES = STORES_V9;
 
 export type StoreName = keyof typeof STORES;

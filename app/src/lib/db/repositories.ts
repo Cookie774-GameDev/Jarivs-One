@@ -49,6 +49,8 @@ import type { Chat, ChatMode, Message } from '@/types/chat';
 import type { EventRow, EventStatus } from '@/types/event';
 import type { Integration, IntegrationKind } from '@/types/integration';
 import type { MemoryItem } from '@/types/memory';
+import type { MemoryEvidenceItem, MemoryEvidenceStatus } from '@/features/jarvis-memory/types';
+import { hasDetectedSecret } from '@/lib/security/secretDetector';
 import type { QuickLink, QuickLinkGroup } from '@/types/quick-link';
 import type {
   EnergyLevel,
@@ -81,9 +83,18 @@ import {
   newTerminalSessionId,
   newWorkspaceId,
 } from '@/lib/ids';
-import { db } from './index';
+import { db, type JarvisDexie } from './index';
 import { enqueueLocalSyncInTransaction } from './kernelTurnTransactionAuthority';
-import type { Project, SettingsRow, StoreName, SyncOp, SyncQueueRow, Workspace } from './schema';
+import type {
+  MemoryEvidenceHistoryRow,
+  MemoryEvidenceRow,
+  Project,
+  SettingsRow,
+  StoreName,
+  SyncOp,
+  SyncQueueRow,
+  Workspace,
+} from './schema';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -940,6 +951,15 @@ export type MemoryListFilter = {
   limit?: number;
 };
 
+const legacyMemoryItems = db.memory_items as unknown as import('dexie').EntityTable<
+  MemoryItem,
+  'id'
+>;
+
+function isLegacyMemoryItem(value: MemoryItem | MemoryEvidenceRow): value is MemoryItem {
+  return !('recordKind' in value) && 'workspace_id' in value && 'source_ref' in value;
+}
+
 /**
  * CRUD over the `memory_items` table.
  *
@@ -949,15 +969,20 @@ export type MemoryListFilter = {
  */
 export const memoryRepo = {
   async getById(id: string): Promise<MemoryItem | undefined> {
-    return db.memory_items.get(id);
+    const row = await db.memory_items.get(id);
+    return row && isLegacyMemoryItem(row) ? row : undefined;
   },
   async list(filter?: MemoryListFilter): Promise<MemoryItem[]> {
-    let rows: MemoryItem[];
+    let storedRows: Array<MemoryItem | MemoryEvidenceRow>;
     if (filter?.workspace_id) {
-      rows = await db.memory_items.where('workspace_id').equals(filter.workspace_id).toArray();
+      storedRows = await db.memory_items
+        .where('workspace_id')
+        .equals(filter.workspace_id)
+        .toArray();
     } else {
-      rows = await db.memory_items.toArray();
+      storedRows = await db.memory_items.toArray();
     }
+    let rows = storedRows.filter(isLegacyMemoryItem);
     if (filter?.project_id !== undefined) {
       rows = rows.filter((m) => m.project_id === filter.project_id);
     }
@@ -977,16 +1002,22 @@ export const memoryRepo = {
     return rows;
   },
   async listByWorkspace(workspaceId: WorkspaceId): Promise<MemoryItem[]> {
-    return db.memory_items.where('workspace_id').equals(workspaceId).toArray();
+    const rows = await db.memory_items.where('workspace_id').equals(workspaceId).toArray();
+    return rows.filter(isLegacyMemoryItem);
   },
   async listBySource(
     workspaceId: WorkspaceId,
     source: MemoryItem['source'],
   ): Promise<MemoryItem[]> {
-    return db.memory_items.where('[workspace_id+source]').equals([workspaceId, source]).toArray();
+    const rows = await db.memory_items
+      .where('[workspace_id+source]')
+      .equals([workspaceId, source])
+      .toArray();
+    return rows.filter(isLegacyMemoryItem);
   },
   async listByAgent(agentId: AgentId): Promise<MemoryItem[]> {
-    return db.memory_items.where('agent_id').equals(agentId).toArray();
+    const rows = await db.memory_items.where('agent_id').equals(agentId).toArray();
+    return rows.filter(isLegacyMemoryItem);
   },
   async create(input: MemoryCreateInput): Promise<MemoryItem> {
     const syncOwner = captureSyncQueueOwner();
@@ -997,30 +1028,249 @@ export const memoryRepo = {
       created_at: ts,
       updated_at: ts,
     } as MemoryItem;
-    await db.memory_items.add(row);
+    await legacyMemoryItems.add(row);
     await syncInsert('memory_items', row, syncOwner);
     return row;
   },
   async update(id: string, patch: Partial<MemoryItem>): Promise<MemoryItem> {
     const syncOwner = captureSyncQueueOwner();
-    await db.memory_items.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
-    const row = await requireRow(() => db.memory_items.get(id), 'memory_item', id);
+    await requireRow(() => memoryRepo.getById(id), 'memory_item', id);
+    await legacyMemoryItems.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
+    const row = await requireRow(() => legacyMemoryItems.get(id), 'memory_item', id);
     await syncUpdate('memory_items', row, syncOwner);
     return row;
   },
   async delete(id: string): Promise<void> {
     const syncOwner = captureSyncQueueOwner();
-    await db.memory_items.delete(id);
+    await requireRow(() => memoryRepo.getById(id), 'memory_item', id);
+    await legacyMemoryItems.delete(id);
     await syncDelete('memory_items', id, syncOwner);
   },
   /** Stamp `last_accessed_at` to mark a memory item as recently used by retrieval. */
   async touchAccessed(id: string): Promise<void> {
     const syncOwner = captureSyncQueueOwner();
-    await db.memory_items.update(id, { last_accessed_at: now() });
-    const row = await db.memory_items.get(id);
+    await requireRow(() => memoryRepo.getById(id), 'memory_item', id);
+    await legacyMemoryItems.update(id, { last_accessed_at: now() });
+    const row = await legacyMemoryItems.get(id);
     if (row) await syncUpdate('memory_items', row, syncOwner);
   },
 };
+
+// ---------------------------------------------------------------------------
+// Curated memory evidence (V9)
+// ---------------------------------------------------------------------------
+
+export type MemoryEvidenceListFilter = {
+  profileId?: string;
+  workspaceId?: string;
+  projectId?: string;
+  status?: MemoryEvidenceStatus;
+};
+
+const MEMORY_EVIDENCE_STATUSES = new Set<MemoryEvidenceStatus>([
+  'candidate',
+  'pending_approval',
+  'approved',
+  'rejected',
+  'superseded',
+  'archived',
+]);
+
+function isMemoryEvidenceRow(value: MemoryItem | MemoryEvidenceRow): value is MemoryEvidenceRow {
+  return (
+    'recordKind' in value &&
+    value.recordKind === 'evidence' &&
+    value.schemaVersion === 1 &&
+    Number.isInteger(value.revision) &&
+    value.revision > 0
+  );
+}
+
+function assertMemoryEvidence(
+  ownerId: string,
+  value: MemoryEvidenceItem,
+  existing?: MemoryEvidenceRow,
+): void {
+  const persistedText = [value.content, value.sourceRef.label, value.sourceRef.uri ?? ''].join(
+    '\n',
+  );
+  const containsPromptOverride =
+    /(?:ignore|disregard|override)\s+(?:all\s+|any\s+|the\s+)?(?:(?:previous|prior)\s+)?(?:(?:system|developer)\s+)?(?:instructions?|messages?|prompts?)|(?:reveal|print|expose)\s+(?:the\s+)?(?:system|developer)\s+(?:instructions?|messages?|prompts?)|<\s*\/?\s*(?:system|developer)\s*>|\bjailbreak\b/i.test(
+      persistedText,
+    );
+  if (
+    !ownerId.trim() ||
+    value.ownerId !== ownerId ||
+    !value.id.trim() ||
+    !value.workspaceId.trim() ||
+    !value.content.trim() ||
+    value.content.length > 4_000 ||
+    !value.sourceRef.kind.trim() ||
+    !value.sourceRef.id.trim() ||
+    !value.sourceRef.label.trim() ||
+    !Number.isFinite(value.sourceRef.occurredAt) ||
+    value.sourceRef.occurredAt < 0 ||
+    !Number.isFinite(value.confidence) ||
+    value.confidence < 0 ||
+    value.confidence > 1 ||
+    !Number.isFinite(value.durabilityScore) ||
+    value.durabilityScore < 0 ||
+    value.durabilityScore > 1 ||
+    !Number.isInteger(value.reinforcedCount) ||
+    value.reinforcedCount < 1 ||
+    !MEMORY_EVIDENCE_STATUSES.has(value.status) ||
+    value.sensitivity === 'prohibited' ||
+    hasDetectedSecret(persistedText) ||
+    containsPromptOverride
+  ) {
+    throw new Error('memory_evidence_rejected');
+  }
+  if (value.sensitivity === 'sensitive') {
+    throw new Error('memory_evidence_encryption_required');
+  }
+  if (
+    existing &&
+    (value.id !== existing.id ||
+      value.ownerId !== existing.ownerId ||
+      value.profileId !== existing.profileId ||
+      value.workspaceId !== existing.workspaceId ||
+      value.projectId !== existing.projectId ||
+      value.createdAt !== existing.createdAt)
+  ) {
+    throw new Error('memory_evidence_scope_immutable');
+  }
+}
+
+function evidenceHistory(
+  row: MemoryEvidenceRow,
+  action: MemoryEvidenceHistoryRow['action'],
+  createdAt: number,
+): MemoryEvidenceHistoryRow {
+  return {
+    id: `${row.id}:${row.revision}`,
+    evidenceId: row.id,
+    ownerId: row.ownerId,
+    revision: row.revision,
+    action,
+    snapshot: structuredClone(row),
+    createdAt,
+  };
+}
+
+export function createMemoryEvidenceRepository(database: JarvisDexie, clock: () => number = now) {
+  return {
+    async create(ownerId: string, item: MemoryEvidenceItem): Promise<MemoryEvidenceRow> {
+      assertMemoryEvidence(ownerId, item);
+      const row: MemoryEvidenceRow = {
+        ...structuredClone(item),
+        schemaVersion: 1,
+        recordKind: 'evidence',
+        revision: 1,
+      };
+      await database.transaction(
+        'rw',
+        database.memory_items,
+        database.memory_evidence_history,
+        async () => {
+          if (await database.memory_items.get(row.id)) {
+            throw new Error('memory_evidence_conflict');
+          }
+          await database.memory_items.add(row);
+          await database.memory_evidence_history.add(evidenceHistory(row, 'created', clock()));
+        },
+      );
+      return structuredClone(row);
+    },
+
+    async getById(ownerId: string, id: string): Promise<MemoryEvidenceRow | undefined> {
+      if (!ownerId.trim() || !id.trim()) return undefined;
+      const row = await database.memory_items.get(id);
+      return row && isMemoryEvidenceRow(row) && row.ownerId === ownerId
+        ? structuredClone(row)
+        : undefined;
+    },
+
+    async list(
+      ownerId: string,
+      filter: MemoryEvidenceListFilter = {},
+    ): Promise<MemoryEvidenceRow[]> {
+      if (!ownerId.trim()) return [];
+      const rows = filter.status
+        ? await database.memory_items
+            .where('[ownerId+status]')
+            .equals([ownerId, filter.status])
+            .toArray()
+        : await database.memory_items.where('ownerId').equals(ownerId).toArray();
+      return rows
+        .filter(isMemoryEvidenceRow)
+        .filter(
+          (row) =>
+            row.ownerId === ownerId &&
+            (filter.profileId === undefined || row.profileId === filter.profileId) &&
+            (filter.workspaceId === undefined || row.workspaceId === filter.workspaceId) &&
+            (filter.projectId === undefined || row.projectId === filter.projectId),
+        )
+        .sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
+        .map((row) => structuredClone(row));
+    },
+
+    async replace(ownerId: string, item: MemoryEvidenceItem): Promise<MemoryEvidenceRow> {
+      return database.transaction(
+        'rw',
+        database.memory_items,
+        database.memory_evidence_history,
+        async () => {
+          const current = await database.memory_items.get(item.id);
+          if (!current || !isMemoryEvidenceRow(current) || current.ownerId !== ownerId) {
+            throw new Error('memory_evidence_not_found');
+          }
+          assertMemoryEvidence(ownerId, item, current);
+          const row: MemoryEvidenceRow = {
+            ...structuredClone(item),
+            updatedAt: clock(),
+            schemaVersion: 1,
+            recordKind: 'evidence',
+            revision: current.revision + 1,
+          };
+          await database.memory_items.put(row);
+          await database.memory_evidence_history.add(evidenceHistory(row, 'updated', clock()));
+          return structuredClone(row);
+        },
+      );
+    },
+
+    async delete(ownerId: string, id: string): Promise<void> {
+      await database.transaction(
+        'rw',
+        database.memory_items,
+        database.memory_evidence_history,
+        async () => {
+          const current = await database.memory_items.get(id);
+          if (!current || !isMemoryEvidenceRow(current) || current.ownerId !== ownerId) {
+            throw new Error('memory_evidence_not_found');
+          }
+          const deleted = { ...current, revision: current.revision + 1, updatedAt: clock() };
+          await database.memory_evidence_history.add(evidenceHistory(deleted, 'deleted', clock()));
+          await database.memory_items.delete(id);
+        },
+      );
+    },
+
+    async history(ownerId: string, evidenceId: string): Promise<MemoryEvidenceHistoryRow[]> {
+      if (!ownerId.trim() || !evidenceId.trim()) return [];
+      const rows = await database.memory_evidence_history
+        .where('[ownerId+evidenceId]')
+        .equals([ownerId, evidenceId])
+        .toArray();
+      return rows
+        .filter((row) => row.ownerId === ownerId && row.evidenceId === evidenceId)
+        .sort((left, right) => left.revision - right.revision)
+        .map((row) => structuredClone(row));
+    },
+  };
+}
+
+export const memoryEvidenceRepo = createMemoryEvidenceRepository(db);
 
 // ---------------------------------------------------------------------------
 // Settings

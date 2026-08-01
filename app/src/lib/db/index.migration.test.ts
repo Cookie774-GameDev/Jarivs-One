@@ -45,6 +45,7 @@ import {
   STORES_V6,
   STORES_V7,
   STORES_V8,
+  STORES_V9,
   type CanvasAssetRow,
   type CanvasCameraRow,
   type CanvasDocumentRow,
@@ -67,6 +68,8 @@ import {
   type JarvisIdentityRevisionRow,
   type JarvisProfileRow,
   type JarvisRunRow,
+  type MemoryEvidenceHistoryRow,
+  type MemoryEvidenceRow,
   type Project,
   type PromptForgeJobRow,
   type SettingsRow,
@@ -169,6 +172,14 @@ const EXPECTED_STORES_V8 = {
     'id, accountId, documentId, entityId, entityKind, [accountId+documentId], [documentId+entityKind], deletedAt',
   canvas_recovery:
     'id, accountId, documentId, kind, status, [accountId+documentId], [documentId+status], [documentId+kind], createdAt',
+} as const;
+
+const EXPECTED_STORES_V9 = {
+  ...EXPECTED_STORES_V8,
+  memory_items:
+    'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at, recordKind, ownerId, profileId, workspaceId, projectId, status, category, [ownerId+status], [ownerId+workspaceId], [ownerId+workspaceId+projectId], updatedAt',
+  memory_evidence_history:
+    'id, evidenceId, ownerId, revision, &[evidenceId+revision], [ownerId+evidenceId], createdAt',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -588,7 +599,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V8 additive migration', () => {
+describe('Jarvis Dexie V9 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -599,19 +610,20 @@ describe('Jarvis Dexie V8 additive migration', () => {
     expect(STORES_V6).toEqual(EXPECTED_STORES_V6);
     expect(STORES_V7).toEqual(EXPECTED_STORES_V7);
     expect(STORES_V8).toEqual(EXPECTED_STORES_V8);
+    expect(STORES_V9).toEqual(EXPECTED_STORES_V9);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(8);
+    expect(DB_VERSION).toBe(9);
   });
 
-  it('opens every legacy, kernel, Context, Prompt Forge, and Canvas store on a fresh V8 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v8-fresh'));
+  it('opens every legacy, kernel, Context, Prompt Forge, Canvas, and memory-evidence store on a fresh V9 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v9-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V8).sort(),
+      Object.keys(STORES_V9).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -640,7 +652,12 @@ describe('Jarvis Dexie V8 additive migration', () => {
     expectTypeOf<JarvisDexie['messages']>().toEqualTypeOf<EntityTable<Message, 'id'>>();
     expectTypeOf<JarvisDexie['agents']>().toEqualTypeOf<EntityTable<Agent, 'id'>>();
     expectTypeOf<JarvisDexie['tasks']>().toEqualTypeOf<EntityTable<Task, 'id'>>();
-    expectTypeOf<JarvisDexie['memory_items']>().toEqualTypeOf<EntityTable<MemoryItem, 'id'>>();
+    expectTypeOf<JarvisDexie['memory_items']>().toEqualTypeOf<
+      EntityTable<MemoryItem | MemoryEvidenceRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['memory_evidence_history']>().toEqualTypeOf<
+      EntityTable<MemoryEvidenceHistoryRow, 'id'>
+    >();
     expectTypeOf<JarvisDexie['settings']>().toEqualTypeOf<EntityTable<SettingsRow, 'key'>>();
     expectTypeOf<JarvisDexie['sync_queue']>().toEqualTypeOf<EntityTable<SyncQueueRow, 'id'>>();
     expectTypeOf<JarvisDexie['events']>().toEqualTypeOf<EntityTable<EventRow, 'id'>>();
@@ -1214,7 +1231,7 @@ describe('Jarvis Dexie V8 additive migration', () => {
     database.close();
   });
 
-  it('declares V8 additively without a destructive upgrade callback', () => {
+  it('declares V9 additively without a destructive upgrade callback', () => {
     const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
@@ -1225,5 +1242,6 @@ describe('Jarvis Dexie V8 additive migration', () => {
     expect(source).toContain('this.version(6).stores(STORES_V6)');
     expect(source).toContain('this.version(7).stores(STORES_V7)');
     expect(source).toContain('this.version(8).stores(STORES_V8)');
+    expect(source).toContain('this.version(9).stores(STORES_V9)');
   });
 });
