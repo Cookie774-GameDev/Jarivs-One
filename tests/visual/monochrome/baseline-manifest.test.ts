@@ -34,6 +34,12 @@ function sha256(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
+function sha256Text(path: string): string {
+  return createHash('sha256')
+    .update(readFileSync(path, 'utf8').replaceAll('\r\n', '\n'))
+    .digest('hex');
+}
+
 function sha256AtCommit(commit: string, path: string): string {
   const archivedSource = execFileSync('git', ['show', `${commit}:${path}`]);
   return createHash('sha256').update(archivedSource).digest('hex');
@@ -105,12 +111,15 @@ test('B0 authority hashes are re-derived from the exact frozen files and capture
     sha256AtCommit(manifest.harnessCommit, 'tests/visual/monochrome/route-manifest.ts'),
     manifest.routeManifestSha256,
   );
-  assert.equal(sha256('tests/visual/monochrome/fixtures.ts'), manifest.fixtureSourceSha256);
+  assert.equal(sha256Text('tests/visual/monochrome/fixtures.ts'), manifest.fixtureSourceSha256);
   assert.equal(
-    sha256('tests/visual/monochrome/fixture-manifest.ts'),
+    sha256Text('tests/visual/monochrome/fixture-manifest.ts'),
     manifest.fixtureManifestSha256,
   );
-  assert.equal(sha256('tests/visual/chat/fixture-data.mjs'), manifest.origamiFixtureSourceSha256);
+  assert.equal(
+    sha256Text('tests/visual/chat/fixture-data.mjs'),
+    manifest.origamiFixtureSourceSha256,
+  );
   assert.equal(shiftedOrigamiFixtureHash(), manifest.captureFixtureSha256);
 });
 
