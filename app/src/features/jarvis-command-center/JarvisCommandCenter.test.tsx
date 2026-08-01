@@ -202,8 +202,11 @@ describe('JarvisCommandCenter', () => {
     );
 
     const toggle = await screen.findByRole('button', { name: /expand command center/i });
+    const commandCenter = screen.getByTestId('jarvis-command-center');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.getAttribute('title')).toBe('Expand Command Center');
+    expect(commandCenter.getAttribute('data-jarvis-expansion')).toBe('collapsed');
+    expect(commandCenter.getAttribute('data-jarvis-run-state')).toBe('running');
     expect(
       document.querySelector('[data-sik-evidence="run.status"]')?.getAttribute('data-run-status'),
     ).toBe('running');
@@ -215,6 +218,7 @@ describe('JarvisCommandCenter', () => {
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute('title')).toBe('Collapse Command Center');
+    expect(commandCenter.getAttribute('data-jarvis-expansion')).toBe('expanded');
   });
 
   it('embeds the canonical body without a duplicate disclosure and keeps exactly two tabs', async () => {

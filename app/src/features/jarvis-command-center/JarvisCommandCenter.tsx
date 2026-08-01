@@ -276,6 +276,8 @@ export function JarvisCommandCenter({
       )}
       aria-label={embedded ? 'Jarvis Command Center details' : 'Jarvis Command Center'}
       data-monochrome-surface="jarvis-command-center"
+      data-jarvis-expansion={expanded ? 'expanded' : 'collapsed'}
+      data-jarvis-run-state={run?.status ?? 'empty'}
       data-testid="jarvis-command-center"
       data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterSurface : undefined}
       data-motion-enabled={KERNEL_SMOKE_ENABLED ? String(!reducedMotion) : undefined}
