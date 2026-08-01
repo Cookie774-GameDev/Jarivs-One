@@ -56,24 +56,28 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-const frontmatterStart = '<!-- MONOCHROME_JSON_FRONTMATTER\n';
-const frontmatterEnd = '\nMONOCHROME_JSON_FRONTMATTER -->';
+const frontmatterPattern =
+  /^(<!-- MONOCHROME_JSON_FRONTMATTER\r?\n)([\s\S]*?)(\r?\nMONOCHROME_JSON_FRONTMATTER -->)/u;
+
+function matchMarkdownFrontmatter(source) {
+  const match = frontmatterPattern.exec(source);
+  assert.ok(match, 'expected delimited JSON frontmatter');
+  return match;
+}
 
 function readMarkdownFrontmatter(path) {
   const source = readFileSync(path, 'utf8');
-  const end = source.indexOf(frontmatterEnd);
-  return JSON.parse(source.slice(frontmatterStart.length, end));
+  return JSON.parse(matchMarkdownFrontmatter(source)[2]);
 }
 
 function writeMarkdownFrontmatter(path, mutate) {
   const source = readFileSync(path, 'utf8');
-  const end = source.indexOf(frontmatterEnd);
-  const frontmatter = JSON.parse(source.slice(frontmatterStart.length, end));
+  const match = matchMarkdownFrontmatter(source);
+  const frontmatter = JSON.parse(match[2]);
   mutate(frontmatter);
-  writeFileSync(
-    path,
-    `${frontmatterStart}${JSON.stringify(frontmatter, null, 2)}${source.slice(end)}`,
-  );
+  const lineEnding = match[1].endsWith('\r\n') ? '\r\n' : '\n';
+  const json = JSON.stringify(frontmatter, null, 2).replace(/\n/gu, lineEnding);
+  writeFileSync(path, `${match[1]}${json}${match[3]}${source.slice(match[0].length)}`);
 }
 
 function hashEvidence() {
@@ -305,6 +309,21 @@ test('the six committed reference artifacts satisfy their schemas and links', ()
   const result = validateArtifacts(repositoryRoot);
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.files, expectedFiles);
+});
+
+test('Markdown frontmatter validation is checkout-independent across LF and CRLF', () => {
+  for (const lineEnding of ['\n', '\r\n']) {
+    withFixture((root) => {
+      const docs = join(root, 'docs/appearance/monochrome');
+      for (const name of ['REFERENCE_ANALYSIS.md', 'DESIGN.md', 'component-mapping.md']) {
+        const path = join(docs, name);
+        const normalized = readFileSync(path, 'utf8').replace(/\r\n?/gu, '\n');
+        writeFileSync(path, normalized.replace(/\n/gu, lineEnding));
+      }
+
+      assert.deepEqual(validateArtifacts(root).errors, []);
+    });
+  }
 });
 
 test('the measured contract is source-locked and contains generated evidence', () => {

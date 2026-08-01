@@ -40,6 +40,8 @@ const EXPECTED_PALETTE = {
 };
 const FRONTMATTER_START = '<!-- MONOCHROME_JSON_FRONTMATTER\n';
 const FRONTMATTER_END = '\nMONOCHROME_JSON_FRONTMATTER -->';
+const FRONTMATTER_START_PATTERN = /^<!-- MONOCHROME_JSON_FRONTMATTER\r?\n/u;
+const FRONTMATTER_END_PATTERN = /\r?\nMONOCHROME_JSON_FRONTMATTER -->/u;
 const EVIDENCE_FILES = [
   'REFERENCE_ANALYSIS.md',
   'FRAME_MANIFEST.json',
@@ -218,14 +220,16 @@ function validateSchema(value, schema, path, errors) {
 }
 
 function parseMarkdownFrontmatter(source, filename) {
-  if (!source.startsWith(FRONTMATTER_START)) {
+  const start = FRONTMATTER_START_PATTERN.exec(source);
+  if (!start) {
     throw new Error(`${filename} must begin with delimited JSON frontmatter`);
   }
-  const endIndex = source.indexOf(FRONTMATTER_END, FRONTMATTER_START.length);
-  if (endIndex < 0) {
+  const remainder = source.slice(start[0].length);
+  const end = FRONTMATTER_END_PATTERN.exec(remainder);
+  if (!end) {
     throw new Error(`${filename} has unterminated JSON frontmatter`);
   }
-  const json = source.slice(FRONTMATTER_START.length, endIndex);
+  const json = remainder.slice(0, end.index);
   return JSON.parse(json);
 }
 
@@ -580,8 +584,9 @@ export function validateArtifacts(repositoryRoot = resolveRepositoryRoot()) {
   for (const [filename, headings] of Object.entries(requiredHeadings)) {
     const source = markdownSources[filename];
     if (!source) continue;
+    const lines = source.split(/\r?\n/u);
     for (const heading of headings) {
-      if (!source.includes(`\n## ${heading}\n`)) {
+      if (!lines.includes(`## ${heading}`)) {
         errors.push(`${filename} is missing required heading ${heading}`);
       }
     }
