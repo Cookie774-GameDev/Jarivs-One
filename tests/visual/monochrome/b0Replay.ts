@@ -575,6 +575,138 @@ export function countB0R1PixelDifferences(expectedBytes: Buffer, actualBytes: Bu
   return differences;
 }
 
+export interface B0R1PixelDifferenceSummary {
+  readonly pixelDifferences: number;
+  readonly bounds: Readonly<{
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  }> | null;
+  readonly channelDifferences: Readonly<{
+    red: number;
+    green: number;
+    blue: number;
+    alpha: number;
+  }>;
+  readonly maximumChannelDelta: Readonly<{
+    red: number;
+    green: number;
+    blue: number;
+    alpha: number;
+  }>;
+  readonly connectedComponents: number;
+  readonly largestComponentPixels: number;
+  readonly changedRows: number;
+  readonly changedColumns: number;
+}
+
+export function analyzeB0R1PixelDifferences(
+  expectedBytes: Buffer,
+  actualBytes: Buffer,
+): Readonly<{ summary: B0R1PixelDifferenceSummary; diffPng: Buffer }> {
+  const expected = PNG.sync.read(expectedBytes);
+  const actual = PNG.sync.read(actualBytes);
+  if (expected.width !== actual.width || expected.height !== actual.height) {
+    throw new Error(
+      `B0-R1 PNG dimensions differ: expected ${expected.width}x${expected.height}; actual ${actual.width}x${actual.height}.`,
+    );
+  }
+
+  const diff = new PNG({ width: expected.width, height: expected.height });
+  const changed = new Uint8Array(expected.width * expected.height);
+  const changedRows = new Uint8Array(expected.height);
+  const changedColumns = new Uint8Array(expected.width);
+  const channelDifferences = [0, 0, 0, 0];
+  const maximumChannelDelta = [0, 0, 0, 0];
+  let pixelDifferences = 0;
+  let left = expected.width;
+  let top = expected.height;
+  let right = -1;
+  let bottom = -1;
+
+  for (let pixel = 0; pixel < changed.length; pixel += 1) {
+    const offset = pixel * 4;
+    let pixelChanged = false;
+    for (let channel = 0; channel < 4; channel += 1) {
+      const delta = Math.abs(expected.data[offset + channel] - actual.data[offset + channel]);
+      if (delta === 0) continue;
+      pixelChanged = true;
+      channelDifferences[channel] += 1;
+      maximumChannelDelta[channel] = Math.max(maximumChannelDelta[channel], delta);
+    }
+    if (!pixelChanged) continue;
+
+    const x = pixel % expected.width;
+    const y = Math.floor(pixel / expected.width);
+    changed[pixel] = 1;
+    changedRows[y] = 1;
+    changedColumns[x] = 1;
+    pixelDifferences += 1;
+    left = Math.min(left, x);
+    top = Math.min(top, y);
+    right = Math.max(right, x);
+    bottom = Math.max(bottom, y);
+    diff.data[offset] = 255;
+    diff.data[offset + 1] = 0;
+    diff.data[offset + 2] = 0;
+    diff.data[offset + 3] = 255;
+  }
+
+  let connectedComponents = 0;
+  let largestComponentPixels = 0;
+  const stack: number[] = [];
+  for (let pixel = 0; pixel < changed.length; pixel += 1) {
+    if (changed[pixel] !== 1) continue;
+    connectedComponents += 1;
+    changed[pixel] = 2;
+    stack.push(pixel);
+    let componentPixels = 0;
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (current === undefined) break;
+      componentPixels += 1;
+      const x = current % expected.width;
+      const candidates = [
+        current - expected.width,
+        current + expected.width,
+        x > 0 ? current - 1 : -1,
+        x + 1 < expected.width ? current + 1 : -1,
+      ];
+      for (const candidate of candidates) {
+        if (candidate < 0 || candidate >= changed.length || changed[candidate] !== 1) continue;
+        changed[candidate] = 2;
+        stack.push(candidate);
+      }
+    }
+    largestComponentPixels = Math.max(largestComponentPixels, componentPixels);
+  }
+
+  return {
+    summary: {
+      pixelDifferences,
+      bounds: pixelDifferences > 0 ? { left, top, right, bottom } : null,
+      channelDifferences: {
+        red: channelDifferences[0],
+        green: channelDifferences[1],
+        blue: channelDifferences[2],
+        alpha: channelDifferences[3],
+      },
+      maximumChannelDelta: {
+        red: maximumChannelDelta[0],
+        green: maximumChannelDelta[1],
+        blue: maximumChannelDelta[2],
+        alpha: maximumChannelDelta[3],
+      },
+      connectedComponents,
+      largestComponentPixels,
+      changedRows: changedRows.reduce((count, value) => count + value, 0),
+      changedColumns: changedColumns.reduce((count, value) => count + value, 0),
+    },
+    diffPng: PNG.sync.write(diff),
+  };
+}
+
 export function buildB0R1Manifest(
   captures: readonly B0R1CaptureAuthority[],
   browserVersion: string,

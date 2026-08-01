@@ -507,6 +507,57 @@ test('B0-R1 pixel authority is exact and unmasked', () => {
   assert.equal(countDifferences(PNG.sync.write(baseline), PNG.sync.write(changed)), 1);
 });
 
+test('B0-R1 mismatch diagnostics retain exact topology without weakening pixel authority', () => {
+  const analyzeDifferences = Reflect.get(b0Replay, 'analyzeB0R1PixelDifferences');
+  assert.equal(typeof analyzeDifferences, 'function');
+
+  const expected = new PNG({ width: 3, height: 2 });
+  expected.data.fill(100);
+  const actual = PNG.sync.read(PNG.sync.write(expected));
+  actual.data[(0 * 3 + 1) * 4] = 105;
+  actual.data[(1 * 3 + 2) * 4 + 2] = 93;
+
+  const diagnostic = analyzeDifferences(PNG.sync.write(expected), PNG.sync.write(actual)) as {
+    readonly summary: {
+      readonly pixelDifferences: number;
+      readonly bounds: Readonly<{ left: number; top: number; right: number; bottom: number }>;
+      readonly channelDifferences: Readonly<{
+        red: number;
+        green: number;
+        blue: number;
+        alpha: number;
+      }>;
+      readonly maximumChannelDelta: Readonly<{
+        red: number;
+        green: number;
+        blue: number;
+        alpha: number;
+      }>;
+      readonly connectedComponents: number;
+      readonly largestComponentPixels: number;
+      readonly changedRows: number;
+      readonly changedColumns: number;
+    };
+    readonly diffPng: Buffer;
+  };
+
+  assert.deepEqual(diagnostic.summary, {
+    pixelDifferences: 2,
+    bounds: { left: 1, top: 0, right: 2, bottom: 1 },
+    channelDifferences: { red: 1, green: 0, blue: 1, alpha: 0 },
+    maximumChannelDelta: { red: 5, green: 0, blue: 7, alpha: 0 },
+    connectedComponents: 2,
+    largestComponentPixels: 1,
+    changedRows: 2,
+    changedColumns: 2,
+  });
+  const diff = PNG.sync.read(diagnostic.diffPng);
+  assert.deepEqual(
+    [...diff.data],
+    [0, 0, 0, 0, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 255],
+  );
+});
+
 test('B0-R1 binds pet presentation instead of inheriting startup timing', () => {
   const petVisible = Reflect.get(b0Replay, 'b0R1PetVisibility');
   assert.equal(typeof petVisible, 'function');

@@ -7,6 +7,7 @@ import { MONOCHROME_BASELINE_MANIFEST } from './baseline-manifest.ts';
 import {
   B0_R1_EDGE_LAUNCH_ARGS,
   B0_R1_MANIFEST_PATH,
+  analyzeB0R1PixelDifferences,
   assertB0R1CaptureSetComplete,
   assertB0R1InputBindingUnchanged,
   b0R1OutputPath,
@@ -105,14 +106,54 @@ test.describe('Preserved themes and Origami — B0-R1 ordinary authority', () =>
         await mkdir(outputPath.slice(0, outputPath.lastIndexOf('/')), { recursive: true });
         await writeFile(outputPath, actual, { flag: 'wx' });
       }
-      const pixelDifferences = countB0R1PixelDifferences(readFileSync(outputPath), actual);
+      const expected = readFileSync(outputPath);
+      const pixelDifferences = countB0R1PixelDifferences(expected, actual);
       if (pixelDifferences !== 0) {
+        const diagnostic = analyzeB0R1PixelDifferences(expected, actual);
+        if (diagnostic.summary.pixelDifferences !== pixelDifferences) {
+          throw new Error(`B0-R1 mismatch diagnostic count diverged: ${capture.caseId}.`);
+        }
+        const expectedPath = testInfo.outputPath(`${capture.caseId}-expected.png`);
         const actualPath = testInfo.outputPath(`${capture.caseId}-actual.png`);
-        await writeFile(actualPath, actual);
-        await testInfo.attach(`${capture.caseId}-actual`, {
-          path: actualPath,
-          contentType: 'image/png',
-        });
+        const diffPath = testInfo.outputPath(`${capture.caseId}-diff.png`);
+        const summaryPath = testInfo.outputPath(`${capture.caseId}-difference-summary.json`);
+        await Promise.all([
+          writeFile(expectedPath, expected),
+          writeFile(actualPath, actual),
+          writeFile(diffPath, diagnostic.diffPng),
+          writeFile(
+            summaryPath,
+            `${JSON.stringify(
+              {
+                caseId: capture.caseId,
+                outputPath,
+                expectedSha256,
+                actualSha256: sha256,
+                ...diagnostic.summary,
+              },
+              null,
+              2,
+            )}\n`,
+          ),
+        ]);
+        await Promise.all([
+          testInfo.attach(`${capture.caseId}-expected`, {
+            path: expectedPath,
+            contentType: 'image/png',
+          }),
+          testInfo.attach(`${capture.caseId}-actual`, {
+            path: actualPath,
+            contentType: 'image/png',
+          }),
+          testInfo.attach(`${capture.caseId}-diff`, {
+            path: diffPath,
+            contentType: 'image/png',
+          }),
+          testInfo.attach(`${capture.caseId}-difference-summary`, {
+            path: summaryPath,
+            contentType: 'application/json',
+          }),
+        ]);
       }
       expect(
         pixelDifferences,
