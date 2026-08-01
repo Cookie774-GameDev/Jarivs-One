@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign as signEd25519 } from 'node:crypto';
 import {
   mkdir,
   link,
@@ -76,6 +76,18 @@ switch ($Action) {
   }
   'validate' {
     Assert-ReleaseVersionPreflight -Version $config.version -PackageJsonPath $config.packageJsonPath -TauriConfigPath $config.tauriConfigPath
+  }
+  'verifyStagedSignature' {
+    $stage = New-ContainedUpdaterStage -ArtifactPath $config.artifactPath -SourceRoot $config.sourceRoot -StageParent $config.stageParent -ContainmentRoot $config.containmentRoot -Version $config.version -RetainBindings
+    try {
+      Invoke-BoundUpdaterSignatureVerification -UpdaterStage $stage -ConfiguredPublicKey $config.publicKey -VerifierScriptPath $config.verifierScriptPath
+    } finally {
+      Close-BoundReleaseFile -Binding $stage.SignatureBinding
+      Close-BoundReleaseFile -Binding $stage.ArtifactBinding
+      $stage.SignatureBinding = $null
+      $stage.ArtifactBinding = $null
+      Remove-OwnedUpdaterStage -Stage $stage -StageParent $config.stageParent -ContainmentRoot $config.containmentRoot
+    }
   }
   'stageWithSwap' {
     $beforeCopy = {
@@ -277,6 +289,48 @@ async function addSignedArtifact(sourceRoot, name = canonicalName) {
   return artifactPath;
 }
 
+async function addCryptographicallySignedArtifact(sourceRoot, name = canonicalName) {
+  const artifactPath = path.join(sourceRoot, name);
+  const artifact = Buffer.from(`cryptographically signed artifact:${name}`, 'utf8');
+  const keyId = Buffer.from('d3da96b5b101c53b', 'hex');
+  const keyPair = generateKeyPairSync('ed25519');
+  const rawPublicKey = Buffer.from(keyPair.publicKey.export({ format: 'jwk' }).x, 'base64url');
+  const publicRecord = Buffer.concat([Buffer.from('Ed'), keyId, rawPublicKey]);
+  const publicKey = Buffer.from(
+    [
+      'untrusted comment: minisign public key: 3BC501B1B596DAD3',
+      publicRecord.toString('base64'),
+      '',
+    ].join('\n'),
+    'utf8',
+  ).toString('base64');
+  const trustedComment = `timestamp:1785585600\tfile:${name}\thashed`;
+  const messageSignature = signEd25519(
+    null,
+    createHash('blake2b512').update(artifact).digest(),
+    keyPair.privateKey,
+  );
+  const globalSignature = signEd25519(
+    null,
+    Buffer.concat([messageSignature, Buffer.from(trustedComment, 'utf8')]),
+    keyPair.privateKey,
+  );
+  const signatureRecord = Buffer.concat([Buffer.from('ED'), keyId, messageSignature]);
+  const encodedSignature = Buffer.from(
+    [
+      'untrusted comment: signature from minisign secret key',
+      signatureRecord.toString('base64'),
+      `trusted comment: ${trustedComment}`,
+      globalSignature.toString('base64'),
+      '',
+    ].join('\n'),
+    'utf8',
+  ).toString('base64');
+  await writeFile(artifactPath, artifact);
+  await writeFile(`${artifactPath}.sig`, encodedSignature);
+  return { artifactPath, publicKey };
+}
+
 test('PowerShell AST is valid and updater publication is ordered after generator success', async () => {
   const source = await readFile(releaseScript, 'utf8');
   const check = await execFileAsync('powershell.exe', [
@@ -298,6 +352,13 @@ test('PowerShell AST is valid and updater publication is ordered after generator
       source.lastIndexOf('Invoke-BoundUpdaterReleasePublication'),
     'one updater stage is created before the complete publication unit',
   );
+  assert.ok(
+    source.lastIndexOf('New-ContainedUpdaterStage') <
+      source.lastIndexOf('Invoke-BoundUpdaterSignatureVerification') &&
+      source.lastIndexOf('Invoke-BoundUpdaterSignatureVerification') <
+        source.lastIndexOf('& node $manifestScript'),
+    'the retained staged generation is cryptographically verified before manifest generation',
+  );
   assert.match(source, /SourcePath\s*=\s*\$UpdaterStage\.ArtifactPath/u);
   assert.match(source, /finally\s*\{[\s\S]*Remove-OwnedUpdaterStage/u);
   assert.ok(
@@ -306,6 +367,56 @@ test('PowerShell AST is valid and updater publication is ordered after generator
     'version and config parity are validated before release-root mutation',
   );
   assert.doesNotMatch(source, /Get-ChildItem[^\n]+-Filter '\*\.sig'/u);
+});
+
+test('retained updater stage cryptographically verifies before manifest publication', async () => {
+  await withSandbox(async ({ containmentRoot, harness, sourceRoot, stageParent }) => {
+    const { artifactPath, publicKey } = await addCryptographicallySignedArtifact(sourceRoot);
+    const config = {
+      artifactPath,
+      containmentRoot,
+      publicKey,
+      sourceRoot,
+      stageParent,
+      verifierScriptPath: path.resolve('scripts/verify-updater-signature.mjs'),
+      version,
+    };
+
+    const valid = await runHarness(harness, 'verifyStagedSignature', config);
+    assert.match(valid.stdout, /updater signature verified/iu);
+    assert.deepEqual(await readdir(stageParent), []);
+
+    const otherKey = generateKeyPairSync('ed25519');
+    const wrongPublicRecord = Buffer.concat([
+      Buffer.from('Ed'),
+      Buffer.from('d3da96b5b101c53b', 'hex'),
+      Buffer.from(otherKey.publicKey.export({ format: 'jwk' }).x, 'base64url'),
+    ]);
+    const wrongPublicKey = Buffer.from(
+      [
+        'untrusted comment: minisign public key: 3BC501B1B596DAD3',
+        wrongPublicRecord.toString('base64'),
+        '',
+      ].join('\n'),
+      'utf8',
+    ).toString('base64');
+    await assert.rejects(
+      runHarness(harness, 'verifyStagedSignature', {
+        ...config,
+        publicKey: wrongPublicKey,
+      }),
+      /artifact signature verification failed/iu,
+    );
+
+    await writeFile(artifactPath, 'tampered after signing');
+    const freshSignatureTime = new Date(Date.now() + 2_000);
+    await utimes(`${artifactPath}.sig`, freshSignatureTime, freshSignatureTime);
+    await assert.rejects(
+      runHarness(harness, 'verifyStagedSignature', config),
+      /artifact signature verification failed/iu,
+    );
+    assert.deepEqual(await readdir(stageParent), []);
+  });
 });
 
 test('accepts only canonical Tauri SemVer with exact package and Tauri parity', async () => {

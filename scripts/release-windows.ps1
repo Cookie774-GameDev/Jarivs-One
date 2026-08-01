@@ -1652,6 +1652,45 @@ function Invoke-BoundUpdaterReleasePublication {
   }
 }
 
+function Invoke-BoundUpdaterSignatureVerification {
+  param(
+    [Parameter(Mandatory = $true)]
+    [psobject]$UpdaterStage,
+    [Parameter(Mandatory = $true)]
+    [string]$ConfiguredPublicKey,
+    [Parameter(Mandatory = $true)]
+    [string]$VerifierScriptPath
+  )
+  if (
+    -not $UpdaterStage.ArtifactBinding -or
+    -not $UpdaterStage.SignatureBinding
+  ) {
+    throw 'Updater signature verification requires retained staged-file bindings'
+  }
+  if ([string]::IsNullOrWhiteSpace($ConfiguredPublicKey)) {
+    throw 'Updater signature verification requires the configured public key'
+  }
+  [void](Assert-RegularFile -Path $VerifierScriptPath -Label 'Updater signature verifier')
+
+  Assert-BoundReleaseFileCurrent -Binding $UpdaterStage.ArtifactBinding
+  Assert-BoundReleaseFileCurrent -Binding $UpdaterStage.SignatureBinding
+  $verificationExitCode = -1
+  try {
+    & node $VerifierScriptPath `
+      --artifact $UpdaterStage.ArtifactPath `
+      --signature $UpdaterStage.SignaturePath `
+      --public-key $ConfiguredPublicKey
+    $verificationExitCode = $LASTEXITCODE
+  } finally {
+    Assert-BoundReleaseFileCurrent -Binding $UpdaterStage.ArtifactBinding
+    Assert-BoundReleaseFileCurrent -Binding $UpdaterStage.SignatureBinding
+  }
+  if ($verificationExitCode -ne 0) {
+    throw "updater signature cryptographic verification failed with exit code $verificationExitCode"
+  }
+  Write-Ok 'Cryptographically verified the retained updater artifact and trusted comment'
+}
+
 function Get-ConfiguredUpdaterPublicKey {
   $tauriConfigPath = Join-Path $AppDir 'src-tauri\tauri.conf.json'
   $tauriConfig = Get-Content -LiteralPath $tauriConfigPath -Raw | ConvertFrom-Json
@@ -1867,6 +1906,11 @@ $manifestScript = Join-Path $RepoRoot 'scripts\build-updater-manifest.mjs'
 if (-not (Test-Path -LiteralPath $manifestScript)) {
   throw "Manifest script not found: $manifestScript"
 }
+$signatureVerifierScript = Join-Path $RepoRoot 'scripts\verify-updater-signature.mjs'
+if (-not (Test-Path -LiteralPath $signatureVerifierScript)) {
+  throw "Updater signature verifier not found: $signatureVerifierScript"
+}
+$configuredUpdaterPublicKey = Get-ConfiguredUpdaterPublicKey
 Write-Step 'Building latest.json updater manifest from one bound signed generation...'
 $updaterStage = $null
 $updaterStageParent = Join-Path $ReleasesDir '.updater-staging'
@@ -1883,6 +1927,10 @@ try {
     -ContainmentRoot $ReleasesDir `
     -Version $Version `
     -RetainBindings
+  Invoke-BoundUpdaterSignatureVerification `
+    -UpdaterStage $updaterStage `
+    -ConfiguredPublicKey $configuredUpdaterPublicKey `
+    -VerifierScriptPath $signatureVerifierScript
   & node $manifestScript `
     --version $Version `
     --assets-dir $updaterStage.Path `
