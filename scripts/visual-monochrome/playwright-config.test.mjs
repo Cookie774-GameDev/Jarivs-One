@@ -255,7 +255,7 @@ test('Playwright discovers the complete MonoChrome suite through the repository 
     0,
     `Playwright discovery failed:\n${result.stdout}\n${result.stderr}`,
   );
-  assert.match(result.stdout, /Total: 227 tests in 5 files/u);
+  assert.match(result.stdout, /Total: 226 tests in 5 files/u);
   assert.equal(result.stderr, '');
   const reportAfter = existsSync(jsonReportPath)
     ? {
