@@ -354,9 +354,14 @@ vi.mock('@/features/all-about-me/persistence', async (importOriginal) => {
   };
 });
 
-vi.mock('@/lib/supabase/env', () => ({
-  isSupabaseConfigured: () => cloudBoot.configured(),
-}));
+vi.mock('@/lib/supabase/env', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/supabase/env')>();
+  return {
+    ...actual,
+    readSupabaseEnv: () => ({}),
+    isSupabaseConfigured: () => cloudBoot.configured(),
+  };
+});
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => cloudBoot.client,

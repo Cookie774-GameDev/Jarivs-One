@@ -182,7 +182,14 @@ vi.mock('@/features/all-about-me/persistence', async (importOriginal) => {
   return { ...actual, startAllAboutMePersistence: accountListeners.allAboutMe };
 });
 
-vi.mock('@/lib/supabase/env', () => ({ isSupabaseConfigured: () => false }));
+vi.mock('@/lib/supabase/env', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/supabase/env')>();
+  return {
+    ...actual,
+    readSupabaseEnv: () => ({}),
+    isSupabaseConfigured: () => false,
+  };
+});
 
 vi.mock('@/lib/ai/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai/runtime')>();

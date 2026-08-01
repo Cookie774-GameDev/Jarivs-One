@@ -94,6 +94,15 @@ function humorClauseCount(prose: string): number {
     .filter((clause) => clause && HUMOR_SIGNAL.test(clause)).length;
 }
 
+function withoutEpistemicCompletionLanguage(prose: string): string {
+  return prose
+    .replace(
+      /\b(?:verify|check|confirm|determine|establish|ascertain)\s+(?:whether|if)\b[^.!?\n]{0,80}?\b(?:done|completed|finished|succeeded|successful)\b/gi,
+      '',
+    )
+    .replace(/\bif\b[^.!?\n]{0,80}?\b(?:done|completed|finished|succeeded|successful)\b/gi, '');
+}
+
 export function lintJarvisProse(
   prose: string,
   mode: JarvisResponseMode,
@@ -185,7 +194,7 @@ export function lintJarvisProse(
     );
   }
   const status = facts.executionState?.status;
-  const completionClaims = prose
+  const completionClaims = withoutEpistemicCompletionLanguage(prose)
     .replace(
       /\b(?:not|never|has not|hasn't|had not|hadn't)\s+(?:completed|finished|succeeded)\b/gi,
       '',

@@ -22,6 +22,10 @@ vi.mock('@/lib/fs', () => ({
 }));
 
 vi.mock('@/lib/db', () => ({
+  db: {
+    settings: {},
+    sync_queue: {},
+  },
   projectRepo: { getById: vi.fn() },
 }));
 

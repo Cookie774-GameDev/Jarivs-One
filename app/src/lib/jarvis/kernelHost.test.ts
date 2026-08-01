@@ -32,8 +32,12 @@ const request: KernelHostRequestEvent = {
 describe('trusted kernel host', () => {
   beforeEach(() => {
     tauri.invoke.mockReset();
-    tauri.listen.mockClear();
-    tauri.unlisten.mockClear();
+    tauri.listen.mockReset();
+    tauri.listen.mockImplementation(async (_event, handler) => {
+      tauri.handler = handler;
+      return tauri.unlisten;
+    });
+    tauri.unlisten.mockReset();
     tauri.handler = undefined;
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,

@@ -57,6 +57,7 @@ import { kernelSmokeCliAdapter } from './adapters/cliBridge';
 import { llmContentToText } from './types';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import {
+  isKernelSmokeBindingActive,
   kernelSmokeProvider,
   KERNEL_SMOKE_PROVIDER_ID,
   recordKernelSmokeRouterDispatch,
@@ -195,6 +196,10 @@ export interface ConnectionRequirements {
   tools?: boolean;
 }
 
+type ExternalConnectionAuthorization =
+  | 'adapter-authentication'
+  | 'protected-kernel-smoke-attestation';
+
 function assertConnectionCapabilities(
   connection: ProviderConnection,
   requirements: ConnectionRequirements = {},
@@ -215,8 +220,7 @@ function usageNumber(value: { value?: number } | undefined): number {
   return typeof value?.value === 'number' && Number.isFinite(value.value) ? value.value : 0;
 }
 
-/** Exact, fail-closed external bridge seam. Exported so routing can be tested without Tauri. */
-export async function runExternalConnection(args: {
+type ExternalConnectionArgs = {
   connection: ProviderConnection;
   adapter: ProviderAdapter;
   requestId: string;
@@ -229,7 +233,12 @@ export async function runExternalConnection(args: {
   onChunk?: (chunk: LLMStreamChunk) => void;
   onResponseObservation?: (observation: LLMResponseObservation) => void;
   onActionDispatch?: (input: { observedAt: number }) => void;
-}): Promise<LLMResponse> {
+};
+
+async function runExternalConnectionAuthorized(
+  args: ExternalConnectionArgs,
+  authorization: ExternalConnectionAuthorization,
+): Promise<LLMResponse> {
   const { connection, adapter } = args;
   if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
   if (connection.promptTransport === 'unsupported') {
@@ -257,7 +266,13 @@ export async function runExternalConnection(args: {
     ? await adapter.probeAuth(connection)
     : { status: 'unknown' as const };
   if (auth.status === 'unauthenticated') throw new Error(`${connection.displayName} is signed out`);
-  if (auth.status !== 'authenticated') {
+  const hasProtectedKernelSmokeAttestation =
+    auth.status === 'unknown' &&
+    authorization === 'protected-kernel-smoke-attestation' &&
+    connection.providerId === KERNEL_SMOKE_PROVIDER_ID &&
+    connection.authSource === 'debug-native-attestation' &&
+    isKernelSmokeBindingActive();
+  if (auth.status !== 'authenticated' && !hasProtectedKernelSmokeAttestation) {
     throw new Error(`${connection.displayName} authentication could not be verified`);
   }
   if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
@@ -307,6 +322,11 @@ export async function runExternalConnection(args: {
     model: args.modelId ?? connection.modelId ?? connection.displayName,
     ...(finishReason ? { finish_reason: finishReason } : {}),
   };
+}
+
+/** Exact, fail-closed external bridge seam. Exported so routing can be tested without Tauri. */
+export async function runExternalConnection(args: ExternalConnectionArgs): Promise<LLMResponse> {
+  return runExternalConnectionAuthorized(args, 'adapter-authentication');
 }
 
 function resolveExplicitSingleSelection(auth: ReturnType<typeof useAuthStore.getState>): {
@@ -476,20 +496,23 @@ export async function runAgent(req: RunAgentRequest): Promise<LLMResponse> {
             .map((message) => `${message.role}: ${llmContentToText(message.content)}`)
             .join('\n\n');
       const dispatchExternal = (hooks?: ProtectedAttemptHooks) =>
-        runExternalConnection({
-          connection,
-          adapter,
-          requestId: req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`,
-          prompt,
-          modelId: req.agent.model.model,
-          systemPrompt: protectedDispatch ? undefined : req.agent.system_prompt,
-          workingDirectory: req.workingDirectory,
-          signal: req.signal,
-          requirements: req.connectionRequirements,
-          onChunk: req.onChunk,
-          onResponseObservation: hooks?.onResponseObservation,
-          onActionDispatch: hooks?.onActionDispatch,
-        });
+        runExternalConnectionAuthorized(
+          {
+            connection,
+            adapter,
+            requestId: req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`,
+            prompt,
+            modelId: req.agent.model.model,
+            systemPrompt: protectedDispatch ? undefined : req.agent.system_prompt,
+            workingDirectory: req.workingDirectory,
+            signal: req.signal,
+            requirements: req.connectionRequirements,
+            onChunk: req.onChunk,
+            onResponseObservation: hooks?.onResponseObservation,
+            onActionDispatch: hooks?.onActionDispatch,
+          },
+          protectedDispatch ? 'protected-kernel-smoke-attestation' : 'adapter-authentication',
+        );
       const response = protectedDispatch
         ? await runProtectedProviderAttempt(
             {

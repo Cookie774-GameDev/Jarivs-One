@@ -51,7 +51,9 @@ const compiledPrompt: Readonly<CompiledJarvisPrompt> = Object.freeze({
 describe('kernel smoke router integration', () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
-    vi.mocked(listen).mockReset().mockResolvedValue(() => undefined);
+    vi.mocked(listen)
+      .mockReset()
+      .mockResolvedValue(() => undefined);
   });
 
   afterEach(() => {
@@ -104,9 +106,11 @@ describe('kernel smoke router integration', () => {
       profileSha256: 'a'.repeat(64),
       nonce: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     });
+    const bridgeOrder: string[] = [];
     let emitBridgeEvent: ((event: { payload: CliBridgeEvent }) => void) | undefined;
     vi.mocked(listen).mockImplementation(async (eventName, handler) => {
       expect(eventName).toBe(CLI_BRIDGE_EVENT);
+      bridgeOrder.push('listener');
       emitBridgeEvent = handler as (event: { payload: CliBridgeEvent }) => void;
       return () => undefined;
     });
@@ -132,7 +136,9 @@ describe('kernel smoke router integration', () => {
       }
       if (command === 'cli_bridge_start') {
         const request = (args as { request: CliStartRequest }).request;
-        emitBridgeEvent?.({
+        bridgeOrder.push('start');
+        expect(emitBridgeEvent).toBeTypeOf('function');
+        emitBridgeEvent!({
           payload: {
             requestId: request.requestId,
             stream: 'stdout',
@@ -141,7 +147,8 @@ describe('kernel smoke router integration', () => {
             status: 'data',
           },
         });
-        emitBridgeEvent?.({
+        bridgeOrder.push('data');
+        emitBridgeEvent!({
           payload: {
             requestId: request.requestId,
             stream: 'status',
@@ -150,6 +157,7 @@ describe('kernel smoke router integration', () => {
             status: 'completed',
           },
         });
+        bridgeOrder.push('completed');
         return undefined;
       }
       throw new Error(`Unexpected Tauri command: ${command}`);
@@ -180,6 +188,7 @@ describe('kernel smoke router integration', () => {
       model: 'kernel-smoke-v1',
       text: 'CLI smoke complete.',
     });
+    expect(bridgeOrder).toEqual(['listener', 'start', 'data', 'completed']);
     expect(getKernelSmokeDispatchPath()).toBe('protected');
   });
 });

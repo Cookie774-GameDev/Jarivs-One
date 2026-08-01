@@ -162,6 +162,38 @@ describe('lintJarvisProse', () => {
     );
   });
 
+  it.each([
+    'The terminal timed out. Verify whether it completed before retrying.',
+    'The terminal timed out. If it completed, verify the output before retrying.',
+  ])('does not treat epistemic completion language as an affirmative claim: %s', (prose) => {
+    expect(
+      lintJarvisProse(prose, 'action_failure', {
+        ...facts,
+        executionState: undefined,
+        terminalState: 'timed_out',
+      }),
+    ).not.toContainEqual(expect.objectContaining({ code: 'verified_state_contradiction' }));
+  });
+
+  it('still rejects an affirmative completion claim for a timed-out terminal', () => {
+    expect(
+      lintJarvisProse(
+        'The terminal timed out. The operation completed. Verify whether its output was saved.',
+        'action_failure',
+        {
+          ...facts,
+          executionState: undefined,
+          terminalState: 'timed_out',
+        },
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'verified_state_contradiction',
+        disposition: 'deterministic',
+      }),
+    );
+  });
+
   it('rejects connector authentication claims that exceed verified capability state', () => {
     expect(
       lintJarvisProse('github is authenticated and connected.', 'status', {
