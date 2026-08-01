@@ -59,9 +59,11 @@ export function AppShell({ children }: AppShellProps) {
       <MotionConfig reducedMotion="user" transition={themeMotionTransition}>
         <TooltipProvider delayDuration={400}>
           <div
-            className={`relative isolate flex h-full w-full flex-col overflow-hidden text-foreground ${
-              sakuraActive ? 'bg-transparent' : 'bg-background'
-            }`}
+            className={
+              sakuraActive
+                ? 'relative isolate flex h-full w-full flex-col overflow-hidden bg-transparent text-foreground'
+                : 'flex h-full w-full flex-col bg-background text-foreground'
+            }
             data-monochrome-surface="app-shell"
             data-sakura-shell={sakuraActive ? 'true' : undefined}
             data-workbench-fullscreen="true"
@@ -69,14 +71,18 @@ export function AppShell({ children }: AppShellProps) {
           >
             {sakuraActive && <SakuraBackdrop route={route} />}
             <div
-              className="sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
-              data-sakura-shell-frame="true"
-              data-sakura-shell-boundary="workbench"
+              className={
+                sakuraActive
+                  ? 'sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col'
+                  : 'contents'
+              }
+              data-sakura-shell-frame={sakuraActive ? 'true' : undefined}
+              data-sakura-shell-boundary={sakuraActive ? 'workbench' : undefined}
             >
               <main
                 aria-label="Workbench window"
                 className="min-h-0 min-w-0 flex-1 overflow-hidden"
-                data-sakura-workspace="true"
+                data-sakura-workspace={sakuraActive ? 'true' : undefined}
               >
                 {children}
               </main>
@@ -91,23 +97,33 @@ export function AppShell({ children }: AppShellProps) {
     <MotionConfig reducedMotion="user" transition={themeMotionTransition}>
       <TooltipProvider delayDuration={400}>
         <div
-          className={`relative isolate flex h-full w-full flex-col overflow-hidden text-foreground ${
-            sakuraActive ? 'bg-transparent' : 'bg-background'
-          }`}
+          className={
+            sakuraActive
+              ? 'relative isolate flex h-full w-full flex-col overflow-hidden bg-transparent text-foreground'
+              : 'flex h-full w-full flex-col bg-background text-foreground'
+          }
           data-monochrome-surface="app-shell"
           data-sakura-shell={sakuraActive ? 'true' : undefined}
         >
           {sakuraActive && <SakuraBackdrop route={route} />}
           <div
-            className="sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
-            data-sakura-shell-frame="true"
-            data-sakura-shell-boundary="application"
+            className={
+              sakuraActive
+                ? 'sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col'
+                : 'contents'
+            }
+            data-sakura-shell-frame={sakuraActive ? 'true' : undefined}
+            data-sakura-shell-boundary={sakuraActive ? 'application' : undefined}
           >
             <TopBar />
 
             <div
-              className="sakura-shell-body relative flex min-h-0 min-w-0 flex-1"
-              data-sakura-shell-body="true"
+              className={
+                sakuraActive
+                  ? 'sakura-shell-body relative flex min-h-0 min-w-0 flex-1'
+                  : 'flex min-h-0 flex-1'
+              }
+              data-sakura-shell-body={sakuraActive ? 'true' : undefined}
             >
               <NavPane />
 
@@ -116,7 +132,7 @@ export function AppShell({ children }: AppShellProps) {
                 <main
                   aria-label="Workspace"
                   className="min-h-0 min-w-0 flex-1 overflow-auto"
-                  data-sakura-workspace="true"
+                  data-sakura-workspace={sakuraActive ? 'true' : undefined}
                 >
                   {children}
                 </main>

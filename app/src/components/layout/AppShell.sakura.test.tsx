@@ -38,8 +38,9 @@ describe('AppShell Sakura scenic host', () => {
         <RouteFixture />
       </AppShell>,
     );
-    const shellFrame = rendered.container.querySelector('[data-sakura-shell-frame]');
-    const shellBody = rendered.container.querySelector('[data-sakura-shell-body]');
+    const workspace = rendered.container.querySelector('main[aria-label="Workspace"]');
+    const shellBody = workspace?.parentElement?.parentElement;
+    const shellFrame = shellBody?.parentElement;
     const routeElement = rendered.container.querySelector('[data-route-object]');
     const routeSetter = useUIStore.getState().setRoute;
     const navSectionIdentity = useUIStore.getState().navSectionsCollapsed;
@@ -49,17 +50,72 @@ describe('AppShell Sakura scenic host', () => {
     expect(rendered.container.querySelector('[data-sakura-backdrop]')).not.toBeNull();
     expect(rendered.container.querySelector('[data-sakura-shell-frame]')).toBe(shellFrame);
     expect(rendered.container.querySelector('[data-sakura-shell-body]')).toBe(shellBody);
+    expect(rendered.container.querySelector('main[data-sakura-workspace="true"]')).toBe(workspace);
     expect(rendered.container.querySelector('[data-route-object]')).toBe(routeElement);
     expect(useUIStore.getState().setRoute).toBe(routeSetter);
     expect(useUIStore.getState().navSectionsCollapsed).toBe(navSectionIdentity);
 
     act(() => useUIStore.getState().setTheme('monochrome'));
     expect(rendered.container.querySelector('[data-sakura-backdrop]')).toBeNull();
-    expect(rendered.container.querySelector('[data-sakura-shell-frame]')).toBe(shellFrame);
-    expect(rendered.container.querySelector('[data-sakura-shell-body]')).toBe(shellBody);
+    expect(rendered.container.querySelector('[data-sakura-shell-frame]')).toBeNull();
+    expect(rendered.container.querySelector('[data-sakura-shell-body]')).toBeNull();
+    expect(rendered.container.querySelector('[data-sakura-workspace]')).toBeNull();
+    expect(workspace?.parentElement?.parentElement).toBe(shellBody);
+    expect(shellBody?.parentElement).toBe(shellFrame);
     expect(rendered.container.querySelector('[data-route-object]')).toBe(routeElement);
     expect(useUIStore.getState().setRoute).toBe(routeSetter);
     expect(useUIStore.getState().navSectionsCollapsed).toBe(navSectionIdentity);
+  });
+
+  it.each(['default', 'jarvis', 'vibespace', 'monochrome'] as const)(
+    'keeps Sakura stacking and wrapper semantics out of the %s theme',
+    (theme) => {
+      useUIStore.setState({ theme });
+      const rendered = render(
+        <AppShell>
+          <section data-route-fixture />
+        </AppShell>,
+      );
+
+      const shell = rendered.container.querySelector('[data-monochrome-surface="app-shell"]');
+      const workspace = shell?.querySelector('main[aria-label="Workspace"]');
+      const body = workspace?.parentElement?.parentElement;
+      const frame = body?.parentElement;
+
+      expect(shell?.getAttribute('data-sakura-shell')).toBeNull();
+      expect(shell?.classList.contains('isolate')).toBe(false);
+      expect(frame?.getAttribute('data-sakura-shell-frame')).toBeNull();
+      expect(frame?.getAttribute('data-sakura-shell-boundary')).toBeNull();
+      expect(frame?.classList.contains('sakura-shell-frame')).toBe(false);
+      expect(frame?.classList.contains('relative')).toBe(false);
+      expect(frame?.classList.contains('z-10')).toBe(false);
+      expect(body?.getAttribute('data-sakura-shell-body')).toBeNull();
+      expect(body?.classList.contains('sakura-shell-body')).toBe(false);
+      expect(body?.classList.contains('relative')).toBe(false);
+      expect(workspace?.getAttribute('data-sakura-workspace')).toBeNull();
+    },
+  );
+
+  it('keeps Sakura stacking semantics out of a non-Sakura full-screen Workbench', () => {
+    useUIStore.setState({ route: 'workbench', theme: 'vibespace' });
+    const rendered = render(
+      <AppShell>
+        <section data-workbench-fixture />
+      </AppShell>,
+    );
+
+    const shell = rendered.container.querySelector('[data-workbench-fullscreen="true"]');
+    const workspace = shell?.querySelector('main[aria-label="Workbench window"]');
+    const frame = workspace?.parentElement;
+
+    expect(shell?.getAttribute('data-sakura-shell')).toBeNull();
+    expect(shell?.classList.contains('isolate')).toBe(false);
+    expect(frame?.getAttribute('data-sakura-shell-frame')).toBeNull();
+    expect(frame?.getAttribute('data-sakura-shell-boundary')).toBeNull();
+    expect(frame?.classList.contains('sakura-shell-frame')).toBe(false);
+    expect(frame?.classList.contains('relative')).toBe(false);
+    expect(frame?.classList.contains('z-10')).toBe(false);
+    expect(workspace?.getAttribute('data-sakura-workspace')).toBeNull();
   });
 
   it('keeps scenic reveal, chrome, and workspace as separate structural boundaries', () => {
