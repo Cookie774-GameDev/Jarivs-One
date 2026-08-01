@@ -254,7 +254,7 @@ export interface B0R1Manifest {
     ];
   }>;
   readonly readiness: Readonly<{
-    version: 'b0-r1-content-pixel-quiescent-v3';
+    version: typeof B0_R1_READINESS_VERSION;
     expectedMessages: 2;
     requiresSession: true;
     requiresThread: true;

@@ -322,6 +322,11 @@ test('B0-R1 requires a source-bound authority manifest', async () => {
   assert.equal(manifest.captures.length, 10);
 });
 
+test('B0-R1 manifest type derives its readiness version from the runtime authority', () => {
+  const source = readFileSync('tests/visual/monochrome/b0Replay.ts', 'utf8');
+  assert.match(source, /version: typeof B0_R1_READINESS_VERSION;/u);
+});
+
 test('B0-R1 manifest contract rejects environment, capture, and path ambiguity', () => {
   const assertManifestContract = Reflect.get(b0Replay, 'assertB0R1ManifestContract');
   assert.equal(typeof assertManifestContract, 'function');
