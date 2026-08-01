@@ -25,6 +25,7 @@ import {
 import { consumeBrowserReviewedAction } from './browserActions';
 import { useBrowserStore } from './browserStore';
 import './browser.css';
+import './browser.sakura.css';
 
 /**
  * Vibe Browser — Canvas / VS Code Simple Browser style:
@@ -246,41 +247,52 @@ export function BrowserPage() {
       data-testid="vibe-browser"
       data-vibespace-owned-chrome="browser"
     >
-      <div
-        className="browser-tabs [html[data-theme=monochrome]_&]:gap-1 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
-        role="tablist"
-        aria-label="Browser tabs"
-      >
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`browser-tab [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-wide ${
-              tab.id === activeTabId
-                ? 'is-active [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none'
-                : ''
-            }`}
-            role="tab"
-            aria-selected={tab.id === activeTabId}
-            onClick={() => {
-              setActiveTab(tab.id);
-              setDraftUrl(tab.url);
-              setIframeBlocked(false);
-            }}
-          >
-            <span title={tab.url}>{tab.title || tab.url}</span>
+      <div className="browser-tabs [html[data-theme=monochrome]_&]:gap-1 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+        <div role="tablist" aria-label="Browser tabs" className="flex min-w-0 items-stretch gap-1">
+          {tabs.map((tab) => (
             <button
+              key={tab.id}
               type="button"
-              className="[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:hover:text-foreground [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
-              aria-label={`Close ${tab.title}`}
+              className={`browser-tab [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-wide ${
+                tab.id === activeTabId
+                  ? 'is-active [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none'
+                  : ''
+              }`}
+              role="tab"
+              aria-selected={tab.id === activeTabId}
+              aria-keyshortcuts="Delete"
+              data-loading={tab.loading ? 'true' : 'false'}
               onClick={(e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
+                if (
+                  e.target instanceof Element &&
+                  e.target.closest('[data-browser-tab-close="true"]')
+                ) {
+                  closeTab(tab.id);
+                  return;
+                }
+                setActiveTab(tab.id);
+                setDraftUrl(tab.url);
+                setIframeBlocked(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Delete') {
+                  e.preventDefault();
+                  closeTab(tab.id);
+                }
               }}
             >
-              <X className="h-3 w-3" />
+              <span title={tab.url}>{tab.title || tab.url}</span>
+              <span
+                aria-hidden="true"
+                data-browser-tab-close="true"
+                title={`Close ${tab.title}`}
+                className="inline-flex shrink-0 rounded-sm opacity-70 hover:text-accent-copper hover:opacity-100"
+              >
+                <X className="h-3 w-3" />
+              </span>
             </button>
-          </div>
-        ))}
+          ))}
+        </div>
         <Button
           type="button"
           size="icon-sm"
@@ -489,7 +501,7 @@ export function BrowserPage() {
         ) : null}
 
         <div
-          className="browser-viewport [html[data-theme=monochrome]_&]:bg-background"
+          className="browser-viewport [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none"
           data-testid="browser-viewport"
         >
           {engine === 'agent' && frameDataUrl ? (
@@ -497,6 +509,7 @@ export function BrowserPage() {
               src={frameDataUrl}
               alt="Live agent browser view"
               className="browser-viewport-cast"
+              data-remote-content-boundary="provider-screencast"
             />
           ) : showUrl ? (
             <div className="browser-iframe-wrap">
@@ -505,6 +518,7 @@ export function BrowserPage() {
                 key={`${activeTabId}:${showUrl}`}
                 title={active?.title || 'Vibe Browser'}
                 className="browser-iframe"
+                data-remote-content-boundary="provider-page"
                 src={showUrl}
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
                 referrerPolicy="no-referrer-when-downgrade"

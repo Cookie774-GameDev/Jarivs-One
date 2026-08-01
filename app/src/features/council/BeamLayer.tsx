@@ -103,8 +103,8 @@ export function BeamLayer({ agents, containerRef, panelRefs }: BeamLayerProps) {
     >
       <defs>
         <linearGradient id={GRADIENT_ID} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="hsl(187 95% 43%)" />
-          <stop offset="100%" stopColor="hsl(258 90% 66%)" />
+          <stop offset="0%" stopColor="hsl(187 95% 43%)" className="sakura-council-beam-start" />
+          <stop offset="100%" stopColor="hsl(258 90% 66%)" className="sakura-council-beam-end" />
         </linearGradient>
       </defs>
 
@@ -119,13 +119,7 @@ export function BeamLayer({ agents, containerRef, panelRefs }: BeamLayerProps) {
             opacity={0.35}
             className="animate-breathe"
           />
-          <circle
-            cx={hubX}
-            cy={hubY}
-            r={2.5}
-            fill={`url(#${GRADIENT_ID})`}
-            opacity={0.9}
-          />
+          <circle cx={hubX} cy={hubY} r={2.5} fill={`url(#${GRADIENT_ID})`} opacity={0.9} />
         </>
       ) : null}
 
