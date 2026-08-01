@@ -1270,7 +1270,23 @@ export function createMemoryEvidenceRepository(database: JarvisDexie, clock: () 
   };
 }
 
-export const memoryEvidenceRepo = createMemoryEvidenceRepository(db);
+type MemoryEvidenceRepository = ReturnType<typeof createMemoryEvidenceRepository>;
+
+let defaultMemoryEvidenceRepository: MemoryEvidenceRepository | undefined;
+
+function getDefaultMemoryEvidenceRepository(): MemoryEvidenceRepository {
+  defaultMemoryEvidenceRepository ??= createMemoryEvidenceRepository(db);
+  return defaultMemoryEvidenceRepository;
+}
+
+export const memoryEvidenceRepo: MemoryEvidenceRepository = {
+  create: (...args) => getDefaultMemoryEvidenceRepository().create(...args),
+  getById: (...args) => getDefaultMemoryEvidenceRepository().getById(...args),
+  list: (...args) => getDefaultMemoryEvidenceRepository().list(...args),
+  replace: (...args) => getDefaultMemoryEvidenceRepository().replace(...args),
+  delete: (...args) => getDefaultMemoryEvidenceRepository().delete(...args),
+  history: (...args) => getDefaultMemoryEvidenceRepository().history(...args),
+};
 
 // ---------------------------------------------------------------------------
 // Settings
