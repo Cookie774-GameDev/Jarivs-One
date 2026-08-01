@@ -94,8 +94,7 @@ export function BarChart({ rows, height, className }: BarChartProps) {
 
   const totalHeight = rows.length * ROW_TOTAL;
 
-  const scoreToX = (s: number) =>
-    CHART_X_START + ((s - minScore) / range) * CHART_WIDTH;
+  const scoreToX = (s: number) => CHART_X_START + ((s - minScore) / range) * CHART_WIDTH;
 
   return (
     <div className={cn('relative w-full', className)}>
@@ -132,9 +131,7 @@ export function BarChart({ rows, height, className }: BarChartProps) {
           const barLength = barEndX - CHART_X_START;
           const ciLowX = scoreToX(row.ci_low);
           const ciHighX = scoreToX(row.ci_high);
-          const fill = row.open_source
-            ? 'hsl(var(--sage))'
-            : 'hsl(var(--terracotta))';
+          const fill = row.open_source ? 'hsl(var(--sage))' : 'hsl(var(--terracotta))';
 
           // Use length as both stroke-dasharray and initial offset so the
           // bar reveals from x1 outward.
@@ -144,12 +141,8 @@ export function BarChart({ rows, height, className }: BarChartProps) {
           return (
             <g
               key={row.model}
-              onMouseEnter={(e) =>
-                setHover({ row, clientX: e.clientX, clientY: e.clientY })
-              }
-              onMouseMove={(e) =>
-                setHover({ row, clientX: e.clientX, clientY: e.clientY })
-              }
+              onMouseEnter={(e) => setHover({ row, clientX: e.clientX, clientY: e.clientY })}
+              onMouseMove={(e) => setHover({ row, clientX: e.clientX, clientY: e.clientY })}
               onMouseLeave={() => setHover(null)}
               style={{ cursor: 'pointer' }}
             >
@@ -198,12 +191,12 @@ export function BarChart({ rows, height, className }: BarChartProps) {
                   paints on top). Only render if there's enough horizontal
                   room for it. */}
               {ciHighX - ciLowX > 4 && (
-                <g pointerEvents="none" opacity={reducedMotion || revealed ? 1 : 0}
-                   style={{
-                     transition: reducedMotion
-                       ? 'none'
-                       : `opacity 300ms ease-out ${i * 40 + 500}ms`,
-                   }}
+                <g
+                  pointerEvents="none"
+                  opacity={reducedMotion || revealed ? 1 : 0}
+                  style={{
+                    transition: reducedMotion ? 'none' : `opacity 300ms ease-out ${i * 40 + 500}ms`,
+                  }}
                 >
                   <line
                     x1={ciLowX}
@@ -264,13 +257,12 @@ export function BarChart({ rows, height, className }: BarChartProps) {
         >
           <div className="cozy-card !p-3 !py-2.5 text-secondary">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-ui-strong text-foreground">
-                {hover.row.model}
-              </span>
+              <span className="text-ui-strong text-foreground">{hover.row.model}</span>
               <span
                 className={cn(
                   'sev-pill',
                   hover.row.open_source ? 'low' : 'high',
+                  '[html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid',
                 )}
               >
                 {hover.row.open_source ? 'open' : 'closed'}
@@ -283,7 +275,7 @@ export function BarChart({ rows, height, className }: BarChartProps) {
               <span className="text-muted-foreground">Intel</span>
               <span className="text-foreground font-mono text-right">
                 {hover.row.arena_score}
-                {(hover.row.ci_high - hover.row.ci_low) > 0 && (
+                {hover.row.ci_high - hover.row.ci_low > 0 && (
                   <span className="text-muted-foreground">
                     {' '}
                     ({hover.row.ci_low}–{hover.row.ci_high})
@@ -325,9 +317,7 @@ export function BarChart({ rows, height, className }: BarChartProps) {
               {hover.row.license && (
                 <>
                   <span className="text-muted-foreground">License</span>
-                  <span className="text-foreground text-right">
-                    {hover.row.license}
-                  </span>
+                  <span className="text-foreground text-right">{hover.row.license}</span>
                 </>
               )}
             </div>
