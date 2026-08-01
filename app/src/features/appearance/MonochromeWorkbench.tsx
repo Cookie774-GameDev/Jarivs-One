@@ -152,6 +152,10 @@ function TopBar() {
           seed="synthetic-operator"
           initials="SO"
           size={24}
+          style={{
+            backgroundColor: 'hsl(var(--accent-cyan))',
+            backgroundImage: 'none',
+          }}
         />
       </div>
     </Surface>
@@ -464,6 +468,7 @@ function ControlsAndForm() {
                 id="deterministic-mode"
                 defaultChecked
                 aria-label="Deterministic mode"
+                className="[&>span]:shadow-none"
               />
             </div>
             <Button
@@ -556,6 +561,10 @@ function ControlsAndForm() {
               role="status"
               aria-label="Loading synthetic result"
               className="h-8 w-full rounded-sm"
+              style={{
+                backgroundColor: 'hsl(var(--muted))',
+                backgroundImage: 'none',
+              }}
             />
           </div>
         </div>
@@ -800,6 +809,7 @@ export function MonochromeWorkbench({
   return (
     <TooltipProvider>
       <div
+        data-monochrome-development-surface="true"
         data-workbench-state="default"
         className="min-h-screen bg-background font-sans text-xs text-foreground"
       >

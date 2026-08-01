@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { Avatar } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
 
 const WORKBENCH_PATH = path.resolve(
   process.cwd(),
@@ -128,6 +130,54 @@ describe('MonoChrome development workbench', () => {
         surface,
       ).not.toBeNull();
     }
+  });
+
+  it('renders the synthetic operator avatar with a solid local treatment', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    const view = render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+    const avatar = view.container.querySelector<HTMLElement>(
+      '[data-monochrome-primitive="Avatar"]',
+    );
+
+    expect(avatar).not.toBeNull();
+    expect(avatar?.style.backgroundImage).toBe('none');
+    expect(avatar?.style.backgroundColor).toBe('hsl(var(--accent-cyan))');
+
+    const defaultView = render(<Avatar seed="shared-default" initials="SD" />);
+    const defaultAvatar = defaultView.container.querySelector<HTMLElement>(
+      '[data-vibespace-avatar="true"]',
+    );
+    expect(defaultAvatar?.style.background).toBe(
+      'var(--vibespace-avatar-background, var(--vibespace-avatar-gradient))',
+    );
+    expect(defaultAvatar?.style.backgroundImage).toBe('');
+  });
+
+  it('renders the loading fixture with a solid local treatment', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    const view = render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+    const skeleton = view.container.querySelector<HTMLElement>(
+      '[data-monochrome-primitive="Skeleton"]',
+    );
+
+    expect(skeleton).not.toBeNull();
+    expect(skeleton?.style.backgroundImage).toBe('none');
+    expect(skeleton?.style.backgroundColor).toBe('hsl(var(--muted))');
+  });
+
+  it('removes the checked Switch thumb shadow only inside the development fixture', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+
+    expect(screen.getByRole('switch', { name: 'Deterministic mode' }).className).toContain(
+      '[&>span]:shadow-none',
+    );
+
+    const defaultView = render(<Switch aria-label="Shared default switch" defaultChecked />);
+    expect(
+      defaultView.getByRole('switch', { name: 'Shared default switch' }).querySelector('span')
+        ?.className,
+    ).toContain('shadow-lg');
   });
 
   it('exposes the complete state vocabulary without removing native semantics', async () => {
