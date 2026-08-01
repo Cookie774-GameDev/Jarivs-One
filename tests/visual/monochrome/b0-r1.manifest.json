@@ -16,7 +16,7 @@
   },
   "source": {
     "provenance": {
-      "parentCommit": "e8ebf3c2c4e5582977c3636f4346d2b6d5f01087",
+      "parentCommit": "dab8302c3d202a3a582854efe7a442449648a5b3",
       "branch": "codex/pr30-b0-r1-refresh-20260801",
       "dirtyInputs": []
     },
@@ -47,7 +47,7 @@
         "tests/visual/monochrome/styleMetrics.ts"
       ],
       "fileCount": 2340,
-      "sha256": "7f19fe3def4fd08f2facf92a1903d4fed54d6288477699cd230cd22449155204"
+      "sha256": "ff828f16dda6b64be120321657923f9b54b33cc8e636cefb81c28246bde5c8d9"
     }
   },
   "fixture": {
@@ -109,7 +109,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/default/chat.png",
-      "sha256": "f29e8df829c0695dad31134f153f7fb0e64cfa6c8b27af6f475374f49b495e88",
+      "sha256": "96bca6d08725f1bc952055b819c3b14732b7d4757ea4e86eb0a03f52271a160b",
       "width": 1672,
       "height": 941
     },
@@ -161,7 +161,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/jarvis/settings-appearance.png",
-      "sha256": "cb10fe7e46c75fd4701403fd2cd811d35f23a6874bdf66f38e00a1b83f02e779",
+      "sha256": "273dfd2efd92d9d4d021c1ec036083dac7546a626f3f950ec36194591116c4a9",
       "width": 1672,
       "height": 941
     },
@@ -200,7 +200,7 @@
       "origamiGateActive": true,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/chat.png",
-      "sha256": "90181b39461cf532b543c4c0e7667dea5102605880398326f8a2fc01b5a6e262",
+      "sha256": "8bdddf5d94f88b8c00a6290bd950d306a6979da8ac64a04633db55c4ac254ebf",
       "width": 1672,
       "height": 941
     },
