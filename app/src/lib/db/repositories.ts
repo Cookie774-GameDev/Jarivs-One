@@ -951,10 +951,10 @@ export type MemoryListFilter = {
   limit?: number;
 };
 
-const legacyMemoryItems = db.memory_items as unknown as import('dexie').EntityTable<
-  MemoryItem,
-  'id'
->;
+type LegacyMemoryItemsTable = import('dexie').EntityTable<MemoryItem, 'id'>;
+
+const getLegacyMemoryItems = (): LegacyMemoryItemsTable =>
+  db.memory_items as unknown as LegacyMemoryItemsTable;
 
 function isLegacyMemoryItem(value: MemoryItem | MemoryEvidenceRow): value is MemoryItem {
   return !('recordKind' in value) && 'workspace_id' in value && 'source_ref' in value;
@@ -1028,30 +1028,30 @@ export const memoryRepo = {
       created_at: ts,
       updated_at: ts,
     } as MemoryItem;
-    await legacyMemoryItems.add(row);
+    await getLegacyMemoryItems().add(row);
     await syncInsert('memory_items', row, syncOwner);
     return row;
   },
   async update(id: string, patch: Partial<MemoryItem>): Promise<MemoryItem> {
     const syncOwner = captureSyncQueueOwner();
     await requireRow(() => memoryRepo.getById(id), 'memory_item', id);
-    await legacyMemoryItems.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
-    const row = await requireRow(() => legacyMemoryItems.get(id), 'memory_item', id);
+    await getLegacyMemoryItems().update(id, { ...sanitizeUpdate(patch), updated_at: now() });
+    const row = await requireRow(() => getLegacyMemoryItems().get(id), 'memory_item', id);
     await syncUpdate('memory_items', row, syncOwner);
     return row;
   },
   async delete(id: string): Promise<void> {
     const syncOwner = captureSyncQueueOwner();
     await requireRow(() => memoryRepo.getById(id), 'memory_item', id);
-    await legacyMemoryItems.delete(id);
+    await getLegacyMemoryItems().delete(id);
     await syncDelete('memory_items', id, syncOwner);
   },
   /** Stamp `last_accessed_at` to mark a memory item as recently used by retrieval. */
   async touchAccessed(id: string): Promise<void> {
     const syncOwner = captureSyncQueueOwner();
     await requireRow(() => memoryRepo.getById(id), 'memory_item', id);
-    await legacyMemoryItems.update(id, { last_accessed_at: now() });
-    const row = await legacyMemoryItems.get(id);
+    await getLegacyMemoryItems().update(id, { last_accessed_at: now() });
+    const row = await getLegacyMemoryItems().get(id);
     if (row) await syncUpdate('memory_items', row, syncOwner);
   },
 };
