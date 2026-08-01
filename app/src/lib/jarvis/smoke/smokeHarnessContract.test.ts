@@ -9,16 +9,19 @@ function repositoryRoot(): string {
   return path.basename(cwd).toLowerCase() === 'app' ? path.dirname(cwd) : cwd;
 }
 
+function readCanonicalText(filePath: string): string {
+  return readFileSync(filePath, 'utf8').replace(/\r\n?/g, '\n');
+}
+
 const root = repositoryRoot();
 const launcherPath = path.join(root, 'scripts', 'shared-intelligence-kernel-smoke.ps1');
 const driverPath = path.join(root, 'scripts', 'shared-intelligence-kernel-smoke-driver.mjs');
-const launcher = readFileSync(launcherPath, 'utf8');
-const driver = readFileSync(driverPath, 'utf8');
-const tabStrip = readFileSync(
+const launcher = readCanonicalText(launcherPath);
+const driver = readCanonicalText(driverPath);
+const tabStrip = readCanonicalText(
   path.join(root, 'app', 'src', 'components', 'layout', 'TabStrip.tsx'),
-  'utf8',
 );
-const app = readFileSync(path.join(root, 'app', 'src', 'App.tsx'), 'utf8');
+const app = readCanonicalText(path.join(root, 'app', 'src', 'App.tsx'));
 
 const POWERSHELL_PROBE_TIMEOUT_MS = 30_000;
 const POWERSHELL_PROBE_TEST_TIMEOUT_MS = POWERSHELL_PROBE_TIMEOUT_MS + 5_000;

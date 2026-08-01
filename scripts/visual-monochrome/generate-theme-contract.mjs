@@ -127,6 +127,8 @@ const prepaintJs = await format(prepaintJsSource, {
   parser: 'babel',
 });
 
+const canonicalText = (value) => value.replace(/\r\n?/g, '\n');
+
 const outputs = [
   [generatedPath, generatedTs],
   [prepaintPath, prepaintJs],
@@ -136,7 +138,7 @@ if (process.argv.includes('--check')) {
   const stale = outputs
     .filter(([path, expected]) => {
       try {
-        return readFileSync(path, 'utf8') !== expected;
+        return canonicalText(readFileSync(path, 'utf8')) !== canonicalText(expected);
       } catch {
         return true;
       }
