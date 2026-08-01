@@ -50,11 +50,13 @@ describe('SettingsModal MonoChrome appearance', () => {
     }
   });
 
-  it('keeps Settings entry motion opacity-only so sidebar glyphs paint at final geometry', () => {
+  it('centers reduced-motion Settings without a transformed fractional ancestor', () => {
     act(() => useUIStore.setState({ settingsOpen: true }));
     render(<SettingsModal initialTab="appearance" />);
 
     const dialog = screen.getByRole('dialog', { name: 'Settings' });
-    expect(dialog.className).toContain('data-[state=open]:!animate-fade-in');
+    expect(dialog.className).toContain('motion-reduce:!inset-0');
+    expect(dialog.className).toContain('motion-reduce:!m-auto');
+    expect(dialog.className).toContain('motion-reduce:!transform-none');
   });
 });
