@@ -98,6 +98,8 @@ const SAFE_BODIES = new Set([
   'method_not_allowed',
   'not_configured',
   'missing_signature',
+  'invalid_content_length',
+  'payload_too_large',
   'invalid_signature',
   'duplicate',
   'ok',
@@ -124,6 +126,9 @@ const CUS = 'cus_A';
 const SUB = 'sub_A';
 const T0 = 1750000000; // unix seconds baseline
 const DAY = 86400;
+// Stripe event JSON is normally far smaller; 1 MiB leaves generous headroom
+// while keeping unauthenticated request buffering far below the Edge memory cap.
+const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024;
 function iso(unix) {
   return new Date(unix * 1000).toISOString();
 }
@@ -358,6 +363,47 @@ function makeReq(method, o) {
   if (method !== 'GET' && method !== 'HEAD') init.body = o.body === undefined ? '{}' : o.body;
   return new Request('https://fn.vibespace.local/stripe-webhook', init);
 }
+
+function makeTrackedBodyReq({ chunks, sig = 'sig_test', contentLength }) {
+  const headers = new Headers();
+  if (sig !== null) headers.set('stripe-signature', sig);
+  if (contentLength !== undefined) headers.set('content-length', contentLength);
+  const state = { readCalls: 0, cancelCalls: 0, textCalls: 0 };
+  let chunkIndex = 0;
+  const reader = {
+    async read() {
+      state.readCalls += 1;
+      if (chunkIndex >= chunks.length) return { done: true, value: undefined };
+      return { done: false, value: chunks[chunkIndex++] };
+    },
+    async cancel() {
+      state.cancelCalls += 1;
+    },
+    releaseLock() {},
+  };
+  const body = {
+    getReader() {
+      return reader;
+    },
+  };
+  const req = {
+    method: 'POST',
+    headers,
+    body,
+    async text() {
+      state.textCalls += 1;
+      const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+      const joined = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        joined.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return new TextDecoder().decode(joined);
+    },
+  };
+  return { req, state };
+}
 // ===========================================================================
 // Method / configuration / signature gates
 // ===========================================================================
@@ -387,10 +433,87 @@ Deno.test('returns 500 not_configured when webhook secrets are absent', async ()
 
 Deno.test('rejects a missing stripe-signature header with 400', async () => {
   const { deps, calls } = makeDeps({ event: checkoutEvent() });
-  const res = await handleStripeWebhook(makeReq('POST', { sig: null }), deps);
+  const { req, state } = makeTrackedBodyReq({
+    chunks: [new TextEncoder().encode('{}')],
+    sig: null,
+  });
+  const res = await handleStripeWebhook(req, deps);
   assertEquals(res.status, 400);
   assertEquals(await assertSafeBody(res), 'missing_signature');
+  assertEquals(state.textCalls, 0, 'missing signature is rejected before body consumption');
+  assertEquals(state.readCalls, 0, 'missing signature never opens the body reader');
   assertEquals(calls.verifySignature.length, 0, 'no verification attempt without a signature');
+});
+
+Deno.test('rejects an oversized declared body before pulling request bytes', async () => {
+  const { deps, calls } = makeDeps({ event: checkoutEvent() });
+  const { req, state } = makeTrackedBodyReq({
+    chunks: [new TextEncoder().encode('{}')],
+    contentLength: String(MAX_WEBHOOK_BODY_BYTES + 1),
+  });
+
+  const res = await handleStripeWebhook(req, deps);
+
+  assertEquals(res.status, 413);
+  assertEquals(await assertSafeBody(res), 'payload_too_large');
+  assertEquals(state.textCalls, 0, 'declared oversize bypasses whole-body text allocation');
+  assertEquals(state.readCalls, 0, 'declared oversize is rejected before opening the stream');
+  assertEquals(calls.verifySignature.length, 0, 'oversize is rejected before Stripe verification');
+  assertEquals(calls.claimEvent.length, 0, 'oversize performs no database work');
+});
+
+Deno.test(
+  'rejects malformed, negative, and conflicting content lengths before reading',
+  async () => {
+    for (const contentLength of ['not-a-number', '-1', '12, 13']) {
+      const { deps, calls } = makeDeps({ event: checkoutEvent() });
+      const { req, state } = makeTrackedBodyReq({
+        chunks: [new TextEncoder().encode('{}')],
+        contentLength,
+      });
+
+      const res = await handleStripeWebhook(req, deps);
+
+      assertEquals(res.status, 400, contentLength);
+      assertEquals(await assertSafeBody(res), 'invalid_content_length');
+      assertEquals(state.textCalls, 0, contentLength);
+      assertEquals(state.readCalls, 0, contentLength);
+      assertEquals(calls.verifySignature.length, 0, contentLength);
+    }
+  },
+);
+
+Deno.test('cancels an undeclared streamed body as soon as it crosses the byte bound', async () => {
+  const { deps, calls } = makeDeps({ event: checkoutEvent() });
+  const { req, state } = makeTrackedBodyReq({
+    chunks: [
+      new Uint8Array(Math.floor(MAX_WEBHOOK_BODY_BYTES * 0.75)),
+      new Uint8Array(Math.floor(MAX_WEBHOOK_BODY_BYTES * 0.5)),
+      new TextEncoder().encode('must not be read'),
+    ],
+  });
+
+  const res = await handleStripeWebhook(req, deps);
+
+  assertEquals(res.status, 413);
+  assertEquals(await assertSafeBody(res), 'payload_too_large');
+  assertEquals(state.readCalls, 2, 'reader stops on the chunk that crosses the bound');
+  assertEquals(state.cancelCalls, 1, 'overflow cancels the remaining request stream');
+  assertEquals(calls.verifySignature.length, 0, 'stream overflow precedes Stripe verification');
+  assertEquals(calls.claimEvent.length, 0, 'stream overflow performs no database work');
+});
+
+Deno.test('accepts an exact-bound body and preserves its raw signed text', async () => {
+  const raw = 'x'.repeat(MAX_WEBHOOK_BODY_BYTES);
+  const { deps, calls } = makeDeps({
+    event: { id: 'evt_exact_bound', type: 'unsupported.event', data: { object: {} } },
+  });
+
+  const res = await handleStripeWebhook(makeReq('POST', { body: raw }), deps);
+
+  assertEquals(res.status, 200);
+  assertEquals(calls.verifySignature[0].rawBody, raw);
+  assertEquals(calls.claimEvent.length, 1);
 });
 
 Deno.test('rejects an invalid signature with a bounded 400 and no upstream detail', async () => {

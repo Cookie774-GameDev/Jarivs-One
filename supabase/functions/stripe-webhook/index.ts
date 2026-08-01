@@ -7,6 +7,7 @@
 //
 // Security:
 //   - Deploy with verify_jwt=false (Stripe sends stripe-signature, not a JWT).
+//   - Bound declared and streamed bodies before signature verification.
 //   - Signature verified against the RAW request body before any parsing/routing.
 //   - Invalid/modified signatures -> bounded 400 (no upstream detail exposed).
 //   - Durable idempotency via subscription_events.event_id unique constraint:
@@ -33,6 +34,11 @@ import {
 import { reconcileAppAccessEvent } from './appAccess.ts';
 
 const ACCESS_PRODUCT = 'vibespace_access';
+// Stripe webhook event JSON is normally far smaller than 1 MiB. This generous
+// body ceiling is 256x below the hosted Edge memory cap while leaving headroom
+// for expanded event objects.
+const MAX_STRIPE_WEBHOOK_BODY_BYTES = 1024 * 1024;
+const INITIAL_WEBHOOK_BODY_BUFFER_BYTES = 8 * 1024;
 
 // Production database adapters are exported only so deterministic tests can
 // prove their error semantics without importing SDKs or touching Supabase.
@@ -402,6 +408,64 @@ async function handleLegacy(event, deps, checkoutSubscription = null) {
 }
 
 // Exported handler with injected dependencies (tests never touch the network).
+function contentLengthError(req) {
+  const rawLength = req.headers.get('content-length');
+  if (rawLength === null) return null;
+  const normalized = rawLength.trim();
+  if (!/^\d+$/.test(normalized)) {
+    return new Response('invalid_content_length', { status: 400 });
+  }
+  const declaredLength = Number(normalized);
+  if (!Number.isFinite(declaredLength) || declaredLength > MAX_STRIPE_WEBHOOK_BODY_BYTES) {
+    return new Response('payload_too_large', { status: 413 });
+  }
+  return null;
+}
+
+async function cancelOversizedBody(reader) {
+  try {
+    await reader.cancel('payload_too_large');
+  } catch (_err) {
+    // The request is already rejected; cancellation is best-effort cleanup.
+  }
+}
+
+async function readBoundedWebhookBody(req) {
+  if (!req.body) return { ok: true, rawBody: '' };
+  const reader = req.body.getReader();
+  let length = 0;
+  let buffer = new Uint8Array(INITIAL_WEBHOOK_BODY_BUFFER_BYTES);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        return {
+          ok: true,
+          rawBody: new TextDecoder().decode(buffer.subarray(0, length)),
+        };
+      }
+      if (value.byteLength > MAX_STRIPE_WEBHOOK_BODY_BYTES - length) {
+        await cancelOversizedBody(reader);
+        return { ok: false, code: 'payload_too_large', status: 413 };
+      }
+      const nextLength = length + value.byteLength;
+      if (nextLength > buffer.byteLength) {
+        const nextCapacity = Math.min(
+          MAX_STRIPE_WEBHOOK_BODY_BYTES,
+          Math.max(nextLength, buffer.byteLength * 2),
+        );
+        const nextBuffer = new Uint8Array(nextCapacity);
+        nextBuffer.set(buffer.subarray(0, length));
+        buffer = nextBuffer;
+      }
+      buffer.set(value, length);
+      length = nextLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function handleStripeWebhook(req, deps) {
   if (req.method === 'GET') return new Response('Jarvis Stripe webhook up.\n', { status: 200 });
   if (req.method !== 'POST') return new Response('method_not_allowed', { status: 405 });
@@ -412,7 +476,12 @@ export async function handleStripeWebhook(req, deps) {
   const sig = req.headers.get('stripe-signature');
   if (!sig) return new Response('missing_signature', { status: 400 });
 
-  const rawBody = await req.text(); // raw body required for signature verification
+  const lengthError = contentLengthError(req);
+  if (lengthError) return lengthError;
+
+  const body = await readBoundedWebhookBody(req);
+  if (!body.ok) return new Response(body.code, { status: body.status });
+  const rawBody = body.rawBody; // exact raw UTF-8 text required for signature verification
   let event;
   try {
     event = await deps.verifySignature(rawBody, sig);
