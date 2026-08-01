@@ -70,8 +70,10 @@ describe('TabStrip Sakura shell contract', () => {
   it('keeps a long active tab keyboard-operable while preserving its close target', () => {
     render(<TabStrip />);
 
-    const strip = screen.getByRole('tablist', { name: 'Open chats' }).parentElement;
-    const tab = screen.getByRole('tab', { name: /A very long conversation label/ });
+    const strip = screen.getByRole('group', { name: 'Open chats' }).parentElement;
+    const tab = screen.getByRole('button', {
+      name: /^A very long conversation label/,
+    });
     const label = screen.getByText(
       'A very long conversation label that must yield before the close control',
     );
@@ -79,6 +81,7 @@ describe('TabStrip Sakura shell contract', () => {
 
     expect(strip?.getAttribute('data-sakura-shell-region')).toBe('tab-strip');
     expect(tab.getAttribute('tabindex')).toBe('0');
+    expect(tab.getAttribute('aria-pressed')).toBe('true');
     expect(label.className).toContain('truncate');
     expect(close.className).toContain('min-h-6');
     expect(close.className).toContain('min-w-6');

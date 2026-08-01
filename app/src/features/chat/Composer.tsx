@@ -550,6 +550,39 @@ function pluginConnectionLabel(
   return connection.accountLabel ?? `${connection.configuredFields.length} credential(s)`;
 }
 
+export function FreeKeyNudge({ onOpenProviders }: { onOpenProviders: () => void }) {
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-1 pt-2.5',
+        'text-secondary text-muted-foreground',
+      )}
+      role="status"
+      aria-label="Free Gemini API key recommended for the Jarvis agent"
+    >
+      <Sparkles className="h-3.5 w-3.5 text-accent-copper shrink-0" />
+      <span>
+        Add a free Gemini API key to give Jarvis a real Flash Lite brain (no card needed).
+      </span>
+      <a
+        href="https://aistudio.google.com/apikey"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center text-accent-copper underline-offset-4 hover:underline [html[data-theme=sakura]_&]:min-h-6"
+      >
+        Get key →
+      </a>
+      <button
+        type="button"
+        onClick={onOpenProviders}
+        className="ml-auto inline-flex items-center text-accent-copper underline-offset-4 hover:underline [html[data-theme=sakura]_&]:min-h-6"
+      >
+        Open Providers
+      </button>
+    </div>
+  );
+}
+
 export function Composer({
   chatId,
   placeholder,
@@ -3311,45 +3344,20 @@ export function Composer({
       data-tour="chat-composer"
     >
       {showFreeKeyNudge && (
-        <div
-          className={cn(
-            'flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-1 pt-2.5',
-            'text-secondary text-muted-foreground',
-          )}
-          role="status"
-          aria-label="Free Gemini API key recommended for the Jarvis agent"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-accent-copper shrink-0" />
-          <span>
-            Add a free Gemini API key to give Jarvis a real Flash Lite brain (no card needed).
-          </span>
-          <a
-            href="https://aistudio.google.com/apikey"
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent-copper underline-offset-4 hover:underline"
-          >
-            Get key →
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsOpen(true);
-              // Wait one task so the SettingsModal commits open=true and
-              // attaches its tab-switch listener before we dispatch.
-              setTimeout(() => {
-                window.dispatchEvent(
-                  new CustomEvent('jarvis:settings:tab', {
-                    detail: { tab: 'providers' },
-                  }),
-                );
-              }, 0);
-            }}
-            className="ml-auto text-accent-copper underline-offset-4 hover:underline"
-          >
-            Open Providers
-          </button>
-        </div>
+        <FreeKeyNudge
+          onOpenProviders={() => {
+            setSettingsOpen(true);
+            // Wait one task so the SettingsModal commits open=true and
+            // attaches its tab-switch listener before we dispatch.
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent('jarvis:settings:tab', {
+                  detail: { tab: 'providers' },
+                }),
+              );
+            }, 0);
+          }}
+        />
       )}
       <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
         {promptForge.recoverableJob ? (

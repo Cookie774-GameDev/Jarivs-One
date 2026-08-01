@@ -682,7 +682,7 @@ export function NavSection({
               event.stopPropagation();
               onTitleClick();
             }}
-            className="min-w-0 flex-1 truncate text-left focus-visible:outline-none"
+            className="min-w-0 flex-1 truncate text-left focus-visible:outline-none [html[data-theme=sakura]_&]:min-h-6"
           >
             {title}
           </button>
@@ -728,7 +728,7 @@ interface ProjectRowProps {
  * project detail page where the user edits name / colour / context /
  * agents.
  */
-function ProjectRow({
+export function ProjectRow({
   project: p,
   navOpen,
   active,
@@ -833,7 +833,7 @@ function ProjectRow({
       <button
         type="button"
         onClick={onActivate}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none [html[data-theme=sakura]_&]:min-h-6"
       >
         <span
           aria-hidden
@@ -853,7 +853,7 @@ function ProjectRow({
         aria-label={`Open ${p.name} settings`}
         title="Project settings"
         className={cn(
-          'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground',
+          'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground [html[data-theme=sakura]_&]:h-6 [html[data-theme=sakura]_&]:w-6 [html[data-theme=sakura]_&]:min-h-6 [html[data-theme=sakura]_&]:min-w-6',
           'opacity-0 group-hover:opacity-70 [html[data-theme=monochrome]_&]:group-hover:opacity-100 hover:text-foreground hover:opacity-100',
           'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
         )}
@@ -925,7 +925,7 @@ interface ChatNavRowProps {
   onTogglePin: () => void;
 }
 
-function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowProps) {
+export function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowProps) {
   const label = (chat.title || 'Untitled chat').trim() || 'Untitled chat';
   const pinned = isChatPinned(chat);
 
@@ -965,7 +965,7 @@ function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowPr
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=sakura]_&]:min-h-6"
       >
         <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>

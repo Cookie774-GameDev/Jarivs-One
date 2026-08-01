@@ -7,6 +7,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The compact empty Context-map label needs a slightly lighter Sakura coral
+ * against the indigo card surface to clear WCAG AA at 11px. */
+html[data-theme='sakura'] [data-sakura-shell-region='navigation'] .mb-1.text-accent-copper {
+  color: #f27690;
+}
+
 /* ============================================================
    COZY CHECKLIST DESIGN SYSTEM (V2)
    Warm, paper-inspired. Earthy palette: rose, terracotta, honey,

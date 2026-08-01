@@ -328,7 +328,7 @@ export function TabStrip() {
       className="sakura-shell-tab-strip flex h-8 shrink-0 items-stretch gap-1 border-b border-border bg-panel px-2"
     >
       <div
-        role={tabs.length > 0 ? 'tablist' : undefined}
+        role={tabs.length > 0 ? 'group' : undefined}
         aria-label={tabs.length > 0 ? 'Open chats' : undefined}
         className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-hidden"
       >
@@ -388,7 +388,14 @@ interface TabItemProps {
   onSendToPetPanel?: () => void;
 }
 
-function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel }: TabItemProps) {
+export function TabItem({
+  tab,
+  active,
+  onActivate,
+  onClose,
+  onRename,
+  onSendToPetPanel,
+}: TabItemProps) {
   const themeMotionTransition = useThemeMotionTransition(LEGACY_TAB_TRANSITION);
   const themeMotionLayout = useThemeMotionLayout(true);
   const [editing, setEditing] = React.useState(false);
@@ -427,33 +434,11 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
   return (
     <>
       <motion.div
-        role="tab"
-        aria-selected={active}
-        tabIndex={active ? 0 : -1}
-        data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}
         layout={themeMotionLayout}
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 4 }}
         transition={themeMotionTransition}
-        onClick={() => {
-          if (!editing) onActivate();
-        }}
-        onKeyDown={(event) => {
-          if (!editing && (event.key === 'Enter' || event.key === ' ')) {
-            event.preventDefault();
-            onActivate();
-          }
-        }}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          setEditing(true);
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setMenu({ x: e.clientX, y: e.clientY });
-        }}
         className={cn(
           'group flex h-7 max-w-[220px] shrink-0 cursor-default select-none items-center gap-1.5 self-center rounded-md border border-transparent px-2 text-secondary transition-colors motion-reduce:!transform-none motion-reduce:!opacity-100',
           active
@@ -491,7 +476,31 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
             aria-label={`Rename ${tab.title}`}
           />
         ) : (
-          <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+          <button
+            type="button"
+            aria-pressed={active}
+            tabIndex={active ? 0 : -1}
+            data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}
+            onClick={onActivate}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onActivate();
+              }
+            }}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              setEditing(true);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMenu({ x: event.clientX, y: event.clientY });
+            }}
+            className="min-w-0 flex-1 truncate text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=sakura]_&]:min-h-6"
+          >
+            {tab.title}
+          </button>
         )}
         <button
           type="button"

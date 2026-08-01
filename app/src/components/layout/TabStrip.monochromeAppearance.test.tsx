@@ -61,34 +61,38 @@ describe('TabStrip MonoChrome appearance', () => {
     liveChats.current = [{ id: 'chat-1', title: 'Example chat', pinned: false }];
   });
 
-  it('keeps the themed strip outside a tablist that owns only real tabs', () => {
+  it('keeps the themed strip outside a named group of sibling selection and close buttons', () => {
     render(<TabStrip />);
 
-    const tabStrip = screen.getByRole('tablist', { name: 'Open chats' });
-    const themedStrip = tabStrip.parentElement;
+    const tabGroup = screen.getByRole('group', { name: 'Open chats' });
+    const themedStrip = tabGroup.parentElement;
     expect(themedStrip?.getAttribute('data-monochrome-surface')).toBe('tab-strip');
     expect(themedStrip?.className).toContain('bg-panel');
     expect(themedStrip?.className).not.toMatch(/gradient|blur|shadow/);
 
-    const tab = screen.getByRole('tab', { name: /Example chat/ });
-    expect(tab.className).toContain('motion-reduce:!transform-none');
-    expect(tab.className).toContain('motion-reduce:!opacity-100');
+    const tab = screen.getByRole('button', { name: /^Example chat/ });
+    const tabItem = tab.parentElement;
+    const close = screen.getByRole('button', { name: 'Close Example chat' });
+    expect(tab.getAttribute('aria-pressed')).toBe('true');
+    expect(tabItem?.className).toContain('motion-reduce:!transform-none');
+    expect(tabItem?.className).toContain('motion-reduce:!opacity-100');
+    expect(close.parentElement).toBe(tabItem);
 
-    expect(Array.from(tabStrip.children)).toEqual([tab]);
-    expect(within(tabStrip).queryByRole('button', { name: 'New chat' })).toBeNull();
+    expect(Array.from(tabGroup.children)).toEqual([tabItem]);
+    expect(within(tabGroup).queryByRole('button', { name: 'New chat' })).toBeNull();
 
     const newChat = screen.getByRole('button', { name: 'New chat' });
     expect(themedStrip?.contains(newChat)).toBe(true);
 
     fireEvent.contextMenu(tab);
     const tabMenu = screen.getByRole('menu');
-    expect(tabStrip.contains(tabMenu)).toBe(false);
+    expect(tabGroup.contains(tabMenu)).toBe(false);
     expect(
-      Array.from(tabStrip.children).every((child) => child.getAttribute('role') === 'tab'),
+      Array.from(tabGroup.children).every((child) => child.querySelector('button[aria-pressed]')),
     ).toBe(true);
   });
 
-  it('shows a usable empty state without inventing an empty tablist or fake tab', () => {
+  it('shows a usable empty state without inventing an empty group or selection button', () => {
     liveChats.current = [];
 
     render(<TabStrip />);
@@ -97,8 +101,8 @@ describe('TabStrip MonoChrome appearance', () => {
     const themedStrip = emptyState.closest('[data-monochrome-surface="tab-strip"]');
 
     expect(themedStrip).not.toBeNull();
-    expect(screen.queryByRole('tablist', { name: 'Open chats' })).toBeNull();
-    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Open chats' })).toBeNull();
+    expect(screen.queryByRole('button', { pressed: true })).toBeNull();
     expect(screen.getByRole('button', { name: 'New chat' })).not.toBeNull();
   });
 });
