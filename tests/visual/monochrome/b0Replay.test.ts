@@ -61,16 +61,7 @@ test('B0 replay reconstructs the exact frozen shifted fixture', async () => {
   assert.equal(fixture.clock, Date.parse('2026-07-16T12:00:00.000Z'));
   assert.equal(
     createHash('sha256').update(JSON.stringify(fixture)).digest('hex'),
-    '28f7fdb960ecb978ed60e4b475753a30fdcd2bd1e8b6928026a7f4f7ad55f826',
-  );
-  const stableMessageTime = fixture.clock - 60 * 60 * 1000;
-  assert.equal(fixture.chat.updated_at, stableMessageTime);
-  assert.deepEqual(
-    fixture.messages.map(({ created_at, updated_at }) => [created_at, updated_at]),
-    [
-      [stableMessageTime - 1, stableMessageTime - 1],
-      [stableMessageTime, stableMessageTime],
-    ],
+    '48759d692d069850a3b2f734823ec06b2fcf62a667d984d52ec30247d25c4ec9',
   );
 });
 
