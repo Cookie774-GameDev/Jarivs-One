@@ -247,7 +247,9 @@ export function SkillDetail({ manifest, onToggleEnabled, className }: SkillDetai
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <Button variant="ghost" size="sm" onClick={handleReload} disabled={reloading}>
-            <RefreshCw className={cn('h-3.5 w-3.5', reloading && 'animate-spin')} />
+            <RefreshCw
+              className={cn('h-3.5 w-3.5 motion-reduce:animate-none', reloading && 'animate-spin')}
+            />
             Reload from disk
           </Button>
           <Button variant="ghost" size="sm" onClick={handleCopyId}>
@@ -263,9 +265,7 @@ export function SkillDetail({ manifest, onToggleEnabled, className }: SkillDetai
             size="sm"
             onClick={() => onToggleEnabled(manifest.name, !manifest.enabled)}
           >
-            <Power
-              className={cn('h-3.5 w-3.5', manifest.enabled && 'text-accent-sage')}
-            />
+            <Power className={cn('h-3.5 w-3.5', manifest.enabled && 'text-accent-sage')} />
             {manifest.enabled ? 'Disable' : 'Enable'}
           </Button>
         </div>
