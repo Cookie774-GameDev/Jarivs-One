@@ -1,0 +1,124 @@
+html[data-theme='sakura'] .sakura-auth-dialog {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  border-radius: var(--sakura-radius-feature);
+  background: var(--sakura-panel-strong-fallback);
+  box-shadow:
+    0 2.375rem 6.25rem hsl(var(--sakura-night-hsl) / 0.58),
+    inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.09);
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog [data-sakura-surface='auth-header'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-decorative-border-alpha));
+  background: linear-gradient(
+    155deg,
+    hsl(var(--sakura-indigo-hsl) / 0.96),
+    hsl(var(--sakura-night-hsl) / 0.98)
+  );
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog [data-sakura-surface='auth-modes'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background: hsl(var(--sakura-night-hsl) / 0.9);
+}
+
+html[data-theme='sakura']
+  .sakura-auth-dialog
+  [data-sakura-surface='auth-modes']
+  [aria-pressed='true'] {
+  border: 1px solid hsl(var(--sakura-pink-hsl) / 0.34);
+  background: hsl(var(--sakura-pink-hsl) / 0.13);
+  box-shadow: inset 0 2px 0 hsl(var(--sakura-pink-hsl));
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog input,
+html[data-theme='sakura'] .sakura-model-access input,
+html[data-theme='sakura'] .sakura-otp-input {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background: hsl(var(--sakura-night-hsl) / 0.92);
+  box-shadow: inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.05);
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog [role='status'] {
+  border-color: hsl(var(--info) / 0.55);
+  background: hsl(var(--info) / 0.12);
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog [data-sakura-tone='warning'] {
+  border-color: hsl(var(--warning) / 0.64);
+  background: hsl(var(--warning) / 0.13);
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog [role='alert'] {
+  border-color: hsl(var(--destructive) / 0.72);
+  background: hsl(var(--destructive) / 0.16);
+}
+
+html[data-theme='sakura'] .sakura-model-access {
+  background: transparent;
+}
+
+html[data-theme='sakura'] .sakura-model-access > div {
+  border: 1px solid hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  border-radius: var(--sakura-radius-feature);
+  background: var(--sakura-panel-strong-fallback);
+  box-shadow:
+    var(--shadow-lift),
+    inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.08);
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+
+html[data-theme='sakura'] .sakura-model-access h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+}
+
+html[data-theme='sakura'] .sakura-model-access [data-sakura-surface='credential'] {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.42);
+  background: hsl(var(--sakura-night-hsl) / 0.92);
+  box-shadow: inset 3px 0 0 hsl(var(--sakura-pink-hsl));
+}
+
+html[data-theme='sakura'] .sakura-auth-dialog :disabled,
+html[data-theme='sakura'] .sakura-model-access :disabled,
+html[data-theme='sakura'] .sakura-otp-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 520px) {
+  html[data-theme='sakura'] .sakura-auth-dialog [data-sakura-surface='auth-modes'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html[data-theme='sakura'] .sakura-model-access > div {
+    border-radius: 1rem;
+    padding: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] .sakura-auth-dialog *,
+  html[data-theme='sakura'] .sakura-model-access *,
+  html[data-theme='sakura'] .sakura-otp-input {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] .sakura-auth-dialog,
+  html[data-theme='sakura'] .sakura-auth-dialog [data-sakura-surface],
+  html[data-theme='sakura'] .sakura-model-access > div,
+  html[data-theme='sakura'] .sakura-model-access [data-sakura-surface],
+  html[data-theme='sakura'] .sakura-otp-input {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

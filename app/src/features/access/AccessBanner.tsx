@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarClock, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { AccessDisplayState } from './AccessPaywall';
+import './sakura-access.css';
 
 export type AccessBannerPendingAction = 'manage-billing' | 'subscribe' | null;
 
@@ -147,6 +148,7 @@ export function AccessBanner(props: AccessBannerProps) {
       )}
       role={urgent ? 'alert' : 'status'}
       aria-live={urgent ? 'assertive' : 'polite'}
+      data-sakura-tone={content.tone}
     >
       <div className="flex min-w-0 items-start gap-2">
         <Icon

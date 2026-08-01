@@ -1,6 +1,7 @@
 import { CreditCard, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import './sakura-billing.css';
 
 /**
  * Legacy settings surface kept as a safe bridge for older routes.
@@ -17,7 +18,7 @@ export function HostedJarvis() {
   };
 
   return (
-    <Card>
+    <Card className="sakura-hosted-billing">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-ui-strong">
           <ShieldCheck className="h-4 w-4 text-accent-cyan" />

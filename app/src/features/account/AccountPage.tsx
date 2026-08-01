@@ -50,10 +50,11 @@ import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
   ACCOUNT_TABS,
-  DEFAULT_ACCOUNT_TAB,
   resolveAccountTab,
+  resolveAccountTabFromSearch,
   type AccountTabId,
 } from './accountTabs';
+import './sakura-account.css';
 
 const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
 
@@ -79,7 +80,9 @@ export function AccountPage() {
   const activePlan = PLANS[activePlanId];
   const configuredKeyCount = Object.values(apiKeys).filter(Boolean).length;
 
-  const [tab, setTab] = React.useState<AccountTabId>(DEFAULT_ACCOUNT_TAB);
+  const [tab, setTab] = React.useState<AccountTabId>(() =>
+    resolveAccountTabFromSearch(window.location.search),
+  );
   const [usage, setUsage] = React.useState<CombinedUsage | null>(null);
   const [usageLoading, setUsageLoading] = React.useState(false);
   const [usageError, setUsageError] = React.useState<string | null>(null);
@@ -182,7 +185,10 @@ export function AccountPage() {
     <main className="mc7f-account-page h-full overflow-y-auto bg-background [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-0 px-4 pb-10 pt-5 sm:px-6">
         {/* Hero */}
-        <header className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/60 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none">
+        <header
+          className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/60 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
+          data-sakura-surface="account-hero"
+        >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,119,87,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(6,182,212,0.14),transparent_40%)] [html[data-theme=monochrome]_&]:hidden" />
           <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -220,6 +226,7 @@ export function AccountPage() {
         >
           <div className="sticky top-0 z-20 -mx-1 overflow-x-auto px-1 pb-1">
             <TabsList
+              data-sakura-surface="account-tabs"
               className={cn(
                 'flex h-auto w-full min-w-max items-stretch gap-1 rounded-2xl border border-border/80',
                 'bg-panel/90 p-1.5 shadow-soft backdrop-blur-md [html[data-theme=monochrome]_&]:backdrop-blur-none',
@@ -288,12 +295,18 @@ export function AccountPage() {
                   }
                 />
               ) : usageLoading && !usage ? (
-                <div className="flex items-center justify-center gap-2 py-14 text-muted-foreground">
+                <div
+                  className="flex items-center justify-center gap-2 py-14 text-muted-foreground"
+                  data-sakura-state="loading"
+                >
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-secondary">Loading usage…</span>
                 </div>
               ) : usageError && !usage ? (
-                <div className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-4">
+                <div
+                  className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-4"
+                  data-sakura-state="error"
+                >
                   <p className="text-sm text-foreground">{usageError}</p>
                   <Button
                     type="button"
@@ -346,7 +359,10 @@ export function AccountPage() {
               icon={<CreditCard className="h-5 w-5 text-accent-copper" />}
             >
               <div className="flex flex-col gap-4">
-                <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
+                <div
+                  className="rounded-2xl border border-border/70 bg-background/60 p-4"
+                  data-sakura-surface="dense"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-ui-strong text-foreground">{activePlan.label}</p>
@@ -545,7 +561,7 @@ function PanelCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-border bg-panel p-5 shadow-soft sm:p-6">
+    <section className="sakura-account-panel rounded-3xl border border-border bg-panel p-5 shadow-soft sm:p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-elevated">

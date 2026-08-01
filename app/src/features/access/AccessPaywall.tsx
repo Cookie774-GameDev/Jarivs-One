@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import './sakura-access.css';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -198,6 +199,8 @@ export function AccessPaywall({
 
   return (
     <main
+      data-sakura-state={displayState}
+      aria-busy={isBusy}
       className={cn(
         'mc7f-access-paywall mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-4 py-10 [html[data-theme=monochrome]_&]:max-w-xl [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none',
         'text-foreground',
@@ -236,6 +239,7 @@ export function AccessPaywall({
       {/* Status card */}
       <section
         aria-label="Access status"
+        data-sakura-surface="access-status"
         className="rounded-2xl border border-border/70 bg-panel/80 p-5 shadow-[var(--shadow-soft)]"
       >
         {/* Status badge with icon (non-color cue) */}

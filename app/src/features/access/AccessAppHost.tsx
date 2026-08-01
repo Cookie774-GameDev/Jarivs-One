@@ -13,6 +13,7 @@ import { AccessHost } from './AccessHost';
 import { AccessPaywall, type PendingAction } from './AccessPaywall';
 import type { AccessViewModel } from './accessViewModel';
 import { backupCurrentAccountWorkspace } from './workspaceBackup';
+import './sakura-access.css';
 
 export interface AccessAppRuntime {
   loadViewModel(signal: AbortSignal): Promise<AccessViewModel>;

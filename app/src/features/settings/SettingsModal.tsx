@@ -31,11 +31,12 @@ import {
 } from 'lucide-react';
 import { useAppAdmin } from '@/lib/admin';
 import { useUIStore } from '@/stores/ui';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { HiveModelTabIcon } from '@/components/brand';
 import { prefetchSettingsTab, type SettingsTab } from './settingsPrefetch';
 import { rememberSettingsTab } from './settingsTabMemory';
+import './sakura-settings.css';
 
 const Account = lazy(() => import('./sections/Account').then((m) => ({ default: m.Account })));
 const Providers = lazy(() =>
@@ -111,6 +112,12 @@ const TABS: TabDef[] = [
 interface SettingsModalProps {
   /** Optional initial tab. Defaults to 'account' on each open. */
   initialTab?: SettingsTab;
+  /**
+   * Exposes the real non-authoritative Admin presentation for the contained
+   * visual profile. This does not change the entitlement snapshot consumed by
+   * the Admin section and must stay false in ordinary runtime.
+   */
+  visualAdminPreview?: boolean;
 }
 
 function CachedTabPanel({
@@ -255,24 +262,28 @@ function SettingsTabPanels({
  * with `{ detail: { tab } }`. The Plans tab uses this to send the user
  * to Providers when they click "Add a key".
  */
-export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
+export function SettingsModal({
+  initialTab = 'account',
+  visualAdminPreview = false,
+}: SettingsModalProps) {
   const open = useUIStore((s) => s.settingsOpen);
   const setOpen = useUIStore((s) => s.setSettingsOpen);
   const isAdmin = useAppAdmin();
+  const adminTabVisible = isAdmin || visualAdminPreview;
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<SettingsTab>>(
     () => new Set<SettingsTab>([initialTab]),
   );
   const tabs = useMemo(
     () =>
-      isAdmin
+      adminTabVisible
         ? [
             ...TABS.slice(0, 1),
             { id: 'admin' as const, label: 'Admin', icon: Shield },
             ...TABS.slice(1),
           ]
         : TABS,
-    [isAdmin],
+    [adminTabVisible],
   );
 
   const selectTab = (next: SettingsTab) => {
@@ -290,8 +301,8 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
   };
 
   useEffect(() => {
-    if (!isAdmin && tab === 'admin') setTab('account');
-  }, [isAdmin, tab]);
+    if (!adminTabVisible && tab === 'admin') setTab('account');
+  }, [adminTabVisible, tab]);
 
   useEffect(() => {
     if (!open) return;
@@ -315,14 +326,28 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
         setOpen(v);
       }}
     >
-      <DialogContent className="mc7f-settings-modal max-w-6xl w-[min(1180px,94vw)] h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none">
+      <DialogContent
+        overlayProps={{
+          'data-monochrome-overlay': 'settings-modal',
+          'data-sakura-overlay': 'settings-modal',
+          className:
+            '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
+        }}
+        className="mc7f-settings-modal w-[min(1180px,94vw)] max-w-6xl h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none"
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Configure your account, providers, appearance, voice, hotkeys, and telemetry.
         </DialogDescription>
 
-        <div className="flex-1 min-h-0 grid grid-cols-[220px_1fr] grid-rows-[1fr]">
-          <aside className="border-r border-border bg-panel flex flex-col min-h-0">
+        <div
+          className="flex-1 min-h-0 grid grid-cols-[220px_1fr] grid-rows-[1fr]"
+          data-sakura-surface="settings-layout"
+        >
+          <aside
+            className="border-r border-border bg-panel flex flex-col min-h-0"
+            data-sakura-surface="settings-navigation"
+          >
             <div className="px-4 py-4 shrink-0">
               <span className="text-ui-strong text-foreground">Settings</span>
             </div>
@@ -373,7 +398,11 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
             </nav>
           </aside>
 
-          <main className="overflow-y-auto px-6 py-6 min-h-0" role="tablist">
+          <main
+            className="overflow-y-auto px-6 py-6 min-h-0"
+            role="tablist"
+            data-sakura-surface="settings-content"
+          >
             <SettingsTabPanels tab={tab} visited={visitedTabs} />
           </main>
         </div>
