@@ -15,12 +15,22 @@ import {
 } from './petTauriBridge';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
+import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 
-export function PetOverlayWindow() {
+export interface PetOverlayWindowProps {
+  runtimeEffectsEnabled?: boolean;
+}
+
+export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWindowProps = {}) {
   const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
+  const theme = useUIStore((s) => s.theme);
+
+  React.useEffect(() => {
+    applyThemeToDocument(theme);
+  }, [theme]);
 
   React.useEffect(() => {
     document.documentElement.dataset.vibespaceView = 'pet-overlay';
@@ -45,8 +55,12 @@ export function PetOverlayWindow() {
       root.style.padding = '0';
       root.style.overflow = 'hidden';
     }
-    const uninstallPresentationSync = installPetPresentationStorageSync();
-    const uninstallSettingsSync = installPetSettingsStorageSync();
+    const uninstallPresentationSync = runtimeEffectsEnabled
+      ? installPetPresentationStorageSync()
+      : () => undefined;
+    const uninstallSettingsSync = runtimeEffectsEnabled
+      ? installPetSettingsStorageSync()
+      : () => undefined;
     return () => {
       uninstallPresentationSync();
       uninstallSettingsSync();
@@ -57,9 +71,10 @@ export function PetOverlayWindow() {
         delete document.body.dataset.vibespaceView;
       }
     };
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const recoverTopmost = () => {
       if (document.visibilityState === 'hidden') return;
       void reassertPetOverlayTopmost().catch(() => undefined);
@@ -75,7 +90,7 @@ export function PetOverlayWindow() {
       window.removeEventListener('pageshow', recoverTopmost);
       document.removeEventListener('visibilitychange', recoverTopmost);
     };
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   return (
     <div
@@ -96,11 +111,13 @@ export function PetOverlayWindow() {
     >
       <PetOverlay
         enabled
-        reducedMotion={reducedMotion}
+        reducedMotion={runtimeEffectsEnabled ? reducedMotion : true}
+        animationLevelOverride={runtimeEffectsEnabled ? undefined : 'off'}
         tauriWindowMode
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
         onOpenPanel={() => {
+          if (!runtimeEffectsEnabled) return;
           // Shared Axo+Glitch path: single-flight open, confirm-then-hide overlay.
           // Does NOT hide overlay optimistically before confirm (avoids both-hidden).
           void openOrFocusPetMiniPanel(undefined, undefined, panelMode)

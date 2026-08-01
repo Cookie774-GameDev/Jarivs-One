@@ -135,6 +135,24 @@ describe('PetOverlay StrictMode player lifecycle', () => {
     vi.useRealTimers();
   });
 
+  it('uses the bundled static portrait when animation is off and publishes image readiness', async () => {
+    const view = render(<PetOverlay reducedMotion animationLevelOverride="off" tauriWindowMode />);
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+    const staticFrame = view.container.querySelector(
+      '[data-pet-static-frame="true"]',
+    ) as HTMLImageElement;
+
+    expect(overlay.getAttribute('data-pet-render-ready')).toBe('false');
+    expect(staticFrame).toBeTruthy();
+    fireEvent.load(staticFrame);
+    await waitFor(() => {
+      expect(overlay.getAttribute('data-pet-render-ready')).toBe('true');
+    });
+    expect(playerState.instances.every((player) => player.setAnimationCalls === 0)).toBe(true);
+
+    view.unmount();
+  });
+
   it('shows then clears a sanitized success reaction from the shared runtime event broker', () => {
     vi.useFakeTimers();
     const view = render(<PetOverlay />);
