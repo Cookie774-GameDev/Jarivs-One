@@ -23,11 +23,19 @@
  */
 import * as React from 'react';
 import { liveQuery } from 'dexie';
-import { applyThemeToDocument, useUIStore } from '@/stores/ui';
+import { applyThemeToDocument, resolveTheme, useUIStore, type Route } from '@/stores/ui';
 import { handleVoiceModuleClosed, syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import { useAgentStore } from '@/stores/agents';
 import { AuthGate } from '@/features/auth';
-import { InstalledAccessAppHost } from '@/features/access/AccessAppHost';
+import {
+  AccessAppHost,
+  InstalledAccessAppHost,
+  type AccessAppRuntime,
+} from '@/features/access/AccessAppHost';
+import { AccessBanner } from '@/features/access/AccessBanner';
+import { AccessPaywall } from '@/features/access/AccessPaywall';
+import { evaluateAppAccess } from '@/features/access/accessPolicy';
+import { createAccessViewModel } from '@/features/access/accessViewModel';
 import { AppShell } from '@/components/layout';
 import { JarvisContextMenu } from '@/components/layout/JarvisContextMenu';
 import { PageRouter } from '@/components/layout/PageRouter';
@@ -37,7 +45,10 @@ import { startClockEngine } from '@/features/clock/clockEngine';
 import { WellnessBreak } from '@/features/wellness';
 import { useGlobalHotkeys } from '@/features/command-palette';
 import { WakeWordHost } from '@/features/voice/WakeWordHost';
-import { ApiKeySaveBurst } from '@/features/settings/ApiKeySaveBurst';
+import {
+  ApiKeySaveBurst,
+  fireApiKeySaveBurstFromElement,
+} from '@/features/settings/ApiKeySaveBurst';
 import { CallModal, startOutboundTrigger } from '@/features/call';
 import { useBridgeLifecycle } from '@/lib/bridge/useBridgeLifecycle';
 import { useIdleDetection, AmbientAudioHost } from '@/features/ambient';
@@ -46,6 +57,7 @@ import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnal
 import { GlobalSttHost } from '@/features/composer-stt';
 import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   createJarvisCommandCenterHostPort,
   getInstalledJarvisCommandCenterHostDependencies,
@@ -54,11 +66,17 @@ import {
   startRuntimeListener,
 } from '@/lib/ai/runtime';
 import {
+  JarvisCommandCenter,
   JarvisCommandCenterProvider,
   type JarvisCommandCenterBinding,
 } from '@/features/jarvis-command-center/JarvisCommandCenter';
+import type {
+  JarvisCommandCenterDataPort,
+  JarvisCommandCenterHandlers,
+} from '@/features/jarvis-command-center/types';
 import { createJarvisCommandCenterDataPort } from '@/features/jarvis-command-center/commandCenterDataPort';
 import { selectCurrentRun } from '@/features/jarvis-command-center/selectors';
+import { PromptForgeControl } from '@/features/prompt-forge/PromptForgeControl';
 import { startJarvisLearningListener } from '@/features/jarvis-memory/learningListener';
 import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
@@ -106,6 +124,7 @@ import {
 } from '@/lib/cloudSyncQueueOwner';
 import { getDefaultAgents } from '@/features/agents';
 import { ensureActiveChat, branchChatFromMessage } from '@/features/chat/chatLifecycle';
+import { MONOCHROME_CHAT_FIXTURE } from '@/features/chat/monochromeFixture';
 import type { ChatId, MessageId } from '@/types/common';
 import { useHotkey, HOTKEYS } from '@/lib/hotkeys';
 import { DevConsoleHost } from '@/features/dev-console';
@@ -123,6 +142,24 @@ import type { PluginManagementCapability } from '@/features/plugins/runtime';
 import type { Agent, AgentId, Message } from '@/types';
 import { KernelSmokeBindingHost } from '@/lib/jarvis/smoke/KernelSmokeBindingHost';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import {
+  MONOCHROME_BASELINE_REQUEST_AUTHORITY,
+  MONOCHROME_DEVELOPMENT_AUTHORITY_ID,
+  createTauriMonochromeEvidenceCommit,
+  createTauriRuntimeProfileQuery,
+  parseMonochromeFixtureRequest,
+  resolveRuntimePlan,
+  resolveRuntimeProfileHandshakeExpectation,
+  verifyRuntimeProfileHandshake,
+  type MonochromeEvidenceCommit,
+  type MonochromeEvidenceCommitRequest,
+  type RuntimePlan,
+  type RuntimeProfileQuery,
+  type RuntimeProfileEvidence,
+  type RuntimeProfileHandshakeExpectation,
+  type MonochromeFixtureRequest,
+  type MonochromeHandshakeEvidence,
+} from '@/lib/runtimeProfile';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -140,6 +177,23 @@ type SupabaseSessionLike = {
 let accountScopeTeardownBarrier: Promise<void> = Promise.resolve();
 let cloudSyncTeardownBarrier: Promise<void> = Promise.resolve();
 let invalidateActiveKernelAccount: (accountId: string) => void = () => {};
+
+export async function runRuntimeAdmittedLocalHydration<T>(
+  plan: RuntimePlan,
+  adapters: {
+    openDatabase(): Promise<void>;
+    listAgents(): Promise<readonly T[]>;
+    registerAgents(agents: readonly T[]): void;
+  },
+): Promise<void> {
+  if (!plan.persistenceEnabled) {
+    adapters.registerAgents([]);
+    return;
+  }
+  await adapters.openDatabase();
+  const agents = await adapters.listAgents();
+  adapters.registerAgents(agents);
+}
 
 function cloudSessionUserId(session: SupabaseSessionLike): string {
   return session?.user?.id?.trim() ?? '';
@@ -472,8 +526,17 @@ const CouncilView = React.lazy(() =>
 );
 import { getLastSettingsTab } from '@/features/settings/settingsTabMemory';
 
+type SettingsTabMemoryValue = ReturnType<typeof getLastSettingsTab>;
+let monochromeSettingsTabOverride: SettingsTabMemoryValue | undefined;
+
 const SettingsModal = React.lazy(() =>
   import('@/features/settings').then((m) => ({ default: m.SettingsModal })),
+);
+const PetOverlayWindow = React.lazy(() =>
+  import('@/features/pets/PetOverlayWindow').then((m) => ({ default: m.PetOverlayWindow })),
+);
+const PetMiniPanelWindow = React.lazy(() =>
+  import('@/features/pets/PetMiniPanelWindow').then((m) => ({ default: m.PetMiniPanelWindow })),
 );
 const VoiceModal = React.lazy(() =>
   import('@/features/voice/VoiceModal').then((m) => ({ default: m.VoiceModal })),
@@ -572,6 +635,7 @@ async function syncPlanFromProfile(userId: string, requestGeneration: number): P
  * council mode still pulls per-chat agent ids and seeds messages.
  */
 function ActiveCanvas() {
+  const plan = resolveRuntimePlan();
   const route = useUIStore((s) => s.route);
   const chatMode = useUIStore((s) => s.chatMode);
   const activeChatId = useUIStore((s) => s.activeChatId);
@@ -582,7 +646,7 @@ function ActiveCanvas() {
   // When council mode is on, pull the chat's `active_agent_ids` and stream
   // messages from the same chat so each panel can filter on agent_id.
   React.useEffect(() => {
-    if (chatMode !== 'council' || !activeChatId) {
+    if (!plan.persistenceEnabled || chatMode !== 'council' || !activeChatId) {
       setCouncilAgentIds([]);
       setCouncilMessages([]);
       return;
@@ -607,7 +671,7 @@ function ActiveCanvas() {
     return () => {
       cancelled = true;
     };
-  }, [chatMode, activeChatId, agentMap]);
+  }, [plan.persistenceEnabled, chatMode, activeChatId, agentMap]);
 
   // V3 — non-chat routes go through the lazy PageRouter.
   if (route !== 'chat') {
@@ -634,6 +698,7 @@ function ActiveCanvas() {
  * Mounted ONCE inside AuthGate (after seeding) via this effect.
  */
 function useBoot() {
+  const plan = resolveRuntimePlan();
   const registerMany = useAgentStore((s) => s.registerMany);
   const [commandCenterBinding, setCommandCenterBinding] =
     React.useState<JarvisCommandCenterBinding>();
@@ -965,24 +1030,28 @@ function useBoot() {
       syncAccountScopedListeners();
     }
 
-    stopAccountSubscription = useAuthStore.subscribe(() => {
-      revokeEnqueueAuthorityOnStoreDivergence();
-      syncAccountScopedListeners();
-    });
+    if (plan.cloudSyncEnabled) {
+      stopAccountSubscription = useAuthStore.subscribe(() => {
+        revokeEnqueueAuthorityOnStoreDivergence();
+        syncAccountScopedListeners();
+      });
+    }
 
     (async () => {
       // Phase 1: storage & keys
       let databaseOpened = false;
-      try {
-        await withTimeout(openDb(), 10_000, 'openDb');
-        databaseOpened = true;
-      } catch {
-        /* degraded */
+      if (plan.persistenceEnabled) {
+        try {
+          await withTimeout(openDb(), 10_000, 'openDb');
+          databaseOpened = true;
+        } catch {
+          /* degraded */
+        }
       }
 
       if (cancelled) return;
 
-      if (databaseOpened) {
+      if (databaseOpened && plan.persistenceEnabled) {
         persistenceCoordinator = createJarvisPersistenceCoordinator({
           db,
           readIdentity: () =>
@@ -997,254 +1066,279 @@ function useBoot() {
         ensurePersistenceCoordinatorStarted();
       }
 
-      try {
-        await withTimeout(useAuthStore.getState().hydrateApiKeysFromVault(), 5_000, 'hydrateKeys');
-      } catch {
-        /* fallback to localStorage */
+      if (plan.vaultKeychainHydrationEnabled) {
+        try {
+          await withTimeout(
+            useAuthStore.getState().hydrateApiKeysFromVault(),
+            5_000,
+            'hydrateKeys',
+          );
+        } catch {
+          /* fallback to localStorage */
+        }
       }
 
       if (cancelled) return;
 
-      void import('@tauri-apps/api/core')
-        .then(({ invoke }) => invoke('install_terminal_launcher'))
-        .catch((err) => console.warn('[launcher] terminal command setup failed', err));
+      if (plan.terminalLauncherInstallEnabled) {
+        void import('@tauri-apps/api/core')
+          .then(({ invoke }) => invoke('install_terminal_launcher'))
+          .catch((err) => console.warn('[launcher] terminal command setup failed', err));
+      }
 
       // Phase 2: Supabase (non-blocking, fire-and-forget)
-      try {
-        const { isSupabaseConfigured } = await withTimeout(
-          import('@/lib/supabase/env').then((m) => m),
-          5_000,
-          'supabaseCheck',
-        );
-        if (cancelled) return;
-        if (!isSupabaseConfigured()) {
-          publishVerifiedEnqueueCloudAuthority(null);
-          applyCloudSession(null);
-          accountIdentityReady = true;
-          ensurePersistenceCoordinatorStarted();
-        } else {
-          const supabaseModules = await withTimeout(
-            Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
-            15_000,
-            'supabaseImport',
-          ).catch(() => null);
-          if (supabaseModules && !cancelled) {
-            const [{ getSupabaseClient }, { pruneSyncQueue, retrySyncErrors, startSyncLoop }] =
-              supabaseModules;
-            const supa = getSupabaseClient();
-            const isCloudSyncAuthorityCurrent = (authority: CloudSyncAuthorityLifecycle) =>
-              !cancelled &&
-              activeCloudSyncAuthority === authority &&
-              !authority.controller.signal.aborted &&
-              authority.generation === cloudAuthGeneration &&
-              useAuthStore.getState().cloudSession?.user_id.trim() === authority.userId;
-            const startCloudSyncForAuthority = async (
-              authority: CloudSyncAuthorityLifecycle,
-              priorSettlement: Promise<void>,
-            ): Promise<void> => {
-              await priorSettlement;
-              if (!isCloudSyncAuthorityCurrent(authority)) return;
-              const syncAuthority = {
-                userId: authority.userId,
-                signal: authority.controller.signal,
+      if (plan.cloudSyncEnabled) {
+        try {
+          const { isSupabaseConfigured } = await withTimeout(
+            import('@/lib/supabase/env').then((m) => m),
+            5_000,
+            'supabaseCheck',
+          );
+          if (cancelled) return;
+          if (!isSupabaseConfigured()) {
+            publishVerifiedEnqueueCloudAuthority(null);
+            applyCloudSession(null);
+            accountIdentityReady = true;
+            ensurePersistenceCoordinatorStarted();
+          } else {
+            const supabaseModules = await withTimeout(
+              Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
+              15_000,
+              'supabaseImport',
+            ).catch(() => null);
+            if (supabaseModules && !cancelled) {
+              const [{ getSupabaseClient }, { pruneSyncQueue, retrySyncErrors, startSyncLoop }] =
+                supabaseModules;
+              const supa = getSupabaseClient();
+              const isCloudSyncAuthorityCurrent = (authority: CloudSyncAuthorityLifecycle) =>
+                !cancelled &&
+                activeCloudSyncAuthority === authority &&
+                !authority.controller.signal.aborted &&
+                authority.generation === cloudAuthGeneration &&
+                useAuthStore.getState().cloudSession?.user_id.trim() === authority.userId;
+              const startCloudSyncForAuthority = async (
+                authority: CloudSyncAuthorityLifecycle,
+                priorSettlement: Promise<void>,
+              ): Promise<void> => {
+                await priorSettlement;
+                if (!isCloudSyncAuthorityCurrent(authority)) return;
+                const syncAuthority = {
+                  userId: authority.userId,
+                  signal: authority.controller.signal,
+                };
+                await retrySyncErrors(syncAuthority).catch((err) =>
+                  console.warn('[sync] retrySyncErrors failed:', err),
+                );
+                if (!isCloudSyncAuthorityCurrent(authority)) return;
+                await pruneSyncQueue(syncAuthority).catch((err) =>
+                  console.warn('[sync] prune failed:', err),
+                );
+                if (!isCloudSyncAuthorityCurrent(authority)) return;
+                try {
+                  authority.stopLoop = startSyncLoop(syncAuthority);
+                } catch (err) {
+                  console.warn('[sync] loop startup failed:', err);
+                }
               };
-              await retrySyncErrors(syncAuthority).catch((err) =>
-                console.warn('[sync] retrySyncErrors failed:', err),
-              );
-              if (!isCloudSyncAuthorityCurrent(authority)) return;
-              await pruneSyncQueue(syncAuthority).catch((err) =>
-                console.warn('[sync] prune failed:', err),
-              );
-              if (!isCloudSyncAuthorityCurrent(authority)) return;
-              try {
-                authority.stopLoop = startSyncLoop(syncAuthority);
-              } catch (err) {
-                console.warn('[sync] loop startup failed:', err);
-              }
-            };
-            const reconcileCloudSyncAuthority = (
-              session: SupabaseSessionLike,
-              generation: number,
-            ): void => {
-              const userId = cloudSessionUserId(session);
-              if (!userId) {
-                void stopActiveCloudSyncLoop();
-                return;
-              }
-              const current = activeCloudSyncAuthority;
-              if (current && current.userId === userId && !current.controller.signal.aborted) {
-                current.generation = generation;
-                return;
-              }
+              const reconcileCloudSyncAuthority = (
+                session: SupabaseSessionLike,
+                generation: number,
+              ): void => {
+                const userId = cloudSessionUserId(session);
+                if (!userId) {
+                  void stopActiveCloudSyncLoop();
+                  return;
+                }
+                const current = activeCloudSyncAuthority;
+                if (current && current.userId === userId && !current.controller.signal.aborted) {
+                  current.generation = generation;
+                  return;
+                }
 
-              const priorSettlement = stopActiveCloudSyncLoop();
-              const authority: CloudSyncAuthorityLifecycle = {
-                userId,
-                generation,
-                controller: new AbortController(),
-                startup: Promise.resolve(),
+                const priorSettlement = stopActiveCloudSyncLoop();
+                const authority: CloudSyncAuthorityLifecycle = {
+                  userId,
+                  generation,
+                  controller: new AbortController(),
+                  startup: Promise.resolve(),
+                };
+                activeCloudSyncAuthority = authority;
+                authority.startup = startCloudSyncForAuthority(authority, priorSettlement).catch(
+                  (err) => {
+                    if (activeCloudSyncAuthority === authority) {
+                      activeCloudSyncAuthority = undefined;
+                      releaseEnqueueCloudAuthority(authority.userId);
+                    }
+                    console.warn('[sync] authority startup failed:', err);
+                  },
+                );
               };
-              activeCloudSyncAuthority = authority;
-              authority.startup = startCloudSyncForAuthority(authority, priorSettlement).catch(
-                (err) => {
-                  if (activeCloudSyncAuthority === authority) {
-                    activeCloudSyncAuthority = undefined;
-                    releaseEnqueueCloudAuthority(authority.userId);
-                  }
-                  console.warn('[sync] authority startup failed:', err);
-                },
-              );
-            };
-            if (supa) {
-              const sessionGeneration = ++cloudAuthGeneration;
-              void supa.auth
-                .getSession()
-                .then(({ data }) => {
-                  if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
-                  publishVerifiedEnqueueCloudAuthority(data.session as SupabaseSessionLike);
-                  applyCloudSession(data.session as SupabaseSessionLike);
+              if (supa) {
+                const sessionGeneration = ++cloudAuthGeneration;
+                void supa.auth
+                  .getSession()
+                  .then(({ data }) => {
+                    if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                    publishVerifiedEnqueueCloudAuthority(data.session as SupabaseSessionLike);
+                    applyCloudSession(data.session as SupabaseSessionLike);
+                    accountIdentityReady = true;
+                    ensurePersistenceCoordinatorStarted();
+                    syncAccountScopedListeners();
+                    reconcileCloudSyncAuthority(
+                      data.session as SupabaseSessionLike,
+                      sessionGeneration,
+                    );
+                    const userId = cloudSessionUserId(data.session as SupabaseSessionLike);
+                    // Startup routing: when cloud auth is configured but no one is
+                    // signed in, open the Account page so the user can sign up /
+                    // sign in. When signed in, the persisted last route is restored
+                    // automatically (route is persisted in the UI store).
+                    if (!data.session) {
+                      useUIStore.getState().setRoute('account');
+                    } else if (userId) {
+                      void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
+                    }
+                  })
+                  .catch((error) => {
+                    if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                    releaseEnqueueCloudAuthority();
+                    applyCloudSession(null);
+                    console.warn('[auth] initial Supabase session unavailable:', error);
+                    syncAccountScopedListeners();
+                  });
+                const sub = supa.auth.onAuthStateChange((_event, session) => {
+                  if (cancelled) return;
+                  cloudAuthGeneration += 1;
+                  publishVerifiedEnqueueCloudAuthority(session as SupabaseSessionLike);
+                  applyCloudSession(session as SupabaseSessionLike);
                   accountIdentityReady = true;
                   ensurePersistenceCoordinatorStarted();
                   syncAccountScopedListeners();
-                  reconcileCloudSyncAuthority(
-                    data.session as SupabaseSessionLike,
-                    sessionGeneration,
-                  );
-                  const userId = cloudSessionUserId(data.session as SupabaseSessionLike);
-                  // Startup routing: when cloud auth is configured but no one is
-                  // signed in, open the Account page so the user can sign up /
-                  // sign in. When signed in, the persisted last route is restored
-                  // automatically (route is persisted in the UI store).
-                  if (!data.session) {
-                    useUIStore.getState().setRoute('account');
-                  } else if (userId) {
+                  reconcileCloudSyncAuthority(session as SupabaseSessionLike, cloudAuthGeneration);
+                  const userId = cloudSessionUserId(session as SupabaseSessionLike);
+                  if (userId) {
                     void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
                   }
-                })
-                .catch((error) => {
-                  if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
-                  releaseEnqueueCloudAuthority();
-                  applyCloudSession(null);
-                  console.warn('[auth] initial Supabase session unavailable:', error);
-                  syncAccountScopedListeners();
                 });
-              const sub = supa.auth.onAuthStateChange((_event, session) => {
-                if (cancelled) return;
-                cloudAuthGeneration += 1;
-                publishVerifiedEnqueueCloudAuthority(session as SupabaseSessionLike);
-                applyCloudSession(session as SupabaseSessionLike);
-                accountIdentityReady = true;
-                ensurePersistenceCoordinatorStarted();
-                syncAccountScopedListeners();
-                reconcileCloudSyncAuthority(session as SupabaseSessionLike, cloudAuthGeneration);
-                const userId = cloudSessionUserId(session as SupabaseSessionLike);
-                if (userId) {
-                  void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
-                }
-              });
-              stopCloudAuth = () => sub.data.subscription.unsubscribe();
-            } else {
+                stopCloudAuth = () => sub.data.subscription.unsubscribe();
+              } else {
+                releaseEnqueueCloudAuthority();
+                applyCloudSession(null);
+              }
+            } else if (!cancelled) {
               releaseEnqueueCloudAuthority();
               applyCloudSession(null);
             }
-          } else if (!cancelled) {
-            releaseEnqueueCloudAuthority();
-            applyCloudSession(null);
           }
+        } catch {
+          releaseEnqueueCloudAuthority();
+          applyCloudSession(null);
+          /* Supabase unavailable, app works offline */
         }
-      } catch {
+      } else {
         releaseEnqueueCloudAuthority();
         applyCloudSession(null);
-        /* Supabase unavailable, app works offline */
+        accountIdentityReady = true;
+        ensurePersistenceCoordinatorStarted();
       }
 
       if (cancelled) return;
 
       // Phase 3: agent registration
-      try {
-        const persistedAgents = await withTimeout(agentRepo.list(), 10_000, 'agentRepo');
-        if (cancelled) return;
-        registerMany(persistedAgents.length > 0 ? persistedAgents : getDefaultAgents());
-      } catch {
-        if (cancelled) return;
+      if (plan.persistenceEnabled) {
+        try {
+          const persistedAgents = await withTimeout(agentRepo.list(), 10_000, 'agentRepo');
+          if (cancelled) return;
+          registerMany(persistedAgents.length > 0 ? persistedAgents : getDefaultAgents());
+        } catch {
+          if (cancelled) return;
+          registerMany(getDefaultAgents());
+        }
+      } else {
         registerMany(getDefaultAgents());
       }
 
       if (cancelled) return;
 
       // Phase 4: runtime listener
-      accountListenersBootReady = true;
-      if (cancelled) {
-        accountListenersBootReady = false;
-        return;
+      if (plan.agentRuntimeEnabled) {
+        accountListenersBootReady = true;
+        if (cancelled) {
+          accountListenersBootReady = false;
+          return;
+        }
+        if (cancelled) {
+          accountListenersBootReady = false;
+          return;
+        }
+        syncAccountScopedListeners();
+        stopOperator = startJarvisOperatorListener({
+          appendMessage: async (msg) => messageRepo.create(msg as never),
+        });
+        stopRuntime = startRuntimeListener({
+          getAgentById: (id) => useAgentStore.getState().agents[id] ?? null,
+          getAgentBySlug: (slug) => {
+            const agents = useAgentStore.getState().agents;
+            const wanted = slug.trim().toLowerCase();
+            return Object.values(agents).find((a) => a.slug.toLowerCase() === wanted) ?? null;
+          },
+          getAgentForChat: async (chatId) => {
+            const agents = Object.values(useAgentStore.getState().agents) as Agent[];
+            const chat = await chatRepo.getById(chatId as never);
+            const chatAgentId = chat?.active_agent_ids?.[0];
+            if (chatAgentId && useAgentStore.getState().agents[chatAgentId]) {
+              return useAgentStore.getState().agents[chatAgentId];
+            }
+            return (
+              findProtectedJarvisAgent(agents) ??
+              agents.find((agent) => agent.slug !== 'jarvis') ??
+              null
+            );
+          },
+          getMessages: async (chatId) => {
+            return messageRepo.listByChat(chatId as never);
+          },
+          appendMessage: async (msg) => {
+            // messageRepo.create accepts the full message minus id+timestamps and
+            // stamps them in for us.
+            return messageRepo.create(msg as never);
+          },
+          updateMessage: async (id, patch) => {
+            await messageRepo.update(id, patch);
+          },
+        });
       }
-      if (cancelled) {
-        accountListenersBootReady = false;
-        return;
-      }
-      syncAccountScopedListeners();
-      stopOperator = startJarvisOperatorListener({
-        appendMessage: async (msg) => messageRepo.create(msg as never),
-      });
-      stopRuntime = startRuntimeListener({
-        getAgentById: (id) => useAgentStore.getState().agents[id] ?? null,
-        getAgentBySlug: (slug) => {
-          const agents = useAgentStore.getState().agents;
-          const wanted = slug.trim().toLowerCase();
-          return Object.values(agents).find((a) => a.slug.toLowerCase() === wanted) ?? null;
-        },
-        getAgentForChat: async (chatId) => {
-          const agents = Object.values(useAgentStore.getState().agents) as Agent[];
-          const chat = await chatRepo.getById(chatId as never);
-          const chatAgentId = chat?.active_agent_ids?.[0];
-          if (chatAgentId && useAgentStore.getState().agents[chatAgentId]) {
-            return useAgentStore.getState().agents[chatAgentId];
-          }
-          return (
-            findProtectedJarvisAgent(agents) ??
-            agents.find((agent) => agent.slug !== 'jarvis') ??
-            null
-          );
-        },
-        getMessages: async (chatId) => {
-          return messageRepo.listByChat(chatId as never);
-        },
-        appendMessage: async (msg) => {
-          // messageRepo.create accepts the full message minus id+timestamps and
-          // stamps them in for us.
-          return messageRepo.create(msg as never);
-        },
-        updateMessage: async (id, patch) => {
-          await messageRepo.update(id, patch);
-        },
-      });
 
       // Phase 5: background loops
-      try {
-        stopNotifications = startNotificationLoop();
-      } catch (err) {
-        console.error('Failed to start notification loop:', err);
+      if (plan.nativeNotificationsEnabled) {
+        try {
+          stopNotifications = startNotificationLoop();
+        } catch (err) {
+          console.error('Failed to start notification loop:', err);
+        }
       }
-      try {
-        stopTerminalScheduler = initTerminalScheduler();
-      } catch (err) {
-        console.error('Failed to start terminal scheduler:', err);
-      }
-      try {
-        stopJarvisScheduleRunner = startJarvisScheduleRunner();
-      } catch (err) {
-        console.error('Failed to start Jarvis schedule runner:', err);
-      }
-      try {
-        stopClockEngine = startClockEngine();
-      } catch (err) {
-        console.error('Failed to start clock engine:', err);
-      }
+      if (plan.backgroundServicesEnabled) {
+        try {
+          stopTerminalScheduler = initTerminalScheduler();
+        } catch (err) {
+          console.error('Failed to start terminal scheduler:', err);
+        }
+        try {
+          stopJarvisScheduleRunner = startJarvisScheduleRunner();
+        } catch (err) {
+          console.error('Failed to start Jarvis schedule runner:', err);
+        }
+        try {
+          stopClockEngine = startClockEngine();
+        } catch (err) {
+          console.error('Failed to start clock engine:', err);
+        }
 
-      // Phase 6: Kokoro neural voice (background — default TTS, ~89 MB one-time)
-      void import('@/features/voice/voiceRouter')
-        .then(({ bootstrapKokoroVoiceOnLaunch }) => bootstrapKokoroVoiceOnLaunch())
-        .catch((err) => console.warn('[boot] Kokoro voice bootstrap failed:', err));
+        // Phase 6: Kokoro neural voice (background — default TTS, ~89 MB one-time)
+        void import('@/features/voice/voiceRouter')
+          .then(({ bootstrapKokoroVoiceOnLaunch }) => bootstrapKokoroVoiceOnLaunch())
+          .catch((err) => console.warn('[boot] Kokoro voice bootstrap failed:', err));
+      }
 
       // Report accumulated errors
       if (errors.length > 0 && !cancelled) {
@@ -1289,12 +1383,19 @@ function useBoot() {
 }
 
 function KernelBridgeBootstrap() {
+  const plan = resolveRuntimePlan();
   const [ready, setReady] = React.useState(false);
   const [pluginManagement, setPluginManagement] = React.useState<
     PluginManagementCapability | undefined
   >(undefined);
 
   React.useEffect(() => {
+    // MonoChrome visual-test profile: skip the kernel host boot (side-effect
+    // deny mode) but still mark ready so the workspace chrome renders for capture.
+    if (!plan.kernelEnabled) {
+      React.startTransition(() => setReady(true));
+      return;
+    }
     let disposed = false;
     let disposeBoundary: (() => void | Promise<void>) | undefined;
     let accountInvalidator: ((accountId: string) => void) | undefined;
@@ -1580,7 +1681,7 @@ function KernelBridgeBootstrap() {
   }, []);
 
   return (
-    <AuthGate>
+    <RuntimeProfileAuthBoundary plan={plan}>
       <PluginManagementCapabilityProvider value={pluginManagement}>
         {ready ? (
           <InstalledAccessAppHost>
@@ -1588,8 +1689,18 @@ function KernelBridgeBootstrap() {
           </InstalledAccessAppHost>
         ) : null}
       </PluginManagementCapabilityProvider>
-    </AuthGate>
+    </RuntimeProfileAuthBoundary>
   );
+}
+
+export function RuntimeProfileAuthBoundary({
+  plan,
+  children,
+}: {
+  plan: RuntimePlan;
+  children: React.ReactNode;
+}) {
+  return plan.isVisualTest ? <>{children}</> : <AuthGate>{children}</AuthGate>;
 }
 
 function useDesktopReopenLifecycle() {
@@ -1712,9 +1823,6 @@ function useDesktopReopenLifecycle() {
 function GlobalHotkeysHost() {
   useGlobalHotkeys();
 
-  // V2 — idle detection drives ambient takeover.
-  useIdleDetection();
-
   // V2 — fullscreen chat toggle.
   const toggleChatFullscreen = useUIStore((s) => s.toggleChatFullscreen);
   useHotkey(
@@ -1790,6 +1898,11 @@ function GlobalHotkeysHost() {
   return null;
 }
 
+function IdleDetectionHost() {
+  useIdleDetection();
+  return null;
+}
+
 /**
  * Launcher dialog mount, listens to ui.launcherOpen.
  */
@@ -1831,12 +1944,20 @@ function CommandPaletteHost() {
   );
 }
 
-function SettingsModalHost() {
+export function resolveSettingsModalInitialTab(plan: RuntimePlan): SettingsTabMemoryValue {
+  return plan.isVisualTest ? (monochromeSettingsTabOverride ?? 'account') : getLastSettingsTab();
+}
+
+function SettingsModalHost({ plan }: { plan: RuntimePlan }) {
   const open = useUIStore((s) => s.settingsOpen);
   if (!open) return null;
+  const initialTab = resolveSettingsModalInitialTab(plan);
   return (
     <React.Suspense fallback={null}>
-      <SettingsModal initialTab={getLastSettingsTab()} />
+      <SettingsModal
+        initialTab={initialTab}
+        visualAdminPreview={plan.isVisualTest && initialTab === 'admin'}
+      />
     </React.Suspense>
   );
 }
@@ -1938,18 +2059,33 @@ function KernelSmokeReconstructedLiveEvidenceHost({
 }
 
 /**
+ * Lifecycle effect hosts (bridge + desktop-reopen). Rendered only in ordinary
+ * mode; the MonoChrome visual-test profile suppresses these lifecycle effects.
+ * Extracted so a rules-of-hooks-compatible gate can skip them entirely while
+ * ordinary behavior is preserved.
+ */
+function WorkspaceLifecycleHosts() {
+  useBridgeLifecycle();
+  useDesktopReopenLifecycle();
+  return null;
+}
+
+/**
  * Inner shell - rendered after AuthGate has confirmed local user + seeding.
  */
 function WorkspaceRoot() {
   const commandCenterBinding = useBoot();
-  useBridgeLifecycle();
-  useDesktopReopenLifecycle();
+  const plan = resolveRuntimePlan();
 
-  React.useEffect(() => startWorkspaceAnalyticsClock(), []);
+  React.useEffect(() => {
+    if (!plan.analyticsEnabled) return;
+    return startWorkspaceAnalyticsClock();
+  }, []);
 
   // Wire outbound-call trigger so any feature can call `fireOutboundCall(...)`.
   // Default categories (manual + error) are toggled in Settings → Phone & Voice.
   React.useEffect(() => {
+    if (!plan.backgroundServicesEnabled) return;
     const stop = startOutboundTrigger({
       onResult: (ok, info) => {
         if (ok) {
@@ -1971,6 +2107,7 @@ function WorkspaceRoot() {
 
   // Listen for the jarvis:new-chat event to spawn a new chat
   React.useEffect(() => {
+    if (!plan.backgroundServicesEnabled) return;
     const handleNewChat = async () => {
       try {
         const chatId = await ensureActiveChat({ forceNew: true });
@@ -2009,75 +2146,909 @@ function WorkspaceRoot() {
 
   return (
     <JarvisCommandCenterProvider value={commandCenterBinding}>
-      {KERNEL_SMOKE_ENABLED ? (
+      {plan.lifecycleEnabled ? <WorkspaceLifecycleHosts /> : null}
+      {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? (
         <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
       ) : null}
-      <GlobalHotkeysHost />
+      {plan.globalHotkeyEnabled ? <GlobalHotkeysHost /> : null}
+      {plan.idleEnabled ? <IdleDetectionHost /> : null}
       <AppShell>
         <ActiveCanvas />
       </AppShell>
 
       {/* Modal layer — mount only while open to avoid idle store subscriptions */}
       <CommandPaletteHost />
-      <SettingsModalHost />
-      <VoiceModuleLifecycle />
+      <SettingsModalHost plan={plan} />
+      {plan.lifecycleEnabled ? <VoiceModuleLifecycle /> : null}
       <VoiceModalHost />
-      <WakeWordHost />
-      <React.Suspense fallback={null}>
-        <CallModal />
-      </React.Suspense>
+      {plan.wakeWordEnabled ? <WakeWordHost /> : null}
+      {plan.backgroundServicesEnabled ? (
+        <React.Suspense fallback={null}>
+          <CallModal />
+        </React.Suspense>
+      ) : null}
       <LauncherDialogHost />
       <AssistantBarHost />
-      <React.Suspense fallback={null}>
-        <WhatsNewHost />
-      </React.Suspense>
-      <React.Suspense fallback={null}>
-        <NewsHost />
-      </React.Suspense>
-      <React.Suspense fallback={null}>
-        <ProductTutorialHost />
-      </React.Suspense>
-      <UpdateWarningHost />
+      {plan.backgroundServicesEnabled ? (
+        <>
+          <React.Suspense fallback={null}>
+            <WhatsNewHost />
+          </React.Suspense>
+          <React.Suspense fallback={null}>
+            <NewsHost />
+          </React.Suspense>
+          <React.Suspense fallback={null}>
+            <ProductTutorialHost />
+          </React.Suspense>
+        </>
+      ) : null}
+      {plan.updateChecksEnabled ? <UpdateWarningHost /> : null}
 
       {/* Visual ambient effects removed — clean UI */}
 
       {/* V3 — confetti + serif gradient toast on success milestones. */}
-      <React.Suspense fallback={null}>
-        <CelebrationHost />
-      </React.Suspense>
+      {plan.backgroundServicesEnabled ? (
+        <React.Suspense fallback={null}>
+          <CelebrationHost />
+        </React.Suspense>
+      ) : null}
 
       {/* Provider key save success burst. */}
-      <ApiKeySaveBurst />
+      {plan.backgroundServicesEnabled ? <ApiKeySaveBurst /> : null}
 
       {/* V2 — idle takeover. Self-renders only when ambientActive=true. */}
       <React.Suspense fallback={null}>
         <AmbientHome />
       </React.Suspense>
-      <AmbientAudioHost />
+      {plan.backgroundServicesEnabled ? <AmbientAudioHost /> : null}
 
       {/* Pixel Pet — video-driven atlas animations + mini-panel on click. */}
-      <React.Suspense fallback={null}>
-        <PetHost />
-      </React.Suspense>
+      {plan.petEnabled ? (
+        <React.Suspense fallback={null}>
+          <PetHost />
+        </React.Suspense>
+      ) : null}
 
       {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
           wellnessActive=true (wellness.eyeBreak action / assistant). */}
-      <WellnessBreak />
+      {plan.backgroundServicesEnabled ? <WellnessBreak /> : null}
 
       {/* V3 — actions palette (Mod+Shift+A). Direct user invocation of
           built-in actions and saved custom tools. Sibling to the
           AI-proposed approval cards rendered inline in chat bubbles. */}
       <ActionsPaletteHost />
 
-      <GlobalSttHost />
+      {plan.sttEnabled ? <GlobalSttHost /> : null}
 
       {/* Themed desktop file / folder explorer (Context, Files, pickers). */}
-      <FileExplorerHost />
+      {plan.backgroundServicesEnabled ? <FileExplorerHost /> : null}
 
       {/* Toast outlet */}
-      <JarvisContextMenu />
+      {plan.backgroundServicesEnabled ? <JarvisContextMenu /> : null}
       <Toaster />
     </JarvisCommandCenterProvider>
+  );
+}
+
+const defaultRuntimeProfileQuery = createTauriRuntimeProfileQuery();
+const defaultMonochromeEvidenceCommit = createTauriMonochromeEvidenceCommit();
+const sharedHandshakePromises = new WeakMap<
+  RuntimeProfileQuery,
+  Map<string, Promise<RuntimeProfileEvidence>>
+>();
+const sharedMonochromeEvidenceCommitPromises = new WeakMap<
+  MonochromeEvidenceCommit,
+  Map<string, Promise<Awaited<ReturnType<MonochromeEvidenceCommit>>>>
+>();
+
+interface VerifiedRuntimeProfileProof {
+  readonly nativeRuntime: boolean;
+  readonly nativeHandshake?: MonochromeHandshakeEvidence;
+  readonly frontendHandshake?: MonochromeHandshakeEvidence;
+}
+
+const BROWSER_RUNTIME_PROFILE_PROOF: VerifiedRuntimeProfileProof = Object.freeze({
+  nativeRuntime: false,
+});
+const RuntimeProfileHandshakeProofContext = React.createContext<VerifiedRuntimeProfileProof>(
+  BROWSER_RUNTIME_PROFILE_PROOF,
+);
+
+function isNativeTauriRuntime(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    Object.prototype.hasOwnProperty.call(window, '__TAURI_INTERNALS__')
+  );
+}
+
+function sharedRuntimeProfileHandshake(
+  query: RuntimeProfileQuery,
+  plan: RuntimePlan,
+  expectation: RuntimeProfileHandshakeExpectation | undefined,
+  timeoutMs?: number,
+): Promise<RuntimeProfileEvidence> {
+  let promises = sharedHandshakePromises.get(query);
+  if (!promises) {
+    promises = new Map();
+    sharedHandshakePromises.set(query, promises);
+  }
+  const key = JSON.stringify([plan.profile.kind, expectation, timeoutMs]);
+  let promise = promises.get(key);
+  if (!promise) {
+    promise = verifyRuntimeProfileHandshake(query, plan, expectation, timeoutMs);
+    promises.set(key, promise);
+  }
+  return promise;
+}
+
+function sharedMonochromeEvidenceCommit(
+  commit: MonochromeEvidenceCommit,
+  request: MonochromeEvidenceCommitRequest,
+): Promise<Awaited<ReturnType<MonochromeEvidenceCommit>>> {
+  let promises = sharedMonochromeEvidenceCommitPromises.get(commit);
+  if (!promises) {
+    promises = new Map();
+    sharedMonochromeEvidenceCommitPromises.set(commit, promises);
+  }
+  const key = JSON.stringify(request);
+  let promise = promises.get(key);
+  if (!promise) {
+    promise = commit(request);
+    promises.set(key, promise);
+  }
+  return promise;
+}
+
+export function RuntimeProfileHandshakeGate({
+  plan,
+  expectation,
+  children,
+  query = defaultRuntimeProfileQuery,
+  nativeRuntime = isNativeTauriRuntime(),
+  timeoutMs,
+}: {
+  plan: RuntimePlan;
+  expectation: RuntimeProfileHandshakeExpectation | undefined;
+  children: React.ReactNode;
+  query?: RuntimeProfileQuery;
+  nativeRuntime?: boolean;
+  timeoutMs?: number;
+}) {
+  const handshakeKey = JSON.stringify([plan.profile.kind, expectation, timeoutMs]);
+  const [nativeProofState, setNativeProofState] = React.useState<{
+    readonly key: string;
+    readonly proof: VerifiedRuntimeProfileProof;
+  }>();
+  const [failure, setFailure] = React.useState<Error>();
+
+  React.useEffect(() => {
+    if (!nativeRuntime) {
+      if (plan.isVisualTest) {
+        document.documentElement.dataset.runtimeProfileHandshake = 'ready';
+        return () => {
+          delete document.documentElement.dataset.runtimeProfileHandshake;
+        };
+      }
+      return;
+    }
+    let disposed = false;
+    void sharedRuntimeProfileHandshake(query, plan, expectation, timeoutMs)
+      .then((evidence) => {
+        if (disposed) return;
+        const nativeHandshake = Object.freeze({
+          profile: evidence.profile,
+          appIdentifier: evidence.appIdentifier,
+          capabilityIdentifier: evidence.capabilityIdentifier,
+          sessionNonceHash: evidence.sessionNonceHash,
+        });
+        const frontendHandshake =
+          plan.isVisualTest && expectation
+            ? Object.freeze({
+                profile: plan.profile.kind,
+                appIdentifier: expectation.appIdentifier,
+                capabilityIdentifier: expectation.capabilityIdentifier,
+                sessionNonceHash: expectation.sessionNonceHash,
+              })
+            : undefined;
+        const proof = Object.freeze({
+          nativeRuntime: true,
+          nativeHandshake,
+          ...(frontendHandshake ? { frontendHandshake } : {}),
+        });
+        document.documentElement.dataset.runtimeProfileHandshake = 'ready';
+        React.startTransition(() => setNativeProofState({ key: handshakeKey, proof }));
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        setFailure(
+          error instanceof Error
+            ? error
+            : new Error('Runtime profile handshake failed: unknown failure'),
+        );
+      });
+    return () => {
+      disposed = true;
+      delete document.documentElement.dataset.runtimeProfileHandshake;
+    };
+  }, [expectation, handshakeKey, nativeRuntime, plan, query, timeoutMs]);
+
+  if (failure) throw failure;
+  const proof = nativeRuntime
+    ? nativeProofState?.key === handshakeKey
+      ? nativeProofState.proof
+      : undefined
+    : BROWSER_RUNTIME_PROFILE_PROOF;
+  return proof ? (
+    <RuntimeProfileHandshakeProofContext.Provider value={proof}>
+      {children}
+    </RuntimeProfileHandshakeProofContext.Provider>
+  ) : null;
+}
+
+const FIXTURE_READY_TIMEOUT_MS = 5_000;
+const FIXTURE_READY_POLL_INTERVAL_MS = 50;
+const MONOCHROME_FIXTURE_ROOT_SELECTORS = Object.freeze({
+  chat: '[data-monochrome-surface="chat"]',
+  'settings-appearance': '#settings-panel-appearance',
+  'terminal-workbench': '[data-monochrome-route="terminal"]',
+} as const);
+const MONOCHROME_EXACT_STATELESS_SURFACE_SELECTORS: Readonly<Record<string, string>> =
+  Object.freeze({
+    'a11y:pointer-targets': '[data-monochrome-surface="chat"]',
+    'a11y:forced-colors': '[data-monochrome-surface="chat"]',
+    'a11y:production-navigation': '[data-monochrome-surface="chat"]',
+    'theme:default': '[data-monochrome-surface="chat"]',
+    'theme:jarvis': '[data-monochrome-surface="chat"]',
+    'theme:monochrome': '[data-monochrome-surface="chat"]',
+    'theme:origami': '[data-monochrome-surface="chat"]',
+    'theme:vibespace': '[data-monochrome-surface="chat"]',
+    'zoom:50%': '[data-monochrome-surface="chat"]',
+    'zoom:80%': '[data-monochrome-surface="chat"]',
+    'zoom:100%': '[data-monochrome-surface="chat"]',
+    'zoom:125%': '[data-monochrome-surface="chat"]',
+    'zoom:200%': '[data-monochrome-surface="chat"]',
+    'spatial:canvas': '[data-monochrome-route="canvas"]',
+    'spatial:context': '[data-monochrome-route="context"]',
+  });
+const MONOCHROME_EXACT_ROUTE_SURFACE_SELECTORS: Readonly<Record<string, string>> = Object.freeze({
+  account: '.mc7f-account-page',
+  'agent-detail': '[data-monochrome-route="agent-detail"]',
+  agents: '[data-monochrome-route="agents"]',
+  benchmarks: '[data-monochrome-route="benchmarks"]',
+  browser: '.browser-shell',
+  canvas: '[data-monochrome-route="canvas"]',
+  chat: '[data-monochrome-surface="chat"]',
+  context: '[data-monochrome-route="context"]',
+  files: '[data-monochrome-route="files"]',
+  history: '[data-monochrome-route="history"]',
+  kanban: '[data-monochrome-route="kanban"]',
+  preview: '[data-monochrome-route="preview"]',
+  'project-detail': '[data-monochrome-route="project-detail"]',
+  schedule: '[data-monochrome-route="schedule"]',
+  skills: '[data-monochrome-route="skills"]',
+  terminal: '[data-monochrome-route="terminal"]',
+  tools: '[data-monochrome-route="tools"]',
+  workbench: '[data-monochrome-route="workbench"]',
+});
+
+function isExactMonochromeProductState(
+  request: MonochromeFixtureRequest,
+  surfaceId: string,
+  requestedState: string,
+  requestedRoute: string,
+): boolean {
+  return (
+    request.surfaceId === surfaceId &&
+    request.requestedState === requestedState &&
+    request.requestedRoute === requestedRoute &&
+    request.requestedTheme === 'monochrome' &&
+    request.productTheme === 'monochrome' &&
+    request.origamiGate === false
+  );
+}
+
+function resolveMonochromeUsagePanel(): HTMLElement | null {
+  const usageTab = Array.from(
+    document.querySelectorAll<HTMLElement>('.mc7f-account-page [role="tab"]'),
+  ).find((element) => element.textContent?.trim() === 'Usage');
+  if (!usageTab || usageTab.dataset.state !== 'active') return null;
+  const panelId = usageTab.getAttribute('aria-controls');
+  if (!panelId) return null;
+  const panel = document.getElementById(panelId);
+  if (
+    !(panel instanceof HTMLElement) ||
+    panel.getAttribute('role') !== 'tabpanel' ||
+    panel.dataset.state !== 'active' ||
+    panel.closest('.mc7f-account-page') !== usageTab.closest('.mc7f-account-page')
+  ) {
+    return null;
+  }
+  return panel;
+}
+
+function resolveMonochromeNavigationTooltip(): HTMLElement | null {
+  const trigger = document.querySelector<HTMLElement>('button[aria-label="Toggle navigation"]');
+  if (!trigger) return null;
+  const tooltipId = trigger.getAttribute('aria-describedby');
+  if (!tooltipId) return null;
+  const tooltip = document.getElementById(tooltipId);
+  if (!(tooltip instanceof HTMLElement) || tooltip.getAttribute('role') !== 'tooltip') {
+    return null;
+  }
+  const label = tooltip.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  return label.startsWith('Show sidebar') || label.startsWith('Hide sidebar') ? tooltip : null;
+}
+
+export function activateMonochromeFixtureProductState(request: MonochromeFixtureRequest): boolean {
+  if (isExactMonochromeProductState(request, 'state:usage', 'usage', 'account')) {
+    return resolveMonochromeUsagePanel() !== null;
+  }
+  if (isExactMonochromeProductState(request, 'state:dropdown-open', 'dropdown-open', 'chat')) {
+    if (document.querySelector('.jarvis-slash-dropdown')) return true;
+    const trigger = document.querySelector<HTMLElement>('button[aria-label="Choose model"]');
+    if (!trigger) return false;
+    trigger.click();
+    return true;
+  }
+  if (
+    isExactMonochromeProductState(request, 'state:tooltip-visible', 'tooltip-visible', 'chat') ||
+    isExactMonochromeProductState(request, 'a11y:text-contrast', 'tooltip-visible', 'chat') ||
+    isExactMonochromeProductState(request, 'a11y:non-text-contrast', 'tooltip-visible', 'chat')
+  ) {
+    if (resolveMonochromeNavigationTooltip()) return true;
+    const trigger = document.querySelector<HTMLElement>('button[aria-label="Toggle navigation"]');
+    if (!trigger) return false;
+    trigger.focus({ preventScroll: true });
+    return true;
+  }
+  return true;
+}
+
+export function resolveMonochromeFixtureSurface(
+  request: MonochromeFixtureRequest,
+): HTMLElement | null {
+  const exposed = (element: HTMLElement | null): HTMLElement | null =>
+    element?.closest('[hidden], [aria-hidden="true"], .hidden') ? null : element;
+  const state = useUIStore.getState();
+  const authoritySelector: Readonly<Record<string, string>> = {
+    'access:app-host': '.mc7f-access-app-host',
+    'access:banner': '.mc7f-access-banner',
+    'access:locked': '.mc7f-access-paywall',
+    'detached:dictation': '[data-monochrome-surface="global-dictation"]',
+    'detached:pet-mini-panel': '[data-monochrome-surface="pet-mini-panel-window"]',
+    'detached:pet-overlay': '[data-monochrome-surface="pet-overlay-window"]',
+    'detached:workbench-main': '[data-monochrome-route="workbench"]',
+    'embedded:command-center': '[data-monochrome-surface="jarvis-command-center"]',
+    'embedded:browser-operator': '.browser-shell',
+    'embedded:prompt-forge': '[data-monochrome-surface="prompt-forge"]',
+    'overlay:actions-palette-host': '[data-monochrome-surface="actions-palette"]',
+    'overlay:activity-strip': '[role="status"][aria-label="Active agents"]',
+    'overlay:ambient-home': '[data-monochrome-surface="ambient-home"]',
+    'overlay:api-key-save-burst': '.mc7f-api-key-save-burst',
+    'overlay:app-dispatch': 'main[aria-label="Workspace"]',
+    'overlay:app-shell': '[data-monochrome-surface="app-shell"]',
+    'overlay:assistant-bar-host': '[data-monochrome-surface="assistant"]',
+    'overlay:call-modal': '[data-monochrome-surface="call"]',
+    'overlay:celebration-host': '[data-monochrome-surface="celebration-host"]',
+    'overlay:command-palette-host': '[data-monochrome-surface="command-palette"]',
+    'overlay:file-explorer-host': '[data-monochrome-surface="file-explorer-dialog"]',
+    'overlay:global-dictation-overlay': '[data-monochrome-surface="global-dictation"]',
+    'overlay:inspector': '[data-monochrome-surface="inspector"]',
+    'overlay:jarvis-context-menu': '[data-monochrome-surface="context-menu"]',
+    'overlay:launcher-dialog-host': '[data-monochrome-surface="launcher-dialog"]',
+    'overlay:nav-pane': '[data-monochrome-surface="navigation"]',
+    'overlay:news-host': '[data-monochrome-surface="news-host"]',
+    'overlay:page-router': '[data-monochrome-surface="page-router"]',
+    'overlay:pet-host': '[data-monochrome-surface="pet-host"]',
+    'overlay:pet-mini-panel-window': '[data-monochrome-surface="pet-mini-panel-window"]',
+    'overlay:pet-overlay-window': '[data-monochrome-surface="pet-overlay-window"]',
+    'overlay:product-tutorial-host': '[data-monochrome-surface="product-tutorial-host"]',
+    'overlay:tab-strip': '[data-monochrome-surface="tab-strip"]',
+    'overlay:top-bar': '[data-monochrome-surface="top-bar"]',
+    'overlay:update-warning-host': '[data-monochrome-surface="update-warning-host"]',
+    'overlay:voice-modal-host': '[data-monochrome-surface="voice"]',
+    'overlay:wellness-break': '[data-monochrome-surface="wellness-break"]',
+    'overlay:whats-new-host': '[data-monochrome-surface="whats-new-modal"]',
+    'overlay:workbench-window-dispatch': '[data-monochrome-route="workbench"]',
+  };
+  const baselineAuthority = request.authorityId
+    ? MONOCHROME_BASELINE_REQUEST_AUTHORITY.find((entry) => entry.surfaceId === request.authorityId)
+    : undefined;
+  if (baselineAuthority) {
+    if (state.route !== request.requestedRoute) return null;
+    if (request.fixtureId === 'settings-appearance' && !state.settingsOpen) return null;
+    return exposed(
+      document.querySelector<HTMLElement>(
+        MONOCHROME_FIXTURE_ROOT_SELECTORS[baselineAuthority.fixtureId],
+      ),
+    );
+  }
+  if (request.authorityId?.startsWith('detached:')) {
+    const selector = authoritySelector[request.authorityId];
+    return selector ? exposed(document.querySelector<HTMLElement>(selector)) : null;
+  }
+  if (request.authorityId === MONOCHROME_DEVELOPMENT_AUTHORITY_ID) {
+    return exposed(
+      document.querySelector<HTMLElement>('[data-monochrome-development-surface="true"]'),
+    );
+  }
+  if (request.authorityId === 'overlay:workbench-window-dispatch') {
+    return state.route === 'workbench'
+      ? exposed(
+          document.querySelector<HTMLElement>(
+            authoritySelector['overlay:workbench-window-dispatch'],
+          ),
+        )
+      : null;
+  }
+  const settingsTab =
+    request.settingsTab ??
+    (request.authorityId === 'overlay:settings-modal-host' ||
+    request.requestedState === 'settings-appearance'
+      ? 'appearance'
+      : undefined);
+  if (settingsTab) {
+    if (state.route !== request.requestedRoute || !state.settingsOpen) {
+      return null;
+    }
+    return exposed(document.querySelector<HTMLElement>(`#settings-panel-${settingsTab}`));
+  }
+  if (state.route !== request.requestedRoute) return null;
+  if (request.authorityId === 'overlay:api-key-save-burst') {
+    // The real burst is intentionally aria-hidden because it is a decorative
+    // visual effect; its mounted animation node is still the captured surface.
+    return document.querySelector<HTMLElement>('.mc7f-api-key-save-burst');
+  }
+  if (request.authorityId === 'overlay:toaster') {
+    const dismissButton = document.querySelector<HTMLElement>('button[aria-label="Dismiss"]');
+    return exposed(dismissButton?.closest<HTMLElement>('.pointer-events-auto') ?? null);
+  }
+  if (request.authorityId && authoritySelector[request.authorityId]) {
+    return exposed(document.querySelector<HTMLElement>(authoritySelector[request.authorityId]));
+  }
+  if (isExactMonochromeProductState(request, 'state:usage', 'usage', 'account')) {
+    return exposed(resolveMonochromeUsagePanel());
+  }
+  if (isExactMonochromeProductState(request, 'state:dropdown-open', 'dropdown-open', 'chat')) {
+    return exposed(document.querySelector<HTMLElement>('.jarvis-slash-dropdown'));
+  }
+  if (
+    isExactMonochromeProductState(request, 'state:tooltip-visible', 'tooltip-visible', 'chat') ||
+    isExactMonochromeProductState(request, 'a11y:text-contrast', 'tooltip-visible', 'chat') ||
+    isExactMonochromeProductState(request, 'a11y:non-text-contrast', 'tooltip-visible', 'chat')
+  ) {
+    return exposed(resolveMonochromeNavigationTooltip());
+  }
+  if (isExactMonochromeProductState(request, 'state:empty-state', 'empty', 'chat')) {
+    return exposed(document.querySelector<HTMLElement>('[data-vibespace-empty-chat]'));
+  }
+  if (isExactMonochromeProductState(request, 'state:modal-open', 'modal-open', 'chat')) {
+    return exposed(document.querySelector<HTMLElement>('.mc7f-settings-modal[role="dialog"]'));
+  }
+  if (isExactMonochromeProductState(request, 'state:toast-visible', 'toast-visible', 'chat')) {
+    const dismissButton = document.querySelector<HTMLElement>('button[aria-label="Dismiss"]');
+    return exposed(dismissButton?.closest<HTMLElement>('.pointer-events-auto') ?? null);
+  }
+  if (isExactMonochromeProductState(request, 'state:locked-access', 'locked', 'account')) {
+    return exposed(document.querySelector<HTMLElement>('.mc7f-access-paywall'));
+  }
+  const statelessSelector = MONOCHROME_EXACT_STATELESS_SURFACE_SELECTORS[request.surfaceId];
+  if (statelessSelector) {
+    return exposed(document.querySelector<HTMLElement>(statelessSelector));
+  }
+  const overlaySelectorByState: Readonly<Record<string, string>> = {
+    'actions-palette': '[data-monochrome-surface="actions-palette"]',
+    'command-palette': '[data-monochrome-surface="command-palette"]',
+    launcher: '[data-monochrome-surface="launcher-dialog"]',
+    assistant: '[data-monochrome-surface="assistant"]',
+    voice: '[data-monochrome-surface="voice"]',
+  };
+  if (request.requestedState) {
+    const selector = overlaySelectorByState[request.requestedState];
+    return selector ? exposed(document.querySelector<HTMLElement>(selector)) : null;
+  }
+  if (
+    request.surfaceId === `route:${request.requestedRoute}` ||
+    request.surfaceId === `a11y:route:${request.requestedRoute}`
+  ) {
+    const selector = MONOCHROME_EXACT_ROUTE_SURFACE_SELECTORS[request.requestedRoute];
+    return selector ? exposed(document.querySelector<HTMLElement>(selector)) : null;
+  }
+  return null;
+}
+
+let monochromeAccessAppRuntime: AccessAppRuntime | undefined;
+
+function getMonochromeAccessAppRuntime(): AccessAppRuntime {
+  if (monochromeAccessAppRuntime) return monochromeAccessAppRuntime;
+  const capturedAt = 1_750_000_000_000;
+  const viewModel = createAccessViewModel(
+    evaluateAppAccess({
+      config: {
+        enabled: true,
+        minVersion: null,
+        rollbackEnabled: false,
+        trial: { enabled: true, days: 30 },
+        payment: {
+          graceDays: 3,
+          checkoutUrl: 'https://checkout.example',
+          portalUrl: 'https://portal.example',
+        },
+      },
+      status: {
+        serverTime: new Date(capturedAt).toISOString(),
+        state: 'locked',
+      },
+      appVersion: '1.2.3',
+    }),
+    { capturedAt, featureTier: 'free' },
+  );
+  monochromeAccessAppRuntime = Object.freeze({
+    loadViewModel(signal: AbortSignal) {
+      if (signal.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+      return Promise.resolve(viewModel);
+    },
+    createCheckoutUrl() {
+      return Promise.resolve('https://checkout.example/');
+    },
+    createPortalUrl() {
+      return Promise.resolve('https://portal.example/');
+    },
+    openExternalUrl() {
+      return Promise.resolve();
+    },
+    signOut() {
+      return Promise.resolve();
+    },
+    backupLocalData() {
+      return Promise.resolve();
+    },
+  });
+  return monochromeAccessAppRuntime;
+}
+
+const MONOCHROME_COMMAND_CENTER_DATA_PORT: JarvisCommandCenterDataPort = Object.freeze({
+  getRunsForChat: async () => [],
+  getEventsForRun: async () => [],
+  getArtifactsForRun: async () => [],
+  getLiveEvidenceSnapshot: async () => undefined,
+  subscribe: () => () => undefined,
+});
+const MONOCHROME_COMMAND_CENTER_HANDLERS: JarvisCommandCenterHandlers = Object.freeze({});
+
+export function MonochromeFixtureController({
+  plan,
+  request,
+  children,
+  commit = defaultMonochromeEvidenceCommit,
+}: {
+  plan: RuntimePlan;
+  request: MonochromeFixtureRequest | undefined;
+  children: React.ReactNode;
+  commit?: MonochromeEvidenceCommit;
+}) {
+  const runtimeProof = React.useContext(RuntimeProfileHandshakeProofContext);
+  const [configured, setConfigured] = React.useState(!request);
+  const [ready, setReady] = React.useState(false);
+  const [failure, setFailure] = React.useState<Error>();
+  const evidencedSurface = React.useRef<HTMLElement>();
+  const activatedProductState = React.useRef<MonochromeFixtureRequest>();
+
+  React.useLayoutEffect(() => {
+    if (!request) return;
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    const settingsTab =
+      request.settingsTab ??
+      (request.authorityId === 'overlay:settings-modal-host' ||
+      request.requestedState === 'settings-appearance'
+        ? 'appearance'
+        : undefined);
+    if (settingsTab) {
+      monochromeSettingsTabOverride = settingsTab as SettingsTabMemoryValue;
+    }
+    const overlayState =
+      request.authorityId === 'overlay:actions-palette-host' ||
+      request.requestedState === 'actions-palette'
+        ? { actionsPaletteOpen: true }
+        : request.authorityId === 'overlay:command-palette-host' ||
+            request.requestedState === 'command-palette'
+          ? { paletteOpen: true }
+          : request.authorityId === 'overlay:launcher-dialog-host' ||
+              request.requestedState === 'launcher'
+            ? { launcherOpen: true }
+            : request.authorityId === 'overlay:assistant-bar-host' ||
+                request.requestedState === 'assistant'
+              ? { assistantOpen: true }
+              : request.authorityId === 'overlay:voice-modal-host' ||
+                  request.requestedState === 'voice'
+                ? { voiceModalOpen: true }
+                : request.authorityId === 'overlay:call-modal'
+                  ? { callModalOpen: true }
+                  : request.authorityId === 'overlay:ambient-home'
+                    ? { ambientActive: true }
+                    : request.authorityId === 'overlay:news-host'
+                      ? { newsPanelOpen: true }
+                      : request.authorityId === 'overlay:whats-new-host'
+                        ? { whatsNewOpen: true }
+                        : request.authorityId === 'overlay:activity-strip'
+                          ? { chatMode: 'council' as const }
+                          : request.authorityId === 'overlay:inspector'
+                            ? { inspectorOpen: true }
+                            : request.authorityId === 'overlay:workbench-window-dispatch'
+                              ? { route: 'workbench' as Route }
+                              : {};
+    if (request.fixtureId === 'chat') {
+      document.documentElement.dataset.monochromeChatFixture = 'chat';
+    }
+    if (isExactMonochromeProductState(request, 'state:empty-state', 'empty', 'chat')) {
+      document.documentElement.dataset.monochromeChatState = 'empty-state';
+    }
+    useUIStore.setState({
+      route: request.requestedRoute as Route,
+      settingsOpen:
+        settingsTab !== undefined ||
+        isExactMonochromeProductState(request, 'state:modal-open', 'modal-open', 'chat'),
+      theme: request.productTheme,
+      activeChatId:
+        request.fixtureId === 'chat'
+          ? MONOCHROME_CHAT_FIXTURE.activeConversationId
+          : previousActiveChatId,
+      ...overlayState,
+    });
+    applyThemeToDocument(request.productTheme);
+    document.documentElement.dataset.monochromeOrigamiGate = String(request.origamiGate);
+    React.startTransition(() => setConfigured(true));
+    return () => {
+      evidencedSurface.current?.removeAttribute('data-monochrome-surface-id');
+      if (settingsTab && monochromeSettingsTabOverride === settingsTab) {
+        monochromeSettingsTabOverride = undefined;
+      }
+      delete document.documentElement.dataset.monochromeOrigamiGate;
+      if (document.documentElement.dataset.monochromeChatFixture === 'chat') {
+        delete document.documentElement.dataset.monochromeChatFixture;
+      }
+      if (document.documentElement.dataset.monochromeChatState === 'empty-state') {
+        delete document.documentElement.dataset.monochromeChatState;
+      }
+      if (
+        request.fixtureId === 'chat' &&
+        useUIStore.getState().activeChatId === MONOCHROME_CHAT_FIXTURE.activeConversationId
+      ) {
+        useUIStore.setState({ activeChatId: previousActiveChatId });
+      }
+      activatedProductState.current = undefined;
+    };
+  }, [request]);
+
+  React.useEffect(() => {
+    if (!request || !configured) return;
+    if (request.authorityId === 'overlay:api-key-save-burst') {
+      fireApiKeySaveBurstFromElement(null);
+      return;
+    }
+    if (
+      request.authorityId === 'overlay:toaster' ||
+      isExactMonochromeProductState(request, 'state:toast-visible', 'toast-visible', 'chat')
+    ) {
+      const toastId = toast.info(
+        'MonoChrome fixture notification',
+        'Product-owned toast presentation',
+        0,
+      );
+      return () => toast.dismiss(toastId);
+    }
+  }, [configured, request]);
+
+  React.useEffect(() => {
+    if (!request || !configured) return;
+    let disposed = false;
+    let readinessTimer: number | undefined;
+    const deadline = performance.now() + FIXTURE_READY_TIMEOUT_MS;
+    const fontsReady =
+      'fonts' in document ? document.fonts.ready.then(() => true) : Promise.resolve(true);
+    void fontsReady
+      .then(() => {
+        const inspect = () => {
+          if (disposed) return;
+          const themeReady =
+            document.documentElement.dataset.theme === resolveTheme(request.productTheme);
+          const fallback = document.querySelector('[data-monochrome-fallback="true"]') !== null;
+          if (activatedProductState.current !== request) {
+            if (activateMonochromeFixtureProductState(request)) {
+              activatedProductState.current = request;
+            }
+          }
+          const surface = resolveMonochromeFixtureSurface(request);
+          if (themeReady && !fallback && surface) {
+            surface.dataset.monochromeSurfaceId = request.surfaceId;
+            evidencedSurface.current = surface;
+            const requiresNativeCommit =
+              runtimeProof.nativeRuntime &&
+              request.authorityId === 'route:chat' &&
+              request.fixtureId === 'chat' &&
+              request.fixtureHash ===
+                'fd8950bf1a41f18797c3e4ea97ad25f1eac86ffda0862cc61e361bdea2a158c9' &&
+              request.surfaceId === 'route:chat' &&
+              request.requestedRoute === 'chat' &&
+              request.requestedState === undefined &&
+              request.requestedTheme === 'monochrome' &&
+              request.productTheme === 'monochrome' &&
+              request.origamiGate === false &&
+              request.settingsTab === undefined;
+            if (!requiresNativeCommit) {
+              React.startTransition(() => setReady(true));
+              return;
+            }
+            if (!runtimeProof.nativeHandshake || !runtimeProof.frontendHandshake) {
+              setFailure(new Error('MonoChrome native evidence commit failed.'));
+              return;
+            }
+            const commitRequest: MonochromeEvidenceCommitRequest = Object.freeze({
+              nativeHandshake: runtimeProof.nativeHandshake,
+              frontendHandshake: runtimeProof.frontendHandshake,
+              readiness: Object.freeze({
+                status: 'PASS',
+                application: 'READY',
+                fixtureSmoke: 'PASS',
+                surface: 'route:chat',
+                theme: 'monochrome',
+                font: 'READY',
+                fallback: 'NOT_USED',
+              }),
+              errors: Object.freeze({
+                page: Object.freeze([] as []),
+                native: Object.freeze([] as []),
+              }),
+            });
+            void sharedMonochromeEvidenceCommit(commit, commitRequest)
+              .then(() => {
+                if (!disposed) React.startTransition(() => setReady(true));
+              })
+              .catch(() => {
+                if (!disposed) setFailure(new Error('MonoChrome native evidence commit failed.'));
+              });
+            return;
+          }
+          if (performance.now() >= deadline) {
+            setFailure(new Error('MonoChrome fixture readiness failed.'));
+            return;
+          }
+          readinessTimer = window.setTimeout(inspect, FIXTURE_READY_POLL_INTERVAL_MS);
+        };
+        inspect();
+      })
+      .catch(() => {
+        if (!disposed) setFailure(new Error('MonoChrome fixture readiness failed.'));
+      });
+    return () => {
+      disposed = true;
+      if (readinessTimer !== undefined) window.clearTimeout(readinessTimer);
+    };
+  }, [commit, configured, request, runtimeProof]);
+
+  if (failure) throw failure;
+  if (!configured) return null;
+  const fixtureChildren =
+    request?.authorityId === 'overlay:celebration-host' ? (
+      <React.Suspense fallback={null}>
+        <CelebrationHost runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'overlay:call-modal' ? (
+      <CallModal runtimeEffectsEnabled={false} />
+    ) : request?.authorityId === 'overlay:jarvis-context-menu' ? (
+      <JarvisContextMenu runtimeEffectsEnabled={false} />
+    ) : request?.authorityId === 'overlay:news-host' ? (
+      <React.Suspense fallback={null}>
+        <NewsHost runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'overlay:page-router' ? (
+      <PageRouter />
+    ) : request?.authorityId === 'overlay:pet-host' ? (
+      <React.Suspense fallback={null}>
+        <PetHost runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'overlay:product-tutorial-host' ? (
+      <React.Suspense fallback={null}>
+        <ProductTutorialHost runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'overlay:update-warning-host' ? (
+      <UpdateWarningHost runtimeEffectsEnabled={false} />
+    ) : request?.authorityId === 'overlay:wellness-break' ? (
+      <WellnessBreak runtimeEffectsEnabled={false} />
+    ) : request?.authorityId === 'overlay:whats-new-host' ? (
+      <React.Suspense fallback={null}>
+        <WhatsNewHost runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'overlay:file-explorer-host' ? (
+      <FileExplorerHost runtimeEffectsEnabled={false} />
+    ) : request?.authorityId === 'embedded:command-center' ? (
+      <JarvisCommandCenter
+        accountId="monochrome-fixture-account"
+        chatId="monochrome-fixture-chat"
+        dataPort={MONOCHROME_COMMAND_CENTER_DATA_PORT}
+        handlers={MONOCHROME_COMMAND_CENTER_HANDLERS}
+        embedded
+      />
+    ) : request?.authorityId === 'embedded:prompt-forge' ? (
+      <TooltipProvider>
+        <PromptForgeControl
+          status="idle"
+          statusMessage="Ready to upgrade prompt"
+          isRunning={false}
+          disabledReason={null}
+          error={null}
+          compact={false}
+          modelSelection={{ mode: 'prefer_local' }}
+          modelOptions={[]}
+          onModelSelectionChange={() => undefined}
+          privacyMode="local_only"
+          onPrivacyModeChange={() => undefined}
+          allowPublicResearch={false}
+          onAllowPublicResearchChange={() => undefined}
+          publicResearchAvailable={false}
+          offlineMode
+          onStart={() => undefined}
+          onCancel={() => undefined}
+        />
+      </TooltipProvider>
+    ) : request?.authorityId === 'access:app-host' ? (
+      <AccessAppHost enabled runtime={getMonochromeAccessAppRuntime()}>
+        {children}
+      </AccessAppHost>
+    ) : request?.authorityId === 'access:banner' ? (
+      <AccessBanner
+        displayState="trialing"
+        trialDaysRemaining={3}
+        trialEndsAt="2026-08-02"
+        onManageBilling={() => undefined}
+        onSubscribe={() => undefined}
+      />
+    ) : request?.authorityId === 'overlay:global-dictation-overlay' ? (
+      <GlobalDictationOverlay runtimeEffectsEnabled={false} />
+    ) : request?.authorityId === 'overlay:pet-mini-panel-window' ? (
+      <React.Suspense fallback={null}>
+        <PetMiniPanelWindow runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'overlay:pet-overlay-window' ? (
+      <React.Suspense fallback={null}>
+        <PetOverlayWindow runtimeEffectsEnabled={false} />
+      </React.Suspense>
+    ) : request?.authorityId === 'access:locked' ||
+      (request &&
+        isExactMonochromeProductState(request, 'state:locked-access', 'locked', 'account')) ? (
+      <AccessPaywall
+        displayState="locked"
+        featureTier="free"
+        onContinue={() => undefined}
+        onSubscribe={() => undefined}
+        onManageBilling={() => undefined}
+        onRestoreAccess={() => undefined}
+        onSignOut={() => undefined}
+        onExportData={() => undefined}
+        onPrivacy={() => undefined}
+        onTerms={() => undefined}
+      />
+    ) : (
+      children
+    );
+  return (
+    <>
+      {fixtureChildren}
+      {request?.authorityId === 'overlay:api-key-save-burst' ? <ApiKeySaveBurst /> : null}
+      {request && ready ? (
+        <output
+          hidden
+          data-monochrome-fixture-ready="true"
+          data-runtime-profile={plan.profile.kind}
+          data-fixture-hash={request.fixtureHash}
+          data-resolved-theme={request.requestedTheme}
+          data-document-theme={resolveTheme(request.productTheme)}
+          data-font-ready="true"
+          data-fallback="false"
+          data-origami-gate={String(request.origamiGate)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -2098,7 +3069,7 @@ function WorkspaceRoot() {
  *     to summon it. Mounted at the root so it captures onboarding-
  *     stage logs too.
  */
-export function App() {
+function AppContent({ plan }: { plan: RuntimePlan }) {
   const view = new URLSearchParams(window.location.search).get('view');
   const auxiliaryView = view === 'dictation' || view === 'pet-overlay' || view === 'pet-mini-panel';
   const cloudBootQuarantineStarted = React.useRef(false);
@@ -2122,33 +3093,27 @@ export function App() {
     return (
       <ErrorBoundary>
         <ThemeHost />
-        <GlobalDictationOverlay />
+        <GlobalDictationOverlay runtimeEffectsEnabled={plan.sttEnabled} />
       </ErrorBoundary>
     );
   }
 
   if (view === 'pet-overlay') {
-    const PetOverlayWindow = React.lazy(() =>
-      import('@/features/pets/PetOverlayWindow').then((m) => ({ default: m.PetOverlayWindow })),
-    );
     return (
       <ErrorBoundary>
         <React.Suspense fallback={null}>
-          <PetOverlayWindow />
+          <PetOverlayWindow runtimeEffectsEnabled={plan.petEnabled} />
         </React.Suspense>
       </ErrorBoundary>
     );
   }
 
   if (view === 'pet-mini-panel') {
-    const PetMiniPanelWindow = React.lazy(() =>
-      import('@/features/pets/PetMiniPanelWindow').then((m) => ({ default: m.PetMiniPanelWindow })),
-    );
     return (
       <ErrorBoundary>
         <ThemeHost />
         <React.Suspense fallback={null}>
-          <PetMiniPanelWindow />
+          <PetMiniPanelWindow runtimeEffectsEnabled={plan.petEnabled} />
         </React.Suspense>
       </ErrorBoundary>
     );
@@ -2157,11 +3122,30 @@ export function App() {
   return (
     <ErrorBoundary>
       <ThemeHost />
-      {KERNEL_SMOKE_ENABLED ? <KernelSmokeBindingHost /> : null}
+      {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? <KernelSmokeBindingHost /> : null}
       <KernelBridgeBootstrap />
-      <TerminalCliRuntimeHost />
-      <DevConsoleHost />
+      {plan.terminalCliEnabled ? <TerminalCliRuntimeHost /> : null}
+      {plan.devConsoleEnabled ? <DevConsoleHost /> : null}
     </ErrorBoundary>
+  );
+}
+
+export function App() {
+  // Resolve all compile-time inputs synchronously before React mounts any
+  // product effect host. Invalid profile or isolation identity values throw.
+  const plan = resolveRuntimePlan();
+  const expectation = resolveRuntimeProfileHandshakeExpectation(plan);
+  const request = parseMonochromeFixtureRequest(
+    plan,
+    new URLSearchParams(window.location.search),
+    window.location.pathname,
+  );
+  return (
+    <RuntimeProfileHandshakeGate plan={plan} expectation={expectation}>
+      <MonochromeFixtureController plan={plan} request={request}>
+        <AppContent plan={plan} />
+      </MonochromeFixtureController>
+    </RuntimeProfileHandshakeGate>
   );
 }
 
