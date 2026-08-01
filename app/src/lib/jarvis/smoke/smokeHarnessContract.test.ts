@@ -20,6 +20,88 @@ const tabStrip = readFileSync(
 );
 const app = readFileSync(path.join(root, 'app', 'src', 'App.tsx'), 'utf8');
 
+const POWERSHELL_PROBE_TIMEOUT_MS = 30_000;
+const POWERSHELL_PROBE_TEST_TIMEOUT_MS = POWERSHELL_PROBE_TIMEOUT_MS + 5_000;
+
+interface PowerShellContractProbe {
+  status: number | null;
+  diagnostic: string;
+  windowContract?: string;
+  interopContract?: string;
+  identityContract?: string;
+}
+
+let cachedPowerShellContractProbe: PowerShellContractProbe | undefined;
+
+function getPowerShellContractProbe(): PowerShellContractProbe {
+  if (cachedPowerShellContractProbe) return cachedPowerShellContractProbe;
+
+  const script = `
+$scriptPath = Join-Path (Get-Location) 'scripts\\shared-intelligence-kernel-smoke.ps1'
+. $scriptPath -ValidateOnly | Out-Null
+
+$config = New-SmokeTauriConfigJson -Identifier 'ai.jarvis.desktop.smoke' | ConvertFrom-Json
+$window = @($config.app.windows)[0]
+$windowContract = "$($config.identifier)|$($config.app.windows.Count)|$($window.label)|$($window.visible)|$($window.focus)|$($window.skipTaskbar)|$($window.width)|$($window.height)|$($config.app.macOSPrivateApi)|$($window.additionalBrowserArgs)"
+
+try {
+    Show-SmokeNativeWindowOffscreen -NativePid $PID -Deadline ([DateTime]::UtcNow)
+} catch {
+    if ($_.Exception.Message -ne 'kernel_smoke_native_window_position_timeout') {
+        throw
+    }
+}
+if (-not ('VibeSpaceSmokeWindow' -as [type])) {
+    throw 'kernel_smoke_native_window_interop_missing'
+}
+
+$process = [Diagnostics.Process]::GetCurrentProcess()
+$startedUtc = $process.StartTime.ToUniversalTime()
+$executable = $process.MainModule.FileName
+$rootProcess = [pscustomobject]@{ ProcessId = $process.Id; ParentProcessId = 0; ExecutablePath = $executable; CreationUtc = $startedUtc.ToString('O') }
+$records = @{}
+Register-RecordedProcessRoot -Process $process -Records $records -Snapshot @($rootProcess)
+$reused = [pscustomobject]@{ ProcessId = $process.Id; ParentProcessId = 0; ExecutablePath = $executable; CreationUtc = $startedUtc.AddSeconds(1).ToString('O') }
+$recordCount = $records.Count
+[void](Add-RecordedProcessTree -RootPid $process.Id -Records $records -Snapshot @($reused))
+$rootCode = if ($records.Count -eq $recordCount) { 'kernel_smoke_process_root_identity_rejected' } else { 'unsafe_root_identity_accepted' }
+$staleChild = [pscustomobject]@{ ProcessId = 2147483000; ParentProcessId = $process.Id; ExecutablePath = $executable; CreationUtc = $startedUtc.AddSeconds(-1).ToString('O') }
+[void](Add-RecordedProcessTree -RootPid $process.Id -Records $records -Snapshot @($rootProcess, $staleChild))
+$childCode = if ($records.ContainsKey('2147483000')) { 'unsafe_ancestry_accepted' } else { 'kernel_smoke_process_ancestry_rejected' }
+
+[ordered]@{
+    windowContract = $windowContract
+    interopContract = 'native_window_interop_loaded'
+    identityContract = "$rootCode|$childCode"
+} | ConvertTo-Json -Compress
+`;
+  const result = spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: POWERSHELL_PROBE_TIMEOUT_MS,
+      windowsHide: true,
+    },
+  );
+  const diagnostic = result.stderr.trim() || result.error?.message || '';
+  let output: Partial<PowerShellContractProbe> = {};
+  try {
+    output = JSON.parse(result.stdout.trim()) as Partial<PowerShellContractProbe>;
+  } catch {
+    // The exact status and diagnostic assertions below report a closed probe failure.
+  }
+  cachedPowerShellContractProbe = {
+    status: result.status,
+    diagnostic,
+    windowContract: output.windowContract,
+    interopContract: output.interopContract,
+    identityContract: output.identityContract,
+  };
+  return cachedPowerShellContractProbe;
+}
+
 describe('shared intelligence kernel smoke harness contract', () => {
   it('keeps one outer cleanup boundary and tolerates partial startup', () => {
     expect((launcher.match(/^finally/gm) ?? []).length).toBe(1);
@@ -40,25 +122,18 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(launcher).not.toContain('$tauriIdentifier = "ai.jarvis.desktop.smoke.s$runId"');
   });
 
-  it('creates an initially hidden non-focus-stealing native smoke window', () => {
-    const script = `
-$scriptPath = Join-Path (Get-Location) 'scripts\\shared-intelligence-kernel-smoke.ps1'
-. $scriptPath -ValidateOnly | Out-Null
-$config = New-SmokeTauriConfigJson -Identifier 'ai.jarvis.desktop.smoke' | ConvertFrom-Json
-$window = @($config.app.windows)[0]
-Write-Output "$($config.identifier)|$($config.app.windows.Count)|$($window.label)|$($window.visible)|$($window.focus)|$($window.skipTaskbar)|$($window.width)|$($window.height)|$($config.app.macOSPrivateApi)|$($window.additionalBrowserArgs)"
-`;
-    const result = spawnSync(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { cwd: root, encoding: 'utf8' },
-    );
+  it(
+    'creates an initially hidden non-focus-stealing native smoke window',
+    () => {
+      const result = getPowerShellContractProbe();
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout.trim()).toBe(
-      'ai.jarvis.desktop.smoke|1|main|False|False|True|1280|820|True|--js-flags=--max-old-space-size=4096 --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding',
-    );
-  }, 15_000);
+      expect(result.status, result.diagnostic).toBe(0);
+      expect(result.windowContract).toBe(
+        'ai.jarvis.desktop.smoke|1|main|False|False|True|1280|820|True|--js-flags=--max-old-space-size=4096 --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding',
+      );
+    },
+    POWERSHELL_PROBE_TEST_TIMEOUT_MS,
+  );
 
   it('shows only the exact native Tauri window offscreen without activation before CDP', () => {
     expect(launcher).toContain('function Show-SmokeNativeWindowOffscreen');
@@ -83,38 +158,26 @@ Write-Output "$($config.identifier)|$($config.app.windows.Count)|$($window.label
         'Show-SmokeNativeWindowOffscreen -NativePid $NativePid -Deadline $deadline',
         launch,
       );
-      const cdp = launcher.indexOf('Wait-ForCdpEndpoint -Port $CdpPort -Deadline $deadline', launch);
+      const cdp = launcher.indexOf(
+        'Wait-ForCdpEndpoint -Port $CdpPort -Deadline $deadline',
+        launch,
+      );
       expect(offscreen).toBeGreaterThan(launch);
       expect(cdp).toBeGreaterThan(offscreen);
       launch = launcher.indexOf('$nativeMatch = Wait-ForNativeDescendant', launch + 1);
     }
   });
 
-  it('loads the native window interop under Windows PowerShell before a smoke launch', () => {
-    const script = `
-$scriptPath = Join-Path (Get-Location) 'scripts\\shared-intelligence-kernel-smoke.ps1'
-. $scriptPath -ValidateOnly | Out-Null
-try {
-    Show-SmokeNativeWindowOffscreen -NativePid $PID -Deadline ([DateTime]::UtcNow)
-} catch {
-    if ($_.Exception.Message -ne 'kernel_smoke_native_window_position_timeout') {
-        throw
-    }
-}
-if (-not ('VibeSpaceSmokeWindow' -as [type])) {
-    throw 'kernel_smoke_native_window_interop_missing'
-}
-Write-Output 'native_window_interop_loaded'
-`;
-    const result = spawnSync(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { cwd: root, encoding: 'utf8' },
-    );
+  it(
+    'loads the native window interop under Windows PowerShell before a smoke launch',
+    () => {
+      const result = getPowerShellContractProbe();
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout.trim()).toBe('native_window_interop_loaded');
-  }, 20_000);
+      expect(result.status, result.diagnostic).toBe(0);
+      expect(result.interopContract).toBe('native_window_interop_loaded');
+    },
+    POWERSHELL_PROBE_TEST_TIMEOUT_MS,
+  );
 
   it('builds the signed CLI fixture only for the CLI transport scenario', () => {
     const build = launcher.slice(
@@ -300,36 +363,18 @@ Write-Output 'native_window_interop_loaded'
     expect(driverRegistered).toBeLessThan(driverPoll);
   });
 
-  it('rejects a reused root identity and a child older than its verified parent', () => {
-    const script = `
-$scriptPath = Join-Path (Get-Location) 'scripts\\shared-intelligence-kernel-smoke.ps1'
-. $scriptPath -ValidateOnly | Out-Null
-$process = [Diagnostics.Process]::GetCurrentProcess()
-$startedUtc = $process.StartTime.ToUniversalTime()
-$executable = $process.MainModule.FileName
-$root = [pscustomobject]@{ ProcessId = $process.Id; ParentProcessId = 0; ExecutablePath = $executable; CreationUtc = $startedUtc.ToString('O') }
-$records = @{}
-Register-RecordedProcessRoot -Process $process -Records $records -Snapshot @($root)
-$reused = [pscustomobject]@{ ProcessId = $process.Id; ParentProcessId = 0; ExecutablePath = $executable; CreationUtc = $startedUtc.AddSeconds(1).ToString('O') }
-$recordCount = $records.Count
-[void](Add-RecordedProcessTree -RootPid $process.Id -Records $records -Snapshot @($reused))
-$rootCode = if ($records.Count -eq $recordCount) { 'kernel_smoke_process_root_identity_rejected' } else { 'unsafe_root_identity_accepted' }
-$staleChild = [pscustomobject]@{ ProcessId = 2147483000; ParentProcessId = $process.Id; ExecutablePath = $executable; CreationUtc = $startedUtc.AddSeconds(-1).ToString('O') }
-[void](Add-RecordedProcessTree -RootPid $process.Id -Records $records -Snapshot @($root, $staleChild))
-$childCode = if ($records.ContainsKey('2147483000')) { 'unsafe_ancestry_accepted' } else { 'kernel_smoke_process_ancestry_rejected' }
-Write-Output "$rootCode|$childCode"
-`;
-    const result = spawnSync(
-      'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { cwd: root, encoding: 'utf8' },
-    );
+  it(
+    'rejects a reused root identity and a child older than its verified parent',
+    () => {
+      const result = getPowerShellContractProbe();
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout.trim()).toBe(
-      'kernel_smoke_process_root_identity_rejected|kernel_smoke_process_ancestry_rejected',
-    );
-  }, 15_000);
+      expect(result.status, result.diagnostic).toBe(0);
+      expect(result.identityContract).toBe(
+        'kernel_smoke_process_root_identity_rejected|kernel_smoke_process_ancestry_rejected',
+      );
+    },
+    POWERSHELL_PROBE_TEST_TIMEOUT_MS,
+  );
 
   it('retries stopping only exact recorded identities during the bounded exit wait', () => {
     const waiter = launcher.slice(
