@@ -2406,6 +2406,7 @@ const MONOCHROME_EXACT_STATELESS_SURFACE_SELECTORS: Readonly<Record<string, stri
     'zoom:80%': '[data-monochrome-surface="chat"]',
     'zoom:100%': '[data-monochrome-surface="chat"]',
     'zoom:125%': '[data-monochrome-surface="chat"]',
+    'zoom:150%': '[data-monochrome-surface="chat"]',
     'zoom:200%': '[data-monochrome-surface="chat"]',
     'spatial:canvas': '[data-monochrome-route="canvas"]',
     'spatial:context': '[data-monochrome-route="context"]',

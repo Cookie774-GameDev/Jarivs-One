@@ -672,6 +672,16 @@ export const MONOCHROME_LEGACY_REQUEST_AUTHORITY = Object.freeze([
     productTheme: 'monochrome',
     requestedRoute: 'chat',
     requestedTheme: 'monochrome',
+    surfaceId: 'zoom:150%',
+  }),
+  Object.freeze({
+    fixtureHash: CHAT_FIXTURE_HASH,
+    fixtureId: 'chat',
+    origamiGate: false,
+    pathname: '/chat',
+    productTheme: 'monochrome',
+    requestedRoute: 'chat',
+    requestedTheme: 'monochrome',
     surfaceId: 'zoom:200%',
   }),
   Object.freeze({

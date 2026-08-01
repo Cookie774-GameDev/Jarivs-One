@@ -672,6 +672,7 @@ describe('product-owned MonoChrome fixture readiness', () => {
     ['zoom:80%', 'chat', '[data-monochrome-surface="chat"]'],
     ['zoom:100%', 'chat', '[data-monochrome-surface="chat"]'],
     ['zoom:125%', 'chat', '[data-monochrome-surface="chat"]'],
+    ['zoom:150%', 'chat', '[data-monochrome-surface="chat"]'],
     ['zoom:200%', 'chat', '[data-monochrome-surface="chat"]'],
     ['spatial:canvas', 'canvas', '[data-monochrome-route="canvas"]'],
     ['spatial:context', 'context', '[data-monochrome-route="context"]'],

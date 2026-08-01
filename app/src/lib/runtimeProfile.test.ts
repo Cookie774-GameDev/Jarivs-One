@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MONOCHROME_BASELINE_MANIFEST } from '../../../tests/visual/monochrome/baseline-manifest';
 import { MONOCHROME_FIXTURE_MANIFEST } from '../../../tests/visual/monochrome/fixture-manifest';
+import { MONOCHROME_ZOOM_ROWS } from '../../../tests/visual/monochrome/route-manifest';
 
 type BrowserAuthorityCase = {
   readonly fixtureHash: string;
@@ -855,6 +856,7 @@ const SUPPLEMENTARY_NAMED_CASES = Object.freeze([
   { surfaceId: 'zoom:80%', pathname: '/chat', fixtureId: 'chat', requestedRoute: 'chat' },
   { surfaceId: 'zoom:100%', pathname: '/chat', fixtureId: 'chat', requestedRoute: 'chat' },
   { surfaceId: 'zoom:125%', pathname: '/chat', fixtureId: 'chat', requestedRoute: 'chat' },
+  { surfaceId: 'zoom:150%', pathname: '/chat', fixtureId: 'chat', requestedRoute: 'chat' },
   { surfaceId: 'zoom:200%', pathname: '/chat', fixtureId: 'chat', requestedRoute: 'chat' },
   {
     surfaceId: 'state:usage',
@@ -990,14 +992,14 @@ describe('exact supplementary request authority', () => {
     return request;
   }
 
-  it('covers five a11y, two spatial, five theme, five zoom, eight named-state, four retained overlay, and eighteen route rows', () => {
-    expect(SUPPLEMENTARY_NAMED_CASES).toHaveLength(29);
+  it('covers five a11y, two spatial, five theme, six zoom, eight named-state, four retained overlay, and eighteen route rows', () => {
+    expect(SUPPLEMENTARY_NAMED_CASES).toHaveLength(30);
     expect(SUPPLEMENTARY_ROUTE_CASES).toHaveLength(18);
-    expect(MONOCHROME_LEGACY_REQUEST_AUTHORITY).toHaveLength(47);
+    expect(MONOCHROME_LEGACY_REQUEST_AUTHORITY).toHaveLength(48);
     expect(MONOCHROME_BROWSER_REQUEST_AUTHORITY).toHaveLength(79);
     expect(
       new Set(MONOCHROME_LEGACY_REQUEST_AUTHORITY.map(({ surfaceId }) => surfaceId)).size,
-    ).toBe(47);
+    ).toBe(48);
     expect(Object.isFrozen(MONOCHROME_LEGACY_REQUEST_AUTHORITY)).toBe(true);
     expect(MONOCHROME_LEGACY_REQUEST_AUTHORITY.every(Object.isFrozen)).toBe(true);
   });
@@ -1091,19 +1093,46 @@ describe('exact supplementary request authority', () => {
     ).toThrow(/fixture request invalid/i);
   });
 
-  it('rejects the removed nominal zoom:150% authority row', () => {
-    const request = requestFor({
+  it('accepts the exact plan-required zoom:150% authority row', () => {
+    const entry = SUPPLEMENTARY_NAMED_CASES.find(
+      (candidate) => candidate.surfaceId === 'zoom:150%',
+    )!;
+    const request = requestFor(entry);
+    expect(
+      parseMonochromeFixtureRequest(visualPlan, request.searchParams, request.pathname),
+    ).toMatchObject({
+      authorityId: 'zoom:150%',
       fixtureId: 'chat',
-      pathname: '/chat',
+      origamiGate: false,
+      productTheme: 'monochrome',
       requestedRoute: 'chat',
+      requestedTheme: 'monochrome',
       surfaceId: 'zoom:150%',
     });
-    expect(() =>
-      parseMonochromeFixtureRequest(visualPlan, request.searchParams, request.pathname),
-    ).toThrow(/fixture request invalid/i);
   });
 
-  it.each(['zoom:50%', 'zoom:80%'] as const)(
+  it('keeps every canonical route zoom row backed by one exact runtime authority tuple', () => {
+    for (const { surfaceId } of MONOCHROME_ZOOM_ROWS) {
+      expect(
+        MONOCHROME_LEGACY_REQUEST_AUTHORITY.filter(
+          (authority) => authority.surfaceId === surfaceId,
+        ),
+      ).toEqual([
+        {
+          fixtureHash: fixtureHashes.chat,
+          fixtureId: 'chat',
+          origamiGate: false,
+          pathname: '/chat',
+          productTheme: 'monochrome',
+          requestedRoute: 'chat',
+          requestedTheme: 'monochrome',
+          surfaceId,
+        },
+      ]);
+    }
+  });
+
+  it.each(['zoom:50%', 'zoom:80%', 'zoom:150%'] as const)(
     'rejects every one-field and additive-key variant of %s',
     (surfaceId) => {
       const entry = SUPPLEMENTARY_NAMED_CASES.find(
