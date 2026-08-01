@@ -98,15 +98,15 @@ html[data-theme='sakura'] {
   --info-bg: var(--sakura-night-2-hsl);
 
   /* Bounded material and geometry authority. */
-  --sakura-panel-alpha: 0.82;
+  --sakura-panel-alpha: 0.76;
   --sakura-panel-alpha-strong: 0.91;
   --sakura-card-alpha: 0.07;
   --sakura-card-alpha-percent: 7%;
-  --sakura-grain-opacity: 0.06;
+  --sakura-grain-opacity: 0.08;
   --sakura-decorative-border-alpha: 0.19;
   --sakura-decorative-border-strong-alpha: 0.32;
   --sakura-essential-border-alpha: 0.39;
-  --sakura-blur: 16px;
+  --sakura-blur: 14px;
   --sakura-radius-feature: 23px;
   --sakura-radius-shell: 24px;
   --sakura-section-label-size: 10px;
@@ -183,8 +183,8 @@ html[data-theme='sakura'] .cozy-card {
   html[data-theme='sakura'] .bg-panel,
   html[data-theme='sakura'] .surface-panel {
     background-color: hsl(var(--sakura-night-2-hsl) / var(--sakura-panel-alpha));
-    -webkit-backdrop-filter: blur(var(--sakura-blur)) saturate(1.08);
-    backdrop-filter: blur(var(--sakura-blur)) saturate(1.08);
+    -webkit-backdrop-filter: blur(var(--sakura-blur)) saturate(1.15);
+    backdrop-filter: blur(var(--sakura-blur)) saturate(1.15);
   }
 
   html[data-theme='sakura'] .bg-elevated,
@@ -320,12 +320,39 @@ html[data-theme='sakura'] .bg-destructive {
  */
 html[data-theme='sakura'] [data-sakura-backdrop] {
   contain: strict;
-  background: var(--sakura-night);
+  background:
+    linear-gradient(
+      180deg,
+      var(--sakura-peach) 0%,
+      var(--sakura-pink) 24%,
+      var(--sakura-lavender) 46%,
+      var(--sakura-periwinkle) 70%,
+      var(--sakura-night) 100%
+    ),
+    var(--sakura-night);
   isolation: isolate;
+}
+
+html[data-theme='sakura'] [data-sakura-backdrop]::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      hsl(var(--sakura-night-hsl) / 0.54) 0%,
+      transparent 14%,
+      transparent 86%,
+      hsl(var(--sakura-night-hsl) / 0.54) 100%
+    ),
+    linear-gradient(180deg, transparent 56%, var(--sakura-night) 100%);
+  content: '';
+  pointer-events: none;
 }
 
 html[data-theme='sakura'] [data-sakura-backdrop]::after {
   position: absolute;
+  z-index: 2;
   inset: 0;
   background-image:
     radial-gradient(circle at 72% 38%, hsl(var(--sakura-gold-hsl) / 0.12), transparent 22%),
@@ -342,18 +369,19 @@ html[data-theme='sakura'] [data-sakura-backdrop]::after {
 }
 
 html[data-theme='sakura'] [data-sakura-scene] {
-  opacity: 0.72;
+  filter: saturate(0.94) contrast(1.02);
+  opacity: 0.82;
   transform: scale(1.015);
   transform-origin: 50% 50%;
   transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 html[data-theme='sakura'] [data-sakura-intensity='open'] [data-sakura-scene] {
-  opacity: 0.86;
+  opacity: 0.96;
 }
 
 html[data-theme='sakura'] [data-sakura-intensity='quiet'] [data-sakura-scene] {
-  opacity: 0.48;
+  opacity: 0.58;
 }
 
 html[data-theme='sakura'] [data-sakura-rendering='static'] [data-sakura-scene] {
@@ -369,10 +397,17 @@ html[data-theme='sakura'] [data-sakura-petal] {
   top: -4%;
   left: var(--sakura-petal-left);
   width: var(--sakura-petal-size);
-  height: var(--sakura-petal-size);
+  height: calc(var(--sakura-petal-size) * 0.58);
   border-radius: 80% 18% 72% 28%;
-  background: var(--sakura-pink);
-  box-shadow: 0 0 0 1px hsl(var(--sakura-ivory-hsl) / 0.12);
+  background: linear-gradient(
+    135deg,
+    var(--sakura-ivory),
+    var(--sakura-pink) 58%,
+    var(--sakura-orchid)
+  );
+  box-shadow:
+    0 0 0 1px hsl(var(--sakura-ivory-hsl) / 0.12),
+    0 3px 8px hsl(var(--sakura-night-hsl) / 0.2);
   opacity: 0;
   animation: sakura-petal-drift var(--sakura-petal-duration) linear infinite;
   animation-delay: var(--sakura-petal-delay);
@@ -390,16 +425,20 @@ html[data-theme='sakura'] [data-sakura-paused='true'] [data-sakura-petal] {
   }
 
   12% {
-    opacity: 0.58;
+    opacity: 0.7;
+  }
+
+  45% {
+    transform: translate3d(calc(var(--sakura-petal-sway) * 0.65), 48vh, 0) rotate(230deg);
   }
 
   76% {
-    opacity: 0.42;
+    opacity: 0.5;
   }
 
   100% {
     opacity: 0;
-    transform: translate3d(var(--sakura-petal-sway), 112vh, 0) rotate(310deg);
+    transform: translate3d(calc(var(--sakura-petal-sway) * -0.4), 112vh, 0) rotate(520deg);
   }
 }
 
