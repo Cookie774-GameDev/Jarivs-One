@@ -46,6 +46,7 @@ function findWheelIsolationGuard(source: string): ts.IfStatement | undefined {
   const visit = (node: ts.Node): void => {
     if (
       ts.isJsxAttribute(node) &&
+      ts.isIdentifier(node.name) &&
       node.name.text === 'onWheel' &&
       node.initializer &&
       ts.isJsxExpression(node.initializer) &&
