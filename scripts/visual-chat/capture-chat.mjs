@@ -241,10 +241,12 @@ const SCREENSHOT_FREEZE_CSS = `
   html[data-origami-screenshot-freeze="true"] *,
   html[data-origami-screenshot-freeze="true"] *::before,
   html[data-origami-screenshot-freeze="true"] *::after {
+    animation: none !important;
     animation-delay: 0s !important;
     animation-duration: 0s !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+    transition: none !important;
     transition-delay: 0s !important;
     transition-duration: 0s !important;
     caret-color: transparent !important;
@@ -271,14 +273,20 @@ export async function withScreenshotFreeze(page, capture) {
   try {
     style = await page.addStyleTag({ content: SCREENSHOT_FREEZE_CSS });
     activationAttempted = true;
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       if (window.__origamiScreenshotFreezeState) {
         throw new Error('Screenshot freeze is already active.');
       }
+      const originalRequestAnimationFrame = window.requestAnimationFrame;
       window.__origamiScreenshotFreezeState = {
-        requestAnimationFrame: window.requestAnimationFrame,
+        requestAnimationFrame: originalRequestAnimationFrame,
       };
       document.documentElement.dataset.origamiScreenshotFreeze = 'true';
+      await new Promise((resolveFrame) => {
+        originalRequestAnimationFrame.call(window, () =>
+          originalRequestAnimationFrame.call(window, resolveFrame),
+        );
+      });
       window.requestAnimationFrame = () => 0;
     });
     result = await capture();

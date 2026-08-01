@@ -885,7 +885,12 @@ test('screenshot boundary rechecks Jarvis after a late transition and refuses ca
       return missing;
     },
   };
-  const fakeWindow = { requestAnimationFrame: () => 41 };
+  const fakeWindow = {
+    requestAnimationFrame: (callback) => {
+      callback();
+      return 41;
+    },
+  };
   const fakeDocument = { documentElement: { dataset: {} } };
   let screenshotCalls = 0;
   let styleRemoved = false;
@@ -926,7 +931,11 @@ test('screenshot freeze is scoped to the screenshot callback and always removed'
   const style = {
     evaluate: async (callback) => callback({ remove: () => calls.push('remove') }),
   };
-  const originalRequestAnimationFrame = () => 41;
+  const originalRequestAnimationFrame = (callback) => {
+    calls.push('frame');
+    callback();
+    return 41;
+  };
   const fakeWindow = { requestAnimationFrame: originalRequestAnimationFrame };
   const fakeDocument = { documentElement: { dataset: {} } };
   const page = {
@@ -951,18 +960,23 @@ test('screenshot freeze is scoped to the screenshot callback and always removed'
     /synthetic screenshot failure/,
   );
   assert.match(calls[0], /animation-duration/);
+  assert.match(calls[0], /\*::after\s*\{[^}]*animation:\s*none\s*!important/);
+  assert.match(calls[0], /\*::after\s*\{[^}]*transition:\s*none\s*!important/);
   assert.match(calls[0], /caret-color/);
   assert.match(calls[0], /Microphone volume level indicator/);
   assert.match(calls[0], /animate-(?:pulse|ping|spin)/);
   assert.match(calls[0], /jarvis-voice-panel/);
-  assert.deepEqual(calls.slice(1), ['capture', 'remove']);
+  assert.deepEqual(calls.slice(1), ['frame', 'frame', 'capture', 'remove']);
   assert.equal(fakeWindow.requestAnimationFrame, originalRequestAnimationFrame);
   assert.equal(fakeDocument.documentElement.dataset.origamiScreenshotFreeze, undefined);
 });
 
 test('screenshot freeze cleans up a partially failed activation', async () => {
   const calls = [];
-  const originalRequestAnimationFrame = () => 41;
+  const originalRequestAnimationFrame = (callback) => {
+    callback();
+    return 41;
+  };
   const fakeWindow = { requestAnimationFrame: originalRequestAnimationFrame };
   const fakeDocument = { documentElement: { dataset: {} } };
   let evaluations = 0;
