@@ -37,6 +37,10 @@ vi.mock('motion/react', () => ({
       <div {...props}>{children}</div>
     ),
   },
+  useReducedMotion: () =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
   useMotionValue: () => ({ get: () => 0, set: vi.fn() }),
 }));
 vi.mock('./voiceChatRouting', () => ({

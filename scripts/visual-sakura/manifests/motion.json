@@ -272,7 +272,7 @@
     {
       "id": "kanban.progress",
       "path": "app/src/features/kanban/KanbanPage.tsx",
-      "line": 31,
+      "line": 32,
       "occurrence": 1,
       "locator": "LEGACY_KANBAN_PROGRESS_TRANSITION",
       "role": "kanban progress width change",
@@ -292,7 +292,7 @@
     {
       "id": "kanban.milestone",
       "path": "app/src/features/kanban/KanbanPage.tsx",
-      "line": 36,
+      "line": 37,
       "occurrence": 1,
       "locator": "LEGACY_KANBAN_ROW_TRANSITION",
       "role": "kanban milestone entrance and reflow",
@@ -312,7 +312,7 @@
     {
       "id": "onboarding.step",
       "path": "app/src/features/onboarding/Onboarding.tsx",
-      "line": 25,
+      "line": 26,
       "occurrence": 1,
       "locator": "LEGACY_STEP_TRANSITION",
       "role": "onboarding step entrance and exit",
@@ -492,7 +492,7 @@
     {
       "id": "schedule.timeline-item",
       "path": "app/src/features/schedule/SchedulePage.tsx",
-      "line": 40,
+      "line": 41,
       "occurrence": 1,
       "locator": "LEGACY_SCHEDULE_TIMELINE_TRANSITION",
       "role": "schedule timeline staggered entrance",
@@ -572,7 +572,7 @@
     {
       "id": "task.draft",
       "path": "app/src/features/tasks/DraftTaskList.tsx",
-      "line": 12,
+      "line": 13,
       "occurrence": 1,
       "locator": "DRAFT_TRANSITION",
       "role": "draft task entrance exit and reflow",
@@ -592,7 +592,7 @@
     {
       "id": "task.card",
       "path": "app/src/features/tasks/TaskCard.tsx",
-      "line": 52,
+      "line": 53,
       "occurrence": 1,
       "locator": "CARD_TRANSITION",
       "role": "task card entrance exit and reflow",
@@ -652,7 +652,7 @@
     {
       "id": "voice.caption",
       "path": "app/src/features/voice/VoiceCaption.tsx",
-      "line": 8,
+      "line": 9,
       "occurrence": 1,
       "locator": "CAPTION_TRANSITION",
       "role": "voice caption entrance exit and reflow",
@@ -672,7 +672,7 @@
     {
       "id": "voice.modal",
       "path": "app/src/features/voice/VoiceModal.tsx",
-      "line": 145,
+      "line": 146,
       "occurrence": 1,
       "locator": "LEGACY_VOICE_PANEL_TRANSITION",
       "role": "voice modal entrance exit and size reflow",
@@ -692,7 +692,7 @@
     {
       "id": "voice.command-center",
       "path": "app/src/features/voice/VoiceModal.tsx",
-      "line": 150,
+      "line": 151,
       "occurrence": 1,
       "locator": "LEGACY_COMMAND_CENTER_TRANSITION",
       "role": "voice command center height expansion",
