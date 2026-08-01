@@ -10,6 +10,10 @@ const petalsUrl = new URL('app/src/features/appearance/sakura/SakuraPetals.tsx',
 const backdropUrl = new URL('app/src/features/appearance/sakura/SakuraBackdrop.tsx', ROOT);
 const manifestUrl = new URL('docs/appearance/sakura/asset-manifest.json', ROOT);
 
+function canonicalTextBytes(source) {
+  return Buffer.from(source.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
+}
+
 test('Sakura scene is a bounded local seven-layer SVG with a stable crop contract', async () => {
   const svg = await readFile(assetUrl, 'utf8');
   assert.match(svg, /viewBox="0 0 1920 1080"/);
@@ -54,7 +58,7 @@ test('scene host has no business store, random, timer, or continuous animation i
 });
 
 test('production asset manifest freezes provenance, crop, size, and exact bytes', async () => {
-  const svg = await readFile(assetUrl);
+  const svg = canonicalTextBytes(await readFile(assetUrl));
   const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
   const asset = manifest.productionAssets?.find(
     (entry) => entry.path === 'app/src/features/appearance/sakura/sakura-scene.svg',
