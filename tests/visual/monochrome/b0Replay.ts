@@ -357,7 +357,7 @@ export function assertB0R1ManifestContract(value: unknown): asserts value is B0R
     JSON.stringify(manifest.fixture) ===
       JSON.stringify({
         id: 'chat',
-        sha256: 'c84e82ac2e3e4e7ea03f3fa7199f568ec2538df44d7a44b8ca3dce3486a41e93',
+        sha256: '48759d692d069850a3b2f734823ec06b2fcf62a667d984d52ec30247d25c4ec9',
         clock: '2026-07-16T12:00:00.000Z',
       }) &&
     JSON.stringify(manifest.themes) === JSON.stringify(['default', 'jarvis', 'vibespace']) &&
@@ -733,7 +733,7 @@ export function buildB0R1Manifest(
     },
     fixture: {
       id: 'chat',
-      sha256: 'c84e82ac2e3e4e7ea03f3fa7199f568ec2538df44d7a44b8ca3dce3486a41e93',
+      sha256: '48759d692d069850a3b2f734823ec06b2fcf62a667d984d52ec30247d25c4ec9',
       clock: '2026-07-16T12:00:00.000Z',
     },
     themes: ['default', 'jarvis', 'vibespace'],

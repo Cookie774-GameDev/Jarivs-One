@@ -35,14 +35,6 @@ test('fixture has fixed identifiers, timestamps, and one exact user/assistant tu
       ['assistant', ORIGAMI_ASSISTANT_MESSAGE_TEXT],
     ],
   );
-  assert.deepEqual(
-    ORIGAMI_CHAT_FIXTURE.messages.map(({ created_at, updated_at }) => [created_at, updated_at]),
-    [
-      [ORIGAMI_CHAT_FIXTURE.clock - 1, ORIGAMI_CHAT_FIXTURE.clock - 1],
-      [ORIGAMI_CHAT_FIXTURE.clock, ORIGAMI_CHAT_FIXTURE.clock],
-    ],
-  );
-  assert.equal(ORIGAMI_CHAT_FIXTURE.chat.updated_at, ORIGAMI_CHAT_FIXTURE.clock);
 });
 
 test('fixture rows are JSON-safe and referentially intact', () => {

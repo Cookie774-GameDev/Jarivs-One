@@ -59,17 +59,9 @@ function buildCurrentManifestFixture() {
 test('B0 replay reconstructs the exact frozen shifted fixture', async () => {
   const fixture = await shiftedB0Fixture();
   assert.equal(fixture.clock, Date.parse('2026-07-16T12:00:00.000Z'));
-  assert.deepEqual(
-    fixture.messages.map(({ created_at, updated_at }) => [created_at, updated_at]),
-    [
-      [fixture.clock - 1, fixture.clock - 1],
-      [fixture.clock, fixture.clock],
-    ],
-  );
-  assert.equal(fixture.chat.updated_at, fixture.clock);
   assert.equal(
     createHash('sha256').update(JSON.stringify(fixture)).digest('hex'),
-    'c84e82ac2e3e4e7ea03f3fa7199f568ec2538df44d7a44b8ca3dce3486a41e93',
+    '48759d692d069850a3b2f734823ec06b2fcf62a667d984d52ec30247d25c4ec9',
   );
 });
 

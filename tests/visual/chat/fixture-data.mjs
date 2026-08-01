@@ -63,7 +63,7 @@ const chat = {
   mode: 'chat',
   active_agent_ids: [ids.jarvisAgent],
   created_at: clock,
-  updated_at: clock,
+  updated_at: clock + 2,
   archived: false,
   pinned: false,
 };
@@ -102,8 +102,8 @@ const messages = [
     chat_id: ids.chat,
     role: 'user',
     parts: [{ kind: 'text', text: ORIGAMI_USER_MESSAGE_TEXT }],
-    created_at: clock - 1,
-    updated_at: clock - 1,
+    created_at: clock + 1,
+    updated_at: clock + 1,
   },
   {
     id: ids.assistantMessage,
@@ -112,8 +112,8 @@ const messages = [
     agent_id: ids.jarvisAgent,
     parts: [{ kind: 'text', text: ORIGAMI_ASSISTANT_MESSAGE_TEXT }],
     parent_id: ids.userMessage,
-    created_at: clock,
-    updated_at: clock,
+    created_at: clock + 2,
+    updated_at: clock + 2,
     usage: {
       input_tokens: 8,
       output_tokens: 79,
