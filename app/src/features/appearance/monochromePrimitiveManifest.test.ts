@@ -72,34 +72,40 @@ const FEATURE_DISCOVERY_PREDICATES = {
   AlertDialog: {
     description: 'TSX source contains an explicit role="alertdialog" control',
     gitPatterns: ['role=["\']alertdialog["\']'],
+    linePatterns: [/role=["']alertdialog["']/u],
     pathSuffixes: [],
   },
   Command: {
     description:
       'non-test TSX source imports cmdk or is the custom TerminalCommandPalette implementation',
     gitPatterns: ["from 'cmdk'"],
+    linePatterns: [/from 'cmdk'/u],
     pathSuffixes: ['/TerminalCommandPalette.tsx'],
   },
   ContextMenu: {
     description:
       'non-test TSX source basename ends with ContextMenu.tsx or declares an explicit role="menu" surface',
     gitPatterns: ['role=["\']menu["\']'],
+    linePatterns: [/role=["']menu["']/u],
     pathSuffixes: ['ContextMenu.tsx'],
   },
   Dropdown: {
     description:
       'non-test TSX source implements the AgentPicker popover dropdown or jarvis-slash-dropdown',
     gitPatterns: ['jarvis-slash-dropdown'],
+    linePatterns: [/jarvis-slash-dropdown/u],
     pathSuffixes: ['/AgentPicker.tsx'],
   },
   Progress: {
     description: 'TSX source contains an explicit role="progressbar" control',
     gitPatterns: ['role=["\']progressbar["\']'],
+    linePatterns: [/role=["']progressbar["']/u],
     pathSuffixes: [],
   },
   Radio: {
     description: 'TSX source contains an input with type="radio"',
     gitPatterns: ['type=["\']radio["\']'],
+    linePatterns: [/type=["']radio["']/u],
     pathSuffixes: [],
   },
   Resizable: {
@@ -110,32 +116,42 @@ const FEATURE_DISCOVERY_PREDICATES = {
       'aria-label="Selected object resize and rotation handles"',
       'aria-label="Resize"',
     ],
+    linePatterns: [
+      /role="separator"/u,
+      /aria-label="Selected object resize and rotation handles"/u,
+      /aria-label="Resize"/u,
+    ],
     pathSuffixes: [],
   },
   ScrollArea: {
     description:
       'non-test TSX source contains an overflow-auto or overflow-scroll utility on a rendered surface',
     gitPatterns: ['overflow-((x|y)-)?(auto|scroll)'],
+    linePatterns: [/overflow-((x|y)-)?(auto|scroll)/u],
     pathSuffixes: [],
   },
   Select: {
     description: 'TSX source contains a native select element',
     gitPatterns: ['<select($|[[:space:]>])'],
+    linePatterns: [/<select($|[\s>])/u],
     pathSuffixes: [],
   },
   Slider: {
     description: 'TSX source contains a range input or explicit slider role',
     gitPatterns: ['type=["\']range["\']|role=["\']slider["\']'],
+    linePatterns: [/type=["']range["']|role=["']slider["']/u],
     pathSuffixes: [],
   },
   Table: {
     description: 'TSX source contains a native table element',
     gitPatterns: ['<table($|[[:space:]>])'],
+    linePatterns: [/<table($|[\s>])/u],
     pathSuffixes: [],
   },
 } as const;
 
 let historicalTsxPathCache: string[] | undefined;
+let historicalMatchedLineCache: Array<{ sourcePath: string; sourceLine: string }> | undefined;
 
 function frozenPaths(): Set<string> {
   return new Set(
@@ -161,23 +177,57 @@ function historicalTsxPaths(): readonly string[] {
   return historicalTsxPathCache;
 }
 
-function historicalGrepPaths(pattern: string): string[] {
-  return execFileSync(
+function historicalMatchedLines(): ReadonlyArray<{ sourcePath: string; sourceLine: string }> {
+  if (historicalMatchedLineCache) return historicalMatchedLineCache;
+  const combinedPattern = [
+    ...new Set(
+      Object.values(FEATURE_DISCOVERY_PREDICATES).flatMap((predicate) => predicate.gitPatterns),
+    ),
+  ]
+    .map((pattern) => `(${pattern})`)
+    .join('|');
+  historicalMatchedLineCache = execFileSync(
     'git',
-    ['grep', '-l', '-E', pattern, SOURCE_COMMIT, '--', 'app/src/components', 'app/src/features'],
+    [
+      'grep',
+      '-n',
+      '-E',
+      combinedPattern,
+      SOURCE_COMMIT,
+      '--',
+      'app/src/components',
+      'app/src/features',
+    ],
     { cwd: REPO_ROOT, encoding: 'utf8' },
   )
     .split(/\r?\n/u)
-    .map((sourcePath) => sourcePath.replace(`${SOURCE_COMMIT}:`, ''))
-    .filter((sourcePath) => sourcePath.endsWith('.tsx') && !sourcePath.endsWith('.test.tsx'));
+    .filter(Boolean)
+    .map((match) => {
+      const [sourcePath, _lineNumber, ...sourceLine] = match
+        .replace(`${SOURCE_COMMIT}:`, '')
+        .split(':');
+      return { sourcePath, sourceLine: sourceLine.join(':') };
+    })
+    .filter(
+      (match) => match.sourcePath.endsWith('.tsx') && !match.sourcePath.endsWith('.test.tsx'),
+    );
+  return historicalMatchedLineCache;
+}
+
+function historicalGrepPaths(patterns: readonly RegExp[]): string[] {
+  return [
+    ...new Set(
+      historicalMatchedLines()
+        .filter((match) => patterns.some((pattern) => pattern.test(match.sourceLine)))
+        .map((match) => match.sourcePath),
+    ),
+  ];
 }
 
 function historicalControlPaths(category: keyof typeof FEATURE_DISCOVERY_PREDICATES): string[] {
   const predicate = FEATURE_DISCOVERY_PREDICATES[category];
   const paths = new Set<string>();
-  for (const pattern of predicate.gitPatterns) {
-    for (const sourcePath of historicalGrepPaths(pattern)) paths.add(sourcePath);
-  }
+  for (const sourcePath of historicalGrepPaths(predicate.linePatterns)) paths.add(sourcePath);
   for (const sourcePath of historicalTsxPaths()) {
     if (predicate.pathSuffixes.some((suffix) => sourcePath.endsWith(suffix))) {
       paths.add(sourcePath);

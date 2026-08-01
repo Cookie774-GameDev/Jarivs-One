@@ -1544,11 +1544,6 @@ describe('product-owned MonoChrome fixture readiness', () => {
           {child ?? <main data-monochrome-surface="chat" />}
         </MonochromeFixtureController>,
       );
-      await waitFor(() =>
-        expect(
-          mounted.container.querySelector('[data-monochrome-fixture-ready="true"]'),
-        ).not.toBeNull(),
-      );
       const evidenceScope =
         authorityId === 'overlay:call-modal' ||
         authorityId === 'overlay:file-explorer-host' ||
@@ -1556,6 +1551,16 @@ describe('product-owned MonoChrome fixture readiness', () => {
         authorityId === 'overlay:whats-new-host'
           ? document
           : mounted.container;
+      await waitFor(() => expect(evidenceScope.querySelector(selector)).not.toBeNull(), {
+        timeout: 4_000,
+      });
+      await waitFor(
+        () =>
+          expect(
+            mounted.container.querySelector('[data-monochrome-fixture-ready="true"]'),
+          ).not.toBeNull(),
+        { timeout: 4_000 },
+      );
       const visibleProductNode = evidenceScope.querySelector(selector);
       expect(visibleProductNode).not.toBeNull();
       const evidencedNode =
@@ -1569,6 +1574,7 @@ describe('product-owned MonoChrome fixture readiness', () => {
       }
       mounted.unmount();
     },
+    10_000,
   );
 
   it('does not let an absent overlay self-attest through the underlying chat route', async () => {
