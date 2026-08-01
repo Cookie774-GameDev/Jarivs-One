@@ -39,6 +39,149 @@ const MAX_RESPONSE_ARRAY: usize = 512;
 const MAX_RESPONSE_STRING: usize = 16_384;
 const MAX_ACTIVE_CONNECTIONS: usize = 8;
 
+const EFFECT_SHELL_FILE_REMOVE: &str = "terminal-cli-1093-file-remove";
+const EFFECT_SHELL_DIRECTORY_CREATE: &str = "terminal-cli-1105-directory-create";
+const EFFECT_SHELL_FILE_CREATE: &str = "terminal-cli-1115-file-create";
+const EFFECT_SHELL_FILE_WRITE: &str = "terminal-cli-1120-file-write";
+const EFFECT_SHELL_WRITE_CLEANUP_REMOVE: &str = "terminal-cli-1122-file-remove";
+const EFFECT_SHELL_FILE_FLUSH: &str = "terminal-cli-1125-file-flush";
+const EFFECT_SHELL_FLUSH_CLEANUP_REMOVE: &str = "terminal-cli-1127-file-remove";
+const EFFECT_SHELL_FILE_PERMISSIONS_WRITE: &str = "terminal-cli-1132-file-permissions-write";
+const EFFECT_SHELL_PERMISSIONS_CLEANUP_REMOVE: &str = "terminal-cli-1133-file-remove";
+const EFFECT_SHELL_REPLACE_CLEANUP_REMOVE: &str = "terminal-cli-1138-file-remove";
+const EFFECT_KEYRING_ENTRY: &str = "terminal-cli-1165-keyring-entry";
+const EFFECT_ENDPOINT_DIRECTORY_CREATE: &str = "terminal-cli-1186-directory-create";
+const EFFECT_ENDPOINT_FILE_CREATE: &str = "terminal-cli-1194-file-create";
+const EFFECT_ENDPOINT_FILE_WRITE: &str = "terminal-cli-1199-file-write";
+const EFFECT_ENDPOINT_FILE_FLUSH: &str = "terminal-cli-1201-file-flush";
+#[cfg(unix)]
+const EFFECT_ENDPOINT_FILE_PERMISSIONS_WRITE: &str = "terminal-cli-1206-file-permissions-write";
+const EFFECT_ENDPOINT_REPLACE_CLEANUP_REMOVE: &str = "terminal-cli-1210-file-remove";
+const EFFECT_KEYRING_SET: &str = "terminal-cli-1405-keyring-set";
+const EFFECT_KEYRING_READ: &str = "terminal-cli-1524-keyring-read";
+const EFFECT_FILE_REPLACE_WINDOWS: &str = "terminal-cli-1845-file-replace-windows";
+#[cfg(not(target_os = "windows"))]
+const EFFECT_FILE_RENAME: &str = "terminal-cli-1856-file-rename";
+const EFFECT_SHIM_FILE_CREATE: &str = "terminal-cli-1875-file-create";
+const EFFECT_SHIM_FILE_WRITE: &str = "terminal-cli-1880-file-write";
+const EFFECT_SHIM_FILE_FLUSH: &str = "terminal-cli-1882-file-flush";
+#[cfg(unix)]
+const EFFECT_SHIM_FILE_PERMISSIONS_WRITE: &str = "terminal-cli-1887-file-permissions-write";
+const EFFECT_SHIM_REPLACE_CLEANUP_REMOVE: &str = "terminal-cli-1891-file-remove";
+const EFFECT_ALIAS_ROLLBACK_FILE_REMOVE: &str = "terminal-cli-1926-file-remove";
+const EFFECT_ALIAS_STAGE_FILE_RENAME: &str = "terminal-cli-1972-file-rename";
+const EFFECT_ALIAS_ROLLBACK_FILE_RENAME: &str = "terminal-cli-1975-file-rename";
+const EFFECT_ALIAS_CLEANUP_FILE_REMOVE: &str = "terminal-cli-1991-file-remove";
+const EFFECT_CLI_BIN_DIRECTORY_CREATE: &str = "terminal-cli-2043-directory-create";
+
+fn denied_effect_category(effect: &'static str) -> &'static str {
+    match effect {
+        EFFECT_KEYRING_ENTRY | EFFECT_KEYRING_SET | EFFECT_KEYRING_READ => {
+            crate::runtime_profile::DENIED_EFFECT_KEYCHAIN
+        }
+        _ => crate::runtime_profile::DENIED_EFFECT_LAUNCHER,
+    }
+}
+
+#[cfg(not(test))]
+fn privileged_effect<T>(
+    effect: &'static str,
+    adapter: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    crate::runtime_profile::ensure_privileged_effect_allowed(
+        denied_effect_category(effect),
+        effect,
+    )?;
+    run_effect_adapter(adapter)
+}
+
+#[cfg(not(test))]
+fn run_effect_adapter<T>(adapter: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    adapter()
+}
+
+#[cfg(test)]
+type TestEffectGuard = dyn Fn(&'static str) -> Result<(), String>;
+
+#[cfg(test)]
+std::thread_local! {
+    static TEST_EFFECT_GUARD: std::cell::RefCell<Option<Box<TestEffectGuard>>> =
+        const { std::cell::RefCell::new(None) };
+    static TEST_EFFECT_EVENTS: std::cell::RefCell<Vec<&'static str>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static TEST_EFFECT_FAILURE: std::cell::RefCell<Option<(&'static str, usize, usize)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn privileged_effect<T>(
+    effect: &'static str,
+    adapter: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let allowed = TEST_EFFECT_GUARD.with(|slot| match &*slot.borrow() {
+        Some(guard) => guard(effect),
+        None => crate::runtime_profile::ensure_privileged_effect_allowed(
+            denied_effect_category(effect),
+            effect,
+        ),
+    });
+    allowed?;
+    run_effect_adapter(effect, adapter)
+}
+
+#[cfg(test)]
+fn run_effect_adapter<T>(
+    effect: &'static str,
+    adapter: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    TEST_EFFECT_EVENTS.with(|events| events.borrow_mut().push(effect));
+    let injected_failure = TEST_EFFECT_FAILURE.with(|slot| {
+        let mut failure = slot.borrow_mut();
+        let Some((target, occurrence, seen)) = failure.as_mut() else {
+            return false;
+        };
+        if *target != effect {
+            return false;
+        }
+        *seen += 1;
+        *seen == *occurrence
+    });
+    if injected_failure {
+        return Err(format!("injected '{effect}' adapter failure"));
+    }
+    adapter()
+}
+
+#[cfg(test)]
+fn install_test_effect_guard<F>(guard: F)
+where
+    F: Fn(&'static str) -> Result<(), String> + 'static,
+{
+    TEST_EFFECT_GUARD.with(|slot| *slot.borrow_mut() = Some(Box::new(guard)));
+}
+
+#[cfg(test)]
+fn clear_test_effect_guard() {
+    TEST_EFFECT_GUARD.with(|slot| *slot.borrow_mut() = None);
+}
+
+#[cfg(test)]
+fn clear_test_effect_events() {
+    TEST_EFFECT_EVENTS.with(|events| events.borrow_mut().clear());
+    TEST_EFFECT_FAILURE.with(|slot| *slot.borrow_mut() = None);
+}
+
+#[cfg(test)]
+fn fail_test_effect_adapter(effect: &'static str, occurrence: usize) {
+    assert!(occurrence > 0);
+    TEST_EFFECT_FAILURE.with(|slot| *slot.borrow_mut() = Some((effect, occurrence, 0)));
+}
+
+#[cfg(test)]
+fn take_test_effect_events() -> Vec<&'static str> {
+    TEST_EFFECT_EVENTS.with(|events| std::mem::take(&mut *events.borrow_mut()))
+}
+
 pub fn terminal_cli_response_timeout(method: &str) -> Duration {
     match method {
         "context.create" | "context.refresh" => LONG_RUNNING_RESPONSE_TIMEOUT,
@@ -1090,11 +1233,11 @@ fn write_terminal_shell_profile(path: &Path, content: Option<&str>) -> Result<()
     };
 
     let Some(content) = content else {
-        return match fs::remove_file(path) {
+        return privileged_effect(EFFECT_SHELL_FILE_REMOVE, || match fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(format!("Shell profile removal failed: {error}")),
-        };
+        });
     };
     if content.len() as u64 > MAX_SHELL_PROFILE_BYTES || content.contains('\0') {
         return Err("The shell profile content is invalid.".into());
@@ -1102,7 +1245,9 @@ fn write_terminal_shell_profile(path: &Path, content: Option<&str>) -> Result<()
     let parent = path
         .parent()
         .ok_or_else(|| "The shell profile path has no parent.".to_string())?;
-    fs::create_dir_all(parent).map_err(|error| format!("Shell profile directory: {error}"))?;
+    privileged_effect(EFFECT_SHELL_DIRECTORY_CREATE, || {
+        fs::create_dir_all(parent).map_err(|error| format!("Shell profile directory: {error}"))
+    })?;
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -1112,30 +1257,48 @@ fn write_terminal_shell_profile(path: &Path, content: Option<&str>) -> Result<()
         std::process::id(),
         nanoid::nanoid!(12)
     ));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(|error| format!("Shell profile temporary create failed: {error}"))?;
-    if let Err(error) = file.write_all(content.as_bytes()) {
+    let mut file = privileged_effect(EFFECT_SHELL_FILE_CREATE, || {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("Shell profile temporary create failed: {error}"))
+    })?;
+    if let Err(error) = privileged_effect(EFFECT_SHELL_FILE_WRITE, || {
+        file.write_all(content.as_bytes())
+            .map_err(|error| error.to_string())
+    }) {
         drop(file);
-        let _ = fs::remove_file(&temporary);
+        let _ = privileged_effect(EFFECT_SHELL_WRITE_CLEANUP_REMOVE, || {
+            fs::remove_file(&temporary).map_err(|error| error.to_string())
+        });
         return Err(format!("Shell profile write failed: {error}"));
     }
-    if let Err(error) = file.sync_all() {
+    if let Err(error) = privileged_effect(EFFECT_SHELL_FILE_FLUSH, || {
+        file.sync_all().map_err(|error| error.to_string())
+    }) {
         drop(file);
-        let _ = fs::remove_file(&temporary);
+        let _ = privileged_effect(EFFECT_SHELL_FLUSH_CLEANUP_REMOVE, || {
+            fs::remove_file(&temporary).map_err(|error| error.to_string())
+        });
         return Err(format!("Shell profile flush failed: {error}"));
     }
     drop(file);
     if let Some(metadata) = existing_metadata {
-        if let Err(error) = fs::set_permissions(&temporary, metadata.permissions()) {
-            let _ = fs::remove_file(&temporary);
+        if let Err(error) = privileged_effect(EFFECT_SHELL_FILE_PERMISSIONS_WRITE, || {
+            fs::set_permissions(&temporary, metadata.permissions())
+                .map_err(|error| error.to_string())
+        }) {
+            let _ = privileged_effect(EFFECT_SHELL_PERMISSIONS_CLEANUP_REMOVE, || {
+                fs::remove_file(&temporary).map_err(|error| error.to_string())
+            });
             return Err(format!("Shell profile permissions failed: {error}"));
         }
     }
     if let Err(error) = atomic_replace_file(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
+        let _ = privileged_effect(EFFECT_SHELL_REPLACE_CLEANUP_REMOVE, || {
+            fs::remove_file(&temporary).map_err(|error| error.to_string())
+        });
         return Err(format!("Shell profile replace failed: {error}"));
     }
     Ok(())
@@ -1162,8 +1325,28 @@ pub fn uninstall_managed_terminal_shell_profile(path: &Path) -> Result<(), Strin
 }
 
 fn keyring_entry() -> Result<Entry, String> {
-    Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .map_err(|error| format!("terminal CLI credential store unavailable: {error}"))
+    privileged_effect(EFFECT_KEYRING_ENTRY, || {
+        Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .map_err(|error| format!("terminal CLI credential store unavailable: {error}"))
+    })
+}
+
+fn keyring_set(nonce: &str) -> Result<(), String> {
+    let entry = keyring_entry()?;
+    privileged_effect(EFFECT_KEYRING_SET, || {
+        entry
+            .set_password(nonce)
+            .map_err(|error| format!("terminal CLI credential save failed: {error}"))
+    })
+}
+
+fn keyring_read() -> Result<String, String> {
+    let entry = keyring_entry()?;
+    privileged_effect(EFFECT_KEYRING_READ, || {
+        entry
+            .get_password()
+            .map_err(|error| format!("terminal CLI credential read failed: {error}"))
+    })
 }
 
 fn generate_nonce() -> Result<String, String> {
@@ -1183,7 +1366,9 @@ fn write_endpoint(path: &Path, endpoint: &TerminalCliEndpoint) -> Result<(), Str
     let parent = path
         .parent()
         .ok_or_else(|| "terminal CLI endpoint has no parent".to_string())?;
-    fs::create_dir_all(parent).map_err(|error| format!("endpoint directory: {error}"))?;
+    privileged_effect(EFFECT_ENDPOINT_DIRECTORY_CREATE, || {
+        fs::create_dir_all(parent).map_err(|error| format!("endpoint directory: {error}"))
+    })?;
     let temporary = path.with_file_name(format!(
         ".endpoint.{}.{}.json.tmp",
         std::process::id(),
@@ -1191,23 +1376,33 @@ fn write_endpoint(path: &Path, endpoint: &TerminalCliEndpoint) -> Result<(), Str
     ));
     let bytes =
         serde_json::to_vec(endpoint).map_err(|error| format!("endpoint serialize: {error}"))?;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(|error| format!("endpoint create: {error}"))?;
-    file.write_all(&bytes)
-        .map_err(|error| format!("endpoint write: {error}"))?;
-    file.sync_all()
-        .map_err(|error| format!("endpoint flush: {error}"))?;
+    let mut file = privileged_effect(EFFECT_ENDPOINT_FILE_CREATE, || {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("endpoint create: {error}"))
+    })?;
+    privileged_effect(EFFECT_ENDPOINT_FILE_WRITE, || {
+        file.write_all(&bytes)
+            .map_err(|error| format!("endpoint write: {error}"))
+    })?;
+    privileged_effect(EFFECT_ENDPOINT_FILE_FLUSH, || {
+        file.sync_all()
+            .map_err(|error| format!("endpoint flush: {error}"))
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))
-            .map_err(|error| format!("endpoint permissions: {error}"))?;
+        privileged_effect(EFFECT_ENDPOINT_FILE_PERMISSIONS_WRITE, || {
+            fs::set_permissions(&temporary, fs::Permissions::from_mode(0o600))
+                .map_err(|error| format!("endpoint permissions: {error}"))
+        })?;
     }
     if let Err(error) = atomic_replace_file(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
+        let _ = privileged_effect(EFFECT_ENDPOINT_REPLACE_CLEANUP_REMOVE, || {
+            fs::remove_file(&temporary).map_err(|error| error.to_string())
+        });
         return Err(format!("endpoint replace: {error}"));
     }
     Ok(())
@@ -1401,9 +1596,7 @@ pub fn start_terminal_cli_server(
         .local_addr()
         .map_err(|error| format!("terminal CLI address: {error}"))?;
     let nonce = generate_nonce()?;
-    keyring_entry()?
-        .set_password(&nonce)
-        .map_err(|error| format!("terminal CLI credential save failed: {error}"))?;
+    keyring_set(&nonce)?;
     let endpoint_path = app
         .path()
         .app_local_data_dir()
@@ -1519,11 +1712,7 @@ fn send_terminal_cli_request(invocation: &TerminalCliInvocation) -> TerminalCliR
             return response(&id, false, error.code, error.message, None);
         }
     };
-    let nonce = match keyring_entry().and_then(|entry| {
-        entry
-            .get_password()
-            .map_err(|error| format!("terminal CLI credential read failed: {error}"))
-    }) {
+    let nonce = match keyring_read() {
         Ok(nonce) => nonce,
         Err(message) => {
             return response(&id, false, "authentication_failed", &message, None);
@@ -1841,19 +2030,23 @@ fn atomic_replace_file(temporary: &Path, destination: &Path) -> Result<(), Strin
         .encode_wide()
         .chain(std::iter::once(0))
         .collect::<Vec<_>>();
-    unsafe {
-        MoveFileExW(
-            PCWSTR(temporary_wide.as_ptr()),
-            PCWSTR(destination_wide.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    }
-    .map_err(|error| error.to_string())
+    privileged_effect(EFFECT_FILE_REPLACE_WINDOWS, || {
+        unsafe {
+            MoveFileExW(
+                PCWSTR(temporary_wide.as_ptr()),
+                PCWSTR(destination_wide.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        }
+        .map_err(|error| error.to_string())
+    })
 }
 
 #[cfg(not(target_os = "windows"))]
 fn atomic_replace_file(temporary: &Path, destination: &Path) -> Result<(), String> {
-    fs::rename(temporary, destination).map_err(|error| error.to_string())
+    privileged_effect(EFFECT_FILE_RENAME, || {
+        fs::rename(temporary, destination).map_err(|error| error.to_string())
+    })
 }
 
 pub fn replace_managed_terminal_cli_shim(path: &Path, content: &str) -> Result<(), String> {
@@ -1872,23 +2065,33 @@ pub fn replace_managed_terminal_cli_shim(path: &Path, content: &str) -> Result<(
         std::process::id(),
         nanoid::nanoid!(12)
     ));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .map_err(|error| format!("CLI shim create: {error}"))?;
-    file.write_all(content.as_bytes())
-        .map_err(|error| format!("CLI shim write: {error}"))?;
-    file.sync_all()
-        .map_err(|error| format!("CLI shim flush: {error}"))?;
+    let mut file = privileged_effect(EFFECT_SHIM_FILE_CREATE, || {
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("CLI shim create: {error}"))
+    })?;
+    privileged_effect(EFFECT_SHIM_FILE_WRITE, || {
+        file.write_all(content.as_bytes())
+            .map_err(|error| format!("CLI shim write: {error}"))
+    })?;
+    privileged_effect(EFFECT_SHIM_FILE_FLUSH, || {
+        file.sync_all()
+            .map_err(|error| format!("CLI shim flush: {error}"))
+    })?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&temporary, fs::Permissions::from_mode(0o755))
-            .map_err(|error| format!("CLI shim permissions: {error}"))?;
+        privileged_effect(EFFECT_SHIM_FILE_PERMISSIONS_WRITE, || {
+            fs::set_permissions(&temporary, fs::Permissions::from_mode(0o755))
+                .map_err(|error| format!("CLI shim permissions: {error}"))
+        })?;
     }
     if let Err(error) = atomic_replace_file(&temporary, path) {
-        let _ = fs::remove_file(&temporary);
+        let _ = privileged_effect(EFFECT_SHIM_REPLACE_CLEANUP_REMOVE, || {
+            fs::remove_file(&temporary).map_err(|error| error.to_string())
+        });
         return Err(format!("CLI shim replace: {error}"));
     }
     Ok(())
@@ -1923,11 +2126,13 @@ pub fn replace_managed_terminal_cli_aliases(
                 let rollback_path = &paths[rollback_index];
                 let rollback = match &originals[rollback_index] {
                     Some(previous) => replace_managed_terminal_cli_shim(rollback_path, previous),
-                    None => match fs::remove_file(rollback_path) {
-                        Ok(()) => Ok(()),
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                        Err(error) => Err(format!("CLI shim rollback removal failed: {error}")),
-                    },
+                    None => privileged_effect(EFFECT_ALIAS_ROLLBACK_FILE_REMOVE, || {
+                        match fs::remove_file(rollback_path) {
+                            Ok(()) => Ok(()),
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                            Err(error) => Err(format!("CLI shim rollback removal failed: {error}")),
+                        }
+                    }),
                 };
                 if let Err(error) = rollback {
                     rollback_errors.push(format!("{}: {error}", rollback_path.display()));
@@ -1969,10 +2174,14 @@ pub fn remove_managed_terminal_cli_aliases(paths: &[PathBuf]) -> Result<(), Stri
             std::process::id(),
             nanoid::nanoid!(12)
         ));
-        if let Err(remove_error) = fs::rename(path, &temporary) {
+        if let Err(remove_error) = privileged_effect(EFFECT_ALIAS_STAGE_FILE_RENAME, || {
+            fs::rename(path, &temporary).map_err(|error| error.to_string())
+        }) {
             let mut rollback_errors = Vec::new();
             for (original, moved_path) in moved.iter().rev() {
-                if let Err(error) = fs::rename(moved_path, original) {
+                if let Err(error) = privileged_effect(EFFECT_ALIAS_ROLLBACK_FILE_RENAME, || {
+                    fs::rename(moved_path, original).map_err(|error| error.to_string())
+                }) {
                     rollback_errors.push(format!("{}: {error}", original.display()));
                 }
             }
@@ -1988,7 +2197,9 @@ pub fn remove_managed_terminal_cli_aliases(paths: &[PathBuf]) -> Result<(), Stri
     }
 
     for (_, temporary) in moved {
-        if let Err(error) = fs::remove_file(&temporary) {
+        if let Err(error) = privileged_effect(EFFECT_ALIAS_CLEANUP_FILE_REMOVE, || {
+            fs::remove_file(&temporary).map_err(|error| error.to_string())
+        }) {
             eprintln!(
                 "[terminal-cli] removed alias but could not clean up {}: {error}",
                 temporary.display()
@@ -2040,10 +2251,16 @@ pub fn terminal_cli_install(
         std::env::current_exe().map_err(|error| format!("current executable: {error}"))?;
     let content = expected_shim(&executable, &endpoint)?;
     let (bin_dir, names) = terminal_cli_paths()?;
-    fs::create_dir_all(&bin_dir).map_err(|error| format!("CLI bin directory: {error}"))?;
+    create_terminal_cli_bin_directory(&bin_dir)?;
     let paths = names.map(|name| bin_dir.join(name));
     replace_managed_terminal_cli_aliases(&paths, &content)?;
     cli_install_status(&state)
+}
+
+fn create_terminal_cli_bin_directory(bin_dir: &Path) -> Result<(), String> {
+    privileged_effect(EFFECT_CLI_BIN_DIRECTORY_CREATE, || {
+        fs::create_dir_all(bin_dir).map_err(|error| format!("CLI bin directory: {error}"))
+    })
 }
 
 #[tauri::command]
@@ -2090,4 +2307,391 @@ pub fn terminal_cli_respond(
     sender
         .send(response)
         .map_err(|_| "terminal CLI request receiver is unavailable".to_string())
+}
+
+#[cfg(test)]
+mod privileged_effect_tests {
+    use super::*;
+
+    fn unique_test_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "vibespace-terminal-cli-{label}-{}-{}",
+            std::process::id(),
+            nanoid::nanoid!(8)
+        ))
+    }
+
+    #[test]
+    fn named_profile_denies_shell_profile_write_before_effect_adapter() {
+        install_test_effect_guard(|effect| {
+            Err(format!(
+                "privileged effect '{effect}' is disabled by the monochrome-visual-test runtime profile"
+            ))
+        });
+        clear_test_effect_events();
+        let path = unique_test_path("denied").join("profile.ps1");
+
+        let message = write_terminal_shell_profile(&path, Some("prompt"))
+            .expect_err("named test profile must deny before filesystem effects");
+
+        assert!(message.contains("monochrome-visual-test"));
+        assert!(!path.exists());
+        assert!(
+            take_test_effect_events().is_empty(),
+            "denial must precede the effect adapter counter"
+        );
+    }
+
+    #[test]
+    fn ordinary_mode_shell_profile_write_reaches_exact_effect_adapters() {
+        install_test_effect_guard(|_effect| Ok(()));
+        clear_test_effect_events();
+        let root = unique_test_path("ordinary");
+        let path = root.join("profile.ps1");
+
+        write_terminal_shell_profile(&path, Some("prompt"))
+            .expect("ordinary mode must preserve shell profile writes");
+
+        let mut expected = vec![
+            EFFECT_SHELL_DIRECTORY_CREATE,
+            EFFECT_SHELL_FILE_CREATE,
+            EFFECT_SHELL_FILE_WRITE,
+            EFFECT_SHELL_FILE_FLUSH,
+        ];
+        #[cfg(unix)]
+        expected.push(EFFECT_SHELL_FILE_PERMISSIONS_WRITE);
+        #[cfg(target_os = "windows")]
+        expected.push(EFFECT_FILE_REPLACE_WINDOWS);
+        #[cfg(not(target_os = "windows"))]
+        expected.push(EFFECT_FILE_RENAME);
+        assert_eq!(take_test_effect_events(), expected);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "prompt");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ordinary_mode_endpoint_write_reaches_exact_effect_adapters() {
+        install_test_effect_guard(|_effect| Ok(()));
+        clear_test_effect_events();
+        let root = unique_test_path("endpoint");
+        let path = root.join("endpoint.json");
+        let endpoint = TerminalCliEndpoint {
+            protocol_version: PROTOCOL_VERSION,
+            address: "127.0.0.1:45678".into(),
+            keyring_service: KEYRING_SERVICE.into(),
+            keyring_account: KEYRING_ACCOUNT.into(),
+        };
+
+        write_endpoint(&path, &endpoint).expect("ordinary mode must preserve endpoint writes");
+
+        let mut expected = vec![
+            EFFECT_ENDPOINT_DIRECTORY_CREATE,
+            EFFECT_ENDPOINT_FILE_CREATE,
+            EFFECT_ENDPOINT_FILE_WRITE,
+            EFFECT_ENDPOINT_FILE_FLUSH,
+        ];
+        #[cfg(unix)]
+        expected.push(EFFECT_ENDPOINT_FILE_PERMISSIONS_WRITE);
+        #[cfg(target_os = "windows")]
+        expected.push(EFFECT_FILE_REPLACE_WINDOWS);
+        #[cfg(not(target_os = "windows"))]
+        expected.push(EFFECT_FILE_RENAME);
+        assert_eq!(take_test_effect_events(), expected);
+        assert!(path.is_file());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ordinary_mode_shim_install_and_remove_reach_exact_effect_adapters() {
+        install_test_effect_guard(|_effect| Ok(()));
+        clear_test_effect_events();
+        let root = unique_test_path("shim");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join(if cfg!(target_os = "windows") {
+            "vibespace.cmd"
+        } else {
+            "vibespace"
+        });
+        let content = format!("# {MANAGED_MARKER}\nmanaged shim\n");
+
+        replace_managed_terminal_cli_shim(&path, &content)
+            .expect("ordinary mode must preserve shim install");
+
+        let mut expected = vec![
+            EFFECT_SHIM_FILE_CREATE,
+            EFFECT_SHIM_FILE_WRITE,
+            EFFECT_SHIM_FILE_FLUSH,
+        ];
+        #[cfg(unix)]
+        expected.push(EFFECT_SHIM_FILE_PERMISSIONS_WRITE);
+        #[cfg(target_os = "windows")]
+        expected.push(EFFECT_FILE_REPLACE_WINDOWS);
+        #[cfg(not(target_os = "windows"))]
+        expected.push(EFFECT_FILE_RENAME);
+        assert_eq!(take_test_effect_events(), expected);
+
+        clear_test_effect_events();
+        remove_managed_terminal_cli_aliases(std::slice::from_ref(&path))
+            .expect("ordinary mode must preserve managed shim removal");
+        assert_eq!(
+            take_test_effect_events(),
+            vec![
+                EFFECT_ALIAS_STAGE_FILE_RENAME,
+                EFFECT_ALIAS_CLEANUP_FILE_REMOVE,
+            ]
+        );
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shell_profile_remove_reaches_1093_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        let root = unique_test_path("shell-remove");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("profile.ps1");
+        fs::write(&path, "existing").unwrap();
+
+        write_terminal_shell_profile(&path, None).unwrap();
+
+        assert_eq!(take_test_effect_events(), vec![EFFECT_SHELL_FILE_REMOVE]);
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shell_write_failure_reaches_1122_cleanup_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_SHELL_FILE_WRITE, 1);
+        let root = unique_test_path("shell-write-cleanup");
+        let path = root.join("profile.ps1");
+
+        assert!(write_terminal_shell_profile(&path, Some("content")).is_err());
+
+        let events = take_test_effect_events();
+        assert!(events.contains(&EFFECT_SHELL_WRITE_CLEANUP_REMOVE));
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shell_flush_failure_reaches_1127_cleanup_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_SHELL_FILE_FLUSH, 1);
+        let root = unique_test_path("shell-flush-cleanup");
+        let path = root.join("profile.ps1");
+
+        assert!(write_terminal_shell_profile(&path, Some("content")).is_err());
+
+        let events = take_test_effect_events();
+        assert!(events.contains(&EFFECT_SHELL_FLUSH_CLEANUP_REMOVE));
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shell_permissions_failure_reaches_1133_cleanup_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_SHELL_FILE_PERMISSIONS_WRITE, 1);
+        let root = unique_test_path("shell-permissions-cleanup");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("profile");
+        fs::write(&path, "old").unwrap();
+
+        assert!(write_terminal_shell_profile(&path, Some("new")).is_err());
+
+        assert!(take_test_effect_events().contains(&EFFECT_SHELL_PERMISSIONS_CLEANUP_REMOVE));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn shell_replace_failure_reaches_1138_cleanup_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        #[cfg(target_os = "windows")]
+        fail_test_effect_adapter(EFFECT_FILE_REPLACE_WINDOWS, 1);
+        #[cfg(not(target_os = "windows"))]
+        fail_test_effect_adapter(EFFECT_FILE_RENAME, 1);
+        let root = unique_test_path("shell-replace-cleanup");
+        let path = root.join("profile");
+
+        assert!(write_terminal_shell_profile(&path, Some("content")).is_err());
+
+        assert!(take_test_effect_events().contains(&EFFECT_SHELL_REPLACE_CLEANUP_REMOVE));
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn keyring_entry_reaches_1165_adapter_without_os_access() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_KEYRING_ENTRY, 1);
+
+        assert!(keyring_entry().is_err());
+        assert_eq!(take_test_effect_events(), vec![EFFECT_KEYRING_ENTRY]);
+    }
+
+    #[test]
+    fn endpoint_replace_failure_reaches_1210_cleanup_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        #[cfg(target_os = "windows")]
+        fail_test_effect_adapter(EFFECT_FILE_REPLACE_WINDOWS, 1);
+        #[cfg(not(target_os = "windows"))]
+        fail_test_effect_adapter(EFFECT_FILE_RENAME, 1);
+        let root = unique_test_path("endpoint-replace-cleanup");
+        let path = root.join("endpoint.json");
+        let endpoint = TerminalCliEndpoint {
+            protocol_version: PROTOCOL_VERSION,
+            address: "127.0.0.1:45678".into(),
+            keyring_service: KEYRING_SERVICE.into(),
+            keyring_account: KEYRING_ACCOUNT.into(),
+        };
+
+        assert!(write_endpoint(&path, &endpoint).is_err());
+
+        assert!(take_test_effect_events().contains(&EFFECT_ENDPOINT_REPLACE_CLEANUP_REMOVE));
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn keyring_set_reaches_1405_adapter_without_writing_credentials() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_KEYRING_SET, 1);
+
+        assert!(keyring_set("test-nonce").is_err());
+        assert_eq!(
+            take_test_effect_events(),
+            vec![EFFECT_KEYRING_ENTRY, EFFECT_KEYRING_SET]
+        );
+    }
+
+    #[test]
+    fn keyring_read_reaches_1524_adapter_without_reading_credentials() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_KEYRING_READ, 1);
+
+        assert!(keyring_read().is_err());
+        assert_eq!(
+            take_test_effect_events(),
+            vec![EFFECT_KEYRING_ENTRY, EFFECT_KEYRING_READ]
+        );
+    }
+
+    #[test]
+    fn shim_replace_failure_reaches_1891_cleanup_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        #[cfg(target_os = "windows")]
+        fail_test_effect_adapter(EFFECT_FILE_REPLACE_WINDOWS, 1);
+        #[cfg(not(target_os = "windows"))]
+        fail_test_effect_adapter(EFFECT_FILE_RENAME, 1);
+        let root = unique_test_path("shim-replace-cleanup");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("vibespace");
+
+        assert!(replace_managed_terminal_cli_shim(&path, MANAGED_MARKER).is_err());
+
+        assert!(take_test_effect_events().contains(&EFFECT_SHIM_REPLACE_CLEANUP_REMOVE));
+        assert!(!path.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn alias_install_failure_reaches_1926_rollback_remove_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_SHIM_FILE_CREATE, 2);
+        let root = unique_test_path("alias-rollback-remove");
+        fs::create_dir_all(&root).unwrap();
+        let paths = [root.join("vibespace"), root.join("vs")];
+
+        assert!(replace_managed_terminal_cli_aliases(&paths, MANAGED_MARKER).is_err());
+
+        assert!(take_test_effect_events().contains(&EFFECT_ALIAS_ROLLBACK_FILE_REMOVE));
+        assert!(paths.iter().all(|path| !path.exists()));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn alias_stage_failure_reaches_1975_rollback_rename_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        fail_test_effect_adapter(EFFECT_ALIAS_STAGE_FILE_RENAME, 2);
+        let root = unique_test_path("alias-rollback-rename");
+        fs::create_dir_all(&root).unwrap();
+        let paths = [root.join("vibespace"), root.join("vs")];
+        for path in &paths {
+            fs::write(path, format!("# {MANAGED_MARKER}\n")).unwrap();
+        }
+
+        assert!(remove_managed_terminal_cli_aliases(&paths).is_err());
+
+        assert!(take_test_effect_events().contains(&EFFECT_ALIAS_ROLLBACK_FILE_RENAME));
+        assert!(paths.iter().all(|path| path.exists()));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn cli_bin_creation_reaches_2043_directory_adapter() {
+        install_test_effect_guard(|_| Ok(()));
+        clear_test_effect_events();
+        let root = unique_test_path("cli-bin-create");
+        let bin = root.join("bin");
+
+        create_terminal_cli_bin_directory(&bin).unwrap();
+
+        assert_eq!(
+            take_test_effect_events(),
+            vec![EFFECT_CLI_BIN_DIRECTORY_CREATE]
+        );
+        assert!(bin.is_dir());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn real_visual_and_unknown_profiles_deny_before_terminal_adapter() {
+        clear_test_effect_guard();
+        clear_test_effect_events();
+        for profile in [
+            crate::runtime_profile::MONOCHROME_VISUAL_TEST,
+            "unknown-profile",
+        ] {
+            let _environment = crate::runtime_profile::test_runtime_environment(
+                Some(std::ffi::OsString::from(profile)),
+                None,
+            );
+            let path = unique_test_path("real-profile-denial").join("profile");
+            assert!(write_terminal_shell_profile(&path, Some("content")).is_err());
+            assert!(take_test_effect_events().is_empty());
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn real_ordinary_profile_reaches_terminal_adapter() {
+        clear_test_effect_guard();
+        clear_test_effect_events();
+        let _environment = crate::runtime_profile::test_runtime_environment(None, None);
+        let root = unique_test_path("real-ordinary");
+        let bin = root.join("bin");
+
+        create_terminal_cli_bin_directory(&bin).unwrap();
+
+        assert_eq!(
+            take_test_effect_events(),
+            vec![EFFECT_CLI_BIN_DIRECTORY_CREATE]
+        );
+        assert!(bin.is_dir());
+        let _ = fs::remove_dir_all(root);
+    }
 }
