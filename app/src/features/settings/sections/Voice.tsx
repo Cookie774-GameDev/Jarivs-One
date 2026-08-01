@@ -465,7 +465,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
   }
 
   return (
-    <div className="mc7f-settings-voice flex max-w-4xl flex-col gap-8 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
+    <div className="mc7f-settings-voice flex max-w-4xl flex-col gap-8 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:backdrop-blur-none [html[data-theme=monochrome]_&_*]:transition-none [html[data-theme=monochrome]_&_*]:focus-visible:outline [html[data-theme=monochrome]_&_*]:focus-visible:outline-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-ring motion-reduce:[&_*]:!animate-none motion-reduce:[&_*]:transition-none">
       <header className="space-y-1">
         <h2 className="text-page-title text-foreground">Voice</h2>
         <p className="text-secondary text-muted-foreground">
@@ -1001,6 +1001,7 @@ function PersonaCard({ persona, selected, onSelect }: PersonaCardProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
+      data-monochrome-control-size="preserve"
       className={cn(
         'group relative flex min-h-[92px] flex-col items-start gap-1 rounded-md border bg-panel p-3 text-left transition-colors',
         'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -1012,7 +1013,12 @@ function PersonaCard({ persona, selected, onSelect }: PersonaCardProps) {
       {selected && (
         <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-accent-cyan" strokeWidth={3} />
       )}
-      <span className={cn('text-ui-strong', selected ? 'text-accent-gradient' : 'text-foreground')}>
+      <span
+        className={cn(
+          'text-ui-strong [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!text-foreground [html[data-theme=monochrome]_&]:![-webkit-text-fill-color:currentColor]',
+          selected ? 'text-accent-gradient' : 'text-foreground',
+        )}
+      >
         {persona.name}
       </span>
       <span className="text-metadata text-muted-foreground line-clamp-2">{persona.tone}</span>
@@ -1062,10 +1068,14 @@ function VoiceCard({ profile, selected, onSelect, onPreview, previewing }: Voice
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
+        data-monochrome-control-size="preserve"
         className="flex min-h-[92px] w-full flex-col items-start gap-1 rounded-md px-3 pb-1 pt-3 text-left focus-visible:outline-none"
       >
         <span
-          className={cn('text-ui-strong', selected ? 'text-accent-gradient' : 'text-foreground')}
+          className={cn(
+            'text-ui-strong [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!text-foreground [html[data-theme=monochrome]_&]:![-webkit-text-fill-color:currentColor]',
+            selected ? 'text-accent-gradient' : 'text-foreground',
+          )}
         >
           {profile.name}
         </span>
@@ -1126,6 +1136,7 @@ function VoiceConversationModeCard({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
+      data-monochrome-control-size="preserve"
       className={cn(
         'relative flex min-h-[96px] flex-col items-start gap-1.5 rounded-md border bg-panel p-4 text-left transition-colors',
         'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -1137,7 +1148,12 @@ function VoiceConversationModeCard({
       {selected ? (
         <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-accent-cyan" strokeWidth={3} />
       ) : null}
-      <span className={cn('text-ui-strong', selected ? 'text-accent-gradient' : 'text-foreground')}>
+      <span
+        className={cn(
+          'text-ui-strong [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!text-foreground [html[data-theme=monochrome]_&]:![-webkit-text-fill-color:currentColor]',
+          selected ? 'text-accent-gradient' : 'text-foreground',
+        )}
+      >
         {title}
       </span>
       <span className="text-metadata text-muted-foreground">{description}</span>
@@ -1161,6 +1177,7 @@ function VoiceEngineCard({
       disabled={disabled}
       aria-pressed={selected}
       data-engine={engine}
+      data-monochrome-control-size="preserve"
       className={cn(
         'flex min-h-[96px] items-start gap-3 rounded-md border bg-panel p-4 text-left transition-colors',
         'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',

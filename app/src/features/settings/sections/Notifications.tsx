@@ -14,6 +14,9 @@ const DONE_ROWS: Array<{ key: DoneNotificationKey; description: string }> = [
   { key: 'skills', description: 'Notify when a skill enable/disable action completes.' },
 ];
 
+const MONOCHROME_SWITCH_CLASS =
+  'motion-reduce:transition-none motion-reduce:[&_span]:transition-none [html[data-theme=monochrome]_&]:transition-none [html[data-theme=monochrome]_&_span]:transition-none [html[data-theme=monochrome]_&_span]:shadow-none';
+
 export function Notifications() {
   const notificationMaster = useUIStore((s) => s.notificationMaster);
   const setNotificationMaster = useUIStore((s) => s.setNotificationMaster);
@@ -41,6 +44,7 @@ export function Notifications() {
         </div>
         <Switch
           id="notifications-master"
+          className={MONOCHROME_SWITCH_CLASS}
           checked={notificationMaster}
           onCheckedChange={(v) => setNotificationMaster(Boolean(v))}
         />
@@ -70,6 +74,7 @@ export function Notifications() {
               </div>
               <Switch
                 id={`notification-${row.key}-${index}`}
+                className={MONOCHROME_SWITCH_CLASS}
                 checked={doneNotifications[row.key]}
                 disabled={!notificationMaster}
                 onCheckedChange={(v) => setDoneNotification(row.key, Boolean(v))}
@@ -91,6 +96,7 @@ export function Notifications() {
         </div>
         <Switch
           id="ai-completion-cue"
+          className={MONOCHROME_SWITCH_CLASS}
           checked={aiCompletionCue}
           onCheckedChange={(v) => setAiCompletionCue(Boolean(v))}
         />

@@ -98,7 +98,7 @@ export function Plans() {
   return (
     <div
       className={cn(
-        'mc7f-settings-plans relative -m-4 flex flex-col gap-6 rounded-[28px] p-4 [html[data-theme=monochrome]_&]:m-0 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:!shadow-none [html[data-theme=monochrome]_&_*]:hover:!translate-y-0 [html[data-theme=monochrome]_&_*]:hover:!scale-100',
+        'mc7f-settings-plans relative -m-4 flex flex-col gap-6 rounded-[28px] p-4 [html[data-theme=monochrome]_&]:m-0 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:!shadow-none [html[data-theme=monochrome]_&_*]:hover:!translate-y-0 [html[data-theme=monochrome]_&_*]:hover:!scale-100 [html[data-theme=monochrome]_&_*]:ring-0',
         PLAN_PAGE_BACKGROUNDS[activePlanId],
       )}
     >

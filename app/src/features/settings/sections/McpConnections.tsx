@@ -75,7 +75,7 @@ export function McpConnections({ runtime = remoteMcpSetupRuntime }: McpConnectio
 
   return (
     <section
-      className="space-y-4 border-t border-border pt-4"
+      className="space-y-4 border-t border-border pt-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none"
       aria-labelledby="mcp-connections-title"
     >
       <div>
@@ -128,7 +128,7 @@ export function McpConnections({ runtime = remoteMcpSetupRuntime }: McpConnectio
         <div
           role="region"
           aria-label="Review MCP connection"
-          className="space-y-3 rounded-lg border border-border bg-panel/60 p-3"
+          className="space-y-3 rounded-lg border border-border bg-panel/60 p-3 [html[data-theme=monochrome]_&]:bg-panel"
         >
           <dl className="grid grid-cols-[7rem_1fr] gap-x-2 gap-y-1 text-xs">
             <dt className="text-muted-foreground">Identifier</dt>
@@ -167,7 +167,7 @@ export function McpConnections({ runtime = remoteMcpSetupRuntime }: McpConnectio
         {connections.map((connection) => (
           <article
             key={connection.id}
-            className="space-y-3 rounded-lg border border-border bg-panel/60 p-3"
+            className="space-y-3 rounded-lg border border-border bg-panel/60 p-3 [html[data-theme=monochrome]_&]:bg-panel"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

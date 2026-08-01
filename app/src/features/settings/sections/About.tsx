@@ -132,7 +132,7 @@ export function About() {
     updatePhase === 'checking' || updatePhase === 'downloading' || updatePhase === 'installing';
 
   return (
-    <div className="mc7f-settings-about flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
+    <div className="mc7f-settings-about flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <h2 className="text-page-title text-foreground">About</h2>
         <p className="text-secondary text-muted-foreground mt-1">
