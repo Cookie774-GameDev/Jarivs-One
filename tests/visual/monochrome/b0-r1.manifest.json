@@ -16,8 +16,8 @@
   },
   "source": {
     "provenance": {
-      "parentCommit": "513eaf3a137f46f0503a1bde794cc5ffc52353f9",
-      "branch": "codex/pr30-b0-r1-final-v5-20260801",
+      "parentCommit": "e8ebf3c2c4e5582977c3636f4346d2b6d5f01087",
+      "branch": "codex/pr30-b0-r1-refresh-20260801",
       "dirtyInputs": []
     },
     "inputBinding": {
@@ -46,8 +46,8 @@
         "tests/visual/monochrome/route-manifest.ts",
         "tests/visual/monochrome/styleMetrics.ts"
       ],
-      "fileCount": 2304,
-      "sha256": "2a1b182acf56cefdb249be85748c1c631da34148e75d1969fa21c6a4f955714c"
+      "fileCount": 2340,
+      "sha256": "7f19fe3def4fd08f2facf92a1903d4fed54d6288477699cd230cd22449155204"
     }
   },
   "fixture": {
@@ -122,7 +122,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/default/settings-appearance.png",
-      "sha256": "7fff43aba709a4413a2aa4f8b622146b770b37663a3b418f378ecfb78ecfad06",
+      "sha256": "4a352256511c6f7c545f9f937e98ddfa842899ebd481ddad3c3a92121d21adad",
       "width": 1672,
       "height": 941
     },
@@ -135,7 +135,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/default/terminal-workbench.png",
-      "sha256": "f78ea9819873bbd6209be0a26177517d638cb81897e8f9b1e68ec1c5799fdf6b",
+      "sha256": "5c437d598a1c59f608a7ffb30551c9d17db47bf9797c805ae9c4603170457a84",
       "width": 1672,
       "height": 941
     },
@@ -161,7 +161,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/jarvis/settings-appearance.png",
-      "sha256": "58cb733a489145ec7fb9cd0e12da941c5e2db5a6395172c742ecd016914124e0",
+      "sha256": "cb10fe7e46c75fd4701403fd2cd811d35f23a6874bdf66f38e00a1b83f02e779",
       "width": 1672,
       "height": 941
     },
@@ -174,7 +174,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/jarvis/terminal-workbench.png",
-      "sha256": "cd3da49c403f7efe34c2e95d72b01a1b38123493cd2f75fdea1b2435068aff86",
+      "sha256": "56a1b1c7d0470e3273bf5f078d935b9b35dd0d40b35b2f50a60b130213e01839",
       "width": 1672,
       "height": 941
     },
@@ -187,7 +187,7 @@
       "origamiGateActive": true,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/origami/chat.png",
-      "sha256": "4d29ba4879ce484675ab491752868e508aeb551f5a138cd28306ca22b2ec0479",
+      "sha256": "7b0b501591b92558d23d2ce0cca39fd77a0442b236a8b6056f0a422803abb918",
       "width": 1672,
       "height": 941
     },
@@ -200,7 +200,7 @@
       "origamiGateActive": true,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/chat.png",
-      "sha256": "f9df390137d9f69988fdf06980982194a4b98c5d9997d8714283988d769be866",
+      "sha256": "90181b39461cf532b543c4c0e7667dea5102605880398326f8a2fc01b5a6e262",
       "width": 1672,
       "height": 941
     },
@@ -213,7 +213,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/settings-appearance.png",
-      "sha256": "c77e00d54bd19d4ceeb8e2b60884f096bae851ffa1c5d7a9b50422a7859815af",
+      "sha256": "bf330995050476ca7702f7330a47dc577f8f9fd2b4079b8d6c4fcb244b660537",
       "width": 1672,
       "height": 941
     },
@@ -226,7 +226,7 @@
       "origamiGateActive": false,
       "petVisible": false,
       "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/terminal-workbench.png",
-      "sha256": "1be0ce921c4a4985cda882632cd1943586b61b718c04a8a40ad0f3c58f0c64db",
+      "sha256": "da1764c181e0617474853d610eab045df2211fe1f0003b8ae1dda188043925c6",
       "width": 1672,
       "height": 941
     }
