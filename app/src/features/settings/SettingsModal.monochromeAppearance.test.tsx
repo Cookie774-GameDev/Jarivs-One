@@ -49,4 +49,12 @@ describe('SettingsModal MonoChrome appearance', () => {
       expect(label?.className).toContain('leading-4');
     }
   });
+
+  it('keeps Settings entry motion opacity-only so sidebar glyphs paint at final geometry', () => {
+    act(() => useUIStore.setState({ settingsOpen: true }));
+    render(<SettingsModal initialTab="appearance" />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    expect(dialog.className).toContain('data-[state=open]:!animate-fade-in');
+  });
 });

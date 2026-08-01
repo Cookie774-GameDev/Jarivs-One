@@ -333,7 +333,7 @@ export function SettingsModal({
           className:
             '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
         }}
-        className="mc7f-settings-modal w-[min(1180px,94vw)] max-w-6xl h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none"
+        className="mc7f-settings-modal w-[min(1180px,94vw)] max-w-6xl h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden data-[state=open]:!animate-fade-in [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none"
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
