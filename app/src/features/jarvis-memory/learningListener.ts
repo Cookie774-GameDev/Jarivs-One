@@ -1,6 +1,6 @@
 import { loadLearningFile, saveLearningFile } from './learningFile';
 import { useJarvisLearningStore } from './learningStore';
-import type { JarvisMemoryCategory } from './types';
+import type { JarvisMemoryCategory, MemoryEvidenceItem } from './types';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 
 interface LearningSendDetail {
@@ -9,11 +9,19 @@ interface LearningSendDetail {
   messageId?: string;
 }
 
+export interface MemoryEvidencePersistencePort {
+  list(ownerId: string): Promise<readonly MemoryEvidenceItem[]>;
+  create(ownerId: string, item: MemoryEvidenceItem): Promise<unknown>;
+  replace(ownerId: string, item: MemoryEvidenceItem): Promise<unknown>;
+  delete(ownerId: string, id: string): Promise<unknown>;
+}
+
 interface LearningListenerBindings {
   getAccountId: () => string;
   subscribeAccount?: (listener: () => void) => () => void;
   save?: (accountId: string, markdown: string) => Promise<unknown>;
   load?: (accountId: string) => Promise<string | null>;
+  evidenceRepository?: MemoryEvidencePersistencePort;
   debounceMs?: number;
   onError?: (error: unknown) => void;
 }
@@ -69,6 +77,7 @@ export function startJarvisLearningListener(
   const recentByAccount = new Map<string, Array<{ text: string; chatId?: string }>>();
   const save = bindings.save ?? ((accountId, markdown) => saveLearningFile(accountId, markdown));
   const load = bindings.load ?? defaultAccountLoad;
+  const evidenceRepository = bindings.evidenceRepository;
   const debounceMs = bindings.debounceMs ?? 300;
   const accountLoads = new Map<string, Promise<void>>();
   const loadingAccounts = new Set<string>();
@@ -85,11 +94,15 @@ export function startJarvisLearningListener(
   const loadAccount = (accountId: string) => {
     loadingAccounts.add(accountId);
     store.getState().setAccount(accountId);
-    const pending = load(accountId)
-      .then((markdown) => {
+    const pending = Promise.all([
+      load(accountId),
+      evidenceRepository?.list(accountId) ?? Promise.resolve([]),
+    ])
+      .then(([markdown, evidence]) => {
         if (disposed || bindings.getAccountId().trim() !== accountId) return;
         store.getState().setAccount(accountId);
         if (markdown) store.getState().importMarkdown(markdown);
+        if (evidenceRepository) store.getState().hydrateEvidence(accountId, evidence);
       })
       .catch((error) => report(bindings, error))
       .finally(() => {
@@ -150,10 +163,42 @@ export function startJarvisLearningListener(
     void writeProfile(active, markdown, chatId, true);
   };
 
+  const persistEvidence = (
+    active: string,
+    previous: readonly MemoryEvidenceItem[],
+    current: readonly MemoryEvidenceItem[],
+  ) => {
+    if (!evidenceRepository) return;
+    const previousById = new Map(previous.map((item) => [item.id, item]));
+    const currentById = new Map(current.map((item) => [item.id, item]));
+    const pending = writeQueue
+      .then(async () => {
+        for (const item of current) {
+          const prior = previousById.get(item.id);
+          if (!prior) await evidenceRepository.create(active, item);
+          else if (JSON.stringify(prior) !== JSON.stringify(item)) {
+            await evidenceRepository.replace(active, item);
+          }
+        }
+        for (const item of previous) {
+          if (!currentById.has(item.id)) await evidenceRepository.delete(active, item.id);
+        }
+      })
+      .catch((error) => report(bindings, error));
+    writeQueue = pending;
+  };
+
   const unsubscribe = store.subscribe((state, previous) => {
     const active = state.activeAccountId;
     if (!loadingAccounts.has(active) && state.profiles[active] !== previous.profiles[active]) {
       persistProfile(active, store.getState().exportMarkdown());
+    }
+    if (
+      active &&
+      !loadingAccounts.has(active) &&
+      state.evidence[active] !== previous.evidence[active]
+    ) {
+      persistEvidence(active, previous.evidence[active] ?? [], state.evidence[active] ?? []);
     }
   });
 

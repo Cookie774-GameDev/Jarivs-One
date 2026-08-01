@@ -91,7 +91,7 @@ import { readLegacyJarvisTaskRunsOnce } from '@/features/jarvis-runs/taskRunPers
 import { useJarvisTaskRunStore, type JarvisTaskRun } from '@/features/jarvis-runs/taskRunStore';
 import { privateAccountDirectory } from '@/features/jarvis-memory/accountStorage';
 import type { ChatActivityEvent } from '@/features/chat/activity/types';
-import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
+import { messageRepo, agentRepo, chatRepo, openDb, db, memoryEvidenceRepo } from '@/lib/db';
 import {
   jarvisApprovalRepo,
   jarvisArtifactRepo,
@@ -946,7 +946,10 @@ function useBoot() {
         );
         await voiceRecovery.recover();
         if (!isCurrent()) return;
-        stopLearning = startJarvisLearningListener(fixedAccountBindings);
+        stopLearning = startJarvisLearningListener({
+          ...fixedAccountBindings,
+          evidenceRepository: memoryEvidenceRepo,
+        });
         stopAllAboutMePersistence = startAllAboutMePersistence(fixedAccountBindings);
         stopTaskRunLifecycle = await startJarvisLegacyLifecycleAccountSession({
           accountId,

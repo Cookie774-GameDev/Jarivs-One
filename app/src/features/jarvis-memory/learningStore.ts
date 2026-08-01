@@ -65,6 +65,7 @@ interface JarvisLearningState {
   markEvaluated: () => void;
   remember: (input: RememberInput) => string | null;
   captureEvidence: (input: CaptureEvidenceInput) => string | null;
+  hydrateEvidence: (ownerId: string, items: readonly MemoryEvidenceItem[]) => void;
   currentEvidence: () => MemoryEvidenceItem[];
   setMemoryLearningPolicy: (policy: MemoryLearningPolicy) => void;
   memoryLearningPolicy: () => MemoryLearningPolicy;
@@ -527,6 +528,23 @@ export const useJarvisLearningStore = create<JarvisLearningState>()((set, get) =
         lastError: undefined,
       });
       return evidenceId;
+    },
+    hydrateEvidence: (ownerId, items) => {
+      if (ownerId !== get().activeAccountId || items.some((item) => item.ownerId !== ownerId)) {
+        throw new Error('memory_evidence_owner_mismatch');
+      }
+      set({
+        evidence: {
+          ...get().evidence,
+          [ownerId]: items.map(cloneEvidence),
+        },
+        evidenceHistoryById: Object.fromEntries(
+          Object.entries(get().evidenceHistoryById).filter(([, history]) =>
+            history.every((item) => item.ownerId === ownerId),
+          ),
+        ),
+        lastError: undefined,
+      });
     },
     currentEvidence: () =>
       (get().evidence[get().activeAccountId] ?? []).map((item) => ({

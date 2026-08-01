@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { emojisEnabledFromLearning, startJarvisLearningListener } from './learningListener';
 import { useJarvisLearningStore } from './learningStore';
+import type { MemoryEvidenceItem } from './types';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve: (() => void) | undefined;
@@ -51,6 +52,82 @@ describe('Jarvis learning event listener', () => {
     expect(saveCalls.at(-1)?.[1]).toContain('I prefer no emojis');
     expect(statuses).toEqual(expect.arrayContaining(['updating', 'updated']));
     window.removeEventListener('jarvis:memory-status', onStatus);
+  });
+
+  it('hydrates and persists curated evidence only through the active account repository', async () => {
+    const durable: MemoryEvidenceItem = {
+      id: 'evidence-durable',
+      ownerId: 'account-a',
+      workspaceId: 'workspace-a',
+      category: 'workflow_lesson',
+      content: 'Run focused tests before the release matrix.',
+      sourceType: 'chat',
+      sourceRef: {
+        kind: 'message',
+        id: 'message-durable',
+        label: 'Release notes',
+        occurredAt: 100,
+      },
+      confidence: 0.9,
+      durabilityScore: 0.8,
+      sensitivity: 'normal',
+      status: 'approved',
+      reinforcedCount: 1,
+      createdAt: 100,
+      updatedAt: 100,
+    };
+    const evidenceRepository = {
+      list: vi.fn(async (ownerId: string) => (ownerId === 'account-a' ? [durable] : [])),
+      create: vi.fn(async (_ownerId: string, item: MemoryEvidenceItem) => item),
+      replace: vi.fn(async (_ownerId: string, item: MemoryEvidenceItem) => item),
+      delete: vi.fn(async (_ownerId: string, _id: string) => undefined),
+    };
+
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      save: async () => undefined,
+      load: async () => null,
+      evidenceRepository,
+    });
+
+    await vi.waitFor(() =>
+      expect(useJarvisLearningStore.getState().currentEvidence()).toEqual([durable]),
+    );
+    expect(evidenceRepository.create).not.toHaveBeenCalled();
+
+    expect(useJarvisLearningStore.getState().archiveEvidence(durable.id)).toBe(true);
+    await vi.waitFor(() =>
+      expect(evidenceRepository.replace).toHaveBeenCalledWith(
+        'account-a',
+        expect.objectContaining({ id: durable.id, status: 'archived' }),
+      ),
+    );
+
+    const newId = useJarvisLearningStore.getState().captureEvidence({
+      workspaceId: 'workspace-a',
+      category: 'correction',
+      content: 'Do not rerun unchanged broad suites.',
+      sourceType: 'manual',
+      sourceRef: {
+        kind: 'manual',
+        id: 'manual-1',
+        label: 'User correction',
+        occurredAt: 200,
+      },
+      confidence: 1,
+      durabilityScore: 1,
+    });
+    await vi.waitFor(() =>
+      expect(evidenceRepository.create).toHaveBeenCalledWith(
+        'account-a',
+        expect.objectContaining({ id: newId }),
+      ),
+    );
+
+    expect(useJarvisLearningStore.getState().deleteEvidence(durable.id)).toBe(true);
+    await vi.waitFor(() =>
+      expect(evidenceRepository.delete).toHaveBeenCalledWith('account-a', durable.id),
+    );
   });
 
   it('removes the deprecated localStorage profile copy on startup', () => {
