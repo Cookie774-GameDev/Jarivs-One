@@ -372,7 +372,7 @@ export function SettingsModal({
                     onFocus={() => prefetchSettingsTab(t.id)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-secondary text-left transition-colors',
+                      'group flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 py-0 text-secondary text-left transition-colors',
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                       active
                         ? 'bg-elevated text-foreground'
@@ -391,7 +391,7 @@ export function SettingsModal({
                         )}
                       />
                     )}
-                    <span className="flex-1 truncate">{t.label}</span>
+                    <span className="h-4 flex-1 truncate leading-4">{t.label}</span>
                   </button>
                 );
               })}

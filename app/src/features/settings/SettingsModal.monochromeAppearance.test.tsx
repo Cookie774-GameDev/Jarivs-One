@@ -33,4 +33,20 @@ describe('SettingsModal MonoChrome appearance', () => {
     expect(dialog.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
     expect(dialog.className).toContain('[html[data-theme=monochrome]_&_*]:shadow-none');
   });
+
+  it('keeps every navigation label on an explicit integer line box', () => {
+    act(() => useUIStore.setState({ settingsOpen: true }));
+    render(<SettingsModal initialTab="appearance" />);
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.length).toBeGreaterThan(10);
+    for (const tab of tabs) {
+      expect(tab.className).toContain('h-8');
+      expect(tab.className).toContain('shrink-0');
+      expect(tab.className).toContain('py-0');
+      const label = tab.querySelector('span');
+      expect(label?.className).toContain('h-4');
+      expect(label?.className).toContain('leading-4');
+    }
+  });
 });

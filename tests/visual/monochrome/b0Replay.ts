@@ -26,7 +26,7 @@ const B0_R1_MINIMUM_QUIET_MS = 250;
 const B0_R1_MAXIMUM_QUIESCENCE_MS = 2_000;
 const B0_R1_MAXIMUM_QUIESCENCE_SAMPLES = 128;
 const B0_R1_DETERMINISTIC_FRAME_MS = 1000 / 60;
-export const B0_R1_READINESS_VERSION = 'b0-r1-content-pixel-quiescent-v3';
+export const B0_R1_READINESS_VERSION = 'b0-r1-content-pixel-quiescent-v4';
 export const B0_R1_MANIFEST_PATH = 'tests/visual/monochrome/b0-r1.manifest.json';
 export const B0_R1_BASELINE_ROOT = 'tests/visual/monochrome/baselines/b0-r1';
 const B0_BASELINE_ROOT = 'tests/visual/monochrome/baselines/b0';
@@ -265,7 +265,7 @@ export interface B0R1Manifest {
     maximumQuiescenceMs: 2000;
     maximumQuiescenceSamples: 128;
     finiteAnimations: 'finished-and-observed-each-sample';
-    styleAuthority: 'computed-theme-and-capture-style-v1';
+    styleAuthority: 'computed-theme-capture-geometry-font-v2';
     pixelAuthority: 'full-frame-unmasked';
     petPresentation: 'per-capture-explicit';
   }>;
@@ -382,7 +382,7 @@ export function assertB0R1ManifestContract(value: unknown): asserts value is B0R
         maximumQuiescenceMs: B0_R1_MAXIMUM_QUIESCENCE_MS,
         maximumQuiescenceSamples: B0_R1_MAXIMUM_QUIESCENCE_SAMPLES,
         finiteAnimations: 'finished-and-observed-each-sample',
-        styleAuthority: 'computed-theme-and-capture-style-v1',
+        styleAuthority: 'computed-theme-capture-geometry-font-v2',
         pixelAuthority: 'full-frame-unmasked',
         petPresentation: 'per-capture-explicit',
       }) &&
@@ -757,7 +757,7 @@ export function buildB0R1Manifest(
       maximumQuiescenceMs: B0_R1_MAXIMUM_QUIESCENCE_MS,
       maximumQuiescenceSamples: B0_R1_MAXIMUM_QUIESCENCE_SAMPLES,
       finiteAnimations: 'finished-and-observed-each-sample',
-      styleAuthority: 'computed-theme-and-capture-style-v1',
+      styleAuthority: 'computed-theme-capture-geometry-font-v2',
       pixelAuthority: 'full-frame-unmasked',
       petPresentation: 'per-capture-explicit',
     },
@@ -1194,6 +1194,8 @@ export async function sampleB0R1StyleSignature(
       'animation-duration',
       'animation-name',
       'background-color',
+      'background-image',
+      'backdrop-filter',
       'border-bottom-color',
       'border-left-color',
       'border-right-color',
@@ -1204,6 +1206,13 @@ export async function sampleB0R1StyleSignature(
       'color-scheme',
       'fill',
       'filter',
+      'font-family',
+      'font-size',
+      'font-style',
+      'font-variant',
+      'font-weight',
+      'letter-spacing',
+      'line-height',
       'opacity',
       'outline-color',
       'stroke',
@@ -1221,7 +1230,20 @@ export async function sampleB0R1StyleSignature(
     const elements = [captureRoot, ...captureRoot.querySelectorAll('*')];
     const computed = elements.map((element) => {
       const style = getComputedStyle(element);
-      return properties.map((property) => style.getPropertyValue(property));
+      const bounds = element.getBoundingClientRect();
+      return {
+        geometry: [
+          bounds.x,
+          bounds.y,
+          bounds.width,
+          bounds.height,
+          bounds.top,
+          bounds.right,
+          bounds.bottom,
+          bounds.left,
+        ],
+        properties: properties.map((property) => style.getPropertyValue(property)),
+      };
     });
     return JSON.stringify({
       documentTheme: document.documentElement.getAttribute('data-theme'),
@@ -1532,6 +1554,14 @@ async function installB0NetworkGuard(
   return { externalAttempts };
 }
 
+export function b0R1CaptureSelector(route: MonochromeBaselineCapture['route']): string {
+  return route === 'chat'
+    ? '[data-vibespace-page="chat"]'
+    : route === 'terminal'
+      ? '[data-terminal-route-cache]'
+      : '.mc7f-settings-modal';
+}
+
 async function replayCapture(
   page: Page,
   capture: MonochromeBaselineCapture,
@@ -1634,12 +1664,7 @@ async function replayCapture(
     await clickCaptureControl(page, 'tab', ['Appearance'], 'Settings Appearance');
   }
 
-  const selector =
-    capture.route === 'chat'
-      ? '[data-vibespace-page="chat"]'
-      : capture.route === 'terminal'
-        ? '[data-terminal-route-cache]'
-        : '[role="radiogroup"][aria-label="App theme"]';
+  const selector = b0R1CaptureSelector(capture.route);
   if (authority === 'b0-r1') {
     await page.locator(selector).waitFor({ state: 'visible', timeout: 30_000 });
   } else {

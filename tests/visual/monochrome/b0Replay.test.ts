@@ -312,12 +312,12 @@ test('B0-R1 requires a source-bound authority manifest', async () => {
   assert.match(manifest.source.provenance.parentCommit, /^[a-f0-9]{40}$/u);
   assert.ok(manifest.source.inputBinding.fileCount > 0);
   assert.match(manifest.source.inputBinding.sha256, /^[a-f0-9]{64}$/u);
-  assert.equal(manifest.readiness.version, 'b0-r1-content-pixel-quiescent-v3');
+  assert.equal(manifest.readiness.version, 'b0-r1-content-pixel-quiescent-v4');
   assert.equal(manifest.readiness.minimumQuietMs, 250);
   assert.equal(manifest.readiness.maximumQuiescenceMs, 2_000);
   assert.equal(manifest.readiness.maximumQuiescenceSamples, 128);
   assert.equal(manifest.readiness.finiteAnimations, 'finished-and-observed-each-sample');
-  assert.equal(manifest.readiness.styleAuthority, 'computed-theme-and-capture-style-v1');
+  assert.equal(manifest.readiness.styleAuthority, 'computed-theme-capture-geometry-font-v2');
   assert.equal(manifest.readiness.pixelAuthority, 'full-frame-unmasked');
   assert.equal(manifest.captures.length, 10);
 });
@@ -556,6 +556,30 @@ test('B0-R1 mismatch diagnostics retain exact topology without weakening pixel a
     [...diff.data],
     [0, 0, 0, 0, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 255],
   );
+});
+
+test('B0-R1 Settings readiness observes the full dialog geometry and font line boxes', () => {
+  const captureSelector = Reflect.get(b0Replay, 'b0R1CaptureSelector');
+  const sampleStyleSignature = Reflect.get(b0Replay, 'sampleB0R1StyleSignature');
+  assert.equal(typeof captureSelector, 'function');
+  assert.equal(typeof sampleStyleSignature, 'function');
+  assert.equal(captureSelector('chat'), '[data-vibespace-page="chat"]');
+  assert.equal(captureSelector('terminal'), '[data-terminal-route-cache]');
+  assert.equal(captureSelector('settings-appearance'), '.mc7f-settings-modal');
+
+  const source = sampleStyleSignature.toString();
+  for (const contract of [
+    'getBoundingClientRect',
+    'background-image',
+    'backdrop-filter',
+    'font-family',
+    'font-size',
+    'font-weight',
+    'letter-spacing',
+    'line-height',
+  ]) {
+    assert.match(source, new RegExp(contract));
+  }
 });
 
 test('B0-R1 binds pet presentation instead of inheriting startup timing', () => {
