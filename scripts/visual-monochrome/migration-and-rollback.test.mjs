@@ -35,8 +35,8 @@ async function readRelative(relativePath) {
 }
 
 async function sha256(relativePath) {
-  const bytes = await readFile(path.join(repoRoot, ...relativePath.split('/')));
-  return createHash('sha256').update(bytes).digest('hex').toUpperCase();
+  const text = await readRelative(relativePath);
+  return createHash('sha256').update(text.replaceAll('\r\n', '\n')).digest('hex').toUpperCase();
 }
 
 function sha256AtCommit(commitSha, relativePath) {
