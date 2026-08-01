@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { PromptForgeModelOption } from './modelSelection';
 import { PromptForgeControl } from './PromptForgeControl';
@@ -26,6 +26,10 @@ const models: readonly PromptForgeModelOption[] = [
     available: true,
   },
 ];
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('Prompt Forge control', () => {
   it('starts explicitly, stays secondary to Send, and exposes model/privacy configuration', () => {
@@ -63,7 +67,10 @@ describe('Prompt Forge control', () => {
     fireEvent.click(upgrade);
     expect(onStart).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Configure Prompt Forge' }));
+    const configure = screen.getByRole('button', { name: 'Configure Prompt Forge' });
+    expect(configure.className).toContain('min-h-6');
+    expect(configure.className).toContain('min-w-6');
+    fireEvent.click(configure);
     expect(screen.getByText('Prompt Forge model')).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: /GPT-5.6 Sol/ }));
     expect(onSelectionChange).toHaveBeenCalledWith({

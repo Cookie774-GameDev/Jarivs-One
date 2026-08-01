@@ -6,16 +6,22 @@ const source = readFileSync('src/App.tsx', 'utf8');
 describe('App VibeSpace Access composition', () => {
   it('wraps only the authenticated main workspace in the installed access host', () => {
     const bootstrap = source.indexOf('function KernelBridgeBootstrap');
-    const authGate = source.indexOf('<AuthGate>', bootstrap);
-    const accessHost = source.indexOf('<InstalledAccessAppHost>');
-    const workspace = source.indexOf('<WorkspaceRoot />', accessHost);
-    const authClose = source.indexOf('</AuthGate>', workspace);
+    const authBoundary = source.indexOf('export function RuntimeProfileAuthBoundary', bootstrap);
+    const desktopLifecycle = source.indexOf('function useDesktopReopenLifecycle', authBoundary);
+    const bootstrapSource = source.slice(bootstrap, authBoundary);
+    const authBoundarySource = source.slice(authBoundary, desktopLifecycle);
+    const accessHost = bootstrapSource.indexOf('<InstalledAccessAppHost>');
+    const workspace = bootstrapSource.indexOf('<WorkspaceRoot />', accessHost);
+    const accessClose = bootstrapSource.indexOf('</InstalledAccessAppHost>', workspace);
 
     expect(bootstrap).toBeGreaterThan(-1);
-    expect(authGate).toBeGreaterThan(-1);
-    expect(accessHost).toBeGreaterThan(authGate);
+    expect(authBoundary).toBeGreaterThan(bootstrap);
+    expect(desktopLifecycle).toBeGreaterThan(authBoundary);
+    expect(bootstrapSource).toContain('<RuntimeProfileAuthBoundary plan={plan}>');
+    expect(authBoundarySource).toContain('<AuthGate>{children}</AuthGate>');
+    expect(accessHost).toBeGreaterThan(-1);
     expect(workspace).toBeGreaterThan(accessHost);
-    expect(authClose).toBeGreaterThan(workspace);
+    expect(accessClose).toBeGreaterThan(workspace);
   });
 
   it('keeps dictation and pet windows ahead of the main access-gated bootstrap', () => {

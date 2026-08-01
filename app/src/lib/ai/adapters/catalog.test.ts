@@ -237,9 +237,9 @@ describe('provider capability catalog', () => {
 
   it('publishes a frozen current model catalog only for the Codex subscription connection', () => {
     expect(CONNECTION_MODEL_OPTIONS['openai-codex']).toEqual([
-      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
-      { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
-      { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', contextWindowTokens: 1_000_000 },
+      { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', contextWindowTokens: 1_000_000 },
+      { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', contextWindowTokens: 1_000_000 },
     ]);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['openai-codex'])).toBe(true);

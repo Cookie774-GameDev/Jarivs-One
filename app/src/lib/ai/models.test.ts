@@ -44,11 +44,7 @@ describe('chat model catalog', () => {
     const apiKeys = { google: 'test-key', mock: 'mock-skip-sentinel' };
     syncDiscoveredOllamaModels(['llama3.2']);
 
-    expect(getAccessibleProviders(apiKeys, false)).toEqual([
-      'google',
-      'ollama',
-      'local',
-    ]);
+    expect(getAccessibleProviders(apiKeys, false)).toEqual(['google', 'ollama', 'local']);
     expect(getAccessibleModelOptions('ollama', apiKeys, false)).toEqual([
       { provider: 'ollama', id: 'llama3.2', label: 'llama3.2' },
     ]);
@@ -89,8 +85,18 @@ describe('chat model catalog', () => {
       'local',
     ]);
     expect(getAccessibleModelOptions('deepseek', apiKeys, false, 'llama3.2', 'starter')).toEqual([
-      { provider: 'deepseek', id: 'deepseek-chat', label: 'DeepSeek V3 Chat' },
-      { provider: 'deepseek', id: 'deepseek-reasoner', label: 'DeepSeek R1' },
+      {
+        provider: 'deepseek',
+        id: 'deepseek-chat',
+        label: 'DeepSeek V3 Chat',
+        contextWindowTokens: 128_000,
+      },
+      {
+        provider: 'deepseek',
+        id: 'deepseek-reasoner',
+        label: 'DeepSeek R1',
+        contextWindowTokens: 128_000,
+      },
     ]);
   });
 });

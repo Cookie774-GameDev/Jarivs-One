@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserReviewedAction } from './browserTypes';
 import { useBrowserStore } from './browserStore';
@@ -108,6 +108,29 @@ describe('BrowserPage approval interlock', () => {
     });
   });
 
+  it('removes the viewport background image only under MonoChrome', async () => {
+    render(<BrowserPage />);
+
+    const viewportClasses = screen.getByTestId('browser-viewport').className.split(/\s+/);
+    await waitFor(() =>
+      expect(viewportClasses).toContain('[html[data-theme=monochrome]_&]:bg-none'),
+    );
+    expect(viewportClasses).not.toContain('bg-none');
+  });
+
+  it('keeps tab activation semantics separate from close and new-tab actions', async () => {
+    render(<BrowserPage />);
+    await waitFor(() => expect(useBrowserStore.getState().runtime).toEqual({ running: false }));
+
+    const tablist = screen.getByRole('tablist', { name: 'Browser tabs' });
+    const tabs = within(tablist).getAllByRole('tab');
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.getAttribute('aria-keyshortcuts')).toBe('Delete');
+    expect(within(tablist).queryAllByRole('button', { name: /close|new tab/i })).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Close Start' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New tab' })).toBeTruthy();
+  });
+
   it('approves by action ID and current CDP handle without summary reconstruction', async () => {
     render(<BrowserPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
@@ -127,8 +150,9 @@ describe('BrowserPage approval interlock', () => {
     expect(screen.queryByText(/done|completed|successful/i)).toBeNull();
   });
 
-  it('denies the exact pending record', () => {
+  it('denies the exact pending record', async () => {
     render(<BrowserPage />);
+    await waitFor(() => expect(useBrowserStore.getState().runtime).toEqual({ running: false }));
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
 
     expect(useBrowserStore.getState().agentActions[0]).toMatchObject({

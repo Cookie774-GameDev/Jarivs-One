@@ -201,14 +201,15 @@ test('design tokens and asset policy preserve live UI semantics', async () => {
   );
 });
 
-test('only the exact image-analysis dependencies are added', async () => {
+test('only the exact image-analysis and later-authorized visual harness dependencies are added', async () => {
   const packageJson = await readJson(path.join(repositoryRoot, 'package.json'));
 
   assert.equal(packageJson.devDependencies['playwright-core'], '^1.61.1');
   assert.equal(packageJson.devDependencies.sharp, '0.34.5');
   assert.equal(packageJson.devDependencies.pixelmatch, '7.2.0');
   assert.equal(packageJson.devDependencies.pngjs, '7.0.0');
-  assert.equal(packageJson.devDependencies['@playwright/test'], undefined);
+  assert.equal(packageJson.devDependencies['@playwright/test'], '1.61.1');
+  assert.equal(packageJson.devDependencies['@axe-core/playwright'], '4.12.1');
   assert.equal(packageJson.devDependencies.playwright, undefined);
 
   await Promise.all([import('sharp'), import('pixelmatch'), import('pngjs')]);
