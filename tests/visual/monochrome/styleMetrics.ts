@@ -820,7 +820,7 @@ export async function stabilizeDeterministicCapture(
         const asynchronousRenderer = root?.querySelector<HTMLElement>('[data-pet-render-ready]');
         return {
           asyncRendererReady:
-            asynchronousRenderer === null ||
+            (requestedSurfaceId !== 'overlay:pet-host' && asynchronousRenderer === null) ||
             asynchronousRenderer?.dataset.petRenderReady === 'true',
           fontsReady: document.fonts.status === 'loaded',
           imagesReady: [...document.images].every((image) => image.complete),

@@ -117,6 +117,28 @@ test('deterministic capture readiness fails closed when identical layout is not 
   assert.deepEqual(runFor, [16, 16, 16, 16]);
 });
 
+test('pet-host capture waits for its asynchronous renderer to exist and report ready', async (context) => {
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  context.after(async () => browser.close());
+  const page = await browser.newPage({ viewport: { width: 320, height: 240 } });
+
+  await installDeterministicPrimitives(page);
+  await page.goto(
+    `data:text/html,
+      <main data-monochrome-surface-id="overlay:pet-host">pet host</main>
+      <script>
+        setTimeout(() => {
+          const renderer = document.createElement('img');
+          renderer.setAttribute('data-pet-render-ready', 'true');
+          document.querySelector('main').append(renderer);
+        }, 32);
+      </script>`,
+  );
+  await stabilizeDeterministicCapture(page, 'overlay:pet-host');
+
+  assert.equal(await page.locator('[data-pet-render-ready="true"]').count(), 1);
+});
+
 test('deterministic capture resets nested scroll only after product readiness is stable', async () => {
   let evaluateCalls = 0;
   const page = {
