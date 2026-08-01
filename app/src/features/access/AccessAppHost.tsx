@@ -378,10 +378,19 @@ function createInstalledRuntime(featureTier: string, appVersion: string): Access
   };
 }
 
-type AccessBuildEnvironment = Record<string, string | undefined>;
+interface AccessBuildEnvironment {
+  readonly MODE?: string;
+  readonly PROD?: boolean;
+  readonly VITE_ACCESS_GATE_ENABLED?: string;
+  readonly VITE_APP_VERSION?: string;
+  readonly VITE_PRIVACY_URL?: string;
+  readonly VITE_TERMS_URL?: string;
+}
 
 export function isAccessGateEnabled(environment: AccessBuildEnvironment): boolean {
-  return environment.VITE_ACCESS_GATE_ENABLED?.trim().toLowerCase() === 'true';
+  if (environment.PROD === true || environment.MODE === 'production') return true;
+  const configured = environment.VITE_ACCESS_GATE_ENABLED;
+  return typeof configured === 'string' && configured.trim().toLowerCase() === 'true';
 }
 
 export function InstalledAccessAppHost({ children }: { children: React.ReactNode }) {

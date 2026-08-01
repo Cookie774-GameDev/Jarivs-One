@@ -2,7 +2,12 @@ import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AccessViewModel } from './accessViewModel';
-import { AccessAppHost, type AccessAppRuntime, type AccessAppHostProps } from './AccessAppHost';
+import {
+  AccessAppHost,
+  isAccessGateEnabled,
+  type AccessAppRuntime,
+  type AccessAppHostProps,
+} from './AccessAppHost';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -74,6 +79,20 @@ function renderHost(hostRuntime: AccessAppRuntime, overrides: Partial<AccessAppH
     </AccessAppHost>,
   );
 }
+
+describe('isAccessGateEnabled', () => {
+  it('fails closed for production builds even without explicit enablement', () => {
+    expect(isAccessGateEnabled({ PROD: true })).toBe(true);
+    expect(isAccessGateEnabled({ PROD: false, MODE: 'production' })).toBe(true);
+    expect(isAccessGateEnabled({ PROD: true, VITE_ACCESS_GATE_ENABLED: 'false' })).toBe(true);
+  });
+
+  it('keeps development disabled by default and honors explicit opt-in', () => {
+    expect(isAccessGateEnabled({ PROD: false })).toBe(false);
+    expect(isAccessGateEnabled({ PROD: false, VITE_ACCESS_GATE_ENABLED: 'false' })).toBe(false);
+    expect(isAccessGateEnabled({ PROD: false, VITE_ACCESS_GATE_ENABLED: ' true ' })).toBe(true);
+  });
+});
 
 describe('AccessAppHost', () => {
   it('does not load access or alter children while the explicit gate is disabled', () => {
