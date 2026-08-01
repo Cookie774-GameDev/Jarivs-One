@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn release_registration_is_structurally_omitted() {
-        let lib_source = include_str!("lib.rs");
+        let lib_source = include_str!("lib.rs").replace("\r\n", "\n");
         assert!(lib_source.contains("#[cfg(debug_assertions)]\nmod sik_smoke;"));
         assert!(lib_source
             .contains("#[cfg(debug_assertions)]\n            sik_smoke::sik_smoke_binding,"));
