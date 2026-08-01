@@ -1,7 +1,11 @@
 // Node's native TypeScript loader requires the explicit extension in the
 // issuer's zero-build integration tests; the app bundler resolves it too.
-// @ts-expect-error TS5097: allowImportingTsExtensions is intentionally off.
-import { createOfflineLeaseFreshnessGuard, createOfflineLeaseFreshnessStore, type OfflineLeaseFreshnessStore } from './offlineLeaseFreshness.ts';
+// @ts-ignore TS5097: Deno accepts this specifier while the app compiler rejects it.
+import { createOfflineLeaseFreshnessGuard } from './offlineLeaseFreshness.ts';
+// @ts-ignore TS5097: Deno accepts this specifier while the app compiler rejects it.
+import { createOfflineLeaseFreshnessStore } from './offlineLeaseFreshness.ts';
+// @ts-ignore TS5097: Deno accepts this specifier while the app compiler rejects it.
+import type { OfflineLeaseFreshnessStore } from './offlineLeaseFreshness.ts';
 
 /**
  * Cryptographically verified, time-limited offline access leases.

@@ -27,9 +27,33 @@ const T0 = 1_750_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 
-let privateKey;
-let publicKey;
-let otherPublicKey;
+type AuthoritativeAccess = {
+  state: string;
+  serverTimeMs: unknown;
+  revision?: unknown;
+  trialEndMs?: number;
+  currentPeriodEndMs?: number;
+  graceEndMs?: number;
+};
+
+type AccessLeaseDepsOverrides = {
+  signingKey?: CryptoKey | null;
+  keyId?: string;
+  crypto?: Pick<SubtleCrypto, 'sign'>;
+  authenticate?: (token: string) => Promise<string | null>;
+  getAuthoritativeAccess?: (userId: string, token: string) => Promise<AuthoritativeAccess | null>;
+};
+
+type CallHandlerOptions = {
+  method?: string;
+  origin?: string;
+  auth?: string | null;
+  body?: unknown;
+};
+
+let privateKey: CryptoKey;
+let publicKey: CryptoKey;
+let otherPublicKey: CryptoKey;
 
 before(async () => {
   const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
@@ -44,13 +68,13 @@ before(async () => {
   ]);
   otherPublicKey = other.publicKey;
 });
-function makeDeps(overrides = {}) {
+function makeDeps(overrides: AccessLeaseDepsOverrides = {}) {
   const authoritativeOverride = overrides.getAuthoritativeAccess;
   return {
     signingKey: privateKey,
     keyId: KID,
     crypto: globalThis.crypto.subtle,
-    authenticate: async (token) => (token === 'valid-token' ? USER : null),
+    authenticate: async (token: string) => (token === 'valid-token' ? USER : null),
     getAuthoritativeAccess: async () => ({
       state: 'active',
       serverTimeMs: T0,
@@ -60,7 +84,7 @@ function makeDeps(overrides = {}) {
     ...overrides,
     ...(authoritativeOverride
       ? {
-          getAuthoritativeAccess: async (...args) => ({
+          getAuthoritativeAccess: async (...args: [string, string]) => ({
             revision: 7,
             ...(await authoritativeOverride(...args)),
           }),
@@ -69,14 +93,17 @@ function makeDeps(overrides = {}) {
   };
 }
 
-async function callHandler(deps, opts = {}) {
+async function callHandler(deps: ReturnType<typeof makeDeps>, opts: CallHandlerOptions = {}) {
   const method = opts.method ?? 'POST';
-  const headers = { origin: opts.origin ?? 'tauri://localhost' };
+  const headers: Record<string, string> = {
+    origin: opts.origin ?? 'tauri://localhost',
+  };
   if (opts.auth !== null)
     headers.authorization = opts.auth === undefined ? 'Bearer valid-token' : opts.auth;
-  const init = { method, headers };
+  const init: RequestInit = { method, headers };
   if (opts.body !== undefined) {
-    init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
+    const body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
+    if (body !== undefined) init.body = body;
     headers['content-type'] = 'application/json';
   }
   const req = new Request('https://fn.vibespace.local/access-lease', init);
@@ -90,7 +117,11 @@ async function callHandler(deps, opts = {}) {
   return { res, json };
 }
 
-function verifierAt(wallNow, expectedUserId = USER, trustedKeys = { [KID]: publicKey }) {
+function verifierAt(
+  wallNow: number,
+  expectedUserId = USER,
+  trustedKeys: Record<string, CryptoKey> = { [KID]: publicKey },
+) {
   const vault = new Map();
   return createOfflineLeaseVerifier({
     expectedUserId,
@@ -107,32 +138,32 @@ function verifierAt(wallNow, expectedUserId = USER, trustedKeys = { [KID]: publi
   });
 }
 
-function statefulClock(wall) {
+function statefulClock(wall: number) {
   let w = wall;
   let m = 0;
   return {
     clock: { now: () => w, monotonicNow: () => m },
-    setWall: (v) => {
+    setWall: (v: number) => {
       w = v;
     },
-    advanceMono: (ms) => {
+    advanceMono: (ms: number) => {
       m += ms;
     },
   };
 }
 
-async function issueActive(depsOverrides = {}) {
+async function issueActive(depsOverrides: AccessLeaseDepsOverrides = {}) {
   const { json } = await callHandler(makeDeps(depsOverrides), {});
   return json;
 }
 
-function b64urlDecodeJson(seg) {
+function b64urlDecodeJson(seg: string): Record<string, unknown> {
   const b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
   const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
   return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
 }
 
-function decodeLease(lease) {
+function decodeLease(lease: string) {
   const segments = lease.split('.');
   return {
     segments,
@@ -223,9 +254,9 @@ test('rejects when getAuthoritativeAccess returns null with 502', async () => {
 });
 
 test('passes the validated token and user id to the authoritative lookup', async () => {
-  let received = null;
+  let received: [string, string] | null = null;
   const deps = makeDeps({
-    getAuthoritativeAccess: async (...args) => {
+    getAuthoritativeAccess: async (...args: [string, string]) => {
       received = args;
       return {
         state: 'active',
@@ -325,6 +356,7 @@ test('issues an active lease that verifies through the real offlineLease verifie
   assert.equal(r.allowed, true);
   assert.equal(r.reason, 'ok');
   assert.equal(r.status, 'active');
+  assert.ok(r.verified);
   assert.equal(r.verified.sub, USER);
   assert.equal(r.verified.kid, KID);
   assert.equal(r.verified.v, 1);
@@ -337,6 +369,7 @@ test('caps active expiry at iat + 7 days when period end is far', async () => {
   assert.equal(json.iat, T0);
   assert.equal(json.exp, T0 + ACTIVE_PAID_MAX_OFFLINE_MS);
   const r = await verifierAt(T0).evaluate(json.lease);
+  assert.ok(r.verified);
   assert.equal(r.verified.effectiveExp, T0 + ACTIVE_PAID_MAX_OFFLINE_MS);
 });
 
@@ -352,6 +385,7 @@ test('caps active expiry at currentPeriodEnd when sooner', async () => {
   assert.equal(json.exp, T0 + 2 * DAY);
   const r = await verifierAt(T0).evaluate(json.lease);
   assert.equal(r.allowed, true);
+  assert.ok(r.verified);
   assert.equal(r.verified.effectiveExp, T0 + 2 * DAY);
 });
 
