@@ -65,6 +65,7 @@ import {
   type JarvisCreatorAgentDraft,
 } from '@/features/jarvis-creator/contracts';
 import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
+import './sakura-agents.css';
 
 /**
  * Tiny role-pill for swarm agents (Scout / Builder / Reviewer).

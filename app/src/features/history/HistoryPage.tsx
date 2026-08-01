@@ -2,6 +2,7 @@ import * as React from 'react';
 import { HistoryList } from './HistoryList';
 import { Replay } from './Replay';
 import type { ChatId } from '@/types';
+import './sakura-history.css';
 
 /**
  * Top-level Session History page.

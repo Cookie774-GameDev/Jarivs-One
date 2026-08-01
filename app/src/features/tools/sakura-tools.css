@@ -1,0 +1,62 @@
+html[data-theme='sakura'] [data-monochrome-route='tools'] {
+  background: hsl(var(--sakura-night-hsl) / 0.3);
+}
+
+html[data-theme='sakura'] [data-monochrome-surface='tool-header'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-decorative-border-alpha));
+}
+
+html[data-theme='sakura'] [data-monochrome-surface='tool-sync-status'] {
+  border-color: hsl(var(--info) / 0.48);
+  border-radius: var(--sakura-radius-feature);
+  background: var(--sakura-panel-fallback);
+  box-shadow: inset 3px 0 0 hsl(var(--info));
+}
+
+html[data-theme='sakura'] [data-sakura-surface='tool-template'],
+html[data-theme='sakura'] [data-monochrome-surface='tool-manifest'],
+html[data-theme='sakura'] [data-monochrome-surface='tool-editor'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-decorative-border-alpha));
+  border-radius: var(--sakura-radius-feature);
+  background: var(--sakura-card-fallback);
+  box-shadow:
+    var(--shadow-soft),
+    inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.07);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='tool-template']:hover,
+html[data-theme='sakura'] [data-monochrome-surface='tool-manifest']:hover {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.52);
+  background: hsl(var(--sakura-pink-hsl) / 0.11);
+  transform: translateY(calc(-1 * var(--sakura-hover-lift)));
+}
+
+html[data-theme='sakura'] [data-monochrome-state='empty'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background: var(--sakura-panel-fallback);
+}
+
+html[data-theme='sakura'] [data-monochrome-surface='workflow-mode'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-decorative-border-alpha));
+  background: hsl(var(--sakura-night-hsl) / 0.42);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-surface='tool-template'],
+  html[data-theme='sakura'] [data-monochrome-surface='tool-manifest'] {
+    transform: none;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-monochrome-route='tools'],
+  html[data-theme='sakura'] [data-monochrome-surface],
+  html[data-theme='sakura'] [data-sakura-surface='tool-template'],
+  html[data-theme='sakura'] [data-monochrome-state] {
+    border-color: CanvasText;
+    background: Canvas;
+    box-shadow: none;
+    color: CanvasText;
+  }
+}

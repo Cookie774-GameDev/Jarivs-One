@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import './sakura-tools.css';
 import {
   useToolStore,
   type CustomTool,
@@ -651,7 +652,7 @@ export function ToolsPage() {
   return (
     <div
       data-monochrome-route="tools"
-      className="flex h-full w-full flex-col overflow-y-auto bg-paper-warm [html[data-theme=monochrome]_&]:bg-background"
+      className="flex h-full w-full flex-col overflow-y-auto bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none"
     >
       <div className="mx-auto w-full max-w-5xl p-8">
         {/* Header */}
@@ -698,7 +699,12 @@ export function ToolsPage() {
             >
               <Download className="h-3.5 w-3.5" /> Export
             </Button>
-            <Button variant="default" size="sm" onClick={() => openNew(null)}>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => openNew(null)}
+              className="[html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-foreground [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:text-foreground [html[data-theme=monochrome]_&]:hover:bg-panel"
+            >
               <Plus className="h-3.5 w-3.5" /> New tool
             </Button>
           </div>
@@ -725,11 +731,12 @@ export function ToolsPage() {
               <button
                 key={t.name}
                 onClick={() => openNew(t)}
+                data-sakura-surface="tool-template"
                 className={cn(
                   'rounded-md border border-border bg-paper px-3 py-2 text-left',
                   'hover:border-accent-copper/50 hover:bg-paper-warm',
                   'transition-colors flex flex-col gap-1',
-                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:hover:border-accent-cyan [html[data-theme=monochrome]_&]:hover:bg-elevated',
+                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:hover:border-accent-cyan [html[data-theme=monochrome]_&]:hover:bg-elevated [html[data-theme=monochrome]_&]:hover:bg-none',
                 )}
               >
                 <div className="flex items-center gap-2">

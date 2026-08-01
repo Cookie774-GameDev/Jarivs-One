@@ -36,6 +36,7 @@ import { chatRepo } from '@/lib/db';
 import { jarvisProfileRepo } from '@/lib/db/jarvisRepositories';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import './sakura-agents.css';
 import type { AgentId, Agent, ProjectId, WorkspaceId } from '@/types';
 import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import { getModelLabelForProvider } from '@/lib/ai/providerModelCatalog';
@@ -133,7 +134,7 @@ export function AgentDetail() {
       <div
         data-monochrome-route="agent-detail"
         data-monochrome-state="empty"
-        className="flex h-full w-full items-center justify-center bg-paper-warm p-8 [html[data-theme=monochrome]_&]:bg-background"
+        className="flex h-full w-full items-center justify-center bg-paper-warm p-8 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none"
       >
         <div className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-4 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
           <Bot className="mx-auto h-10 w-10 text-muted-foreground/60" />
@@ -195,7 +196,12 @@ export function AgentDetail() {
             <Pencil className="h-3.5 w-3.5" />
             Edit
           </Button>
-          <Button variant="accent" size="sm" onClick={() => void handleStartChat()}>
+          <Button
+            variant="accent"
+            size="sm"
+            onClick={() => void handleStartChat()}
+            className="[html[data-theme=monochrome]_&]:bg-none"
+          >
             <MessageSquare className="h-3.5 w-3.5" />
             Start chat
           </Button>
@@ -210,7 +216,12 @@ export function AgentDetail() {
             data-monochrome-surface="agent-identity"
             className="surface-panel rounded-lg p-5 flex items-start gap-4 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
-            <AgentBadge agent={agent} showName={false} size="lg" />
+            <AgentBadge
+              agent={agent}
+              showName={false}
+              size="lg"
+              className="[html[data-theme=monochrome]_&_[data-vibespace-avatar]]:bg-none"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <h1 className="font-display text-page-title text-foreground truncate">

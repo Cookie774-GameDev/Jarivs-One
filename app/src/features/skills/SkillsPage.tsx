@@ -10,13 +10,19 @@ import { readSkillsStore } from '@/features/skills/skillsStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { SkillCard } from './SkillCard';
 import { SkillEditor } from './SkillEditor';
+import './sakura-skills.css';
 
 type FilterTab = 'all' | 'preset' | 'custom';
+
+const SKILL_FILTERS: ReadonlyArray<{ value: FilterTab; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'preset', label: 'Presets' },
+  { value: 'custom', label: 'Custom' },
+];
 
 function manifestMatchesQuery(m: SkillManifest, q: string): boolean {
   if (!q) return true;
@@ -35,6 +41,7 @@ export function SkillsPage() {
   const [query, setQuery] = React.useState('');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const filterRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const refresh = React.useCallback(() => {
     setManifests(skillRegistry.list('skill'));
@@ -123,6 +130,35 @@ export function SkillsPage() {
     toast.success('Restored', 'All presets reset.');
   };
 
+  const handleFilterKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) => {
+    let nextIndex: number;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        nextIndex = (currentIndex + 1) % SKILL_FILTERS.length;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        nextIndex = (currentIndex - 1 + SKILL_FILTERS.length) % SKILL_FILTERS.length;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = SKILL_FILTERS.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    setTab(SKILL_FILTERS[nextIndex].value);
+    filterRefs.current[nextIndex]?.focus();
+  };
+
   const showDetailMobile = !!selected;
 
   return (
@@ -162,19 +198,34 @@ export function SkillsPage() {
           data-monochrome-surface="skill-filters"
           className="px-4 pb-2 shrink-0 [html[data-theme=monochrome]_&]:pt-2"
         >
-          <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
-            <TabsList className="w-full">
-              <TabsTrigger value="all" className="flex-1">
-                All
-              </TabsTrigger>
-              <TabsTrigger value="preset" className="flex-1">
-                Presets
-              </TabsTrigger>
-              <TabsTrigger value="custom" className="flex-1">
-                Custom
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div
+            role="radiogroup"
+            aria-label="Skill filters"
+            aria-orientation="horizontal"
+            className="inline-flex h-8 w-full items-center gap-0.5 rounded-md bg-muted p-0.5 text-muted-foreground"
+          >
+            {SKILL_FILTERS.map((filter, index) => {
+              const active = tab === filter.value;
+              return (
+                <button
+                  key={filter.value}
+                  ref={(element) => {
+                    filterRefs.current[index] = element;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={active ? 0 : -1}
+                  data-state={active ? 'active' : 'inactive'}
+                  onClick={() => setTab(filter.value)}
+                  onKeyDown={(event) => handleFilterKeyDown(event, index)}
+                  className="inline-flex flex-1 items-center justify-center whitespace-nowrap rounded-sm px-2.5 py-1 text-secondary font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-elevated data-[state=active]:text-foreground data-[state=active]:shadow-sm [html[data-theme=monochrome]_&]:shadow-none"
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="px-4 pb-3 shrink-0">
