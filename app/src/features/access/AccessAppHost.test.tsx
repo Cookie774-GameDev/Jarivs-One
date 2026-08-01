@@ -5,6 +5,7 @@ import type { AccessViewModel } from './accessViewModel';
 import {
   AccessAppHost,
   isAccessGateEnabled,
+  isInstalledTransportUnavailable,
   type AccessAppRuntime,
   type AccessAppHostProps,
 } from './AccessAppHost';
@@ -91,6 +92,24 @@ describe('isAccessGateEnabled', () => {
     expect(isAccessGateEnabled({ PROD: false })).toBe(false);
     expect(isAccessGateEnabled({ PROD: false, VITE_ACCESS_GATE_ENABLED: 'false' })).toBe(false);
     expect(isAccessGateEnabled({ PROD: false, VITE_ACCESS_GATE_ENABLED: ' true ' })).toBe(true);
+  });
+});
+
+describe('installed Access transport classification', () => {
+  it('permits offline fallback only for definitive network transport failures', () => {
+    expect(isInstalledTransportUnavailable(new TypeError('Failed to fetch'))).toBe(true);
+    expect(
+      isInstalledTransportUnavailable({
+        code: '',
+        message: 'TypeError: Failed to fetch',
+        details: 'TypeError: Failed to fetch',
+      }),
+    ).toBe(true);
+    expect(isInstalledTransportUnavailable(new Error('permission denied'))).toBe(false);
+    expect(isInstalledTransportUnavailable({ code: '42501', message: 'permission denied' })).toBe(
+      false,
+    );
+    expect(isInstalledTransportUnavailable(new DOMException('Aborted', 'AbortError'))).toBe(false);
   });
 });
 

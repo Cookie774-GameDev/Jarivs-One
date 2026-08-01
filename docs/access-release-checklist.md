@@ -226,8 +226,8 @@ isolated SQL fixtures or an approved test-only server clock. Do not edit product
 | Separate ledger: Access active, free feature tier | Access subscription only                | App is usable; no paid AI/voice/cloud tier is invented                       | NOT RUN     |
 | Customer portal                                   | Authenticated desktop flow              | Correct customer; both subscriptions named distinctly; safe return URL       | NOT RUN     |
 | Multiple checkout attempts                        | Concurrent/retry test                   | One open logical attempt; terminal/expired attempt permits a new session     | NOT RUN     |
-| Offline lease                                     | Focused test + offline desktop          | Valid current signed lease works only within its bounded policy              | NOT RUN     |
-| Clock rollback                                    | Focused test                            | Durable high-water/revision checks fail closed without data loss             | NOT RUN     |
+| Offline lease                                     | Focused test + offline desktop          | Valid current signed lease works only within its bounded policy              | PARTIAL     |
+| Clock rollback                                    | Focused test                            | Durable high-water/revision checks fail closed without data loss             | PASS        |
 | Admin/internal bypass                             | SQL + desktop                           | Only server-controlled identity bypasses; user metadata cannot               | NOT RUN     |
 | v0.1.51 gate enabled                              | Final test-project rehearsal            | Remote config activates only the target version after all gates pass         | NOT RUN     |
 

@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button';
 import { getSupabaseClient, type TypedSupabaseClient } from '@/lib/supabase/client';
 import { openExternal } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
-import { adaptAccessDecision } from './accessDecisionAdapter';
 import {
+  AccessGatewayError,
   createAccessGateway,
   type AccessGateway,
   type AccessGatewayTransport,
@@ -12,6 +12,10 @@ import {
 import { AccessHost } from './AccessHost';
 import { AccessPaywall, type PendingAction } from './AccessPaywall';
 import type { AccessViewModel } from './accessViewModel';
+import {
+  createInstalledAccessRuntime,
+  InstalledAccessTransportUnavailableError,
+} from './installedAccessRuntime';
 import { backupCurrentAccountWorkspace } from './workspaceBackup';
 import './sakura-access.css';
 
@@ -308,6 +312,38 @@ type RpcRequest = PromiseLike<{ data: unknown; error: unknown }> & {
   abortSignal(signal: AbortSignal): RpcRequest;
 };
 
+const TRANSPORT_UNAVAILABLE_MARKER = 'access_transport_unavailable';
+const NETWORK_FAILURE_MESSAGES = [
+  'failed to fetch',
+  'typeerror: failed to fetch',
+  'load failed',
+  'networkerror when attempting to fetch resource.',
+] as const;
+
+function errorRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+export function isInstalledTransportUnavailable(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return false;
+  if (error instanceof TypeError) {
+    return NETWORK_FAILURE_MESSAGES.includes(
+      error.message.trim().toLowerCase() as (typeof NETWORK_FAILURE_MESSAGES)[number],
+    );
+  }
+  const record = errorRecord(error);
+  if (!record || record.code !== '') return false;
+  return [record.message, record.details].some(
+    (value) =>
+      typeof value === 'string' &&
+      NETWORK_FAILURE_MESSAGES.includes(
+        value.trim().toLowerCase() as (typeof NETWORK_FAILURE_MESSAGES)[number],
+      ),
+  );
+}
+
 function requireClient(): TypedSupabaseClient {
   const client = getSupabaseClient();
   if (!client) throw new Error('Access service is unavailable.');
@@ -331,7 +367,18 @@ function createInstalledGateway(appVersion: string): AccessGateway {
       };
       let request = transportClient.rpc(fn, params);
       if (options?.signal) request = request.abortSignal(options.signal);
-      return await request;
+      try {
+        const result = await request;
+        if (isInstalledTransportUnavailable(result.error)) {
+          throw new Error(TRANSPORT_UNAVAILABLE_MARKER);
+        }
+        return result;
+      } catch (error) {
+        if (isInstalledTransportUnavailable(error)) {
+          throw new Error(TRANSPORT_UNAVAILABLE_MARKER);
+        }
+        throw error;
+      }
     },
     async invokeFunction(fn, options) {
       const client = await authenticatedClient(options.signal);
@@ -344,21 +391,57 @@ function createInstalledGateway(appVersion: string): AccessGateway {
   return createAccessGateway({ transport, appVersion });
 }
 
-function createInstalledRuntime(featureTier: string, appVersion: string): AccessAppRuntime {
+function createInstalledRuntime(
+  featureTier: string,
+  appVersion: string,
+  publicKeyConfiguration: string | undefined,
+): AccessAppRuntime {
   let gateway: AccessGateway | null = null;
   const accessGateway = () => {
     gateway ??= createInstalledGateway(appVersion);
     return gateway;
   };
+  const installedAccess = createInstalledAccessRuntime({
+    async getAccountId(signal) {
+      const client = requireClient();
+      const { data, error } = await client.auth.getSession();
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      const userId = data.session?.user.id;
+      return error || typeof userId !== 'string' ? null : userId;
+    },
+    async checkOnline(signal) {
+      try {
+        return await accessGateway().checkAccess(signal);
+      } catch (error) {
+        if (
+          error instanceof AccessGatewayError &&
+          error.code === 'rpc_error' &&
+          error.message === TRANSPORT_UNAVAILABLE_MARKER
+        ) {
+          throw new InstalledAccessTransportUnavailableError();
+        }
+        throw error;
+      }
+    },
+    async requestLease(signal) {
+      const client = await authenticatedClient(signal);
+      const { data, error } = await client.functions.invoke('access-lease', {
+        body: {},
+        signal,
+      });
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      if (error) throw new Error('Offline access lease is unavailable.');
+      return data;
+    },
+    publicKeyConfiguration,
+    featurePlan: {
+      active: featureTier !== 'free',
+      tier: featureTier,
+    },
+  });
 
   return {
-    async loadViewModel(signal) {
-      const snapshot = await accessGateway().checkAccess(signal);
-      return adaptAccessDecision(snapshot, {
-        active: featureTier !== 'free',
-        tier: featureTier,
-      }).viewModel;
-    },
+    loadViewModel: installedAccess.loadViewModel,
     async createCheckoutUrl(signal) {
       return (await accessGateway().createCheckoutUrl(signal)).url;
     },
@@ -383,6 +466,7 @@ interface AccessBuildEnvironment {
   readonly PROD?: boolean;
   readonly VITE_ACCESS_GATE_ENABLED?: string;
   readonly VITE_APP_VERSION?: string;
+  readonly VITE_ACCESS_LEASE_PUBLIC_KEYS?: string;
   readonly VITE_PRIVACY_URL?: string;
   readonly VITE_TERMS_URL?: string;
 }
@@ -397,9 +481,10 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
   const featureTier = useAuthStore((state) => state.plan);
   const environment = import.meta.env as AccessBuildEnvironment;
   const appVersion = environment.VITE_APP_VERSION?.trim() || '0.0.0';
+  const publicKeyConfiguration = environment.VITE_ACCESS_LEASE_PUBLIC_KEYS;
   const runtime = React.useMemo(
-    () => createInstalledRuntime(featureTier, appVersion),
-    [appVersion, featureTier],
+    () => createInstalledRuntime(featureTier, appVersion, publicKeyConfiguration),
+    [appVersion, featureTier, publicKeyConfiguration],
   );
 
   return (
