@@ -350,13 +350,18 @@ export function Inspector() {
     <motion.aside
       aria-label="Inspector"
       data-monochrome-surface="inspector"
-      className="shrink-0 overflow-hidden bg-panel border-l border-border"
+      data-sakura-shell-region="inspector"
+      className="sakura-shell-inspector shrink-0 overflow-hidden bg-panel border-l border-border"
+      style={{ '--inspector-pane-width': `${inspectorWidth}px` } as React.CSSProperties}
       initial={{ width: 0 }}
       animate={{ width: inspectorWidth }}
       exit={{ width: 0 }}
       transition={themeLayoutTransition}
     >
-      <div className="flex h-full flex-col" style={{ width: inspectorWidth }}>
+      <div
+        className="sakura-shell-inspector-content flex h-full flex-col"
+        style={{ width: 'var(--inspector-pane-width)' }}
+      >
         {/* Header with Title and Close Button */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-panel-soft">
           <span className="text-metadata font-medium uppercase tracking-wider text-muted-foreground">

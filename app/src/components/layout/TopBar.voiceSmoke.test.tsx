@@ -23,6 +23,7 @@ const ui = vi.hoisted(() => ({
   setRoute: vi.fn(),
 }));
 const smokeGate = vi.hoisted(() => ({ enabled: false }));
+const whatsNew = vi.hoisted(() => ({ hasUpdate: false, currentVersion: 'test' }));
 
 vi.mock('@/stores/ui', () => ({
   useUIStore: (selector: (state: typeof ui) => unknown) => selector(ui),
@@ -39,7 +40,7 @@ vi.mock('@/stores/auth', () => ({
 }));
 
 vi.mock('@/features/whats-new', () => ({
-  useWhatsNew: () => ({ hasUpdate: false, currentVersion: 'test' }),
+  useWhatsNew: () => whatsNew,
 }));
 
 vi.mock('@/features/call/store', () => ({
@@ -68,10 +69,30 @@ function renderTopBar(enabled: boolean) {
   render(<TopBar />);
 }
 
+function expectVisibleHeaderControlsToPreserveMinimumPointerTargets() {
+  const header = screen.getByRole('banner', { name: 'Application header' });
+  const controls = Array.from(header.querySelectorAll<HTMLButtonElement>('button'));
+
+  expect(controls.length).toBeGreaterThan(0);
+  for (const control of controls) {
+    expect(control.className, control.getAttribute('aria-label') ?? control.textContent).toContain(
+      'min-h-6',
+    );
+    expect(control.className, control.getAttribute('aria-label') ?? control.textContent).toContain(
+      'min-w-6',
+    );
+  }
+}
+
 describe('TopBar voice smoke evidence', () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    ui.voiceListening = false;
+    ui.composerSttListening = false;
+    ui.route = 'chat';
+    ui.chatFullscreen = false;
+    whatsNew.hasUpdate = false;
   });
 
   it('fails closed without the exact development smoke flag', async () => {
@@ -90,5 +111,36 @@ describe('TopBar voice smoke evidence', () => {
 
     fireEvent.click(opener);
     expect(ui.setVoiceModalOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('marks every decorative listening pulse for MonoChrome suppression', () => {
+    ui.voiceListening = true;
+    ui.composerSttListening = true;
+
+    renderTopBar(false);
+
+    expect(
+      document.querySelectorAll('[data-monochrome-voice-listening-effect="true"]'),
+    ).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Stop dictation' })).toBeTruthy();
+  });
+
+  it('marks the unread ring for the shared MonoChrome shadow override', () => {
+    whatsNew.hasUpdate = true;
+
+    renderTopBar(false);
+
+    const indicator = document.querySelector('[data-monochrome-unread-indicator="true"]');
+    expect(indicator).not.toBeNull();
+    expect(indicator?.className).toContain('ring-2 ring-panel');
+  });
+
+  it('keeps every visible normal and compact header control at least 24 by 24 pixels', () => {
+    const rendered = render(<TopBar />);
+    expectVisibleHeaderControlsToPreserveMinimumPointerTargets();
+
+    ui.route = 'terminal';
+    rendered.rerender(<TopBar />);
+    expectVisibleHeaderControlsToPreserveMinimumPointerTargets();
   });
 });

@@ -324,7 +324,8 @@ export function TabStrip() {
   return (
     <div
       data-monochrome-surface="tab-strip"
-      className="flex h-8 shrink-0 items-stretch gap-1 border-b border-border bg-panel px-2"
+      data-sakura-shell-region="tab-strip"
+      className="sakura-shell-tab-strip flex h-8 shrink-0 items-stretch gap-1 border-b border-border bg-panel px-2"
     >
       <div
         role={tabs.length > 0 ? 'tablist' : undefined}
@@ -428,6 +429,7 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
       <motion.div
         role="tab"
         aria-selected={active}
+        tabIndex={active ? 0 : -1}
         data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}
         layout={themeMotionLayout}
         initial={{ opacity: 0, y: 4 }}
@@ -436,6 +438,12 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
         transition={themeMotionTransition}
         onClick={() => {
           if (!editing) onActivate();
+        }}
+        onKeyDown={(event) => {
+          if (!editing && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            onActivate();
+          }
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -494,7 +502,7 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
             onClose();
           }}
           className={cn(
-            'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-opacity',
+            'inline-flex h-6 w-6 min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-opacity',
             'hover:bg-muted hover:text-foreground',
             active ? 'opacity-70 hover:opacity-100' : 'opacity-0 group-hover:opacity-70',
           )}

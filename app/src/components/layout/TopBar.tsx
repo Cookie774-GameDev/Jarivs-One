@@ -116,6 +116,8 @@ type RouteStoreShape = {
   setRoute?: (r: Route) => void;
 };
 
+const TOP_BAR_POINTER_TARGET_CLASS = 'min-h-6 min-w-6 shrink-0';
+
 export function TopBar() {
   const kernelSmokeEnabled = isKernelSmokeEnabled({
     devBuild: import.meta.env.DEV,
@@ -204,8 +206,10 @@ export function TopBar() {
     <header
       aria-label="Application header"
       data-monochrome-surface="top-bar"
+      data-sakura-shell-region="top-bar"
+      data-tauri-drag-region
       className={cn(
-        'drag-region relative flex shrink-0 items-center gap-2 border-b bg-panel pr-2 text-secondary transition-[height,padding,colors] duration-150',
+        'sakura-shell-top-bar drag-region relative flex min-w-0 shrink-0 items-center gap-2 border-b bg-panel pr-2 text-secondary transition-[height,padding,colors] duration-150',
         compactChrome ? 'h-7 gap-1' : 'h-10 gap-2',
         offChat ? 'border-accent-copper/40' : 'border-border',
         // Reserve room on macOS for native traffic-light buttons in
@@ -224,7 +228,7 @@ export function TopBar() {
             onClick={toggleNav}
             aria-label="Toggle navigation"
             aria-pressed={navOpen}
-            className={cn(compactChrome && 'h-5 w-5 [&_svg]:size-3')}
+            className={cn(TOP_BAR_POINTER_TARGET_CLASS, compactChrome && 'h-5 w-5 [&_svg]:size-3')}
           >
             <PanelLeft className="h-4 w-4" />
           </Button>
@@ -238,7 +242,10 @@ export function TopBar() {
           onClick={() => setVoiceModalOpen(true)}
           aria-label="Open Jarvis voice panel"
           data-sik-evidence={kernelSmokeEnabled ? SIK_EVIDENCE.voiceOpen : undefined}
-          className="jarvis-breadcrumb-trigger relative rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+          className={cn(
+            TOP_BAR_POINTER_TARGET_CLASS,
+            'jarvis-breadcrumb-trigger relative grid place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60',
+          )}
         >
           {/* Always-on Jarvis halo — soft purple→cyan pulse so the activation
               point reads as "alive". Intensifies into a ping while listening. */}
@@ -248,6 +255,7 @@ export function TopBar() {
           />
           {voiceListening && (
             <span
+              data-monochrome-voice-listening-effect="true"
               className="absolute inset-0 rounded-full animate-ping"
               style={{
                 background:
@@ -303,6 +311,7 @@ export function TopBar() {
                   aria-haspopup="menu"
                   aria-expanded={routeMenuOpen}
                   className={cn(
+                    TOP_BAR_POINTER_TARGET_CLASS,
                     'truncate rounded px-1 text-accent-copper transition-colors',
                     compactChrome ? 'text-metadata' : 'text-secondary',
                     'hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/50',
@@ -344,7 +353,7 @@ export function TopBar() {
       </div>
 
       {/* Spacer (also drag region) */}
-      <div className="flex-1" />
+      <div className="min-w-3 flex-1" data-sakura-drag-space="true" data-tauri-drag-region />
 
       {/* Right cluster.
           Two layouts on the same data:
@@ -382,6 +391,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setLauncherOpen(true)}
               aria-label="Open quick launcher"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Rocket className="h-4 w-4" />
             </Button>
@@ -393,6 +403,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setAssistantOpen(true)}
               aria-label="Open Jarvis Assistant"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Sparkles className="h-4 w-4" />
             </Button>
@@ -404,6 +415,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setRoute('schedule')}
               aria-label="Open schedule"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <CalendarDays className="h-4 w-4" />
             </Button>
@@ -419,6 +431,7 @@ export function TopBar() {
               onClick={toggleChatFullscreen}
               aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               aria-pressed={chatFullscreen}
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               {chatFullscreen ? (
                 <Minimize2 className="h-4 w-4" />
@@ -434,6 +447,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setPaletteOpen(true)}
               aria-label="Open command palette"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Search className="h-4 w-4" />
             </Button>
@@ -449,7 +463,7 @@ export function TopBar() {
               onClick={toggleComposerStt}
               aria-label={composerSttListening ? 'Stop dictation' : 'Start dictation'}
               aria-pressed={composerSttListening}
-              className="relative"
+              className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'relative')}
             >
               {composerSttListening ? (
                 <MicWaveform volumeRef={sttVolumeRef} />
@@ -459,6 +473,7 @@ export function TopBar() {
               {composerSttListening && (
                 <span
                   aria-hidden
+                  data-monochrome-voice-listening-effect="true"
                   className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-accent-cyan/60 animate-pulse"
                 />
               )}
@@ -473,6 +488,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setNewsPanelOpen(true)}
               aria-label="Open AI news"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Newspaper className="h-4 w-4" />
             </Button>
@@ -488,12 +504,13 @@ export function TopBar() {
                   ? `What's new in v${currentVersion} (unread)`
                   : `What's new in v${currentVersion}`
               }
-              className="relative"
+              className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'relative')}
             >
               <Megaphone className="h-4 w-4" />
               {hasUnseenWhatsNew && (
                 <span
                   aria-hidden
+                  data-monochrome-unread-indicator="true"
                   className={cn(
                     'pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full',
                     'bg-accent-copper ring-2 ring-panel',
@@ -510,6 +527,7 @@ export function TopBar() {
               onClick={toggleInspector}
               aria-label="Toggle inspector"
               aria-pressed={inspectorOpen}
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <PanelRight className="h-4 w-4" />
             </Button>
@@ -522,6 +540,7 @@ export function TopBar() {
               onClick={() => setSettingsOpen(true)}
               aria-label="Settings"
               data-tour="settings"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Settings className="h-4 w-4" />
             </Button>
@@ -530,7 +549,10 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => setRoute('account')}
-            className="pl-1 rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+            className={cn(
+              TOP_BAR_POINTER_TARGET_CLASS,
+              'grid place-items-center rounded-full pl-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60',
+            )}
             aria-label={displayName ? `Open account for ${displayName}` : 'Open account'}
           >
             <Avatar
@@ -620,7 +642,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
           onClick={toggleChatFullscreen}
           aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
           aria-pressed={chatFullscreen}
-          className="h-5 w-5 [&_svg]:size-3"
+          className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
           {chatFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
         </Button>
@@ -634,12 +656,13 @@ function CompactRightCluster(props: CompactRightClusterProps) {
             aria-label="More actions"
             aria-haspopup="menu"
             aria-expanded={overflowOpen}
-            className="relative h-5 w-5 [&_svg]:size-3"
+            className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'relative h-5 w-5 [&_svg]:size-3')}
           >
             <MoreHorizontal className="h-3 w-3" />
             {hasUnseenWhatsNew && (
               <span
                 aria-hidden
+                data-monochrome-unread-indicator="true"
                 className={cn(
                   'pointer-events-none absolute right-0.5 top-0.5 h-1 w-1 rounded-full',
                   'bg-accent-copper ring-1 ring-panel',
@@ -710,7 +733,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
           onClick={toggleInspector}
           aria-label="Toggle inspector"
           aria-pressed={inspectorOpen}
-          className="h-5 w-5 [&_svg]:size-3"
+          className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
           <PanelRight className="h-3 w-3" />
         </Button>
@@ -722,7 +745,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
           size="icon-sm"
           onClick={() => setSettingsOpen(true)}
           aria-label="Settings"
-          className="h-5 w-5 [&_svg]:size-3"
+          className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
           <Settings className="h-3 w-3" />
         </Button>
@@ -731,7 +754,10 @@ function CompactRightCluster(props: CompactRightClusterProps) {
       <button
         type="button"
         onClick={() => setRoute('account')}
-        className="pl-1 rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+        className={cn(
+          TOP_BAR_POINTER_TARGET_CLASS,
+          'grid place-items-center rounded-full pl-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60',
+        )}
         aria-label={displayName ? `Open account for ${displayName}` : 'Open account'}
       >
         <Avatar
@@ -917,6 +943,7 @@ function CallTopBarButton() {
         onClick={handleClick}
         aria-label={inCall ? 'Hang up' : 'Call Jarvis'}
         className={cn(
+          TOP_BAR_POINTER_TARGET_CLASS,
           inCall && 'text-rose-500 hover:text-rose-400',
           !inCall && configured && entitled && 'text-emerald-500 hover:text-emerald-400',
           (!configured || !entitled) && !inCall && 'text-muted-foreground/50',

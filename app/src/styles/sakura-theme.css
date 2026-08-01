@@ -145,6 +145,15 @@ html[data-theme='sakura'] [data-sakura-shell='true'] {
   border-radius: var(--sakura-radius-shell);
 }
 
+html[data-theme='sakura'] [data-vibespace-avatar='true'] {
+  --vibespace-avatar-background: linear-gradient(
+    135deg,
+    var(--sakura-pink) 0%,
+    var(--sakura-coral) 100%
+  );
+  color: var(--sakura-night);
+}
+
 html[data-theme='sakura'] ::selection {
   background: hsl(var(--sakura-pink-hsl) / var(--sakura-selection-alpha));
   color: hsl(var(--sakura-night-hsl));
@@ -295,6 +304,12 @@ html[data-theme='sakura'] .bg-destructive {
 
   html[data-theme='sakura'] :focus-visible {
     outline-color: Highlight;
+  }
+
+  html[data-theme='sakura'] [data-vibespace-avatar='true'] {
+    --vibespace-avatar-background: Highlight;
+    border: 1px solid CanvasText;
+    color: HighlightText;
   }
 }
 

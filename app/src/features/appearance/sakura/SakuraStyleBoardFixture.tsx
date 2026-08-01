@@ -251,6 +251,7 @@ function AccountStudy() {
           <Gauge className="h-5 w-5 text-accent" />
         </div>
         <div
+          data-sakura-control="Progress"
           role="progressbar"
           aria-label="Synthetic monthly usage"
           aria-valuemin={0}
@@ -301,7 +302,11 @@ function PrimitiveStudy() {
     <Surface id="primitives" className="mt-4">
       <SectionLabel>Shared primitive states</SectionLabel>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card data-sakura-primitive="Card" data-sakura-state="default selected">
+        <Card
+          data-sakura-control="Card"
+          data-sakura-primitive="Card"
+          data-sakura-state="default selected"
+        >
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <Avatar
@@ -312,7 +317,12 @@ function PrimitiveStudy() {
               />
               <div>
                 <div className="text-sm font-semibold">Operator</div>
-                <Badge data-sakura-primitive="Badge" variant="success">
+                <Badge
+                  data-sakura-control="Badge"
+                  data-sakura-primitive="Badge"
+                  data-sakura-state="success"
+                  variant="success"
+                >
                   Ready
                 </Badge>
               </div>
@@ -320,6 +330,7 @@ function PrimitiveStudy() {
           </CardHeader>
           <CardContent className="space-y-2">
             <Button
+              data-sakura-control="Button"
               data-sakura-primitive="Button"
               data-sakura-state="hover focus-visible active"
               aria-pressed="true"
@@ -342,8 +353,9 @@ function PrimitiveStudy() {
             Run name
           </Label>
           <Input
+            data-sakura-control="Input"
             data-sakura-primitive="Input"
-            data-sakura-state="validation-error"
+            data-sakura-state="input validation-error"
             id="sakura-run-name"
             defaultValue="QA"
             aria-invalid="true"
@@ -354,6 +366,7 @@ function PrimitiveStudy() {
             Use at least three characters.
           </p>
           <Textarea
+            data-sakura-control="Textarea"
             data-sakura-primitive="Textarea"
             aria-label="Fixture notes"
             defaultValue="Preserve behavior. Refine the surface."
@@ -363,8 +376,9 @@ function PrimitiveStudy() {
         <div className="space-y-3 rounded-lg border border-border p-3">
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
+              data-sakura-control="Checkbox"
               data-sakura-primitive="Checkbox"
-              data-sakura-state="selected"
+              data-sakura-state="checked selected"
               checked={checked}
               onCheckedChange={(value) => setChecked(value === true)}
             />
@@ -373,6 +387,7 @@ function PrimitiveStudy() {
           <label className="flex items-center justify-between gap-2 text-sm">
             Calm motion
             <Switch
+              data-sakura-control="Switch"
               data-sakura-primitive="Switch"
               checked={enabled}
               onCheckedChange={setEnabled}
@@ -382,7 +397,11 @@ function PrimitiveStudy() {
           <Separator data-sakura-primitive="Separator" />
           <div className="flex flex-wrap gap-2">
             <Popover>
-              <div data-sakura-primitive="Popover" data-sakura-state="open">
+              <div
+                data-sakura-control="Popover"
+                data-sakura-primitive="Popover"
+                data-sakura-state="open"
+              >
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
                     Environment
@@ -393,9 +412,18 @@ function PrimitiveStudy() {
               <PopoverContent className="w-52 text-sm">Local fixture only.</PopoverContent>
             </Popover>
             <TooltipProvider>
-              <div data-sakura-primitive="Tooltip">
+              <div
+                data-sakura-control="Tooltip"
+                data-sakura-primitive="Tooltip"
+                data-sakura-state="tooltip"
+              >
                 <Hint label="Open command palette" hotkey="Ctrl+K">
-                  <Button variant="ghost" size="icon" aria-label="Command palette hint">
+                  <Button
+                    data-sakura-control="Icon button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Command palette hint"
+                  >
                     <Command className="h-4 w-4" />
                   </Button>
                 </Hint>
@@ -405,7 +433,12 @@ function PrimitiveStudy() {
         </div>
 
         <div className="space-y-3 rounded-lg border border-border p-3">
-          <Tabs data-sakura-primitive="Tabs" data-sakura-state="selected" defaultValue="chat">
+          <Tabs
+            data-sakura-control="Tabs"
+            data-sakura-primitive="Tabs"
+            data-sakura-state="selected"
+            defaultValue="chat"
+          >
             <TabsList className="w-full">
               <TabsTrigger className="flex-1" value="chat">
                 Chat
@@ -422,7 +455,11 @@ function PrimitiveStudy() {
             </TabsContent>
           </Tabs>
           <Dialog>
-            <div data-sakura-primitive="Dialog">
+            <div
+              data-sakura-control="Dialog"
+              data-sakura-primitive="Dialog"
+              data-sakura-state="dialog"
+            >
               <DialogTrigger asChild>
                 <Button variant="secondary" className="w-full">
                   Review fixture
@@ -443,7 +480,7 @@ function PrimitiveStudy() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <div data-sakura-primitive="Toast">
+          <div data-sakura-control="Toast" data-sakura-primitive="Toast" data-sakura-state="toast">
             <Button
               variant="outline"
               className="w-full"
@@ -465,6 +502,171 @@ function PrimitiveStudy() {
             />
             Syncing fixture
           </Button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <Label htmlFor="sakura-environment">Environment</Label>
+          <select
+            data-sakura-control="Select"
+            id="sakura-environment"
+            defaultValue="local"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="local">Local fixture</option>
+            <option value="isolated">Isolated preview</option>
+          </select>
+          <fieldset data-sakura-control="Radio" className="space-y-2">
+            <legend className="text-sm font-medium">Density</legend>
+            <label className="flex items-center gap-2 text-sm">
+              <input defaultChecked name="sakura-density" type="radio" value="comfortable" />
+              Comfortable
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input name="sakura-density" type="radio" value="compact" />
+              Compact
+            </label>
+          </fieldset>
+          <Label className="block" htmlFor="sakura-intensity">
+            Scene intensity
+          </Label>
+          <input
+            data-sakura-control="Slider"
+            id="sakura-intensity"
+            type="range"
+            min={0}
+            max={100}
+            defaultValue={64}
+            className="w-full accent-accent"
+          />
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <div
+            data-sakura-control="Table"
+            className="overflow-hidden rounded-md border border-border"
+          >
+            <table className="w-full text-left text-xs">
+              <caption className="sr-only">Synthetic fixture checks</caption>
+              <thead className="bg-panel text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-1.5">Check</th>
+                  <th className="px-2 py-1.5">State</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-border">
+                  <td className="px-2 py-1.5">Contrast</td>
+                  <td className="px-2 py-1.5 text-success">Ready</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <details
+            data-sakura-control="Dropdown"
+            data-sakura-state="menu"
+            className="rounded-md border border-border bg-panel px-3 py-2 text-sm"
+          >
+            <summary className="cursor-pointer font-medium">Fixture actions</summary>
+            <button className="mt-2 block min-h-9 w-full rounded-md px-2 text-left hover:bg-muted">
+              Re-run focused check
+            </button>
+          </details>
+          <div data-sakura-control="Context Menu" className="space-y-2">
+            <Button aria-haspopup="menu" variant="outline" size="sm">
+              Context actions
+            </Button>
+            <div
+              role="menu"
+              aria-label="Fixture context actions"
+              className="rounded-md border border-border bg-elevated p-1 text-sm"
+            >
+              <button role="menuitem" className="min-h-9 w-full rounded px-2 text-left">
+                Inspect selection
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <div
+            data-sakura-control="Command menu"
+            className="rounded-md border border-border bg-elevated p-2"
+          >
+            <Button aria-haspopup="dialog" variant="ghost" className="w-full justify-start">
+              <Command className="h-4 w-4" aria-hidden="true" />
+              Open command menu
+            </Button>
+          </div>
+          <Dialog>
+            <div
+              data-sakura-control="Alert Dialog"
+              data-sakura-state="destructive warning retry"
+              className="rounded-md border border-destructive bg-elevated p-3"
+            >
+              <p className="text-sm font-semibold">Destructive confirmation</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Exercise the alert-dialog focus contract.
+              </p>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="mt-2">
+                  Open retry dialog
+                </Button>
+              </DialogTrigger>
+            </div>
+            <DialogContent
+              role="alertdialog"
+              aria-labelledby="sakura-alert-title"
+              aria-describedby="sakura-alert-description"
+            >
+              <DialogHeader>
+                <DialogTitle id="sakura-alert-title">Retry focused check?</DialogTitle>
+                <DialogDescription id="sakura-alert-description">
+                  No production data is changed.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Keep fixture</Button>
+                </DialogClose>
+                <Button variant="destructive">Retry check</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-border p-3">
+          <div
+            data-sakura-control="Scroll area"
+            data-sakura-state="long-content scrollbar"
+            tabIndex={0}
+            aria-label="Scrollable fixture log"
+            className="max-h-20 overflow-auto rounded-md border border-border p-2 text-xs"
+          >
+            <p>Validated theme contract.</p>
+            <p>Validated shared state semantics.</p>
+            <p>Validated local-only fixture boundary.</p>
+            <p>Validated forced-colors fallback.</p>
+          </div>
+          <p data-sakura-state="empty" role="status" className="text-xs text-muted-foreground">
+            No blocked fixture checks.
+          </p>
+          <div
+            data-sakura-control="Resizable panel"
+            className="grid min-h-20 grid-cols-[1fr_auto_1fr] overflow-hidden rounded-md border border-border"
+          >
+            <div className="p-2 text-xs">Context</div>
+            <div
+              data-sakura-control="Split handle"
+              role="separator"
+              aria-label="Resize fixture panels"
+              aria-orientation="vertical"
+              tabIndex={0}
+              className="w-2 cursor-col-resize border-x border-border bg-panel"
+            />
+            <div className="p-2 text-xs">Inspector</div>
+          </div>
         </div>
       </div>
     </Surface>

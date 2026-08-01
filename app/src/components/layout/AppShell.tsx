@@ -10,6 +10,7 @@ import { Inspector } from './Inspector';
 import { TabStrip } from './TabStrip';
 import { CouncilActivityStrip } from './ActivityStrip';
 import { isWorkbenchDetachedSearch } from '@/features/workbench/window';
+import './sakura-shell.css';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -67,10 +68,15 @@ export function AppShell({ children }: AppShellProps) {
             data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
           >
             {sakuraActive && <SakuraBackdrop route={route} />}
-            <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+            <div
+              className="sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
+              data-sakura-shell-frame="true"
+              data-sakura-shell-boundary="workbench"
+            >
               <main
                 aria-label="Workbench window"
                 className="min-h-0 min-w-0 flex-1 overflow-hidden"
+                data-sakura-workspace="true"
               >
                 {children}
               </main>
@@ -92,15 +98,26 @@ export function AppShell({ children }: AppShellProps) {
           data-sakura-shell={sakuraActive ? 'true' : undefined}
         >
           {sakuraActive && <SakuraBackdrop route={route} />}
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          <div
+            className="sakura-shell-frame relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
+            data-sakura-shell-frame="true"
+            data-sakura-shell-boundary="application"
+          >
             <TopBar />
 
-            <div className="flex min-h-0 flex-1">
+            <div
+              className="sakura-shell-body relative flex min-h-0 min-w-0 flex-1"
+              data-sakura-shell-body="true"
+            >
               <NavPane />
 
               <div className="flex min-w-0 flex-1 flex-col">
                 <TabStrip />
-                <main aria-label="Workspace" className="min-h-0 min-w-0 flex-1 overflow-auto">
+                <main
+                  aria-label="Workspace"
+                  className="min-h-0 min-w-0 flex-1 overflow-auto"
+                  data-sakura-workspace="true"
+                >
                   {children}
                 </main>
                 {chatMode === 'council' && <CouncilActivityStrip />}

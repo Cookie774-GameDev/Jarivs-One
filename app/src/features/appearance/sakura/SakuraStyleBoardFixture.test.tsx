@@ -29,6 +29,34 @@ const EXPECTED_PRIMITIVES = [
   'Tooltip',
 ] as const;
 
+const EXPECTED_CONTROL_TAXONOMY = [
+  'Button',
+  'Icon button',
+  'Input',
+  'Textarea',
+  'Select',
+  'Checkbox',
+  'Radio',
+  'Switch',
+  'Slider',
+  'Tabs',
+  'Card',
+  'Badge',
+  'Table',
+  'Progress',
+  'Tooltip',
+  'Popover',
+  'Dropdown',
+  'Dialog',
+  'Alert Dialog',
+  'Context Menu',
+  'Command menu',
+  'Toast',
+  'Scroll area',
+  'Resizable panel',
+  'Split handle',
+] as const;
+
 const EXPECTED_SURFACES = [
   'shell',
   'top-bar',
@@ -53,6 +81,19 @@ const EXPECTED_STATES = [
   'loading',
   'open',
   'selected',
+  'checked',
+  'empty',
+  'retry',
+  'long-content',
+  'destructive',
+  'warning',
+  'success',
+  'tooltip',
+  'toast',
+  'dialog',
+  'menu',
+  'input',
+  'scrollbar',
 ] as const;
 
 describe('Sakura development style board', () => {
@@ -113,6 +154,13 @@ describe('Sakura development style board', () => {
       expect(
         view.container.querySelector(`[data-sakura-surface="${surface}"]`),
         surface,
+      ).not.toBeNull();
+    }
+
+    for (const control of EXPECTED_CONTROL_TAXONOMY) {
+      expect(
+        view.container.querySelector(`[data-sakura-control="${control}"]`),
+        control,
       ).not.toBeNull();
     }
   });
@@ -205,5 +253,26 @@ describe('Sakura development style board', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show toast' }));
     expect(await screen.findByText('Fixture checked')).toBeTruthy();
+  });
+
+  it('opens the alert dialog only on request and returns focus after Escape', async () => {
+    render(<fixtureModule.SakuraStyleBoardFixture devBuild search="?sakura-style-board=1" />);
+
+    const trigger = screen.getByRole('button', { name: 'Open retry dialog' });
+    expect(screen.queryByRole('alertdialog', { name: 'Retry focused check?' })).toBeNull();
+
+    fireEvent.click(trigger);
+    const alertDialog = screen.getByRole('alertdialog', { name: 'Retry focused check?' });
+    expect(alertDialog.getAttribute('aria-describedby')?.split(/\s+/u)).toContain(
+      'sakura-alert-description',
+    );
+
+    await act(async () => {
+      fireEvent.keyDown(alertDialog, { key: 'Escape' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole('alertdialog', { name: 'Retry focused check?' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });

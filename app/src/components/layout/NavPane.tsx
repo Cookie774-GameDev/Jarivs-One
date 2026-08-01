@@ -246,8 +246,10 @@ export function NavPane() {
     <motion.aside
       aria-label="Navigation"
       data-monochrome-surface="navigation"
+      data-sakura-shell-region="navigation"
       data-nav-pane="true"
-      className="shrink-0 overflow-hidden bg-panel border-r border-border"
+      data-nav-state={navOpen ? 'expanded' : 'collapsed'}
+      className="sakura-shell-navigation shrink-0 overflow-hidden bg-panel border-r border-border"
       initial={false}
       animate={{ width: navOpen ? 240 : 56 }}
       transition={themeLayoutTransition}
@@ -664,7 +666,7 @@ export function NavSection({
             event.stopPropagation();
             onToggleCollapsed?.();
           }}
-          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=monochrome]_&]:text-muted-foreground"
+          className="inline-flex h-6 w-6 min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=monochrome]_&]:text-muted-foreground"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
           aria-expanded={!collapsed}
         >

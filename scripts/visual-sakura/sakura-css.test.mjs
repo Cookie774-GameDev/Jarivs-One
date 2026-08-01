@@ -101,3 +101,14 @@ test('material, typography, and interaction rules are exact-root scoped and loca
   assert.match(css, /html\[data-theme='sakura'\] :focus-visible/u);
   assert.match(css, /@media\s*\(forced-colors:\s*active\)[\s\S]*background:\s*Canvas;/u);
 });
+
+test('shared avatars use the Sakura palette with a readable forced-colors fallback', () => {
+  assert.match(
+    css,
+    /html\[data-theme='sakura'\] \[data-vibespace-avatar='true'\]\s*\{[\s\S]*?--vibespace-avatar-background:\s*linear-gradient\(\s*135deg,\s*var\(--sakura-pink\) 0%,\s*var\(--sakura-coral\) 100%\s*\);[\s\S]*?color:\s*var\(--sakura-night\);[\s\S]*?\}/u,
+  );
+  assert.match(
+    css,
+    /@media\s*\(forced-colors:\s*active\)[\s\S]*?html\[data-theme='sakura'\] \[data-vibespace-avatar='true'\]\s*\{[\s\S]*?--vibespace-avatar-background:\s*Highlight;[\s\S]*?border:\s*1px solid CanvasText;[\s\S]*?color:\s*HighlightText;[\s\S]*?\}/u,
+  );
+});

@@ -12,7 +12,7 @@
     {
       "id": "shell.default",
       "path": "app/src/components/layout/AppShell.tsx",
-      "line": 19,
+      "line": 20,
       "occurrence": 1,
       "locator": "LEGACY_SHELL_TRANSITION",
       "role": "root MotionConfig fallback",

@@ -38,6 +38,8 @@ describe('AppShell Sakura scenic host', () => {
         <RouteFixture />
       </AppShell>,
     );
+    const shellFrame = rendered.container.querySelector('[data-sakura-shell-frame]');
+    const shellBody = rendered.container.querySelector('[data-sakura-shell-body]');
     const routeElement = rendered.container.querySelector('[data-route-object]');
     const routeSetter = useUIStore.getState().setRoute;
     const navSectionIdentity = useUIStore.getState().navSectionsCollapsed;
@@ -45,15 +47,42 @@ describe('AppShell Sakura scenic host', () => {
 
     act(() => useUIStore.getState().setTheme('sakura'));
     expect(rendered.container.querySelector('[data-sakura-backdrop]')).not.toBeNull();
+    expect(rendered.container.querySelector('[data-sakura-shell-frame]')).toBe(shellFrame);
+    expect(rendered.container.querySelector('[data-sakura-shell-body]')).toBe(shellBody);
     expect(rendered.container.querySelector('[data-route-object]')).toBe(routeElement);
     expect(useUIStore.getState().setRoute).toBe(routeSetter);
     expect(useUIStore.getState().navSectionsCollapsed).toBe(navSectionIdentity);
 
     act(() => useUIStore.getState().setTheme('monochrome'));
     expect(rendered.container.querySelector('[data-sakura-backdrop]')).toBeNull();
+    expect(rendered.container.querySelector('[data-sakura-shell-frame]')).toBe(shellFrame);
+    expect(rendered.container.querySelector('[data-sakura-shell-body]')).toBe(shellBody);
     expect(rendered.container.querySelector('[data-route-object]')).toBe(routeElement);
     expect(useUIStore.getState().setRoute).toBe(routeSetter);
     expect(useUIStore.getState().navSectionsCollapsed).toBe(navSectionIdentity);
+  });
+
+  it('keeps scenic reveal, chrome, and workspace as separate structural boundaries', () => {
+    useUIStore.setState({ inspectorOpen: true, theme: 'sakura' });
+    const rendered = render(
+      <AppShell>
+        <section data-route-fixture />
+      </AppShell>,
+    );
+
+    const shell = rendered.container.querySelector('[data-sakura-shell="true"]');
+    const backdrop = shell?.querySelector(':scope > [data-sakura-backdrop]');
+    const frame = shell?.querySelector(':scope > [data-sakura-shell-frame="true"]');
+    const body = frame?.querySelector('[data-sakura-shell-body="true"]');
+    const workspace = body?.querySelector('main[data-sakura-workspace="true"]');
+
+    expect(backdrop).not.toBeNull();
+    expect(frame).not.toBeNull();
+    expect(frame?.getAttribute('class')).toContain('sakura-shell-frame');
+    expect(body?.getAttribute('class')).toContain('sakura-shell-body');
+    expect(workspace?.querySelector('[data-route-fixture]')).not.toBeNull();
+    expect(body?.querySelector('[data-testid="nav-pane"]')).not.toBeNull();
+    expect(body?.querySelector('[data-testid="inspector"]')).not.toBeNull();
   });
 
   it('maps route changes to visual intensity without remounting route content', () => {
@@ -90,9 +119,11 @@ describe('AppShell Sakura scenic host', () => {
     const shell = rendered.container.querySelector('[data-workbench-fullscreen="true"]');
     const backdrop = shell?.querySelector('[data-sakura-backdrop]');
     const main = shell?.querySelector('main[aria-label="Workbench window"]');
+    const frame = shell?.querySelector('[data-sakura-shell-frame="true"]');
 
     expect(backdrop?.getAttribute('data-sakura-intensity')).toBe('standard');
     expect(backdrop?.getAttribute('class')).toContain('z-0');
+    expect(frame?.getAttribute('data-sakura-shell-boundary')).toBe('workbench');
     expect(main?.parentElement?.getAttribute('class')).toContain('z-10');
     expect(main?.querySelector('[data-workbench-fixture]')).not.toBeNull();
   });
