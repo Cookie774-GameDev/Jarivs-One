@@ -255,7 +255,11 @@ if (failures.length === 0) {
   assert.match(accessLease, /req\.headers\.get\('authorization'\)/);
   assert.match(accessLease, /client\.auth\.getUser\(token\)/);
   assert.match(webhook, /req\.headers\.get\('stripe-signature'\)/);
-  assert.match(webhook, /const rawBody = await req\.text\(\)/);
+  assert.match(webhook, /const MAX_STRIPE_WEBHOOK_BODY_BYTES = 1024 \* 1024/);
+  assert.match(webhook, /const lengthError = contentLengthError\(req\)/);
+  assert.match(webhook, /const body = await readBoundedWebhookBody\(req\)/);
+  assert.match(webhook, /const rawBody = body\.rawBody/);
+  assert.match(webhook, /deps\.verifySignature\(rawBody, sig\)/);
   assert.match(config, /\[functions\.stripe-webhook\]\s*verify_jwt\s*=\s*false/);
   const accessLeaseConfig = config.match(/\[functions\.access-lease\]([\s\S]*?)(?=\r?\n\[|$)/)?.[1];
   if (accessLeaseConfig !== undefined) {
