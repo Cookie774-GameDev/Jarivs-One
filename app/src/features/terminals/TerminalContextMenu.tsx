@@ -89,7 +89,7 @@ export function TerminalContextMenu({
         top: `${adjustedPos.top}px`,
         zIndex: 9999,
       }}
-      className="w-48 overflow-hidden rounded-lg border border-border bg-panel text-foreground shadow-lg flex flex-col p-1.5 animate-in fade-in zoom-in-95 duration-100 ease-out"
+      className="w-48 overflow-hidden rounded-lg border border-border bg-panel text-foreground shadow-lg flex flex-col p-1.5 animate-in fade-in zoom-in-95 duration-100 ease-out motion-reduce:animate-none [html[data-theme=monochrome]_&]:animate-none [html[data-theme=monochrome]_&]:shadow-none"
     >
       <button
         type="button"

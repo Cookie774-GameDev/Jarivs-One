@@ -275,7 +275,7 @@ export function ChromeBtn({ children, className, onPointerDown, ...rest }: Chrom
         onPointerDown?.(e);
       }}
       className={cn(
-        'inline-flex h-5 w-5 items-center justify-center rounded',
+        'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded',
         'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
         'disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
         className,

@@ -33,4 +33,25 @@ describe('nextFontSize', () => {
     expect(source).toContain('title="Open VibeSpace terminal palette (Ctrl/⌘+Shift+P)"');
     expect(source).toContain('openTerminalVibespacePalette(paneId)');
   });
+
+  it('keeps compact pane controls at the WCAG 2.2 minimum target size', () => {
+    const toolbarSource = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/PaneToolbar.tsx'),
+      'utf8',
+    );
+    const connectedFilesSource = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/ConnectedFilesButton.tsx'),
+      'utf8',
+    );
+
+    expect(toolbarSource).toContain(
+      "'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded'",
+    );
+    expect(connectedFilesSource).toContain(
+      "'relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm",
+    );
+    expect(connectedFilesSource).toContain(
+      'className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm',
+    );
+  });
 });

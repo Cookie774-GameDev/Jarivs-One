@@ -13,6 +13,26 @@ const evidence = {
 } as const;
 
 describe('TerminalCommandPalette', () => {
+  it('preserves ordinary overlay depth while flattening MonoChrome shadow and blur', () => {
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'VibeSpace terminal palette' });
+    expect(dialog.className).toContain('shadow-[0_18px_60px_hsl(var(--foreground)/0.28)]');
+    expect(dialog.className).toContain('backdrop-blur');
+    expect(dialog.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+    expect(dialog.className).toContain('[html[data-theme=monochrome]_&]:backdrop-blur-none');
+  });
+
   it('renders the complete in-pane top level and filters without touching the PTY', () => {
     render(
       <TerminalCommandPalette

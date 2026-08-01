@@ -37,7 +37,7 @@ describe('TerminalView canonical execution truth', () => {
 
   it('behaviorally follows document theme mutations in xterm and its container without an override', async () => {
     const previousTheme = document.documentElement.getAttribute('data-theme');
-    const target: { options: { theme?: ITheme } } = { options: {} };
+    const target: { options: { theme?: ITheme; cursorBlink?: boolean } } = { options: {} };
     const container = document.createElement('div');
     document.documentElement.setAttribute('data-theme', 'dark');
 
@@ -45,15 +45,49 @@ describe('TerminalView canonical execution truth', () => {
     try {
       expect(target.options.theme?.background).toBe('#2a2018');
       expect(container.style.backgroundColor).toBe('rgb(42, 32, 24)');
+      expect(target.options.cursorBlink).toBe(true);
 
       document.documentElement.setAttribute('data-theme', 'monochrome');
 
       await vi.waitFor(() => {
         expect(target.options.theme?.background).toBe('#0b0d10');
         expect(container.style.backgroundColor).toBe('rgb(11, 13, 16)');
+        expect(target.options.cursorBlink).toBe(false);
       });
     } finally {
       observer.disconnect();
+      if (previousTheme == null) {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', previousTheme);
+      }
+    }
+  });
+
+  it('disables terminal cursor motion when reduced motion is requested', () => {
+    const previousTheme = document.documentElement.getAttribute('data-theme');
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: true,
+        media: '(prefers-reduced-motion: reduce)',
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const target: { options: { theme?: ITheme; cursorBlink?: boolean } } = { options: {} };
+    const observer = observeTerminalDocumentTheme(target, document.createElement('div'), null);
+
+    try {
+      expect(target.options.cursorBlink).toBe(false);
+    } finally {
+      observer.disconnect();
+      vi.unstubAllGlobals();
       if (previousTheme == null) {
         document.documentElement.removeAttribute('data-theme');
       } else {

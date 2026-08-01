@@ -227,7 +227,7 @@ export function TerminalCommandPalette({
       aria-modal="true"
       aria-label="VibeSpace terminal palette"
       onKeyDown={handleKeyDown}
-      className="absolute inset-2 z-40 flex min-h-0 flex-col overflow-hidden rounded-xl border border-accent-copper/50 bg-background/95 shadow-[0_18px_60px_hsl(var(--foreground)/0.28)] backdrop-blur"
+      className="absolute inset-2 z-40 flex min-h-0 flex-col overflow-hidden rounded-xl border border-accent-copper/50 bg-background/95 shadow-[0_18px_60px_hsl(var(--foreground)/0.28)] backdrop-blur [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
     >
       <div className="flex items-center gap-2 border-b border-border bg-paper-soft px-3 py-2">
         <Sparkles className="h-4 w-4 text-accent-copper" aria-hidden />

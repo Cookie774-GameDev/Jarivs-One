@@ -855,7 +855,14 @@ function Tile({
       const matchesSession = detail.sessionId === leaf.sessionId;
       if (!matchesPane && !matchesSession) return;
       setIsFocused(true);
-      tileRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      tileRef.current?.scrollIntoView({
+        block: 'nearest',
+        behavior:
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'auto'
+            : 'smooth',
+      });
       window.setTimeout(() => setIsFocused(false), 2500);
     };
     window.addEventListener('jarvis:terminal:focus', onFocusTerminal as EventListener);
@@ -1142,9 +1149,9 @@ function Tile({
     <div
       ref={tileRef}
       className={cn(
-        'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-panel shadow-soft transition-[border-color,box-shadow,outline-color] duration-300',
+        'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-panel shadow-soft transition-[border-color,box-shadow,outline-color] duration-300 [html[data-theme=monochrome]_&]:shadow-none',
         isFocused
-          ? 'animate-terminal-focus border-accent-copper/80 ring-2 ring-accent-copper/30'
+          ? 'animate-terminal-focus border-accent-copper/80 ring-2 ring-accent-copper/30 motion-reduce:animate-none [html[data-theme=monochrome]_&]:animate-none [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:outline [html[data-theme=monochrome]_&]:outline-1 [html[data-theme=monochrome]_&]:outline-border-mid'
           : 'border-border',
         isDragOver &&
           'jarvis-terminal-drop-hover border-accent-copper border-2 shadow-lg ring-4 ring-accent-copper/40',
