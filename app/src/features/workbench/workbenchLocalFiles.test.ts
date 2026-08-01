@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extensionForLanguage,
   fsOptionsForWorkbenchPath,
@@ -7,9 +7,33 @@ import {
   saveWorkbenchDocument,
 } from './workbenchLocalFiles';
 
+const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
+
 describe('workbench local files', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:workbench-download'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(() => undefined),
+    });
+  });
+
+  afterEach(() => {
+    if (originalCreateObjectUrl) {
+      Object.defineProperty(URL, 'createObjectURL', originalCreateObjectUrl);
+    } else {
+      Reflect.deleteProperty(URL, 'createObjectURL');
+    }
+    if (originalRevokeObjectUrl) {
+      Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectUrl);
+    } else {
+      Reflect.deleteProperty(URL, 'revokeObjectURL');
+    }
   });
 
   it('maps language to extension', () => {
@@ -26,10 +50,12 @@ describe('workbench local files', () => {
       isWorkbenchDesktopSavePath('C:\\Users\\viper\\Desktop\\VibeSpace\\notes\\ideas.txt'),
     ).toBe(true);
     expect(isWorkbenchDesktopSavePath('C:\\projects\\app\\index.html')).toBe(false);
-    expect(fsOptionsForWorkbenchPath('C:\\Users\\x\\Desktop\\VibeSpace\\editor\\a.html', 'C:\\proj')).toEqual(
-      {},
-    );
-    expect(fsOptionsForWorkbenchPath('C:\\proj\\src\\a.html', 'C:\\proj')).toEqual({ root: 'C:\\proj' });
+    expect(
+      fsOptionsForWorkbenchPath('C:\\Users\\x\\Desktop\\VibeSpace\\editor\\a.html', 'C:\\proj'),
+    ).toEqual({});
+    expect(fsOptionsForWorkbenchPath('C:\\proj\\src\\a.html', 'C:\\proj')).toEqual({
+      root: 'C:\\proj',
+    });
   });
 
   it('saves via download fallback outside Tauri and catalogs the entry', async () => {

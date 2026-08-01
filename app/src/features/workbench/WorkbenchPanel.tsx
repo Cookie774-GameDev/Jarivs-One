@@ -28,7 +28,12 @@ export function WorkbenchPanel({
   onDuplicate,
   onClose,
 }: WorkbenchPanelProps) {
-  const [draft, setDraft] = React.useState({ x: panel.x, y: panel.y, width: panel.width, height: panel.height });
+  const [draft, setDraft] = React.useState({
+    x: panel.x,
+    y: panel.y,
+    width: panel.width,
+    height: panel.height,
+  });
   const onUpdateRef = React.useRef(onUpdate);
   const onRuntimeUpdateRef = React.useRef(onRuntimeUpdate);
   onUpdateRef.current = onUpdate;
@@ -84,12 +89,21 @@ export function WorkbenchPanel({
       setDraft((current) => ({
         ...current,
         width: Math.max(240, Math.round(start.width + (moveEvent.clientX - start.clientX) / zoom)),
-        height: Math.max(160, Math.round(start.height + (moveEvent.clientY - start.clientY) / zoom)),
+        height: Math.max(
+          160,
+          Math.round(start.height + (moveEvent.clientY - start.clientY) / zoom),
+        ),
       }));
     };
     const up = (upEvent: PointerEvent) => {
-      const width = Math.max(240, Math.round(start.width + (upEvent.clientX - start.clientX) / zoom));
-      const height = Math.max(160, Math.round(start.height + (upEvent.clientY - start.clientY) / zoom));
+      const width = Math.max(
+        240,
+        Math.round(start.width + (upEvent.clientX - start.clientX) / zoom),
+      );
+      const height = Math.max(
+        160,
+        Math.round(start.height + (upEvent.clientY - start.clientY) / zoom),
+      );
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       onUpdate({ width, height });
@@ -119,13 +133,28 @@ export function WorkbenchPanel({
       }}
     >
       <header className="workbench-panel-header" onPointerDown={beginDrag}>
-        <span className={`workbench-panel-status workbench-panel-status--${panel.status}`} aria-label={`Status: ${panel.status}`} />
+        <span
+          className={`workbench-panel-status workbench-panel-status--${panel.status}`}
+          role="status"
+        >
+          <span className="sr-only">Status: {panel.status}</span>
+        </span>
         <GripHorizontal aria-hidden="true" />
         <strong>{panel.title}</strong>
         <span className="workbench-panel-kind">{panel.kind}</span>
-        <button type="button" aria-label={`Duplicate ${panel.title}`} onClick={onDuplicate}><Copy /></button>
-        <button type="button" aria-label={`${panel.minimized ? 'Restore' : 'Minimize'} ${panel.title}`} onClick={() => onUpdate({ minimized: !panel.minimized })}><Minus /></button>
-        <button type="button" aria-label={`Close ${panel.title}`} onClick={onClose}><X /></button>
+        <button type="button" aria-label={`Duplicate ${panel.title}`} onClick={onDuplicate}>
+          <Copy />
+        </button>
+        <button
+          type="button"
+          aria-label={`${panel.minimized ? 'Restore' : 'Minimize'} ${panel.title}`}
+          onClick={() => onUpdate({ minimized: !panel.minimized })}
+        >
+          <Minus />
+        </button>
+        <button type="button" aria-label={`Close ${panel.title}`} onClick={onClose}>
+          <X />
+        </button>
       </header>
       <div
         className="workbench-panel-body"

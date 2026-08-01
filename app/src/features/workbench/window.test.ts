@@ -7,6 +7,7 @@ import {
   WORKBENCH_APP_PATH,
   WORKBENCH_BROWSER_WINDOW_FEATURES,
   WORKBENCH_KERNEL_AUTHORITY,
+  WORKBENCH_QUERY,
   WORKBENCH_WINDOW_LABEL,
 } from './window';
 
@@ -19,6 +20,7 @@ describe('Workbench window helpers', () => {
   it('detects detached Workbench search and builds absolute browser URLs', () => {
     expect(isWorkbenchDetachedSearch('?workbench=1')).toBe(true);
     expect(isWorkbenchDetachedSearch('?workbench=0')).toBe(false);
+    expect(WORKBENCH_QUERY).toBe('workbench=1');
     expect(WORKBENCH_APP_PATH).toBe('/?workbench=1');
     const url = buildWorkbenchWindowUrl('http://localhost:5173/');
     expect(url).toBe('http://localhost:5173/?workbench=1');
