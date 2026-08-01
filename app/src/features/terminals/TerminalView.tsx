@@ -410,12 +410,27 @@ function currentTerminalTheme() {
   return resolveTerminalTheme({ documentTheme, explicitUserTheme: null });
 }
 
+function terminalCursorBlinkEnabled(): boolean {
+  const documentTheme =
+    typeof document === 'undefined'
+      ? 'dark'
+      : resolveTerminalDocumentTheme(document.documentElement.getAttribute('data-theme'));
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return documentTheme !== 'monochrome' && !reducedMotion;
+}
+
 export function observeTerminalDocumentTheme(
-  target: Parameters<typeof applyTerminalTheme>[0],
+  target: Parameters<typeof applyTerminalTheme>[0] & {
+    options: { cursorBlink?: boolean };
+  },
   container: Pick<HTMLElement, 'style'>,
   explicitUserTheme: Readonly<ITheme> | null,
 ): MutationObserver {
   const applyDocumentTheme = () => {
+    target.options.cursorBlink = terminalCursorBlinkEnabled();
     const theme = applyTerminalTheme(target, {
       documentTheme: resolveTerminalDocumentTheme(
         document.documentElement.getAttribute('data-theme'),
@@ -1093,7 +1108,7 @@ export function TerminalView({
         fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize,
         lineHeight: fontSize <= 10 ? 1.0 : 1.08,
-        cursorBlink: true,
+        cursorBlink: terminalCursorBlinkEnabled(),
         allowProposedApi: true,
         scrollback: 5000,
         theme: currentTerminalTheme(),
@@ -1986,8 +2001,9 @@ export function TerminalView({
       : `Run the desktop build (\`npm run tauri:dev\`) to use real terminals.\n\nDetail: ${error}`;
     return (
       <div
+        data-sakura-terminal-chrome={hideChrome ? undefined : 'true'}
         className={cn(
-          'rounded-lg border border-border bg-paper-soft shadow-soft p-4 space-y-1',
+          'rounded-lg border border-border bg-paper-soft shadow-soft p-4 space-y-1 [html[data-theme=monochrome]_&]:shadow-none',
           className,
         )}
         role="status"
@@ -2023,6 +2039,7 @@ export function TerminalView({
 
   return (
     <div
+      data-sakura-terminal-chrome={hideChrome ? undefined : 'true'}
       data-session-id={activeSessionId ?? undefined}
       data-sik-evidence={
         KERNEL_SMOKE_ENABLED && executionId ? SIK_EVIDENCE.terminalExecution : undefined
@@ -2114,6 +2131,7 @@ export function TerminalView({
         onUninstallShellIntegration={uninstallTerminalShellIntegration}
       />
       <div
+        data-sakura-terminal-content="preserve"
         ref={containerRef}
         style={{ backgroundColor: currentTerminalTheme().background }}
         className="min-h-0 w-full flex-1 overflow-hidden pt-2 px-1.5 pb-1"

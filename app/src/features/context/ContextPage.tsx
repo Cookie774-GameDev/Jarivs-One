@@ -96,6 +96,7 @@ import {
   type ContextSourceCard,
   type ContextWorkspaceSectionId,
 } from './contextWorkspaceUi';
+import './sakura-context.css';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
 const CLOUD_CONTEXT_PROVIDERS: Array<Exclude<ContextGenerationProvider, 'local'>> = [
@@ -625,6 +626,8 @@ export function ContextPage() {
   return (
     <div
       data-monochrome-route="context"
+      data-sakura-route="context"
+      data-sakura-intensity="standard"
       className="relative flex h-full min-h-0 w-full overflow-hidden bg-background [html[data-theme=monochrome]_&]:font-sans"
     >
       <div className="pointer-events-none absolute inset-0 opacity-70 [html[data-theme=monochrome]_&]:hidden">
@@ -634,6 +637,7 @@ export function ContextPage() {
 
       <aside
         data-monochrome-surface="context-tree"
+        data-sakura-surface="context-tree"
         className="relative z-10 flex w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 backdrop-blur xl:w-[400px] [html[data-theme=monochrome]_&]:w-[304px] [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:backdrop-blur-none"
       >
         <div className="space-y-3 border-b border-border p-4">
@@ -670,12 +674,16 @@ export function ContextPage() {
               onOpen={openSourceCard}
             />
           ) : (
-            <div className="space-y-2 rounded-xl border border-border bg-paper-soft p-2.5 shadow-soft">
-              <div className="flex items-center gap-1.5 text-metadata uppercase tracking-wide text-muted-foreground">
+            <div className="space-y-2 rounded-xl border border-border bg-paper-soft p-2.5 shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
+              <label
+                htmlFor="context-project-folder"
+                className="flex items-center gap-1.5 text-metadata uppercase tracking-wide text-muted-foreground"
+              >
                 <FolderOpen className="h-3.5 w-3.5 text-accent-honey" /> Project folder
-              </div>
+              </label>
               <div className="flex gap-1.5">
                 <Input
+                  id="context-project-folder"
                   value={rootDraft}
                   onChange={(e) => setRootDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -695,7 +703,7 @@ export function ContextPage() {
                 <select
                   value={selectedProvider}
                   onChange={(e) => setProvider(e.target.value as ContextGenerationProvider)}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-metadata text-foreground shadow-soft outline-none transition-colors focus:border-accent-copper focus:ring-1 focus:ring-ring"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-metadata text-foreground shadow-soft outline-none transition-colors focus:border-accent-copper focus:ring-1 focus:ring-ring [html[data-theme=monochrome]_&]:shadow-none"
                 >
                   {providerChoices.map((choice) => (
                     <option key={choice} value={choice}>
@@ -782,6 +790,7 @@ export function ContextPage() {
 
       <main
         data-monochrome-surface="context-workspace"
+        data-sakura-surface="context-workspace"
         className="relative z-10 flex min-w-0 flex-1 flex-col p-4 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:p-2"
       >
         {!tree || !rootNode || !selected ? (
@@ -818,7 +827,7 @@ export function ContextPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border bg-paper px-2.5 py-2 shadow-soft">
+    <div className="rounded-lg border border-border bg-paper px-2.5 py-2 shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
       <div className="text-metadata uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="truncate font-mono text-sm text-foreground">{value}</div>
     </div>
@@ -871,7 +880,7 @@ function ContextWorkspaceNavigation({
             onClick={() => onSelect(section.id)}
             aria-current={active === section.id ? 'page' : undefined}
             className={cn(
-              'flex min-w-0 flex-col items-center gap-1 rounded-xl border px-2 py-2 text-metadata transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'flex min-w-0 flex-col items-center gap-1 rounded-xl border px-2 py-2 text-metadata transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [html[data-theme=monochrome]_&]:shadow-none',
               active === section.id
                 ? 'border-accent-copper/45 bg-accent-copper/10 text-accent-copper shadow-soft'
                 : 'border-border bg-paper text-muted-foreground hover:border-accent-copper/30 hover:text-foreground',
@@ -1111,10 +1120,10 @@ function NoContextHero({
 }) {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="relative max-w-2xl rounded-3xl border border-accent-copper/25 bg-panel/90 p-8 shadow-[0_24px_80px_hsl(var(--accent-copper)/0.16)] backdrop-blur">
-        <div className="absolute inset-0 rounded-3xl bg-[radial-gradient(circle_at_30%_20%,hsl(var(--accent-copper)/0.18),transparent_34%),radial-gradient(circle_at_80%_80%,hsl(var(--accent-amber)/0.14),transparent_32%)]" />
+      <div className="relative max-w-2xl rounded-3xl border border-accent-copper/25 bg-panel/90 p-8 shadow-[0_24px_80px_hsl(var(--accent-copper)/0.16)] backdrop-blur [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none">
+        <div className="absolute inset-0 rounded-3xl bg-[radial-gradient(circle_at_30%_20%,hsl(var(--accent-copper)/0.18),transparent_34%),radial-gradient(circle_at_80%_80%,hsl(var(--accent-amber)/0.14),transparent_32%)] [html[data-theme=monochrome]_&]:bg-none" />
         <div className="relative space-y-5">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-accent-copper/40 bg-accent-copper/15 text-accent-copper shadow-soft">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-accent-copper/40 bg-accent-copper/15 text-accent-copper shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
             <Network className="h-7 w-7" />
           </div>
           <div>
@@ -2965,6 +2974,7 @@ function ContextInspector({
   return (
     <aside
       data-monochrome-surface="context-inspector"
+      data-sakura-surface="context-inspector"
       className="min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/90 shadow-soft backdrop-blur [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
     >
       <div className="flex h-full min-h-0 flex-col">

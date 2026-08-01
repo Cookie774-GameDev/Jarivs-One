@@ -66,6 +66,7 @@ import { useUIStore } from '@/stores/ui';
 import { captureLiveTree, getLiveTree } from './terminalLiveCache';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { JarvisCancellationRequestResult } from '@/lib/jarvis/contracts/execution';
+import './sakura-terminal.css';
 
 export function summarizeTerminalResetCancellations(
   results: readonly (JarvisCancellationRequestResult | null)[],
@@ -542,10 +543,13 @@ export function TerminalsPage() {
   return (
     <div
       data-monochrome-route="terminal"
+      data-sakura-route="terminal"
+      data-sakura-intensity="quiet"
       className="flex h-full w-full flex-col bg-background [html[data-theme=monochrome]_&]:font-sans"
     >
       <div
         data-monochrome-surface="terminal-toolbar"
+        data-sakura-surface="terminal-toolbar"
         className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft [html[data-theme=monochrome]_&]:bg-panel"
       >
         <div className="flex items-center gap-3 text-metadata text-muted-foreground">
@@ -583,7 +587,7 @@ export function TerminalsPage() {
           >
             <div
               className={cn(
-                'absolute left-0 top-0 bottom-0 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 transition-all pointer-events-none',
+                'absolute left-0 top-0 bottom-0 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 transition-all pointer-events-none [html[data-theme=monochrome]_&]:bg-accent-copper/30 [html[data-theme=monochrome]_&]:bg-none',
                 isHolding ? 'duration-[2000ms] ease-out w-full' : 'duration-75 w-0',
               )}
             />
@@ -596,6 +600,7 @@ export function TerminalsPage() {
 
       <div
         data-monochrome-surface="terminal-grid"
+        data-sakura-surface="terminal-grid"
         className="flex-1 min-h-0 p-2 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:p-1"
       >
         <TileGrid

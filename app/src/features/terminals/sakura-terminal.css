@@ -1,0 +1,37 @@
+html[data-theme='sakura'] [data-sakura-route='terminal'] {
+  background: transparent;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='terminal-toolbar'] {
+  background: var(--sakura-panel-fallback);
+  border: 0 solid hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  border-bottom-width: 1px;
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='terminal-grid'] {
+  background: hsl(var(--sakura-night-hsl) / 0.36);
+}
+
+html[data-theme='sakura'] [data-sakura-terminal-chrome='true'] {
+  border: 1px solid hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  box-shadow: var(--shadow-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-route='terminal'],
+  html[data-theme='sakura'] [data-sakura-surface^='terminal-'],
+  html[data-theme='sakura'] [data-sakura-terminal-chrome='true'] {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-route='terminal'],
+  html[data-theme='sakura'] [data-sakura-surface^='terminal-'],
+  html[data-theme='sakura'] [data-sakura-terminal-chrome='true'] {
+    background: Canvas;
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}
