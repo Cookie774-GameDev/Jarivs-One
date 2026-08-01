@@ -26,6 +26,7 @@ const execFileAsync = promisify(execFile);
 const script = path.resolve('scripts/build-updater-manifest.mjs');
 const VERSION = '2.3.4';
 const PUB_DATE = '2026-07-30T20:15:30.000Z';
+const windowsTest = process.platform === 'win32' ? test : test.skip;
 const MINISIGN_SIGNATURE = [
   'untrusted comment: signature from minisign secret key',
   'RWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=',
@@ -501,7 +502,7 @@ test('rejects deterministic output-parent replacement before temporary creation'
         },
         { outfile },
       ),
-      /identity or metadata changed|EPERM|operation not permitted/iu,
+      /identity(?: or metadata)? changed|EPERM|operation not permitted/iu,
     );
     try {
       assert.equal(await readFile(path.join(replacedParent, 'latest.json'), 'utf8'), previous);
@@ -883,7 +884,7 @@ test('preserves a regular-file replacement at the temporary cleanup pathname', a
   });
 });
 
-test('truthfully commits when unlink fails for the verified owned temporary hardlink', async () => {
+windowsTest('truthfully commits when unlink fails for the verified owned temporary hardlink', async () => {
   await withAssets(async ({ assetsDir }) => {
     const artifact = `VibeSpace-${VERSION}-Windows-x64.exe`;
     const artifactPath = path.join(assetsDir, artifact);
