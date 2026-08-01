@@ -233,13 +233,13 @@ test('Sakura semantic text and essential boundary pairings meet the frozen contr
 test('Sakura freezes bounded material, geometry, typography, and motion tokens', () => {
   const css = read(cssPath);
   const expected = {
-    '--sakura-panel-alpha': '0.82',
+    '--sakura-panel-alpha': '0.76',
     '--sakura-panel-alpha-strong': '0.91',
     '--sakura-card-alpha': '0.07',
     '--sakura-decorative-border-alpha': '0.19',
     '--sakura-decorative-border-strong-alpha': '0.32',
     '--sakura-essential-border-alpha': '0.39',
-    '--sakura-blur': '16px',
+    '--sakura-blur': '14px',
     '--radius-sm': '10px',
     '--radius': '12px',
     '--radius-lg': '16px',

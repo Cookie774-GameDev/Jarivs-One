@@ -37,7 +37,7 @@ test('committed Sakura palette and geometry retain the supplied design authority
   }
 
   assert.match(css, /--sakura-radius-shell:\s*24px/);
-  assert.match(css, /--sakura-blur:\s*16px/);
+  assert.match(css, /--sakura-blur:\s*14px/);
   assert.match(shellCss, /--sakura-shell-inset:\s*clamp\(10px,\s*1vw,\s*14px\)/);
   assert.match(
     shellCss,
