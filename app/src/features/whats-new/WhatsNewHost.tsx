@@ -20,7 +20,11 @@ import { useUIStore } from '@/stores/ui';
 import { WhatsNewModal } from './WhatsNewModal';
 import { useWhatsNew } from './useWhatsNew';
 
-export function WhatsNewHost() {
+export function WhatsNewHost({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}) {
   const open = useUIStore((s) => s.whatsNewOpen);
   const setOpen = useUIStore((s) => s.setWhatsNewOpen);
   const onboardingComplete = useUIStore((s) => s.onboardingComplete);
@@ -34,6 +38,7 @@ export function WhatsNewHost() {
   // two overlays don't stack.
   const autoOpenedRef = React.useRef(false);
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (autoOpenedRef.current) return;
     if (!onboardingComplete) return; // wait until past onboarding
     if (productTutorialStatus === 'pending') return;
@@ -42,14 +47,18 @@ export function WhatsNewHost() {
     setOpen(true);
     // Note: we don't call markSeen() here — we mark on dismissal so the
     // user actually sees the modal before we forget about the bump.
-  }, [hasUpdate, onboardingComplete, productTutorialStatus, setOpen]);
+  }, [hasUpdate, onboardingComplete, productTutorialStatus, runtimeEffectsEnabled, setOpen]);
 
   return (
     <div
       data-monochrome-surface="whats-new-host"
       className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
     >
-      <WhatsNewModal open={open} onOpenChange={setOpen} onDismiss={markSeen} />
+      <WhatsNewModal
+        open={runtimeEffectsEnabled ? open : true}
+        onOpenChange={runtimeEffectsEnabled ? setOpen : () => undefined}
+        onDismiss={runtimeEffectsEnabled ? markSeen : () => undefined}
+      />
     </div>
   );
 }

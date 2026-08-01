@@ -39,6 +39,8 @@ vi.mock('@/features/voice/VoiceActivityWaveform', () => ({
 }));
 
 import { GlobalDictationOverlay } from './GlobalDictationOverlay';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 type SessionCallbacks = {
   onOpen?: () => void;
@@ -71,6 +73,17 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
     vi.clearAllMocks();
     tauriMocks.tauriListeners.clear();
     tauriMocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it('renders contained visual evidence without native listeners or speech startup', async () => {
+    render(<GlobalDictationOverlay runtimeEffectsEnabled={false} />);
+    expect(screen.getByText('VibeSpace Dictation')).toBeTruthy();
+
+    await openOverlay();
+
+    expect(tauriMocks.tauriListeners.size).toBe(0);
+    expect(tauriMocks.windowApi.show).not.toHaveBeenCalled();
+    expect(sessionMocks.createSession).not.toHaveBeenCalled();
   });
 
   it('Ctrl+Space toggle starts a shared-pipeline session and shows the engine, never Win+H', async () => {
@@ -293,5 +306,35 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
     expect(screen.queryByText('some words')).toBeNull();
     expect(session.cancel).not.toHaveBeenCalled();
     expect(screen.getByText(/Listening/)).toBeTruthy();
+  });
+});
+
+describe('GlobalDictationOverlay MonoChrome appearance', () => {
+  function readComponentSource(): string {
+    return readFileSync(resolve(__dirname, 'GlobalDictationOverlay.tsx'), 'utf8');
+  }
+
+  it('flattens shadow, blur, fill, border, and radius only beneath the canonical MonoChrome gate', () => {
+    const source = readComponentSource();
+
+    // Canonical repo-wide MonoChrome gate root: matches monochrome-theme.css
+    // and the other shell-overlay appearance tests.
+    expect(source).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:backdrop-blur-none');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:bg-background');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:border-border-mid');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:rounded-sm');
+
+    // The loose, non-canonical gate root must be fully normalized away.
+    expect(source).not.toContain('[[data-theme=monochrome]_&]:');
+  });
+
+  it('preserves the ordinary-theme overlay elevation, blur, and fill', () => {
+    const source = readComponentSource();
+
+    expect(source).toContain('shadow-[0_18px_60px_rgba(0,0,0,0.45)]');
+    expect(source).toContain('backdrop-blur-xl');
+    expect(source).toContain('rounded-2xl');
+    expect(source).toContain('bg-background/94');
   });
 });

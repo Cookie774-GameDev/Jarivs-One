@@ -36,6 +36,16 @@ describe('ProductTutorialHost', () => {
     expect(screen.getByText(/No thanks — skip/i)).toBeTruthy();
   });
 
+  it('renders contained evidence immediately without persisting dismissal', () => {
+    render(<ProductTutorialHost runtimeEffectsEnabled={false} />);
+    expect(screen.getByText(/Quick tour\?/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/No thanks — skip/i));
+
+    expect(useUIStore.getState().productTutorialStatus).toBe('pending');
+    expect(screen.queryByText(/Quick tour\?/i)).toBeNull();
+  });
+
   it('skip from offer persists skipped and hides the tutorial', async () => {
     render(<ProductTutorialHost />);
     await act(async () => {

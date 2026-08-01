@@ -6,16 +6,24 @@ import * as React from 'react';
 import { useUIStore } from '@/stores/ui';
 import { NewsPanel } from './NewsPanel';
 
-export function NewsHost() {
+export function NewsHost({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}) {
   const open = useUIStore((s) => s.newsPanelOpen);
   const setOpen = useUIStore((s) => s.setNewsPanelOpen);
 
   return (
     <div
       data-monochrome-surface="news-host"
-      className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
+      className={
+        runtimeEffectsEnabled
+          ? 'contents [html[data-theme=monochrome]_&_*]:shadow-none'
+          : 'pointer-events-none fixed inset-0 [html[data-theme=monochrome]_&_*]:shadow-none'
+      }
     >
-      <NewsPanel open={open} onOpenChange={setOpen} />
+      <NewsPanel open={open} onOpenChange={setOpen} runtimeEffectsEnabled={runtimeEffectsEnabled} />
     </div>
   );
 }

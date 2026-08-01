@@ -33,7 +33,13 @@ const STATE_HINT: Record<OverlayState, string> = {
   error: 'Dictation stopped',
 };
 
-export function GlobalDictationOverlay() {
+export interface GlobalDictationOverlayProps {
+  runtimeEffectsEnabled?: boolean;
+}
+
+export function GlobalDictationOverlay({
+  runtimeEffectsEnabled = true,
+}: GlobalDictationOverlayProps = {}) {
   const [state, setState] = React.useState<OverlayState>('ready');
   const [partial, setPartial] = React.useState('');
   const [finalText, setFinalText] = React.useState('');
@@ -161,6 +167,7 @@ export function GlobalDictationOverlay() {
   }, [resetTranscript, start, teardownSession]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const onToggle = () => {
       void getCurrentWindow().show();
       void getCurrentWindow().setFocus();
@@ -179,9 +186,10 @@ export function GlobalDictationOverlay() {
       unlisten?.();
       window.removeEventListener('jarvis:global-dictation-toggle', onToggle);
     };
-  }, [confirmAndPaste, start]);
+  }, [confirmAndPaste, runtimeEffectsEnabled, start]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -195,7 +203,7 @@ export function GlobalDictationOverlay() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelAndHide, confirmAndPaste, start]);
+  }, [cancelAndHide, confirmAndPaste, runtimeEffectsEnabled, start]);
 
   const listening = state === 'listening' || state === 'starting';
   const busy = state === 'transcribing' || state === 'pasting';
@@ -208,7 +216,7 @@ export function GlobalDictationOverlay() {
         className={cn(
           'w-[228px] select-none rounded-2xl border border-accent-copper/45',
           'bg-background/94 px-3 py-2 text-foreground shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl',
-          '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:backdrop-blur-none',
+          '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none',
         )}
       >
         <div data-tauri-drag-region className="flex items-center gap-2">
