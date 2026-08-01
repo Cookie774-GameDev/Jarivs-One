@@ -5,6 +5,7 @@ import { Hint } from '@/components/ui/tooltip';
 import { useUIStore } from '@/stores/ui';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { cn } from '@/lib/utils';
+import './voice.sakura.css';
 
 /**
  * Compact voice trigger button - the affordance dropped into the TopBar.
@@ -34,7 +35,12 @@ export interface VoiceTriggerProps {
 
 const PTT_HOLD_MS = 550;
 
-export function VoiceTrigger({ active, onActiveChange, side = 'bottom', className }: VoiceTriggerProps) {
+export function VoiceTrigger({
+  active,
+  onActiveChange,
+  side = 'bottom',
+  className,
+}: VoiceTriggerProps) {
   const storeOpen = useUIStore((s) => s.voiceModalOpen);
   const setStoreOpen = useUIStore((s) => s.setVoiceModalOpen);
 
@@ -105,7 +111,11 @@ export function VoiceTrigger({ active, onActiveChange, side = 'bottom', classNam
   };
 
   return (
-    <Hint label={isActive ? 'Stop voice' : 'Talk to Jarvis'} hotkey={HOTKEYS.PUSH_TO_TALK} side={side}>
+    <Hint
+      label={isActive ? 'Stop voice' : 'Talk to Jarvis'}
+      hotkey={HOTKEYS.PUSH_TO_TALK}
+      side={side}
+    >
       <Button
         type="button"
         variant={isActive ? 'accent' : 'ghost'}
@@ -117,6 +127,8 @@ export function VoiceTrigger({ active, onActiveChange, side = 'bottom', classNam
         onClick={handleClick}
         aria-pressed={isActive}
         aria-label={isActive ? 'Stop voice session' : 'Start voice session'}
+        data-vibespace-owned-chrome="voice"
+        data-voice-trigger-state={isActive ? 'active' : 'idle'}
       >
         <Mic />
         {isActive && (

@@ -1,0 +1,62 @@
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] {
+  color: var(--sakura-ivory);
+  background:
+    radial-gradient(circle at 50% 18%, hsl(var(--sakura-pink-hsl) / 0.13), transparent 34rem),
+    linear-gradient(155deg, var(--sakura-night-2), var(--sakura-night) 72%);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] .sakura-onboarding-header,
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] .sakura-onboarding-footer {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.2);
+  background: var(--sakura-panel-fallback);
+  box-shadow: inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.07);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] .sakura-onboarding-stage {
+  isolation: isolate;
+}
+
+html[data-theme='sakura']
+  [data-vibespace-owned-chrome='onboarding']
+  [role='tab'][aria-selected='true'] {
+  outline: 1px solid hsl(var(--sakura-pink-hsl) / 0.58);
+  outline-offset: 3px;
+  box-shadow: 0 0 18px hsl(var(--sakura-pink-hsl) / 0.22);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] [aria-pressed='true'],
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] [data-jarvis-rainbow='true'] {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.48);
+  background-color: hsl(var(--sakura-night-2-hsl) / 0.9);
+  box-shadow: inset 3px 0 0 hsl(var(--sakura-pink-hsl));
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] :focus-visible {
+  outline: 2px solid hsl(var(--sakura-pink-hsl));
+  outline-offset: 3px;
+}
+
+@media (max-width: 42rem) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] .sakura-onboarding-footer {
+    padding-inline: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'],
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] * {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'],
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] .sakura-onboarding-header,
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='onboarding'] .sakura-onboarding-footer {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

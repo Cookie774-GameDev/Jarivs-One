@@ -28,6 +28,7 @@ import { parseAssistantInput } from './parse';
 import { executeIntent } from './execute';
 import { JARVIS_COMMAND_CATALOG } from './commands';
 import type { AssistantIntent } from './intents';
+import './assistant.sakura.css';
 
 interface AssistantBarProps {
   open: boolean;
@@ -329,10 +330,15 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="bg-black/60" />
+        <DialogOverlay
+          className="bg-black/60"
+          data-sakura-overlay="assistant"
+          data-vibespace-owned-chrome="assistant"
+        />
         <DialogPrimitive.Content
           aria-label="Jarvis Assistant"
           data-monochrome-surface="assistant"
+          data-vibespace-owned-chrome="assistant"
           className={cn(
             'fixed left-1/2 top-[18vh] z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2',
             'border border-border bg-elevated rounded-lg shadow-2xl',

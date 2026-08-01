@@ -33,6 +33,7 @@ import type { QuickLinkGroupId, QuickLinkId, WorkspaceId } from '@/types/common'
 import { useQuickLinks, useQuickLinkGroups, filterByGroup } from './hooks';
 import { launchLink, QUICK_PRESETS } from './launch';
 import { LinkEditDialog } from './LinkEditDialog';
+import './launcher.sakura.css';
 
 interface LauncherDialogProps {
   open: boolean;
@@ -164,8 +165,16 @@ export function LauncherDialog({ open, onOpenChange }: LauncherDialogProps) {
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
+          overlayProps={{
+            'data-monochrome-overlay': 'launcher-dialog',
+            'data-sakura-overlay': 'launcher',
+            'data-vibespace-owned-chrome': 'launcher',
+            className:
+              '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
+          }}
           data-monochrome-surface="launcher-dialog"
-          className="max-w-3xl w-[min(820px,92vw)] h-[min(640px,85vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:shadow-none"
+          data-vibespace-owned-chrome="launcher"
+          className="w-[min(820px,92vw)] max-w-3xl h-[min(640px,85vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:shadow-none"
         >
           <DialogHeader className="px-5 pt-5 pb-2">
             <DialogTitle className="flex items-center gap-2">

@@ -22,19 +22,11 @@
  */
 import * as React from 'react';
 import { ChevronRight, Check } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import {
-  RELEASES,
-  SECTION_META,
-  type Release,
-  type ReleaseSection,
-} from './releases';
+import { RELEASES, SECTION_META, type Release, type ReleaseSection } from './releases';
+import './whats-new.sakura.css';
 
 export interface WhatsNewModalProps {
   open: boolean;
@@ -85,6 +77,12 @@ export function WhatsNewModal({ open, onOpenChange, onDismiss }: WhatsNewModalPr
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
+        data-monochrome-surface="whats-new-modal"
+        data-vibespace-owned-chrome="whats-new"
+        overlayProps={{
+          'data-sakura-overlay': 'whats-new',
+          'data-vibespace-owned-chrome': 'whats-new',
+        }}
         className="flex h-[min(680px,85vh)] w-[min(760px,92vw)] max-w-none flex-col overflow-hidden p-0"
       >
         {/* ---------- Header strip ---------- */}
@@ -141,18 +139,16 @@ function ReleaseCard({ release, latest }: ReleaseCardProps) {
   return (
     <article
       className={cn(
-        'rounded-lg border bg-paper p-5 shadow-soft transition-colors',
+        'rounded-lg border bg-paper p-5 shadow-soft transition-colors [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:bg-panel',
         latest
-          ? 'border-accent-copper/40 ring-1 ring-accent-copper/20'
+          ? 'border-accent-copper/40 ring-1 ring-accent-copper/20 [html[data-theme=monochrome]_&]:ring-0'
           : 'border-border',
       )}
     >
       {/* Top row: version pill + date + headline */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <VersionPill version={release.version} latest={latest} />
-        <span className="text-metadata text-muted-foreground">
-          {formatDate(release.date)}
-        </span>
+        <span className="text-metadata text-muted-foreground">{formatDate(release.date)}</span>
       </div>
 
       <h3 className="font-display mt-2 text-page-title leading-tight text-foreground">
@@ -160,7 +156,9 @@ function ReleaseCard({ release, latest }: ReleaseCardProps) {
       </h3>
 
       {release.summary && (
-        <p className="mt-2 text-body text-foreground/85">{release.summary}</p>
+        <p className="mt-2 text-body text-foreground/85 [html[data-theme=monochrome]_&]:text-foreground">
+          {release.summary}
+        </p>
       )}
 
       {filledSections.length > 0 && (
@@ -198,12 +196,9 @@ function SectionBlock({ section }: SectionBlockProps) {
         {section.items.map((item, i) => (
           <li
             key={i}
-            className="flex gap-2 text-body text-foreground/90"
+            className="flex gap-2 text-body text-foreground/90 [html[data-theme=monochrome]_&]:text-foreground"
           >
-            <ChevronRight
-              className={cn('mt-1 h-3 w-3 shrink-0', meta.toneClass)}
-              aria-hidden
-            />
+            <ChevronRight className={cn('mt-1 h-3 w-3 shrink-0', meta.toneClass)} aria-hidden />
             <span className="leading-snug">{item}</span>
           </li>
         ))}
@@ -229,8 +224,8 @@ function VersionPill({ version, latest }: VersionPillProps) {
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 font-mono text-metadata',
         latest
-          ? 'bg-accent-copper/15 text-accent-copper ring-1 ring-accent-copper/40'
-          : 'bg-muted text-muted-foreground ring-1 ring-border',
+          ? 'bg-accent-copper/15 text-accent-copper ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0'
+          : 'bg-muted text-muted-foreground ring-1 ring-border [html[data-theme=monochrome]_&]:ring-0',
       )}
     >
       v{version}

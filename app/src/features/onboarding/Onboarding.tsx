@@ -11,6 +11,7 @@ import { WhatsNew } from './steps/WhatsNew';
 import { Providers } from './steps/Providers';
 import { Permissions } from './steps/Permissions';
 import { Demo } from './steps/Demo';
+import './onboarding.sakura.css';
 
 const STEPS = ['welcome', 'persona', 'whats-new', 'providers', 'permissions', 'demo'] as const;
 const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
@@ -98,11 +99,12 @@ export function Onboarding() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-background flex flex-col"
+      className="sakura-onboarding-root fixed inset-0 z-50 bg-background flex flex-col"
       role="dialog"
       aria-label="Onboarding"
+      data-vibespace-owned-chrome="onboarding"
     >
-      <header className="flex items-center justify-center pt-6 pb-2 shrink-0">
+      <header className="sakura-onboarding-header flex items-center justify-center pt-6 pb-2 shrink-0">
         <ProgressDots
           total={STEPS.length}
           current={step}
@@ -110,7 +112,7 @@ export function Onboarding() {
         />
       </header>
 
-      <div className="flex-1 min-h-0 relative overflow-hidden">
+      <div className="sakura-onboarding-stage flex-1 min-h-0 relative overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.div
             key={STEPS[step]}
@@ -131,7 +133,7 @@ export function Onboarding() {
       </div>
 
       {showChrome && (
-        <footer className="flex items-center justify-between gap-2 px-8 py-4 shrink-0 border-t border-border bg-panel/60 backdrop-blur-sm">
+        <footer className="sakura-onboarding-footer flex items-center justify-between gap-2 px-8 py-4 shrink-0 border-t border-border bg-panel/60 backdrop-blur-sm">
           <Button variant="ghost" size="sm" onClick={goBack}>
             <ArrowLeft className="h-3.5 w-3.5" />
             Back

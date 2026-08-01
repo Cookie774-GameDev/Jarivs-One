@@ -28,6 +28,7 @@ import type { LinkBehavior, LinkKind, QuickLink, QuickLinkGroup } from '@/types/
 import type { QuickLinkGroupId, WorkspaceId } from '@/types/common';
 import { useQuickLinks } from './hooks';
 import { isValidHotkey } from './useLinkHotkeys';
+import './launcher.sakura.css';
 
 interface LinkEditDialogProps {
   open: boolean;
@@ -69,7 +70,13 @@ function inferKind(url: string): LinkKind {
   return 'web';
 }
 
-export function LinkEditDialog({ open, onOpenChange, link, defaultGroupId, groups }: LinkEditDialogProps) {
+export function LinkEditDialog({
+  open,
+  onOpenChange,
+  link,
+  defaultGroupId,
+  groups,
+}: LinkEditDialogProps) {
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const allLinks = useQuickLinks(workspaceId);
   const isEdit = !!link;
@@ -146,7 +153,9 @@ export function LinkEditDialog({ open, onOpenChange, link, defaultGroupId, group
     // Best-effort conflict detection — surface a warning, don't block.
     if (trimmedHotkey) {
       const conflict = allLinks.find(
-        (l) => l.id !== link?.id && (l.hotkey ?? '').trim().toLowerCase() === trimmedHotkey.toLowerCase(),
+        (l) =>
+          l.id !== link?.id &&
+          (l.hotkey ?? '').trim().toLowerCase() === trimmedHotkey.toLowerCase(),
       );
       if (conflict) {
         toast.warning(
@@ -194,11 +203,21 @@ export function LinkEditDialog({ open, onOpenChange, link, defaultGroupId, group
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="max-w-md"
+        data-vibespace-owned-chrome="launcher"
+        data-launcher-surface="link-editor"
+        overlayProps={{
+          'data-sakura-overlay': 'launcher',
+          'data-vibespace-owned-chrome': 'launcher',
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit link' : 'New link'}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update this link\u2019s details.' : 'Add a one-click target to your launcher.'}
+            {isEdit
+              ? 'Update this link\u2019s details.'
+              : 'Add a one-click target to your launcher.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -223,7 +242,8 @@ export function LinkEditDialog({ open, onOpenChange, link, defaultGroupId, group
               placeholder="https://github.com or jarvis://schedule"
             />
             <div className="text-metadata text-muted-foreground mt-1">
-              Web URLs open externally. <span className="font-mono">jarvis://</span> URLs run a built-in action.
+              Web URLs open externally. <span className="font-mono">jarvis://</span> URLs run a
+              built-in action.
             </div>
           </div>
 
@@ -332,7 +352,9 @@ export function LinkEditDialog({ open, onOpenChange, link, defaultGroupId, group
                   <span className="text-warning">Use a combo like Mod+Shift+1.</span>
                 )
               ) : (
-                <span className="text-muted-foreground">Optional. Mod = {`\u2318`} on macOS, Ctrl elsewhere.</span>
+                <span className="text-muted-foreground">
+                  Optional. Mod = {`\u2318`} on macOS, Ctrl elsewhere.
+                </span>
               )}
             </div>
           </div>

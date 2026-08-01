@@ -6,6 +6,7 @@ import { toast } from '@/components/ui/toast';
 import { isTauri } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import './updates.sakura.css';
 
 const UPDATE_COUNTDOWN_SECONDS = 60 * 60;
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -38,10 +39,14 @@ function setSnoozedUntil(timestamp: number) {
   window.localStorage.setItem(SNOOZE_UNTIL_KEY, String(timestamp));
 }
 
-export function UpdateWarningHost() {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [targetVersion, setTargetVersion] = useState('');
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+export function UpdateWarningHost({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}) {
+  const [updateAvailable, setUpdateAvailable] = useState(!runtimeEffectsEnabled);
+  const [targetVersion, setTargetVersion] = useState(runtimeEffectsEnabled ? '' : '1.5.1');
+  const [timeLeft, setTimeLeft] = useState<number | null>(runtimeEffectsEnabled ? null : 300);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -133,12 +138,14 @@ export function UpdateWarningHost() {
   };
 
   const handleSnooze = () => {
+    if (!runtimeEffectsEnabled) return;
     setSnoozedUntil(Date.now() + SNOOZE_ONE_HOUR_MS);
     startCountdown();
     toast.info('Update snoozed', 'Jarvis will remind you again in 1 hour.');
   };
 
   const handleUpdateLater = () => {
+    if (!runtimeEffectsEnabled) return;
     ignoreNextCloseRef.current = true;
     setSnoozedUntil(Date.now() + UPDATE_LATER_MS);
     clearCountdown();
@@ -147,11 +154,13 @@ export function UpdateWarningHost() {
   };
 
   const handleUpdateNow = () => {
+    if (!runtimeEffectsEnabled) return;
     flushWorkspacePersistence('update-now-button');
     void triggerSilentUpdate();
   };
 
   useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (!isTauri || import.meta.env.DEV) return;
 
     const initialCheck = setTimeout(() => {
@@ -169,7 +178,7 @@ export function UpdateWarningHost() {
     };
     // Update checks intentionally run from one global host.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -183,6 +192,7 @@ export function UpdateWarningHost() {
 
   const handleOpenChange = (open: boolean) => {
     if (open) return;
+    if (!runtimeEffectsEnabled) return;
     if (ignoreNextCloseRef.current) {
       ignoreNextCloseRef.current = false;
       return;
@@ -195,6 +205,12 @@ export function UpdateWarningHost() {
       {isUpdating ? (
         <DialogContent
           data-monochrome-surface="update-warning-host"
+          data-vibespace-owned-chrome="updates"
+          data-update-appearance-state="updating"
+          overlayProps={{
+            'data-sakura-overlay': 'updates',
+            'data-vibespace-owned-chrome': 'updates',
+          }}
           className="flex max-w-sm flex-col items-center justify-center rounded-xl border border-border bg-panel p-6 text-center shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none"
         >
           <DialogTitle className="sr-only">Updating Jarvis</DialogTitle>
@@ -212,10 +228,16 @@ export function UpdateWarningHost() {
       ) : (
         <DialogContent
           data-monochrome-surface="update-warning-host"
+          data-vibespace-owned-chrome="updates"
+          data-update-appearance-state="countdown"
+          overlayProps={{
+            'data-sakura-overlay': 'updates',
+            'data-vibespace-owned-chrome': 'updates',
+          }}
           className="max-w-md rounded-xl border border-border bg-panel p-6 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none"
         >
           <DialogTitle className="flex items-center gap-2 text-lg text-ui-strong text-foreground">
-            <AlertTriangle className="h-5 w-5 animate-pulse text-accent-amber [html[data-theme=monochrome]_&]:animate-none" />
+            <AlertTriangle className="h-5 w-5 animate-pulse text-accent-amber [html[data-theme=monochrome]_&]:text-foreground [html[data-theme=monochrome]_&]:animate-none" />
             Automatic update alert
           </DialogTitle>
           <DialogDescription className="mt-2 text-secondary leading-relaxed text-muted-foreground">
@@ -224,7 +246,7 @@ export function UpdateWarningHost() {
           </DialogDescription>
 
           <div className="my-6 flex flex-col items-center justify-center rounded-lg border border-border/60 bg-background/50 p-4 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel">
-            <span className="mb-1 flex items-center gap-1 text-metadata font-semibold uppercase tracking-wider text-accent-cyan">
+            <span className="mb-1 flex items-center gap-1 text-metadata font-semibold uppercase tracking-wider text-accent-cyan [html[data-theme=monochrome]_&]:text-foreground">
               <Clock className="h-4 w-4" /> Time remaining
             </span>
             <span className="font-mono text-3xl font-bold tracking-widest text-foreground">

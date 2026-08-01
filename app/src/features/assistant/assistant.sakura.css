@@ -1,0 +1,60 @@
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'][data-sakura-overlay] {
+  background: hsl(var(--sakura-night-hsl) / 0.62);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'][role='dialog'] {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.42);
+  border-radius: 1.5rem;
+  background: var(--sakura-panel-fallback);
+  box-shadow:
+    inset 0 2px 0 hsl(var(--sakura-pink-hsl) / 0.78),
+    0 2.375rem 6.25rem hsl(var(--sakura-night-hsl) / 0.58);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'] input {
+  caret-color: var(--sakura-pink);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'] input::placeholder {
+  color: hsl(var(--sakura-peach-hsl) / 0.58);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'] button[title^='Re-run:'] {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.24);
+  background: hsl(var(--sakura-night-hsl) / 0.46);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'] button[title^='Re-run:']:hover {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.52);
+  color: var(--sakura-ivory);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'] :focus-visible {
+  outline: 2px solid hsl(var(--sakura-pink-hsl));
+  outline-offset: 3px;
+}
+
+@media (max-width: 38rem) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'][role='dialog'] {
+    top: 0.75rem;
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    overflow-y: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'],
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'] * {
+    transition-duration: 0.01ms;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='assistant'][role='dialog'] {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

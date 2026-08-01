@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { useVoiceStore } from './store';
 import { useAppForeground } from './useAppForeground';
+import './voice.sakura.css';
 
 const SPRING = 'spring' as const;
 const CAPTION_TRANSITION = { type: SPRING, stiffness: 360, damping: 32, mass: 0.7 };
@@ -55,6 +56,8 @@ export function VoiceCaption() {
       aria-label="Live voice caption"
       aria-live="off"
       data-motion-enabled={String(motionEnabled)}
+      data-vibespace-owned-chrome="voice"
+      data-voice-surface="caption"
     >
       <AnimatePresence>
         {visible && (

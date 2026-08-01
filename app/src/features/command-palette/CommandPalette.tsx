@@ -9,6 +9,7 @@ import { useUIStore } from '@/stores/ui';
 import type { ActionContext } from './actions';
 import { PAGE_GROUP_CLASS, PageContent } from './pages';
 import { PAGE_LABELS, type PageId, getCurrentPage, usePaletteStore } from './store';
+import './command-palette.sakura.css';
 
 /**
  * Per-page placeholder text for the search input.
@@ -186,10 +187,16 @@ export function CommandPalette() {
   return (
     <Dialog open={open} onOpenChange={setPaletteOpen}>
       <DialogPortal>
-        <DialogOverlay className="bg-black/60" />
+        <DialogOverlay
+          data-monochrome-overlay="command-palette"
+          data-sakura-overlay="command-palette"
+          data-vibespace-owned-chrome="command-palette"
+          className="bg-black/60 [html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none"
+        />
         <DialogPrimitive.Content
           aria-label="Command palette"
           data-monochrome-surface="command-palette"
+          data-vibespace-owned-chrome="command-palette"
           onEscapeKeyDown={(e) => {
             if (canPop) {
               // On a sub-page, Esc pops one level instead of closing.

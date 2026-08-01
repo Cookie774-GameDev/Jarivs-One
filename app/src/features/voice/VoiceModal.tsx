@@ -61,6 +61,7 @@ import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import './voice.sakura.css';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -868,6 +869,8 @@ export function VoiceModal() {
         )}
         aria-label="Jarvis voice session"
         data-monochrome-surface="voice"
+        data-vibespace-owned-chrome="voice"
+        data-voice-appearance-state={state}
         data-reduced-motion={reducedMotion ? 'true' : 'false'}
         data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceState : undefined}
         data-voice-state={KERNEL_SMOKE_ENABLED ? state : undefined}
