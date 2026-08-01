@@ -3,7 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import type { JarvisArtifactV1 } from './types';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
-import { isTauri, openExternal, openLocalArtifactPath } from '@/lib/tauri';
+import { isTauri, openExternal } from '@/lib/tauri';
 import {
   conciseJarvisArtifactSummary,
   isRenderableJarvisArtifact,
@@ -84,22 +84,6 @@ export function JarvisOutputsTab({ outputs }: { outputs: readonly JarvisArtifact
                     <span>Open</span>
                     <ArrowUpRight aria-hidden="true" />
                   </a>
-                ) : access?.kind === 'local_path' ? (
-                  <button
-                    className="jarvis-command-center__output-action"
-                    type="button"
-                    aria-label={accessLabel}
-                    onClick={() => {
-                      setAccessStatus('');
-                      void openLocalArtifactPath(access.target).then(
-                        () => setAccessStatus(`Opened output: ${output.title}`),
-                        () => setAccessStatus(`Could not open output: ${output.title}`),
-                      );
-                    }}
-                  >
-                    <span>Open</span>
-                    <ArrowUpRight aria-hidden="true" />
-                  </button>
                 ) : null}
               </span>
             </li>

@@ -12,8 +12,7 @@ const SUMMARY_LIMIT = 160;
 
 export type JarvisArtifactAccess =
   | Readonly<{ kind: 'external_uri'; target: string; hostname: string }>
-  | Readonly<{ kind: 'internal_uri'; target: string }>
-  | Readonly<{ kind: 'local_path'; target: string }>;
+  | Readonly<{ kind: 'internal_uri'; target: string }>;
 
 export function isRenderableJarvisArtifact(artifact: Readonly<JarvisArtifactV1>): boolean {
   return artifact.state !== 'quarantined' && validateJarvisArtifact(artifact).ok;
@@ -43,27 +42,15 @@ function safeArtifactUri(
   }
 }
 
-function absoluteLocalPath(value: string): string | undefined {
-  const path = value.trim();
-  if (!path || /[\u0000\r\n]/u.test(path)) return undefined;
-  if (/^[A-Za-z]:[\\/]/u.test(path)) return path;
-  if (/^\\\\[^\\/]+[\\/][^\\/]+/u.test(path)) return path;
-  if (/^\/(?!\/)/u.test(path)) return path;
-  return undefined;
-}
-
 export function resolveJarvisArtifactAccess(
   artifact: Readonly<JarvisArtifactV1>,
-  runtime: Readonly<{ desktop: boolean }>,
+  _runtime: Readonly<{ desktop: boolean }>,
 ): JarvisArtifactAccess | undefined {
   if (!isRenderableJarvisArtifact(artifact)) return undefined;
 
   const uri = safeArtifactUri(artifact.uri);
   if (uri) return uri;
-
-  if (!runtime.desktop || artifact.localReference?.kind !== 'path') return undefined;
-  const path = absoluteLocalPath(artifact.localReference.value);
-  return path ? Object.freeze({ kind: 'local_path', target: path }) : undefined;
+  return undefined;
 }
 
 export function conciseJarvisArtifactSummary(value: string | undefined): string | undefined {

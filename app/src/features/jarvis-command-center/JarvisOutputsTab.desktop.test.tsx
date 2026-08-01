@@ -55,29 +55,13 @@ describe('JarvisOutputsTab desktop local access', () => {
     expect(openLocalArtifactPath).not.toHaveBeenCalled();
   });
 
-  it('routes an absolute local artifact through the fail-closed desktop bridge', async () => {
+  it('renders a persisted local artifact without exposing an unverified native-open action', () => {
     const output = localArtifact();
     const view = render(<JarvisOutputsTab outputs={[output]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open output: Local report' }));
-
-    await waitFor(() =>
-      expect(openLocalArtifactPath).toHaveBeenCalledWith(output.localReference?.value),
-    );
+    expect(screen.getByText('Local report')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open output: Local report' })).toBeNull();
     expect(view.container.innerHTML).not.toContain(output.localReference?.value);
-    expect(screen.getByRole('status').textContent).toBe('Opened output: Local report');
-  });
-
-  it('announces a local-open failure without disclosing its path', async () => {
-    const output = localArtifact();
-    openLocalArtifactPath.mockRejectedValueOnce(new Error('native open failed'));
-    const view = render(<JarvisOutputsTab outputs={[output]} />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open output: Local report' }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toBe('Could not open output: Local report'),
-    );
-    expect(view.container.innerHTML).not.toContain(output.localReference?.value);
+    expect(openLocalArtifactPath).not.toHaveBeenCalled();
   });
 });

@@ -54,14 +54,11 @@ describe('resolveJarvisArtifactAccess', () => {
     });
   });
 
-  it('returns an absolute local path only for the desktop runtime', () => {
+  it('keeps renderer-supplied local paths unavailable without a native verified-artifact root', () => {
     const path = 'C:\\workspace\\reports\\launch.md';
     const output = artifact({ localReference: { kind: 'path', value: path } });
 
-    expect(resolveJarvisArtifactAccess(output, { desktop: true })).toEqual({
-      kind: 'local_path',
-      target: path,
-    });
+    expect(resolveJarvisArtifactAccess(output, { desktop: true })).toBeUndefined();
     expect(resolveJarvisArtifactAccess(output, { desktop: false })).toBeUndefined();
   });
 

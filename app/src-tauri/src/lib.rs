@@ -44,7 +44,6 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod agent_coordination;
-mod artifact_access;
 mod branding;
 mod browser_process;
 mod cli_bridge;
@@ -412,7 +411,6 @@ fn run_ordinary(
             app_version,
             refresh_app_branding,
             runtime_profile_query,
-            artifact_access::open_jarvis_artifact_path,
             kernel_host::register_kernel_host,
             kernel_host::kernel_client_request,
             kernel_host::kernel_host_respond,
@@ -586,7 +584,6 @@ greet
 app_version
 refresh_app_branding
 runtime_profile_query
-artifact_access::open_jarvis_artifact_path
 kernel_host::register_kernel_host
 kernel_host::kernel_client_request
 kernel_host::kernel_host_respond
@@ -704,9 +701,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "287ccd746380908f4b26ee878ceda5db4c492f85442545adcf2dbbf6b06bc09e";
+        "11903b8b0ae5be9582bdae4664c2e5a3865654d8f581ccfe647eb73fb30e3aa7";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "6e65713a41d1d6e1ecd9e4383fd29a413f9bf45235b19b2ab63be5abe7e175dd";
+        "731d89a6417a96e53a5d4785d924dd228d67e14da7894525c9ad9b15108ae685";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -854,7 +851,7 @@ wallpaper_master::wallpaper_full_cache_path";
         let joined = manifest.commands.join("\n");
         assert_eq!(
             joined, ORDINARY_HANDLER_AUTHORITY,
-            "the ordered handler must remain the frozen 120 production commands plus runtime_profile_query"
+            "the ordered handler must remain the frozen 119 production commands plus runtime_profile_query"
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(joined.as_bytes())),

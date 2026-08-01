@@ -334,17 +334,6 @@ export async function openExternal(url: string): Promise<void> {
 }
 
 /**
- * Open one contract-validated local artifact through the native desktop
- * boundary. Unlike URL opening, this deliberately has no browser fallback.
- */
-export async function openLocalArtifactPath(path: string): Promise<void> {
-  if (!isTauri) {
-    throw new Error('Local artifact access is only available in the desktop app.');
-  }
-  await tauriInvoke('open_jarvis_artifact_path', { path });
-}
-
-/**
  * Returns the persistent data directory for Jarvis, e.g.
  *   - Windows: `%APPDATA%\ai.jarvis.app`
  *   - macOS:   `~/Library/Application Support/ai.jarvis.app`
