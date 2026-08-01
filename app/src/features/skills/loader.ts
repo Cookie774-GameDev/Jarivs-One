@@ -121,7 +121,7 @@ const SEVERITY_VALUES = new Set<NonNullable<SkillManifest['severity']>>([
 ]);
 
 const DEFAULT_FILESYSTEM: SkillDiscoveryFilesystem = {
-  listDirectory,
+  listDirectory: (path, options) => listDirectory(path, options),
   readTextFile: (path, maxBytes, options) => readTextFileSample(path, maxBytes, options),
 };
 

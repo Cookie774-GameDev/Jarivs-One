@@ -36,8 +36,8 @@ afterEach(async () => {
 });
 
 describe('Prompt Forge persistent job store', () => {
-  it('preserves a V6 row while upgrading through the V7 job table', async () => {
-    expect(DB_VERSION).toBe(8);
+  it('preserves a V6 row while upgrading through the current job table', async () => {
+    expect(DB_VERSION).toBe(9);
     const name = databaseName('v6-upgrade');
     const legacy = new Dexie(name, TEST_INDEXED_DB);
     legacy.version(6).stores(STORES_V6);
