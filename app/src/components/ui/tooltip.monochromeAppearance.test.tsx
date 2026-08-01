@@ -8,12 +8,12 @@ describe('Tooltip MonoChrome appearance', () => {
       <TooltipProvider>
         <Tooltip open>
           <TooltipTrigger>Open tooltip</TooltipTrigger>
-          <TooltipContent>Visible tooltip</TooltipContent>
+          <TooltipContent data-testid="tooltip-content">Visible tooltip</TooltipContent>
         </Tooltip>
       </TooltipProvider>,
     );
 
-    const tooltip = screen.getByRole('tooltip');
+    const tooltip = screen.getByTestId('tooltip-content');
     expect(tooltip.className).toContain('shadow-lg');
     expect(tooltip.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
     expect(tooltip.className).toContain('[html[data-theme=monochrome]_&]:animate-none');

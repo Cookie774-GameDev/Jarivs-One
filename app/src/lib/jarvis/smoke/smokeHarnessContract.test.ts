@@ -25,6 +25,7 @@ const app = readCanonicalText(path.join(root, 'app', 'src', 'App.tsx'));
 
 const POWERSHELL_PROBE_TIMEOUT_MS = 30_000;
 const POWERSHELL_PROBE_TEST_TIMEOUT_MS = POWERSHELL_PROBE_TIMEOUT_MS + 5_000;
+const itWindows = process.platform === 'win32' ? it : it.skip;
 
 interface PowerShellContractProbe {
   status: number | null;
@@ -125,7 +126,7 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(launcher).not.toContain('$tauriIdentifier = "ai.jarvis.desktop.smoke.s$runId"');
   });
 
-  it(
+  itWindows(
     'creates an initially hidden non-focus-stealing native smoke window',
     () => {
       const result = getPowerShellContractProbe();
@@ -171,7 +172,7 @@ describe('shared intelligence kernel smoke harness contract', () => {
     }
   });
 
-  it(
+  itWindows(
     'loads the native window interop under Windows PowerShell before a smoke launch',
     () => {
       const result = getPowerShellContractProbe();
@@ -366,7 +367,7 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(driverRegistered).toBeLessThan(driverPoll);
   });
 
-  it(
+  itWindows(
     'rejects a reused root identity and a child older than its verified parent',
     () => {
       const result = getPowerShellContractProbe();
