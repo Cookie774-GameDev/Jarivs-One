@@ -666,7 +666,7 @@ export function NavSection({
             event.stopPropagation();
             onToggleCollapsed?.();
           }}
-          className="inline-flex h-6 w-6 min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=monochrome]_&]:text-muted-foreground"
+          className="inline-flex h-6 w-6 min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=monochrome]_&]:-mx-1 [html[data-theme=monochrome]_&]:text-muted-foreground"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
           aria-expanded={!collapsed}
         >

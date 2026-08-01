@@ -7,7 +7,7 @@ import { NavSection } from './NavPane';
 describe('NavPane Sakura shell contract', () => {
   afterEach(cleanup);
 
-  it('keeps long expanded labels truncated and the disclosure target at least 24px', () => {
+  it('keeps long labels truncated and a 24px disclosure inside the legacy MonoChrome footprint', () => {
     render(
       <NavSection
         id="long-label"
@@ -28,6 +28,7 @@ describe('NavPane Sakura shell contract', () => {
 
     expect(disclosure.className).toContain('min-h-6');
     expect(disclosure.className).toContain('min-w-6');
+    expect(disclosure.className).toContain('[html[data-theme=monochrome]_&]:-mx-1');
     expect(label.className).toContain('truncate');
   });
 
