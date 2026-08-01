@@ -1297,11 +1297,12 @@ export async function shiftedB0Fixture(): Promise<OrigamiChatFixture> {
       row.finished_at = shift(row.finished_at);
     }
   }
-  fixture.chat.updated_at = fixture.clock;
-  fixture.messages[0].created_at = fixture.clock - 1;
-  fixture.messages[0].updated_at = fixture.clock - 1;
-  fixture.messages[1].created_at = fixture.clock;
-  fixture.messages[1].updated_at = fixture.clock;
+  const stableMessageTime = fixture.clock - 60 * 60 * 1000;
+  fixture.chat.updated_at = stableMessageTime;
+  fixture.messages[0].created_at = stableMessageTime - 1;
+  fixture.messages[0].updated_at = stableMessageTime - 1;
+  fixture.messages[1].created_at = stableMessageTime;
+  fixture.messages[1].updated_at = stableMessageTime;
   return fixture;
 }
 
