@@ -23,6 +23,12 @@ const SUPPRESS_CONTEXT_MENU_CLASSES = [
   'jarvis-terminal-right-dragging',
   'jarvis-context-map-right-dragging',
 ];
+const CONTAINED_CONTEXT_MENU: MenuState = Object.freeze({
+  x: 24,
+  y: 24,
+  selection: '',
+  dictationTarget: null,
+});
 
 function resolveContextMenuDictationTarget(
   target: EventTarget | null,
@@ -33,14 +39,21 @@ function resolveContextMenuDictationTarget(
   return null;
 }
 
-export function JarvisContextMenu() {
-  const [menu, setMenu] = React.useState<MenuState | null>(null);
+export function JarvisContextMenu({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}) {
+  const [menu, setMenu] = React.useState<MenuState | null>(() =>
+    runtimeEffectsEnabled ? null : CONTAINED_CONTEXT_MENU,
+  );
   const composerSttEnabled = useUIStore((s) => s.composerStt);
   const setPaletteOpen = useUIStore((s) => s.setPaletteOpen);
   const toggleInspector = useUIStore((s) => s.toggleInspector);
   const setRoute = useUIStore((s) => s.setRoute);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const close = () => setMenu(null);
     const onContextMenu = (event: MouseEvent) => {
       if (event.defaultPrevented) return;
@@ -82,7 +95,7 @@ export function JarvisContextMenu() {
       window.removeEventListener('keydown', close);
       window.removeEventListener('resize', close);
     };
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   if (!menu) return null;
 

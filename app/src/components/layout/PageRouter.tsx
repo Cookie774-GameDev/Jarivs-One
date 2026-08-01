@@ -31,7 +31,7 @@ interface PlaceholderPageProps {
 function PlaceholderPage({ title, hint }: PlaceholderPageProps) {
   return (
     <div className="flex h-full w-full items-center justify-center bg-paper-warm p-8">
-      <div className="bg-paper rounded-lg shadow-soft p-12 text-center max-w-md">
+      <div className="bg-paper rounded-lg shadow-soft p-12 text-center max-w-md [html[data-theme=monochrome]_&]:shadow-none">
         <p className="text-metadata uppercase tracking-wider text-accent-copper mb-3">{hint}</p>
         <h2 className="font-display text-hero text-foreground">{title}</h2>
         <p className="mt-3 text-secondary text-muted-foreground">
@@ -52,9 +52,12 @@ function PageLoading() {
       <div
         role="status"
         aria-label="Loading page"
-        className="bg-paper rounded-lg shadow-soft px-5 py-3 flex items-center gap-3"
+        className="bg-paper rounded-lg shadow-soft px-5 py-3 flex items-center gap-3 [html[data-theme=monochrome]_&]:shadow-none"
       >
-        <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-accent-copper animate-breathe" />
+        <span
+          aria-hidden
+          className="h-2.5 w-2.5 rounded-full bg-accent-copper animate-breathe [html[data-theme=monochrome]_&]:animate-none"
+        />
         <span className="text-secondary text-muted-foreground">Loading…</span>
       </div>
     </div>

@@ -18,6 +18,7 @@ const TooltipContent = React.forwardRef<
     className={cn(
       'z-50 overflow-hidden rounded-md border border-border bg-elevated px-2 py-1 text-metadata text-foreground shadow-lg',
       'data-[state=delayed-open]:animate-fade-in data-[state=closed]:animate-fade-out',
+      '[html[data-theme=monochrome]_&]:animate-none [html[data-theme=monochrome]_&]:shadow-none',
       className,
     )}
     {...props}

@@ -1480,6 +1480,31 @@
   animation-delay: var(--sparkle-delay, 0ms);
 }
 
+html[data-theme='monochrome'] .mc7f-api-key-save-burst .jarvis-api-key-save-burst-wave {
+  background-image: none;
+  background-color: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+html[data-theme='monochrome'] .mc7f-api-key-save-burst .jarvis-api-key-save-burst-glow {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+html[data-theme='monochrome'] .mc7f-api-key-save-burst .jarvis-sparkle {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: none;
+  filter: none;
+}
+
 @keyframes jarvis-sparkle-burst {
   0% {
     transform: translate(-50%, -50%) rotate(var(--sparkle-angle, 0deg)) translateX(0) scale(0);
@@ -1610,6 +1635,12 @@
   padding: 6px;
   color: hsl(var(--foreground));
   backdrop-filter: blur(18px);
+}
+
+html[data-theme='monochrome'] .jarvis-context-menu {
+  background: hsl(var(--elevated));
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .jarvis-terminal-surface .xterm {
