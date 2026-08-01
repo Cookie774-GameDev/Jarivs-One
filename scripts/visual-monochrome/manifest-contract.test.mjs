@@ -27,6 +27,13 @@ const FRAME_SCHEMA_PATH = path.join(
 );
 const FRAME_SCHEMA_SHA256 = 'AB4C3BA00B2E8ABBD6A4B1223705DA94F6039A8BEB06BC1230EEEF12AE17B546';
 
+function canonicalTextSha256(source) {
+  return createHash('sha256')
+    .update(source.toString('utf8').replace(/\r\n?/gu, '\n'))
+    .digest('hex')
+    .toUpperCase();
+}
+
 function validateFrameAuthority(manifest, schema) {
   const errors = [];
   const frameIds = manifest.frames.map(({ id }) => id);
@@ -85,8 +92,9 @@ test('measured frame authority is source-locked, unique, ordered, bounded, and s
   const schemaSource = readFileSync(FRAME_SCHEMA_PATH);
   const schema = JSON.parse(schemaSource.toString('utf8'));
   assert.deepEqual(validateFrameAuthority(manifest, schema), []);
+  assert.equal(canonicalTextSha256(schemaSource), FRAME_SCHEMA_SHA256);
   assert.equal(
-    createHash('sha256').update(schemaSource).digest('hex').toUpperCase(),
+    canonicalTextSha256(Buffer.from(schemaSource.toString('utf8').replace(/\n/gu, '\r\n'))),
     FRAME_SCHEMA_SHA256,
   );
   assert.equal(MONOCHROME_BASELINE_MANIFEST.captures.length, 10);

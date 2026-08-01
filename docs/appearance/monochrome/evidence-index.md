@@ -57,7 +57,7 @@ application, external service, or the broader MC9 matrix.
   "schemaVersion": 1,
   "ledgerId": "vibespace-monochrome-evidence-index",
   "baselineCommit": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-  "generatedAtUtc": "2026-08-01T10:59:30.6514636Z",
+  "generatedAtUtc": "2026-08-01T12:00:55.1587225Z",
   "currentAuthority": {
     "sourceCommitSha": "49365b8268e0adefd7eb7df06330addd15e780f3",
     "b0R1AuthorityCommitSha": "9904684a1a6f9d73ad9c7d4035765528fd0deebf",
@@ -109,9 +109,9 @@ application, external service, or the broader MC9 matrix.
       "testedCommitSha": null,
       "testedTreeKind": "working_tree",
       "provenanceCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-      "startedAtUtc": "2026-07-30T05:02:20.8634790Z",
-      "finishedAtUtc": "2026-07-30T05:02:32.7288441Z",
-      "durationMs": 11865,
+      "startedAtUtc": "2026-08-01T12:00:48.5165995Z",
+      "finishedAtUtc": "2026-08-01T12:00:55.1587225Z",
+      "durationMs": 6642,
       "exitCode": 0,
       "environment": {
         "platform": "windows",
@@ -124,12 +124,12 @@ application, external service, or the broader MC9 matrix.
       "evidence": [
         {
           "path": "scripts/visual-monochrome/reference-artifacts.test.mjs",
-          "sha256": "171F0E1D36CB15175A511FCA82DAE0BD7F4499B307E90556F692CA2DEE7CB28D",
-          "result": "22 tests passed, 0 failed"
+          "sha256": "EBEDD8B4546C676F681D7EFA4282B945DA856FAB872AC270A6392ACE5A749E39",
+          "result": "23 tests passed, 0 failed"
         },
         {
           "path": "scripts/visual-monochrome/analyze-reference.mjs",
-          "sha256": "AA8DEC28FA5247A165BD3D4B7570060BA7C5016F057DFF7BB23BC5669F0125C2",
+          "sha256": "8C92F3BA161F8FECD28398ECFBA2A1F83FC6C9D66ACEBF21614878FEE0E90029",
           "result": "exact-basename guarded analyzer and staged validator exercised"
         },
         {
@@ -143,7 +143,7 @@ application, external service, or the broader MC9 matrix.
           "result": "validated measured ROI, typography, geometry, motion, and motif specification"
         }
       ],
-      "reviewer": "task199 working-tree analyzer and contract run",
+      "reviewer": "Task544 checkout-independent evidence rebind and contract run",
       "severityCounts": [
         { "severity": "critical", "count": 0 },
         { "severity": "important", "count": 0 },
@@ -173,9 +173,9 @@ application, external service, or the broader MC9 matrix.
       "testedCommitSha": null,
       "testedTreeKind": "working_tree",
       "provenanceCommitSha": "10ade2cb205be6aae93e239e8debd9eaf584b6de",
-      "startedAtUtc": "2026-07-30T05:02:20.8634790Z",
-      "finishedAtUtc": "2026-07-30T05:02:32.7288441Z",
-      "durationMs": 11865,
+      "startedAtUtc": "2026-08-01T12:00:48.5165995Z",
+      "finishedAtUtc": "2026-08-01T12:00:55.1587225Z",
+      "durationMs": 6642,
       "exitCode": 0,
       "environment": {
         "platform": "windows",
@@ -218,11 +218,11 @@ application, external service, or the broader MC9 matrix.
         },
         {
           "path": "scripts/visual-monochrome/analyze-reference.mjs",
-          "sha256": "AA8DEC28FA5247A165BD3D4B7570060BA7C5016F057DFF7BB23BC5669F0125C2",
+          "sha256": "8C92F3BA161F8FECD28398ECFBA2A1F83FC6C9D66ACEBF21614878FEE0E90029",
           "result": "guarded ffprobe/ffmpeg measurement, WOFF2 parsing, staged schema validation, and sanitized publication"
         }
       ],
-      "reviewer": "task199 working-tree measured-reference run",
+      "reviewer": "Task544 checkout-independent evidence rebind and contract run",
       "severityCounts": [
         { "severity": "critical", "count": 0 },
         { "severity": "important", "count": 0 },

@@ -117,6 +117,27 @@ async function sha256(relativePath) {
   return createHash('sha256').update(bytes).digest('hex').toUpperCase();
 }
 
+const TEXT_EVIDENCE_EXTENSIONS = new Set([
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.md',
+  '.mjs',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.yaml',
+  '.yml',
+]);
+
+function evidenceSha256(relativePath, bytes) {
+  const content = TEXT_EVIDENCE_EXTENSIONS.has(path.posix.extname(relativePath))
+    ? Buffer.from(bytes.toString('utf8').replace(/\r\n?/gu, '\n'))
+    : bytes;
+  return createHash('sha256').update(content).digest('hex').toUpperCase();
+}
+
 async function discoverPngs(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const paths = await Promise.all(
@@ -382,7 +403,7 @@ function sha256AtCommit(commitSha, relativePath) {
     maxBuffer: 16 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'ignore'],
   });
-  return createHash('sha256').update(bytes).digest('hex').toUpperCase();
+  return evidenceSha256(relativePath, bytes);
 }
 
 async function validateDocument(markdown) {
@@ -473,7 +494,10 @@ async function validateDocument(markdown) {
         }
         assert.equal(
           evidence.sha256,
-          await sha256(evidence.path),
+          evidenceSha256(
+            evidence.path,
+            await readFile(path.join(repoRoot, ...evidence.path.split('/'))),
+          ),
           `${record.id} accepted evidence must match the tested working tree`,
         );
       } else {
@@ -721,4 +745,11 @@ test('ledger validator rejects structural, temporal, hash, path, and secret drif
   await assert.rejects(validateDocument(replaceLedger(markdown, traversal)));
 
   await assert.rejects(validateDocument(`${markdown}\nBearer not-a-real-token`));
+});
+
+test('text evidence hashes are checkout-independent while binary evidence remains byte-exact', () => {
+  const lf = Buffer.from('first\nsecond\n');
+  const crlf = Buffer.from('first\r\nsecond\r\n');
+  assert.equal(evidenceSha256('proof.mjs', lf), evidenceSha256('proof.mjs', crlf));
+  assert.notEqual(evidenceSha256('proof.png', lf), evidenceSha256('proof.png', crlf));
 });
