@@ -400,7 +400,7 @@ describe('usePromptForgeComposer', () => {
     expect(jobs.size).toBe(0);
   });
 
-  it('does not offer public research without a real research port', () => {
+  it('offers the built-in real research port and permits an explicit administrative disable', async () => {
     const { repository } = memoryRepository();
     const { result } = renderHook(() =>
       usePromptForgeComposer({
@@ -434,10 +434,46 @@ describe('usePromptForgeComposer', () => {
       }),
     );
 
+    await waitFor(() => expect(result.current.recoveryLoading).toBe(false));
     act(() => result.current.setPrivacyMode('provider_allowed'));
     act(() => result.current.setAllowPublicResearch(true));
-    expect(result.current.publicResearchAvailable).toBe(false);
-    expect(result.current.allowPublicResearch).toBe(false);
+    expect(result.current.publicResearchAvailable).toBe(true);
+    expect(result.current.allowPublicResearch).toBe(true);
+
+    const disabled = renderHook(() =>
+      usePromptForgeComposer({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        projectId: null,
+        draft: 'Upgrade me.',
+        setDraft: vi.fn(),
+        originalAttachments: [],
+        contextAttachments: [],
+        additionalSources: [],
+        modelSelection: { mode: 'prefer_local' },
+        modelOptions: [
+          {
+            id: 'ollama-local:qwen3:8b',
+            providerId: 'ollama',
+            modelId: 'qwen3:8b',
+            label: 'Qwen 3 8B',
+            connectionId: 'ollama-local',
+            connectionMode: 'local',
+            localOnly: true,
+            available: true,
+          },
+        ],
+        currentChatSelection: { mode: 'none' },
+        offlineMode: false,
+        defaultLocalModel: 'qwen3:8b',
+        repository,
+        executor: { execute: vi.fn(async () => execution) },
+        researchPublicSources: null,
+        now: () => 100,
+      }),
+    );
+    await waitFor(() => expect(disabled.result.current.recoveryLoading).toBe(false));
+    expect(disabled.result.current.publicResearchAvailable).toBe(false);
   });
 
   it('does not expose raw persistence or provider errors in the Composer', async () => {

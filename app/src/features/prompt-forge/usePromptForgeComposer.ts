@@ -35,6 +35,7 @@ import {
 } from './promptForgeService';
 import type { PromptForgeSourceCandidate } from './sourcePack';
 import { promptForgeImageDisabledReason } from './promptForgeImages';
+import { githubPublicResearchPort } from './publicResearch';
 
 const RUNNING_STATUSES = new Set<PromptForgeStatus>([
   'collecting_context',
@@ -146,7 +147,7 @@ export interface UsePromptForgeComposerOptions {
   repository?: PromptForgeJobRepository;
   executor?: PromptForgeExecutorPort;
   retrieveContext?: PromptForgeContextRetriever;
-  researchPublicSources?: PromptForgePublicResearchPort;
+  researchPublicSources?: PromptForgePublicResearchPort | null;
   now?: () => number;
   createJobId?: () => string;
   recordActivity?: (activity: PromptForgeActivity) => void;
@@ -298,7 +299,11 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
   const recordActivity = options.recordActivity ?? recordPromptForgeActivity;
   const isRunning = RUNNING_STATUSES.has(status);
   const currentJobMatchesScope = jobMatchesScope(job, currentScope);
-  const publicResearchAvailable = options.researchPublicSources !== undefined;
+  const researchPublicSources =
+    options.researchPublicSources === undefined
+      ? githubPublicResearchPort
+      : options.researchPublicSources;
+  const publicResearchAvailable = researchPublicSources !== null;
   const effectiveAllowPublicResearch =
     publicResearchAvailable &&
     !options.offlineMode &&
@@ -392,9 +397,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
         ...(options.retrieveContext === undefined
           ? {}
           : { retrieveContext: options.retrieveContext }),
-        ...(options.researchPublicSources === undefined
-          ? {}
-          : { researchPublicSources: options.researchPublicSources }),
+        ...(researchPublicSources === null ? {} : { researchPublicSources }),
         now: clock,
       });
       return createPromptForgeService({
@@ -425,7 +428,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       options.defaultLocalModel,
       options.modelOptions,
       options.offlineMode,
-      options.researchPublicSources,
+      researchPublicSources,
       options.retrieveContext,
       recordActivity,
       repository,
