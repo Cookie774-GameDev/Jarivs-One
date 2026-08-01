@@ -1,0 +1,1522 @@
+{
+  "schemaVersion": 1,
+  "manifestKind": "routes",
+  "predecessorCommit": "23d617bf19e1eab98070c3477fd787a69bb157ae",
+  "sourceAuthority": "tests/visual/monochrome/route-manifest.ts",
+  "sourceCommit": "7eb708e184ee4f054a49d3e70d73e80fd4eb97ae",
+  "finalRouteIds": [
+    "chat",
+    "canvas",
+    "workbench",
+    "preview",
+    "browser",
+    "terminal",
+    "kanban",
+    "schedule",
+    "agents",
+    "agent-detail",
+    "project-detail",
+    "context",
+    "skills",
+    "benchmarks",
+    "history",
+    "tools",
+    "files",
+    "account"
+  ],
+  "settingsTabIds": [
+    "account",
+    "plans",
+    "providers",
+    "connections",
+    "hive",
+    "allaboutme",
+    "plugins",
+    "localmodels",
+    "appearance",
+    "voice",
+    "composerstt",
+    "phone",
+    "ambient",
+    "notifications",
+    "accessibility",
+    "hotkeys",
+    "jarvisactions",
+    "admin",
+    "about"
+  ],
+  "entries": [
+    {
+      "id": "access:app-host",
+      "kind": "access",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "feature-flagged",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/access/AccessAppHost.tsx"],
+      "writerPaths": ["app/src/features/access/AccessAppHost.tsx"],
+      "testPaths": ["app/src/features/access/AccessAppHost.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/access/AccessAppHost.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:access:app-host",
+      "fileLockPaths": ["app/src/features/access/AccessAppHost.tsx"],
+      "sharedReadOnlyPaths": [],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "access:banner",
+      "kind": "access",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "feature-flagged",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/access/AccessBanner.tsx"],
+      "writerPaths": ["app/src/features/access/AccessBanner.tsx"],
+      "testPaths": ["app/src/features/access/AccessBanner.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/access/AccessBanner.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:access:banner",
+      "fileLockPaths": ["app/src/features/access/AccessBanner.tsx"],
+      "sharedReadOnlyPaths": [],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "access:locked",
+      "kind": "access",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "feature-flagged",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/access/AccessPaywall.tsx"],
+      "writerPaths": ["app/src/features/access/AccessPaywall.tsx"],
+      "testPaths": ["app/src/features/access/AccessPaywall.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/access/AccessPaywall.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:access:locked",
+      "fileLockPaths": ["app/src/features/access/AccessPaywall.tsx"],
+      "sharedReadOnlyPaths": [],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "development:monochrome-workbench",
+      "kind": "development",
+      "routeId": null,
+      "auditStatus": "development-only",
+      "availability": "development-only",
+      "owner": "SK4",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-031"],
+      "sourcePaths": ["app/src/features/appearance/MonochromeWorkbench.tsx"],
+      "writerPaths": [],
+      "testPaths": ["app/src/features/appearance/MonochromeWorkbench.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/appearance/MonochromeWorkbench.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:development:monochrome-workbench",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/appearance/MonochromeWorkbench.tsx",
+        "app/src/features/appearance/MonochromeWorkbench.test.tsx"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "embedded:browser-operator",
+      "kind": "embedded",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7E",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019", "SAK-049"],
+      "sourcePaths": ["app/src/features/browser/browserActions.ts"],
+      "writerPaths": [],
+      "testPaths": ["app/src/features/browser/browserActions.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/browser/browserActions.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:embedded:browser-operator",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/browser/BrowserPage.tsx",
+        "app/src/features/browser/browserActions.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "embedded:command-center",
+      "kind": "embedded",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/jarvis-command-center/JarvisCommandCenter.tsx"],
+      "writerPaths": ["app/src/features/jarvis-command-center/JarvisCommandCenter.tsx"],
+      "testPaths": ["app/src/features/jarvis-command-center/JarvisCommandCenter.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/jarvis-command-center/JarvisCommandCenter.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:embedded:command-center",
+      "fileLockPaths": ["app/src/features/jarvis-command-center/JarvisCommandCenter.tsx"],
+      "sharedReadOnlyPaths": [],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "embedded:prompt-forge",
+      "kind": "embedded",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7D",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/prompt-forge/PromptForgeControl.tsx"],
+      "writerPaths": ["app/src/features/prompt-forge/PromptForgeControl.tsx"],
+      "testPaths": ["app/src/features/prompt-forge/PromptForgeControl.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/prompt-forge/PromptForgeControl.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:embedded:prompt-forge",
+      "fileLockPaths": ["app/src/features/prompt-forge/PromptForgeControl.tsx"],
+      "sharedReadOnlyPaths": [],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "future:messaging-channels",
+      "kind": "future",
+      "routeId": null,
+      "auditStatus": "unavailable",
+      "availability": "unavailable",
+      "owner": "SK7E",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019", "SAK-049"],
+      "sourcePaths": [],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": ["node --test tests/visual/monochrome/route-manifest.test.ts"],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:future:messaging-channels",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": "Messaging and channel management are not a production visual surface in the final source-derived union."
+    },
+    {
+      "id": "route:account",
+      "kind": "route",
+      "routeId": "account",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/account/AccountPage.tsx"],
+      "writerPaths": ["app/src/features/account/AccountPage.tsx"],
+      "testPaths": ["app/src/features/account/accountTabs.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/account/accountTabs.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:route:account",
+      "fileLockPaths": ["app/src/features/account/AccountPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:agent-detail",
+      "kind": "route",
+      "routeId": "agent-detail",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7C",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-049"],
+      "sourcePaths": ["app/src/features/agents/AgentDetail.tsx"],
+      "writerPaths": ["app/src/features/agents/AgentDetail.tsx"],
+      "testPaths": ["app/src/features/agents/AgentDetail.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/agents/AgentDetail.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:agent-detail",
+      "fileLockPaths": ["app/src/features/agents/AgentDetail.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:agents",
+      "kind": "route",
+      "routeId": "agents",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7C",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-049"],
+      "sourcePaths": ["app/src/features/agents/AgentManager.tsx"],
+      "writerPaths": ["app/src/features/agents/AgentManager.tsx"],
+      "testPaths": ["app/src/features/agents/AgentManager.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/agents/AgentManager.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:agents",
+      "fileLockPaths": ["app/src/features/agents/AgentManager.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:benchmarks",
+      "kind": "route",
+      "routeId": "benchmarks",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/benchmarks/BenchmarksPage.tsx"],
+      "writerPaths": ["app/src/features/benchmarks/BenchmarksPage.tsx"],
+      "testPaths": ["app/src/features/benchmarks/benchmarkData.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/benchmarks/benchmarkData.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:benchmarks",
+      "fileLockPaths": ["app/src/features/benchmarks/BenchmarksPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:browser",
+      "kind": "route",
+      "routeId": "browser",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7E",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019", "SAK-049"],
+      "sourcePaths": ["app/src/features/browser/BrowserPage.tsx"],
+      "writerPaths": ["app/src/features/browser/BrowserPage.tsx"],
+      "testPaths": ["app/src/features/browser/BrowserPage.approval.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/browser/BrowserPage.approval.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:browser",
+      "fileLockPaths": ["app/src/features/browser/BrowserPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:canvas",
+      "kind": "route",
+      "routeId": "canvas",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7D",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/canvas/CanvasPage.tsx"],
+      "writerPaths": ["app/src/features/canvas/CanvasPage.tsx"],
+      "testPaths": ["app/src/features/canvas/CanvasPage.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/canvas/CanvasPage.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:canvas",
+      "fileLockPaths": ["app/src/features/canvas/CanvasPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:chat",
+      "kind": "route",
+      "routeId": "chat",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/chat/ChatView.tsx"],
+      "writerPaths": ["app/src/features/chat/ChatView.tsx"],
+      "testPaths": ["app/src/features/chat/ChatView.origamiScope.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/chat/ChatView.origamiScope.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:chat",
+      "fileLockPaths": ["app/src/features/chat/ChatView.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:context",
+      "kind": "route",
+      "routeId": "context",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7B",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/context/ContextPage.tsx"],
+      "writerPaths": ["app/src/features/context/ContextPage.tsx"],
+      "testPaths": ["app/src/features/context/contextWorkspaceUi.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/context/contextWorkspaceUi.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:route:context",
+      "fileLockPaths": ["app/src/features/context/ContextPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:files",
+      "kind": "route",
+      "routeId": "files",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7B",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/files/FilesPage.tsx"],
+      "writerPaths": ["app/src/features/files/FilesPage.tsx"],
+      "testPaths": ["app/src/features/files/fileExplorerStore.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/files/fileExplorerStore.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:route:files",
+      "fileLockPaths": ["app/src/features/files/FilesPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:history",
+      "kind": "route",
+      "routeId": "history",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7C",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-049"],
+      "sourcePaths": ["app/src/features/history/HistoryPage.tsx"],
+      "writerPaths": ["app/src/features/history/HistoryPage.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:history",
+      "fileLockPaths": ["app/src/features/history/HistoryPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:kanban",
+      "kind": "route",
+      "routeId": "kanban",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/kanban/KanbanPage.tsx"],
+      "writerPaths": ["app/src/features/kanban/KanbanPage.tsx"],
+      "testPaths": ["app/src/features/kanban/milestoneKanban.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/kanban/milestoneKanban.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:kanban",
+      "fileLockPaths": ["app/src/features/kanban/KanbanPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:preview",
+      "kind": "route",
+      "routeId": "preview",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/preview/PreviewStudio.tsx"],
+      "writerPaths": ["app/src/features/preview/PreviewStudio.tsx"],
+      "testPaths": ["app/src/features/preview/previewDevices.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/preview/previewDevices.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:preview",
+      "fileLockPaths": ["app/src/features/preview/PreviewStudio.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:project-detail",
+      "kind": "route",
+      "routeId": "project-detail",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/projects/ProjectDetail.tsx"],
+      "writerPaths": ["app/src/features/projects/ProjectDetail.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:project-detail",
+      "fileLockPaths": ["app/src/features/projects/ProjectDetail.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:schedule",
+      "kind": "route",
+      "routeId": "schedule",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/schedule/SchedulePage.tsx"],
+      "writerPaths": ["app/src/features/schedule/SchedulePage.tsx"],
+      "testPaths": ["app/src/features/schedule/SchedulePage.modelPicker.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/schedule/SchedulePage.modelPicker.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:schedule",
+      "fileLockPaths": ["app/src/features/schedule/SchedulePage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:skills",
+      "kind": "route",
+      "routeId": "skills",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7C",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-049"],
+      "sourcePaths": ["app/src/features/skills/SkillsPage.tsx"],
+      "writerPaths": ["app/src/features/skills/SkillsPage.tsx"],
+      "testPaths": ["app/src/features/skills/SkillsPage.jarvisCreator.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/skills/SkillsPage.jarvisCreator.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:skills",
+      "fileLockPaths": ["app/src/features/skills/SkillsPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:terminal",
+      "kind": "route",
+      "routeId": "terminal",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7B",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/terminals/TerminalsPage.tsx"],
+      "writerPaths": ["app/src/features/terminals/TerminalsPage.tsx"],
+      "testPaths": ["app/src/features/terminals/TerminalsPage.command.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/terminals/TerminalsPage.command.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:route:terminal",
+      "fileLockPaths": ["app/src/features/terminals/TerminalsPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:tools",
+      "kind": "route",
+      "routeId": "tools",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7C",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-049"],
+      "sourcePaths": ["app/src/features/tools/ToolsPage.tsx"],
+      "writerPaths": ["app/src/features/tools/ToolsPage.tsx"],
+      "testPaths": ["app/src/features/tools/toolStore.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/tools/toolStore.test.ts --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:route:tools",
+      "fileLockPaths": ["app/src/features/tools/ToolsPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "route:workbench",
+      "kind": "route",
+      "routeId": "workbench",
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7B",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/workbench/WorkbenchPage.tsx"],
+      "writerPaths": ["app/src/features/workbench/WorkbenchPage.tsx"],
+      "testPaths": ["app/src/features/workbench/WorkbenchPage.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/workbench/WorkbenchPage.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:route:workbench",
+      "fileLockPaths": ["app/src/features/workbench/WorkbenchPage.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/stores/ui.ts",
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:about",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/About.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/About.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:about",
+      "fileLockPaths": ["app/src/features/settings/sections/About.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:accessibility",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Accessibility.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Accessibility.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:accessibility",
+      "fileLockPaths": ["app/src/features/settings/sections/Accessibility.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:account",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Account.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Account.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:account",
+      "fileLockPaths": ["app/src/features/settings/sections/Account.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:admin",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Admin.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Admin.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:admin",
+      "fileLockPaths": ["app/src/features/settings/sections/Admin.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:allaboutme",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/AllAboutMe.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/AllAboutMe.tsx"],
+      "testPaths": ["app/src/features/settings/sections/AllAboutMe.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/settings/sections/AllAboutMe.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:allaboutme",
+      "fileLockPaths": ["app/src/features/settings/sections/AllAboutMe.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:ambient",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Ambient.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Ambient.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:ambient",
+      "fileLockPaths": ["app/src/features/settings/sections/Ambient.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:appearance",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Appearance.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Appearance.tsx"],
+      "testPaths": ["app/src/features/settings/sections/Appearance.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/settings/sections/Appearance.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:appearance",
+      "fileLockPaths": ["app/src/features/settings/sections/Appearance.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:composerstt",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/ComposerStt.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/ComposerStt.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:composerstt",
+      "fileLockPaths": ["app/src/features/settings/sections/ComposerStt.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:connections",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/SubscriptionCliBridge.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/SubscriptionCliBridge.tsx"],
+      "testPaths": ["app/src/features/settings/SubscriptionCliBridge.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/settings/SubscriptionCliBridge.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:connections",
+      "fileLockPaths": ["app/src/features/settings/sections/SubscriptionCliBridge.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:hive",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Hive.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Hive.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:hive",
+      "fileLockPaths": ["app/src/features/settings/sections/Hive.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:hotkeys",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Hotkeys.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Hotkeys.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:hotkeys",
+      "fileLockPaths": ["app/src/features/settings/sections/Hotkeys.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:jarvisactions",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/JarvisActions.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/JarvisActions.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:jarvisactions",
+      "fileLockPaths": ["app/src/features/settings/sections/JarvisActions.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:localmodels",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/LocalModels.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/LocalModels.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:localmodels",
+      "fileLockPaths": ["app/src/features/settings/sections/LocalModels.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:notifications",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Notifications.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Notifications.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:notifications",
+      "fileLockPaths": ["app/src/features/settings/sections/Notifications.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:phone",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/PhoneVoice.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/PhoneVoice.tsx"],
+      "testPaths": ["app/src/features/settings/sections/PhoneVoice.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/settings/sections/PhoneVoice.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:phone",
+      "fileLockPaths": ["app/src/features/settings/sections/PhoneVoice.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:plans",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Plans.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Plans.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:plans",
+      "fileLockPaths": ["app/src/features/settings/sections/Plans.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:plugins",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/plugins/Plugins.tsx"],
+      "writerPaths": ["app/src/features/plugins/Plugins.tsx"],
+      "testPaths": ["app/src/features/plugins/Plugins.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/plugins/Plugins.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:plugins",
+      "fileLockPaths": ["app/src/features/plugins/Plugins.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:providers",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Providers.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Providers.tsx"],
+      "testPaths": ["tests/visual/monochrome/route-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:providers",
+      "fileLockPaths": ["app/src/features/settings/sections/Providers.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "settings:voice",
+      "kind": "settings",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/sections/Voice.tsx"],
+      "writerPaths": ["app/src/features/settings/sections/Voice.tsx"],
+      "testPaths": ["app/src/features/settings/sections/Voice.test.tsx"],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/settings/sections/Voice.test.tsx --maxWorkers=1 --minWorkers=1"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:settings:voice",
+      "fileLockPaths": ["app/src/features/settings/sections/Voice.tsx"],
+      "sharedReadOnlyPaths": [
+        "app/src/features/settings/SettingsModal.tsx",
+        "app/src/features/settings/settingsPrefetch.ts",
+        "tests/visual/monochrome/route-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    }
+  ]
+}
