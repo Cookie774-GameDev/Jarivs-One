@@ -1,11 +1,14 @@
-# Sakura Phase A documentation
+# Sakura production appearance documentation
 
-Status: **Phase A complete only; production implementation is pending and gated.**
+Status: **production UI/effects are implemented and the bounded real-app browser matrix passes.**
 
-This directory converts the six-file Sakura Dusk reference package into a dependency-ready
-documentation contract. It does not add a theme, CSS, scenery, routes, tests, commands, or
-runtime behavior. MonoChrome must first pass its controlled B0 replay, shared theme contracts
-must stabilize, and relevant locks must be released.
+This directory records the binding Sakura Dusk reference, the implemented production
+appearance, and its verified and still-pending evidence. The production slice includes the
+registered opt-in theme, exact-root-scoped semantic CSS, original seven-layer scene,
+deterministic petals, shared primitives, shell/routes/overlays, motion fallbacks, and
+account-free visual harness. Sakura remains UI/effects only: application behavior, state,
+providers, backend, billing, auth, terminals, voice lifecycle, and external systems are not
+changed by the appearance.
 
 Evidence labels used throughout:
 
@@ -13,7 +16,8 @@ Evidence labels used throughout:
 - **Observed** — directly read or visually inspected in the immutable reference package.
 - **Measured** — SHA/image metadata or Task390 WCAG color math.
 - **Derived** — a production recommendation consistent with authority.
-- **Pending** — requires a later gated implementation or browser/native evidence.
+- **Pending** — evidence not yet established, including native, assistive-technology, zoom, or
+  quantitative performance tracing.
 
 The shipping appearance is `Sakura` (`sakura`), Sakura Dusk only. Jarvis Core, VibeSpace,
 Default, MonoChrome, and VibeSpace’s separate Origami Chat styling must remain unchanged.
@@ -28,10 +32,10 @@ Default, MonoChrome, and VibeSpace’s separate Origami Chat styling must remain
   [ACCESSIBILITY.md](ACCESSIBILITY.md): semantic and measured acceptance gates.
 - [SCENIC_ARCHITECTURE.md](SCENIC_ARCHITECTURE.md),
   [component-mapping.md](component-mapping.md), and [ROUTE_MATRIX.md](ROUTE_MATRIX.md):
-  future production seams.
+  implemented production seams and bounded route evidence.
 - [PERFORMANCE.md](PERFORMANCE.md), [SECURITY.md](SECURITY.md),
   [VISUAL_TEST_PLAN.md](VISUAL_TEST_PLAN.md), and [REGRESSION_PLAN.md](REGRESSION_PLAN.md):
-  future verification contracts.
+  current controls, verified browser evidence, and remaining gates.
 - [REGRESSION_RESULTS.md](REGRESSION_RESULTS.md), [ROLLBACK.md](ROLLBACK.md), and
   [FINAL_HANDOFF.md](FINAL_HANDOFF.md): current evidence state and transition checklist.
 

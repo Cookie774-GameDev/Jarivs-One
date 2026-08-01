@@ -23,6 +23,12 @@ prototype code.
 - Billing, auth, access, terminal execution, PTY, voice, and local bridge behavior remain
   unchanged and require their existing security tests.
 
-Future review must inspect the exact diff for unsafe URLs, data URLs, `dangerouslySetInnerHTML`,
-global selectors, persistence/version changes, secret-bearing fixtures, and webview boundary
-violations. Phase A accessed no network or external system and copied no binary.
+Current source/reference/harness contracts check exact theme scoping, local assets, absence of
+remote or secret-bearing fixtures, safe reference provenance, and default-theme isolation. The
+Sakura slice adds no dependency, backend, provider, capability, network path, external-system
+mutation, or copied reference binary. It does not alter auth, billing, terminal, voice,
+persistence, or webview behavior.
+
+A whole-PR security/privacy review and repository-wide dependency/secret scan remain separate
+delivery gates. Browser screenshots are deterministic local/test-only evidence and must remain
+free of private user data.

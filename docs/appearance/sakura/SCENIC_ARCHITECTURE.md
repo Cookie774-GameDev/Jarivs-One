@@ -1,7 +1,7 @@
 # Sakura scenic architecture
 
-Status: SK2 production scenic host and original local vector asset are active;
-later route/component styling and performance traces remain pending.
+Status: production scenic host, original local vector asset, route intensity, and consuming
+shell/route presentation are active; quantitative performance traces remain pending.
 
 ## Production boundary
 

@@ -105,7 +105,7 @@ test('Sakura is a separately imported final theme layer and every selector is ex
   );
 });
 
-test('Sakura preserves the exact Phase A palette and lossless HSL channel authority', () => {
+test('Sakura preserves the exact frozen palette and lossless HSL channel authority', () => {
   const css = read(cssPath);
   const tokens = JSON.parse(read(tokenPath));
   const names = {
@@ -255,21 +255,42 @@ test('Sakura freezes bounded material, geometry, typography, and motion tokens',
   }
 });
 
-test('Sakura authority truthfully records the active layers and pending later phases', () => {
+test('Sakura authority truthfully records implemented UI effects and bounded browser evidence', () => {
   const tokens = JSON.parse(read(tokenPath));
-  assert.equal(tokens.status, 'sk0b-production-token-layer-active-later-phases-pending');
+  assert.equal(tokens.status, 'production-ui-effects-implemented-browser-verified');
+  assert.deepEqual(tokens.productionSceneGradient.stops, [
+    { offset: 0, color: '#F5CEC8' },
+    { offset: 24, color: '#EEABB7' },
+    { offset: 46, color: '#A082AA' },
+    { offset: 70, color: '#4E518A' },
+    { offset: 100, color: '#140E30' },
+  ]);
+  assert.equal(tokens.material.panelNightAlpha, 0.76);
+  assert.equal(tokens.material.strongPanelIndigoAlpha, 0.91);
+  assert.equal(tokens.material.softIvoryAlpha, 0.07);
+  assert.equal(tokens.material.grainOpacity, 0.08);
+  assert.equal(tokens.material.blurPx, 14);
+  assert.deepEqual(tokens.evidence.realAppBrowserMatrix, {
+    status: 'pass',
+    tests: 8,
+    viewports: ['1440x900', '1024x768'],
+    modes: ['normal', 'reduced-motion', 'forced-colors', 'default-theme-isolation'],
+    pixelDiffEquivalence: false,
+  });
 
   const documentation = read(tokenDocumentationPath);
   const normalizedDocumentation = documentation.replaceAll(/\s+/gu, ' ');
   assert.match(
     documentation,
-    /Status: production token, scene, and material layers active; route, primitive, and final\s+acceptance remain pending\./u,
+    /Status: production token, scene, shared primitive, shell, route, and overlay presentation is\s+implemented\./u,
   );
   assert.match(
     normalizedDocumentation,
-    /route, primitive, and final acceptance remain pending/iu,
+    /Browser evidence is bounded to the deterministic 8\/8 real-app matrix/iu,
   );
+  assert.match(normalizedDocumentation, /Native, assistive-technology, zoom, and performance/u);
   assert.doesNotMatch(documentation, /\bFuture Sakura CSS should\b/u);
+  assert.doesNotMatch(documentation, /route, primitive, and final acceptance remain pending/iu);
 });
 
 test('Sakura is local, bounded, motion-safe, and forced-colors compatible', () => {

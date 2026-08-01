@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "phase-a-reference-analysis",
+  "status": "binding-reference-production-implemented",
   "authorityOrder": [
     "VibeSpace_Sakura_Appearance_Master_Goal.md",
     "STYLE_SPEC.md",
@@ -34,14 +34,21 @@
     "depthLayers": { "minimum": 5, "maximum": 7 },
     "rendering": "broad cel-painted color masses with crisp silhouettes",
     "blurLimitedTo": ["fog", "glow", "distant atmosphere"],
-    "motifs": ["peach-to-indigo sky", "mountain layers", "mist or water", "ink foreground", "restrained pavilion or lantern", "sparse petals"]
+    "motifs": [
+      "peach-to-indigo sky",
+      "mountain layers",
+      "mist or water",
+      "ink foreground",
+      "restrained pavilion or lantern",
+      "sparse petals"
+    ]
   },
   "evidenceClasses": {
     "authoritative": "Explicit master-goal or STYLE_SPEC requirement",
     "observed": "Directly read or visually inspected reference-package fact",
     "measured": "Task390 WCAG color-math result or verified file/image metadata",
     "derived": "Recommended production mapping that preserves authority",
-    "pending": "Requires later production implementation or browser/native evidence"
+    "pending": "Evidence not yet established, such as native, assistive-technology, zoom, quantitative performance, or pixel-diff equivalence"
   },
-  "productionState": "No Sakura production implementation is claimed by this document."
+  "productionState": "Sakura UI/effects are implemented. The deterministic real-app browser matrix passes 8/8 across 1440x900 and 1024x768; this does not claim pixel-diff, native, assistive-technology, zoom, performance-trace, or whole-PR completion."
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "sk0b-production-token-layer-active-later-phases-pending",
+  "status": "production-ui-effects-implemented-browser-verified",
   "theme": {
     "id": "sakura",
     "label": "Sakura",
@@ -32,12 +32,27 @@
       { "offset": 100, "color": "#140E30" }
     ]
   },
+  "productionSceneGradient": {
+    "angleDegrees": 180,
+    "stops": [
+      { "offset": 0, "color": "#F5CEC8" },
+      { "offset": 24, "color": "#EEABB7" },
+      { "offset": 46, "color": "#A082AA" },
+      { "offset": 70, "color": "#4E518A" },
+      { "offset": 100, "color": "#140E30" }
+    ]
+  },
   "material": {
     "panelNightAlphaRange": [0.72, 0.92],
+    "panelNightAlpha": 0.76,
+    "strongPanelIndigoAlpha": 0.91,
     "softIvoryAlphaRange": [0.05, 0.11],
+    "softIvoryAlpha": 0.07,
+    "grainOpacity": 0.08,
     "decorativeStroke": { "color": "#FFEFF1", "alpha": 0.19 },
     "decorativeStrokeStrong": { "color": "#FFEFF1", "alpha": 0.32 },
     "blurPxRange": [14, 18],
+    "blurPx": 14,
     "radiiPx": { "compactMin": 9, "compactMax": 12, "card": 16, "feature": 23 }
   },
   "typography": {
@@ -86,5 +101,15 @@
     "panelTransitionMsRange": [180, 280],
     "petalDrift": "slow and sparse",
     "reducedMotion": "disable animation and transitions; preserve final state"
+  },
+  "evidence": {
+    "realAppBrowserMatrix": {
+      "status": "pass",
+      "tests": 8,
+      "viewports": ["1440x900", "1024x768"],
+      "modes": ["normal", "reduced-motion", "forced-colors", "default-theme-isolation"],
+      "pixelDiffEquivalence": false
+    },
+    "pending": ["native", "assistive-technology", "zoom", "performance-trace"]
   }
 }

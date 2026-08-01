@@ -2,9 +2,10 @@
 
 ## Preserved-theme baseline
 
-After MonoChrome stabilizes but before production Sakura writes, capture Jarvis Core,
-VibeSpace, Default, and MonoChrome on Chat, Context, Terminal, Settings, Account, Canvas, and
-Browser Chat shell. After each Sakura slice, compare the same build/fixture.
+The passing real-app matrix proves default-theme Sakura-scene isolation. A broader preserved
+theme screenshot matrix for Jarvis Core, VibeSpace, Default, and MonoChrome on Chat, Context,
+Terminal, Settings, Account, Canvas, and Browser Chat remains a delivery gate. Compare the same
+build and deterministic fixture.
 
 Reject unscoped body, font, radius, backdrop, scene, petal, or portal rules. Explicitly verify:
 

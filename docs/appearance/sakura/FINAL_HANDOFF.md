@@ -1,50 +1,61 @@
-# Sakura final handoff checklist
+# Sakura implementation and evidence handoff
 
-This is a future completion checklist. Phase A checks only the documentation rows.
+Status: production UI/effects are implemented. Exact-reference, source/DOM, and bounded
+real-app browser evidence pass; remaining delivery gates are explicit below.
 
-## Phase A
+## Implemented and verified
 
-- [x] Six exact files inventoried with bytes, SHA-256, purpose, copy policy, and image size.
-- [x] Authority order and Sakura Dusk-only scope recorded.
-- [x] Reference HTML analyzed without importing fake runtime/content.
-- [x] Exact palette, geometry, typography, material, motion, and restraint documented.
-- [x] Task390 ratios, alpha rules, boundary/focus tokens, destructive treatment, opaque
-  fallback, forced colors, and reduced motion encoded.
-- [x] Future component/route architecture, visual/regression plan, security, performance,
-  rollback, and evidence taxonomy documented.
-- [x] All three JSON artifacts parsed; all internal documentation links resolved; current
-  production seams checked where applicable; explicitly future/proposed production paths
-  remain pending.
+- [x] The binding reference is
+      `C:\Users\viper\Downloads\VibeSpace-Sakura-UI-Preview (1)\VibeSpace-Sakura-UI-Preview\index.html`
+      with SHA-256
+      `76611A6BBFF4E0744F30EB95F254FAFE036DC035D6E9E5957066F0780B342FA3`.
+- [x] Reference provenance, copy policy, palette, typography, material, motion, and restraint
+      are frozen in human- and machine-readable contracts.
+- [x] Sakura is the fifth opt-in theme; legacy migration, parsing, persistence, synchronization,
+      commands, Appearance selection, and deterministic actions preserve existing behavior.
+- [x] The original seven-layer scenic host is local, inert, Sakura-only, bounded,
+      fallback-safe, and isolated from remote content, Canvas content, terminal content, and Pixel
+      Pet.
+- [x] Semantic tokens, shared primitives, shell regions, representative routes, windows,
+      portals, Chat/JARVIS/voice surfaces, and overlays consume exact-root-scoped Sakura
+      presentation.
+- [x] Opaque fallbacks, reduced motion, forced colors, deterministic petals, and shared motion
+      policy are implemented.
+- [x] No prototype mock data, runtime, copied artwork, dependency, backend, store, provider,
+      billing, auth, or external-system change ships as part of the appearance.
+- [x] Consolidated reference, token, contrast, scene, motion, route, overlay, and harness
+      contracts pass at the completion checkpoint.
+- [x] Protected VoiceModal stop/STT smoke regressions pass 12/12.
+- [x] The account-free real-app browser matrix passes 8/8 across 1440×900 and 1024×768,
+      producing 16 evidence captures for representative routes, reduced motion, forced colors,
+      and default-theme isolation.
 
-## Gate before production
+## Evidence boundaries
 
-- [ ] MonoChrome controlled B0 replay accepted.
-- [ ] Shared theme contracts integrated and stable.
-- [ ] Relevant locks released and route surfaces stable.
-- [ ] Controller activates SK0B with exact owned paths.
+The browser matrix asserts real production composition hooks, materials, scene policy, route
+selection, focus semantics in forced colors, reduced-motion behavior, default-theme isolation,
+and horizontal overflow. It intentionally uses no screenshot-baseline matcher and therefore
+does not establish pixel-diff, SSIM, Delta-E, geometry-delta, or rendered-font equivalence.
 
-## Future implementation
+The following remain pending:
 
-- [ ] Registry order is Jarvis Core, VibeSpace, Default, MonoChrome, Sakura.
-- [ ] Legacy light/dark/system migration behavior is unchanged; Sakura is opt-in.
-- [ ] Appearance, parser/aliases, persistence, sync, detached windows, and deterministic
-  JARVIS action are tested.
-- [ ] Scenic host is Sakura-only, inert, original, bounded, fallback-safe, and pet/webview-safe.
-- [ ] Semantic tokens meet `ACCESSIBILITY.md` on every permitted surface.
-- [ ] Shared primitives, shell, routes, portals, loading/error/empty/disabled states complete.
-- [ ] No prototype mock data/copy/runtime or external artwork ships.
+- [ ] complete keyboard-only traversal and 200% zoom/reflow matrix;
+- [ ] screen-reader or other assistive-technology validation;
+- [ ] quantitative CPU/GPU/frame-time/memory performance trace;
+- [ ] Windows-native high-contrast and packaged Tauri smoke;
+- [ ] broader preserved-theme screenshot matrix;
+- [ ] whole-PR app/build/Rust/security/release verification and controller integration review.
 
-## Future verification and delivery
+## Scope and rollback
 
-- [ ] Focused tests, typecheck, full app tests, build, applicable Rust checks.
-- [ ] Visual matrix at all viewports/modes with full-page recapture.
-- [ ] Preserved-theme and Origami/MonoChrome regression baselines unchanged.
-- [ ] Keyboard, screen reader, zoom, contrast, forced colors, and reduced motion pass.
-- [ ] Performance trace, security/privacy review, dependency/secret scan.
-- [ ] Native Windows and packaged Tauri smoke; other platforms accurately reported.
-- [ ] Exact evidence, remaining risks, rollback proof, and lock release recorded.
-- [ ] No merge, deployment, release, or separate Sakura PR without authority.
+Sakura is UI/effects only. It changes no product functionality, backend, store, provider,
+account, billing, auth, terminal, voice lifecycle, or external system. Roll back through the
+atomic production slices in [ROLLBACK.md](ROLLBACK.md), then rerun focused contracts. Do not
+delete documentation, reset the shared worktree, or discard unrelated work as a rollback.
 
-Exact next action after Phase A: controller waits for MonoChrome B0 acceptance, then activates
-the bounded SK0B theme-registry/token slice. Scenic, SK7A, route styling, and visual verification
-remain queued.
+## Exact next action
+
+The controller reviews the integrated diff and chooses whether to gather the still-pending
+performance, native, assistive-technology, zoom/keyboard, and preserved-theme evidence before
+the separate whole-PR completion decision. No merge, deployment, release, or pixel-equivalence
+claim follows automatically from this handoff.

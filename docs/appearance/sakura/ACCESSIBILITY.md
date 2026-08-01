@@ -1,7 +1,8 @@
 # Sakura accessibility contract
 
-Status: measured token feasibility is complete; browser, assistive-technology, zoom, and
-native evidence are pending.
+Status: measured token/contrast gates and bounded browser reduced-motion/forced-colors evidence
+pass. Assistive-technology, dedicated keyboard-only, 200% zoom, narrow-native, and packaged
+Tauri evidence remain pending.
 
 ## Thresholds
 
@@ -14,15 +15,15 @@ native evidence are pending.
 
 ## Measured opaque pairs
 
-| Foreground | Night | Night2 | Indigo | Periwinkle | Normal-text result |
-|---|---:|---:|---:|---:|---|
-| Ivory | 17.48 | 14.20 | 11.64 | 6.92 | AA all |
-| Pink | 9.82 | 7.98 | 6.54 | 3.89 | fail Periwinkle |
-| Coral | 6.43 | 5.23 | 4.28 | 2.55 | fail Indigo and Periwinkle |
-| Gold | 13.61 | 11.06 | 9.06 | 5.39 | AA all |
-| Mint | 10.72 | 8.71 | 7.14 | 4.24 | fail Periwinkle |
-| Peach | 12.81 | 10.41 | 8.53 | 5.07 | AA all |
-| Lavender | 5.52 | 4.49 | 3.68 | 2.19 | normal text only on Night |
+| Foreground | Night | Night2 | Indigo | Periwinkle | Normal-text result         |
+| ---------- | ----: | -----: | -----: | ---------: | -------------------------- |
+| Ivory      | 17.48 |  14.20 |  11.64 |       6.92 | AA all                     |
+| Pink       |  9.82 |   7.98 |   6.54 |       3.89 | fail Periwinkle            |
+| Coral      |  6.43 |   5.23 |   4.28 |       2.55 | fail Indigo and Periwinkle |
+| Gold       | 13.61 |  11.06 |   9.06 |       5.39 | AA all                     |
+| Mint       | 10.72 |   8.71 |   7.14 |       4.24 | fail Periwinkle            |
+| Peach      | 12.81 |  10.41 |   8.53 |       5.07 | AA all                     |
+| Lavender   |  5.52 |   4.49 |   3.68 |       2.19 | normal text only on Night  |
 
 Night text on Pink/Coral/Gold/Mint/Peach measures 9.82/6.43/13.61/10.72/12.81.
 
@@ -72,6 +73,12 @@ cannot communicate destruction. Coral remains primary and must never double as d
 - Decorative scene and petals are `aria-hidden` and `pointer-events:none`. Pause scene motion
   when the document is hidden.
 
-Future acceptance includes keyboard-only navigation, screen reader naming, 200% zoom, narrow
-desktop, high contrast/forced colors, reduced motion, and Windows native verification. No such
-browser/native pass is claimed here.
+The account-free real-app matrix passes reduced-motion and forced-colors scenarios at 1440×900
+and 1024×768. It verifies that the shell/scene remain available under reduced motion while
+petals are suppressed, and that forced colors removes scenic dependency while preserving route
+and visible focus semantics. Normal representative routes also pass horizontal-overflow checks
+at both viewports.
+
+This evidence does not constitute a screen-reader or assistive-technology audit, a complete
+keyboard-only traversal, a 200% zoom/reflow pass, Windows native high-contrast proof, or
+packaged Tauri verification. Those remain pending.

@@ -1,12 +1,18 @@
 # Sakura semantic token specification
 
-Status: production token, scene, and material layers active; route, primitive, and final
-acceptance remain pending.
+Status: production token, scene, shared primitive, shell, route, and overlay presentation is
+implemented.
 
 `design-tokens.json` is the machine-readable palette and contrast authority integrated by the
-shared theme contract. The exact-root-scoped stylesheet now applies those semantics to the
-production scene and bounded materials. Route-specific treatment, shared-primitive refinement,
-and final acceptance still require their later gates.
+shared theme contract. The exact-root-scoped stylesheet applies those semantics to the scene,
+bounded materials, shared primitives, shell, representative routes, and overlays. Browser
+evidence is bounded to the deterministic 8/8 real-app matrix; it does not establish pixel-diff
+equivalence or native behavior. Native, assistive-technology, zoom, and performance evidence
+remain pending.
+
+The JSON keeps the prototype’s observed `sceneGradient` separate from the active
+`productionSceneGradient`, which uses approved palette tokens rather than silently rewriting
+reference provenance.
 
 ## Authoritative palette roles
 
@@ -37,13 +43,13 @@ edge alone fails 3:1, so a separate >=3:1 outline is required.
 
 ## Active material authority
 
-- Main panels use 82% Night2 and strong elevated panels use 91% Indigo, with an opaque semantic
-  fill declared first and 16px backdrop blur added only through feature detection.
+- Main panels use 76% Night2 and strong elevated panels use 91% Indigo, with an opaque semantic
+  fill declared first and 14px backdrop blur added only through feature detection.
 - Soft cards use 7% Ivory mixed over Night2 when `color-mix()` exists; the preblended opaque
   `#322F5C` fallback is the first declaration.
 - Decorative hairlines use 19% or 32% Ivory. Essential controls use at least 39%; destructive
   boundaries use 52%.
-- Grain is a local CSS-gradient overlay at 6% opacity. There are no remote fonts, images, or
+- Grain is a local CSS-gradient overlay at 8% opacity. There are no remote fonts, images, or
   imports in the Sakura stylesheet.
 - Radius authority is 10–12px for compact controls, 16px for standard large surfaces, 23px for
   feature surfaces, and 24px for shell-scale geometry.

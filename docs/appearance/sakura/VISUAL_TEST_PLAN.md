@@ -1,24 +1,34 @@
 # Sakura deterministic visual test plan
 
-Status: planned only. No browser capture or pixel-match claim exists in Phase A.
+Status: the account-free real-app browser matrix passes 8/8. It produces evidence captures and
+DOM/computed-style assertions; it intentionally makes no pixel-match claim.
 
-## Preconditions
+## Implemented harness
 
-MonoChrome B0 accepted; Sakura production slices integrated; isolated unused port and separate
-app-data/IndexedDB/cache/log/browser profile; task-owned process IDs; protected localhost
-untouched. Use real production components with deterministic local/test-only data.
+The harness targets an externally owned loopback app at `http://127.0.0.1:5187` (or a validated
+loopback override), starts no process, requires no account, blocks service workers, and uses
+deterministic local/test-only state with real production components. It records the binding
+reference path/hash in configuration and fixtures.
 
 ## Viewports and modes
 
-Primary 1440×900; also 1672×941, 1280×800, 1024×768, narrow desktop, and high DPI. Capture
-normal, reduced motion, forced colors/high contrast where supported, and opaque fallback.
+Verified projects are 1440×900 and 1024×768 at DPR 1. Each runs normal representative routes,
+reduced motion, forced colors, and ordinary/default-theme isolation. The previously proposed
+1672×941, 1280×800, narrower desktop, high-DPI, and opaque-filter-fallback cases are not
+claimed as captured.
 
 ## Capture matrix
 
-Use the route/surface list in `ROUTE_MATRIX.md`, including Chat, JARVIS expanded, Prompt Forge,
-Context Map, Terminal, Workbench, Kanban, Schedule, Agents, Skills, Tools, Files, History,
-Canvas chrome, Browser Chat/operator chrome, Settings Appearance, Account, Usage,
-Billing/Plans, access lock, dialog, tooltip, toast, narrow, and reduced motion.
+The passing matrix has four tests in each of two projects:
+
+1. Chat, Canvas, Kanban, Schedule, and Benchmarks composition/material/overflow.
+2. Reduced-motion shell/scene preservation with petals suppressed.
+3. Forced-colors route and visible-focus semantics with scenic dependency removed.
+4. Default-theme isolation with no Sakura shell, scene, or petals.
+
+This yields 8/8 test results and 16 named evidence captures. The broader route/surface inventory
+in `ROUTE_MATRIX.md` remains useful for later exhaustive capture; the current matrix is
+representative.
 
 ## Reference comparison
 
@@ -27,17 +37,18 @@ tabs 5%, central content 20%, messages 10%, composer 10%, inspector 10%, decorat
 Track major edge delta, color delta, radius delta, fallback state, pixel diff, SSIM where
 available, and manual review.
 
-Targets are geometry within 4px, primary palette Delta E within 6, panel radius within 2px,
-strong structural similarity, no clipping, and no inaccessible contrast. These are goals, not
-passes until measured. `preview.png` is the full-page authority; future crops are diagnostic.
-After any crop-focused adjustment, recapture the full page and reject local gains that harm
-overall balance.
+The implemented matrix checks composition hooks, nontransparent material, positive radius,
+enhanced/static scene behavior, route selection, no Vite error overlay, and no horizontal
+overflow. It uses ordinary screenshots as evidence but no `toHaveScreenshot` baselines.
+Geometry-within-4px, Delta E, panel-radius delta, pixel diff, SSIM, and rendered-font
+equivalence remain unmeasured goals. `preview.png` remains the full-page authority.
 
 ## Accessibility overlay
 
-Record actual foreground/background compositing for every essential token, keyboard focus,
-200% zoom, long content, loading/empty/error/retry, screen-reader names, reduced motion, and
-forced colors. Use `ACCESSIBILITY.md` thresholds; never use visual similarity as a substitute.
+Reduced motion and forced colors have browser evidence as described above. Complete
+keyboard-only traversal, 200% zoom/reflow, long-content/state coverage, screen-reader names,
+native high contrast, and packaged Tauri behavior remain pending. Use `ACCESSIBILITY.md`
+thresholds; never use visual similarity as a substitute.
 
 ## Evidence naming
 

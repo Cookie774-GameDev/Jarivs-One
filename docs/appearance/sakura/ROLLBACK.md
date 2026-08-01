@@ -1,11 +1,6 @@
 # Sakura rollback plan
 
-## Phase A
-
-Rollback is deletion of `docs/appearance/sakura/**`; no production behavior, dependency,
-asset, persistence, or external state was changed.
-
-## Future production rollback
+## Production rollback
 
 Use atomic slice reverts in reverse dependency order:
 
@@ -24,5 +19,7 @@ processes, and prove no remote webview, user Canvas, terminal, pet overlay, auth
 voice, or persistence behavior changed. Never reset the shared worktree or discard unrelated
 dirty work.
 
-Each future slice needs its own pre-change evidence, exact revert boundary, and post-rollback
-focused tests. Deployment/merge/release remain separate authorities.
+Rollback requires the exact integrated change set and controller-owned Git authority; do not
+delete this documentation as a substitute for reverting production. Re-run focused theme,
+scene, primitive, route/overlay, motion, reference, and harness contracts after each boundary.
+Deployment/merge/release remain separate authorities.

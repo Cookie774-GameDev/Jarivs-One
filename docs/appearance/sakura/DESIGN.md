@@ -46,8 +46,12 @@ persistence/sync paths.
 
 The local seven-layer scene, deterministic petals, performance fallback, and exact-root-scoped
 material layer are active. Opaque panel and card fills precede optional blur and `color-mix()`;
-restrained CSS grain and glow sit on the inert backdrop. Route-specific treatment,
-shared-primitive refinement, and final acceptance remain pending.
+restrained CSS grain and glow sit on the inert backdrop. Shared primitives, shell regions,
+representative routes, windows, portals, and overlays consume the Sakura presentation without
+changing their behavior. The account-free real-app matrix verifies representative composition,
+reduced motion, forced colors, default-theme isolation, and overflow at 1440×900 and 1024×768.
+This is implementation/browser evidence, not pixel-diff equivalence, native validation, or
+whole-PR completion.
 
 ## Self-critique
 

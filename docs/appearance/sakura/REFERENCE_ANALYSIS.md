@@ -43,9 +43,9 @@ route density, and restrained scene continuity. Its mock counts, conversations, 
 states, actions, and JavaScript handlers are not production inputs.
 
 The production repository is richer than the prototype. It owns routing, state, voice,
-terminal, browser, account, billing, access, and persistence behavior. Future Sakura styling
-must use existing semantic variables and production components; see `component-mapping.md` and
-`ROUTE_MATRIX.md`.
+terminal, browser, account, billing, access, and persistence behavior. Implemented Sakura
+styling uses existing semantic variables and production components; see
+`component-mapping.md` and `ROUTE_MATRIX.md`.
 
 ## Motion
 
@@ -65,5 +65,7 @@ leaving final content visible.
 - Remote provider content, user Canvas content, terminal content, and Pixel Pet transparency
   remain functionally and visually isolated.
 
-Browser pixel matching, rendered font comparison, crop analysis, and production screenshots
-are **pending**, not implied by this source analysis.
+The deterministic account-free browser matrix now provides production screenshots and DOM/CSS
+evidence across two viewports. Browser pixel matching, SSIM/Delta-E equivalence, rendered-font
+comparison, and diagnostic reference-crop analysis remain **pending** and are not implied by
+that matrix.
