@@ -333,7 +333,7 @@ export function SettingsModal({
           className:
             '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
         }}
-        className="mc7f-settings-modal w-[min(1180px,94vw)] max-w-6xl h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden motion-reduce:!inset-0 motion-reduce:!m-auto motion-reduce:!transform-none [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none"
+        className="mc7f-settings-modal w-[min(1180px,94vw)] max-w-6xl h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden motion-reduce:!left-0 motion-reduce:!right-0 motion-reduce:!top-[round(nearest,calc(50vh-min(380px,45vh)),1px)] motion-reduce:!bottom-auto motion-reduce:!mx-auto motion-reduce:!my-0 motion-reduce:!transform-none [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none"
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
@@ -348,7 +348,7 @@ export function SettingsModal({
             className="border-r border-border bg-panel flex flex-col min-h-0"
             data-sakura-surface="settings-navigation"
           >
-            <div className="px-4 py-4 shrink-0">
+            <div className="flex h-[54px] shrink-0 items-center px-4 py-0">
               <span className="text-ui-strong text-foreground">Settings</span>
             </div>
             <nav

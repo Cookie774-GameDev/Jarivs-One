@@ -50,13 +50,24 @@ describe('SettingsModal MonoChrome appearance', () => {
     }
   });
 
-  it('centers reduced-motion Settings without a transformed fractional ancestor', () => {
+  it('gives reduced-motion Settings an integer sidebar paint origin', () => {
     act(() => useUIStore.setState({ settingsOpen: true }));
     render(<SettingsModal initialTab="appearance" />);
 
     const dialog = screen.getByRole('dialog', { name: 'Settings' });
-    expect(dialog.className).toContain('motion-reduce:!inset-0');
-    expect(dialog.className).toContain('motion-reduce:!m-auto');
+    expect(dialog.className).toContain('motion-reduce:!left-0');
+    expect(dialog.className).toContain('motion-reduce:!right-0');
+    expect(dialog.className).toContain(
+      'motion-reduce:!top-[round(nearest,calc(50vh-min(380px,45vh)),1px)]',
+    );
+    expect(dialog.className).toContain('motion-reduce:!bottom-auto');
+    expect(dialog.className).toContain('motion-reduce:!mx-auto');
+    expect(dialog.className).toContain('motion-reduce:!my-0');
     expect(dialog.className).toContain('motion-reduce:!transform-none');
+
+    const heading = screen.getByText('Settings', { selector: 'span' });
+    expect(heading.parentElement?.className).toContain('h-[54px]');
+    expect(heading.parentElement?.className).toContain('py-0');
+    expect(heading.parentElement?.className).toContain('items-center');
   });
 });
