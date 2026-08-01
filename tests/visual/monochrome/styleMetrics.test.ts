@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { chromium } from '@playwright/test';
 
+import * as styleMetrics from './styleMetrics.ts';
 import {
   assertMeaningfulSurface,
   assertMonochromeInvariants,
@@ -12,6 +13,38 @@ import {
   stabilizeDeterministicCapture,
   type StyleMetrics,
 } from './styleMetrics.ts';
+
+test('real-time browser work resumes a paused capture clock and restores deterministic time', async (context) => {
+  const boundary = (
+    styleMetrics as typeof styleMetrics & {
+      withDeterministicTimelineRunning?: <T>(
+        page: import('@playwright/test').Page,
+        operation: () => Promise<T>,
+      ) => Promise<T>;
+    }
+  ).withDeterministicTimelineRunning;
+  assert.equal(typeof boundary, 'function', 'the real-time boundary must be implemented');
+  if (!boundary) return;
+
+  const browser = await chromium.launch({ channel: 'msedge', headless: true });
+  context.after(async () => browser.close());
+  const page = await browser.newPage({ viewport: { width: 320, height: 240 } });
+  await installDeterministicPrimitives(page);
+  await page.goto('data:text/html,<main data-monochrome-surface-id="boundary">ready</main>');
+  await stabilizeDeterministicCapture(page, 'boundary');
+
+  const timerResult = await boundary(page, () =>
+    page.evaluate(
+      () =>
+        new Promise<string>((resolve) => {
+          setTimeout(() => resolve('timer-fired'), 0);
+        }),
+    ),
+  );
+
+  assert.equal(timerResult, 'timer-fired');
+  assert.equal(await page.evaluate(() => Date.now()), Date.parse('2026-07-16T12:00:00.000Z'));
+});
 
 test('deterministic capture timeline advances Date, performance, animation frames, and timers coherently', async (context) => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });

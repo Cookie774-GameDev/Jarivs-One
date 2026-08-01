@@ -10,7 +10,9 @@ import {
   assertProductReducedMotion,
   disableCaptureMotion,
   prepareDeterministicPage,
+  stabilizeDeterministicCapture,
   withAuthenticatedBrowserScale,
+  withDeterministicTimelineRunning,
   type FocusIndicatorEvidence,
   type MonochromeFixtureId,
 } from './styleMetrics.ts';
@@ -341,35 +343,40 @@ test.describe('Every production route — explicit accessibility matrix', () => 
       });
       const surface = await assertMeaningfulSurface(page, surfaceId);
 
-      const audit = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
-        .analyze();
-      expect(audit.violations, `${entry.routeId} all Axe impact levels`).toEqual([]);
-
-      const ariaTree = await surface.ariaSnapshot();
-      expect(ariaTree.trim().length, `${entry.routeId} non-empty ARIA tree`).toBeGreaterThan(0);
-
-      const nameless = await page.evaluate(() =>
-        [...document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea')]
-          .filter((element) => {
-            const rect = element.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0;
-          })
-          .filter((element) => {
-            const labelledBy = element.getAttribute('aria-labelledby');
-            const label = element.getAttribute('aria-label');
-            const text = element.textContent?.trim();
-            const title = element.getAttribute('title');
-            const inputLabel =
-              element instanceof HTMLInputElement && (element.labels?.length ?? 0) > 0;
-            return !labelledBy && !label && !text && !title && !inputLabel;
-          })
-          .map((element) => element.outerHTML.slice(0, 160)),
+      const { ariaTree, audit, nameless } = await withDeterministicTimelineRunning(
+        page,
+        async () => {
+          const auditResult = await new AxeBuilder({ page })
+            .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+            .analyze();
+          const surfaceAriaTree = await surface.ariaSnapshot();
+          const unnamedControls = await page.evaluate(() =>
+            [...document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea')]
+              .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+              })
+              .filter((element) => {
+                const labelledBy = element.getAttribute('aria-labelledby');
+                const label = element.getAttribute('aria-label');
+                const text = element.textContent?.trim();
+                const title = element.getAttribute('title');
+                const inputLabel =
+                  element instanceof HTMLInputElement && (element.labels?.length ?? 0) > 0;
+                return !labelledBy && !label && !text && !title && !inputLabel;
+              })
+              .map((element) => element.outerHTML.slice(0, 160)),
+          );
+          await keyboardAndFocusEvidence(page);
+          await assertProductReducedMotion(page);
+          return { ariaTree: surfaceAriaTree, audit: auditResult, nameless: unnamedControls };
+        },
       );
+      expect(audit.violations, `${entry.routeId} all Axe impact levels`).toEqual([]);
+      expect(ariaTree.trim().length, `${entry.routeId} non-empty ARIA tree`).toBeGreaterThan(0);
       expect(nameless, `${entry.routeId} interactive accessible names`).toEqual([]);
 
-      await keyboardAndFocusEvidence(page);
-      await assertProductReducedMotion(page);
+      await stabilizeDeterministicCapture(page, surfaceId);
       await disableCaptureMotion(page);
       await expect(page).toHaveScreenshot(`a11y-route--${entry.routeId}--1440x900.png`, {
         animations: 'disabled',
@@ -390,76 +397,78 @@ browserZoomTest.describe('Zoom/reflow — authenticated browser-owned tab zoom',
           surfaceId: zoom.surfaceId,
           theme: 'monochrome',
         });
-        await withAuthenticatedBrowserScale(zoomPage, zoom, async () => {
-          const result = await zoomPage.evaluate(() => {
-            const root = document.documentElement;
-            const isScrollableOverflow = (value: string) =>
-              value === 'auto' || value === 'scroll' || value === 'overlay';
-            const hasReachableScrollableAncestor = (
-              element: HTMLElement,
-              axis: 'horizontal' | 'vertical',
-            ) => {
-              for (
-                let ancestor = element.parentElement;
-                ancestor && ancestor !== document.body && ancestor !== root;
-                ancestor = ancestor.parentElement
-              ) {
-                const style = getComputedStyle(ancestor);
-                const rect = ancestor.getBoundingClientRect();
-                const intersectsViewport =
-                  rect.right > 0 &&
-                  rect.bottom > 0 &&
-                  rect.left < root.clientWidth &&
-                  rect.top < root.clientHeight;
-                const scrollable =
-                  axis === 'horizontal'
-                    ? isScrollableOverflow(style.overflowX) &&
-                      ancestor.scrollWidth > ancestor.clientWidth + 1
-                    : isScrollableOverflow(style.overflowY) &&
-                      ancestor.scrollHeight > ancestor.clientHeight + 1;
-                if (intersectsViewport && scrollable) return true;
-              }
-              return false;
-            };
-            const clippedControls = [
-              ...document.querySelectorAll<HTMLElement>(
-                'header button, nav button, nav a[href], [data-app-chrome] button',
-              ),
-            ]
-              .filter((element) => {
-                const rect = element.getBoundingClientRect();
-                if (rect.width <= 0 || rect.height <= 0) return false;
-                const outsideHorizontal = rect.left < 0 || rect.right > root.clientWidth;
-                const outsideVertical = rect.top < 0 || rect.bottom > root.clientHeight;
-                return (
-                  (outsideHorizontal && !hasReachableScrollableAncestor(element, 'horizontal')) ||
-                  (outsideVertical && !hasReachableScrollableAncestor(element, 'vertical'))
-                );
-              })
-              .map((element) => {
-                const rect = element.getBoundingClientRect();
-                return {
-                  control:
-                    element.getAttribute('aria-label') ??
-                    element.textContent?.trim().slice(0, 80) ??
-                    element.tagName,
-                  rect: {
-                    bottom: Math.round(rect.bottom),
-                    left: Math.round(rect.left),
-                    right: Math.round(rect.right),
-                    top: Math.round(rect.top),
-                  },
-                };
-              });
-            return {
-              clippedControls,
-              horizontal: root.scrollWidth > root.clientWidth,
-              vertical: root.scrollHeight > root.clientHeight,
-            };
-          });
-          expect(result.horizontal && result.vertical, zoom.label).toBe(false);
-          expect(result.clippedControls, zoom.label).toEqual([]);
-        });
+        await withDeterministicTimelineRunning(zoomPage, () =>
+          withAuthenticatedBrowserScale(zoomPage, zoom, async () => {
+            const result = await zoomPage.evaluate(() => {
+              const root = document.documentElement;
+              const isScrollableOverflow = (value: string) =>
+                value === 'auto' || value === 'scroll' || value === 'overlay';
+              const hasReachableScrollableAncestor = (
+                element: HTMLElement,
+                axis: 'horizontal' | 'vertical',
+              ) => {
+                for (
+                  let ancestor = element.parentElement;
+                  ancestor && ancestor !== document.body && ancestor !== root;
+                  ancestor = ancestor.parentElement
+                ) {
+                  const style = getComputedStyle(ancestor);
+                  const rect = ancestor.getBoundingClientRect();
+                  const intersectsViewport =
+                    rect.right > 0 &&
+                    rect.bottom > 0 &&
+                    rect.left < root.clientWidth &&
+                    rect.top < root.clientHeight;
+                  const scrollable =
+                    axis === 'horizontal'
+                      ? isScrollableOverflow(style.overflowX) &&
+                        ancestor.scrollWidth > ancestor.clientWidth + 1
+                      : isScrollableOverflow(style.overflowY) &&
+                        ancestor.scrollHeight > ancestor.clientHeight + 1;
+                  if (intersectsViewport && scrollable) return true;
+                }
+                return false;
+              };
+              const clippedControls = [
+                ...document.querySelectorAll<HTMLElement>(
+                  'header button, nav button, nav a[href], [data-app-chrome] button',
+                ),
+              ]
+                .filter((element) => {
+                  const rect = element.getBoundingClientRect();
+                  if (rect.width <= 0 || rect.height <= 0) return false;
+                  const outsideHorizontal = rect.left < 0 || rect.right > root.clientWidth;
+                  const outsideVertical = rect.top < 0 || rect.bottom > root.clientHeight;
+                  return (
+                    (outsideHorizontal && !hasReachableScrollableAncestor(element, 'horizontal')) ||
+                    (outsideVertical && !hasReachableScrollableAncestor(element, 'vertical'))
+                  );
+                })
+                .map((element) => {
+                  const rect = element.getBoundingClientRect();
+                  return {
+                    control:
+                      element.getAttribute('aria-label') ??
+                      element.textContent?.trim().slice(0, 80) ??
+                      element.tagName,
+                    rect: {
+                      bottom: Math.round(rect.bottom),
+                      left: Math.round(rect.left),
+                      right: Math.round(rect.right),
+                      top: Math.round(rect.top),
+                    },
+                  };
+                });
+              return {
+                clippedControls,
+                horizontal: root.scrollWidth > root.clientWidth,
+                vertical: root.scrollHeight > root.clientHeight,
+              };
+            });
+            expect(result.horizontal && result.vertical, zoom.label).toBe(false);
+            expect(result.clippedControls, zoom.label).toEqual([]);
+          }),
+        );
       },
     );
   }
@@ -588,39 +597,41 @@ test.describe('Numerical contrast and status semantics', () => {
       surfaceId: 'a11y:non-text-contrast',
       theme: 'monochrome',
     });
-    await keyboardAndFocusEvidence(page);
-    await assertNonRenderedFocusIndicatorsRejected(page);
-    await page.getByRole('button', { name: 'Toggle navigation' }).focus();
-    await expect(page.getByRole('tooltip')).toBeVisible();
-    const audit = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
-    expect(audit.violations, 'tooltip and visible text contrast').toEqual([]);
-
-    const semantics = await page.evaluate(() => {
-      const tooltipCount = [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].filter(
-        (element) => {
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        },
-      ).length;
-      const statuses = [
-        ...document.querySelectorAll<HTMLElement>(
-          '[role="status"], [data-status], [aria-selected]',
-        ),
-      ]
-        .filter((element) => {
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        })
-        .map((element) => ({
-          hasNonColorCue: Boolean(
-            element.textContent?.trim() ||
-            element.getAttribute('aria-label') ||
-            element.querySelector('svg, img, [aria-hidden="true"]'),
+    const { audit, semantics } = await withDeterministicTimelineRunning(page, async () => {
+      await keyboardAndFocusEvidence(page);
+      await assertNonRenderedFocusIndicatorsRejected(page);
+      await page.getByRole('button', { name: 'Toggle navigation' }).focus();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      const auditResult = await new AxeBuilder({ page }).withRules(['color-contrast']).analyze();
+      const semanticsResult = await page.evaluate(() => {
+        const tooltipCount = [...document.querySelectorAll<HTMLElement>('[role="tooltip"]')].filter(
+          (element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          },
+        ).length;
+        const statuses = [
+          ...document.querySelectorAll<HTMLElement>(
+            '[role="status"], [data-status], [aria-selected]',
           ),
-          html: element.outerHTML.slice(0, 160),
-        }));
-      return { statuses, tooltipCount };
+        ]
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          })
+          .map((element) => ({
+            hasNonColorCue: Boolean(
+              element.textContent?.trim() ||
+              element.getAttribute('aria-label') ||
+              element.querySelector('svg, img, [aria-hidden="true"]'),
+            ),
+            html: element.outerHTML.slice(0, 160),
+          }));
+        return { statuses, tooltipCount };
+      });
+      return { audit: auditResult, semantics: semanticsResult };
     });
+    expect(audit.violations, 'tooltip and visible text contrast').toEqual([]);
     expect(semantics.tooltipCount, 'named tooltip state renders a tooltip').toBeGreaterThan(0);
     for (const status of semantics.statuses) {
       expect.soft(status.hasNonColorCue, status.html).toBe(true);
@@ -687,8 +698,11 @@ test.describe('Pointer targets, forced colors and platform boundary', () => {
       theme: 'monochrome',
     });
     expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true);
-    await keyboardAndFocusEvidence(page);
-    await assertProductReducedMotion(page);
+    await withDeterministicTimelineRunning(page, async () => {
+      await keyboardAndFocusEvidence(page);
+      await assertProductReducedMotion(page);
+    });
+    await stabilizeDeterministicCapture(page, 'a11y:forced-colors');
     await disableCaptureMotion(page);
     await expect(page).toHaveScreenshot('forced-colors--chat.png', {
       animations: 'disabled',

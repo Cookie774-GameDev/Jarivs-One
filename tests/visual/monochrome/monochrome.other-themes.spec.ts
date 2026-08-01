@@ -46,9 +46,14 @@ const b0R1CaptureSource = CREATE_MISSING_B0_R1
       provenance: currentB0R1SourceProvenance(),
     }
   : undefined;
-const b0R1Manifest: B0R1Manifest | undefined = CREATE_MISSING_B0_R1
-  ? undefined
-  : loadAndValidateB0R1Manifest();
+let b0R1Manifest: B0R1Manifest | undefined;
+const validatedB0R1Manifest = (): B0R1Manifest => {
+  if (CREATE_MISSING_B0_R1) {
+    throw new Error('B0-R1 authority is unavailable during missing-only creation mode.');
+  }
+  b0R1Manifest ??= loadAndValidateB0R1Manifest();
+  return b0R1Manifest;
+};
 const b0R1InvocationCaptures = new Set<string>();
 
 test.describe('Preserved themes and Origami — B0-R1 ordinary authority', () => {
@@ -66,12 +71,12 @@ test.describe('Preserved themes and Origami — B0-R1 ordinary authority', () =>
       CREATE_MISSING_B0_R1 && !existsSync(B0_R1_MANIFEST_PATH),
       'The missing-only creation pass writes the source-bound manifest after capture 10.',
     );
-    if (!b0R1Manifest) throw new Error('B0-R1 manifest preflight did not resolve.');
-    expect(b0R1Manifest.originalB0.genericChatEquivalence).toBe('invalid');
-    expect(b0R1Manifest.captures).toHaveLength(10);
-    expect(browser.version()).toBe(b0R1Manifest.browser.version);
+    const manifest = validatedB0R1Manifest();
+    expect(manifest.originalB0.genericChatEquivalence).toBe('invalid');
+    expect(manifest.captures).toHaveLength(10);
+    expect(browser.version()).toBe(manifest.browser.version);
     expect(testInfo.project.use.launchOptions?.args).toEqual([...B0_R1_EDGE_LAUNCH_ARGS]);
-    expect(b0R1Manifest.browser.launchArgs).toEqual(B0_R1_EDGE_LAUNCH_ARGS);
+    expect(manifest.browser.launchArgs).toEqual(B0_R1_EDGE_LAUNCH_ARGS);
   });
 
   for (const [captureIndex, capture] of MONOCHROME_BASELINE_MANIFEST.captures.entries()) {
@@ -85,9 +90,9 @@ test.describe('Preserved themes and Origami — B0-R1 ordinary authority', () =>
       });
       const b0BaseUrl = resolveB0BaseUrl(testInfo.config.metadata);
       const outputPath = b0R1OutputPath(capture.outputPath);
-      const manifestCapture = b0R1Manifest?.captures.find(
-        ({ caseId }) => caseId === capture.caseId,
-      );
+      const manifestCapture = (
+        CREATE_MISSING_B0_R1 ? undefined : validatedB0R1Manifest()
+      )?.captures.find(({ caseId }) => caseId === capture.caseId);
       const existingBytes = existsSync(outputPath) ? readFileSync(outputPath) : undefined;
       const existingSha256 = existingBytes
         ? createHash('sha256').update(existingBytes).digest('hex')

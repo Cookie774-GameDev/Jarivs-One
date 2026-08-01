@@ -393,6 +393,7 @@ export function assessFocusIndicatorEvidence(evidence: FocusIndicatorEvidence): 
 const guardedContexts = new WeakSet<BrowserContext>();
 const deterministicClockPages = new WeakSet<Page>();
 const normalizedTimelinePages = new WeakSet<Page>();
+const pausedTimelinePages = new WeakSet<Page>();
 const deterministicPages = new WeakSet<Page>();
 const externalAttempts = new WeakMap<BrowserContext, string[]>();
 const DETERMINISTIC_CLOCK_BOOTSTRAP_MS = 1_024;
@@ -561,15 +562,38 @@ export async function installDeterministicTimeline(
 }
 
 async function pauseDeterministicTimeline(page: Page): Promise<void> {
-  if (!deterministicClockPages.has(page) || normalizedTimelinePages.has(page)) return;
+  if (!deterministicClockPages.has(page) || pausedTimelinePages.has(page)) return;
   const currentClockTime = await page.evaluate(() => Date.now());
   await page.clock.pauseAt(currentClockTime + DETERMINISTIC_CLOCK_BOOTSTRAP_MS);
   await page.clock.setSystemTime(Date.parse(MONOCHROME_FIXED_CLOCK));
-  await page.evaluate(normalizeDeterministicBrowserTimeline, {
-    frameDuration: DETERMINISTIC_FRAME_MS,
-    performanceBase: DETERMINISTIC_CLOCK_BOOTSTRAP_MS,
-  });
-  normalizedTimelinePages.add(page);
+  if (!normalizedTimelinePages.has(page)) {
+    await page.evaluate(normalizeDeterministicBrowserTimeline, {
+      frameDuration: DETERMINISTIC_FRAME_MS,
+      performanceBase: DETERMINISTIC_CLOCK_BOOTSTRAP_MS,
+    });
+    normalizedTimelinePages.add(page);
+  }
+  pausedTimelinePages.add(page);
+}
+
+async function resumeDeterministicTimeline(page: Page, nextDocument = false): Promise<void> {
+  if (pausedTimelinePages.has(page)) {
+    await page.clock.resume();
+    pausedTimelinePages.delete(page);
+  }
+  if (nextDocument) normalizedTimelinePages.delete(page);
+}
+
+export async function withDeterministicTimelineRunning<T>(
+  page: Page,
+  operation: () => Promise<T>,
+): Promise<T> {
+  await resumeDeterministicTimeline(page);
+  try {
+    return await operation();
+  } finally {
+    await pauseDeterministicTimeline(page);
+  }
 }
 
 /**
@@ -880,6 +904,7 @@ export async function prepareDeterministicPage(
 ): Promise<void> {
   await installLoopbackNetworkGuard(page);
   await installDeterministicPrimitives(page);
+  await resumeDeterministicTimeline(page, true);
   await page.goto(requestedPath(path, options), { waitUntil: 'domcontentloaded' });
   await waitForDeterministicReadiness(page, options);
 }
