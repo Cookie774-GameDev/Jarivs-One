@@ -3,6 +3,7 @@ import { Check, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import './sakura-tasks.css';
 import { cn, formatRelative } from '@/lib/utils';
 import type { DraftTask } from '@/types/task';
 import { TaskService } from './TaskService';
@@ -57,6 +58,8 @@ export function DraftTaskList({ className }: DraftTaskListProps) {
         {drafts.map((d) => (
           <motion.div
             key={d.id}
+            data-sakura-surface="task-draft"
+            data-sakura-state="attention"
             layout={draftLayout}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}

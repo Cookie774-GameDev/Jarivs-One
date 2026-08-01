@@ -26,6 +26,7 @@ import {
   useThemeMotionLayout,
   useThemeMotionTransition,
 } from '@/features/appearance/themeMotion';
+import './sakura-kanban.css';
 
 const LEGACY_KANBAN_PROGRESS_TRANSITION = Object.freeze({
   type: 'spring',
@@ -125,6 +126,7 @@ export function KanbanPage() {
   return (
     <div
       data-monochrome-route="kanban"
+      data-sakura-route="kanban"
       className="flex h-full flex-col gap-6 overflow-y-auto p-6 [html[data-theme=monochrome]_&]:gap-4 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:p-4 [html[data-theme=monochrome]_&_.cozy-card]:rounded-sm [html[data-theme=monochrome]_&_.cozy-card]:border [html[data-theme=monochrome]_&_.cozy-card]:border-border-mid [html[data-theme=monochrome]_&_.cozy-card]:bg-panel [html[data-theme=monochrome]_&_.cozy-card]:shadow-none"
     >
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -264,6 +266,7 @@ function ChecklistCard({
   return (
     <section
       data-monochrome-surface="kanban-column"
+      data-sakura-surface="kanban-column"
       className="relative flex min-h-[360px] flex-col gap-3 overflow-hidden rounded-xl bg-paper-soft p-5 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
     >
       <div
@@ -379,6 +382,8 @@ function ChecklistRow({
   const done = item.status === 'done';
   return (
     <motion.li
+      data-sakura-surface="kanban-card"
+      data-sakura-state={done ? 'complete' : 'open'}
       layout={rowLayout}
       initial={reducedMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
@@ -499,7 +504,10 @@ function AnalyticsSummary({
   completedMilestones: number;
 }) {
   return (
-    <div className="cozy-card flex flex-wrap items-stretch gap-4 p-4 min-w-[280px]">
+    <div
+      data-sakura-surface="kanban-summary"
+      className="cozy-card flex flex-wrap items-stretch gap-4 p-4 min-w-[280px]"
+    >
       <StatBlock label="To-do" value={String(todoOpen)} hint="open today" />
       <StatBlock label="Done" value={todoDone > 0 ? String(todoDone) : '—'} hint="today" />
       <StatBlock label="Milestones" value={`${milestonePercent}%`} hint="complete" />
@@ -525,7 +533,10 @@ function StatBlock({ label, value, hint }: { label: string; value: string; hint:
 
 function LiveActivitySection({ tasks }: { tasks: ReturnType<typeof useWorkspaceOpenTasks> }) {
   return (
-    <section className="rounded-xl bg-paper-soft p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+    <section
+      data-sakura-surface="kanban-activity"
+      className="rounded-xl bg-paper-soft p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+    >
       <header className="mb-3 flex items-center gap-2">
         <Target className="h-4 w-4 text-accent-copper" />
         <h3 className="font-display text-ui-strong text-foreground">Live workspace activity</h3>

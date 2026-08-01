@@ -27,6 +27,7 @@ import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { flushUiStatePersistence, useUIStore } from '@/stores/ui';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import './sakura-schedule.css';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import {
@@ -213,6 +214,7 @@ function MiniCalendar({
   return (
     <div
       data-monochrome-surface="schedule-calendar"
+      data-sakura-surface="schedule-calendar"
       className="w-72 p-3 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
     >
       <div className="mb-2 flex items-center justify-between">
@@ -706,10 +708,12 @@ export function SchedulePage() {
   return (
     <div
       data-monochrome-route="schedule"
+      data-sakura-route="schedule"
       className="flex h-full min-h-0 flex-col bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
     >
       <header
         data-monochrome-surface="schedule-header"
+        data-sakura-surface="schedule-header"
         className="relative overflow-hidden border-b border-border bg-gradient-to-r from-panel via-panel to-accent-copper/5 px-5 py-4 [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:bg-none"
       >
         <motion.div
@@ -758,6 +762,7 @@ export function SchedulePage() {
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section
           data-monochrome-surface="schedule-timeline"
+          data-sakura-surface="schedule-timeline"
           className="min-h-[360px] overflow-hidden rounded-xl border border-border bg-background/80 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
         >
           <div className="flex items-center justify-between gap-3 border-b border-border bg-panel/60 px-4 py-3">
@@ -877,6 +882,14 @@ export function SchedulePage() {
                     {group.items.map((item, idx) => (
                       <motion.li
                         key={`${item.kind}-${item.id}`}
+                        data-sakura-surface="schedule-row"
+                        data-sakura-state={
+                          item.kind === 'task' && item.task.status === 'done'
+                            ? 'complete'
+                            : item.kind === 'task'
+                              ? 'attention'
+                              : 'scheduled'
+                        }
                         initial={reducedMotion ? false : { opacity: 0, y: 8 }}
                         animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
                         transition={
@@ -912,6 +925,7 @@ export function SchedulePage() {
 
         <aside
           data-monochrome-surface="schedule-editor"
+          data-sakura-surface="schedule-editor"
           className="rounded-xl border border-border bg-panel p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none"
         >
           <div className="mb-4 rounded-lg border border-border/80 bg-background/60 p-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
@@ -1391,7 +1405,19 @@ function JarvisActionsList({
         const runCount = metadata?.runHistory.length ?? 0;
         const errorCount = metadata?.errorHistory.length ?? 0;
         return (
-          <li key={event.id}>
+          <li
+            key={event.id}
+            data-sakura-surface="schedule-row"
+            data-sakura-state={
+              errorCount > 0
+                ? 'error'
+                : event.status === 'done'
+                  ? 'complete'
+                  : event.status === 'scheduled'
+                    ? 'attention'
+                    : 'scheduled'
+            }
+          >
             <button
               type="button"
               onClick={() => onOpen(event)}

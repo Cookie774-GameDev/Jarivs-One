@@ -1,10 +1,19 @@
 import { useState, type ReactNode } from 'react';
-import { addDays, addHours, addMinutes, setHours, setMilliseconds, setMinutes, setSeconds } from 'date-fns';
+import {
+  addDays,
+  addHours,
+  addMinutes,
+  setHours,
+  setMilliseconds,
+  setMinutes,
+  setSeconds,
+} from 'date-fns';
 import { Clock } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import './sakura-tasks.css';
 
 /**
  * Snooze popover. Five quick options + a custom date/time input.
@@ -68,7 +77,7 @@ const QUICK_OPTIONS: QuickOption[] = [
     resolve: (now) => {
       const d = new Date(now);
       // Days until Monday: (1 - dow + 7) % 7, force forward
-      const offset = ((1 - d.getDay() + 7) % 7) || 7;
+      const offset = (1 - d.getDay() + 7) % 7 || 7;
       return atTime(addDays(d, offset), 9, 0).getTime();
     },
   },
@@ -78,7 +87,14 @@ function atTime(d: Date, hh: number, mm: number): Date {
   return setMilliseconds(setSeconds(setMinutes(setHours(d, hh), mm), 0), 0);
 }
 
-export function SnoozePopover({ open, onOpenChange, onSnooze, now = Date.now(), children, className }: SnoozePopoverProps) {
+export function SnoozePopover({
+  open,
+  onOpenChange,
+  onSnooze,
+  now = Date.now(),
+  children,
+  className,
+}: SnoozePopoverProps) {
   const [custom, setCustom] = useState<string>('');
 
   const handleQuick = (opt: QuickOption) => {
@@ -100,6 +116,7 @@ export function SnoozePopover({ open, onOpenChange, onSnooze, now = Date.now(), 
     <Popover open={open} onOpenChange={onOpenChange}>
       {children !== undefined && <PopoverTrigger asChild>{children}</PopoverTrigger>}
       <PopoverContent
+        data-sakura-surface="task-snooze"
         align="end"
         className={cn('w-64 p-2', className)}
         onClick={(e) => e.stopPropagation()}

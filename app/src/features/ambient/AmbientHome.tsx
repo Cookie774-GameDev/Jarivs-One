@@ -18,6 +18,7 @@
 import * as React from 'react';
 import { useUIStore } from '@/stores/ui';
 import { QUOTES } from './quotes';
+import './sakura-ambient.css';
 
 /**
  * Format unix ms to local HH:MM (24h or 12h depending on locale, but we
@@ -128,6 +129,8 @@ export function AmbientHome() {
   return (
     <div
       data-monochrome-surface="ambient-home"
+      data-sakura-route="ambient"
+      data-sakura-surface="ambient-home"
       className="ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidden"
       data-state={exiting ? 'exiting' : 'active'}
       role="dialog"

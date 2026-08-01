@@ -32,6 +32,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/toast';
+import './sakura-projects.css';
 
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -171,9 +172,13 @@ export function ProjectDetail() {
     return (
       <div
         data-monochrome-route="project-detail"
-        className="flex h-full w-full items-center justify-center bg-paper-warm p-8 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans"
+        data-sakura-route="project-detail"
+        className="flex h-full w-full items-center justify-center bg-paper-warm p-8 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:font-sans"
       >
-        <div className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+        <div
+          data-sakura-surface="project-empty"
+          className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <div className="text-page-title text-foreground">No project selected</div>
           <p className="text-secondary text-muted-foreground">
             Pick a project from the sidebar, or create a new one with the "+" button.
@@ -189,10 +194,12 @@ export function ProjectDetail() {
   return (
     <div
       data-monochrome-route="project-detail"
+      data-sakura-route="project-detail"
       className="flex h-full w-full flex-col overflow-hidden bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.surface-panel]:rounded-sm [html[data-theme=monochrome]_&_.surface-panel]:border-border-mid [html[data-theme=monochrome]_&_.surface-panel]:bg-panel [html[data-theme=monochrome]_&_.surface-panel]:shadow-none"
     >
       <div
         data-monochrome-surface="project-toolbar"
+        data-sakura-surface="project-toolbar"
         className="shrink-0 flex items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel"
       >
         <div className="flex items-center gap-2">
@@ -231,6 +238,7 @@ export function ProjectDetail() {
           {/* Identity */}
           <section
             data-monochrome-surface="project-identity"
+            data-sakura-surface="project-identity"
             className="surface-panel rounded-lg p-5 space-y-4"
           >
             <div className="text-ui-strong text-foreground">Identity</div>
@@ -269,6 +277,7 @@ export function ProjectDetail() {
           {/* Context */}
           <section
             data-monochrome-surface="project-context"
+            data-sakura-surface="project-context"
             className="surface-panel rounded-lg p-5 space-y-4"
           >
             <div className="flex items-center justify-between">
@@ -318,6 +327,7 @@ export function ProjectDetail() {
           {/* Agents */}
           <section
             data-monochrome-surface="project-agents"
+            data-sakura-surface="project-agents"
             className="surface-panel rounded-lg p-5 space-y-4"
           >
             <div>
@@ -377,7 +387,11 @@ export function ProjectDetail() {
           <Separator />
 
           {/* Danger zone */}
-          <section className="rounded-lg border border-destructive/30 bg-destructive/5 p-5 space-y-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none">
+          <section
+            data-sakura-surface="project-danger"
+            data-sakura-state="error"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 p-5 space-y-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <div className="text-ui-strong text-destructive">Danger zone</div>
             <p className="text-metadata text-muted-foreground">
               Deleting a project unassigns its chats but does not delete them. Terminals belonging

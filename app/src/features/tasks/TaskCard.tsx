@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import './sakura-tasks.css';
 import { cn, formatClock, formatRelative } from '@/lib/utils';
 import type { Reminder, Task, TaskPriority } from '@/types/task';
 import type { ReminderId, TaskId } from '@/types/common';
@@ -115,6 +116,8 @@ export function TaskCard({ task, flash, className }: TaskCardProps) {
 
   return (
     <motion.div
+      data-sakura-surface="task-card"
+      data-sakura-state={isDone ? 'complete' : isInProgress ? 'attention' : 'open'}
       layout={cardLayout}
       initial={flash ? { opacity: 0, y: -4 } : false}
       animate={{ opacity: 1, y: 0 }}

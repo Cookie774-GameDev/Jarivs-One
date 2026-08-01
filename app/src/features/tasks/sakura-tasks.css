@@ -1,0 +1,76 @@
+html[data-theme='sakura'] [data-sakura-surface='task-composer'],
+html[data-theme='sakura'] [data-sakura-surface='task-card'],
+html[data-theme='sakura'] [data-sakura-surface='task-draft'],
+html[data-theme='sakura'] [data-sakura-surface='task-snooze'] {
+  color: #fff8f4;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='task-composer'] {
+  padding: 10px;
+  border: 1px solid rgba(255, 232, 236, 0.26);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(24, 16, 57, 0.91), rgba(20, 13, 49, 0.79));
+  box-shadow:
+    0 14px 34px rgba(8, 5, 30, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='task-card'],
+html[data-theme='sakura'] [data-sakura-surface='task-draft'] {
+  border-color: rgba(255, 239, 241, 0.14);
+  border-radius: 11px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.04)),
+    rgba(20, 14, 48, 0.68);
+  box-shadow: 0 7px 18px rgba(6, 3, 22, 0.14);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='task-snooze'] {
+  border-color: rgba(255, 239, 241, 0.19);
+  border-radius: 12px;
+  background: rgba(18, 12, 44, 0.94);
+  box-shadow:
+    0 22px 68px rgba(8, 5, 30, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-surface^='task-'][data-sakura-state='attention'] {
+  border-color: rgba(255, 217, 120, 0.32);
+  box-shadow:
+    inset 3px 0 0 #ffd978,
+    0 8px 22px rgba(7, 4, 26, 0.17);
+}
+
+html[data-theme='sakura'] [data-sakura-surface^='task-'][data-sakura-state='complete'] {
+  border-color: rgba(158, 208, 184, 0.3);
+  box-shadow: inset 3px 0 0 #9ed0b8;
+}
+
+html[data-theme='sakura'] [data-sakura-surface^='task-'] :focus-visible {
+  outline: 2px solid #eeabb7;
+  outline-offset: 2px;
+}
+
+@supports (backdrop-filter: blur(14px)) {
+  html[data-theme='sakura'] [data-sakura-surface='task-composer'],
+  html[data-theme='sakura'] [data-sakura-surface='task-snooze'] {
+    backdrop-filter: blur(16px) saturate(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-surface^='task-'],
+  html[data-theme='sakura'] [data-sakura-surface^='task-'] * {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-surface^='task-'] {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}

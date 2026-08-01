@@ -34,6 +34,7 @@ import { cn, formatCost, formatRelative, formatTokenCount } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { fetchBenchmarks, isSupportedProvider, type BenchmarkRow } from './benchmarkData';
 import { BarChart } from './BarChart';
+import './sakura-benchmarks.css';
 
 type SortKey = 'arena_score' | 'cost' | 'context';
 
@@ -270,6 +271,7 @@ export function BenchmarksPage() {
   return (
     <div
       data-monochrome-route="benchmarks"
+      data-sakura-route="benchmarks"
       className="bg-paper-soft min-h-full w-full [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.cozy-card]:rounded-sm [html[data-theme=monochrome]_&_.cozy-card]:border [html[data-theme=monochrome]_&_.cozy-card]:border-border-mid [html[data-theme=monochrome]_&_.cozy-card]:bg-panel [html[data-theme=monochrome]_&_.cozy-card]:shadow-none"
     >
       <div className="max-w-7xl mx-auto px-6 py-8 flex flex-col gap-6">
@@ -290,7 +292,7 @@ export function BenchmarksPage() {
               </span>
               {fromSnapshot && (
                 <span
-                  className="sev-pill med ml-2"
+                  className="sev-pill med ml-2 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid"
                   title={errorReason ?? 'Live endpoint unavailable; using frozen data.'}
                 >
                   from snapshot
@@ -349,6 +351,7 @@ export function BenchmarksPage() {
         {/* Filters row */}
         <section
           data-monochrome-surface="benchmarks-filters"
+          data-sakura-surface="benchmarks-filters"
           className="flex flex-wrap items-end gap-4 [html[data-theme=monochrome]_&]:border-y [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:py-3"
         >
           <div className="flex flex-col gap-1.5">
@@ -393,8 +396,14 @@ export function BenchmarksPage() {
           </div>
 
           <div className="flex items-center gap-2 h-8 self-end pb-1">
-            <Switch id="bench-open" checked={openOnly} onCheckedChange={setOpenOnly} />
-            <Label htmlFor="bench-open" className="cursor-pointer">
+            <Switch
+              id="bench-open"
+              aria-labelledby="bench-open-label"
+              checked={openOnly}
+              onCheckedChange={setOpenOnly}
+              className="[html[data-theme=monochrome]_&_span]:shadow-none"
+            />
+            <Label id="bench-open-label" htmlFor="bench-open" className="cursor-pointer">
               Open source only
             </Label>
           </div>
@@ -407,7 +416,11 @@ export function BenchmarksPage() {
         </section>
 
         {/* Bar chart */}
-        <section data-monochrome-surface="benchmarks-chart" className="cozy-card !p-5">
+        <section
+          data-monochrome-surface="benchmarks-chart"
+          data-sakura-surface="benchmarks-chart"
+          className="cozy-card !p-5"
+        >
           <div className="flex items-baseline justify-between mb-4">
             <h2 className="text-page-title text-foreground">
               Top {Math.min(TOP_N_FOR_CHART, topForChart.length)} by Intelligence
@@ -435,6 +448,7 @@ export function BenchmarksPage() {
         {/* Table */}
         <section
           data-monochrome-surface="benchmarks-table"
+          data-sakura-surface="benchmarks-table"
           className="cozy-card !p-0 overflow-hidden"
         >
           <div className="overflow-x-auto">
@@ -552,7 +566,13 @@ export function BenchmarksPage() {
                       {row.context_window != null ? formatTokenCount(row.context_window) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn('sev-pill', licenseSeverity(row))}>
+                      <span
+                        className={cn(
+                          'sev-pill',
+                          licenseSeverity(row),
+                          '[html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid',
+                        )}
+                      >
                         {row.license ?? (row.open_source ? 'open' : 'proprietary')}
                       </span>
                     </td>
@@ -657,6 +677,7 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
         />
         <DialogPrimitive.Content
           data-monochrome-surface="benchmark-detail"
+          data-sakura-surface="benchmark-detail"
           className={cn(
             'fixed right-0 top-0 z-50 h-full w-full sm:max-w-md bg-elevated border-l border-border shadow-2xl',
             'flex flex-col',
@@ -743,7 +764,13 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                       License
                     </dt>
                     <dd className="mt-0.5">
-                      <span className={cn('sev-pill', licenseSeverity(row))}>
+                      <span
+                        className={cn(
+                          'sev-pill',
+                          licenseSeverity(row),
+                          '[html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid',
+                        )}
+                      >
                         {row.license ?? (row.open_source ? 'open' : 'proprietary')}
                       </span>
                     </dd>

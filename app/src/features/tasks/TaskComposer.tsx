@@ -6,6 +6,7 @@ import { cn, formatRelative } from '@/lib/utils';
 import { TaskService } from './TaskService';
 import { parseTaskInput } from './parseTaskInput';
 import { useTaskStore } from './store';
+import './sakura-tasks.css';
 
 /**
  * Inline "add a task" composer.
@@ -52,7 +53,11 @@ export function TaskComposer({
   };
 
   return (
-    <div className={cn('space-y-1', className)}>
+    <div
+      data-sakura-surface="task-composer"
+      data-sakura-state={submitting ? 'attention' : 'ready'}
+      className={cn('space-y-1', className)}
+    >
       <div className="flex items-center gap-1.5">
         <div className="relative flex-1">
           <Input
@@ -89,27 +94,28 @@ export function TaskComposer({
       </div>
 
       {/* Live preview chips - tells the user what Jarvis parsed out */}
-      {preview && (preview.due_at !== undefined || preview.priority !== 'normal' || (preview.context_tags?.length ?? 0) > 0) && (
-        <div className="flex flex-wrap items-center gap-1 px-0.5 text-metadata text-muted-foreground">
-          <span>I'll save:</span>
-          <span className="text-foreground">"{preview.title || '...'}"</span>
-          {preview.due_at !== undefined && (
-            <span className="rounded bg-muted/60 px-1.5 py-0.5">
-              {formatRelative(preview.due_at)}
-            </span>
-          )}
-          {preview.priority && preview.priority !== 'normal' && (
-            <span className="rounded bg-muted/60 px-1.5 py-0.5">
-              {preview.priority}
-            </span>
-          )}
-          {(preview.context_tags ?? []).map((t) => (
-            <span key={t} className="rounded bg-muted/60 px-1.5 py-0.5">
-              #{t}
-            </span>
-          ))}
-        </div>
-      )}
+      {preview &&
+        (preview.due_at !== undefined ||
+          preview.priority !== 'normal' ||
+          (preview.context_tags?.length ?? 0) > 0) && (
+          <div className="flex flex-wrap items-center gap-1 px-0.5 text-metadata text-muted-foreground">
+            <span>I'll save:</span>
+            <span className="text-foreground">"{preview.title || '...'}"</span>
+            {preview.due_at !== undefined && (
+              <span className="rounded bg-muted/60 px-1.5 py-0.5">
+                {formatRelative(preview.due_at)}
+              </span>
+            )}
+            {preview.priority && preview.priority !== 'normal' && (
+              <span className="rounded bg-muted/60 px-1.5 py-0.5">{preview.priority}</span>
+            )}
+            {(preview.context_tags ?? []).map((t) => (
+              <span key={t} className="rounded bg-muted/60 px-1.5 py-0.5">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
     </div>
   );
 }

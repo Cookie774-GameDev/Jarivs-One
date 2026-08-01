@@ -30,6 +30,7 @@ import {
 } from './previewBridge';
 import { usePreviewStore } from './previewStore';
 import './preview.css';
+import './sakura-preview.css';
 
 export function PreviewStudio() {
   const route = useUIStore((s) => s.route);
@@ -280,8 +281,13 @@ export function PreviewStudio() {
       className="preview-shell [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.preview-toolbar]:border-border-mid [html[data-theme=monochrome]_&_.preview-toolbar]:bg-panel [html[data-theme=monochrome]_&_.preview-toolbar]:shadow-none [html[data-theme=monochrome]_&_.preview-stage-wrap]:bg-background [html[data-theme=monochrome]_&_.preview-device-frame]:rounded-sm [html[data-theme=monochrome]_&_.preview-device-frame]:border-border-mid [html[data-theme=monochrome]_&_.preview-device-frame]:shadow-none [html[data-theme=monochrome]_&_.preview-empty-card]:rounded-sm [html[data-theme=monochrome]_&_.preview-empty-card]:border-border-mid [html[data-theme=monochrome]_&_.preview-empty-card]:bg-panel [html[data-theme=monochrome]_&_.preview-empty-card]:shadow-none [html[data-theme=monochrome]_&_.preview-error-card]:rounded-sm [html[data-theme=monochrome]_&_.preview-error-card]:shadow-none [html[data-theme=monochrome]_&_.preview-console]:border-border-mid [html[data-theme=monochrome]_&_.preview-console]:bg-panel [html[data-theme=monochrome]_&_.preview-console]:shadow-none"
       data-testid="preview-studio"
       data-monochrome-route="preview"
+      data-sakura-route="preview"
     >
-      <header data-monochrome-surface="preview-toolbar" className="preview-toolbar">
+      <header
+        data-monochrome-surface="preview-toolbar"
+        data-sakura-surface="preview-toolbar"
+        className="preview-toolbar"
+      >
         <span className="preview-toolbar-kicker">Preview Studio</span>
         <Button
           type="button"
@@ -481,9 +487,14 @@ export function PreviewStudio() {
         </div>
       )}
 
-      <div data-monochrome-surface="preview-workspace" className="preview-stage-wrap" ref={hostRef}>
+      <div
+        data-monochrome-surface="preview-workspace"
+        data-sakura-surface="preview-workspace"
+        className="preview-stage-wrap"
+        ref={hostRef}
+      >
         {!url && !error ? (
-          <div className="preview-empty-card">
+          <div data-sakura-surface="preview-empty" className="preview-empty-card">
             <p className="preview-toolbar-kicker">Responsive emulation</p>
             <h2>Preview Studio</h2>
             <p>
@@ -523,7 +534,12 @@ export function PreviewStudio() {
         ) : null}
 
         {error ? (
-          <div className="preview-error-card" role="alert">
+          <div
+            data-sakura-surface="preview-error"
+            data-sakura-state="error"
+            className="preview-error-card"
+            role="alert"
+          >
             <p className="preview-toolbar-kicker">{error.code}</p>
             <h2>Preview could not connect</h2>
             <p>{error.message}</p>
@@ -579,6 +595,7 @@ export function PreviewStudio() {
           <div
             className="preview-device-frame"
             data-monochrome-surface="preview-device"
+            data-sakura-surface="preview-device"
             data-frame={showDeviceFrame ? 'true' : 'false'}
             style={{ width: frameW + (showDeviceFrame ? 20 : 0) }}
           >
@@ -603,6 +620,7 @@ export function PreviewStudio() {
               ref={surfaceRef}
               className="preview-surface"
               data-testid="preview-surface"
+              data-sakura-content="preview-user-content"
               style={{ width: frameW, height: frameH }}
             >
               {!isTauriRuntime() ? (
@@ -632,6 +650,7 @@ export function PreviewStudio() {
       {consoleOpen ? (
         <aside
           data-monochrome-surface="preview-diagnostics"
+          data-sakura-surface="preview-diagnostics"
           className="preview-console"
           aria-label="Preview diagnostics"
         >
