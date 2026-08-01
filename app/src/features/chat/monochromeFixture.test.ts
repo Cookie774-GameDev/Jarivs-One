@@ -15,8 +15,11 @@ describe('MonoChrome chat fixture replay', () => {
       'fixture-message-002',
     ]);
     expect(MONOCHROME_CHAT_FIXTURE.messages.map((message) => message.created_at)).toEqual([
+      Date.parse('2026-07-16T11:59:59.000Z'),
       Date.parse('2026-07-16T12:00:00.000Z'),
-      Date.parse('2026-07-16T12:00:01.000Z'),
     ]);
+    expect(
+      Math.max(...MONOCHROME_CHAT_FIXTURE.messages.map((message) => message.updated_at)),
+    ).toBeLessThanOrEqual(Date.parse(MONOCHROME_CHAT_FIXTURE_SOURCE.clock));
   });
 });

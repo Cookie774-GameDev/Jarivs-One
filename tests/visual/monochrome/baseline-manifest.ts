@@ -250,8 +250,8 @@ export const MONOCHROME_BASELINE_MANIFEST: MonochromeBaselineManifest = Object.f
   routeManifestSha256: 'cf8f766056f9f5bb318d383394f14b5d4e11ec498fa55b1c47ef78f602a81796',
   fixtureSourceSha256: '5dfacca26708b83f8938bb75e0b63b8feb964bb741629bf66d96abbda6e2da4f',
   fixtureManifestSha256: '5994a5ef08d14517e100c0c886f54478bab1fcb462abd0c17af4bb695a7a778e',
-  origamiFixtureSourceSha256: '4db0e6aafcc439be18b5103d135bdd2e79d6f26976b04eb0c9c57e2225fd72fc',
-  captureFixtureSha256: '48759d692d069850a3b2f734823ec06b2fcf62a667d984d52ec30247d25c4ec9',
+  origamiFixtureSourceSha256: '86d07b9dda86e8e7dff9dcd4fbde14e255e72ff46c950365e4b30eccb485c5a2',
+  captureFixtureSha256: 'c84e82ac2e3e4e7ea03f3fa7199f568ec2538df44d7a44b8ca3dce3486a41e93',
   browserSource: 'msedge',
   viewport: Object.freeze({ width: 1672, height: 941, deviceScaleFactor: 1 }),
   environment: Object.freeze({

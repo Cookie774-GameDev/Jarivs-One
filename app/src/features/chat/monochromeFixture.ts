@@ -47,7 +47,8 @@ const FIXTURE_CHAT_ID = MONOCHROME_CHAT_FIXTURE_SOURCE.activeConversationId as C
 
 export const MONOCHROME_CHAT_FIXTURE_MESSAGES: readonly Message[] = Object.freeze(
   MONOCHROME_CHAT_FIXTURE_SOURCE.messages.map((message, index): Message => {
-    const timestamp = FIXTURE_EPOCH_MS + index * 1_000;
+    const timestamp =
+      FIXTURE_EPOCH_MS - (MONOCHROME_CHAT_FIXTURE_SOURCE.messages.length - 1 - index) * 1_000;
     const productMessage: Message = {
       id: message.id as MessageId,
       chat_id: FIXTURE_CHAT_ID,
