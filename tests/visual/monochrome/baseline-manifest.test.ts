@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { test } from 'node:test';
 
+import * as baselineAuthority from './baseline-manifest.ts';
 import {
   MONOCHROME_BASELINE_MANIFEST,
   validateMonochromeBaselineManifest,
@@ -14,7 +16,7 @@ const SOURCE_COMMIT = '7eb708e184ee4f054a49d3e70d73e80fd4eb97ae';
 const HARNESS_COMMIT = '023844c789843e452aab7aad952f8392908d92de';
 const ROUTE_MANIFEST_SHA256 = 'cf8f766056f9f5bb318d383394f14b5d4e11ec498fa55b1c47ef78f602a81796';
 const FIXTURE_SOURCE_SHA256 = '5dfacca26708b83f8938bb75e0b63b8feb964bb741629bf66d96abbda6e2da4f';
-const FIXTURE_MANIFEST_SHA256 = '33781c88e14e4ddc570fa4a2513e3cf9df324e5a1b0c100c4833008d27cb2a08';
+const FIXTURE_MANIFEST_SHA256 = '5994a5ef08d14517e100c0c886f54478bab1fcb462abd0c17af4bb695a7a778e';
 const EXPECTED_PATHS = [
   'tests/visual/monochrome/baselines/b0/default/chat.png',
   'tests/visual/monochrome/baselines/b0/default/settings-appearance.png',
@@ -35,6 +37,16 @@ function sha256(path: string): string {
 function sha256AtCommit(commit: string, path: string): string {
   const archivedSource = execFileSync('git', ['show', `${commit}:${path}`]);
   return createHash('sha256').update(archivedSource).digest('hex');
+}
+
+function discoverPngs(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory() ? discoverPngs(entryPath) : [entryPath.replaceAll('\\', '/')];
+    })
+    .filter((entryPath) => entryPath.endsWith('.png'))
+    .sort();
 }
 
 function shiftedOrigamiFixtureHash(): string {
@@ -172,4 +184,84 @@ test('B0 validator fails closed on provenance, mapping, hash, and readiness drif
   for (const mutation of mutations) {
     assert.notDeepEqual(validateMonochromeBaselineManifest(mutation), []);
   }
+});
+
+test('MC9 freezes one safe unique entry for each of the 111 current PNGs', () => {
+  const manifest = baselineAuthority.MONOCHROME_MC9_BASELINE_MANIFEST;
+  const validate = baselineAuthority.validateMonochromeMc9BaselineManifest;
+  assert.ok(manifest, 'missing MC9 baseline manifest');
+  assert.equal(typeof validate, 'function', 'missing MC9 baseline validator');
+  if (!manifest || typeof validate !== 'function') return;
+
+  const actualPaths = discoverPngs('tests/visual/monochrome/baselines/mc9');
+  assert.equal(actualPaths.length, 111);
+  assert.equal(manifest.expectedPngCount, 111);
+  assert.equal(manifest.entries.length, 111);
+  assert.deepEqual(validate(manifest, actualPaths), []);
+  assert.equal(new Set(manifest.entries.map(({ id }) => id)).size, 111);
+  assert.equal(new Set(manifest.entries.map(({ outputPath }) => outputPath)).size, 111);
+  assert.deepEqual(
+    manifest.entries.map(({ outputPath }) => outputPath),
+    actualPaths,
+  );
+  assert.deepEqual(
+    manifest.entries.map(({ outputPath }) => outputPath),
+    [...manifest.entries.map(({ outputPath }) => outputPath)].sort(),
+  );
+  assert.equal(
+    manifest.entries.every(
+      ({ outputPath }) =>
+        outputPath.startsWith('tests/visual/monochrome/baselines/mc9/') &&
+        !outputPath.includes('\\') &&
+        !outputPath.split('/').includes('..'),
+    ),
+    true,
+  );
+
+  const kinds = Object.groupBy(manifest.entries, ({ kind }) => kind);
+  assert.equal(kinds['browser-surface']?.length, 79);
+  assert.equal(kinds['named-state']?.length, 8);
+  assert.equal(kinds.viewport?.length, 5);
+  assert.equal(kinds['a11y-route']?.length, 18);
+  assert.equal(kinds['forced-colors']?.length, 1);
+});
+
+test('MC9 validator rejects duplicate, missing, orphan, reordered, and unsafe entries', () => {
+  const manifest = baselineAuthority.MONOCHROME_MC9_BASELINE_MANIFEST;
+  const validate = baselineAuthority.validateMonochromeMc9BaselineManifest;
+  assert.ok(manifest, 'missing MC9 baseline manifest');
+  assert.equal(typeof validate, 'function', 'missing MC9 baseline validator');
+  if (!manifest || typeof validate !== 'function') return;
+
+  const actualPaths = discoverPngs('tests/visual/monochrome/baselines/mc9');
+  const first = manifest.entries[0];
+  assert.match(
+    validate({ ...manifest, entries: [...manifest.entries, first] }, actualPaths).join('\n'),
+    /duplicate|count|order|closure/iu,
+  );
+  assert.match(
+    validate({ ...manifest, entries: manifest.entries.slice(1) }, actualPaths).join('\n'),
+    /missing|count|closure/iu,
+  );
+  assert.match(
+    validate({ ...manifest, entries: [...manifest.entries].reverse() }, actualPaths).join('\n'),
+    /order|closure/iu,
+  );
+  assert.match(
+    validate(
+      {
+        ...manifest,
+        entries: [{ ...first, outputPath: '../escape.png' }, ...manifest.entries.slice(1)],
+      },
+      actualPaths,
+    ).join('\n'),
+    /unsafe|closure/iu,
+  );
+  assert.match(validate(manifest, actualPaths.slice(1)).join('\n'), /missing/iu);
+  assert.match(
+    validate(manifest, [...actualPaths, 'tests/visual/monochrome/baselines/mc9/orphan.png']).join(
+      '\n',
+    ),
+    /orphan/iu,
+  );
 });

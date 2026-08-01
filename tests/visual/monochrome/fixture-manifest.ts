@@ -107,6 +107,10 @@ export function validateMonochromeFixtureManifest(
   if (JSON.stringify(fixtureKeys) !== JSON.stringify([...manifest.fixtureIds])) {
     errors.push('fixture id closure mismatch');
   }
+  const fixtureHashKeys = Object.keys(manifest.fixtureHashes).sort();
+  if (JSON.stringify(fixtureHashKeys) !== JSON.stringify([...manifest.fixtureIds])) {
+    errors.push('fixture hash closure mismatch');
+  }
 
   for (const fixtureId of manifest.fixtureIds) {
     const value = fixtures[fixtureId];

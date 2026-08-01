@@ -197,7 +197,10 @@ test('every available entry carries real sources, tests, fixture hash, behavior,
       );
     }
     assert.deepEqual(entry.viewports, ['1672x941', '1024x768', 'narrow-desktop']);
-    assert.deepEqual(entry.zoom, ['100%', '200%']);
+    assert.deepEqual(
+      entry.zoom,
+      routeAuthority.MONOCHROME_ZOOM_ROWS.map(({ label }) => label),
+    );
     assert.deepEqual(entry.motion, ['no-preference', 'reduce']);
 
     if (entry.auditStatus === 'unavailable') continue;
@@ -219,6 +222,20 @@ test('every available entry carries real sources, tests, fixture hash, behavior,
   }
 });
 
+test('browser-owned zoom authority is one frozen exact ordered collection', () => {
+  assert.deepEqual(routeAuthority.MONOCHROME_ZOOM_ROWS, [
+    { label: '100%', factor: 1, surfaceId: 'zoom:100%' },
+    { label: '125%', factor: 1.25, surfaceId: 'zoom:125%' },
+    { label: '150%', factor: 1.5, surfaceId: 'zoom:150%' },
+    { label: '200%', factor: 2, surfaceId: 'zoom:200%' },
+  ]);
+  assert.equal(Object.isFrozen(routeAuthority.MONOCHROME_ZOOM_ROWS), true);
+  assert.equal(
+    routeAuthority.MONOCHROME_ZOOM_ROWS.every((row) => Object.isFrozen(row)),
+    true,
+  );
+});
+
 test('validator fails closed for every MC6 Step 3 defect', () => {
   const validate = routeAuthority.validateMonochromeRouteCoverageManifest;
   const manifest = routeAuthority.MONOCHROME_ROUTE_COVERAGE_MANIFEST;
@@ -237,6 +254,27 @@ test('validator fails closed for every MC6 Step 3 defect', () => {
   const missingAccess = cloneManifest();
   missingAccess.entries = missingAccess.entries.filter(({ id }) => id !== 'access:locked');
   assert.match(validate(missingAccess).join('\n'), /missing access surface/iu);
+
+  const missingOverlay = cloneManifest();
+  missingOverlay.entries = missingOverlay.entries.filter(
+    ({ id }) => id !== 'overlay:activity-strip',
+  );
+  assert.match(validate(missingOverlay).join('\n'), /coverage entry closure/iu);
+
+  const orphanOverlay = cloneManifest();
+  const orphanOverlayEntry = structuredClone(
+    orphanOverlay.entries.find(({ id }) => id === 'overlay:activity-strip')!,
+  );
+  orphanOverlayEntry.id = 'overlay:invented';
+  orphanOverlayEntry.writerPaths = [];
+  orphanOverlayEntry.fileLockPaths = [];
+  orphanOverlay.entries.push(orphanOverlayEntry);
+  orphanOverlay.entries.sort((left, right) => left.id.localeCompare(right.id));
+  assert.match(validate(orphanOverlay).join('\n'), /coverage entry closure/iu);
+
+  const zoomDrift = cloneManifest();
+  zoomDrift.entries[0].zoom = ['100%'];
+  assert.match(validate(zoomDrift).join('\n'), /zoom authority mismatch/iu);
 
   const unknownRoute = cloneManifest();
   unknownRoute.entries.find(({ id }) => id === 'route:chat')!.routeId = 'unknown-route';

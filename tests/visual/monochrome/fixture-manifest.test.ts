@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import * as fixtureAuthority from './fixtures.ts';
 import * as manifestAuthority from './fixture-manifest.ts';
+import { MONOCHROME_NATIVE_WINDOW_MANIFEST } from './native-window-manifest.ts';
+import { MONOCHROME_SHELL_OVERLAY_MANIFEST } from './shell-overlay-manifest.ts';
 
 const SOURCE_COMMIT = '7eb708e184ee4f054a49d3e70d73e80fd4eb97ae';
 
@@ -108,5 +110,40 @@ test('fixture validator rejects duplicate or unstable fixture ids and hash drift
       fixtureAuthority.MONOCHROME_VISUAL_FIXTURES,
     ).join('\n'),
     /hash/iu,
+  );
+  assert.match(
+    validate(
+      {
+        ...manifest,
+        fixtureHashes: { ...manifest.fixtureHashes, orphan: '0'.repeat(64) },
+      },
+      fixtureAuthority.MONOCHROME_VISUAL_FIXTURES,
+    ).join('\n'),
+    /closure|orphan/iu,
+  );
+});
+
+test('manifest metadata rejects cross-authority owned-path collisions', () => {
+  const authorities = [
+    { name: 'fixture', manifest: manifestAuthority.MONOCHROME_FIXTURE_MANIFEST },
+    { name: 'native-window', manifest: MONOCHROME_NATIVE_WINDOW_MANIFEST },
+    { name: 'shell-overlay', manifest: MONOCHROME_SHELL_OVERLAY_MANIFEST },
+  ] as const;
+  assert.deepEqual(manifestAuthority.validateMonochromeManifestSet(authorities), []);
+
+  const collisionPath = manifestAuthority.MONOCHROME_FIXTURE_MANIFEST.ownedPaths[0];
+  const collidingShell = {
+    ...MONOCHROME_SHELL_OVERLAY_MANIFEST,
+    ownedPaths: [...MONOCHROME_SHELL_OVERLAY_MANIFEST.ownedPaths, collisionPath].sort(),
+  };
+  assert.match(
+    manifestAuthority
+      .validateMonochromeManifestSet([
+        authorities[0],
+        authorities[1],
+        { name: 'shell-overlay', manifest: collidingShell },
+      ])
+      .join('\n'),
+    /owned path overlap/iu,
   );
 });

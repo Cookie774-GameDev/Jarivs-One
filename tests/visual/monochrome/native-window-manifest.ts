@@ -1,3 +1,4 @@
+// @ts-expect-error TS5097 -- Direct Node test execution requires the explicit .ts extension.
 import { MONOCHROME_SOURCE_COMMIT } from './fixture-manifest.ts';
 
 export type MonochromeNativeSurfaceCreation = 'declared' | 'dynamic-rust' | 'dynamic-webview';

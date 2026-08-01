@@ -1,3 +1,4 @@
+// @ts-expect-error TS5097 -- Direct Node test execution requires the explicit .ts extension.
 import { MONOCHROME_SOURCE_COMMIT } from './fixture-manifest.ts';
 
 export type MonochromeShellSurfaceKind = 'shell' | 'overlay' | 'dispatch';
@@ -390,6 +391,11 @@ export function validateMonochromeShellOverlayManifest(
   }
   if (JSON.stringify(surfaceIds) !== JSON.stringify([...surfaceIds].sort())) {
     errors.push('shell surfaces are not in stable order');
+  }
+  if (
+    JSON.stringify(manifest.surfaces) !== JSON.stringify(MONOCHROME_SHELL_OVERLAY_MANIFEST.surfaces)
+  ) {
+    errors.push('shell surface closure drift');
   }
   const surfaceSources = manifest.surfaces.map((entry) => entry.sourcePath);
   if (new Set(surfaceSources).size !== surfaceSources.length) {

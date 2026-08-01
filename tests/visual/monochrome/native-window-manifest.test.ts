@@ -51,6 +51,35 @@ const EXPECTED_SURFACES = [
   ],
 ] as const;
 
+const TEST_ONLY_CAPABILITY_FILES = ['monochrome-test.json'];
+const PRODUCTION_CAPABILITY_IDENTIFIERS = [
+  'default',
+  'pet-mini-panel',
+  'pet-overlay',
+  'workbench-window',
+];
+const TEST_ONLY_CAPABILITY_IDENTIFIER = 'monochrome-test';
+const MONOCHROME_TEST_ALLOWED_PERMISSIONS = [
+  'core:default',
+  'core:event:default',
+  'core:window:default',
+  'core:webview:default',
+  'core:app:default',
+  'core:path:default',
+  'os:default',
+  'dialog:allow-open',
+];
+const MONOCHROME_TEST_FORBIDDEN_PERMISSION_TOKENS = [
+  'notification',
+  'process',
+  'updater',
+  'shell',
+  'http',
+  'global-shortcut',
+  'deep-link',
+  'autostart',
+  'create-webview-window',
+];
 function sourceAtCommit(relativePath: string): string {
   return execFileSync('git', ['show', `${SOURCE_COMMIT}:${relativePath}`], {
     cwd: REPO_ROOT,
@@ -101,21 +130,49 @@ function capabilitySnapshotsAtCommit(): CapabilitySnapshot[] {
   });
 }
 
-function currentCapabilitySnapshots(): CapabilitySnapshot[] {
-  const directory = path.join(REPO_ROOT, 'app/src-tauri/capabilities');
-  return readdirSync(directory)
+const CAPABILITIES_DIRECTORY = path.join(REPO_ROOT, 'app/src-tauri/capabilities');
+
+function snapshotCapability(directory: string, file: string): CapabilitySnapshot {
+  const raw = readFileSync(path.join(directory, file), 'utf8');
+  const parsed = JSON.parse(raw) as { identifier: string; windows: string[] };
+  return {
+    file,
+    identifier: parsed.identifier,
+    windows: parsed.windows,
+    sha256: canonicalHash(raw),
+  };
+}
+
+function listCapabilityFiles(): string[] {
+  return readdirSync(CAPABILITIES_DIRECTORY)
     .filter((file) => file.endsWith('.json'))
-    .sort()
-    .map((file) => {
-      const raw = readFileSync(path.join(directory, file), 'utf8');
-      const parsed = JSON.parse(raw) as { identifier: string; windows: string[] };
-      return {
-        file,
-        identifier: parsed.identifier,
-        windows: parsed.windows,
-        sha256: canonicalHash(raw),
-      };
-    });
+    .sort();
+}
+
+// Production capability auto-discovery must never include the explicitly
+// classified test-only capability. Tauri otherwise auto-discovers every file
+// under capabilities/, so the production closure excludes the test-only files
+// here and the base config pins an explicit production allowlist.
+function currentCapabilitySnapshots(): CapabilitySnapshot[] {
+  return listCapabilityFiles()
+    .filter((file) => !TEST_ONLY_CAPABILITY_FILES.includes(file))
+    .map((file) => snapshotCapability(CAPABILITIES_DIRECTORY, file));
+}
+
+function currentTestOnlyCapabilitySnapshots(): CapabilitySnapshot[] {
+  return listCapabilityFiles()
+    .filter((file) => TEST_ONLY_CAPABILITY_FILES.includes(file))
+    .map((file) => snapshotCapability(CAPABILITIES_DIRECTORY, file));
+}
+
+function readCapabilityPermissions(file: string): string[] {
+  const raw = readFileSync(path.join(CAPABILITIES_DIRECTORY, file), 'utf8');
+  const parsed = JSON.parse(raw) as { permissions?: unknown[] };
+  return (parsed.permissions ?? []).map((permission) =>
+    typeof permission === 'string'
+      ? permission
+      : ((permission as { identifier?: string }).identifier ?? ''),
+  );
 }
 
 function capabilityIdsForLabel(
@@ -384,4 +441,117 @@ test('native validator rejects duplicate identifiers, drift, unrepresented files
     ).join('\n'),
     /test window/iu,
   );
+});
+
+test('production capability auto-discovery excludes the test-only file and stays closed at four', () => {
+  assert.ok(
+    listCapabilityFiles().includes('monochrome-test.json'),
+    'expected committed monochrome-test.json capability on disk',
+  );
+  const productionFiles = currentCapabilitySnapshots().map((entry) => entry.file);
+  assert.deepEqual(productionFiles, [
+    'default.json',
+    'pet-mini-panel.json',
+    'pet-overlay.json',
+    'workbench.json',
+  ]);
+  assert.equal(productionFiles.includes('monochrome-test.json'), false);
+  const productionIdentifiers = currentCapabilitySnapshots()
+    .map((entry) => entry.identifier)
+    .sort();
+  assert.deepEqual(productionIdentifiers, [...PRODUCTION_CAPABILITY_IDENTIFIERS].sort());
+});
+
+test('base tauri.conf.json pins an explicit production capability allowlist equal to the frozen four', () => {
+  const config = JSON.parse(currentSource('app/src-tauri/tauri.conf.json')) as {
+    app?: { security?: { capabilities?: string[] } };
+  };
+  const allowlist = config.app?.security?.capabilities;
+  assert.ok(Array.isArray(allowlist), 'missing app.security.capabilities allowlist');
+  if (!Array.isArray(allowlist)) return;
+  assert.deepEqual([...allowlist].sort(), [...PRODUCTION_CAPABILITY_IDENTIFIERS].sort());
+  assert.equal(allowlist.includes(TEST_ONLY_CAPABILITY_IDENTIFIER), false);
+});
+
+test('exactly one explicitly classified test-only capability is permitted and mutually exclusive', () => {
+  const testOnly = currentTestOnlyCapabilitySnapshots();
+  assert.equal(testOnly.length, 1, 'expected exactly one test-only capability');
+  assert.deepEqual(
+    testOnly.map((entry) => entry.file),
+    TEST_ONLY_CAPABILITY_FILES,
+  );
+  const entry = testOnly[0];
+  assert.equal(entry.file, 'monochrome-test.json');
+  assert.equal(entry.identifier, TEST_ONLY_CAPABILITY_IDENTIFIER);
+  assert.deepEqual(entry.windows, ['monochrome-test']);
+  const productionIdentifiers = new Set(
+    currentCapabilitySnapshots().map((capability) => capability.identifier),
+  );
+  assert.equal(productionIdentifiers.has(entry.identifier), false);
+  const intersection = [...productionIdentifiers].filter((identifier) =>
+    [entry.identifier].includes(identifier),
+  );
+  assert.deepEqual(intersection, []);
+});
+
+test('test-only capability is least-privilege and excludes unscoped webview creation', () => {
+  const permissions = readCapabilityPermissions('monochrome-test.json').sort();
+  assert.deepEqual(permissions, [...MONOCHROME_TEST_ALLOWED_PERMISSIONS].sort());
+  for (const token of MONOCHROME_TEST_FORBIDDEN_PERMISSION_TOKENS) {
+    assert.equal(
+      permissions.some((permission) => permission.includes(token)),
+      false,
+      `forbidden permission present: ${token}`,
+    );
+  }
+});
+
+test('production closure fails when a production capability is removed or the test capability appended', () => {
+  const validate = nativeAuthority.validateMonochromeNativeWindowManifest;
+  const manifest = nativeAuthority.MONOCHROME_NATIVE_WINDOW_MANIFEST;
+  const historicalCapabilities = capabilitySnapshotsAtCommit();
+  const currentCapabilities = currentCapabilitySnapshots();
+  const historicalSurfaces = discoverNativeSurfaces(sourceAtCommit, historicalCapabilities);
+  const currentSurfaces = discoverNativeSurfaces(currentSource, currentCapabilities);
+
+  assert.match(
+    validate(
+      { ...manifest, capabilities: manifest.capabilities.slice(1) },
+      historicalCapabilities,
+      currentCapabilities,
+      historicalSurfaces,
+      currentSurfaces,
+    ).join('\n'),
+    /closure|drift/iu,
+  );
+
+  const testOnlyEntry = {
+    file: 'monochrome-test.json',
+    identifier: 'monochrome-test',
+    windows: ['monochrome-test'],
+    sha256: '0'.repeat(64),
+  };
+  assert.match(
+    validate(
+      { ...manifest, capabilities: [...manifest.capabilities, testOnlyEntry] },
+      historicalCapabilities,
+      [...currentCapabilities, testOnlyEntry],
+      historicalSurfaces,
+      currentSurfaces,
+    ).join('\n'),
+    /test window|monochrome test|closure|drift/iu,
+  );
+});
+
+test('broadening the test-only capability permissions fails the least-privilege contract', () => {
+  const permissions = readCapabilityPermissions('monochrome-test.json');
+  const stillMinimal = permissions.every((permission) =>
+    MONOCHROME_TEST_ALLOWED_PERMISSIONS.includes(permission),
+  );
+  assert.equal(stillMinimal, true, 'committed test capability must stay within the allowed set');
+  const broadened = [...permissions, 'shell:allow-open'];
+  const trips = broadened.some((permission) =>
+    MONOCHROME_TEST_FORBIDDEN_PERMISSION_TOKENS.some((token) => permission.includes(token)),
+  );
+  assert.equal(trips, true, 'broadened permission set must trip the forbidden-token guard');
 });

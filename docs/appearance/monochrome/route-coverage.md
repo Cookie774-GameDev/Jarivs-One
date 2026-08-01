@@ -31,7 +31,7 @@ surfaces, 4 detached views, 6 native windows, 3 embedded surfaces, 1 development
 and 1 unavailable future surface. Shell/overlay and detached closure is imported from the
 committed shell authority; native closure is imported from the committed native-window
 authority. Every available entry records literal source and test paths, fixture ID and SHA-256,
-functional command, 1672×941/1024×768/narrow-desktop viewports, 100%/200% zoom,
+functional command, 1672×941/1024×768/narrow-desktop viewports, 100%/125%/150%/200% zoom,
 normal/reduced-motion states, preserved-theme B0 case IDs, owner, logical lock, and literal file
 locks.
 

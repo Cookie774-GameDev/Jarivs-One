@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -21,8 +22,9 @@ import { validateArtifacts } from './analyze-reference.mjs';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(scriptDir, '../..');
 const evidenceRoot = join(repositoryRoot, 'docs/appearance/monochrome');
-const expectedSource = 'Screen Recording 2026-07-16 220632(1).mp4';
-const evidenceCutoff = '2026-07-29T21:13:02.0844029Z';
+const expectedSource = 'Screen Recording 2026-07-16 220632.mp4';
+const rejectedLegacySource = 'Screen Recording 2026-07-16 220632(1).mp4';
+const evidenceCutoff = '2026-07-30T04:58:59.5349264Z';
 const glyphFixture = 'AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789';
 const expectedPalette = {
   'color.black': '#000000',
@@ -163,6 +165,7 @@ function promoteFixtureToMeasured(root) {
   const manifest = readJson(manifestPath);
   const tokens = readJson(tokensPath);
   const spec = readJson(specPath);
+  if (manifest.status === 'measured') return;
 
   Object.assign(manifest, {
     status: 'measured',
@@ -304,33 +307,37 @@ test('the six committed reference artifacts satisfy their schemas and links', ()
   assert.deepEqual(result.files, expectedFiles);
 });
 
-test('the blocked contract is truthful and contains no fabricated measurements', () => {
+test('the measured contract is source-locked and contains generated evidence', () => {
   const manifest = readJson(join(evidenceRoot, 'FRAME_MANIFEST.json'));
   const spec = readJson(join(evidenceRoot, 'reference-spec.json'));
   const tokens = readJson(join(evidenceRoot, 'design-tokens.json'));
 
   assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.status, 'blocked_missing_source');
+  assert.equal(manifest.status, 'measured');
   assert.equal(manifest.source.expectedFileName, expectedSource);
-  assert.equal(manifest.source.sha256, null);
-  assert.equal(manifest.source.durationMs, null);
-  assert.equal(manifest.source.width, null);
-  assert.equal(manifest.source.height, null);
-  assert.equal(manifest.source.frameRate, null);
-  assert.deepEqual(manifest.frames, []);
-  assert.equal(spec.status, 'blocked_missing_source');
-  assert.deepEqual(spec.frameIds, []);
+  assert.equal(manifest.source.sha256, manifest.sourceSha256);
+  assert.match(manifest.source.sha256, /^[A-F0-9]{64}$/u);
+  assert.ok(manifest.source.durationMs > 0);
+  assert.ok(manifest.source.width > 0);
+  assert.ok(manifest.source.height > 0);
+  assert.ok(manifest.source.frameRate > 0);
+  assert.ok(manifest.frames.length > 0);
+  assert.equal(spec.status, 'measured');
+  assert.ok(spec.frameIds.length > 0);
   assert.equal(spec.expectedFileName, expectedSource);
-  assert.equal(spec.accentRatio, null);
-  assert.deepEqual(spec.motionSamples, []);
-  assert.deepEqual(spec.rois, []);
+  assert.ok(spec.accentRatio >= 0);
+  assert.equal(spec.motionSamples.length, 6);
+  assert.ok(spec.rois.length > 0);
+  assert.equal(spec.typography.candidates.length, 72);
+  assert.ok(spec.typography.candidates.every(({ condition }) => condition.fontsReady === false));
   assert.deepEqual(
     Object.fromEntries(tokens.tokens.map((token) => [token.id, token.seedValue])),
     expectedPalette,
   );
   assert.ok(tokens.tokens.every((token) => token.category === 'color'));
   assert.ok(tokens.tokens.every((token) => token.provenance.seed === 'master_goal_seed'));
-  assert.ok(tokens.tokens.every((token) => token.measuredValue === null));
+  assert.ok(tokens.tokens.every((token) => /^#[A-F0-9]{6}$/u.test(token.measuredValue)));
+  assert.ok(tokens.tokens.every((token) => token.frameRoiSamples.length === 3));
   for (const name of expectedFiles) {
     const value = name.endsWith('.md')
       ? readMarkdownFrontmatter(join(evidenceRoot, name))
@@ -339,17 +346,17 @@ test('the blocked contract is truthful and contains no fabricated measurements',
   }
 });
 
-test('all Markdown frontmatter has deterministic common provenance, privacy, and links', () => {
+test('all measured Markdown frontmatter has deterministic provenance, privacy, and links', () => {
   const names = ['REFERENCE_ANALYSIS.md', 'DESIGN.md', 'component-mapping.md'];
   const frontmatters = names.map((name) => readMarkdownFrontmatter(join(evidenceRoot, name)));
   const ids = new Set(frontmatters.map((frontmatter) => frontmatter.artifactId));
 
   for (const frontmatter of frontmatters) {
     assert.equal(frontmatter.schemaVersion, 1);
-    assert.equal(frontmatter.status, 'blocked_missing_source');
+    assert.equal(frontmatter.status, 'measured');
     assert.equal(frontmatter.evidenceCutoff, evidenceCutoff);
     assert.equal(frontmatter.expectedFileName, expectedSource);
-    assert.equal(frontmatter.sourceSha256, null);
+    assert.match(frontmatter.sourceSha256, /^[A-F0-9]{64}$/u);
     assert.equal(frontmatter.privacyDisposition, 'sanitized_no_private_source_data');
     assert.deepEqual(frontmatter.linkedArtifactIds, [...frontmatter.linkedArtifactIds].sort());
     assert.ok(frontmatter.linkedArtifactIds.length >= 5);
@@ -432,9 +439,12 @@ test('future measured JSON schemas declare and enforce the complete evidence fie
     const manifest = readJson(manifestPath);
     const tokens = readJson(tokenPath);
     const spec = readJson(specPath);
-    manifest.status = 'measured';
-    tokens.status = 'measured';
-    spec.status = 'measured';
+    delete manifest.source.codec;
+    delete manifest.source.contentCrop;
+    delete tokens.tokens[0].measuredValue;
+    tokens.tokens[0].frameRoiSamples = [];
+    delete spec.viewport;
+    delete spec.accentRatio;
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     writeFileSync(tokenPath, `${JSON.stringify(tokens, null, 2)}\n`);
     writeFileSync(specPath, `${JSON.stringify(spec, null, 2)}\n`);
@@ -720,18 +730,16 @@ test('duplicate, missing, and extra-cell mapping rows are rejected', () => {
   }
 });
 
-test('blocked status rejects populated measured fields', () => {
+test('blocked status rejects retained measured fields', () => {
   withFixture((root) => {
     const path = join(root, 'docs/appearance/monochrome/FRAME_MANIFEST.json');
     const manifest = readJson(path);
-    manifest.source.durationMs = 1000;
+    manifest.status = 'blocked_missing_source';
     writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const result = validateArtifacts(root);
     assert.ok(
-      result.errors.some(
-        (error) => error.includes('durationMs') && error.includes('blocked_missing_source'),
-      ),
+      result.errors.some((error) => error.includes('sourceSha256') || error.includes('status')),
     );
   });
 });
@@ -774,6 +782,15 @@ test('exact analyzer CLI fails closed, sanitizes errors, and never mutates evide
     '--docs',
     'docs/other',
   ]);
+  const legacyAlias = spawnSync(process.execPath, [
+    analyzer,
+    '--video',
+    join(repositoryRoot, 'private-user', 'Downloads', rejectedLegacySource),
+    '--artifacts',
+    artifacts,
+    '--docs',
+    docs,
+  ]);
 
   assert.equal(unset.status, 64);
   assert.equal(missing.status, 2);
@@ -781,27 +798,62 @@ test('exact analyzer CLI fails closed, sanitizes errors, and never mutates evide
   assert.equal(duplicate.status, 64);
   assert.equal(missingValue.status, 64);
   assert.equal(wrongDocs.status, 64);
+  assert.equal(legacyAlias.status, 64);
   assert.ok(!missing.stderr.toString().includes(sensitiveMissingPath));
+  assert.ok(!legacyAlias.stderr.toString().includes(rejectedLegacySource));
   assert.deepEqual(hashEvidence(), before);
 });
 
-test('present video takes the safe MC8A exit with exact CLI and no writes', () => {
+test('present exact video is measured into isolated docs and private artifacts', () => {
   const root = mkdtempSync(join(tmpdir(), 'monochrome-video-'));
   const video = join(root, expectedSource);
-  writeFileSync(video, 'non-reference test placeholder');
+  const docsRoot = join(root, 'docs/appearance/monochrome');
+  cpSync(evidenceRoot, docsRoot, { recursive: true });
+  execFileSync('ffmpeg', [
+    '-v',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=size=320x180:rate=10:duration=1',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    video,
+  ]);
+  const expectedHash = createHash('sha256').update(readFileSync(video)).digest('hex').toUpperCase();
   const before = hashEvidence();
   try {
-    const present = spawnSync(process.execPath, [
-      join(scriptDir, 'analyze-reference.mjs'),
-      '--video',
-      video,
-      '--artifacts',
-      '.artifacts/monochrome/test/reference',
-      '--docs',
-      'docs/appearance/monochrome',
-    ]);
-    assert.equal(present.status, 3);
+    const present = spawnSync(
+      process.execPath,
+      [
+        join(scriptDir, 'analyze-reference.mjs'),
+        '--video',
+        video,
+        '--artifacts',
+        '.artifacts/monochrome/test/reference',
+        '--docs',
+        'docs/appearance/monochrome',
+      ],
+      { cwd: root },
+    );
+    assert.equal(present.status, 0, present.stderr.toString());
     assert.ok(!present.stderr.toString().includes(video));
+    assert.ok(!present.stdout.toString().includes(video));
+    const manifest = readJson(join(docsRoot, 'FRAME_MANIFEST.json'));
+    assert.equal(manifest.status, 'measured');
+    assert.equal(manifest.expectedFileName, expectedSource);
+    assert.equal(manifest.sourceSha256, expectedHash);
+    assert.ok(manifest.frames.length > 0);
+    assert.deepEqual(validateArtifacts(root).errors, []);
+    const framesRoot = join(root, '.artifacts/monochrome/test/reference/frames');
+    assert.ok(existsSync(framesRoot));
+    assert.equal(
+      manifest.sampling.sampleCount,
+      readdirSync(framesRoot).filter((name) => /^frame-\d{6}\.png$/u.test(name)).length,
+    );
     assert.deepEqual(hashEvidence(), before);
   } finally {
     rmSync(root, { recursive: true, force: true });

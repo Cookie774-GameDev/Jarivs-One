@@ -321,6 +321,28 @@ test('shell validator rejects duplicates, missing siblings, missing dispatch tar
     validate(
       {
         ...manifest,
+        surfaces: manifest.surfaces.filter(({ id }) => id !== 'activity-strip'),
+      },
+      discoveredAppSiblings,
+    ).join('\n'),
+    /surface closure/iu,
+  );
+  assert.match(
+    validate(
+      {
+        ...manifest,
+        surfaces: manifest.surfaces.map((surface) =>
+          surface.id === 'activity-strip' ? { ...surface, sourcePath: '../outside.tsx' } : surface,
+        ),
+      },
+      discoveredAppSiblings,
+    ).join('\n'),
+    /surface closure|unsafe/iu,
+  );
+  assert.match(
+    validate(
+      {
+        ...manifest,
         detachedViews: [
           ...manifest.detachedViews,
           { id: 'orphan', query: '?view=orphan', surfaceId: 'absent' },

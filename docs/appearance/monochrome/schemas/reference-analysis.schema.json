@@ -22,8 +22,8 @@
     "schemaVersion": { "const": 1 },
     "artifactId": { "const": "reference-analysis" },
     "status": { "enum": ["blocked_missing_source", "measured"] },
-    "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
-    "expectedFileName": { "const": "Screen Recording 2026-07-16 220632(1).mp4" },
+    "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+    "expectedFileName": { "const": "Screen Recording 2026-07-16 220632.mp4" },
     "sourceSha256": {},
     "linkedArtifactIds": {
       "type": "array",
@@ -55,7 +55,7 @@
       "type": "object",
       "properties": {
         "status": { "const": "blocked_missing_source" },
-        "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+        "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
         "sourceSha256": { "type": "null" },
         "frameIds": { "type": "array", "maxItems": 0 },
         "sampling": { "type": "null" },
@@ -67,7 +67,7 @@
       "type": "object",
       "properties": {
         "status": { "const": "measured" },
-        "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+        "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
         "sourceSha256": {
           "type": "string",
           "pattern": "^[A-Fa-f0-9]{64}$"

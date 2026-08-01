@@ -1,8 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// @ts-expect-error TS5097 -- Direct Node test execution requires the explicit .ts extension.
 import { MONOCHROME_FIXTURE_MANIFEST, MONOCHROME_SOURCE_COMMIT } from './fixture-manifest.ts';
+// @ts-expect-error TS5097 -- Direct Node test execution requires the explicit .ts extension.
 import { MONOCHROME_NATIVE_WINDOW_MANIFEST } from './native-window-manifest.ts';
+// @ts-expect-error TS5097 -- Direct Node test execution requires the explicit .ts extension.
 import { MONOCHROME_SHELL_OVERLAY_MANIFEST } from './shell-overlay-manifest.ts';
 
 export const MONOCHROME_FINAL_ROUTE_IDS = Object.freeze([
@@ -81,6 +83,15 @@ export type MonochromeCoverageOwner =
   | 'MC7G'
   | 'MC9';
 
+export const MONOCHROME_ZOOM_ROWS = Object.freeze([
+  Object.freeze({ label: '100%', factor: 1, surfaceId: 'zoom:100%' }),
+  Object.freeze({ label: '125%', factor: 1.25, surfaceId: 'zoom:125%' }),
+  Object.freeze({ label: '150%', factor: 1.5, surfaceId: 'zoom:150%' }),
+  Object.freeze({ label: '200%', factor: 2, surfaceId: 'zoom:200%' }),
+] as const);
+export type MonochromeZoomRow = (typeof MONOCHROME_ZOOM_ROWS)[number];
+export type MonochromeZoomLabel = MonochromeZoomRow['label'];
+
 export interface MonochromeCoverageEntry {
   readonly id: string;
   readonly kind: MonochromeCoverageKind;
@@ -93,7 +104,7 @@ export interface MonochromeCoverageEntry {
   readonly fixture: Readonly<{ id: MonochromeFixtureId; sha256: string }>;
   readonly behaviorCommands: readonly string[];
   readonly viewports: readonly ['1672x941', '1024x768', 'narrow-desktop'];
-  readonly zoom: readonly ['100%', '200%'];
+  readonly zoom: readonly MonochromeZoomLabel[];
   readonly motion: readonly ['no-preference', 'reduce'];
   readonly preservedBaselineIds: readonly string[];
   readonly owner: MonochromeCoverageOwner;
@@ -165,9 +176,11 @@ export interface MonochromeLegacyRouteManifest {
   readonly routes: readonly MonochromeLegacyRouteEntry[];
 }
 
-const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+const REPO_ROOT = path.resolve();
 const VIEWPORTS = Object.freeze(['1672x941', '1024x768', 'narrow-desktop'] as const);
-const ZOOM = Object.freeze(['100%', '200%'] as const);
+const ZOOM = Object.freeze(
+  MONOCHROME_ZOOM_ROWS.map(({ label }) => label),
+) as readonly MonochromeZoomLabel[];
 const MOTION = Object.freeze(['no-preference', 'reduce'] as const);
 const ROUTE_AUDIT_TEST = 'tests/visual/monochrome/route-manifest.test.ts';
 const ROUTE_AUDIT_COMMAND = 'node --test tests/visual/monochrome/route-manifest.test.ts';
@@ -768,6 +781,10 @@ export function validateMonochromeRouteCoverageManifest(
     if (new Set(entryIds).size !== entryIds.length) errors.push('duplicate entry id');
     else errors.push('coverage entries are not in stable order');
   }
+  const expectedEntryIds = COVERAGE_ENTRIES.map(({ id }) => id);
+  if (JSON.stringify(entryIds) !== JSON.stringify(expectedEntryIds)) {
+    errors.push('coverage entry closure mismatch');
+  }
   if (new Set(manifest.finalRouteIds).size !== manifest.finalRouteIds.length) {
     errors.push('duplicate final route id');
   }
@@ -815,6 +832,9 @@ export function validateMonochromeRouteCoverageManifest(
     }
     if (entry.kind === 'route' && entry.id !== `route:${entry.routeId}`) {
       errors.push(`route entry id/route id mismatch: ${entry.id}`);
+    }
+    if (JSON.stringify(entry.zoom) !== JSON.stringify(ZOOM)) {
+      errors.push(`zoom authority mismatch: ${entry.id}`);
     }
     if (
       entry.behaviorCommands.length === 0 ||
