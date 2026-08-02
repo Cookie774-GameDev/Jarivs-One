@@ -102,6 +102,8 @@ function platformArtifactNames(releaseVersion) {
     {
       platform: 'darwin-aarch64',
       names: [
+        'VibeSpace_aarch64.app.tar.gz',
+        'VibeSpace_arm64.app.tar.gz',
         `VibeSpace_${releaseVersion}_aarch64.app.tar.gz`,
         `VibeSpace_${releaseVersion}_arm64.app.tar.gz`,
         `Jarvis One_${releaseVersion}_aarch64.app.tar.gz`,
@@ -116,6 +118,8 @@ function platformArtifactNames(releaseVersion) {
     {
       platform: 'darwin-x86_64',
       names: [
+        'VibeSpace_x64.app.tar.gz',
+        'VibeSpace_x86_64.app.tar.gz',
         `VibeSpace_${releaseVersion}_x64.app.tar.gz`,
         `VibeSpace_${releaseVersion}_x86_64.app.tar.gz`,
         `Jarvis One_${releaseVersion}_x64.app.tar.gz`,

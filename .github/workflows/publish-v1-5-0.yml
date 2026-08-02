@@ -25,6 +25,45 @@ jobs:
           grep -Eq '\.(exe|msi)$' <<< "$assets"
           grep -q '\.dmg$' <<< "$assets"
           grep -Eq '\.(AppImage|deb)$' <<< "$assets"
+          mkdir release-verification
+          gh release download v1.5.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json \
+            --dir release-verification
+          node <<'NODE'
+          const fs = require('node:fs');
+          const manifest = JSON.parse(
+            fs.readFileSync('release-verification/latest.json', 'utf8'),
+          );
+          const expectedPlatforms = [
+            'darwin-aarch64',
+            'darwin-x86_64',
+            'linux-x86_64',
+            'windows-x86_64',
+          ];
+          const actualPlatforms = Object.keys(manifest.platforms ?? {}).sort();
+          if (
+            manifest.version !== '1.5.0' ||
+            JSON.stringify(actualPlatforms) !== JSON.stringify(expectedPlatforms)
+          ) {
+            throw new Error(
+              `Incomplete updater manifest: version=${manifest.version}, platforms=${actualPlatforms.join(',')}`,
+            );
+          }
+          const expectedBaseUrl =
+            'https://github.com/Cookie774-GameDev/VibeSpace/releases/download/v1.5.0/';
+          for (const platform of expectedPlatforms) {
+            const entry = manifest.platforms[platform];
+            if (
+              typeof entry.signature !== 'string' ||
+              entry.signature.length === 0 ||
+              typeof entry.url !== 'string' ||
+              !entry.url.startsWith(expectedBaseUrl)
+            ) {
+              throw new Error(`Invalid updater entry for ${platform}`);
+            }
+          }
+          NODE
 
       - name: Publish completed signed release
         env:

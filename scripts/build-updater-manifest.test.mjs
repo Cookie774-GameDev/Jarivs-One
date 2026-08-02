@@ -177,8 +177,8 @@ test('selects deterministic version-bound artifacts for every updater platform',
     await addArtifact(assetsDir, 'A-VibeSpace_9.9.9_aarch64.app.tar.gz');
     await addArtifact(assetsDir, 'A-VibeSpace_9.9.9_amd64.AppImage');
     await addArtifact(assetsDir, `VibeSpace_${VERSION}_amd64.AppImage`);
-    await addArtifact(assetsDir, `VibeSpace_${VERSION}_aarch64.app.tar.gz`);
-    await addArtifact(assetsDir, `VibeSpace_${VERSION}_x64.app.tar.gz`);
+    await addArtifact(assetsDir, 'VibeSpace_aarch64.app.tar.gz');
+    await addArtifact(assetsDir, 'VibeSpace_x64.app.tar.gz');
     await addArtifact(assetsDir, `VibeSpace-${VERSION}-Windows-x64.exe`);
 
     const first = await buildManifest(assetsDir);
@@ -199,11 +199,11 @@ test('selects deterministic version-bound artifacts for every updater platform',
     );
     assert.equal(
       first.manifest.platforms['darwin-aarch64'].url,
-      `https://example.test/releases/v${VERSION}/VibeSpace_${VERSION}_aarch64.app.tar.gz`,
+      `https://example.test/releases/v${VERSION}/VibeSpace_aarch64.app.tar.gz`,
     );
     assert.equal(
       first.manifest.platforms['darwin-x86_64'].url,
-      `https://example.test/releases/v${VERSION}/VibeSpace_${VERSION}_x64.app.tar.gz`,
+      `https://example.test/releases/v${VERSION}/VibeSpace_x64.app.tar.gz`,
     );
     assert.equal(
       first.manifest.platforms['linux-x86_64'].url,
@@ -260,10 +260,12 @@ test('preserves explicit VibeSpace and legacy Jarvis naming variants', async () 
     ['windows-x86_64', `Jarvis-One-${VERSION}-Windows-x64.exe`],
     ['windows-x86_64', `Jarvis One_${VERSION}_x64-setup.exe`],
     ['darwin-aarch64', `VibeSpace_${VERSION}_aarch64.app.tar.gz`],
+    ['darwin-aarch64', 'VibeSpace_aarch64.app.tar.gz'],
     ['darwin-aarch64', `Jarvis One_${VERSION}_aarch64.app.tar.gz`],
     ['darwin-aarch64', `VibeSpace-${VERSION}-macOS-aarch64.tar.gz`],
     ['darwin-aarch64', `Jarvis-One-${VERSION}-macOS-aarch64.tar.gz`],
     ['darwin-x86_64', `VibeSpace_${VERSION}_x64.app.tar.gz`],
+    ['darwin-x86_64', 'VibeSpace_x64.app.tar.gz'],
     ['darwin-x86_64', `Jarvis One_${VERSION}_x64.app.tar.gz`],
     ['darwin-x86_64', `VibeSpace-${VERSION}-macOS-x86_64.tar.gz`],
     ['darwin-x86_64', `Jarvis-One-${VERSION}-macOS-x86_64.tar.gz`],
