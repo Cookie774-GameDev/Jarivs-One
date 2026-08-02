@@ -60,15 +60,9 @@ describe('InstalledAccessAppHost signed-out production boot', () => {
     expect(screen.queryByText('Protected workspace')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(screen.getByRole('dialog', { name: 'Cloud authentication' })).toHaveAttribute(
-      'data-mode',
-      'signin',
-    );
+    expect(screen.getByRole('dialog', { name: 'Cloud authentication' }).getAttribute('data-mode')).toBe('signin');
 
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
-    expect(screen.getByRole('dialog', { name: 'Cloud authentication' })).toHaveAttribute(
-      'data-mode',
-      'signup',
-    );
+    expect(screen.getByRole('dialog', { name: 'Cloud authentication' }).getAttribute('data-mode')).toBe('signup');
   });
 });
