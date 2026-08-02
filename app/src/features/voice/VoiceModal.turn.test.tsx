@@ -120,6 +120,11 @@ import type {
   JarvisEvent,
   JarvisRun,
 } from '@/features/jarvis-command-center/types';
+import type { ProjectId } from '@/types';
+import {
+  clearContextGalaxySnapshotsForTests,
+  publishContextGalaxySnapshot,
+} from '@/features/context/contextGalaxyRegistry';
 
 function emitVoice(event: string, payload?: unknown) {
   voiceListeners.handlers.get(event)?.forEach((fn) => fn(payload));
@@ -222,6 +227,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     useAuthStore.setState({
       localUserId: 'account-a',
       cloudSession: null,
+      projectId: 'project-a' as ProjectId,
       voiceAutoListenOnOpen: true,
       voiceEndTrigger: 'phrase',
       voiceCommitPhrase: 'send it',
@@ -238,8 +244,44 @@ describe('VoiceModal hands-free turn-taking', () => {
   });
 
   afterEach(() => {
+    clearContextGalaxySnapshotsForTests();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('embeds the account-and-project-scoped Context galaxy directly below the transcript', async () => {
+    publishContextGalaxySnapshot({
+      accountId: 'account-a',
+      projectId: 'project-a',
+      mapId: 'map-a',
+      nodes: [
+        {
+          id: 'source-a',
+          label: 'Source A',
+          description: 'A retrieved source.',
+          parentId: null,
+          groupId: 'sources',
+          depth: 0,
+          order: 0,
+          radius: 12,
+        },
+      ],
+      edges: [],
+      selectedId: 'source-a',
+      activityNodeIds: ['source-a'],
+    });
+
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+
+    const transcript = screen.getByLabelText('Voice session transcript');
+    const galaxy = screen.getByRole('region', { name: 'Compact Context galaxy' });
+    expect(
+      transcript.compareDocumentPosition(galaxy) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Use 2D fallback/i })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /Source A/i }).dataset.contextActivity).toBe('true');
   });
 
   it('captures one immutable account/chat binding and keeps transcript and default sends pinned to it', async () => {

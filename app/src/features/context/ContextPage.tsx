@@ -96,6 +96,8 @@ import {
   type ContextSourceCard,
   type ContextWorkspaceSectionId,
 } from './contextWorkspaceUi';
+import { ContextGalaxy } from './ContextGalaxy';
+import { contextTreeToGalaxyData, publishContextGalaxySnapshot } from './contextGalaxyRegistry';
 import './sakura-context.css';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
@@ -1404,14 +1406,18 @@ function ContextMapWorkspace({
             <>
               <div className="absolute left-4 top-4 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-paper/90 p-2 shadow-soft backdrop-blur">
                 <div className="flex items-center gap-2 px-2 text-metadata text-muted-foreground">
-                  <Move className="h-3.5 w-3.5 text-accent-copper" /> Right-click drag
+                  <Move className="h-3.5 w-3.5 text-accent-copper" /> Drag to orbit · Shift-drag to
+                  pan
                 </div>
                 <div className="flex items-center gap-2 px-2 text-metadata text-muted-foreground">
                   <MousePointer2 className="h-3.5 w-3.5 text-accent-honey" /> Left-click nodes or
                   strings
                 </div>
               </div>
-              <ContextMapCanvas
+              <ContextGalaxyWorkspace
+                accountId={accountId}
+                projectId={tree.projectId}
+                mapId={map?.id ?? `context:${tree.rootDir}`}
                 tree={tree}
                 rootNode={rootNode}
                 selectedId={selectedId}
@@ -1724,6 +1730,61 @@ function ContextModeEmpty({
         <h3 className="mt-3 font-display text-2xl font-semibold text-foreground">{title}</h3>
         <p className="mt-1 text-secondary text-muted-foreground">{body}</p>
       </div>
+    </div>
+  );
+}
+
+function ContextGalaxyWorkspace({
+  accountId,
+  projectId,
+  mapId,
+  tree,
+  rootNode,
+  selectedId,
+  highlightedNodeIds,
+  onSelect,
+  flash,
+}: {
+  accountId: string | null;
+  projectId: string | null;
+  mapId: string;
+  tree: ProjectContextTree;
+  rootNode: ContextTreeNode;
+  selectedId: string;
+  highlightedNodeIds: readonly string[];
+  onSelect: (id: string) => void;
+  flash: boolean;
+}) {
+  const galaxy = React.useMemo(
+    () => contextTreeToGalaxyData({ ...tree, nodes: [rootNode] }),
+    [rootNode, tree],
+  );
+  React.useEffect(() => {
+    if (!accountId) return;
+    return publishContextGalaxySnapshot({
+      accountId,
+      projectId,
+      mapId,
+      nodes: galaxy.nodes,
+      edges: galaxy.edges,
+      selectedId,
+      activityNodeIds: highlightedNodeIds,
+    });
+  }, [accountId, galaxy, highlightedNodeIds, mapId, projectId, selectedId]);
+
+  return (
+    <div className="relative h-full min-h-[28rem] w-full overflow-hidden">
+      <ContextGalaxy
+        nodes={galaxy.nodes}
+        edges={galaxy.edges}
+        selectedId={selectedId}
+        activityNodeIds={highlightedNodeIds}
+        onSelect={onSelect}
+        className="absolute inset-0 min-h-0 rounded-none border-0"
+      />
+      {flash ? (
+        <div className="context-map-birth pointer-events-none absolute inset-0 z-30" />
+      ) : null}
     </div>
   );
 }
