@@ -43,3 +43,62 @@ test('every full-screen entrypoint exposes the cinematic lifecycle', async () =>
     assert.match(html, /experience\.css/);
   }
 });
+
+test('act resolution preserves both endpoints and reversible local progress', async () => {
+  const { resolveAct } = await import('../runtime/math.mjs');
+
+  assert.deepEqual(resolveAct(0, 7), { index: 0, local: 0 });
+  assert.deepEqual(resolveAct(0.5, 7), { index: 3, local: 0.5 });
+  assert.deepEqual(resolveAct(1, 7), { index: 6, local: 1 });
+  assert.deepEqual(resolveAct(0.5, 7), resolveAct(0.5, 7));
+});
+
+test('progress tracker reaches 100 only after every unique critical item settles', async () => {
+  const { createProgressTracker } = await import('../runtime/preload.mjs');
+  const tracker = createProgressTracker(3);
+
+  assert.equal(tracker.percent(), 0);
+  assert.equal(tracker.complete('plate-1'), true);
+  assert.equal(tracker.complete('plate-1'), false);
+  assert.equal(tracker.percent(), 33);
+  tracker.complete('plate-2');
+  assert.equal(tracker.percent(), 67);
+  tracker.complete('renderer');
+  assert.equal(tracker.percent(), 100);
+});
+
+test('spring state converges without leaving bounded journey progress', async () => {
+  const { createSpringState, stepSpring } = await import('../runtime/timeline.mjs');
+  let state = createSpringState(0);
+
+  for (let frame = 0; frame < 180; frame += 1) {
+    state = stepSpring(state, 1, 1 / 60, {
+      stiffness: 115,
+      damping: 22,
+    });
+    assert.ok(state.value >= 0 && state.value <= 1);
+  }
+
+  assert.ok(Math.abs(state.value - 1) < 0.001);
+});
+
+test('timeline frames blend only into a valid neighboring cinematic plate', async () => {
+  const { WORLDS } = await import('../worlds.mjs');
+  const { computeTimelineFrame } = await import('../runtime/timeline.mjs');
+  const world = WORLDS['memory-forest'];
+
+  assert.deepEqual(computeTimelineFrame(0, world), {
+    progress: 0,
+    actIndex: 0,
+    local: 0,
+    plateA: 0,
+    plateB: 1,
+    blend: 0,
+  });
+
+  const finalFrame = computeTimelineFrame(1, world);
+  assert.equal(finalFrame.actIndex, 6);
+  assert.equal(finalFrame.plateA, 6);
+  assert.equal(finalFrame.plateB, 6);
+  assert.equal(finalFrame.blend, 1);
+});
