@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 30158)
+Total output lines: 2305
+
 /* VibeSpace website Phase 2
  * Progressive, dependency-free upgrades for the approved marketing sections.
  * All selectors and styles are scoped under the vs2-* namespace.
@@ -1104,18 +1107,7 @@
         photoCaptures += 1;
         var status = query('.vs2-camera-status', body);
         status.textContent = 'Captured · saved to Photos';
-        query('.vs2-camera-preview', body).classList.add('is-captured');
-        window.setTimeout(function () {
-          var preview = query('.vs2-camera-preview', body);
-          if (preview) preview.classList.remove('is-captured');
-        }, 240);
-      });
-      query('[data-camera-tone]', body).addEventListener('click', function (event) {
-        query('.vs2-camera-preview', body).classList.toggle('is-cool');
-        event.currentTarget.textContent = event.currentTarget.textContent === 'Warm' ? 'Cool' : 'Warm';
-      });
-      query('[data-camera-flip]', body).addEventListener('click', function () {
-        query('.vs2-camera-subject', body).classList.toggle('is-flipped');
+        query('.vs2-cam…158 tokens truncated…dy).classList.toggle('is-flipped');
       });
       appCleanup = function () {};
     }
@@ -1743,6 +1735,364 @@
   }
 
   /* ---------------------------------------------------------------------- */
+  /* Build Your Own AI / VibeModel Foundry                                  */
+  /* ---------------------------------------------------------------------- */
+
+  function buildFoundry(section) {
+    if (!section) return null;
+
+    var hardwareProfiles = [
+      {
+        id: 'everyday',
+        label: 'Everyday laptop',
+        specs: 'CPU or integrated graphics · 16 GB memory',
+        note: 'Prioritizes quick local runs and low memory use.',
+        models: [
+          { id: 'pocket-3b', name: 'Pocket 3B', type: 'Fast starter', memory: '≈ 4–6 GB', description: 'A lightweight base for focused tasks, fast replies, and easy local testing.' },
+          { id: 'builder-7b', name: 'Builder 7B', type: 'Balanced pick', memory: '≈ 8–12 GB', description: 'More room for coding, reasoning, and specialist behavior without a huge footprint.' }
+        ]
+      },
+      {
+        id: 'creator',
+        label: 'Creator desktop',
+        specs: 'Dedicated GPU · 32 GB memory',
+        note: 'Balances stronger reasoning with a practical local setup.',
+        models: [
+          { id: 'builder-7b', name: 'Builder 7B', type: 'Fast iteration', memory: '≈ 8–12 GB', description: 'A nimble base when you want to iterate on lessons and evaluations quickly.' },
+          { id: 'studio-14b', name: 'Studio 14B', type: 'Recommended', memory: '≈ 16–24 GB', description: 'A stronger all-round base for richer tone, coding help, and deeper specialties.' }
+        ]
+      },
+      {
+        id: 'power',
+        label: 'Power workstation',
+        specs: 'High-memory GPU · 64 GB+ memory',
+        note: 'Unlocks the strongest local bases and larger evaluation sets.',
+        models: [
+          { id: 'studio-14b', name: 'Studio 14B', type: 'Efficient strong', memory: '≈ 16–24 GB', description: 'A powerful, efficient base for everyday specialist work.' },
+          { id: 'frontier-32b', name: 'Frontier 32B', type: 'Best quality', memory: '≈ 36–48 GB', description: 'The quality-first choice for a serious specialist when your hardware can support it.' }
+        ]
+      }
+    ];
+
+    var lessonTypes = [
+      { id: 'video', label: 'Video', detail: 'MP4 and recorded walkthroughs', tone: 'plum' },
+      { id: 'audio', label: 'Audio', detail: 'MP3 notes and voice lessons', tone: 'cyan' },
+      { id: 'docs', label: 'Docs', detail: 'PDF, Markdown, TXT, and files', tone: 'copper' },
+      { id: 'sources', label: 'Sources', detail: 'Approved pages and references', tone: 'sage' }
+    ];
+
+    var state = {
+      hardware: 'everyday',
+      model: 'builder-7b',
+      name: 'VibeCoder',
+      description: 'A specialist that understands my build style.',
+      guidance: '',
+      lessons: ['docs'],
+      step: 0,
+      unlocked: 0,
+      training: false,
+      trainingIndex: 0,
+      complete: false
+    };
+    var timers = [];
+
+    section.id = 'foundry';
+    section.className = 'vs2-section vs2-foundry-section';
+    section.innerHTML = [
+      '<div class="vs2-section-head vs2-centered">',
+        '<div class="vs2-kicker">VibeModel Foundry · concept preview</div>',
+        '<h2>Build your own AI. <em>Not another agent.</em></h2>',
+        '<p class="vs2-lead">Choose an open-weight base model, teach it from the material you approve, train a focused adapter, compare it, and explicitly promote it. Your result lives in chat and the agent picker—not in the terminal.</p>',
+      '</div>',
+      '<div class="vs2-foundry-shell">',
+        '<div class="vs2-foundry-topline"><span><i></i> Local-model workflow preview</span><small>No training runs from this website. The interactive flow shows how Foundry will work inside VibeSpace.</small></div>',
+        '<div class="vs2-foundry-rail" role="tablist" aria-label="Build your AI steps"></div>',
+        '<div class="vs2-foundry-workspace">',
+          '<div class="vs2-foundry-stage" aria-live="polite"></div>',
+          '<aside class="vs2-foundry-summary">',
+            '<span class="vs2-foundry-summary-label">Your model</span>',
+            '<div class="vs2-foundry-orb" aria-hidden="true"><i></i><b>V</b></div>',
+            '<strong data-foundry-model-name>VibeCoder</strong>',
+            '<p data-foundry-model-desc>A specialist that understands my build style.</p>',
+            '<div class="vs2-foundry-summary-meta"><span data-foundry-base>Builder 7B</span><span data-foundry-lessons>1 lesson type</span></div>',
+            '<div class="vs2-foundry-status"><span>Pipeline</span><ol><li data-foundry-pipeline="0">Base selected</li><li data-foundry-pipeline="1">Identity set</li><li data-foundry-pipeline="2">Lessons approved</li><li data-foundry-pipeline="3">Training candidate</li><li data-foundry-pipeline="4">Ready to review</li></ol></div>',
+          '</aside>',
+        '</div>',
+      '</div>',
+      '<p class="vs2-foundry-footnote">Foundry is designed for narrow specialists—one clear job, transparent lessons, a frozen dataset, real evaluation evidence, and a promotion you approve.</p>'
+    ].join('');
+
+    var rail = query('.vs2-foundry-rail', section);
+    var stage = query('.vs2-foundry-stage', section);
+    var fieldName = query('[data-foundry-model-name]', section);
+    var fieldDescription = query('[data-foundry-model-desc]', section);
+    var fieldBase = query('[data-foundry-base]', section);
+    var fieldLessons = query('[data-foundry-lessons]', section);
+    var stepLabels = ['Base model', 'Identity', 'Lessons', 'Train', 'Review'];
+
+    function currentProfile() {
+      return hardwareProfiles.filter(function (profile) { return profile.id === state.hardware; })[0] || hardwareProfiles[0];
+    }
+
+    function currentModel() {
+      var profile = currentProfile();
+      return profile.models.filter(function (model) { return model.id === state.model; })[0] || profile.models[0];
+    }
+
+    function syncSummary() {
+      var model = currentModel();
+      fieldName.textContent = state.name.trim() || 'Untitled specialist';
+      fieldDescription.textContent = state.description.trim() || 'Give this specialist a purpose in the next step.';
+      fieldBase.textContent = model.name;
+      fieldLessons.textContent = state.lessons.length + ' lesson ' + (state.lessons.length === 1 ? 'type' : 'types');
+      queryAll('[data-foundry-pipeline]', section).forEach(function (item) {
+        var index = Number(item.getAttribute('data-foundry-pipeline'));
+        item.classList.toggle('is-complete', index < state.step || (state.complete && index <= 4));
+        item.classList.toggle('is-active', index === state.step && !state.complete);
+      });
+    }
+
+    function renderRail() {
+      removeAllChildren(rail);
+      stepLabels.forEach(function (label, index) {
+        var button = create('button', 'vs2-foundry-step' + (index === state.step ? ' is-active' : '') + (index < state.step || state.complete ? ' is-complete' : ''));
+        var enabled = index <= state.unlocked && !state.training;
+        button.type = 'button';
+        button.disabled = !enabled;
+        button.setAttribute('role', 'tab');
+        button.setAttribute('aria-selected', index === state.step ? 'true' : 'false');
+        button.innerHTML = '<b>' + (index + 1) + '</b><span>' + label + '</span>';
+        button.addEventListener('click', function () {
+          if (!button.disabled) {
+            state.step = index;
+            render();
+          }
+        });
+        rail.appendChild(button);
+      });
+    }
+
+    function nextButton(label, handler) {
+      var button = create('button', 'vs2-primary-button vs2-foundry-next', label);
+      button.type = 'button';
+      button.addEventListener('click', handler);
+      return button;
+    }
+
+    function renderBase() {
+      var profile = currentProfile();
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 1 · Base model</span><h3>Pick the foundation for your specialist.</h3><p>Foundry recommends local bases around the hardware you choose. Faster options need less memory; quality-first options need more.</p></div>',
+        '<div class="vs2-foundry-hardware"><div><strong>Hardware profile</strong><small>This website uses a sample profile. The app will read your local hardware before recommending models.</small></div><div class="vs2-foundry-profile-picker"></div></div>',
+        '<p class="vs2-foundry-recommendation"><span>Recommended for this profile</span>' + profile.note + '</p>',
+        '<div class="vs2-foundry-model-grid"></div>',
+        '<div class="vs2-foundry-stage-actions"></div>'
+      ].join('');
+
+      var profilePicker = query('.vs2-foundry-profile-picker', stage);
+      hardwareProfiles.forEach(function (item) {
+        var button = create('button', 'vs2-foundry-profile' + (item.id === state.hardware ? ' is-selected' : ''));
+        button.type = 'button';
+        button.setAttribute('aria-pressed', item.id === state.hardware ? 'true' : 'false');
+        button.innerHTML = '<strong>' + item.label + '</strong><small>' + item.specs + '</small>';
+        button.addEventListener('click', function () {
+          state.hardware = item.id;
+          state.model = currentProfile().models[0].id;
+          render();
+        });
+        profilePicker.appendChild(button);
+      });
+
+      var grid = query('.vs2-foundry-model-grid', stage);
+      profile.models.forEach(function (model) {
+        var card = create('button', 'vs2-foundry-model' + (model.id === state.model ? ' is-selected' : ''));
+        card.type = 'button';
+        card.setAttribute('aria-pressed', model.id === state.model ? 'true' : 'false');
+        card.innerHTML = '<span class="vs2-foundry-model-top"><small>' + model.type + '</small><i>' + model.memory + '</i></span><strong>' + model.name + '</strong><p>' + model.description + '</p><span class="vs2-foundry-model-check">Selected</span>';
+        card.addEventListener('click', function () {
+          state.model = model.id;
+          render();
+        });
+        grid.appendChild(card);
+      });
+
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Continue to identity', function () {
+        state.unlocked = Math.max(state.unlocked, 1);
+        state.step = 1;
+        render();
+      }));
+    }
+
+    function renderIdentity() {
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 2 · Identity</span><h3>Give your AI a clear job and voice.</h3><p>A focused purpose produces a better specialist than a giant everything-model. You can add optional guidance without turning it into an agent prompt.</p></div>',
+        '<div class="vs2-foundry-form">',
+          '<label>Model name<input data-foundry-input="name" maxlength="44" value=""></label>',
+          '<label>What should it be great at?<textarea data-foundry-input="description" rows="3" maxlength="180"></textarea></label>',
+          '<label class="vs2-foundry-optional">Optional behavior guidance<textarea data-foundry-input="guidance" rows="3" maxlength="280" placeholder="e.g. Prefer clear next steps and cite the source it learned from."></textarea><small>Optional. This is a behavior layer for the model—not an agent instruction stack.</small></label>',
+        '</div>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back">Back</button></div>'
+      ].join('');
+
+      var nameInput = query('[data-foundry-input="name"]', stage);
+      var descriptionInput = query('[data-foundry-input="description"]', stage);
+      var guidanceInput = query('[data-foundry-input="guidance"]', stage);
+      nameInput.value = state.name;
+      descriptionInput.value = state.description;
+      guidanceInput.value = state.guidance;
+
+      [[nameInput, 'name'], [descriptionInput, 'description'], [guidanceInput, 'guidance']].forEach(function (pair) {
+        pair[0].addEventListener('input', function () {
+          state[pair[1]] = pair[0].value;
+          syncSummary();
+        });
+      });
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { state.step = 0; render(); });
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Approve identity', function () {
+        state.unlocked = Math.max(state.unlocked, 2);
+        state.step = 2;
+        render();
+      }));
+    }
+
+    function renderLessons() {
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 3 · Approved lessons</span><h3>Teach it from what you choose.</h3><p>Add videos, files, examples, conversations, or sources. Foundry freezes the approved lesson set before training, so every candidate stays traceable.</p></div>',
+        '<div class="vs2-foundry-lesson-grid"></div>',
+        '<div class="vs2-foundry-approved"><span>Approved lesson set</span><div data-foundry-lesson-chips></div><small>Conversation lessons can be curated inside VibeSpace. Nothing is trained until you explicitly start a candidate.</small></div>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back">Back</button></div>'
+      ].join('');
+      var grid = query('.vs2-foundry-lesson-grid', stage);
+      lessonTypes.forEach(function (lesson) {
+        var selected = state.lessons.indexOf(lesson.id) !== -1;
+        var button = create('button', 'vs2-foundry-lesson tone-' + lesson.tone + (selected ? ' is-selected' : ''));
+        button.type = 'button';
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        button.innerHTML = '<i>' + lesson.label.charAt(0) + '</i><strong>' + lesson.label + '</strong><small>' + lesson.detail + '</small><b>' + (selected ? 'Approved' : 'Add') + '</b>';
+        button.addEventListener('click', function () {
+          var index = state.lessons.indexOf(lesson.id);
+          if (index === -1) state.lessons.push(lesson.id);
+          else if (state.lessons.length > 1) state.lessons.splice(index, 1);
+          renderLessons();
+          syncSummary();
+        });
+        grid.appendChild(button);
+      });
+      var chips = query('[data-foundry-lesson-chips]', stage);
+      state.lessons.forEach(function (id) {
+        var item = lessonTypes.filter(function (lesson) { return lesson.id === id; })[0];
+        chips.appendChild(create('span', '', item.label));
+      });
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { state.step = 1; render(); });
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Freeze lesson set', function () {
+        state.unlocked = Math.max(state.unlocked, 3);
+        state.step = 3;
+        render();
+      }));
+    }
+
+    function renderTrain() {
+      var stages = [
+        ['Freeze dataset', 'Your approved lessons are packaged with a source manifest.'],
+        ['Train adapter', 'A focused adapter is trained against the selected base model.'],
+        ['Run evaluation', 'Candidate behavior is measured against the original and current champion.']
+      ];
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 4 · Train a candidate</span><h3>Training happens in the background.</h3><p>You can close Foundry while the local worker prepares the candidate. VibeSpace will notify you when evaluation is ready.</p></div>',
+        '<div class="vs2-foundry-train-card"><div class="vs2-foundry-train-orb"><i></i><b>' + (state.training ? Math.round(((state.trainingIndex + .45) / 3) * 100) : (state.complete ? '100' : '—')) + '</b></div><div><span>' + (state.training ? 'Training candidate' : (state.complete ? 'Candidate prepared' : 'Ready when you are')) + '</span><strong>' + (state.training ? stages[state.trainingIndex][0] : (state.complete ? 'Evaluation package is ready.' : 'Train ' + (state.name.trim() || 'your specialist'))) + '</strong><p>' + (state.training ? stages[state.trainingIndex][1] : 'This interactive preview does not start a real local training job.') + '</p></div></div>',
+        '<ol class="vs2-foundry-train-steps"></ol>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back" ' + (state.training ? 'disabled' : '') + '>Back</button></div>'
+      ].join('');
+      var list = query('.vs2-foundry-train-steps', stage);
+      stages.forEach(function (item, index) {
+        var row = create('li', (state.training && index === state.trainingIndex ? 'is-active' : '') + ((state.complete || index < state.trainingIndex) ? ' is-complete' : ''));
+        row.innerHTML = '<i>' + (state.complete || index < state.trainingIndex ? '✓' : (index + 1)) + '</i><div><strong>' + item[0] + '</strong><small>' + item[1] + '</small></div>';
+        list.appendChild(row);
+      });
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { if (!state.training) { state.step = 2; render(); } });
+      if (state.complete) {
+        query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Review candidate', function () { state.step = 4; render(); }));
+      } else {
+        var button = nextButton(state.training ? 'Training in background…' : 'Start training preview', function () { startTraining(); });
+        button.disabled = state.training;
+        query('.vs2-foundry-stage-actions', stage).appendChild(button);
+      }
+    }
+
+    function startTraining() {
+      if (state.training) return;
+      state.training = true;
+      state.trainingIndex = 0;
+      render();
+      var run = Date.now();
+      [0, 1, 2].forEach(function (index) {
+        schedule(timers, function () {
+          if (!state.training || run !== state.trainingRun) return;
+          state.trainingIndex = index;
+          render();
+        }, 720 + index * 920);
+      });
+      state.trainingRun = run;
+      schedule(timers, function () {
+        if (run !== state.trainingRun) return;
+        state.training = false;
+        state.trainingIndex = 3;
+        state.complete = true;
+        state.unlocked = 4;
+        state.step = 4;
+        render();
+      }, reducedMotion() ? 10 : 3540);
+    }
+
+    function renderReview() {
+      var model = currentModel();
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 5 · Compare and promote</span><h3>Only promote what you trust.</h3><p>Compare the candidate with the original base and your current champion, inspect the lesson set and evaluation evidence, then approve the exact specialist you want to use.</p></div>',
+        '<div class="vs2-foundry-compare"><div><span>Original base</span><strong>' + model.name + '</strong><small>General capability · unchanged</small></div><div class="vs2-foundry-candidate"><span>Candidate</span><strong>' + (state.name.trim() || 'Untitled specialist') + '</strong><small>Focused lessons · ready for review</small></div><div><span>Promoted specialist</span><strong>Not chosen yet</strong><small>Requires your approval</small></div></div>',
+        '<div class="vs2-foundry-evidence"><div><strong>What Foundry keeps</strong><span>Base model, frozen lesson set, train configuration, evaluation results, and a rollback path.</span></div><div><strong>Where it appears</strong><span>Chat and the agent picker. Terminal access is intentionally not part of this model flow.</span></div></div>',
+        '<div class="vs2-foundry-launch" hidden aria-live="polite"><span>✓</span><div><strong>Preview promoted.</strong><p>' + (state.name.trim() || 'Your specialist') + ' would now be available in chat and the agent picker.</p></div></div>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back">Back</button></div>'
+      ].join('');
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { state.step = 3; render(); });
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Promote preview to chat', function () {
+        var launch = query('.vs2-foundry-launch', stage);
+        launch.hidden = false;
+        state.complete = true;
+        syncSummary();
+      }));
+    }
+
+    function render() {
+      renderRail();
+      if (state.step === 0) renderBase();
+      else if (state.step === 1) renderIdentity();
+      else if (state.step === 2) renderLessons();
+      else if (state.step === 3) renderTrain();
+      else renderReview();
+      syncSummary();
+    }
+
+    var unregisterVisibility = registerVisibility(function (hidden) {
+      if (hidden && state.training) {
+        clearTimers(timers);
+        state.training = false;
+        state.trainingIndex = 0;
+        render();
+      }
+    });
+    registerCleanup(function () {
+      clearTimers(timers);
+      unregisterVisibility();
+    });
+
+    render();
+    return {
+      section: section,
+      getState: function () { return { step: state.step, complete: state.complete, model: currentModel().id }; }
+    };
+  }
+
+  /* ---------------------------------------------------------------------- */
   /* Inspector + Kanban workbench                                            */
   /* ---------------------------------------------------------------------- */
 
@@ -1912,7 +2262,7 @@
     var phone = buildPhone(phoneSection);
     var providers = buildProviderSection(providerSection);
     var agents = buildAgentSection(agentSection);
-    var workbench = buildWorkbench(workbenchSection);
+    var foundry = buildFoundry(workbenchSection);
 
     document.addEventListener('visibilitychange', handleVisibility);
     registerCleanup(function () {
@@ -1920,12 +2270,12 @@
     });
 
     window.VibeSpacePhase2 = {
-      version: '2.0.0',
+      version: '2.1.0-foundry',
       story: story,
       phone: phone,
       providers: providers,
       agents: agents,
-      workbench: workbench,
+      foundry: foundry,
       voiceProfiles: VOICE_PROFILES,
       getRepoData: function (force) { return loadRepoData(!!force); },
       destroy: function () {
