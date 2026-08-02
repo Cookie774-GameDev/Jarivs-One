@@ -6,17 +6,18 @@
 
 use super::TAURI_APP_IDENTIFIER;
 use tauri::WebviewWindow;
+use windows::core::PCWSTR;
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, WPARAM},
+    Foundation::{HANDLE, HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::Shell::SetCurrentProcessExplicitAppUserModelID,
     UI::WindowsAndMessaging::{
-        LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE, WM_SETICON,
+        LoadImageW, SendMessageTimeoutW, ICON_BIG, ICON_SMALL, IMAGE_ICON, LR_DEFAULTSIZE,
+        SMTO_ABORTIFHUNG, SMTO_BLOCK, WM_SETICON,
     },
 };
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::HANDLE;
 
+const ICON_MESSAGE_TIMEOUT_MS: u32 = 100;
 
 /// `icons/icon.ico` embedded by tauri-build / winres (`set_icon_with_id(..., "32512")`).
 const EXE_ICON_RESOURCE_ID: u16 = 32512;
@@ -28,7 +29,9 @@ fn encode_wide(value: &str) -> Vec<u16> {
 /// Call once at process start, before any window is created.
 pub fn init_process_branding() {
     let wide = encode_wide(TAURI_APP_IDENTIFIER);
-    if let Err(err) = unsafe { SetCurrentProcessExplicitAppUserModelID(PCWSTR::from_raw(wide.as_ptr())) } {
+    if let Err(err) =
+        unsafe { SetCurrentProcessExplicitAppUserModelID(PCWSTR::from_raw(wide.as_ptr())) }
+    {
         eprintln!("[branding] SetCurrentProcessExplicitAppUserModelID failed: {err}");
     }
 }
@@ -59,11 +62,14 @@ fn set_hwnd_icon(hwnd: HWND, icon_type: usize, width: i32, height: i32) {
         return;
     };
     unsafe {
-        let _ = SendMessageW(
+        let _ = SendMessageTimeoutW(
             hwnd,
             WM_SETICON,
-            Some(WPARAM(icon_type)),
-            Some(LPARAM(handle.0 as isize)),
+            WPARAM(icon_type),
+            LPARAM(handle.0 as isize),
+            SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            ICON_MESSAGE_TIMEOUT_MS,
+            None,
         );
     }
 }
@@ -79,4 +85,16 @@ pub fn apply_hwnd_icons(window: &WebviewWindow) {
     set_hwnd_icon(hwnd, ICON_SMALL as usize, 32, 32);
     // Default-size pass catches DPI / explorer restarts when explicit sizes miss a layer.
     set_hwnd_icon(hwnd, ICON_BIG as usize, 0, 0);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn icon_refresh_uses_bounded_message_delivery() {
+        let source = include_str!("branding_windows.rs");
+        let blocking_api = ["SendMessage", "W("].concat();
+
+        assert!(source.contains("SendMessageTimeoutW("));
+        assert!(!source.contains(&blocking_api));
+    }
 }
