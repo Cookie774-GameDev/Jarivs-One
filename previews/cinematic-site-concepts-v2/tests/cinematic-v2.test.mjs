@@ -102,3 +102,26 @@ test('timeline frames blend only into a valid neighboring cinematic plate', asyn
   assert.equal(finalFrame.plateB, 6);
   assert.equal(finalFrame.blend, 1);
 });
+
+test('every declared cinematic asset exists inside the delivery budget', async () => {
+  const { readFile, stat } = await import('node:fs/promises');
+  const { WORLDS } = await import('../worlds.mjs');
+
+  for (const world of Object.values(WORLDS)) {
+    for (const relativePath of [...world.assets.plates, world.assets.texture]) {
+      const url = new URL(`../${relativePath}`, import.meta.url);
+      const info = await stat(url);
+      const header = await readFile(url, { encoding: null, flag: 'r' });
+      assert.ok(
+        info.size > 4_096,
+        `${relativePath} is too small to contain a final cinematic visual`,
+      );
+      assert.ok(
+        info.size < 2_500_000,
+        `${relativePath} exceeds the 2.5 MB delivery budget`,
+      );
+      assert.equal(header.subarray(0, 4).toString('ascii'), 'RIFF');
+      assert.equal(header.subarray(8, 12).toString('ascii'), 'WEBP');
+    }
+  }
+});
