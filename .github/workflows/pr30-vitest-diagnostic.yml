@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: pr30-vitest-diagnostic
@@ -62,6 +63,26 @@ jobs:
           path: pr30-vitest-output.txt
           if-no-files-found: error
           retention-days: 1
+
+      - name: Post compact failure details to PR 30
+        if: steps.vitest.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          {
+            echo '<!-- pr30-vitest-diagnostic -->'
+            echo '### PR #30 merged-state Vitest diagnostic'
+            echo
+            echo 'The exact conflict-resolved merge state failed Vitest. The final 220 output lines are below.'
+            echo
+            echo '```text'
+            tail -n 220 pr30-vitest-output.txt
+            echo '```'
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > pr30-vitest-comment.md
+          gh pr comment 30 --repo "$GITHUB_REPOSITORY" --body-file pr30-vitest-comment.md
 
       - name: Preserve failing status
         if: steps.vitest.outcome == 'failure'
