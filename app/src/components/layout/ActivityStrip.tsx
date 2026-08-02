@@ -28,10 +28,11 @@ export function CouncilActivityStrip() {
     <div
       role="status"
       aria-label="Active agents"
+      data-sakura-shell-region="activity-strip"
       className="flex h-8 shrink-0 items-center gap-4 border-t border-border bg-elevated px-3 overflow-x-auto scrollbar-hidden"
     >
       {activeAgents.length === 0 ? (
-        <span className="text-metadata text-muted-foreground/70">
+        <span className="text-metadata text-muted-foreground/70 [html[data-theme=monochrome]_&]:text-muted-foreground">
           {'Waiting for council to start\u2026'}
         </span>
       ) : (
@@ -45,7 +46,7 @@ export function CouncilActivityStrip() {
               <span className="font-medium text-foreground">{a.name}</span>
               <span className="text-muted-foreground">{verb}</span>
               {tok && (tokCount > 0 || tok.cost_usd > 0) && (
-                <span className="text-muted-foreground/70 tabular-nums">
+                <span className="text-muted-foreground/70 tabular-nums [html[data-theme=monochrome]_&]:text-muted-foreground">
                   {formatTokenCount(tokCount)} tok &middot; {formatCost(tok.cost_usd)}
                 </span>
               )}

@@ -14,14 +14,14 @@ export function JarvisActions() {
   const totalCount = useMemo(() => getAllActions().length, [customCount]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-jarvis-actions flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <header>
         <h2 className="text-page-title text-foreground">Jarvis Actions</h2>
         <p className="mt-1 max-w-2xl text-secondary text-muted-foreground">
-          Jarvis can propose app commands in chat — open terminals, navigate pages, run dev
-          scripts, and more. Nothing runs until you click <strong>Approve</strong> or{' '}
-          <strong>Approve all</strong>. Works with any model (Ollama, Gemini, Claude, etc.)
-          when you talk to Jarvis.
+          Jarvis can propose app commands in chat — open terminals, navigate pages, run dev scripts,
+          and more. Nothing runs until you click <strong>Approve</strong> or{' '}
+          <strong>Approve all</strong>. Works with any model (Ollama, Gemini, Claude, etc.) when you
+          talk to Jarvis.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-metadata">
@@ -92,8 +92,8 @@ export function JarvisActions() {
         </div>
         <div className="inline-flex items-center gap-1.5 text-metadata text-sage">
           <Check className="h-3.5 w-3.5" />
-          Bulk terminal opens use <code className="font-mono">terminal.bulkOpen</code> or presets like{' '}
-          <code className="font-mono">terminal.bulkOpen.5</code>.
+          Bulk terminal opens use <code className="font-mono">terminal.bulkOpen</code> or presets
+          like <code className="font-mono">terminal.bulkOpen.5</code>.
         </div>
       </section>
     </div>

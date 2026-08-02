@@ -1,0 +1,62 @@
+html[data-theme='sakura'] [data-vibespace-owned-chrome='product-tutorial'] [data-product-tutorial] {
+  background-color: hsl(var(--sakura-night-hsl) / 0.68);
+}
+
+html[data-theme='sakura']
+  [data-vibespace-owned-chrome='product-tutorial']
+  [data-product-tutorial='offer']
+  > div:last-child,
+html[data-theme='sakura'] [data-vibespace-owned-chrome='product-tutorial'] [data-tutorial-step] {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.42);
+  border-radius: 1.5rem;
+  background: var(--sakura-panel-fallback);
+  box-shadow:
+    inset 0 2px 0 hsl(var(--sakura-pink-hsl) / 0.78),
+    0 2.375rem 6.25rem hsl(var(--sakura-night-hsl) / 0.58);
+}
+
+html[data-theme='sakura']
+  [data-vibespace-owned-chrome='product-tutorial']
+  [data-product-tutorial='tour']
+  > div:first-child {
+  background: hsl(var(--sakura-night-hsl) / 0.62);
+}
+
+html[data-theme='sakura']
+  [data-vibespace-owned-chrome='product-tutorial']
+  [data-tutorial-step]
+  [data-tutorial-next='true'] {
+  box-shadow: 0 0 22px hsl(var(--sakura-pink-hsl) / 0.22);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='product-tutorial'] :focus-visible {
+  outline: 2px solid hsl(var(--sakura-pink-hsl));
+  outline-offset: 3px;
+}
+
+@media (max-width: 42rem) {
+  html[data-theme='sakura']
+    [data-vibespace-owned-chrome='product-tutorial']
+    [data-product-tutorial='offer'] {
+    padding: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='product-tutorial'],
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='product-tutorial'] * {
+    transition-duration: 0.01ms;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura']
+    [data-vibespace-owned-chrome='product-tutorial']
+    [data-product-tutorial],
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='product-tutorial'] [data-tutorial-step] {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

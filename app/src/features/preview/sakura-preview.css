@@ -1,0 +1,73 @@
+html[data-theme='sakura'] [data-sakura-route='preview'] {
+  background: transparent;
+  color: #fff8f4;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='preview-toolbar'] {
+  border-color: rgba(255, 239, 241, 0.19);
+  background: linear-gradient(180deg, rgba(25, 17, 59, 0.91), rgba(22, 15, 53, 0.79));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='preview-workspace'] {
+  background:
+    radial-gradient(circle at 66% 12%, rgba(255, 228, 231, 0.08), transparent 33%),
+    rgba(20, 14, 48, 0.42);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='preview-device'],
+html[data-theme='sakura'] [data-sakura-surface='preview-empty'],
+html[data-theme='sakura'] [data-sakura-surface='preview-error'],
+html[data-theme='sakura'] [data-sakura-surface='preview-diagnostics'] {
+  border-color: rgba(255, 239, 241, 0.19);
+  border-radius: 16px;
+  background: rgba(18, 12, 44, 0.91);
+  box-shadow:
+    0 12px 34px rgba(8, 5, 30, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='preview-device'] {
+  border-color: rgba(255, 226, 232, 0.3);
+  box-shadow:
+    0 22px 68px rgba(8, 5, 30, 0.38),
+    0 0 0 1px rgba(238, 171, 183, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='preview-error'][data-sakura-state='error'] {
+  border-color: rgba(239, 111, 136, 0.4);
+  box-shadow: inset 3px 0 0 #ef6f88;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='preview-toolbar'] :focus-visible,
+html[data-theme='sakura'] [data-sakura-surface='preview-empty'] :focus-visible,
+html[data-theme='sakura'] [data-sakura-surface='preview-error'] :focus-visible {
+  outline: 2px solid #eeabb7;
+  outline-offset: 2px;
+}
+
+@supports (backdrop-filter: blur(14px)) {
+  html[data-theme='sakura'] [data-sakura-surface='preview-toolbar'],
+  html[data-theme='sakura'] [data-sakura-surface='preview-empty'],
+  html[data-theme='sakura'] [data-sakura-surface='preview-error'],
+  html[data-theme='sakura'] [data-sakura-surface='preview-diagnostics'] {
+    backdrop-filter: blur(14px) saturate(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-route='preview'] *,
+  html[data-theme='sakura'] [data-sakura-route='preview'] *::before {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-surface^='preview-'] {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}

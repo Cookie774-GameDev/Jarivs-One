@@ -6,10 +6,7 @@ import * as React from 'react';
 import { RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
 import type { SkillManifest } from './loader';
 import { SKILL_EMOJI_PRESETS, renderSkillMarkdown } from './markdownPreview';
-import {
-  manifestToCustomPatch,
-  manifestToPresetOverride,
-} from './skillCatalog';
+import { manifestToCustomPatch, manifestToPresetOverride } from './skillCatalog';
 import { skillRegistry } from './registry';
 import { readSkillsStore } from './skillsStore';
 import { Button } from '@/components/ui/button';
@@ -78,7 +75,8 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
       toast.success('Skill draft applied', detail.title);
     };
     window.addEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
-    return () => window.removeEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
+    return () =>
+      window.removeEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
   }, []);
 
   const previewHtml = React.useMemo(() => renderSkillMarkdown(body), [body]);
@@ -116,7 +114,8 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
 
   const onDelete = () => {
     const label = manifest.isPreset ? `preset "${title}"` : `custom skill "${title}"`;
-    if (!window.confirm(`Delete ${label}? You can restore presets from the library header.`)) return;
+    if (!window.confirm(`Delete ${label}? You can restore presets from the library header.`))
+      return;
     const store = readSkillsStore();
     if (manifest.isPreset) {
       store.deletePreset(id);
@@ -144,7 +143,8 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <header
-        className="px-6 pt-5 pb-4 shrink-0 border-b border-border"
+        data-monochrome-surface="skill-editor-header"
+        className="px-6 pt-5 pb-4 shrink-0 border-b border-border [html[data-theme=monochrome]_&]:!border-l-accent-cyan"
         style={{ borderLeftWidth: 4, borderLeftColor: `hsl(${hue}, 55%, 48%)` }}
       >
         <div className="flex flex-wrap items-start gap-3">
@@ -162,7 +162,9 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
                   type="button"
                   className={cn(
                     'h-7 w-7 rounded-md border border-border text-sm hover:border-accent-copper/60',
-                    emoji === e && 'ring-1 ring-accent-copper border-accent-copper/60',
+                    '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-1 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-accent-cyan',
+                    emoji === e &&
+                      'ring-1 ring-accent-copper border-accent-copper/60 [html[data-theme=monochrome]_&]:border-accent-cyan [html[data-theme=monochrome]_&]:ring-0',
                   )}
                   onClick={() => setEmoji(e)}
                 >
@@ -175,7 +177,7 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="font-display text-lg font-semibold"
+              className="font-display text-lg font-semibold [html[data-theme=monochrome]_&]:font-mono"
               placeholder="Skill name"
             />
             <Input
@@ -197,13 +199,17 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
               max={359}
               value={hue}
               onChange={(e) => setHue(Number(e.target.value))}
-              className="w-24 accent-[hsl(var(--accent-copper))]"
+              className="w-24 accent-[hsl(var(--accent-copper))] [html[data-theme=monochrome]_&]:accent-[hsl(var(--accent-cyan))]"
             />
           </label>
         </div>
       </header>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as 'edit' | 'preview')} className="flex-1 flex flex-col min-h-0">
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as 'edit' | 'preview')}
+        className="flex-1 flex flex-col min-h-0"
+      >
         <div className="px-6 pt-3 shrink-0">
           <TabsList>
             <TabsTrigger value="edit">Edit</TabsTrigger>
@@ -211,7 +217,10 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
           </TabsList>
         </div>
 
-        <TabsContent value="edit" className="flex-1 overflow-y-auto px-6 py-4 space-y-4 m-0 scrollbar-hidden">
+        <TabsContent
+          value="edit"
+          className="flex-1 overflow-y-auto px-6 py-4 space-y-4 m-0 scrollbar-hidden"
+        >
           <div>
             <div className="eyebrow mb-1.5">Tools (comma-separated)</div>
             <Input
@@ -234,7 +243,12 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
             <div className="flex items-center justify-between mb-1.5">
               <div className="eyebrow">Library body (markdown)</div>
               <div className="flex gap-1">
-                <Button type="button" variant="ghost" size="sm" onClick={() => insertMarkdown('## Section\n\n')}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => insertMarkdown('## Section\n\n')}
+                >
                   Heading
                 </Button>
                 <Button
@@ -245,7 +259,12 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
                 >
                   Image
                 </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => insertMarkdown('- Item one\n- Item two')}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => insertMarkdown('- Item one\n- Item two')}
+                >
                   List
                 </Button>
               </div>
@@ -259,9 +278,13 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
           </div>
         </TabsContent>
 
-        <TabsContent value="preview" className="flex-1 overflow-y-auto px-6 py-4 m-0 scrollbar-hidden">
+        <TabsContent
+          value="preview"
+          className="flex-1 overflow-y-auto px-6 py-4 m-0 scrollbar-hidden"
+        >
           <div
-            className="text-body text-foreground rounded-xl border border-border bg-paper/40 p-5 shadow-soft"
+            data-monochrome-surface="skill-preview"
+            className="text-body text-foreground rounded-xl border border-border bg-paper/40 p-5 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
             dangerouslySetInnerHTML={{ __html: previewHtml }}
           />
         </TabsContent>
@@ -270,7 +293,9 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
       <Separator />
 
       <footer className="px-6 py-3 shrink-0 flex flex-wrap items-center justify-between gap-2 bg-elevated">
-        <div className="text-metadata text-muted-foreground truncate font-mono">{manifest.filePath}</div>
+        <div className="text-metadata text-muted-foreground truncate font-mono">
+          {manifest.filePath}
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {manifest.isPreset ? (
             <Button variant="ghost" size="sm" onClick={onRestoreDefault}>

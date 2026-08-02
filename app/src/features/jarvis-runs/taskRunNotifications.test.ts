@@ -1,45 +1,127 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { createJarvisTaskRun, useJarvisTaskRunStore } from './taskRunStore';
+import type { JarvisEvent } from '@/lib/jarvis/contracts/execution';
+
 import { startJarvisTaskRunNotifications } from './taskRunNotifications';
 
-describe('Jarvis task run notifications', () => {
-  beforeEach(() => useJarvisTaskRunStore.getState().clearForTests());
+const NOW = 1_784_435_200_000;
 
-  it('notifies once for completion without leaking task content', async () => {
-    const notify = vi.fn(async () => undefined);
-    const stop = startJarvisTaskRunNotifications({ notify });
-    const run = createJarvisTaskRun({
-      goal: 'Process terminal output access_token=never-notify',
-      status: 'running',
-      steps: [{ id: 'one', action: 'terminal.collect_output', label: 'Collect', recoverable: true }],
+function event(seq: number, overrides: Partial<JarvisEvent> = {}): JarvisEvent {
+  return {
+    runId: 'jrun-alpha',
+    seq,
+    idempotencyKey: `event-${seq}`,
+    type: 'run_state',
+    status: 'running',
+    title: 'PRIVATE EVENT TITLE',
+    safeSummary: 'PRIVATE SAFE SUMMARY MUST NOT ENTER NOTIFICATION',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt: NOW + seq,
+    ...overrides,
+  };
+}
+
+describe('canonical Jarvis task notifications', () => {
+  it('emits generic copy once per canonical run/sequence transition', async () => {
+    let listener: (event: JarvisEvent) => void = () => undefined;
+    const unsubscribe = vi.fn();
+    const notify = vi.fn(async (_title: string, _body: string, _status: string) => undefined);
+    const stop = startJarvisTaskRunNotifications({
+      subscribe: (next) => {
+        listener = next;
+        return unsubscribe;
+      },
+      notify,
     });
-    useJarvisTaskRunStore.getState().addRun(run);
-    useJarvisTaskRunStore.getState().patchRun(run.id, { status: 'completed', userVisibleSummary: 'secret terminal output' });
-    useJarvisTaskRunStore.getState().patchRun(run.id, { progress: 100 });
 
-    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
-    expect(JSON.stringify(notify.mock.calls[0])).not.toMatch(/never-notify|secret terminal output/);
+    listener(event(1, { status: 'awaiting_approval' }));
+    listener(event(1, { status: 'awaiting_approval' }));
+    listener(event(2, { status: 'partial' }));
+    listener(event(3, { status: 'completed' }));
+    listener(event(4, { status: 'failed' }));
+    listener(event(5, { status: 'timed_out' }));
+    listener(event(6, { status: 'cancelled' }));
+
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(6));
+    expect(notify.mock.calls.map((call) => call[0])).toEqual([
+      'Jarvis task needs approval',
+      'Jarvis task needs input',
+      'Jarvis task completed',
+      'Jarvis task failed',
+      'Jarvis task timed out',
+      'Jarvis task cancelled',
+    ]);
+    expect(JSON.stringify(notify.mock.calls)).not.toMatch(
+      /PRIVATE EVENT TITLE|PRIVATE SAFE SUMMARY/,
+    );
+
+    stop();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('does not notify for cancellation intent, signal delivery, handoff, or legacy hydration', async () => {
+    let listener: (event: JarvisEvent) => void = () => undefined;
+    const notify = vi.fn(async () => undefined);
+    const stop = startJarvisTaskRunNotifications({
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+      notify,
+    });
+
+    listener(event(1, { type: 'warning', status: 'cancellation_requested' }));
+    listener(event(2, { type: 'warning', status: 'signal_delivered' }));
+    listener(event(3, { type: 'warning', status: 'handoff_pending' }));
+    listener(event(4, { type: 'run_state', status: 'running' }));
+
+    await Promise.resolve();
+    expect(notify).not.toHaveBeenCalled();
     stop();
   });
 
-  it('reports input and failure transitions with generic safe copy', async () => {
-    const notify = vi.fn(async () => undefined);
-    const stop = startJarvisTaskRunNotifications({ notify });
-    const run = createJarvisTaskRun({
-      goal: 'Long workflow',
-      status: 'running',
-      steps: [{ id: 'one', action: 'agent.wait', label: 'Wait', recoverable: true }],
+  it('never replays an immutable run/sequence transition after later journal traffic', async () => {
+    let listener: (event: JarvisEvent) => void = () => undefined;
+    const notify = vi.fn();
+    const stop = startJarvisTaskRunNotifications({
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+      notify,
     });
-    useJarvisTaskRunStore.getState().addRun(run);
-    useJarvisTaskRunStore.getState().patchRun(run.id, { status: 'waiting-for-input' });
-    useJarvisTaskRunStore.getState().patchRun(run.id, { status: 'failed' });
+
+    for (let seq = 1; seq <= 5_001; seq += 1) {
+      listener(event(seq, { status: 'completed' }));
+    }
+    listener(event(1, { status: 'completed' }));
+
+    expect(notify).toHaveBeenCalledTimes(5_001);
+    stop();
+  });
+
+  it('reports notification failures without breaking later canonical events', async () => {
+    let listener: (event: JarvisEvent) => void = () => undefined;
+    const onError = vi.fn();
+    const notify = vi
+      .fn<(title: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('native notification unavailable'))
+      .mockResolvedValue(undefined);
+    const stop = startJarvisTaskRunNotifications({
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+      notify,
+      onError,
+    });
+
+    listener(event(1, { status: 'completed' }));
+    listener(event(2, { status: 'failed' }));
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(2));
-    const notifyCalls = notify.mock.calls as unknown as Array<[string, string, string]>;
-    expect(notifyCalls.map((call) => call[0])).toEqual([
-      'Jarvis task needs input',
-      'Jarvis task failed',
-    ]);
     stop();
   });
 });

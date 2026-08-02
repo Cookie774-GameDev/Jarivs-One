@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { nanoid } from 'nanoid';
 import { useOllamaModelOptions } from '@/lib/ai/models';
 import { bootstrapOllamaConnection } from '@/lib/ai/ollamaBootstrap';
@@ -7,6 +7,16 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { Onboarding } from '@/features/onboarding';
 import { RequireModelAccess } from './RequireModelAccess';
+import {
+  kernelSmokeProvider,
+  subscribeKernelSmokeBinding,
+} from '@/lib/ai/providers/kernelSmoke';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 /**
  * Providers whose presence counts as "Jarvis has a real model to talk to".
@@ -47,6 +57,12 @@ export function AuthGate({ children }: AuthGateProps) {
   const hasProviderKeyAccess = useAuthStore((s) =>
     REAL_PROVIDER_KEYS.some((id) => !!s.apiKeys[id]),
   );
+  const kernelSmokeBindingActive = useSyncExternalStore(
+    subscribeKernelSmokeBinding,
+    kernelSmokeProvider.isAvailable,
+    () => false,
+  );
+  const trustedKernelSmokeAccess = KERNEL_SMOKE_ENABLED && kernelSmokeBindingActive;
 
   // Has the user connected a model yet? Cloud key, offline mode, or an
   // installed local Ollama model all satisfy the gate.
@@ -89,7 +105,7 @@ export function AuthGate({ children }: AuthGateProps) {
     };
   }, [localUserId]);
 
-  if (!onboardingComplete) {
+  if (!onboardingComplete && !trustedKernelSmokeAccess) {
     return (
       <>
         <OllamaConnectionHost />
@@ -99,7 +115,7 @@ export function AuthGate({ children }: AuthGateProps) {
   }
 
   // Onboarding done but no model connected yet — require one before the app.
-  if (!hasModelAccess) {
+  if (!hasModelAccess && !trustedKernelSmokeAccess) {
     return (
       <>
         <OllamaConnectionHost />

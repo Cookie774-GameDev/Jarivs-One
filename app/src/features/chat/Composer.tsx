@@ -1,10 +1,21 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Send, ChevronDown, Sparkles, Mic, MicOff, FileText, X, Network, Terminal } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Send,
+  ChevronDown,
+  Sparkles,
+  Mic,
+  MicOff,
+  FileText,
+  X,
+  Network,
+  Terminal,
+} from 'lucide-react';
 import { HiveModelIcon } from '@/components/brand';
 import { PLUGIN_CATALOG } from '@/features/plugins/catalog';
 import { extractPluginMentions } from '@/features/plugins/mentions';
 import { PluginLogo } from '@/features/plugins/PluginLogo';
-import { usePluginStore } from '@/features/plugins/store';
+import { selectPluginConnectionsForAccount, usePluginStore } from '@/features/plugins/store';
+import type { PluginConnection } from '@/features/plugins/types';
 import {
   Button,
   Hint,
@@ -13,16 +24,31 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui';
-import { chatRepo, messageRepo } from '@/lib/db';
+import { chatRepo, messageRepo, projectRepo, taskRepo, terminalSessionRepo } from '@/lib/db';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { getCurrentSyncQueueAuthorityScope } from '@/lib/cloudSyncQueueOwner';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
-import { HOTKEYS } from '@/lib/hotkeys';
-import { getAllUsage, getUsage, parseUsageSlashCommand, refreshUsage } from '@/lib/usage/usageService';
+import { HOTKEYS, matchesHotkey } from '@/lib/hotkeys';
+import {
+  getAllUsage,
+  getUsage,
+  parseUsageSlashCommand,
+  refreshUsage,
+} from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import { parseJarvisModelSwitchIntent } from '@/lib/jarvis/modelSwitchDecision';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appearance/themes';
 import { VoiceService } from '@/features/voice/VoiceService';
 import { MicWaveform } from './MicWaveform';
+import { formatComposerVoiceFailure } from './composerVoiceFailures';
+import { formatComposerSendFailure } from './composerSendFailures';
+
+export function getThemeCommandHelp(): string {
+  return `Available themes: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`;
+}
 import {
   cleanupAudioRecorder,
   encodeWav,
@@ -55,7 +81,16 @@ import {
 } from '@/features/composer-stt/sttInterimEditor';
 import { JARVIS_COMMAND_CATALOG } from '@/features/assistant/commands';
 import { toast } from '@/components/ui/toast';
-import type { Agent, AgentId, ChatId, ProviderId } from '@/types';
+import type {
+  Agent,
+  AgentId,
+  ChatId,
+  ProjectId,
+  ProviderId,
+  TerminalSessionId,
+  WorkspaceId,
+} from '@/types';
+import { getChatActivityEvents } from './activity/activityStore';
 import {
   parseTerminalRef,
   terminalRefKey,
@@ -68,15 +103,24 @@ import {
 } from '@/features/terminals/terminalScheduler';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
-  CONTEXT_MIME,
   parseContextAttachment,
-  serializeContextAttachment,
-  loadStoredContextMaps,
   contextMapSlashOptions,
   resolveContextMapRecord,
   type ContextAttachment,
   type ContextMapRecord,
 } from '@/features/context/tree';
+import {
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+} from '@/features/context/contextPersistence';
+import {
+  buildMapSummaryChatAttachment,
+  contextAttachmentTokenView,
+  contextChatAttachmentKey,
+  contextChatAttachmentMatchesProject,
+  normalizeContextChatAttachment,
+  type ContextChatAttachment,
+} from '@/features/context/contextChatIntegration';
 import { MentionTypeahead } from './MentionTypeahead';
 import {
   SlashCommandTypeahead,
@@ -89,7 +133,11 @@ import {
   type SlashCommandDef,
   type SlashCommandTypeaheadRef,
 } from './SlashCommandTypeahead';
-import { SlashCommandOptionPicker, type SlashCommandOption, type SlashCommandOptionPickerRef } from './SlashCommandOptionPicker';
+import {
+  SlashCommandOptionPicker,
+  type SlashCommandOption,
+  type SlashCommandOptionPickerRef,
+} from './SlashCommandOptionPicker';
 import {
   ModelPickerTypeahead,
   HIVE_OPTION_ID,
@@ -132,7 +180,11 @@ import {
   getAccessibleProviders,
   useOllamaModelOptions,
 } from '@/lib/ai/models';
-import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import {
+  useAccessibleChatModels,
+  type ModelPickerGroup,
+  type ModelPickerOption,
+} from '@/lib/ai/useAccessibleChatModels';
 import { getProviderConnectionDescriptor, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
@@ -161,11 +213,77 @@ import { useJarvisInteractionStore } from '@/features/jarvis-interaction/session
 import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
 import {
   buildQueuedMultitaskCommand,
+  dispatchQueuedMessageAfterAcceptance,
   QueuedMessagesBar,
   shouldAutoSendQueuedOnRunStatus,
   takeNextQueuedMessage,
   type QueuedChatMessage,
 } from './QueuedMessagesBar';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+import {
+  isKernelSmokeBindingActive,
+  KERNEL_SMOKE_PROVIDER_ID,
+} from '@/lib/ai/providers/kernelSmoke';
+import type { StackStepSpec } from '@/lib/ai/stacks/types';
+import {
+  buildPromptForgeAttachmentSnapshots,
+  collectPromptForgeComposerSources,
+} from '@/features/prompt-forge/composerSources';
+import {
+  isPromptForgePluginAvailable,
+  isPromptForgePluginConnected,
+} from '@/features/prompt-forge/composerPluginSources';
+import { promptForgeModelOptionsFromPicker } from '@/features/prompt-forge/contextPreparation';
+import { PromptForgeControl } from '@/features/prompt-forge/PromptForgeControl';
+import { PromptForgeRecovery } from '@/features/prompt-forge/PromptForgeRecovery';
+import { PromptForgeReview } from '@/features/prompt-forge/PromptForgeReview';
+import { usePromptForgeComposer } from '@/features/prompt-forge/usePromptForgeComposer';
+import type { PromptForgeComposerDescriptor } from '@/features/prompt-forge/composerSources';
+import type { PromptForgeSourceCandidate } from '@/features/prompt-forge/sourcePack';
+import {
+  buildActiveCanvasChatAttachments,
+  canCaptureActiveCanvasSnapshot,
+  captureActiveCanvasSnapshot,
+  mergeActiveCanvasPromptForgeSources,
+  readActiveCanvasAiContext,
+  type ActiveCanvasSnapshot,
+  type CanvasChatAttachmentMode,
+} from '@/features/canvas/aiContextRegistry';
+
+export function mergeActiveCanvasSourcesForPromptForge(
+  sources: readonly PromptForgeSourceCandidate[],
+  accountId: string,
+  projectId: string | null,
+  canvasRouteActive: boolean,
+): readonly PromptForgeSourceCandidate[] {
+  return mergeActiveCanvasPromptForgeSources(sources, { accountId, projectId }, canvasRouteActive);
+}
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
+
+const KERNEL_SMOKE_HIVE_TEXT = KERNEL_SMOKE_SCENARIOS.hive_dispatch.safeTextFixture;
+const COMPOSER_EMPTY_PROMPT_FORGE_SOURCES = Object.freeze([]);
+const KERNEL_SMOKE_HIVE_STEPS: readonly StackStepSpec[] = Object.freeze([
+  Object.freeze({
+    id: 'kernel-smoke-hive-draft',
+    label: 'Smoke draft',
+    provider: KERNEL_SMOKE_PROVIDER_ID,
+    model: 'kernel-smoke-v1',
+    systemAppend: 'Run the fixed deterministic Hive smoke draft.',
+  }),
+  Object.freeze({
+    id: 'kernel-smoke-hive-verify',
+    label: 'Smoke verify',
+    provider: KERNEL_SMOKE_PROVIDER_ID,
+    model: 'kernel-smoke-v1',
+    systemAppend: 'Verify the fixed deterministic Hive smoke draft.',
+  }),
+]);
 
 export interface ComposerProps {
   chatId: ChatId | string;
@@ -183,9 +301,7 @@ const MIN_LINES = 1;
 const MAX_LINES = 8;
 const MIN_HEIGHT = MIN_LINES * LINE_HEIGHT + PADDING_Y;
 const MAX_HEIGHT = MAX_LINES * LINE_HEIGHT + PADDING_Y;
-const COMPOSER_IDLE_PLUGIN_CONNECTIONS = {} as ReturnType<
-  typeof usePluginStore.getState
->['connections'];
+const COMPOSER_IDLE_PLUGIN_CONNECTIONS: Readonly<Record<string, PluginConnection>> = {};
 
 const COMPOSER_IDLE_TERMINAL_SESSIONS = {} as ReturnType<
   typeof useTerminalTranscriptStore.getState
@@ -243,6 +359,7 @@ const SLASH_REFERENCE_LABELS: Record<string, string> = {
   tools: 'Tools page',
   schedule: 'Schedule page',
   chat: 'Chat page',
+  canvas: 'Active Canvas',
 };
 
 export function buildConfirmedAgentMention(agent: Agent): ConfirmedAgentMention {
@@ -294,11 +411,59 @@ function confirmedCommandReferenceText(commands: ConfirmedCommand[]): string {
   return `Context references: ${references.join('; ')}.`;
 }
 
+export function resolveCanvasAttachmentModesForSend(
+  commands: readonly ConfirmedCommand[],
+  leadingText: string,
+): readonly CanvasChatAttachmentMode[] {
+  const modes = new Set<CanvasChatAttachmentMode>();
+  for (const command of commands) {
+    if (normalizeSlashCmd(command.cmd) !== 'canvas') continue;
+    if (command.value === 'canvas:selection') modes.add('selection');
+    if (command.value === 'canvas:frame') modes.add('frame');
+    if (command.value === 'canvas:current' || command.value === 'reference:canvas') {
+      modes.add('current');
+    }
+  }
+  const leadingCommand = leadingText.trimStart().match(/^\/([^\s]+)/u)?.[1] ?? '';
+  if (normalizeSlashCmd(leadingCommand) === 'canvas') modes.add('current');
+  return Object.freeze([...modes]);
+}
+
+export function canvasSnapshotToImageAttachment(
+  snapshot: ActiveCanvasSnapshot,
+): ChatImageAttachment {
+  let binary = '';
+  const chunkSize = 32_768;
+  for (let offset = 0; offset < snapshot.bytes.byteLength; offset += chunkSize) {
+    binary += String.fromCharCode(...snapshot.bytes.subarray(offset, offset + chunkSize));
+  }
+  return {
+    id: `canvas_snapshot_${snapshot.id}`,
+    name: snapshot.filename,
+    mimeType: snapshot.mimeType,
+    data: globalThis.btoa(binary),
+    size: snapshot.bytes.byteLength,
+  };
+}
+
 const WINDOWS_FILE_PATH_RE =
   /[A-Za-z]:\\[^\r\n<>:"|?*]+?\.(?:json|cs|ts|tsx|js|jsx|md|txt|html|css|scss|py|rs|go|java|cpp|c|h|hpp|xml|yaml|yml|toml|ini|sql)\b/gi;
 
 export function extractAbsoluteFilePaths(text: string): string[] {
   return Array.from(new Set(text.match(WINDOWS_FILE_PATH_RE) ?? [])).slice(0, 8);
+}
+
+export function getQueuedMessageNotice(draft: string): Readonly<{ title: string; body: string }> {
+  if (parseJarvisModelSwitchIntent(draft)) {
+    return {
+      title: 'Model switch queued',
+      body: 'The current reply keeps its captured model. Leave this queued to review and apply on the next turn, or stop the current reply and resend to restart sooner.',
+    };
+  }
+  return {
+    title: 'Message queued',
+    body: 'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
+  };
 }
 
 /**
@@ -385,7 +550,45 @@ function pluginConnectionLabel(
   return connection.accountLabel ?? `${connection.configuredFields.length} credential(s)`;
 }
 
-export function Composer({ chatId, placeholder, compact = false, disableRouteSlashCommands = false }: ComposerProps) {
+export function FreeKeyNudge({ onOpenProviders }: { onOpenProviders: () => void }) {
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-1 pt-2.5',
+        'text-secondary text-muted-foreground',
+      )}
+      role="status"
+      aria-label="Free Gemini API key recommended for the Jarvis agent"
+    >
+      <Sparkles className="h-3.5 w-3.5 text-accent-copper shrink-0" />
+      <span>
+        Add a free Gemini API key to give Jarvis a real Flash Lite brain (no card needed).
+      </span>
+      <a
+        href="https://aistudio.google.com/apikey"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center text-accent-copper underline-offset-4 hover:underline [html[data-theme=sakura]_&]:min-h-6"
+      >
+        Get key →
+      </a>
+      <button
+        type="button"
+        onClick={onOpenProviders}
+        className="ml-auto inline-flex items-center text-accent-copper underline-offset-4 hover:underline [html[data-theme=sakura]_&]:min-h-6"
+      >
+        Open Providers
+      </button>
+    </div>
+  );
+}
+
+export function Composer({
+  chatId,
+  placeholder,
+  compact = false,
+  disableRouteSlashCommands = false,
+}: ComposerProps) {
   const [text, setText] = useState('');
   const [mentionCtx, setMentionCtx] = useState<MentionContext | null>(null);
   const [selectedSlug, setSelectedSlug] = useState<string>('');
@@ -404,7 +607,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const [attachedImages, setAttachedImages] = useState<ChatImageAttachment[]>([]);
   const [attachedTerminals, setAttachedTerminals] = useState<TerminalRef[]>([]);
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
-  const [attachedContexts, setAttachedContexts] = useState<ContextAttachment[]>([]);
+  const [attachedContexts, setAttachedContexts] = useState<ContextChatAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
   // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
@@ -460,6 +663,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   queuedMessagesRef.current = queuedMessages;
   const sendingRef = useRef(sending);
   sendingRef.current = sending;
+  const activeCancellationKeyRef = useRef<string | null>(null);
+  const queuedDispatchInFlightRef = useRef<string | null>(null);
   /** Latest auto-flush implementation (set after handleSend exists). */
   const flushNextQueuedRef = useRef<() => void>(() => {});
 
@@ -474,6 +679,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         return;
       }
       setJarvisRunning(false);
+      activeCancellationKeyRef.current = null;
       // When the previous full reply finishes (or fails/cancels), send the next
       // queued message automatically — FIFO order.
       if (!shouldAutoSendQueuedOnRunStatus(status)) return;
@@ -495,13 +701,15 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (!trimmedDraft) return;
     setQueuedMessages((current) => [
       ...current,
-      { id: `queued_${Date.now().toString(36)}_${current.length}`, text: trimmedDraft, createdAt: Date.now() },
+      {
+        id: `queued_${Date.now().toString(36)}_${current.length}`,
+        text: trimmedDraft,
+        createdAt: Date.now(),
+      },
     ]);
     setText('');
-    toast.info(
-      'Message queued',
-      'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
-    );
+    const notice = getQueuedMessageNotice(trimmedDraft);
+    toast.info(notice.title, notice.body);
   };
 
   const editQueuedMessage = (id: string) => {
@@ -522,6 +730,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const selectedModels = useAuthStore((s) => s.selectedModels);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const setChatModelSelection = useAuthStore((s) => s.setChatModelSelection);
+  const promptForgeModelSelection = useAuthStore((s) => s.promptForgeModelSelection);
+  const setPromptForgeModelSelection = useAuthStore((s) => s.setPromptForgeModelSelection);
   const stackCustomSteps = useAuthStore((s) => s.stackCustomSteps);
   const setDefaultProvider = useAuthStore((s) => s.setDefaultProvider);
   const setSelectedModel = useAuthStore((s) => s.setSelectedModel);
@@ -529,11 +739,16 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
   const projectId = useAuthStore((s) => s.projectId);
+  const [contextMaps, setContextMaps] = useState<readonly ContextMapRecord[]>([]);
+  const pluginAccountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? '');
   const terminalPickerActive = normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '') === 'terminals';
   const pluginPickerActive = optionPickerCtx?.cmd.cmd === 'plug';
   const pluginConnections = usePluginStore((s) =>
-    pluginPickerActive ? s.connections : COMPOSER_IDLE_PLUGIN_CONNECTIONS,
+    pluginPickerActive
+      ? selectPluginConnectionsForAccount(s, pluginAccountId)
+      : COMPOSER_IDLE_PLUGIN_CONNECTIONS,
   );
   const terminalSessions = useTerminalTranscriptStore((s) =>
     terminalPickerActive ? s.sessions : COMPOSER_IDLE_TERMINAL_SESSIONS,
@@ -542,9 +757,32 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const modelPickerRef = useRef<ModelPickerTypeaheadRef>(null);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const ollamaOptions = useOllamaModelOptions();
+  const accessibleChatModels = useAccessibleChatModels();
   const [projectFileOptions, setProjectFileOptions] = useState<SlashCommandOption[]>([]);
   const [projectFilesLoading, setProjectFilesLoading] = useState(false);
   const [projectFilesError, setProjectFilesError] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!pluginAccountId) {
+      setContextMaps([]);
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      const state = getActiveContextPersistenceState(projectId);
+      if (active && state) setContextMaps(state.maps);
+    };
+    void ensureContextPersistence(projectId)
+      .then(refresh)
+      .catch(() => {
+        if (active) setContextMaps([]);
+      });
+    window.addEventListener('jarvis:context-tree-updated', refresh);
+    return () => {
+      active = false;
+      window.removeEventListener('jarvis:context-tree-updated', refresh);
+    };
+  }, [pluginAccountId, projectId]);
 
   const accessibleProviders = useMemo(
     () => getAccessibleProviders(apiKeys, offlineMode, plan),
@@ -559,20 +797,26 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   // A chat's exact connection is local-only metadata. Restore it when switching chats.
   useEffect(() => {
     let cancelled = false;
-    void chatRepo.getById(chatId as ChatId).then((chat) => {
-      if (cancelled || !chat?.connection) return;
-      const current = useAuthStore.getState().chatModelSelection;
-      const modelId = chat.connection.modelId
-        ?? (current.mode === 'single' && current.providerId === chat.connection.providerId ? current.modelId : '')
-        ?? '';
-      if (!modelId) return;
-      setChatModelSelection(selectionFromOption(
-        chat.connection.providerId as ProviderId,
-        modelId,
-        chat.connection,
-      ));
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
+    void chatRepo
+      .getById(chatId as ChatId)
+      .then((chat) => {
+        if (cancelled || !chat?.connection) return;
+        const current = useAuthStore.getState().chatModelSelection;
+        const modelId =
+          chat.connection.modelId ??
+          (current.mode === 'single' && current.providerId === chat.connection.providerId
+            ? current.modelId
+            : '') ??
+          '';
+        if (!modelId) return;
+        setChatModelSelection(
+          selectionFromOption(chat.connection.providerId as ProviderId, modelId, chat.connection),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [chatId, setChatModelSelection]);
 
   // Generate options for option picker based on current command
@@ -593,8 +837,61 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
 
     if (normalizeSlashCmd(cmd) === 'context') {
-      const maps = projectId ? loadStoredContextMaps(projectId) : [];
+      const maps = projectId
+        ? (getActiveContextPersistenceState(projectId)?.maps ?? contextMaps)
+        : [];
       return contextMapSlashOptions(maps);
+    }
+
+    if (normalizeSlashCmd(cmd) === 'canvas') {
+      const context = readActiveCanvasAiContext({
+        accountId: pluginAccountId,
+        projectId,
+      });
+      if (context === null) return [];
+      const scope = { accountId: pluginAccountId, projectId };
+      const selectedFrame = buildActiveCanvasChatAttachments(scope, 'frame')[0];
+      return [
+        {
+          id: 'canvas:current',
+          label: 'Current canvas',
+          description: context.canvas.title,
+          metadata: `${context.canvas.blockCount} objects`,
+        },
+        ...(context.selection.length > 0
+          ? [
+              {
+                id: 'canvas:selection',
+                label: 'Selected canvas objects',
+                description: context.selection
+                  .map(({ label }) => label)
+                  .slice(0, 3)
+                  .join(', '),
+                metadata: `${context.selection.length} selected`,
+              },
+            ]
+          : []),
+        ...(selectedFrame === undefined
+          ? []
+          : [
+              {
+                id: 'canvas:frame',
+                label: 'Selected presentation frame',
+                description: selectedFrame.title,
+                metadata: 'structured context',
+              },
+            ]),
+        ...(canCaptureActiveCanvasSnapshot(scope)
+          ? [
+              {
+                id: 'canvas:snapshot',
+                label: 'Canvas snapshot',
+                description: 'Attach a current PNG for vision-capable models',
+                metadata: '1280 × 720',
+              },
+            ]
+          : []),
+      ];
     }
 
     if (cmd === 'plug') {
@@ -646,7 +943,15 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
 
     return [];
-  }, [optionPickerCtx, terminalSessions, projectId, pluginConnections, projectFileOptions, interactionMode]);
+  }, [
+    optionPickerCtx,
+    terminalSessions,
+    projectId,
+    pluginAccountId,
+    pluginConnections,
+    projectFileOptions,
+    interactionMode,
+  ]);
 
   // Load project files when /file picker opens
   useEffect(() => {
@@ -688,14 +993,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     audioSilenceTimerRef.current = null;
   };
 
-  const stopGroqSttWithoutTranscribing = (message = 'Speech-to-text stopped after 30 seconds without voice activity.') => {
+  const stopGroqSttWithoutTranscribing = (
+    message = 'Speech-to-text stopped after 30 seconds without voice activity.',
+  ) => {
     clearAudioSilenceTimer();
     stopSttVolumeMeter();
     batchRecorderRef.current?.stop();
     batchRecorderRef.current = null;
     const context = audioContextRef.current;
     const chunks = wavChunksRef.current;
-    cleanupAudioRecorder(audioProcessorRef.current, audioSourceRef.current, audioContextRef.current, mediaStreamRef.current);
+    cleanupAudioRecorder(
+      audioProcessorRef.current,
+      audioSourceRef.current,
+      audioContextRef.current,
+      mediaStreamRef.current,
+    );
     audioProcessorRef.current = null;
     audioSourceRef.current = null;
     audioContextRef.current = null;
@@ -704,7 +1016,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     setSttListening(false);
     setSttInterim('');
     if (chunks.length > 0 && context) {
-      void transcribeGroq(encodeWav(chunks, context.sampleRate), useAuthStore.getState().apiKeys.groq ?? '');
+      void transcribeGroq(
+        encodeWav(chunks, context.sampleRate),
+        useAuthStore.getState().apiKeys.groq ?? '',
+      );
       return;
     }
     toast.info('Speech-to-text stopped', message);
@@ -714,15 +1029,19 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const onAsk = (e: Event) => {
       const detail = (e as CustomEvent<{ path?: string; prompt?: string; code?: string }>).detail;
       if (!detail?.path || !detail.code) return;
-      setText([
-        detail.prompt?.trim() || 'Review this code.',
-        '',
-        `File: ${detail.path}`,
-        '```',
-        detail.code,
-        '```',
-      ].join('\n'));
-      setAttachedFiles((cur) => (cur.includes(detail.path!) ? cur : [...cur, detail.path!]).slice(0, 8));
+      setText(
+        [
+          detail.prompt?.trim() || 'Review this code.',
+          '',
+          `File: ${detail.path}`,
+          '```',
+          detail.code,
+          '```',
+        ].join('\n'),
+      );
+      setAttachedFiles((cur) =>
+        (cur.includes(detail.path!) ? cur : [...cur, detail.path!]).slice(0, 8),
+      );
       requestAnimationFrame(() => textareaRef.current?.focus());
     };
     window.addEventListener('jarvis:files:ask', onAsk as EventListener);
@@ -735,15 +1054,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   // fake. Surface a one-line CTA on the composer so they know it's a
   // 30-second fix at aistudio.google.com/apikey (no card needed).
   const googleKey = useAuthStore((s) => s.apiKeys.google);
-  const jarvisAgent = useMemo(
-    () => Object.values(agents).find((a) => a.slug === 'jarvis'),
-    [agents],
-  );
+  const jarvisAgent = useMemo(() => findProtectedJarvisAgent(Object.values(agents)), [agents]);
   const showFreeKeyNudge =
-    !compact &&
-    !!jarvisAgent &&
-    jarvisAgent.model.provider === 'google' &&
-    !googleKey;
+    !compact && !!jarvisAgent && jarvisAgent.model.provider === 'google' && !googleKey;
 
   // Filtered agent list for the mention typeahead (case-insensitive prefix match,
   // falling back to substring match for forgiving search).
@@ -857,8 +1170,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
 
     const isReferenceCommand =
-      canonicalCmd === 'terminals' ||
-      cmd.category === 'navigation';
+      (canonicalCmd === 'terminals' || cmd.category === 'navigation') &&
+      !isChatAttachSlashCmd(canonicalCmd);
 
     if (isReferenceCommand) {
       setText(before + after);
@@ -882,7 +1195,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         { cmd: 'clearfiles', value: flashId, label: '/clearfiles · cleared' },
       ]);
       window.setTimeout(() => {
-        setConfirmedCommands((cur) => cur.filter((c) => !(c.cmd === 'clearfiles' && c.value === flashId)));
+        setConfirmedCommands((cur) =>
+          cur.filter((c) => !(c.cmd === 'clearfiles' && c.value === flashId)),
+        );
       }, 2200);
       toast.info('Attachments cleared', 'All files and images removed from this message.');
       setSlashCtx(null);
@@ -953,7 +1268,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       setSelectedOptionId('');
       setSettingsOpen(true);
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'allaboutme' } }));
+        window.dispatchEvent(
+          new CustomEvent('jarvis:settings:tab', { detail: { tab: 'allaboutme' } }),
+        );
         window.dispatchEvent(new CustomEvent('jarvis:allaboutme:retake'));
       }, 0);
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -975,6 +1292,29 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return;
     }
 
+    if (canonical === 'canvas' && option.id === 'canvas:snapshot') {
+      const currentAuth = useAuthStore.getState();
+      const snapshot = captureActiveCanvasSnapshot({
+        accountId: resolveAccountIdentity(currentAuth)?.accountId ?? '',
+        projectId: currentAuth.projectId,
+      });
+      if (snapshot === null) {
+        toast.warning(
+          'Canvas snapshot unavailable',
+          'Open the active Canvas for this project and try again.',
+        );
+      } else {
+        const image = canvasSnapshotToImageAttachment(snapshot);
+        setAttachedImages((current) =>
+          current.some(({ id }) => id === image.id) ? current : [...current, image].slice(0, 6),
+        );
+      }
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
     // /file picker: attach project file path + show confirmed chip
     if (canonical === 'file') {
       const path = option.id;
@@ -986,7 +1326,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             );
           })
           .catch((err) => {
-            toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+            toast.error(
+              'Image attach failed',
+              err instanceof Error ? err.message : 'Could not attach image.',
+            );
           });
       } else {
         setAttachedFiles((cur) => (cur.includes(path) ? cur : [...cur, path]).slice(0, 8));
@@ -1055,7 +1398,11 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const cmd = normalizeSlashCmd(cmdRaw ?? '');
     const rest = restParts.join(' ').trim();
     const addSystem = async (msg: string) => {
-      await messageRepo.create({ chat_id: chatId as ChatId, role: 'system', parts: [{ kind: 'text', text: msg }] });
+      await messageRepo.create({
+        chat_id: chatId as ChatId,
+        role: 'system',
+        parts: [{ kind: 'text', text: msg }],
+      });
       setText('');
     };
     const openAttachPicker = (canonicalCmd: string) => {
@@ -1099,10 +1446,13 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (cmd === 'multitask' || cmd === 'subagents') {
       setInteractionMode(chatId, 'agent');
       if (!rest) {
-        await addSystem(`Use /${cmd} <task> to launch chat-native Jarvis ${cmd === 'subagents' ? 'subagents' : 'agent'}.`);
+        await addSystem(
+          `Use /${cmd} <task> to launch chat-native Jarvis ${cmd === 'subagents' ? 'subagents' : 'agent'}.`,
+        );
         return true;
       }
-      const jarvisAgent = Object.values(agents).find((agent) => agent.slug === 'jarvis') ?? Object.values(agents)[0];
+      const jarvisAgent =
+        findProtectedJarvisAgent(Object.values(agents)) ?? Object.values(agents)[0];
       await launchJarvisChatAgent({
         parentChatId: chatId,
         task: rest,
@@ -1122,28 +1472,42 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         return true;
       }
       const persistedChat = await chatRepo.getById(chatId as ChatId).catch(() => undefined);
-      const selectedId = persistedChat?.connection?.id
-        ?? (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined);
+      const selectedId =
+        persistedChat?.connection?.id ??
+        (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined);
       let selectedConnection = selectedId
         ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selectedId)
         : undefined;
-      selectedConnection ??= PROVIDER_CONNECTIONS.find((connection) => (
-        connection.providerId === provider
-        && (provider === 'ollama' || provider === 'local' ? connection.mode === 'local' : connection.mode === 'native-api')
-      ));
+      selectedConnection ??= PROVIDER_CONNECTIONS.find(
+        (connection) =>
+          connection.providerId === provider &&
+          (provider === 'ollama' || provider === 'local'
+            ? connection.mode === 'local'
+            : connection.mode === 'native-api'),
+      );
       if (!selectedConnection) {
-        await addSystem('Usage is unavailable until this chat has an exact AI connection selected.');
+        await addSystem(
+          'Usage is unavailable until this chat has an exact AI connection selected.',
+        );
         return true;
       }
-      const snapshots = usageMode === 'all'
-        ? await getAllUsage(PROVIDER_CONNECTIONS.filter((connection) => connection.enabled), chatId as ChatId)
-        : [usageMode === 'refresh'
-          ? await refreshUsage(selectedConnection, chatId as ChatId)
-          : await getUsage(selectedConnection, chatId as ChatId, usageMode)];
+      const snapshots =
+        usageMode === 'all'
+          ? await getAllUsage(
+              PROVIDER_CONNECTIONS.filter((connection) => connection.enabled),
+              chatId as ChatId,
+            )
+          : [
+              usageMode === 'refresh'
+                ? await refreshUsage(selectedConnection, chatId as ChatId)
+                : await getUsage(selectedConnection, chatId as ChatId, usageMode),
+            ];
       await messageRepo.create({
         chat_id: chatId as ChatId,
         role: 'system',
-        parts: [{ kind: 'usage_card', snapshots, scope: usageMode === 'all' ? 'all' : 'connection' }],
+        parts: [
+          { kind: 'usage_card', snapshots, scope: usageMode === 'all' ? 'all' : 'connection' },
+        ],
       });
       setText('');
       return true;
@@ -1151,9 +1515,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (cmd === 'theme') {
       const nextTheme = parseThemeCommandArgument(rest);
       if (!nextTheme) {
-        await addSystem(
-          `Available themes: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`,
-        );
+        await addSystem(getThemeCommandHelp());
         return true;
       }
       useUIStore.getState().setTheme(nextTheme);
@@ -1191,6 +1553,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     const routes: Record<string, string> = {
       kanban: 'kanban',
+      canvas: 'canvas',
       history: 'history',
       tools: 'tools',
       agents: 'agents',
@@ -1199,7 +1562,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     };
     if (cmd in routes) {
       const def = findSlashCommandDef(cmd);
-      const reference = def ? confirmedCommandReferenceText([buildSlashReferenceCommand(def)]) : `Context references: /${cmd} references ${routes[cmd]}.`;
+      const reference = def
+        ? confirmedCommandReferenceText([buildSlashReferenceCommand(def)])
+        : `Context references: /${cmd} references ${routes[cmd]}.`;
       const scopedReference = disableRouteSlashCommands
         ? `${reference} This sidebar stays attached to the current project.`
         : reference;
@@ -1207,15 +1572,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     if (cmd === 'terminals') {
       const def = findSlashCommandDef('terminals');
-      const reference = def ? confirmedCommandReferenceText([buildSlashReferenceCommand(def)]) : 'Context references: /terminals references Terminal surface.';
+      const reference = def
+        ? confirmedCommandReferenceText([buildSlashReferenceCommand(def)])
+        : 'Context references: /terminals references Terminal surface.';
       return rest ? `${reference} ${rest}` : reference;
     }
     if (cmd === 'context') {
       if (rest) {
         const projectId = useAuthStore.getState().projectId;
-        const maps = projectId ? loadStoredContextMaps(projectId) : [];
+        const maps = projectId
+          ? (getActiveContextPersistenceState(projectId)?.maps ?? contextMaps)
+          : [];
         const target = rest.toLowerCase();
-        const matched = maps.find((m: ContextMapRecord) => (m.name ?? '').toLowerCase().includes(target));
+        const matched = maps.find((m: ContextMapRecord) =>
+          (m.name ?? '').toLowerCase().includes(target),
+        );
         if (!matched) {
           await addSystem(`No context map matching '${rest}'. Use /context to pick from the list.`);
           return true;
@@ -1225,18 +1596,11 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
           await addSystem(`Context map '${matched.name}' has no nodes.`);
           return true;
         }
-        const attachment: ContextAttachment = {
-          projectId: matched.projectId,
-          rootDir: matched.rootDir,
-          generatedAt: matched.tree?.generatedAt ?? Date.now(),
-          nodeId: root.id ?? `map:${matched.name}`,
-          title: matched.name ?? 'Context Map',
-          summary: matched.tree?.summary ?? '',
-          path: '',
-          kind: 'root',
-        };
+        const attachment = buildMapSummaryChatAttachment(matched);
         setAttachedContexts((cur) =>
-          cur.some((item) => item.nodeId === attachment.nodeId)
+          cur.some(
+            (item) => contextChatAttachmentKey(item) === contextChatAttachmentKey(attachment),
+          )
             ? cur
             : [...cur, attachment].slice(0, 8),
         );
@@ -1245,25 +1609,31 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         return true;
       }
       if (openAttachPicker('context')) return true;
-      await addSystem('No context maps yet. Open Context and press "Make Context Map", then use /context here.');
+      await addSystem(
+        'No context maps yet. Open Context and press "Make Context Map", then use /context here.',
+      );
       return true;
     }
     if (cmd === 'skills') {
       const available = getAllCatalogSkills()
         .map((skill) => `- ${skill.name} (${skill.id}) - ${skill.description}`)
         .join('\n');
-      await addSystem(`Available skills:\n${available}\n\nType /skills and choose one from the dropdown to apply it to your next message.`);
+      await addSystem(
+        `Available skills:\n${available}\n\nType /skills and choose one from the dropdown to apply it to your next message.`,
+      );
       return true;
     }
     if (cmd === 'allaboutme') {
       if (rest) {
-        const direct = ALL_ABOUT_ME_SLASH_OPTIONS.find((option) => (
-          option.id === rest || option.label.toLowerCase().includes(rest.toLowerCase())
-        ));
+        const direct = ALL_ABOUT_ME_SLASH_OPTIONS.find(
+          (option) => option.id === rest || option.label.toLowerCase().includes(rest.toLowerCase()),
+        );
         if (direct?.id === 'retake') {
           setSettingsOpen(true);
           setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'allaboutme' } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:settings:tab', { detail: { tab: 'allaboutme' } }),
+            );
             window.dispatchEvent(new CustomEvent('jarvis:allaboutme:retake'));
           }, 0);
           setText('');
@@ -1347,17 +1717,19 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     if (cmd === 'help') {
       await addSystem(
-        'Chat slash commands work at the start, middle, or end of a message. '
-          + '/agents, /terminals, /hive, /kanban, /history, /tools, /schedule become confirmed reference chips. '
-          + '/context, /plug, /skills, /file open pickers. /file lists files in your open project. '
-          + '/attach <path>, /clearfiles (or /clearfile) clears attachments. '
-          + '/undo removes the last full turn; /redo restores it. '
-          + '/usage, /model, /theme, /commands, /multitask, /ask, /plan.',
+        'Chat slash commands work at the start, middle, or end of a message. ' +
+          '/agents, /terminals, /hive, /kanban, /history, /tools, /schedule become confirmed reference chips. ' +
+          '/context, /plug, /skills, /file open pickers. /file lists files in your open project. ' +
+          '/attach <path>, /clearfiles (or /clearfile) clears attachments. ' +
+          '/undo removes the last full turn; /redo restores it. ' +
+          '/usage, /model, /theme, /commands, /multitask, /ask, /plan.',
       );
       return true;
     }
     if (cmd === 'commands') {
-      await addSystem(`Jarvis command catalog (${JARVIS_COMMAND_CATALOG.length}):\n${JARVIS_COMMAND_CATALOG.map((c, i) => `${i + 1}. ${c}`).join('\n')}`);
+      await addSystem(
+        `Jarvis command catalog (${JARVIS_COMMAND_CATALOG.length}):\n${JARVIS_COMMAND_CATALOG.map((c, i) => `${i + 1}. ${c}`).join('\n')}`,
+      );
       return true;
     }
     if (cmd === 'file') {
@@ -1374,11 +1746,16 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         if (isSupportedImagePath(path)) {
           try {
             const image = await imageAttachmentFromPath(path);
-            setAttachedImages((cur) => (cur.some((item) => item.sourcePath === path) ? cur : [...cur, image]).slice(0, 6));
+            setAttachedImages((cur) =>
+              (cur.some((item) => item.sourcePath === path) ? cur : [...cur, image]).slice(0, 6),
+            );
             setText('');
             return true;
           } catch (err) {
-            toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+            toast.error(
+              'Image attach failed',
+              err instanceof Error ? err.message : 'Could not attach image.',
+            );
             return true;
           }
         }
@@ -1400,15 +1777,29 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     return true;
   };
 
-  const handleSend = async (overrideText?: string, options: { bypassQueue?: boolean } = {}) => {
+  const handleSend = async (
+    overrideText?: string,
+    options: { bypassQueue?: boolean } = {},
+  ): Promise<boolean> => {
     const draftText = overrideText ?? text;
     const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
     const hasConfirmedAgentMentions = confirmedAgentMentions.length > 0;
-    if ((!trimmed && attachedFiles.length === 0 && attachedImages.length === 0 && attachedTerminals.length === 0 && attachedPlugins.length === 0 && attachedContexts.length === 0 && !hasConfirmedCommands && !hasConfirmedAgentMentions) || sending) return;
+    if (
+      (!trimmed &&
+        attachedFiles.length === 0 &&
+        attachedImages.length === 0 &&
+        attachedTerminals.length === 0 &&
+        attachedPlugins.length === 0 &&
+        attachedContexts.length === 0 &&
+        !hasConfirmedCommands &&
+        !hasConfirmedAgentMentions) ||
+      sending
+    )
+      return false;
     if (jarvisRunning && !options.bypassQueue && !overrideText) {
       enqueueCurrentMessage(trimmed);
-      return;
+      return true;
     }
 
     // Pull utility slash tokens from anywhere in the message (start/middle/end)
@@ -1424,12 +1815,14 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (handled === true) handledUtilityOnly = true;
     }
     const afterInline = inline.utilities.length > 0 ? inline.cleaned : trimmed;
+    const canvasAttachmentModes = resolveCanvasAttachmentModesForSend(
+      confirmedCommands,
+      afterInline,
+    );
 
     // Leading full-message slash (multitask, ask, plan, etc.)
-    const slashResult = afterInline.startsWith('/')
-      ? await handleSlashCommand(afterInline)
-      : false;
-    if (slashResult === true) return;
+    const slashResult = afterInline.startsWith('/') ? await handleSlashCommand(afterInline) : false;
+    if (slashResult === true) return true;
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
     const rawSendText = typeof slashResult === 'string' ? slashResult.trim() : afterInline;
@@ -1446,12 +1839,14 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       attachedPlugins.length === 0 &&
       attachedContexts.length === 0
     ) {
-      return;
+      return true;
     }
     const interactionModeForSend = useJarvisInteractionStore.getState().modeForChat(chatId);
     const mentionPrefix = confirmedAgentMentions.map((mention) => mention.label).join(' ');
     const referenceText = confirmedCommandReferenceText(confirmedCommands);
-    const allAboutMeCommand = confirmedCommands.find((command) => command.cmd === 'allaboutme' && command.value);
+    const allAboutMeCommand = confirmedCommands.find(
+      (command) => command.cmd === 'allaboutme' && command.value,
+    );
     let allAboutMeText = '';
     let forceAllAboutMeUpdate = false;
     if (allAboutMeCommand?.value) {
@@ -1466,7 +1861,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             parts: [{ kind: 'text', text: status.message }],
           });
           setConfirmedCommands((cur) => cur.filter((command) => command.cmd !== 'allaboutme'));
-          return;
+          return true;
         }
         forceAllAboutMeUpdate = true;
       }
@@ -1476,7 +1871,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         messageCount,
       );
     }
-    const sendText = [mentionPrefix, referenceText, allAboutMeText, rawSendText].filter(Boolean).join(' ').trim();
+    const sendText = [mentionPrefix, referenceText, allAboutMeText, rawSendText]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
     const auth = useAuthStore.getState();
     const sendCheck = validateSendModelAccess(
@@ -1491,7 +1889,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     );
     if (!sendCheck.ok) {
       toast.error('Cannot send', sendCheck.message);
-      return;
+      return false;
     }
 
     // Process confirmed commands before sending
@@ -1503,6 +1901,36 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     let nextAttachedTerminals = attachedTerminals;
     let nextAttachedPlugins = attachedPlugins;
     let nextAttachedContexts = attachedContexts;
+    if (canvasAttachmentModes.length > 0) {
+      const currentAuth = useAuthStore.getState();
+      const accountId = resolveAccountIdentity(currentAuth)?.accountId ?? '';
+      const canvasAttachments: ContextChatAttachment[] = [];
+      for (const mode of canvasAttachmentModes) {
+        const resolved = buildActiveCanvasChatAttachments(
+          { accountId, projectId: currentAuth.projectId },
+          mode,
+        );
+        if (resolved.length === 0) {
+          toast.warning(
+            mode === 'selection' ? 'No Canvas selection attached' : 'No active Canvas attached',
+            mode === 'selection'
+              ? 'Select one or more objects on the active Canvas and try again.'
+              : 'Open the Canvas for this project and try again.',
+          );
+          return false;
+        }
+        canvasAttachments.push(...resolved);
+      }
+      for (const attachment of canvasAttachments) {
+        if (
+          !nextAttachedContexts.some(
+            (context) => contextChatAttachmentKey(context) === contextChatAttachmentKey(attachment),
+          )
+        ) {
+          nextAttachedContexts = [...nextAttachedContexts, attachment];
+        }
+      }
+    }
     for (const confirmed of confirmedCommands) {
       if (confirmed.value?.startsWith('reference:')) continue;
       if (confirmed.value?.startsWith('confirmed:')) continue;
@@ -1538,21 +1966,15 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
           ? nextAttachedPlugins
           : [...nextAttachedPlugins, confirmed.value!].slice(0, 8);
       } else if (normalizeSlashCmd(confirmed.cmd) === 'context' && confirmed.value) {
-        const maps = projectId ? loadStoredContextMaps(projectId) : [];
+        const maps = projectId
+          ? (getActiveContextPersistenceState(projectId)?.maps ?? contextMaps)
+          : [];
         const matched = resolveContextMapRecord(maps, confirmed.value);
         if (matched?.tree?.nodes?.[0]) {
-          const root = matched.tree.nodes[0];
-          const attachment: ContextAttachment = {
-            projectId: matched.projectId,
-            rootDir: matched.rootDir,
-            generatedAt: matched.tree?.generatedAt ?? Date.now(),
-            nodeId: root.id ?? `map:${matched.name}`,
-            title: matched.name ?? 'Context Map',
-            summary: matched.tree?.summary ?? '',
-            path: '',
-            kind: 'root',
-          };
-          nextAttachedContexts = nextAttachedContexts.some((c) => c.nodeId === attachment.nodeId)
+          const attachment = buildMapSummaryChatAttachment(matched);
+          nextAttachedContexts = nextAttachedContexts.some(
+            (context) => contextChatAttachmentKey(context) === contextChatAttachmentKey(attachment),
+          )
             ? nextAttachedContexts
             : [...nextAttachedContexts, attachment];
         }
@@ -1567,17 +1989,26 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (nextAttachedTerminals.length > 0) {
         const scheduled = parseTerminalScheduleRequest(sendText);
         if (scheduled) {
-          scheduleTerminalCommandFromChat(nextAttachedTerminals, scheduled.command, scheduled.runAt);
+          scheduleTerminalCommandFromChat(
+            nextAttachedTerminals,
+            scheduled.command,
+            scheduled.runAt,
+          );
           await messageRepo.create({
             chat_id: chatId as ChatId,
             role: 'system',
-            parts: [{ kind: 'text', text: `Scheduled terminal message for ${new Date(scheduled.runAt).toLocaleString()}: ${scheduled.command}` }],
+            parts: [
+              {
+                kind: 'text',
+                text: `Scheduled terminal message for ${new Date(scheduled.runAt).toLocaleString()}: ${scheduled.command}`,
+              },
+            ],
           });
           setText('');
           setAttachedTerminals([]);
           setMentionCtx(null);
           toast.success('Terminal message scheduled', new Date(scheduled.runAt).toLocaleString());
-          return;
+          return true;
         }
       }
       // Repo stamps id + timestamps + bumps parent chat.updated_at.
@@ -1589,7 +2020,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       // AI-router audit.)
       // New real user turns invalidate redo history for this chat.
       clearRedoStack(String(chatId));
-      await messageRepo.create({
+      const userMessage = await messageRepo.create({
         chat_id: chatId as ChatId,
         role: 'user',
         parts: [
@@ -1599,22 +2030,48 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             url: `data:${image.mimeType};base64,${image.data}`,
             alt: image.name,
           })),
-          ...nextAttachedFiles.map((path) => ({ kind: 'file_ref' as const, ref: { kind: 'file' as const, id: path } })),
-          ...nextAttachedTerminals.map((ref) => ({ kind: 'file_ref' as const, ref: { kind: 'memory' as const, id: `terminal:${terminalRefKey(ref)}`, excerpt: `Terminal reference: ${terminalRefLabel(ref)}` } })),
-          ...nextAttachedContexts.map((context) => ({ kind: 'file_ref' as const, ref: { kind: 'memory' as const, id: `context:${context.nodeId}`, excerpt: `Context: ${context.title}` } })),
+          ...nextAttachedFiles.map((path) => ({
+            kind: 'file_ref' as const,
+            ref: { kind: 'file' as const, id: path },
+          })),
+          ...nextAttachedTerminals.map((ref) => ({
+            kind: 'file_ref' as const,
+            ref: {
+              kind: 'memory' as const,
+              id: `terminal:${terminalRefKey(ref)}`,
+              excerpt: `Terminal reference: ${terminalRefLabel(ref)}`,
+            },
+          })),
+          ...nextAttachedContexts.map((context) => ({
+            kind: 'file_ref' as const,
+            ref: {
+              kind: 'memory' as const,
+              id: `context:${contextChatAttachmentKey(context)}`,
+              excerpt: `Context: ${context.title}`,
+            },
+          })),
         ],
       });
 
-      const mentionedAgentIds = resolveMentionedAgentIdsForSend(sendText, agents, confirmedMentionsForSend);
+      const mentionedAgentIds = resolveMentionedAgentIdsForSend(
+        sendText,
+        agents,
+        confirmedMentionsForSend,
+      );
       const mentionedPluginIds = extractPluginMentions(sendText, PLUGIN_CATALOG);
-      const pluginIds = Array.from(new Set([...nextAttachedPlugins, ...mentionedPluginIds])).slice(0, 8);
+      const pluginIds = Array.from(new Set([...nextAttachedPlugins, ...mentionedPluginIds])).slice(
+        0,
+        8,
+      );
       const messageFilePaths = Array.from(
         new Set([...nextAttachedFiles, ...extractAbsoluteFilePaths(sendText)]),
       ).slice(0, 8);
+      activeCancellationKeyRef.current = String(userMessage.id);
       window.dispatchEvent(
         new CustomEvent('jarvis:send', {
           detail: {
             chatId,
+            cancellationKey: userMessage.id,
             text: sendText || 'Attached context.',
             mentionedAgentIds,
             filePaths: messageFilePaths,
@@ -1628,6 +2085,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
             modelSelectionOverride: useAuthStore.getState().chatModelSelection,
+            automaticModelRoutingEligible: true,
           },
         }),
       );
@@ -1639,6 +2097,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       setAttachedPlugins([]);
       setAttachedContexts([]);
       setMentionCtx(null);
+      return true;
     } catch (err) {
       // Anything thrown here (DB error, mention extraction edge case,
       // even an exception from the dispatch listener) used to bubble
@@ -1650,37 +2109,88 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       // the draft text is preserved so the user can retry.
       // eslint-disable-next-line no-console
       console.error('[Composer] send failed:', err);
-      toast.error(
-        "Couldn't send message",
-        err instanceof Error ? err.message : 'Unknown error',
-      );
+      toast.error('Message not sent', formatComposerSendFailure());
+      return false;
     } finally {
       setSending(false);
     }
   };
 
+  const dispatchQueuedMessage = (queued: QueuedChatMessage, payload = queued.text) => {
+    if (queuedDispatchInFlightRef.current) return;
+    queuedDispatchInFlightRef.current = queued.id;
+    void dispatchQueuedMessageAfterAcceptance(
+      queued,
+      payload,
+      (nextPayload) => handleSend(nextPayload, { bypassQueue: true }),
+      (acceptedId) => {
+        setQueuedMessages((current) => {
+          const remaining = current.filter((message) => message.id !== acceptedId);
+          queuedMessagesRef.current = remaining;
+          return remaining;
+        });
+      },
+    )
+      .catch((error) => {
+        // Fail closed: retain the queued item for retry.
+        // eslint-disable-next-line no-console
+        console.error('[Composer] queued send failed:', error);
+        toast.error('Queued message not sent', formatComposerSendFailure());
+      })
+      .finally(() => {
+        queuedDispatchInFlightRef.current = null;
+      });
+  };
+
+  const stopAndRestartQueuedModelSwitch = (id: string) => {
+    const queued = queuedMessagesRef.current.find((message) => message.id === id);
+    if (!queued || !parseJarvisModelSwitchIntent(queued.text)) return;
+    const cancellationKey = activeCancellationKeyRef.current;
+    if (!jarvisRunning || !cancellationKey) {
+      toast.info(
+        'Model switch stays queued',
+        'The current reply cannot be scoped for cancellation yet. The switch will be reviewed and applied on the next turn.',
+      );
+      return;
+    }
+    const reordered = [
+      queued,
+      ...queuedMessagesRef.current.filter((message) => message.id !== queued.id),
+    ];
+    queuedMessagesRef.current = reordered;
+    setQueuedMessages(reordered);
+    window.dispatchEvent(
+      new CustomEvent('jarvis:cancel', { detail: { messageId: cancellationKey } }),
+    );
+    toast.info(
+      'Stopping current reply',
+      'The queued model switch will be reviewed and resent after cancellation completes.',
+    );
+  };
+
   const sendQueuedMessageNow = (id: string) => {
     const queued = queuedMessages.find((message) => message.id === id);
     if (!queued) return;
-    setQueuedMessages((current) => current.filter((message) => message.id !== id));
-    void handleSend(queued.text, { bypassQueue: true });
+    if (jarvisRunning && parseJarvisModelSwitchIntent(queued.text)) {
+      stopAndRestartQueuedModelSwitch(id);
+      return;
+    }
+    dispatchQueuedMessage(queued);
   };
 
   /** Same as typing `/multitask <message>` for a queued row (parallel agent work). */
   const startQueuedMultitask = (id: string) => {
     const queued = queuedMessages.find((message) => message.id === id);
     if (!queued) return;
-    setQueuedMessages((current) => current.filter((message) => message.id !== id));
-    void handleSend(buildQueuedMultitaskCommand(queued.text), { bypassQueue: true });
+    dispatchQueuedMessage(queued, buildQueuedMultitaskCommand(queued.text));
   };
 
   // Keep auto-flush bound to latest handleSend + queue (after handleSend is defined).
   flushNextQueuedRef.current = () => {
     if (sendingRef.current) return;
-    const { next, remaining } = takeNextQueuedMessage(queuedMessagesRef.current);
+    const { next } = takeNextQueuedMessage(queuedMessagesRef.current);
     if (!next) return;
-    setQueuedMessages(remaining);
-    void handleSend(next.text, { bypassQueue: true });
+    dispatchQueuedMessage(next);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1693,7 +2203,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
 
     if (e.shiftKey && e.key === 'Tab') {
       e.preventDefault();
-      const nextMode = cycleInteractionMode(useJarvisInteractionStore.getState().modeForChat(chatId));
+      const nextMode = cycleInteractionMode(
+        useJarvisInteractionStore.getState().modeForChat(chatId),
+      );
       setInteractionMode(chatId, nextMode);
       // Mode chip updates in place — no toast for routine mode cycles.
       return;
@@ -1795,15 +2307,13 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
           e.preventDefault();
           const i = filteredAgents.findIndex((a) => a.slug === selectedSlug);
           const baseI = i === -1 ? 0 : i;
-          const next =
-            filteredAgents[(baseI - 1 + filteredAgents.length) % filteredAgents.length]!;
+          const next = filteredAgents[(baseI - 1 + filteredAgents.length) % filteredAgents.length]!;
           setSelectedSlug(next.slug);
           return;
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault();
-          const agent =
-            filteredAgents.find((a) => a.slug === selectedSlug) ?? filteredAgents[0];
+          const agent = filteredAgents.find((a) => a.slug === selectedSlug) ?? filteredAgents[0];
           if (agent) insertMention(agent);
           return;
         }
@@ -1811,7 +2321,458 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
   };
 
-  const canSend = (text.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0 || attachedTerminals.length > 0 || attachedPlugins.length > 0 || attachedContexts.length > 0 || confirmedCommands.length > 0 || confirmedAgentMentions.length > 0) && !sending;
+  const promptForgePluginIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...attachedPlugins,
+          ...confirmedCommands
+            .filter((command) => command.cmd === 'plug' && command.value)
+            .map((command) => command.value as string),
+        ]),
+      ),
+    [attachedPlugins, confirmedCommands],
+  );
+  const promptForgeSkillIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          confirmedCommands
+            .filter((command) => command.cmd === 'skills' && command.value)
+            .map((command) => command.value as string),
+        ),
+      ),
+    [confirmedCommands],
+  );
+  const promptForgeAgents = useMemo(
+    () =>
+      confirmedAgentMentions
+        .map((mention) => agents[mention.id])
+        .filter((agent): agent is Agent => Boolean(agent)),
+    [agents, confirmedAgentMentions],
+  );
+  const promptForgeSkills = useMemo(() => {
+    const selected = new Set(promptForgeSkillIds);
+    return getAllCatalogSkills().filter((skill) => selected.has(skill.id));
+  }, [promptForgeSkillIds]);
+  const promptForgeModels = useMemo(
+    () => promptForgeModelOptionsFromPicker(accessibleChatModels.flatOptions),
+    [accessibleChatModels.flatOptions],
+  );
+  const promptForgeAttachmentSnapshots = useMemo(
+    () =>
+      buildPromptForgeAttachmentSnapshots({
+        files: attachedFiles,
+        images: attachedImages.map((image) => ({
+          id: image.id,
+          label: image.name,
+          reference: image.sourcePath ?? `image://${image.id}`,
+        })),
+        terminals: attachedTerminals,
+        plugins: promptForgePluginIds.map((id) => ({
+          id,
+          label: PLUGIN_CATALOG.find((plugin) => plugin.id === id)?.name ?? id,
+        })),
+        contexts: attachedContexts.map((context) => ({
+          id: contextChatAttachmentKey(context),
+          label: context.title,
+          reference: `context://${context.mapId}/${context.nodeId}`,
+        })),
+        skills: promptForgeSkills.map((skill) => ({ id: skill.id, label: skill.name })),
+        agents: promptForgeAgents.map((agent) => ({
+          id: String(agent.id),
+          label: agent.name,
+        })),
+      }),
+    [
+      attachedContexts,
+      attachedFiles,
+      attachedImages,
+      attachedTerminals,
+      promptForgeAgents,
+      promptForgePluginIds,
+      promptForgeSkills,
+    ],
+  );
+  const collectPromptForgeSources = useCallback(
+    async ({
+      job,
+      signal,
+      now,
+    }: {
+      job: Readonly<{ originalDraft: string }>;
+      signal: AbortSignal;
+      now: number;
+    }) => {
+      const [
+        messages,
+        persistedChat,
+        persistedProject,
+        persistedTasks,
+        { jarvisMcpServerManager },
+        { createJarvisActionCatalog, DEFAULT_JARVIS_ACTION_REGISTRATIONS },
+        { getBuiltinAction },
+        { useToolStore },
+      ] = await Promise.all([
+        messageRepo.listByChat(chatId as ChatId),
+        chatRepo.getById(chatId as ChatId).catch(() => undefined),
+        projectId
+          ? projectRepo.getById(projectId as ProjectId).catch(() => undefined)
+          : Promise.resolve(undefined),
+        workspaceId
+          ? taskRepo
+              .list({
+                workspace_id: workspaceId as WorkspaceId,
+                status: ['open', 'in_progress', 'blocked'],
+                limit: 64,
+              })
+              .catch(() => [])
+          : Promise.resolve([]),
+        import('@/lib/mcp/serverManager'),
+        import('@/lib/jarvis/actions/catalog'),
+        import('@/lib/actions/registry'),
+        import('@/features/tools/toolStore'),
+      ]);
+      const projectRoot = getStoredProjectRoot(projectId);
+      const terminalStates = (
+        await Promise.all(
+          attachedTerminals.slice(0, 8).map(async (ref) => {
+            if (!ref.sessionId) return undefined;
+            return terminalSessionRepo
+              .getById(ref.sessionId as TerminalSessionId)
+              .catch(() => undefined);
+          }),
+        )
+      )
+        .filter((session) => session !== undefined)
+        .map((session) => ({
+          sessionId: String(session.id),
+          projectId: session.project_id ? String(session.project_id) : null,
+          status: session.status,
+          exitCode: session.exit_code,
+          observedAt: session.last_active_at,
+        }));
+      const allAboutMeState = useAllAboutMeStore.getState();
+      const allAboutMe =
+        allAboutMeState.accountScope === pluginAccountId && allAboutMeState.markdown.trim()
+          ? {
+              accountId: allAboutMeState.accountScope,
+              markdown: allAboutMeState.markdown,
+              source: allAboutMeState.source,
+              observedAt: allAboutMeState.updatedAt ?? now,
+            }
+          : undefined;
+      const connections = selectPluginConnectionsForAccount(
+        usePluginStore.getState(),
+        pluginAccountId,
+      );
+      const connectedPlugins: PromptForgeComposerDescriptor[] = PLUGIN_CATALOG.filter((plugin) => {
+        const connection = connections[plugin.id];
+        return isPromptForgePluginConnected(plugin, connection, projectId);
+      }).map((plugin) => ({
+        id: plugin.id,
+        label: plugin.name,
+        description: [
+          plugin.description,
+          ...plugin.tools.map((tool) => `${tool.name}: ${tool.description}`),
+          'Connection status: connected and enabled for the current project.',
+        ].join('\n'),
+        verified: true,
+        reference: `plugin://${plugin.id}`,
+        observedAt: connections[plugin.id]?.updatedAt ?? now,
+      }));
+      const plugins: PromptForgeComposerDescriptor[] = promptForgePluginIds.map((id) => {
+        const plugin = PLUGIN_CATALOG.find((candidate) => candidate.id === id);
+        return {
+          id,
+          label: plugin?.name ?? id,
+          description: plugin
+            ? [
+                plugin.description,
+                ...plugin.tools.map((tool) => `${tool.name}: ${tool.description}`),
+              ].join('\n')
+            : 'Attached plugin metadata is unavailable.',
+          verified: isPromptForgePluginAvailable(plugin, connections[id], projectId),
+          reference: `plugin://${id}`,
+          observedAt: now,
+        };
+      });
+      const activeAgents: PromptForgeComposerDescriptor[] = useJarvisInteractionStore
+        .getState()
+        .agentsForChat(chatId)
+        .filter(
+          (agent) =>
+            String(agent.parentChatId) === String(chatId) &&
+            !['done', 'failed', 'cancelled'].includes(agent.status),
+        )
+        .slice(0, 64)
+        .map((agent) => {
+          const observedAt = Date.parse(agent.updatedAt);
+          return {
+            id: String(agent.agentId),
+            label: agent.name,
+            description: [
+              `Current task: ${agent.task}`,
+              `Status: ${agent.status}`,
+              agent.currentStep ? `Current step: ${agent.currentStep}` : null,
+              `Observed model: ${agent.modelLabel}`,
+            ].join('\n'),
+            verified: true,
+            reference: `agent://chat/${String(chatId)}/${String(agent.agentId)}`,
+            observedAt:
+              Number.isSafeInteger(observedAt) && observedAt >= 0 && observedAt <= now
+                ? observedAt
+                : undefined,
+          };
+        });
+      const mcpTools: PromptForgeComposerDescriptor[] = jarvisMcpServerManager
+        .discover()
+        .filter(
+          (status) =>
+            status.kind === 'external_mcp' &&
+            status.state === 'running' &&
+            status.healthy &&
+            status.exposedTools.length > 0,
+        )
+        .flatMap((status) =>
+          status.exposedTools.slice(0, 64).map((toolName) => ({
+            id: `${status.id}.${toolName}`,
+            label: toolName,
+            description: [
+              `External MCP server: ${status.id}`,
+              'Observed status: healthy and running.',
+              'Exposure status: explicitly allowed for JARVIS.',
+            ].join('\n'),
+            verified: true,
+            reference: `mcp://${status.id}/${toolName}`,
+            observedAt: status.toolsDiscoveredAt ?? status.lastUsedAt ?? now,
+          })),
+        )
+        .slice(0, 64);
+      const appActions: PromptForgeComposerDescriptor[] = createJarvisActionCatalog(
+        DEFAULT_JARVIS_ACTION_REGISTRATIONS,
+      )
+        .listExposed()
+        .filter(
+          (registration) =>
+            registration.executor.kind === 'builtin' &&
+            getBuiltinAction(registration.executor.registryActionId) !== undefined,
+        )
+        .map((registration) => ({
+          id: registration.id,
+          label: registration.title,
+          description: [
+            registration.description,
+            `Risk: ${registration.risk}.`,
+            `Approval policy: ${registration.approval}.`,
+            `Expected effect: ${registration.expectedEffect}`,
+            `Required capability: ${registration.requiredCapabilities[0]}.`,
+            registration.requiredEntitlements.length > 0
+              ? `Required entitlements: ${registration.requiredEntitlements.join(', ')}.`
+              : 'Required entitlements: none declared.',
+            'Registration is installed; execution still requires current capability, entitlement, and approval checks.',
+          ].join('\n'),
+          verified: true,
+          reference: `action://${registration.id}/v${registration.version}`,
+          observedAt: now,
+        }));
+      const accountIdentity = resolveAccountIdentity(useAuthStore.getState());
+      const toolScope = getCurrentSyncQueueAuthorityScope();
+      const toolScopeMatches =
+        accountIdentity?.source === 'supabase'
+          ? toolScope.state === 'cloud' && toolScope.userId === accountIdentity.accountId
+          : accountIdentity?.source === 'local' && toolScope.state === 'unbound';
+      const customTools: PromptForgeComposerDescriptor[] = toolScopeMatches
+        ? useToolStore
+            .getState()
+            .list()
+            .slice(0, 64)
+            .map((tool) => {
+              const actionIds =
+                tool.steps && tool.steps.length > 0
+                  ? tool.steps.map((step) => step.action)
+                  : [tool.baseAction];
+              const installed = actionIds.every((actionId) => Boolean(getBuiltinAction(actionId)));
+              return {
+                id: tool.slug,
+                label: tool.name,
+                description: [
+                  tool.description,
+                  `Saved action${actionIds.length === 1 ? '' : 's'}: ${actionIds.join(', ')}.`,
+                  `Availability: ${installed ? 'installed' : 'contains an unavailable action'}.`,
+                  'Preset parameter values are intentionally omitted.',
+                ].join('\n'),
+                verified: installed,
+                reference: `tool://custom/${tool.slug}`,
+                observedAt: tool.updatedAt,
+              };
+            })
+        : [];
+      const tasks = persistedTasks.map((task) => ({
+        id: String(task.id),
+        title: task.title,
+        notes: task.notes?.slice(0, 4_000),
+        status: task.status,
+        priority: task.priority,
+        projectId: task.project_id ? String(task.project_id) : null,
+        contextTags: task.context_tags.slice(0, 16),
+        dueAt: task.due_at,
+        scheduledFor: task.scheduled_for,
+        reminderCount: task.reminders.filter(
+          (reminder) => reminder.status === 'scheduled' || reminder.status === 'snoozed',
+        ).length,
+        updatedAt: task.updated_at,
+      }));
+      const composerSources = await collectPromptForgeComposerSources(
+        {
+          accountId: pluginAccountId,
+          projectId,
+          projectRoot,
+          chatId: String(chatId),
+          draft: job.originalDraft,
+          chat: persistedChat
+            ? {
+                title: persistedChat.title,
+                mode: persistedChat.mode,
+                interactionMode,
+                observedAt: persistedChat.updated_at,
+              }
+            : undefined,
+          project:
+            persistedProject && String(persistedProject.id) === projectId
+              ? {
+                  id: String(persistedProject.id),
+                  name: persistedProject.name,
+                  root: projectRoot,
+                  systemPromptContext: persistedProject.system_prompt_context,
+                  noContextMode: persistedProject.no_context_mode,
+                  observedAt: persistedProject.updated_at,
+                }
+              : undefined,
+          profile: allAboutMe,
+          activity: getChatActivityEvents(chatId),
+          files: attachedFiles,
+          terminals: attachedTerminals,
+          terminalStates,
+          terminalSessions: useTerminalTranscriptStore.getState().sessions,
+          messages,
+          plugins,
+          connectedPlugins,
+          skills: promptForgeSkills.map((skill) => ({
+            id: skill.id,
+            label: skill.name,
+            description: skill.description,
+            verified: true,
+            reference: `skill://${skill.id}`,
+            observedAt: now,
+          })),
+          agents: promptForgeAgents.map((agent) => ({
+            id: String(agent.id),
+            label: agent.name,
+            description: agent.description,
+            verified: true,
+            reference: `agent://${agent.slug}`,
+            observedAt: now,
+          })),
+          activeAgents,
+          mcpTools,
+          appActions,
+          customTools,
+          tasks,
+          now,
+        },
+        signal,
+      );
+      return mergeActiveCanvasSourcesForPromptForge(
+        composerSources,
+        pluginAccountId,
+        projectId,
+        useUIStore.getState().route === 'canvas',
+      );
+    },
+    [
+      attachedFiles,
+      attachedTerminals,
+      chatId,
+      interactionMode,
+      pluginAccountId,
+      projectId,
+      promptForgeAgents,
+      promptForgePluginIds,
+      promptForgeSkills,
+      workspaceId,
+    ],
+  );
+  const promptForge = usePromptForgeComposer({
+    accountId: pluginAccountId,
+    chatId: String(chatId),
+    projectId,
+    draft: text,
+    setDraft: setText,
+    originalAttachments: promptForgeAttachmentSnapshots,
+    imageAttachments: attachedImages,
+    contextAttachments: attachedContexts,
+    additionalSources: COMPOSER_EMPTY_PROMPT_FORGE_SOURCES,
+    collectAdditionalSources: collectPromptForgeSources,
+    modelSelection: promptForgeModelSelection,
+    modelOptions: promptForgeModels,
+    currentChatSelection: chatModelSelection,
+    offlineMode,
+    defaultLocalModel,
+    workingDirectory: getStoredProjectRoot(projectId) || undefined,
+  });
+  const returnPromptForgeFocus = useCallback(() => {
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    const onPromptForgeHotkey = (event: KeyboardEvent) => {
+      if (
+        event.repeat ||
+        document.activeElement !== textareaRef.current ||
+        !matchesHotkey(event, HOTKEYS.PROMPT_FORGE) ||
+        promptForge.disabledReason
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void promptForge.start();
+    };
+    window.addEventListener('keydown', onPromptForgeHotkey);
+    return () => window.removeEventListener('keydown', onPromptForgeHotkey);
+  }, [promptForge.disabledReason, promptForge.start]);
+
+  const canSend =
+    (text.trim().length > 0 ||
+      attachedFiles.length > 0 ||
+      attachedImages.length > 0 ||
+      attachedTerminals.length > 0 ||
+      attachedPlugins.length > 0 ||
+      attachedContexts.length > 0 ||
+      confirmedCommands.length > 0 ||
+      confirmedAgentMentions.length > 0) &&
+    !sending;
+  const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
+  const kernelSmokeHivePrepared =
+    kernelSmokeHiveBound &&
+    chatModelSelection.mode === 'hive' &&
+    chatModelSelection.hiveId === 'custom' &&
+    stackCustomSteps.length === KERNEL_SMOKE_HIVE_STEPS.length &&
+    stackCustomSteps.every(
+      (step, index) =>
+        step.id === KERNEL_SMOKE_HIVE_STEPS[index]?.id &&
+        step.provider === KERNEL_SMOKE_PROVIDER_ID &&
+        step.model === 'kernel-smoke-v1',
+    );
+
+  const prepareKernelSmokeHive = () => {
+    if (!kernelSmokeHiveBound) return;
+    useAuthStore.setState({
+      stackPreset: 'custom',
+      stackCustomSteps: KERNEL_SMOKE_HIVE_STEPS.map((step) => ({ ...step })),
+      chatModelSelection: { mode: 'hive', hiveId: 'custom' },
+    });
+  };
 
   const addDroppedPath = useCallback(async (path: string) => {
     const clean = path.trim();
@@ -1819,10 +2780,15 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (isSupportedImagePath(clean)) {
       try {
         const image = await imageAttachmentFromPath(clean);
-        setAttachedImages((cur) => (cur.some((item) => item.sourcePath === clean) ? cur : [...cur, image]).slice(0, 6));
+        setAttachedImages((cur) =>
+          (cur.some((item) => item.sourcePath === clean) ? cur : [...cur, image]).slice(0, 6),
+        );
         return;
       } catch (err) {
-        toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+        toast.error(
+          'Image attach failed',
+          err instanceof Error ? err.message : 'Could not attach image.',
+        );
         return;
       }
     }
@@ -1862,7 +2828,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       });
       return true;
     } catch (err) {
-      toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+      toast.error(
+        'Image attach failed',
+        err instanceof Error ? err.message : 'Could not attach image.',
+      );
       return true;
     }
   }, []);
@@ -1871,43 +2840,66 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const ref = typeof raw === 'string' ? parseTerminalRef(raw) : raw;
     if (!ref) return;
     const key = terminalRefKey(ref);
-    setAttachedTerminals((cur) => (cur.some((item) => terminalRefKey(item) === key) ? cur : [...cur, ref]).slice(0, 8));
+    setAttachedTerminals((cur) =>
+      (cur.some((item) => terminalRefKey(item) === key) ? cur : [...cur, ref]).slice(0, 8),
+    );
     setText((cur) => cur || `Please inspect the attached terminal: ${terminalRefLabel(ref)}`);
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
-  const addDroppedContext = useCallback((raw: string | ContextAttachment) => {
-    const context = typeof raw === 'string' ? parseContextAttachment(raw) : raw;
-    if (!context) return;
-    setAttachedContexts((cur) => (
-      cur.some((item) => item.nodeId === context.nodeId)
-        ? cur
-        : [...cur, context].slice(0, 8)
-    ));
-    setText((cur) => cur || `Please use the attached Context: ${context.title}`);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }, []);
+  const addDroppedContext = useCallback(
+    (raw: string | ContextAttachment) => {
+      try {
+        const context = typeof raw === 'string' ? parseContextAttachment(raw) : raw;
+        if (!context) return;
+        const normalized = normalizeContextChatAttachment(context);
+        if (!contextChatAttachmentMatchesProject(normalized, projectId)) {
+          toast.error(
+            'Context attach rejected',
+            'The Context source belongs to a different project.',
+          );
+          return;
+        }
+        const key = contextChatAttachmentKey(normalized);
+        setAttachedContexts((cur) =>
+          cur.some((item) => contextChatAttachmentKey(item) === key)
+            ? cur
+            : [...cur, normalized].slice(0, 8),
+        );
+        setText((cur) => cur || `Please use the attached Context: ${normalized.title}`);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      } catch {
+        toast.error('Context attach rejected', 'The Context attachment is malformed.');
+      }
+    },
+    [projectId],
+  );
 
   useEffect(() => {
     const onAttachTerminal = (event: Event) => {
-      const detail = (event as CustomEvent<{ raw?: string; ref?: TerminalRef; chatId?: string }>).detail;
+      const detail = (event as CustomEvent<{ raw?: string; ref?: TerminalRef; chatId?: string }>)
+        .detail;
       if (detail?.chatId && String(detail.chatId) !== String(chatId)) return;
       if (detail?.ref) addDroppedTerminal(detail.ref);
       else if (detail?.raw) addDroppedTerminal(detail.raw);
     };
     window.addEventListener('jarvis:terminal:attach', onAttachTerminal as EventListener);
-    return () => window.removeEventListener('jarvis:terminal:attach', onAttachTerminal as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:terminal:attach', onAttachTerminal as EventListener);
   }, [addDroppedTerminal, chatId]);
 
   useEffect(() => {
     const onAttachContext = (event: Event) => {
-      const detail = (event as CustomEvent<{ raw?: string; context?: ContextAttachment; chatId?: string }>).detail;
+      const detail = (
+        event as CustomEvent<{ raw?: string; context?: ContextAttachment; chatId?: string }>
+      ).detail;
       if (detail?.chatId && String(detail.chatId) !== String(chatId)) return;
       if (detail?.context) addDroppedContext(detail.context);
       else if (detail?.raw) addDroppedContext(detail.raw);
     };
     window.addEventListener('jarvis:context:attach', onAttachContext as EventListener);
-    return () => window.removeEventListener('jarvis:context:attach', onAttachContext as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:context:attach', onAttachContext as EventListener);
   }, [addDroppedContext, chatId]);
 
   useEffect(() => {
@@ -1923,7 +2915,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
     };
     window.addEventListener('jarvis:composer:insert-text', onInsertText as EventListener);
-    return () => window.removeEventListener('jarvis:composer:insert-text', onInsertText as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:composer:insert-text', onInsertText as EventListener);
   }, [chatId]);
 
   // ---------- V2 speech-to-text wiring ----------
@@ -1970,7 +2963,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (kind === 'unsupported') {
         toast.warning('Voice unsupported', message);
       } else if (kind === 'service_not_allowed' || kind === 'permission_denied') {
-        toast.error('Microphone blocked', 'Allow mic access in your browser/OS settings.');
+        toast.error('Microphone blocked', message);
       } else if (kind !== 'no_speech' && kind !== 'aborted') {
         toast.error('Voice error', message);
       }
@@ -2038,9 +3031,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         setSttListening(true);
         setSttAwaitingFinal(false);
         void startSttVolumeMeter();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Voice could not start.';
-        toast.error('Voice error', msg);
+      } catch {
+        toast.error('Voice error', formatComposerVoiceFailure('system_startup'));
         setSttListening(false);
         setSttAwaitingFinal(false);
         setSttInterim('');
@@ -2055,7 +3047,11 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const trySystemSttFallbacks = async () => {
     // VibeSpace engines first: Groq Whisper is part of the shared STT pipeline.
     const groqKey = useAuthStore.getState().apiKeys.groq;
-    if (groqKey && typeof navigator.mediaDevices?.getUserMedia === 'function' && getAudioContextCtor()) {
+    if (
+      groqKey &&
+      typeof navigator.mediaDevices?.getUserMedia === 'function' &&
+      getAudioContextCtor()
+    ) {
       void startGroqStt(groqKey);
       return;
     }
@@ -2089,21 +3085,25 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return;
     }
     if (typeof navigator.mediaDevices?.getUserMedia !== 'function' || !getAudioContextCtor()) {
-      toast.warning('Microphone unavailable', 'Could not access the microphone for local dictation.');
+      toast.warning('Microphone unavailable', formatComposerVoiceFailure('local_capture'));
       void startSystemStt();
       return;
     }
     try {
       setSttInterim(`Listening with faster-whisper (${modelId})...`);
       batchRecorderRef.current = await startBatchAudioRecorder(
-        (rms) => { setSttVolumeLevel(rms); },
-        () => { void stopBatchStt(true); },
+        (rms) => {
+          setSttVolumeLevel(rms);
+        },
+        () => {
+          void stopBatchStt(true);
+        },
       );
       setSttListening(true);
-    } catch (err) {
+    } catch {
       setSttListening(false);
       setSttInterim('');
-      toast.error('Voice error', err instanceof Error ? err.message : 'Could not start microphone.');
+      toast.error('Voice error', formatComposerVoiceFailure('local_capture'));
       void startSystemStt();
     }
   };
@@ -2144,12 +3144,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       const transcript = await transcribeFasterWhisper(wav, getFasterWhisperModel());
       if (gen !== transcribeGenRef.current) return;
       appendTranscript(transcript);
-    } catch (err) {
+    } catch {
       if (gen !== transcribeGenRef.current) return;
-      toast.error(
-        'Local transcription failed',
-        err instanceof Error ? err.message : 'Falling back to system dictation.',
-      );
+      toast.error('Local transcription failed', formatComposerVoiceFailure('local_transcription'));
       void startSystemStt();
     } finally {
       if (gen === transcribeGenRef.current) {
@@ -2200,16 +3197,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         }
       }, 1000);
       setSttListening(true);
-    } catch (err) {
+    } catch {
       clearAudioSilenceTimer();
-      cleanupAudioRecorder(audioProcessorRef.current, audioSourceRef.current, audioContextRef.current, mediaStreamRef.current);
+      cleanupAudioRecorder(
+        audioProcessorRef.current,
+        audioSourceRef.current,
+        audioContextRef.current,
+        mediaStreamRef.current,
+      );
       audioProcessorRef.current = null;
       audioSourceRef.current = null;
       audioContextRef.current = null;
       mediaStreamRef.current = null;
       setSttListening(false);
       setSttInterim('');
-      toast.error('Voice error', err instanceof Error ? err.message : 'Could not start microphone.');
+      toast.error('Voice error', formatComposerVoiceFailure('groq_capture'));
     }
   };
 
@@ -2222,9 +3224,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       const finalText = await transcribeGroqApi(blob, apiKey);
       if (gen !== transcribeGenRef.current) return;
       appendTranscript(finalText);
-    } catch (err) {
+    } catch {
       if (gen !== transcribeGenRef.current) return;
-      toast.error('Groq transcription failed', err instanceof Error ? err.message : 'Unknown error');
+      toast.error('Groq transcription failed', formatComposerVoiceFailure('groq_transcription'));
     } finally {
       if (gen === transcribeGenRef.current) {
         setSttTranscribing(false);
@@ -2247,14 +3249,22 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (audioContextRef.current || audioProcessorRef.current || audioSourceRef.current) {
       const context = audioContextRef.current;
       const chunks = wavChunksRef.current;
-      cleanupAudioRecorder(audioProcessorRef.current, audioSourceRef.current, context, mediaStreamRef.current);
+      cleanupAudioRecorder(
+        audioProcessorRef.current,
+        audioSourceRef.current,
+        context,
+        mediaStreamRef.current,
+      );
       audioProcessorRef.current = null;
       audioSourceRef.current = null;
       audioContextRef.current = null;
       mediaStreamRef.current = null;
       wavChunksRef.current = [];
       if (chunks.length > 0 && context) {
-        void transcribeGroq(encodeWav(chunks, context.sampleRate), useAuthStore.getState().apiKeys.groq ?? '');
+        void transcribeGroq(
+          encodeWav(chunks, context.sampleRate),
+          useAuthStore.getState().apiKeys.groq ?? '',
+        );
       } else {
         setSttTranscribing(false);
         toast.warning('No speech captured', 'Try again and speak for at least one second.');
@@ -2291,7 +3301,12 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (sttListening || sttAwaitingFinal) VoiceService.stopListening();
       clearAudioSilenceTimer();
       stopSttVolumeMeter();
-      cleanupAudioRecorder(audioProcessorRef.current, audioSourceRef.current, audioContextRef.current, mediaStreamRef.current);
+      cleanupAudioRecorder(
+        audioProcessorRef.current,
+        audioSourceRef.current,
+        audioContextRef.current,
+        mediaStreamRef.current,
+      );
     };
   }, [clearSttFinalizeTimer, sttAwaitingFinal, sttListening]);
 
@@ -2329,48 +3344,37 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       data-tour="chat-composer"
     >
       {showFreeKeyNudge && (
-        <div
-          className={cn(
-            'flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-1 pt-2.5',
-            'text-secondary text-muted-foreground',
-          )}
-          role="status"
-          aria-label="Free Gemini API key recommended for the Jarvis agent"
-        >
-          <Sparkles className="h-3.5 w-3.5 text-accent-copper shrink-0" />
-          <span>
-            Add a free Gemini API key to give Jarvis a real Flash Lite
-            brain (no card needed).
-          </span>
-          <a
-            href="https://aistudio.google.com/apikey"
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent-copper underline-offset-4 hover:underline"
-          >
-            Get key →
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsOpen(true);
-              // Wait one task so the SettingsModal commits open=true and
-              // attaches its tab-switch listener before we dispatch.
-              setTimeout(() => {
-                window.dispatchEvent(
-                  new CustomEvent('jarvis:settings:tab', {
-                    detail: { tab: 'providers' },
-                  }),
-                );
-              }, 0);
-            }}
-            className="ml-auto text-accent-copper underline-offset-4 hover:underline"
-          >
-            Open Providers
-          </button>
-        </div>
+        <FreeKeyNudge
+          onOpenProviders={() => {
+            setSettingsOpen(true);
+            // Wait one task so the SettingsModal commits open=true and
+            // attaches its tab-switch listener before we dispatch.
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent('jarvis:settings:tab', {
+                  detail: { tab: 'providers' },
+                }),
+              );
+            }, 0);
+          }}
+        />
       )}
       <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
+        {promptForge.recoverableJob ? (
+          <PromptForgeRecovery
+            job={promptForge.recoverableJob}
+            loading={promptForge.recoveryLoading}
+            error={promptForge.recoveryError}
+            resumeDisabledReason={promptForge.recoveryDisabledReason}
+            needsContextConfirmation={promptForge.recoveryNeedsContextConfirmation}
+            compact={compact}
+            onRestore={promptForge.restoreRecoveryDraft}
+            onResume={promptForge.resumeRecovery}
+            onDiscard={promptForge.discardRecovery}
+            onConfirmContextChange={promptForge.confirmRecoveryContextChange}
+            onReturnFocus={returnPromptForgeFocus}
+          />
+        ) : null}
         <Popover
           open={mentionCtx !== null || slashCtx !== null || optionPickerCtx !== null}
           onOpenChange={(open) => {
@@ -2451,6 +3455,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                 }}
                 placeholder={placeholder ?? 'Message Jarvis...   (use @ to mention an agent)'}
                 aria-label="Message"
+                data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatComposer : undefined}
                 style={{ minHeight: MIN_HEIGHT, maxHeight: MAX_HEIGHT }}
                 className={cn(
                   'block w-full resize-none bg-transparent px-3 py-2 text-body text-foreground',
@@ -2515,7 +3520,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                       type="image"
                       label={image.name}
                       sublabel={image.size ? `${Math.ceil(image.size / 1024)} KB` : image.mimeType}
-                      onRemove={() => setAttachedImages((cur) => cur.filter((item) => item.id !== image.id))}
+                      onRemove={() =>
+                        setAttachedImages((cur) => cur.filter((item) => item.id !== image.id))
+                      }
                     />
                   ))}
                 </div>
@@ -2527,7 +3534,11 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                       key={terminalRefKey(ref)}
                       type="terminal"
                       label={terminalRefLabel(ref)}
-                      onRemove={() => setAttachedTerminals((cur) => cur.filter((p) => terminalRefKey(p) !== terminalRefKey(ref)))}
+                      onRemove={() =>
+                        setAttachedTerminals((cur) =>
+                          cur.filter((p) => terminalRefKey(p) !== terminalRefKey(ref)),
+                        )
+                      }
                     />
                   ))}
                 </div>
@@ -2541,8 +3552,14 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                         key={pluginId}
                         type="plugin"
                         label={plugin?.name ?? pluginId}
-                        icon={plugin ? <PluginLogo plugin={plugin} size="sm" className="!h-5 !w-5" /> : undefined}
-                        onRemove={() => setAttachedPlugins((cur) => cur.filter((id) => id !== pluginId))}
+                        icon={
+                          plugin ? (
+                            <PluginLogo plugin={plugin} size="sm" className="!h-5 !w-5" />
+                          ) : undefined
+                        }
+                        onRemove={() =>
+                          setAttachedPlugins((cur) => cur.filter((id) => id !== pluginId))
+                        }
                       />
                     );
                   })}
@@ -2550,23 +3567,34 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
               )}
               {attachedContexts.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pb-1">
-                  {attachedContexts.map((context) => (
-                    <InputToken
-                      key={context.nodeId}
-                      type="contextmap"
-                      label={context.title}
-                      onRemove={() => setAttachedContexts((cur) => cur.filter((item) => item.nodeId !== context.nodeId))}
-                    />
-                  ))}
+                  {attachedContexts.map((context) => {
+                    const token = contextAttachmentTokenView(context);
+                    const attachmentKey = contextChatAttachmentKey(context);
+                    return (
+                      <InputToken
+                        key={attachmentKey}
+                        type="contextmap"
+                        label={token.label}
+                        sublabel={token.sublabel}
+                        onRemove={() =>
+                          setAttachedContexts((cur) =>
+                            cur.filter((item) => contextChatAttachmentKey(item) !== attachmentKey),
+                          )
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
-      <QueuedMessagesBar
-        messages={queuedMessages}
-        onEdit={editQueuedMessage}
-        onSendNow={sendQueuedMessageNow}
-        onStartMultitask={startQueuedMultitask}
-        onDelete={deleteQueuedMessage}
-      />
+              <QueuedMessagesBar
+                messages={queuedMessages}
+                onEdit={editQueuedMessage}
+                onSendNow={sendQueuedMessageNow}
+                onStartMultitask={startQueuedMultitask}
+                isModelSwitch={(message) => Boolean(parseJarvisModelSwitchIntent(message.text))}
+                onStopAndRestart={stopAndRestartQueuedModelSwitch}
+                onDelete={deleteQueuedMessage}
+              />
               <div
                 className={cn(
                   'flex items-center gap-1 px-2 pb-2 pt-0.5',
@@ -2580,23 +3608,30 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   onOpenChange={setModelPickerOpen}
                   pickerRef={modelPickerRef}
                   compact={compact}
+                  groups={accessibleChatModels.groups}
+                  flatOptions={accessibleChatModels.flatOptions}
                   onSelect={(next) => {
                     setChatModelSelection(next);
                     if (next.mode === 'single' && next.connectionId) {
                       const descriptor = getProviderConnectionDescriptor(next.connectionId);
-                      void chatRepo.update(chatId as ChatId, {
-                        connection: { ...descriptor, modelId: next.modelId },
-                      }).catch(() => toast.error('Connection not saved', 'Try choosing the connection again.'));
+                      void chatRepo
+                        .update(chatId as ChatId, {
+                          connection: { ...descriptor, modelId: next.modelId },
+                        })
+                        .catch(() =>
+                          toast.error('Connection not saved', 'Try choosing the connection again.'),
+                        );
                     }
-                    if (next.mode === 'single' && (next.providerId === 'ollama' || next.providerId === 'local')) {
+                    if (
+                      next.mode === 'single' &&
+                      (next.providerId === 'ollama' || next.providerId === 'local')
+                    ) {
                       selectLocalModelForChat(next.modelId);
                     }
                   }}
                 />
                 {chatModelSelection.mode === 'single' && chatModelSelection.connectionId ? (
-                  <ConnectionInfoPopover
-                    connectionId={chatModelSelection.connectionId}
-                  />
+                  <ConnectionInfoPopover connectionId={chatModelSelection.connectionId} />
                 ) : null}
                 <ModeIndicator
                   mode={interactionMode}
@@ -2605,9 +3640,30 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                     setInteractionMode(chatId, nextMode);
                   }}
                   onCycle={() => {
-                    const nextMode = cycleInteractionMode(useJarvisInteractionStore.getState().modeForChat(chatId));
+                    const nextMode = cycleInteractionMode(
+                      useJarvisInteractionStore.getState().modeForChat(chatId),
+                    );
                     setInteractionMode(chatId, nextMode);
                   }}
+                />
+                <PromptForgeControl
+                  status={promptForge.status}
+                  statusMessage={promptForge.statusMessage}
+                  isRunning={promptForge.isRunning}
+                  disabledReason={promptForge.disabledReason}
+                  error={promptForge.error}
+                  compact={compact}
+                  modelSelection={promptForgeModelSelection}
+                  modelOptions={promptForgeModels}
+                  onModelSelectionChange={setPromptForgeModelSelection}
+                  privacyMode={promptForge.privacyMode}
+                  onPrivacyModeChange={promptForge.setPrivacyMode}
+                  allowPublicResearch={promptForge.allowPublicResearch}
+                  onAllowPublicResearchChange={promptForge.setAllowPublicResearch}
+                  publicResearchAvailable={promptForge.publicResearchAvailable}
+                  offlineMode={offlineMode}
+                  onStart={promptForge.start}
+                  onCancel={promptForge.cancel}
                 />
                 {composerSttEnabled && (
                   <Hint
@@ -2643,14 +3699,34 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                     <span className="italic text-foreground/70" aria-live="polite">
                       {sttInterim}
                     </span>
-                  ) : (
-                    compact ? null : (
-                      <>
-                        <span className="kbd">{renderHotkey(HOTKEYS.SEND)}</span> to send
-                      </>
-                    )
+                  ) : compact ? null : (
+                    <>
+                      <span className="kbd">{renderHotkey(HOTKEYS.SEND)}</span> to send
+                    </>
                   )}
                 </span>
+                {kernelSmokeHiveBound ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={prepareKernelSmokeHive}
+                    data-sik-evidence={SIK_CONTROL.hiveFixture}
+                  >
+                    Prepare Hive smoke
+                  </Button>
+                ) : null}
+                {kernelSmokeHivePrepared ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void handleSend(KERNEL_SMOKE_HIVE_TEXT)}
+                    data-sik-evidence={SIK_CONTROL.hiveDispatch}
+                  >
+                    Dispatch Hive smoke
+                  </Button>
+                ) : null}
                 <Hint label="Send" hotkey={HOTKEYS.SEND}>
                   <Button
                     type="button"
@@ -2659,6 +3735,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                     onClick={() => void handleSend()}
                     disabled={!canSend}
                     aria-label="Send message"
+                    data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatSubmit : undefined}
                   >
                     <Send />
                   </Button>
@@ -2688,8 +3765,16 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                 options={optionPickerOptions}
                 selectedId={selectedOptionId}
                 query={optionPickerCtx.query}
-                loading={normalizeSlashCmd(optionPickerCtx.cmd.cmd) === 'file' ? projectFilesLoading : false}
-                error={normalizeSlashCmd(optionPickerCtx.cmd.cmd) === 'file' ? projectFilesError : undefined}
+                loading={
+                  normalizeSlashCmd(optionPickerCtx.cmd.cmd) === 'file'
+                    ? projectFilesLoading
+                    : false
+                }
+                error={
+                  normalizeSlashCmd(optionPickerCtx.cmd.cmd) === 'file'
+                    ? projectFilesError
+                    : undefined
+                }
                 onHoverId={setSelectedOptionId}
                 onSelect={selectOption}
               />
@@ -2714,6 +3799,35 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
           </PopoverContent>
         </Popover>
       </div>
+      {promptForge.job?.status === 'ready' && promptForge.job.generatedDraft !== null ? (
+        <PromptForgeReview
+          open={promptForge.reviewOpen}
+          job={promptForge.job}
+          upgradedDraft={promptForge.upgradedDraft}
+          onUpgradedDraftChange={promptForge.setUpgradedDraft}
+          excludedSourceIds={promptForge.excludedSourceIds}
+          onExcludeSource={promptForge.toggleSource}
+          onReplace={promptForge.replace}
+          onInsertBelow={promptForge.insertBelow}
+          onCopy={() => {
+            void promptForge
+              .copy()
+              .then(() => toast.success('Upgraded prompt copied'))
+              .catch(() =>
+                toast.error('Copy failed', 'Select the upgraded prompt and copy it manually.'),
+              );
+          }}
+          onRegenerate={() => void promptForge.regenerate()}
+          onRegenerateWithInstructions={(instructions) => void promptForge.regenerate(instructions)}
+          onReturnFocus={returnPromptForgeFocus}
+          onUndo={promptForge.undo}
+          canUndo={promptForge.canUndo}
+          onClose={() => {
+            promptForge.setReviewOpen(false);
+            returnPromptForgeFocus();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2726,6 +3840,8 @@ interface ModelPickerProps {
   onSelect: (selection: ChatModelSelection) => void;
   pickerRef: React.RefObject<ModelPickerTypeaheadRef | null>;
   compact?: boolean;
+  groups: ModelPickerGroup[];
+  flatOptions: ModelPickerOption[];
 }
 
 function ModelPicker({
@@ -2736,8 +3852,11 @@ function ModelPicker({
   onSelect,
   pickerRef,
   compact = false,
+  groups,
+  flatOptions,
 }: ModelPickerProps) {
-  const { groups, flatOptions } = useAccessibleChatModels();
+  const automaticRoutingEnabled = useAuthStore((s) => s.automaticModelRoutingEnabled);
+  const setAutomaticModelRoutingEnabled = useAuthStore((s) => s.setAutomaticModelRoutingEnabled);
   const [selectedId, setSelectedId] = useState('');
   const displayLabel = formatChatModelSelectionLabel(selection, modelCtx);
   const activeProvider = selection.mode === 'single' ? selection.providerId : undefined;
@@ -2756,7 +3875,10 @@ function ModelPicker({
     };
   }, [open]);
 
-  const flatOptionIds = useMemo(() => flatOptions.map((option) => option.id).join('\0'), [flatOptions]);
+  const flatOptionIds = useMemo(
+    () => flatOptions.map((option) => option.id).join('\0'),
+    [flatOptions],
+  );
   const selectionHighlightId = useMemo(() => {
     if (selection.mode === 'hive') return HIVE_OPTION_ID;
     return selectionOptionId(selection) ?? HIVE_OPTION_ID;
@@ -2803,7 +3925,11 @@ function ModelPicker({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onOpenChange, pickerRef]);
 
-  const handleSelect = (nextProvider: ProviderId, nextModel: string, connection?: Readonly<import('@/lib/ai/adapters/types').ProviderConnection>) => {
+  const handleSelect = (
+    nextProvider: ProviderId,
+    nextModel: string,
+    connection?: Readonly<import('@/lib/ai/adapters/types').ProviderConnection>,
+  ) => {
     onSelect(selectionFromOption(nextProvider, nextModel, connection));
     onOpenChange(false);
   };
@@ -2825,6 +3951,16 @@ function ModelPicker({
             compact && 'max-w-[11rem] shrink-0',
           )}
           aria-label="Choose model"
+          data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.modelPicker : undefined}
+          data-sik-transport={
+            KERNEL_SMOKE_ENABLED && selection.mode === 'single'
+              ? selection.connectionId === 'vibespace-kernel-smoke-cli'
+                ? 'cli'
+                : selection.connectionId === 'vibespace-kernel-smoke-native'
+                  ? 'native'
+                  : undefined
+              : undefined
+          }
         >
           {selection.mode === 'hive' ? <HiveModelIcon size={21} /> : null}
           <span className={cn('text-metadata', compact && 'truncate')}>{displayLabel}</span>
@@ -2848,9 +3984,10 @@ function ModelPicker({
           onHoverId={setSelectedId}
           onSelect={handleSelect}
           onSelectHive={handleSelectHive}
+          automaticRoutingEnabled={automaticRoutingEnabled}
+          onAutomaticRoutingChange={setAutomaticModelRoutingEnabled}
         />
       </PopoverContent>
     </Popover>
   );
 }
-

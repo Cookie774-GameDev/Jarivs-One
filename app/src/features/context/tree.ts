@@ -1,5 +1,13 @@
-import { readTextFileSample, listDirectory, writeTextFile, type FsEntry, type FsReadError } from '@/lib/fs';
+import {
+  readTextFileSample,
+  listDirectory,
+  writeTextFile,
+  type FsEntry,
+  type FsReadError,
+} from '@/lib/fs';
 import { basename, extension, isPopularTextFile } from '@/features/files/projectFiles';
+import { classifyJarvisReadError, classifyJarvisSource } from '@/lib/jarvis/sourcePolicy';
+import { contextMapPickerOption } from './contextChatIntegration';
 
 export const CONTEXT_MIME = 'application/x-jarvis-context';
 export const CONTEXT_STORAGE_PREFIX = 'jarvis-context-tree-v1';
@@ -9,16 +17,23 @@ export const MAX_ACTIVE_CONTEXT_MAPS = 5;
 
 export type ContextGenerationProvider = 'local' | 'google' | 'groq' | 'openai' | 'anthropic';
 
-export const CONTEXT_PROVIDER_OPTIONS: Record<ContextGenerationProvider, {
-  label: string;
-  shortLabel: string;
-  model: string;
-}> = {
+export const CONTEXT_PROVIDER_OPTIONS: Record<
+  ContextGenerationProvider,
+  {
+    label: string;
+    shortLabel: string;
+    model: string;
+  }
+> = {
   local: { label: 'Local fallback', shortLabel: 'Local', model: 'local-fallback' },
   google: { label: 'Google Gemini', shortLabel: 'Gemini', model: 'gemini-2.5-flash-lite' },
   groq: { label: 'Groq Llama', shortLabel: 'Groq', model: 'llama-3.3-70b-versatile' },
   openai: { label: 'OpenAI', shortLabel: 'OpenAI', model: 'gpt-4o-mini' },
-  anthropic: { label: 'Anthropic Claude', shortLabel: 'Claude', model: 'claude-3-5-sonnet-20241022' },
+  anthropic: {
+    label: 'Anthropic Claude',
+    shortLabel: 'Claude',
+    model: 'claude-3-5-sonnet-20241022',
+  },
 };
 
 export type ContextNodeKind = 'root' | 'area' | 'file' | 'symbol' | 'note';
@@ -61,6 +76,30 @@ export interface ContextMapRecord {
   status: ContextMapStatus;
   createdAt: number;
   updatedAt: number;
+  sourceType?:
+    | 'local_folder'
+    | 'local_file'
+    | 'github_repository'
+    | 'linked_vibespace_content'
+    | 'portable_markdown_folder';
+  sourceLabel?: string;
+  sourceStatus?:
+    | 'pending'
+    | 'indexing'
+    | 'ready'
+    | 'stale'
+    | 'offline'
+    | 'permission_required'
+    | 'error'
+    | 'removed';
+  branchRef?: string;
+  github?: {
+    owner: string;
+    repository: string;
+    resolvedCommitSha: string;
+    visibility: 'public' | 'private' | 'internal';
+  };
+  lastIndexedAt?: number;
   tree: ProjectContextTree;
 }
 
@@ -93,6 +132,9 @@ export interface GenerateContextOptions {
   provider?: ContextGenerationProvider;
   apiKey?: string;
   onProgress?: (message: string) => void;
+  onStructuralMap?: (tree: ProjectContextTree) => void | Promise<void>;
+  signal?: AbortSignal;
+  yieldControl?: () => Promise<void>;
 }
 
 interface ScannedContextFile {
@@ -108,6 +150,8 @@ interface ScannedContextFile {
 
 const MAX_SCAN_FILES = 120;
 const MAX_SCAN_DEPTH = 6;
+const MAX_SCAN_DIRECTORIES = 500;
+const MAX_DIRECTORY_ENTRIES = 10_000;
 const MAX_FILE_SAMPLE_CHARS = 12_000;
 const MAX_FILE_SAMPLE_BYTES = 64 * 1024;
 const MAX_TOTAL_SAMPLE_CHARS = 260_000;
@@ -117,31 +161,103 @@ const CONTEXT_OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const CONTEXT_GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const CONTEXT_ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 
+function assertGenerationActive(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new Error('Context map generation cancelled.');
+}
+
+function generationWasAborted(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
+function defaultYieldControl(): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+}
+
 const IGNORED_DIRS = new Set([
-  '.git', '.hg', '.svn', '.idea', '.vscode', 'node_modules', 'target', 'dist', 'build',
-  'coverage', '.next', '.nuxt', '.svelte-kit', '.turbo', '.vite', '.cache', '.parcel-cache',
-  'out', 'release', 'releases', 'bin', 'obj', 'vendor', '__pycache__', '.pytest_cache',
+  '.git',
+  '.hg',
+  '.svn',
+  '.idea',
+  '.vscode',
+  'node_modules',
+  'target',
+  'dist',
+  'build',
+  'coverage',
+  '.next',
+  '.nuxt',
+  '.svelte-kit',
+  '.turbo',
+  '.vite',
+  '.cache',
+  '.parcel-cache',
+  'out',
+  'release',
+  'releases',
+  'bin',
+  'obj',
+  'vendor',
+  '__pycache__',
+  '.pytest_cache',
 ]);
 
 const IGNORED_EXTENSIONS = new Set([
-  'zip', '7z', 'rar', 'tar', 'gz', 'xz', 'bz2', 'pdf', 'exe',
-  'dll', 'dylib', 'so', 'jar', 'class', 'wasm', 'pdb', 'sqlite', 'db', 'lockb', 'msi',
+  'zip',
+  '7z',
+  'rar',
+  'tar',
+  'gz',
+  'xz',
+  'bz2',
+  'pdf',
+  'exe',
+  'dll',
+  'dylib',
+  'so',
+  'jar',
+  'class',
+  'wasm',
+  'pdb',
+  'sqlite',
+  'db',
+  'lockb',
+  'msi',
 ]);
 
 const IMAGE_EXTENSIONS = new Set([
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'icns', 'bmp', 'tif', 'tiff', 'avif', 'svg', 'heic', 'heif',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'ico',
+  'icns',
+  'bmp',
+  'tif',
+  'tiff',
+  'avif',
+  'svg',
+  'heic',
+  'heif',
 ]);
 const VIDEO_EXTENSIONS = new Set([
-  'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'wmv', 'mpg', 'mpeg', '3gp',
+  'mp4',
+  'mov',
+  'm4v',
+  'webm',
+  'mkv',
+  'avi',
+  'wmv',
+  'mpg',
+  'mpeg',
+  '3gp',
 ]);
-const AUDIO_EXTENSIONS = new Set([
-  'mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac',
-]);
-const MEDIA_EXTENSIONS = new Set([
-  ...IMAGE_EXTENSIONS,
-  ...VIDEO_EXTENSIONS,
-  ...AUDIO_EXTENSIONS,
-]);
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac']);
+const MEDIA_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS]);
 
 export function contextStorageKey(projectId: string | null): string {
   return `${CONTEXT_STORAGE_PREFIX}:${projectId ?? '__default__'}`;
@@ -157,9 +273,10 @@ export function contextSelectedFileKey(projectId: string | null): string {
 
 export function loadStoredContextTree(projectId: string | null): ProjectContextTree | null {
   const collection = loadContextMapCollection(projectId);
-  const selected = collection.maps.find((map) => map.id === collection.selectedMapId && map.status === 'active')
-    ?? collection.maps.find((map) => map.status === 'active')
-    ?? null;
+  const selected =
+    collection.maps.find((map) => map.id === collection.selectedMapId && map.status === 'active') ??
+    collection.maps.find((map) => map.status === 'active') ??
+    null;
   return selected?.tree ?? readLegacyContextTree(projectId);
 }
 
@@ -169,7 +286,7 @@ export function loadStoredContextMaps(projectId: string | null): ContextMapRecor
 
 /** Resolve a context map from a slash-picker value (stable id) or legacy name match. */
 export function resolveContextMapRecord(
-  maps: ContextMapRecord[],
+  maps: readonly ContextMapRecord[],
   pickerValue: string,
 ): ContextMapRecord | undefined {
   if (!pickerValue) return undefined;
@@ -184,26 +301,28 @@ export function resolveContextMapRecord(
 
 /** Build slash-command picker rows; always keys by map id so duplicate names stay distinct. */
 export function contextMapSlashOptions(
-  maps: ContextMapRecord[],
+  maps: readonly ContextMapRecord[],
 ): Array<{ id: string; label: string; description?: string; metadata?: string }> {
+  const now = Date.now();
   return maps
     .filter((m) => m.status !== 'deleted')
-    .map((m) => ({
-      id: m.id,
-      label: m.name || 'Untitled',
-      description: `${(m.tree?.nodes ?? []).length} nodes`,
-      metadata: m.tree?.generatedAt
-        ? new Date(m.tree.generatedAt).toLocaleDateString()
-        : undefined,
-    }));
+    .flatMap((m) => {
+      try {
+        return [contextMapPickerOption(m, now)];
+      } catch {
+        return [];
+      }
+    });
 }
 
 export function loadSelectedContextMap(projectId: string | null): ContextMapRecord | null {
   const collection = loadContextMapCollection(projectId);
-  return collection.maps.find((map) => map.id === collection.selectedMapId)
-    ?? collection.maps.find((map) => map.status === 'active')
-    ?? collection.maps[0]
-    ?? null;
+  return (
+    collection.maps.find((map) => map.id === collection.selectedMapId) ??
+    collection.maps.find((map) => map.status === 'active') ??
+    collection.maps[0] ??
+    null
+  );
 }
 
 export function getStoredContextSelectedFile(projectId: string | null): string {
@@ -211,30 +330,43 @@ export function getStoredContextSelectedFile(projectId: string | null): string {
   return window.localStorage.getItem(contextSelectedFileKey(projectId)) ?? '';
 }
 
-export function setStoredContextSelectedFile(projectId: string | null, path: string, emit = true): void {
+export function setStoredContextSelectedFile(
+  projectId: string | null,
+  path: string,
+  emit = true,
+): void {
   if (typeof window === 'undefined') return;
   const clean = path.trim();
   if (!clean) return;
   window.localStorage.setItem(contextSelectedFileKey(projectId), clean);
   if (!emit) return;
-  window.dispatchEvent(new CustomEvent('jarvis:context:select-file', {
-    detail: { projectId, path: clean },
-  }));
+  window.dispatchEvent(
+    new CustomEvent('jarvis:context:select-file', {
+      detail: { projectId, path: clean },
+    }),
+  );
 }
 
 export function activeContextMapCount(projectId: string | null): number {
   return loadContextMapCollection(projectId).maps.filter((map) => map.status === 'active').length;
 }
 
-export function saveContextTree(tree: ProjectContextTree, options: { name?: string; mapId?: string } = {}): ContextMapRecord | null {
+export function saveContextTree(
+  tree: ProjectContextTree,
+  options: { name?: string; mapId?: string } = {},
+): ContextMapRecord | null {
   if (typeof window === 'undefined') return null;
   const collection = loadContextMapCollection(tree.projectId);
   const existingIndex = options.mapId
     ? collection.maps.findIndex((map) => map.id === options.mapId)
     : -1;
-  const activeCount = collection.maps.filter((map, index) => map.status === 'active' && index !== existingIndex).length;
+  const activeCount = collection.maps.filter(
+    (map, index) => map.status === 'active' && index !== existingIndex,
+  ).length;
   if (existingIndex === -1 && activeCount >= MAX_ACTIVE_CONTEXT_MAPS) {
-    throw new Error(`You can keep up to ${MAX_ACTIVE_CONTEXT_MAPS} active Context maps. Delete one before creating another.`);
+    throw new Error(
+      `You can keep up to ${MAX_ACTIVE_CONTEXT_MAPS} active Context maps. Delete one before creating another.`,
+    );
   }
 
   const now = Date.now();
@@ -248,12 +380,19 @@ export function saveContextTree(tree: ProjectContextTree, options: { name?: stri
     status: 'active',
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    sourceType: existing?.sourceType ?? 'local_folder',
+    sourceLabel: existing?.sourceLabel ?? 'Local folder',
+    sourceStatus: existing?.sourceStatus ?? 'ready',
+    branchRef: existing?.branchRef ?? 'workspace',
+    github: existing?.github,
+    lastIndexedAt: tree.generatedAt,
     tree,
   };
 
-  const maps = existingIndex >= 0
-    ? collection.maps.map((map, index) => (index === existingIndex ? record : map))
-    : [record, ...collection.maps];
+  const maps =
+    existingIndex >= 0
+      ? collection.maps.map((map, index) => (index === existingIndex ? record : map))
+      : [record, ...collection.maps];
 
   persistContextMapCollection({
     ...collection,
@@ -265,7 +404,10 @@ export function saveContextTree(tree: ProjectContextTree, options: { name?: stri
   return record;
 }
 
-export function selectStoredContextMap(projectId: string | null, mapId: string): ContextMapRecord | null {
+export function selectStoredContextMap(
+  projectId: string | null,
+  mapId: string,
+): ContextMapRecord | null {
   const collection = loadContextMapCollection(projectId);
   const record = collection.maps.find((map) => map.id === mapId) ?? null;
   if (!record) return null;
@@ -275,16 +417,21 @@ export function selectStoredContextMap(projectId: string | null, mapId: string):
   return record;
 }
 
-export function deleteStoredContextMap(projectId: string | null, mapId: string): ContextMapRecord | null {
+export function deleteStoredContextMap(
+  projectId: string | null,
+  mapId: string,
+): ContextMapRecord | null {
   const collection = loadContextMapCollection(projectId);
   const target = collection.maps.find((map) => map.id === mapId);
   if (!target) return null;
   const deleted: ContextMapRecord = { ...target, status: 'deleted', updatedAt: Date.now() };
   const maps = collection.maps.map((map) => (map.id === mapId ? deleted : map));
-  const nextSelected = collection.selectedMapId === mapId
-    ? mapId
-    : collection.selectedMapId;
-  persistContextMapCollection({ ...collection, selectedMapId: nextSelected, maps: sortContextMaps(maps) });
+  const nextSelected = collection.selectedMapId === mapId ? mapId : collection.selectedMapId;
+  persistContextMapCollection({
+    ...collection,
+    selectedMapId: nextSelected,
+    maps: sortContextMaps(maps),
+  });
   const active = maps.find((map) => map.status === 'active');
   if (active) writeLegacyContextTree(active.tree);
   dispatchContextMapsUpdated(projectId, deleted.rootDir, deleted.id);
@@ -308,9 +455,11 @@ function loadContextMapCollection(projectId: string | null): ProjectContextMapCo
         const maps = parsed.maps
           .map((map) => normalizeContextMapRecord(map, projectId))
           .filter((map): map is ContextMapRecord => Boolean(map));
-        const selectedMapId = typeof parsed.selectedMapId === 'string' && maps.some((map) => map.id === parsed.selectedMapId)
-          ? parsed.selectedMapId
-          : maps.find((map) => map.status === 'active')?.id ?? maps[0]?.id ?? null;
+        const selectedMapId =
+          typeof parsed.selectedMapId === 'string' &&
+          maps.some((map) => map.id === parsed.selectedMapId)
+            ? parsed.selectedMapId
+            : (maps.find((map) => map.status === 'active')?.id ?? maps[0]?.id ?? null);
         return { version: 1, projectId, selectedMapId, maps: sortContextMaps(maps) };
       }
     } catch {
@@ -333,28 +482,102 @@ function loadContextMapCollection(projectId: string | null): ProjectContextMapCo
   return { version: 1, projectId, selectedMapId: migrated.id, maps: [migrated] };
 }
 
-function normalizeContextMapRecord(raw: unknown, projectId: string | null): ContextMapRecord | null {
+function normalizeContextMapRecord(
+  raw: unknown,
+  projectId: string | null,
+): ContextMapRecord | null {
   if (!raw || typeof raw !== 'object') return null;
   const record = raw as Partial<ContextMapRecord>;
   const tree = normalizeStoredTree(record.tree);
   if (!tree) return null;
   const createdAt = typeof record.createdAt === 'number' ? record.createdAt : tree.generatedAt;
   const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : createdAt;
-  const id = typeof record.id === 'string' && record.id.trim()
-    ? record.id
-    : uniqueContextMapId(tree, []);
+  const id =
+    typeof record.id === 'string' && record.id.trim() ? record.id : uniqueContextMapId(tree, []);
   return {
     id,
     projectId,
-    rootDir: typeof record.rootDir === 'string' && record.rootDir.trim() ? record.rootDir : tree.rootDir,
-    filePath: typeof record.filePath === 'string' && record.filePath.trim()
-      ? record.filePath.trim()
-      : contextMapFilePath(typeof record.rootDir === 'string' && record.rootDir.trim() ? record.rootDir : tree.rootDir),
-    name: typeof record.name === 'string' && record.name.trim() ? record.name.trim() : contextMapName(tree),
+    rootDir:
+      typeof record.rootDir === 'string' && record.rootDir.trim() ? record.rootDir : tree.rootDir,
+    filePath:
+      typeof record.filePath === 'string' && record.filePath.trim()
+        ? record.filePath.trim()
+        : contextMapFilePath(
+            typeof record.rootDir === 'string' && record.rootDir.trim()
+              ? record.rootDir
+              : tree.rootDir,
+          ),
+    name:
+      typeof record.name === 'string' && record.name.trim()
+        ? record.name.trim()
+        : contextMapName(tree),
     status: record.status === 'deleted' ? 'deleted' : 'active',
     createdAt,
     updatedAt,
+    sourceType: [
+      'local_folder',
+      'local_file',
+      'github_repository',
+      'linked_vibespace_content',
+      'portable_markdown_folder',
+    ].includes(record.sourceType ?? '')
+      ? record.sourceType
+      : undefined,
+    sourceLabel:
+      typeof record.sourceLabel === 'string' && record.sourceLabel.trim()
+        ? record.sourceLabel.trim()
+        : undefined,
+    sourceStatus: [
+      'pending',
+      'indexing',
+      'ready',
+      'stale',
+      'offline',
+      'permission_required',
+      'error',
+      'removed',
+    ].includes(record.sourceStatus ?? '')
+      ? record.sourceStatus
+      : undefined,
+    branchRef:
+      typeof record.branchRef === 'string' && record.branchRef.trim()
+        ? record.branchRef.trim()
+        : undefined,
+    github:
+      record.sourceType === 'github_repository'
+        ? normalizeContextGitHubProjection(record.github)
+        : undefined,
+    lastIndexedAt:
+      typeof record.lastIndexedAt === 'number' &&
+      Number.isSafeInteger(record.lastIndexedAt) &&
+      record.lastIndexedAt >= 0 &&
+      record.lastIndexedAt <= 8_640_000_000_000_000
+        ? record.lastIndexedAt
+        : undefined,
     tree,
+  };
+}
+
+function normalizeContextGitHubProjection(raw: unknown): ContextMapRecord['github'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const github = raw as Partial<NonNullable<ContextMapRecord['github']>>;
+  const namePattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+  if (
+    typeof github.owner !== 'string' ||
+    !namePattern.test(github.owner) ||
+    typeof github.repository !== 'string' ||
+    !namePattern.test(github.repository) ||
+    typeof github.resolvedCommitSha !== 'string' ||
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(github.resolvedCommitSha) ||
+    !['public', 'private', 'internal'].includes(github.visibility ?? '')
+  ) {
+    return undefined;
+  }
+  return {
+    owner: github.owner,
+    repository: github.repository,
+    resolvedCommitSha: github.resolvedCommitSha.toLowerCase(),
+    visibility: github.visibility as 'public' | 'private' | 'internal',
   };
 }
 
@@ -377,10 +600,13 @@ function normalizeStoredTree(raw: unknown): ProjectContextTree | null {
 
 function persistContextMapCollection(collection: ProjectContextMapCollection): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(contextMapCollectionKey(collection.projectId), JSON.stringify({
-    ...collection,
-    maps: sortContextMaps(collection.maps),
-  }));
+  window.localStorage.setItem(
+    contextMapCollectionKey(collection.projectId),
+    JSON.stringify({
+      ...collection,
+      maps: sortContextMaps(collection.maps),
+    }),
+  );
 }
 
 function writeLegacyContextTree(tree: ProjectContextTree): void {
@@ -388,11 +614,17 @@ function writeLegacyContextTree(tree: ProjectContextTree): void {
   window.localStorage.setItem(contextStorageKey(tree.projectId), JSON.stringify(tree));
 }
 
-function dispatchContextMapsUpdated(projectId: string | null, rootDir: string, mapId: string): void {
+function dispatchContextMapsUpdated(
+  projectId: string | null,
+  rootDir: string,
+  mapId: string,
+): void {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('jarvis:context-tree-updated', {
-    detail: { projectId, rootDir, mapId },
-  }));
+  window.dispatchEvent(
+    new CustomEvent('jarvis:context-tree-updated', {
+      detail: { projectId, rootDir, mapId },
+    }),
+  );
 }
 
 function sortContextMaps(maps: ContextMapRecord[]): ContextMapRecord[] {
@@ -434,7 +666,8 @@ export function parseContextAttachment(raw: string): ContextAttachment | null {
   if (!raw.trim()) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<ContextAttachment>;
-    if (!parsed || typeof parsed.title !== 'string' || typeof parsed.summary !== 'string') return null;
+    if (!parsed || typeof parsed.title !== 'string' || typeof parsed.summary !== 'string')
+      return null;
     return {
       projectId: typeof parsed.projectId === 'string' ? parsed.projectId : null,
       rootDir: typeof parsed.rootDir === 'string' ? parsed.rootDir : '',
@@ -444,7 +677,9 @@ export function parseContextAttachment(raw: string): ContextAttachment | null {
       kind: isContextKind(parsed.kind) ? parsed.kind : 'note',
       summary: parsed.summary,
       path: typeof parsed.path === 'string' ? parsed.path : undefined,
-      tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t): t is string => typeof t === 'string') : undefined,
+      tags: Array.isArray(parsed.tags)
+        ? parsed.tags.filter((t): t is string => typeof t === 'string')
+        : undefined,
       sizeBytes: typeof parsed.sizeBytes === 'number' ? parsed.sizeBytes : undefined,
       createdAt: typeof parsed.createdAt === 'number' ? parsed.createdAt : undefined,
       modifiedAt: typeof parsed.modifiedAt === 'number' ? parsed.modifiedAt : undefined,
@@ -455,7 +690,10 @@ export function parseContextAttachment(raw: string): ContextAttachment | null {
   }
 }
 
-export function nodeToAttachment(tree: ProjectContextTree, node: ContextTreeNode): ContextAttachment {
+export function nodeToAttachment(
+  tree: ProjectContextTree,
+  node: ContextTreeNode,
+): ContextAttachment {
   return {
     projectId: tree.projectId,
     rootDir: tree.rootDir,
@@ -473,7 +711,10 @@ export function nodeToAttachment(tree: ProjectContextTree, node: ContextTreeNode
   };
 }
 
-export function contextNodeFilePath(tree: ProjectContextTree, node: ContextTreeNode): string | undefined {
+export function contextNodeFilePath(
+  tree: ProjectContextTree,
+  node: ContextTreeNode,
+): string | undefined {
   if (node.kind !== 'file' || !node.path) return undefined;
   const path = node.path.trim();
   if (!path) return undefined;
@@ -494,23 +735,31 @@ export function flattenContextNodes(nodes: ContextTreeNode[]): ContextTreeNode[]
   return out;
 }
 
-export function findContextNode(tree: ProjectContextTree | null, id: string): ContextTreeNode | null {
+export function findContextNode(
+  tree: ProjectContextTree | null,
+  id: string,
+): ContextTreeNode | null {
   if (!tree) return null;
   return flattenContextNodes(tree.nodes).find((node) => node.id === id) ?? null;
 }
 
-export function findContextFileNodeByPath(tree: ProjectContextTree | null, path: string): ContextTreeNode | null {
+export function findContextFileNodeByPath(
+  tree: ProjectContextTree | null,
+  path: string,
+): ContextTreeNode | null {
   if (!tree || !path.trim()) return null;
   const wanted = normalizeMetaPath(path.trim());
   const root = normalizeMetaPath(tree.rootDir);
   const relative = root && wanted.startsWith(`${root}/`) ? wanted.slice(root.length + 1) : wanted;
-  return flattenContextNodes(tree.nodes).find((node) => {
-    if (node.kind !== 'file' || !node.path) return false;
-    const nodeRelative = normalizeMetaPath(node.path);
-    if (nodeRelative === wanted || nodeRelative === relative) return true;
-    const absolute = contextNodeFilePath(tree, node);
-    return absolute ? normalizeMetaPath(absolute) === wanted : false;
-  }) ?? null;
+  return (
+    flattenContextNodes(tree.nodes).find((node) => {
+      if (node.kind !== 'file' || !node.path) return false;
+      const nodeRelative = normalizeMetaPath(node.path);
+      if (nodeRelative === wanted || nodeRelative === relative) return true;
+      const absolute = contextNodeFilePath(tree, node);
+      return absolute ? normalizeMetaPath(absolute) === wanted : false;
+    }) ?? null
+  );
 }
 
 export function formatContextAttachmentForPrompt(attachment: ContextAttachment): string {
@@ -521,12 +770,10 @@ export function formatContextAttachmentForPrompt(attachment: ContextAttachment):
     attachment.createdAt ? `created=${new Date(attachment.createdAt).toISOString()}` : '',
     attachment.modifiedAt ? `modified=${new Date(attachment.modifiedAt).toISOString()}` : '',
     attachment.tags?.length ? `tags=${attachment.tags.join(',')}` : '',
-  ].filter(Boolean).join(' ');
-  return [
-    `--- context:${attachment.title} ---`,
-    meta,
-    attachment.summary,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return [`--- context:${attachment.title} ---`, meta, attachment.summary].join('\n');
 }
 
 export function formatContextAttachmentForTerminal(attachment: ContextAttachment): string {
@@ -567,22 +814,39 @@ export function formatContextTreeForPrompt(tree: ProjectContextTree): string {
     '',
     '--- project_context_tree ---',
     `Summary: ${tree.summary}`,
-    tree.recommendedEntryPoints?.length ? `Entry points: ${tree.recommendedEntryPoints.join(', ')}` : '',
+    tree.recommendedEntryPoints?.length
+      ? `Entry points: ${tree.recommendedEntryPoints.join(', ')}`
+      : '',
     ...lines,
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
-export async function generateProjectContextTree(options: GenerateContextOptions): Promise<ProjectContextTree> {
+export async function generateProjectContextTree(
+  options: GenerateContextOptions,
+): Promise<ProjectContextTree> {
+  assertGenerationActive(options.signal);
   const rootDir = options.rootDir.trim();
   if (!rootDir) throw new Error('Choose a project folder first.');
+  const yieldControl = options.yieldControl ?? defaultYieldControl;
   options.onProgress?.('Scanning project files...');
-  const files = await scanProjectFiles(rootDir, options.onProgress);
+  const files = await scanProjectFiles(rootDir, options.onProgress, options.signal, yieldControl);
+  assertGenerationActive(options.signal);
   if (files.length === 0) throw new Error('No readable text files found in this project folder.');
 
   const provider = options.provider ?? (options.apiKey ? 'google' : 'local');
+  const structuralTree = buildFallbackTree(options.projectId, rootDir, files, 'local-structural');
+  options.onProgress?.('Initial project structure ready.');
+  await options.onStructuralMap?.(structuralTree);
+  await yieldControl();
+  assertGenerationActive(options.signal);
+
   let tree: ProjectContextTree | null = null;
   if (provider !== 'local' && options.apiKey) {
-    options.onProgress?.(`Asking ${CONTEXT_PROVIDER_OPTIONS[provider].label} to shape ${files.length} files into a Context map...`);
+    options.onProgress?.(
+      `Asking ${CONTEXT_PROVIDER_OPTIONS[provider].label} to shape ${files.length} files into a Context map...`,
+    );
     try {
       tree = await generateProviderTree({
         provider,
@@ -590,66 +854,109 @@ export async function generateProjectContextTree(options: GenerateContextOptions
         projectId: options.projectId,
         rootDir,
         files,
+        signal: options.signal,
       });
-    } catch {
+    } catch (error) {
+      if (generationWasAborted(error, options.signal)) {
+        throw new Error('Context map generation cancelled.');
+      }
       tree = null;
       // Be explicit that the AI pass failed - otherwise users assume the
       // heuristic fallback summaries came from their selected model.
-      options.onProgress?.(`${CONTEXT_PROVIDER_OPTIONS[provider].label} request failed — building the local fallback map instead.`);
+      options.onProgress?.(
+        `${CONTEXT_PROVIDER_OPTIONS[provider].label} request failed — building the local fallback map instead.`,
+      );
     }
   }
 
   if (!tree) {
     options.onProgress?.('Building deterministic local Context tree...');
-    tree = buildFallbackTree(options.projectId, rootDir, files, provider !== 'local' && options.apiKey ? `local-fallback-after-${provider}` : 'local-fallback');
+    tree =
+      provider === 'local'
+        ? { ...structuralTree, model: 'local-fallback' }
+        : buildFallbackTree(options.projectId, rootDir, files, `local-fallback-after-${provider}`);
   }
+  assertGenerationActive(options.signal);
   const mapPath = contextMapFilePath(rootDir);
-  const fileWrite = await writeTextFile(mapPath, JSON.stringify({
-    schema: 'jarvis.context-map',
-    schemaVersion: 1,
-    description: 'Generated VibeSpace project context map. Drag this file into Jarvis chat or terminals as project context.',
-    tree,
-  }, null, 2), { root: rootDir });
+  const fileWrite = await writeTextFile(
+    mapPath,
+    JSON.stringify(
+      {
+        schema: 'jarvis.context-map',
+        schemaVersion: 1,
+        description:
+          'Generated VibeSpace project context map. Drag this file into Jarvis chat or terminals as project context.',
+        tree,
+      },
+      null,
+      2,
+    ),
+    { root: rootDir },
+  );
+  assertGenerationActive(options.signal);
   if (!fileWrite.ok) {
-    throw new Error(`Could not write Context map file at ${mapPath}: ${fileWrite.error.raw ?? fileWrite.error.code}`);
+    throw new Error(
+      `Could not write Context map file at ${mapPath}: ${fileWrite.error.raw ?? fileWrite.error.code}`,
+    );
   }
-  saveContextTree(tree);
-
   return tree;
 }
 
 /** User-facing message for a context root that could not be scanned. */
-export function describeContextRootError(rootDir: string, error: FsReadError): string {
+export function describeContextRootError(_rootDir: string, error: FsReadError): string {
   switch (error.code) {
     case 'not_found':
     case 'root_not_found':
-      return `Folder not found: ${rootDir}. Check the path and try again.`;
+      return 'The selected project folder was not found. Check the selection and try again.';
     case 'not_a_dir':
     case 'root_not_dir':
-      return `${rootDir} is a file, not a folder. Point the Context map at a project folder.`;
+      return 'The selected Context root is a file, not a folder. Choose a project folder.';
     case 'outside_root':
-      return `Access to ${rootDir} was blocked. Pick a folder inside your project.`;
+      return 'Access to the selected Context root was blocked. Choose a folder inside your project.';
+    case 'symlink_blocked':
+      return 'Context indexing does not follow symbolic links or junctions. Choose the real project folder.';
+    case 'other_user_folder':
+      return 'Context indexing cannot scan another user profile. Choose a folder owned by your account.';
     case 'unavailable':
       return 'File access needs the VibeSpace desktop app - the browser preview cannot scan folders.';
     default:
-      return `Could not read ${rootDir}: ${error.raw ?? error.code}. Check folder permissions and try again.`;
+      return 'Could not read the selected Context root. Check folder permissions and try again.';
   }
 }
 
 async function scanProjectFiles(
   rootDir: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
+  yieldControl: () => Promise<void> = defaultYieldControl,
 ): Promise<ScannedContextFile[]> {
   const files: ScannedContextFile[] = [];
   let totalChars = 0;
   const seenDirs = new Set<string>();
 
   const walk = async (dir: string, depth: number): Promise<void> => {
+    assertGenerationActive(signal);
     if (files.length >= MAX_SCAN_FILES || totalChars >= MAX_TOTAL_SAMPLE_CHARS) return;
-    if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir)) return;
+    if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir) || seenDirs.size >= MAX_SCAN_DIRECTORIES) {
+      return;
+    }
+    const directoryDecision = classifyJarvisSource({
+      path: dir,
+      root: depth === 0 ? undefined : rootDir,
+      channel: 'automatic_scan',
+      kind: 'directory',
+    });
+    if (!directoryDecision.allowed) {
+      if (depth === 0) throw new Error(directoryDecision.safeSummary);
+      return;
+    }
     seenDirs.add(dir);
 
-    const listed = await listDirectory(dir, { root: rootDir });
+    const listed = await listDirectory(dir, {
+      root: rootDir,
+      strictProjectBoundary: true,
+    });
+    assertGenerationActive(signal);
     if (!listed.ok) {
       // The ROOT must be readable - an invalid path, a non-folder path, or a
       // permission problem should tell the user exactly what happened
@@ -660,15 +967,39 @@ async function scanProjectFiles(
       return;
     }
 
-    const entries = prioritizeEntries(listed.entries);
-    for (const entry of entries) {
+    const entries = prioritizeEntries(listed.entries.slice(0, MAX_DIRECTORY_ENTRIES));
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+      const entry = entries[entryIndex]!;
+      assertGenerationActive(signal);
+      if (entryIndex > 0 && entryIndex % 100 === 0) {
+        await yieldControl();
+        assertGenerationActive(signal);
+      }
       if (files.length >= MAX_SCAN_FILES || totalChars >= MAX_TOTAL_SAMPLE_CHARS) break;
       if (entry.isDir) {
         if (!IGNORED_DIRS.has(entry.name.toLowerCase())) await walk(entry.path, depth + 1);
         continue;
       }
       if (!isContextCandidate(entry)) continue;
-      if (isMediaContextFile(entry.path)) {
+      const media = isMediaContextFile(entry.path);
+      const pathDecision = classifyJarvisSource({
+        path: entry.path,
+        root: rootDir,
+        sizeBytes: entry.size,
+        channel: 'automatic_scan',
+        kind: media ? 'media_metadata' : 'text',
+      });
+      if (!pathDecision.allowed) continue;
+      if (media) {
+        const validation = await readTextFileSample(entry.path, 1, {
+          root: rootDir,
+          strictProjectBoundary: true,
+        });
+        assertGenerationActive(signal);
+        if (!validation.ok) {
+          classifyJarvisReadError(validation.error);
+          continue;
+        }
         const content = mediaMetadataContent(rootDir, entry);
         totalChars += content.length;
         files.push({
@@ -684,8 +1015,21 @@ async function scanProjectFiles(
         continue;
       }
 
-      const result = await readTextFileSample(entry.path, MAX_FILE_SAMPLE_BYTES, { root: rootDir });
+      const result = await readTextFileSample(entry.path, MAX_FILE_SAMPLE_BYTES, {
+        root: rootDir,
+        strictProjectBoundary: true,
+      });
+      assertGenerationActive(signal);
       if (!result.ok) continue;
+      const contentDecision = classifyJarvisSource({
+        path: entry.path,
+        root: rootDir,
+        sizeBytes: entry.size,
+        channel: 'automatic_scan',
+        kind: 'text',
+        contentSample: result.content,
+      });
+      if (!contentDecision.allowed) continue;
       const remaining = MAX_TOTAL_SAMPLE_CHARS - totalChars;
       if (remaining <= 0) break;
       const chunkLimit = Math.min(MAX_FILE_SAMPLE_CHARS, remaining);
@@ -699,9 +1043,13 @@ async function scanProjectFiles(
         createdMs: entry.createdMs,
         modifiedMs: entry.modifiedMs,
         content,
-        truncated: result.content.length > content.length || Boolean(entry.size && entry.size > MAX_FILE_SAMPLE_BYTES),
+        truncated:
+          result.content.length > content.length ||
+          Boolean(entry.size && entry.size > MAX_FILE_SAMPLE_BYTES),
       });
       if (files.length % 20 === 0) onProgress?.(`Scanned ${files.length} project files...`);
+      await yieldControl();
+      assertGenerationActive(signal);
     }
   };
 
@@ -711,9 +1059,26 @@ async function scanProjectFiles(
 
 function prioritizeEntries(entries: FsEntry[]): FsEntry[] {
   const important = new Set([
-    'package.json', 'cargo.toml', 'tauri.conf.json', 'vite.config.ts', 'vite.config.js',
-    'tsconfig.json', 'readme.md', 'devlog.md', 'changelog.md', 'src', 'app', 'lib',
-    'components', 'features', 'pages', 'routes', 'server', 'api', 'backend', 'frontend',
+    'package.json',
+    'cargo.toml',
+    'tauri.conf.json',
+    'vite.config.ts',
+    'vite.config.js',
+    'tsconfig.json',
+    'readme.md',
+    'devlog.md',
+    'changelog.md',
+    'src',
+    'app',
+    'lib',
+    'components',
+    'features',
+    'pages',
+    'routes',
+    'server',
+    'api',
+    'backend',
+    'frontend',
   ]);
   return [...entries].sort((a, b) => {
     const ai = important.has(a.name.toLowerCase()) ? 0 : 1;
@@ -729,7 +1094,7 @@ function isContextCandidate(entry: FsEntry): boolean {
   if (entry.size && entry.size > MAX_CONTEXT_FILE_BYTES) return false;
   if (MEDIA_EXTENSIONS.has(ext)) return true;
   if (IGNORED_EXTENSIONS.has(ext)) return false;
-  return isPopularTextFile(entry.path) || basename(entry.path).startsWith('.env') || ext.length <= 6;
+  return isPopularTextFile(entry.path) || ext.length <= 6;
 }
 
 function isMediaContextFile(path: string): boolean {
@@ -738,10 +1103,7 @@ function isMediaContextFile(path: string): boolean {
 
 function mediaMetadataContent(rootDir: string, entry: FsEntry): string {
   const ext = extension(entry.path).toLowerCase();
-  const kind =
-    VIDEO_EXTENSIONS.has(ext) ? 'video'
-      : AUDIO_EXTENSIONS.has(ext) ? 'audio'
-        : 'image';
+  const kind = VIDEO_EXTENSIONS.has(ext) ? 'video' : AUDIO_EXTENSIONS.has(ext) ? 'audio' : 'image';
   return [
     `Media file metadata only (${kind}).`,
     `Relative path: ${relativePath(rootDir, entry.path)}`,
@@ -750,7 +1112,9 @@ function mediaMetadataContent(rootDir: string, entry: FsEntry): string {
     entry.createdMs ? `Created: ${new Date(entry.createdMs).toISOString()}` : '',
     entry.modifiedMs ? `Modified: ${new Date(entry.modifiedMs).toISOString()}` : '',
     'Binary bytes were not read into the prompt.',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 async function generateProviderTree(args: {
@@ -759,6 +1123,7 @@ async function generateProviderTree(args: {
   projectId: string | null;
   rootDir: string;
   files: ScannedContextFile[];
+  signal?: AbortSignal;
 }): Promise<ProjectContextTree> {
   const prompt = buildProviderPrompt(args.rootDir, args.files);
   const model = CONTEXT_PROVIDER_OPTIONS[args.provider].model;
@@ -769,19 +1134,37 @@ async function generateProviderTree(args: {
   } | null = null;
 
   if (args.provider === 'google') {
-    parsed = await requestGoogleJson(args.apiKey, model, prompt);
+    parsed = await requestGoogleJson(args.apiKey, model, prompt, args.signal);
   } else if (args.provider === 'groq') {
-    parsed = await requestOpenAiCompatibleJson(CONTEXT_GROQ_URL, args.apiKey, model, prompt, 'Groq');
+    parsed = await requestOpenAiCompatibleJson(
+      CONTEXT_GROQ_URL,
+      args.apiKey,
+      model,
+      prompt,
+      'Groq',
+      args.signal,
+    );
   } else if (args.provider === 'openai') {
-    parsed = await requestOpenAiCompatibleJson(CONTEXT_OPENAI_URL, args.apiKey, model, prompt, 'OpenAI');
+    parsed = await requestOpenAiCompatibleJson(
+      CONTEXT_OPENAI_URL,
+      args.apiKey,
+      model,
+      prompt,
+      'OpenAI',
+      args.signal,
+    );
   } else {
-    parsed = await requestAnthropicJson(args.apiKey, model, prompt);
+    parsed = await requestAnthropicJson(args.apiKey, model, prompt, args.signal);
   }
 
-  if (!parsed) throw new Error(`${CONTEXT_PROVIDER_OPTIONS[args.provider].label} did not return JSON.`);
+  if (!parsed)
+    throw new Error(`${CONTEXT_PROVIDER_OPTIONS[args.provider].label} did not return JSON.`);
   const fileMeta = fileMetadataMap(args.files);
   const nodes = normalizeNodes(parsed.nodes, args.provider, fileMeta);
-  if (nodes.length === 0) throw new Error(`${CONTEXT_PROVIDER_OPTIONS[args.provider].label} returned an empty Context tree.`);
+  if (nodes.length === 0)
+    throw new Error(
+      `${CONTEXT_PROVIDER_OPTIONS[args.provider].label} returned an empty Context tree.`,
+    );
   return {
     version: 1,
     projectId: args.projectId,
@@ -792,7 +1175,9 @@ async function generateProviderTree(args: {
     totalBytes: args.files.reduce((sum, file) => sum + file.size, 0),
     summary: typeof parsed.summary === 'string' ? parsed.summary : summarizeFiles(args.files),
     recommendedEntryPoints: Array.isArray(parsed.recommendedEntryPoints)
-      ? parsed.recommendedEntryPoints.filter((item): item is string => typeof item === 'string').slice(0, 12)
+      ? parsed.recommendedEntryPoints
+          .filter((item): item is string => typeof item === 'string')
+          .slice(0, 12)
       : undefined,
     nodes,
   };
@@ -802,6 +1187,7 @@ async function requestGoogleJson(
   apiKey: string,
   model: string,
   prompt: string,
+  signal?: AbortSignal,
 ): Promise<{ summary?: unknown; nodes?: unknown; recommendedEntryPoints?: unknown } | null> {
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -817,10 +1203,14 @@ async function requestGoogleJson(
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('\n') ?? '';
+  const data = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const text =
+    data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('\n') ?? '';
   return parseJsonObject(text) as {
     summary?: unknown;
     nodes?: unknown;
@@ -834,6 +1224,7 @@ async function requestOpenAiCompatibleJson(
   model: string,
   prompt: string,
   label: string,
+  signal?: AbortSignal,
 ): Promise<{ summary?: unknown; nodes?: unknown; recommendedEntryPoints?: unknown } | null> {
   const res = await fetch(url, {
     method: 'POST',
@@ -844,16 +1235,20 @@ async function requestOpenAiCompatibleJson(
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: 'Return strict JSON only. No markdown. No prose outside the JSON object.' },
+        {
+          role: 'system',
+          content: 'Return strict JSON only. No markdown. No prose outside the JSON object.',
+        },
         { role: 'user', content: prompt },
       ],
       temperature: 0.2,
       max_tokens: 8192,
       response_format: { type: 'json_object' },
     }),
+    signal,
   });
   if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   return parseJsonObject(data.choices?.[0]?.message?.content ?? '') as {
     summary?: unknown;
     nodes?: unknown;
@@ -865,6 +1260,7 @@ async function requestAnthropicJson(
   apiKey: string,
   model: string,
   prompt: string,
+  signal?: AbortSignal,
 ): Promise<{ summary?: unknown; nodes?: unknown; recommendedEntryPoints?: unknown } | null> {
   const res = await fetch(CONTEXT_ANTHROPIC_URL, {
     method: 'POST',
@@ -881,9 +1277,10 @@ async function requestAnthropicJson(
       system: 'Return strict JSON only. No markdown. No prose outside the JSON object.',
       messages: [{ role: 'user', content: prompt }],
     }),
+    signal,
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json() as { content?: Array<{ text?: string }> };
+  const data = (await res.json()) as { content?: Array<{ text?: string }> };
   const text = data.content?.map((part) => part.text ?? '').join('\n') ?? '';
   return parseJsonObject(text) as {
     summary?: unknown;
@@ -893,22 +1290,29 @@ async function requestAnthropicJson(
 }
 
 function buildProviderPrompt(rootDir: string, files: ScannedContextFile[]): string {
-  const fileBundle = files.map((file) => [
-    `--- FILE ${file.relativePath} (${file.size} bytes${file.createdMs ? `, created ${new Date(file.createdMs).toISOString()}` : ''}${file.modifiedMs ? `, modified ${new Date(file.modifiedMs).toISOString()}` : ''}${file.truncated ? ', sample truncated' : ''}) ---`,
-    file.content,
-  ].join('\n')).join('\n\n');
-  return clamp([
-    'Create a project Context map for VibeSpace. Return strict JSON only, no markdown.',
-    'The map should help an AI quickly choose the right subsystem and files without rereading the whole repository.',
-    'Preserve project structure. Group by domain, feature, service, or package. Include important files as leaf nodes.',
-    'Use short, plain-English summaries. Explain what each area or file is for; do not quote source code or write jargon-heavy implementation notes.',
-    'Every file node path must exactly match the provided relative path when possible so Jarvis can attach file metadata.',
-    'JSON schema:',
-    '{"summary":"overall project summary","recommendedEntryPoints":["relative/path"],"nodes":[{"title":"Area","kind":"area","summary":"what this area owns","path":"optional/relative/path","tags":["tag"],"importance":1,"children":[{"title":"File.ts","kind":"file","path":"relative/path","summary":"why this file matters"}]}]}',
-    `Project root: ${rootDir}`,
-    '',
-    fileBundle,
-  ].join('\n'), MAX_PROMPT_CHARS);
+  const fileBundle = files
+    .map((file) =>
+      [
+        `--- FILE ${file.relativePath} (${file.size} bytes${file.createdMs ? `, created ${new Date(file.createdMs).toISOString()}` : ''}${file.modifiedMs ? `, modified ${new Date(file.modifiedMs).toISOString()}` : ''}${file.truncated ? ', sample truncated' : ''}) ---`,
+        file.content,
+      ].join('\n'),
+    )
+    .join('\n\n');
+  return clamp(
+    [
+      'Create a project Context map for VibeSpace. Return strict JSON only, no markdown.',
+      'The map should help an AI quickly choose the right subsystem and files without rereading the whole repository.',
+      'Preserve project structure. Group by domain, feature, service, or package. Include important files as leaf nodes.',
+      'Use short, plain-English summaries. Explain what each area or file is for; do not quote source code or write jargon-heavy implementation notes.',
+      'Every file node path must exactly match the provided relative path when possible so Jarvis can attach file metadata.',
+      'JSON schema:',
+      '{"summary":"overall project summary","recommendedEntryPoints":["relative/path"],"nodes":[{"title":"Area","kind":"area","summary":"what this area owns","path":"optional/relative/path","tags":["tag"],"importance":1,"children":[{"title":"File.ts","kind":"file","path":"relative/path","summary":"why this file matters"}]}]}',
+      `Project root: ${rootDir}`,
+      '',
+      fileBundle,
+    ].join('\n'),
+    MAX_PROMPT_CHARS,
+  );
 }
 
 function fileMetadataMap(files: ScannedContextFile[]): Map<string, ScannedContextFile> {
@@ -920,7 +1324,10 @@ function fileMetadataMap(files: ScannedContextFile[]): Map<string, ScannedContex
   return map;
 }
 
-function metaForPath(fileMeta: Map<string, ScannedContextFile> | undefined, path: string | undefined): ScannedContextFile | undefined {
+function metaForPath(
+  fileMeta: Map<string, ScannedContextFile> | undefined,
+  path: string | undefined,
+): ScannedContextFile | undefined {
   if (!fileMeta || !path) return undefined;
   return fileMeta.get(normalizeMetaPath(path));
 }
@@ -939,7 +1346,7 @@ function timestampField(value: unknown): number | undefined {
   if (typeof value === 'string') {
     const parsed = Date.parse(value);
     if (Number.isFinite(parsed)) return parsed;
-  };
+  }
   return undefined;
 }
 
@@ -1012,7 +1419,9 @@ function latestTimestamp(values: Array<number | undefined>): number | undefined 
 
 function summarizeFiles(files: ScannedContextFile[]): string {
   const exts = topExtensions(files).join(', ') || 'text/code';
-  const roots = Array.from(new Set(files.map((file) => file.relativePath.split('/')[0]).filter(Boolean))).slice(0, 8);
+  const roots = Array.from(
+    new Set(files.map((file) => file.relativePath.split('/')[0]).filter(Boolean)),
+  ).slice(0, 8);
   return `Project context generated from ${files.length} readable files across ${roots.join(', ') || 'the project root'} with primary file types: ${exts}.`;
 }
 
@@ -1026,27 +1435,39 @@ function summarizeFile(file: ScannedContextFile): string {
   const folder = file.relativePath.split('/').slice(0, -1).join('/') || 'the project root';
   const purpose = inferFilePurpose(file);
   const type = extensionLabel(file.extension);
-  const truncation = file.truncated ? ' The scanned preview was shortened because the file is large.' : '';
-  return clamp(`${name} ${purpose}. It lives in ${folder} and is one of the project's ${type} files.${truncation}`, 280);
+  const truncation = file.truncated
+    ? ' The scanned preview was shortened because the file is large.'
+    : '';
+  return clamp(
+    `${name} ${purpose}. It lives in ${folder} and is one of the project's ${type} files.${truncation}`,
+    280,
+  );
 }
 
 function inferFilePurpose(file: ScannedContextFile): string {
   const name = basename(file.relativePath).toLowerCase();
   const path = file.relativePath.toLowerCase();
-  if (name === 'package.json') return 'defines the app package, scripts, and JavaScript dependencies';
+  if (name === 'package.json')
+    return 'defines the app package, scripts, and JavaScript dependencies';
   if (name === 'cargo.toml') return 'defines the Rust package, features, and dependencies';
-  if (name === 'tauri.conf.json') return 'controls the desktop app build, window, bundle, and updater settings';
+  if (name === 'tauri.conf.json')
+    return 'controls the desktop app build, window, bundle, and updater settings';
   if (name.includes('readme')) return 'explains how the project is used or set up';
   if (name.includes('changelog')) return 'records what changed across releases';
   if (name.includes('devlog')) return 'captures development notes and implementation progress';
   if (/\.(test|spec)\./.test(name)) return 'checks that this part of the project keeps working';
-  if (name.includes('config') || name.startsWith('vite.') || name.startsWith('tsconfig')) return 'configures tools that build, test, or run the project';
-  if (path.includes('/components/') || /\.(tsx|jsx)$/.test(name)) return 'renders part of the user interface';
-  if (path.includes('/stores/')) return 'keeps shared app state that screens and features read from';
+  if (name.includes('config') || name.startsWith('vite.') || name.startsWith('tsconfig'))
+    return 'configures tools that build, test, or run the project';
+  if (path.includes('/components/') || /\.(tsx|jsx)$/.test(name))
+    return 'renders part of the user interface';
+  if (path.includes('/stores/'))
+    return 'keeps shared app state that screens and features read from';
   if (path.includes('/features/')) return 'belongs to a product feature and helps that feature run';
   if (path.includes('/lib/')) return 'provides shared support code used by other parts of the app';
-  if (path.includes('/src-tauri/') || /\.(rs)$/.test(name)) return 'supports the native desktop side of the app';
-  if (isMediaContextFile(file.relativePath)) return 'is a media asset tracked by metadata without reading binary bytes into the prompt';
+  if (path.includes('/src-tauri/') || /\.(rs)$/.test(name))
+    return 'supports the native desktop side of the app';
+  if (isMediaContextFile(file.relativePath))
+    return 'is a media asset tracked by metadata without reading binary bytes into the prompt';
   if (path.includes('/migrations/')) return 'changes database structure or security rules';
   return 'is part of the project structure and may be useful when questions mention this path';
 }
@@ -1069,30 +1490,48 @@ function extensionLabel(ext: string): string {
 function topExtensions(files: ScannedContextFile[]): string[] {
   const counts = new Map<string, number>();
   for (const file of files) counts.set(file.extension, (counts.get(file.extension) ?? 0) + 1);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([ext]) => ext);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([ext]) => ext);
 }
 
 function fileImportance(file: ScannedContextFile): number {
   const name = basename(file.relativePath).toLowerCase();
-  if (['package.json', 'cargo.toml', 'tauri.conf.json', 'vite.config.ts', 'readme.md'].includes(name)) return 5;
+  if (
+    ['package.json', 'cargo.toml', 'tauri.conf.json', 'vite.config.ts', 'readme.md'].includes(name)
+  )
+    return 5;
   if (/index\.|main\.|app\.|runtime\.|router\.|schema\.|config\./i.test(name)) return 4;
   if (/test\.|spec\./i.test(name)) return 2;
   return 3;
 }
 
-function normalizeNodes(raw: unknown, fallbackPrefix: string, fileMeta?: Map<string, ScannedContextFile>): ContextTreeNode[] {
+function normalizeNodes(
+  raw: unknown,
+  fallbackPrefix: string,
+  fileMeta?: Map<string, ScannedContextFile>,
+): ContextTreeNode[] {
   if (!Array.isArray(raw)) return [];
-  return raw.slice(0, 40).map((item, index) => normalizeNode(item, `${fallbackPrefix}-${index}`, fileMeta)).filter(Boolean) as ContextTreeNode[];
+  return raw
+    .slice(0, 40)
+    .map((item, index) => normalizeNode(item, `${fallbackPrefix}-${index}`, fileMeta))
+    .filter(Boolean) as ContextTreeNode[];
 }
 
-function normalizeNode(raw: unknown, fallbackId: string, fileMeta?: Map<string, ScannedContextFile>): ContextTreeNode | null {
+function normalizeNode(
+  raw: unknown,
+  fallbackId: string,
+  fileMeta?: Map<string, ScannedContextFile>,
+): ContextTreeNode | null {
   if (!raw || typeof raw !== 'object') return null;
   const record = raw as Record<string, unknown>;
   const title = typeof record.title === 'string' ? record.title.trim() : '';
   const summary = typeof record.summary === 'string' ? record.summary.trim() : '';
   if (!title || !summary) return null;
   const children = normalizeNodes(record.children, fallbackId, fileMeta);
-  const path = typeof record.path === 'string' && record.path.trim() ? record.path.trim() : undefined;
+  const path =
+    typeof record.path === 'string' && record.path.trim() ? record.path.trim() : undefined;
   const meta = metaForPath(fileMeta, path);
   return {
     id: typeof record.id === 'string' ? stableId(record.id) : stableId(`${fallbackId}-${title}`),
@@ -1100,21 +1539,38 @@ function normalizeNode(raw: unknown, fallbackId: string, fileMeta?: Map<string, 
     kind: isContextKind(record.kind) ? record.kind : children.length > 0 ? 'area' : 'note',
     summary: clamp(summary, 600),
     path,
-    tags: Array.isArray(record.tags) ? record.tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 8) : undefined,
-    importance: typeof record.importance === 'number' ? Math.max(1, Math.min(5, Math.round(record.importance))) : undefined,
+    tags: Array.isArray(record.tags)
+      ? record.tags.filter((tag): tag is string => typeof tag === 'string').slice(0, 8)
+      : undefined,
+    importance:
+      typeof record.importance === 'number'
+        ? Math.max(1, Math.min(5, Math.round(record.importance)))
+        : undefined,
     sizeBytes: numericField(record.sizeBytes) ?? numericField(record.size) ?? meta?.size,
-    createdAt: timestampField(record.createdAt) ?? timestampField(record.created) ?? meta?.createdMs,
-    modifiedAt: timestampField(record.modifiedAt) ?? timestampField(record.modified) ?? meta?.modifiedMs,
+    createdAt:
+      timestampField(record.createdAt) ?? timestampField(record.created) ?? meta?.createdMs,
+    modifiedAt:
+      timestampField(record.modifiedAt) ?? timestampField(record.modified) ?? meta?.modifiedMs,
     children: children.length > 0 ? children : undefined,
   };
 }
 
 function isContextKind(value: unknown): value is ContextNodeKind {
-  return value === 'root' || value === 'area' || value === 'file' || value === 'symbol' || value === 'note';
+  return (
+    value === 'root' ||
+    value === 'area' ||
+    value === 'file' ||
+    value === 'symbol' ||
+    value === 'note'
+  );
 }
 
 function parseJsonObject(text: string): unknown | null {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/i, '').trim();
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```$/i, '')
+    .trim();
   try {
     return JSON.parse(trimmed);
   } catch {
@@ -1140,7 +1596,11 @@ function relativePath(rootDir: string, path: string): string {
 }
 
 function stableId(input: string): string {
-  const base = input.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  const base = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
   return base || 'context-node';
 }
 

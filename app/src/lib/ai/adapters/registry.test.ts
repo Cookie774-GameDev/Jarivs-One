@@ -7,11 +7,7 @@ import {
   resetProviderAdapterRegistryForTests,
   resolveProviderConnection,
 } from './registry';
-import type {
-  ProviderAdapter,
-  ProviderCapabilities,
-  ProviderConnection,
-} from './types';
+import type { ProviderAdapter, ProviderCapabilities, ProviderConnection } from './types';
 
 const capabilities: ProviderCapabilities = {
   text: true,
@@ -43,6 +39,7 @@ function connection(
     mode,
     authSource: `${mode}-auth`,
     capabilities,
+    promptTransport: mode === 'external-cli' ? 'prefixed-preamble' : 'unsupported',
     enabled,
   };
 }
@@ -89,9 +86,9 @@ describe('provider adapter registry', () => {
     expect(() => registerProviderAdapter(adapter('openai'))).toThrowError(
       'Provider adapter already registered: openai',
     );
-    expect(() =>
-      registerProviderConnection(connection('openai-api', 'external-cli')),
-    ).toThrowError('Provider connection already registered: openai-api');
+    expect(() => registerProviderConnection(connection('openai-api', 'external-cli'))).toThrowError(
+      'Provider connection already registered: openai-api',
+    );
   });
 
   it('reset helper isolates adapters and connections', () => {

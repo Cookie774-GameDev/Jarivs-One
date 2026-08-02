@@ -1,0 +1,3129 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "reference-spec",
+  "status": "measured",
+  "evidenceCutoff": "2026-07-30T04:58:59.5349264Z",
+  "expectedFileName": "Screen Recording 2026-07-16 220632.mp4",
+  "sourceSha256": "B7C1EF966BC3BB118472F8EFD7334A5AF792DEB3DFF240105886F05F4043F6C1",
+  "linkedArtifactIds": [
+    "component-mapping",
+    "design",
+    "design-tokens",
+    "frame-manifest",
+    "reference-analysis"
+  ],
+  "privacyDisposition": "sanitized_no_private_source_data",
+  "frameIds": [
+    "frame.reference-000001",
+    "frame.reference-000037",
+    "frame.reference-000073",
+    "frame.reference-000108",
+    "frame.reference-000109",
+    "frame.reference-000110",
+    "frame.reference-000144",
+    "frame.reference-000180",
+    "frame.reference-000207",
+    "frame.reference-000208",
+    "frame.reference-000209",
+    "frame.reference-000216",
+    "frame.reference-000252",
+    "frame.reference-000288",
+    "frame.reference-000323",
+    "frame.reference-000324",
+    "frame.reference-000325",
+    "frame.reference-000328",
+    "frame.reference-000329",
+    "frame.reference-000359",
+    "frame.reference-000360",
+    "frame.reference-000395"
+  ],
+  "rois": [
+    {
+      "id": "roi.color-black.1",
+      "frameId": "frame.reference-000001",
+      "x": 0,
+      "y": 36,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.black"
+    },
+    {
+      "id": "roi.color-black.2",
+      "frameId": "frame.reference-000216",
+      "x": 0,
+      "y": 36,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.black"
+    },
+    {
+      "id": "roi.color-black.3",
+      "frameId": "frame.reference-000395",
+      "x": 0,
+      "y": 36,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.black"
+    },
+    {
+      "id": "roi.color-surface-1.1",
+      "frameId": "frame.reference-000001",
+      "x": 263,
+      "y": 84,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-1"
+    },
+    {
+      "id": "roi.color-surface-1.2",
+      "frameId": "frame.reference-000216",
+      "x": 35,
+      "y": 108,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-1"
+    },
+    {
+      "id": "roi.color-surface-1.3",
+      "frameId": "frame.reference-000395",
+      "x": 35,
+      "y": 108,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-1"
+    },
+    {
+      "id": "roi.color-surface-2.1",
+      "frameId": "frame.reference-000001",
+      "x": 47,
+      "y": 324,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-2"
+    },
+    {
+      "id": "roi.color-surface-2.2",
+      "frameId": "frame.reference-000216",
+      "x": 861,
+      "y": 228,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-2"
+    },
+    {
+      "id": "roi.color-surface-2.3",
+      "frameId": "frame.reference-000395",
+      "x": 538,
+      "y": 192,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-2"
+    },
+    {
+      "id": "roi.color-surface-3.1",
+      "frameId": "frame.reference-000001",
+      "x": 143,
+      "y": 84,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-3"
+    },
+    {
+      "id": "roi.color-surface-3.2",
+      "frameId": "frame.reference-000216",
+      "x": 897,
+      "y": 216,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-3"
+    },
+    {
+      "id": "roi.color-surface-3.3",
+      "frameId": "frame.reference-000395",
+      "x": 466,
+      "y": 697,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.surface-3"
+    },
+    {
+      "id": "roi.color-active.1",
+      "frameId": "frame.reference-000001",
+      "x": 1830,
+      "y": 72,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.active"
+    },
+    {
+      "id": "roi.color-active.2",
+      "frameId": "frame.reference-000216",
+      "x": 251,
+      "y": 432,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.active"
+    },
+    {
+      "id": "roi.color-active.3",
+      "frameId": "frame.reference-000395",
+      "x": 1842,
+      "y": 96,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.active"
+    },
+    {
+      "id": "roi.color-border.1",
+      "frameId": "frame.reference-000001",
+      "x": 23,
+      "y": 96,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.border"
+    },
+    {
+      "id": "roi.color-border.2",
+      "frameId": "frame.reference-000216",
+      "x": 23,
+      "y": 96,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.border"
+    },
+    {
+      "id": "roi.color-border.3",
+      "frameId": "frame.reference-000395",
+      "x": 23,
+      "y": 96,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.border"
+    },
+    {
+      "id": "roi.color-border-strong.1",
+      "frameId": "frame.reference-000001",
+      "x": 1435,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.border-strong"
+    },
+    {
+      "id": "roi.color-border-strong.2",
+      "frameId": "frame.reference-000216",
+      "x": 1375,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.border-strong"
+    },
+    {
+      "id": "roi.color-border-strong.3",
+      "frameId": "frame.reference-000395",
+      "x": 1208,
+      "y": 805,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.border-strong"
+    },
+    {
+      "id": "roi.color-text.1",
+      "frameId": "frame.reference-000001",
+      "x": 1722,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text"
+    },
+    {
+      "id": "roi.color-text.2",
+      "frameId": "frame.reference-000216",
+      "x": 825,
+      "y": 72,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text"
+    },
+    {
+      "id": "roi.color-text.3",
+      "frameId": "frame.reference-000395",
+      "x": 705,
+      "y": 769,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text"
+    },
+    {
+      "id": "roi.color-text-secondary.1",
+      "frameId": "frame.reference-000001",
+      "x": 1698,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text-secondary"
+    },
+    {
+      "id": "roi.color-text-secondary.2",
+      "frameId": "frame.reference-000216",
+      "x": 1698,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text-secondary"
+    },
+    {
+      "id": "roi.color-text-secondary.3",
+      "frameId": "frame.reference-000395",
+      "x": 1698,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text-secondary"
+    },
+    {
+      "id": "roi.color-text-tertiary.1",
+      "frameId": "frame.reference-000001",
+      "x": 1519,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text-tertiary"
+    },
+    {
+      "id": "roi.color-text-tertiary.2",
+      "frameId": "frame.reference-000216",
+      "x": 1519,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text-tertiary"
+    },
+    {
+      "id": "roi.color-text-tertiary.3",
+      "frameId": "frame.reference-000395",
+      "x": 634,
+      "y": 348,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.text-tertiary"
+    },
+    {
+      "id": "roi.color-purple.1",
+      "frameId": "frame.reference-000001",
+      "x": 1806,
+      "y": 0,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.purple"
+    },
+    {
+      "id": "roi.color-purple.2",
+      "frameId": "frame.reference-000216",
+      "x": 622,
+      "y": 120,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.purple"
+    },
+    {
+      "id": "roi.color-purple.3",
+      "frameId": "frame.reference-000395",
+      "x": 645,
+      "y": 769,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.purple"
+    },
+    {
+      "id": "roi.color-teal.1",
+      "frameId": "frame.reference-000001",
+      "x": 586,
+      "y": 745,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.teal"
+    },
+    {
+      "id": "roi.color-teal.2",
+      "frameId": "frame.reference-000216",
+      "x": 155,
+      "y": 481,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.teal"
+    },
+    {
+      "id": "roi.color-teal.3",
+      "frameId": "frame.reference-000395",
+      "x": 550,
+      "y": 444,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.teal"
+    },
+    {
+      "id": "roi.color-amber.1",
+      "frameId": "frame.reference-000001",
+      "x": 1136,
+      "y": 661,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.amber"
+    },
+    {
+      "id": "roi.color-amber.2",
+      "frameId": "frame.reference-000216",
+      "x": 1806,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.amber"
+    },
+    {
+      "id": "roi.color-amber.3",
+      "frameId": "frame.reference-000395",
+      "x": 1806,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.amber"
+    },
+    {
+      "id": "roi.color-green.1",
+      "frameId": "frame.reference-000001",
+      "x": 1674,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.green"
+    },
+    {
+      "id": "roi.color-green.2",
+      "frameId": "frame.reference-000216",
+      "x": 1674,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.green"
+    },
+    {
+      "id": "roi.color-green.3",
+      "frameId": "frame.reference-000395",
+      "x": 1674,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.green"
+    },
+    {
+      "id": "roi.color-red.1",
+      "frameId": "frame.reference-000001",
+      "x": 1136,
+      "y": 661,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.red"
+    },
+    {
+      "id": "roi.color-red.2",
+      "frameId": "frame.reference-000216",
+      "x": 1806,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.red"
+    },
+    {
+      "id": "roi.color-red.3",
+      "frameId": "frame.reference-000395",
+      "x": 1806,
+      "y": 12,
+      "width": 30,
+      "height": 31,
+      "purpose": "rectangular median RGB sample for color.red"
+    }
+  ],
+  "tokenIds": [
+    "color.black",
+    "color.surface-1",
+    "color.surface-2",
+    "color.surface-3",
+    "color.active",
+    "color.border",
+    "color.border-strong",
+    "color.text",
+    "color.text-secondary",
+    "color.text-tertiary",
+    "color.purple",
+    "color.teal",
+    "color.amber",
+    "color.green",
+    "color.red"
+  ],
+  "mappingIds": ["mapping.hive-page", "mapping.plans-page", "mapping.plugins-page"],
+  "motifs": [
+    {
+      "id": "motif.panel-silhouette",
+      "label": "panel silhouette",
+      "tolerance": {
+        "metric": "normalized mean RGB frame delta",
+        "maximum": 0.000071
+      },
+      "status": "measured"
+    },
+    {
+      "id": "motif.pricing-form-structure",
+      "label": "pricing and form structure",
+      "tolerance": {
+        "metric": "normalized mean RGB frame delta",
+        "maximum": 0.000071
+      },
+      "status": "measured"
+    },
+    {
+      "id": "motif.segmented-chart",
+      "label": "segmented chart",
+      "tolerance": {
+        "metric": "normalized mean RGB frame delta",
+        "maximum": 0.000071
+      },
+      "status": "measured"
+    }
+  ],
+  "viewport": {
+    "width": 1914,
+    "height": 926,
+    "deviceScaleFactor": 1
+  },
+  "contentCrop": {
+    "x": 0,
+    "y": 0,
+    "width": 1914,
+    "height": 926
+  },
+  "typography": {
+    "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+    "candidates": [
+      {
+        "id": "jetbrains-mono.400.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 482.4,
+          "height": 16
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 0.36,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 964.8,
+          "height": 32
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 0.36,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 514.08,
+          "height": 16
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 0.84,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1028.16,
+          "height": 32
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 0.84,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 522.6,
+          "height": 18
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.64,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1045.2,
+          "height": 36
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.64,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 556.92,
+          "height": 18
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.16,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.400.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2",
+        "bundledSha256": "14425BA9C695763C1547F48A206B7AA60350A33AE23DE09F0407877F3FCD89EB",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1113.84,
+          "height": 36
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.16,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 482.4,
+          "height": 16
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 0.36,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 964.8,
+          "height": 32
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 0.36,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 514.08,
+          "height": 16
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 0.84,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1028.16,
+          "height": 32
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 0.84,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 522.6,
+          "height": 18
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.64,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1045.2,
+          "height": 36
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.64,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 556.92,
+          "height": 18
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.16,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.500.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2",
+        "bundledSha256": "CB182FEEED4D798FF6961D3C79F7026279448FCA0676438AAECB21F3FC39553A",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1113.84,
+          "height": 36
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.16,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 482.4,
+          "height": 16
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 0.36,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 964.8,
+          "height": 32
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 0.36,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 514.08,
+          "height": 16
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 0.84,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1028.16,
+          "height": 32
+        },
+        "averageGlyphWidth": 7.2,
+        "averageNumeralWidth": 7.2,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.16,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 0.84,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 522.6,
+          "height": 18
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.64,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1045.2,
+          "height": 36
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.64,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 556.92,
+          "height": 18
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.16,
+        "confidence": 0.55
+      },
+      {
+        "id": "jetbrains-mono.600.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2",
+        "bundledSha256": "400C6BFDA18D5D14ACAD1C15D6DCB9F8E13C015E7286317E0B9A482539BEF147",
+        "license": "OFL-1.1",
+        "family": "JetBrains Mono",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 1113.84,
+          "height": 36
+        },
+        "averageGlyphWidth": 7.8,
+        "averageNumeralWidth": 7.8,
+        "observations": {
+          "zero": "equal advance to uppercase O",
+          "one": "equal advance to lowercase l",
+          "uppercase": "A/Q advance delta 0 font units",
+          "punctuation": "bracket/period advance delta 0 font units"
+        },
+        "lineHeightDistance": 0.84,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.16,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 391.3477,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.841,
+        "averageNumeralWidth": 7.115,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.6395,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 782.6953,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.841,
+        "averageNumeralWidth": 7.115,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.6395,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 423.0277,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.841,
+        "averageNumeralWidth": 7.115,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 3.1195,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 846.0553,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.841,
+        "averageNumeralWidth": 7.115,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 3.1195,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 423.96,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.3278,
+        "averageNumeralWidth": 7.708,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.9427,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 847.9199,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.3278,
+        "averageNumeralWidth": 7.708,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.9427,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 458.28,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.3278,
+        "averageNumeralWidth": 7.708,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.4627,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.400.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+        "bundledSha256": "8909904AB6C872EB994093482A88A28ECA2CD95912D7B6FECD72103B0DC07EDC",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 916.5599,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.3278,
+        "averageNumeralWidth": 7.708,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 153 font units",
+          "punctuation": "bracket/period advance delta 157 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.4627,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 394.8457,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.8932,
+        "averageNumeralWidth": 7.2281,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.5872,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 789.6914,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.8932,
+        "averageNumeralWidth": 7.2281,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.5872,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 426.5257,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.8932,
+        "averageNumeralWidth": 7.2281,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 3.0672,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 853.0514,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.8932,
+        "averageNumeralWidth": 7.2281,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 3.0672,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 427.7495,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.3843,
+        "averageNumeralWidth": 7.8305,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.8862,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 855.499,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.3843,
+        "averageNumeralWidth": 7.8305,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.8862,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 462.0695,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.3843,
+        "averageNumeralWidth": 7.8305,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.4062,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.500.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2",
+        "bundledSha256": "F3779F1EFCCC4BDCDF9C0A02AB95BF6BD092ED09C48C08CEDC725889EDD1D19F",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 924.139,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.3843,
+        "averageNumeralWidth": 7.8305,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 122 font units",
+          "punctuation": "bracket/period advance delta 134 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.4062,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 398.3262,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.9452,
+        "averageNumeralWidth": 7.3389,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.5353,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 796.6523,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.9452,
+        "averageNumeralWidth": 7.3389,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.5353,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 430.0062,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.9452,
+        "averageNumeralWidth": 7.3389,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 3.0153,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 860.0123,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.9452,
+        "averageNumeralWidth": 7.3389,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 1.4805,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 3.0153,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 431.52,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.4406,
+        "averageNumeralWidth": 7.9504,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.8299,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 863.04,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.4406,
+        "averageNumeralWidth": 7.9504,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.8299,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 465.84,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.4406,
+        "averageNumeralWidth": 7.9504,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.3499,
+        "confidence": 0.55
+      },
+      {
+        "id": "inter.600.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2",
+        "bundledSha256": "F9A06E79CD3A2A20951C0F0E28F66DD0E6D3FDA73911D640A2125C8FCB78F21A",
+        "license": "OFL-1.1",
+        "family": "Inter",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 931.68,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.4406,
+        "averageNumeralWidth": 7.9504,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 93 font units",
+          "punctuation": "bracket/period advance delta 111 font units"
+        },
+        "lineHeightDistance": 2.2705,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.3499,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 378.54,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.6499,
+        "averageNumeralWidth": 7.1076,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.2301,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 757.08,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.6499,
+        "averageNumeralWidth": 7.1076,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.2301,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 410.22,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.6499,
+        "averageNumeralWidth": 7.1076,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 2.7101,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 820.44,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.6499,
+        "averageNumeralWidth": 7.1076,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 2.7101,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 410.085,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.1207,
+        "averageNumeralWidth": 7.6999,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.4993,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 820.17,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.1207,
+        "averageNumeralWidth": 7.6999,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.4993,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 444.405,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.1207,
+        "averageNumeralWidth": 7.6999,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.0193,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.400.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2",
+        "bundledSha256": "221A4135D06A4B33ABBD535E9A0DA4E565D19545DDD9267C4E678A916D54D9B6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 400,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 888.81,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.1207,
+        "averageNumeralWidth": 7.6999,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 226 font units",
+          "punctuation": "bracket/period advance delta 29 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 3.0193,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 389.328,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.8109,
+        "averageNumeralWidth": 7.1328,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.0691,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 778.656,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.8109,
+        "averageNumeralWidth": 7.1328,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.0691,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 421.008,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.8109,
+        "averageNumeralWidth": 7.1328,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 2.5491,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 842.016,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.8109,
+        "averageNumeralWidth": 7.1328,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 2.5491,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 421.772,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.2951,
+        "averageNumeralWidth": 7.7272,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.3249,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 843.544,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.2951,
+        "averageNumeralWidth": 7.7272,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.3249,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 456.092,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.2951,
+        "averageNumeralWidth": 7.7272,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.8449,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.500.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-500-normal.woff2",
+        "bundledSha256": "BAD081C8DBC15AED6C5E4CDE5461914F7B3BDC295B7A7AED177E4BEDDB79BFFA",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 500,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 912.184,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.2951,
+        "averageNumeralWidth": 7.7272,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 206 font units",
+          "punctuation": "bracket/period advance delta 32 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.8449,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.12-16.normal.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 399.828,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.9676,
+        "averageNumeralWidth": 7.158,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.9124,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.12-16.normal.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 799.656,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.9676,
+        "averageNumeralWidth": 7.158,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 1.9124,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.12-16.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 431.508,
+          "height": 16
+        },
+        "averageGlyphWidth": 5.9676,
+        "averageNumeralWidth": 7.158,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 2.3924,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.12-16.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 12,
+          "lineHeightPx": 16,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 863.016,
+          "height": 32
+        },
+        "averageGlyphWidth": 5.9676,
+        "averageNumeralWidth": 7.158,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 0.88,
+        "letterSpacingDistance": 0.48,
+        "aggregateScore": 2.3924,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.13-18.normal.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 433.147,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.4649,
+        "averageNumeralWidth": 7.7545,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.1551,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.13-18.normal.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "normal",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 866.294,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.4649,
+        "averageNumeralWidth": 7.7545,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0,
+        "aggregateScore": 2.1551,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.13-18.uppercase_label.1x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 1,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 467.467,
+          "height": 18
+        },
+        "averageGlyphWidth": 6.4649,
+        "averageNumeralWidth": 7.7545,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.6751,
+        "confidence": 0.55
+      },
+      {
+        "id": "plus-jakarta-sans.600.13-18.uppercase_label.2x",
+        "bundledFile": "node_modules/@fontsource/plus-jakarta-sans/files/plus-jakarta-sans-latin-600-normal.woff2",
+        "bundledSha256": "8872BB5C9111DF9BD3162C2394AEE6354D782B13408A4DD5BBF65C48207206E6",
+        "license": "OFL-1.1",
+        "family": "Plus Jakarta Sans",
+        "weight": 600,
+        "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+        "condition": {
+          "fontSizePx": 13,
+          "lineHeightPx": 18,
+          "tracking": "uppercase_label",
+          "deviceScaleFactor": 2,
+          "fontsReady": false
+        },
+        "pixelBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 934.934,
+          "height": 36
+        },
+        "averageGlyphWidth": 6.4649,
+        "averageNumeralWidth": 7.7545,
+        "observations": {
+          "zero": "distinct advance from uppercase O",
+          "one": "distinct advance from lowercase l",
+          "uppercase": "A/Q advance delta 186 font units",
+          "punctuation": "bracket/period advance delta 35 font units"
+        },
+        "lineHeightDistance": 1.62,
+        "letterSpacingDistance": 0.52,
+        "aggregateScore": 2.6751,
+        "confidence": 0.55
+      }
+    ],
+    "decision": {
+      "candidateId": "jetbrains-mono.400.12-16.normal.1x",
+      "reason": "Lowest deterministic WOFF2 metric score; browser raster and document.fonts.ready were not run.",
+      "confidence": 0.55
+    }
+  },
+  "geometry": {
+    "metrics": [
+      {
+        "id": "geometry.content-viewport-width",
+        "unit": "px",
+        "frameIds": [
+          "frame.reference-000001",
+          "frame.reference-000037",
+          "frame.reference-000073",
+          "frame.reference-000108",
+          "frame.reference-000109",
+          "frame.reference-000110",
+          "frame.reference-000144",
+          "frame.reference-000180"
+        ],
+        "rawSamples": [1914, 1914, 1914, 1914, 1914, 1914, 1914, 1914],
+        "median": 1914,
+        "range": {
+          "minimum": 1914,
+          "maximum": 1914
+        },
+        "confidence": 1
+      },
+      {
+        "id": "geometry.content-viewport-height",
+        "unit": "px",
+        "frameIds": [
+          "frame.reference-000001",
+          "frame.reference-000037",
+          "frame.reference-000073",
+          "frame.reference-000108",
+          "frame.reference-000109",
+          "frame.reference-000110",
+          "frame.reference-000144",
+          "frame.reference-000180"
+        ],
+        "rawSamples": [926, 926, 926, 926, 926, 926, 926, 926],
+        "median": 926,
+        "range": {
+          "minimum": 926,
+          "maximum": 926
+        },
+        "confidence": 1
+      },
+      {
+        "id": "geometry.primary-rail-sidebar-width",
+        "unit": "px",
+        "frameIds": [
+          "frame.reference-000001",
+          "frame.reference-000037",
+          "frame.reference-000073",
+          "frame.reference-000108",
+          "frame.reference-000109",
+          "frame.reference-000110",
+          "frame.reference-000144",
+          "frame.reference-000180"
+        ],
+        "rawSamples": [138, 54, 60, 60, 60, 60, 60, 60],
+        "median": 60,
+        "range": {
+          "minimum": 54,
+          "maximum": 138
+        },
+        "confidence": 0.64
+      },
+      {
+        "id": "geometry.top-bar-height",
+        "unit": "px",
+        "frameIds": [
+          "frame.reference-000001",
+          "frame.reference-000037",
+          "frame.reference-000073",
+          "frame.reference-000108",
+          "frame.reference-000109",
+          "frame.reference-000110",
+          "frame.reference-000144",
+          "frame.reference-000180"
+        ],
+        "rawSamples": [42, 42, 42, 42, 42, 42, 42, 42],
+        "median": 42,
+        "range": {
+          "minimum": 42,
+          "maximum": 42
+        },
+        "confidence": 0.64
+      },
+      {
+        "id": "geometry.major-content-max-width",
+        "unit": "px",
+        "frameIds": [
+          "frame.reference-000001",
+          "frame.reference-000037",
+          "frame.reference-000073",
+          "frame.reference-000108",
+          "frame.reference-000109",
+          "frame.reference-000110",
+          "frame.reference-000144",
+          "frame.reference-000180"
+        ],
+        "rawSamples": [1776, 1860, 1854, 1854, 1854, 1854, 1854, 1854],
+        "median": 1854,
+        "range": {
+          "minimum": 1776,
+          "maximum": 1860
+        },
+        "confidence": 0.64
+      }
+    ]
+  },
+  "motionSamples": [
+    {
+      "state": "hover",
+      "startFrameId": "frame.reference-000109",
+      "endFrameId": "frame.reference-000110",
+      "durationMs": 33.3333,
+      "easing": "frame-to-frame delta; easing curve not inferable from one interval",
+      "reducedMotionDecision": "disable non-essential interpolation and preserve state change",
+      "confidence": 0.4847
+    },
+    {
+      "state": "active-state",
+      "startFrameId": "frame.reference-000324",
+      "endFrameId": "frame.reference-000325",
+      "durationMs": 33.3333,
+      "easing": "frame-to-frame delta; easing curve not inferable from one interval",
+      "reducedMotionDecision": "disable non-essential interpolation and preserve state change",
+      "confidence": 0.4771
+    },
+    {
+      "state": "tooltip",
+      "startFrameId": "frame.reference-000359",
+      "endFrameId": "frame.reference-000360",
+      "durationMs": 33.3333,
+      "easing": "frame-to-frame delta; easing curve not inferable from one interval",
+      "reducedMotionDecision": "disable non-essential interpolation and preserve state change",
+      "confidence": 0.4754
+    },
+    {
+      "state": "chart-behavior",
+      "startFrameId": "frame.reference-000328",
+      "endFrameId": "frame.reference-000329",
+      "durationMs": 33.3333,
+      "easing": "frame-to-frame delta; easing curve not inferable from one interval",
+      "reducedMotionDecision": "disable non-essential interpolation and preserve state change",
+      "confidence": 0.4752
+    },
+    {
+      "state": "loading-state",
+      "startFrameId": "frame.reference-000207",
+      "endFrameId": "frame.reference-000208",
+      "durationMs": 33.3333,
+      "easing": "frame-to-frame delta; easing curve not inferable from one interval",
+      "reducedMotionDecision": "disable non-essential interpolation and preserve state change",
+      "confidence": 0.4744
+    },
+    {
+      "state": "page-transition",
+      "startFrameId": "frame.reference-000208",
+      "endFrameId": "frame.reference-000209",
+      "durationMs": 33.3333,
+      "easing": "frame-to-frame delta; easing curve not inferable from one interval",
+      "reducedMotionDecision": "disable non-essential interpolation and preserve state change",
+      "confidence": 0.474
+    }
+  ],
+  "accentRatio": 0.026004
+}

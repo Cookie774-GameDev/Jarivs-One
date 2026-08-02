@@ -21,6 +21,11 @@ import type {
   ProviderConnection,
 } from './adapters/types';
 import { getProviderConnectionDescriptor } from './adapters/catalog';
+import {
+  isKernelSmokeBindingActive,
+  KERNEL_SMOKE_PROVIDER_ID,
+} from './providers/kernelSmoke';
+import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 
 type ConnectedSingleSelection = {
   connectionId: string;
@@ -159,6 +164,13 @@ export function resolveActiveStackPreset(
   stackSlash: ParsedStackSlashCommand,
 ): StackPresetId {
   if (stackSlash.preset) return coerceToExposedPreset(stackSlash.preset);
+  if (
+    selection.mode === 'hive' &&
+    selection.hiveId === 'custom' &&
+    isKernelSmokeBindingActive()
+  ) {
+    return 'custom';
+  }
   if (selection.mode === 'hive') return coerceToExposedPreset(selection.hiveId);
   return 'off';
 }
@@ -178,6 +190,22 @@ function findAccessibleModel(
   return options.find((option) => option.id === modelId) ?? null;
 }
 
+function isAttestedKernelSmokeNativeSelection(
+  selection: Extract<ChatModelSelection, { mode: 'single' }>,
+  connection: Readonly<ProviderConnection> | undefined,
+  ctx: ModelSelectionContext,
+): boolean {
+  return (
+    selection.providerId === KERNEL_SMOKE_PROVIDER_ID &&
+    selection.modelId === 'kernel-smoke-v1' &&
+    connection?.id === 'vibespace-kernel-smoke-native' &&
+    connection.mode === 'native-api' &&
+    connection.authSource === 'debug-native-attestation' &&
+    connection.capabilities.localOnly === true &&
+    isProviderConnected(selection.providerId, ctx)
+  );
+}
+
 export function isSingleModelAvailable(
   selection: Extract<ChatModelSelection, { mode: 'single' }>,
   ctx: ModelSelectionContext,
@@ -195,6 +223,16 @@ export function isHiveWorkflowReady(
 ): boolean {
   const steps = stepsForPreset(hiveId, 'general', customSteps);
   if (steps.length === 0) return false;
+  if (
+    hiveId === 'custom' &&
+    isKernelSmokeBindingActive() &&
+    steps.every(
+      (step) =>
+        step.provider === KERNEL_SMOKE_PROVIDER_ID && step.model === 'kernel-smoke-v1',
+    )
+  ) {
+    return true;
+  }
   return steps.every((step) => {
     if (!getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(step.provider)) {
       return false;
@@ -235,7 +273,11 @@ export function validateChatModelSelection(
         return { ok: false, message: 'The selected connection does not match this model provider.' };
       }
     }
-    if (exactConnection?.mode !== 'external-cli' && !isSingleModelAvailable(selection, ctx)) {
+    if (
+      exactConnection?.mode !== 'external-cli' &&
+      !isAttestedKernelSmokeNativeSelection(selection, exactConnection, ctx) &&
+      !isSingleModelAvailable(selection, ctx)
+    ) {
       const needsKey = !isProviderConnected(selection.providerId, ctx);
       if (needsKey) {
         return {
@@ -336,7 +378,10 @@ export function applyChatModelSelectionToAgent(
   selection: ChatModelSelection,
 ): Agent {
   if (selection.mode !== 'single') return agent;
-  if (agent.slug !== 'jarvis' && !agentUsesDefaultProvider(agent.model.provider, agent.model.model)) {
+  if (
+    !isProtectedJarvisAgent(agent) &&
+    !agentUsesDefaultProvider(agent.model.provider, agent.model.model)
+  ) {
     return agent;
   }
   return {

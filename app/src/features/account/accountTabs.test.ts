@@ -4,6 +4,7 @@ import {
   DEFAULT_ACCOUNT_TAB,
   isAccountTabId,
   resolveAccountTab,
+  resolveAccountTabFromSearch,
 } from './accountTabs';
 
 describe('accountTabs', () => {
@@ -27,5 +28,13 @@ describe('accountTabs', () => {
     expect(resolveAccountTab('more')).toBe('support');
     expect(resolveAccountTab('')).toBe(DEFAULT_ACCOUNT_TAB);
     expect(resolveAccountTab(undefined)).toBe('profile');
+  });
+
+  it('resolves the initial product tab from an exact URL query', () => {
+    expect(resolveAccountTabFromSearch('?tab=usage')).toBe('usage');
+    expect(resolveAccountTabFromSearch('?source=navigation&tab=billing')).toBe('billing');
+    expect(resolveAccountTabFromSearch('?tab=more')).toBe('support');
+    expect(resolveAccountTabFromSearch('?tab=unknown')).toBe('profile');
+    expect(resolveAccountTabFromSearch('')).toBe('profile');
   });
 });

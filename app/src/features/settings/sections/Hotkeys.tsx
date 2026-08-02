@@ -16,6 +16,7 @@ const HOTKEY_LABELS: Record<keyof typeof HOTKEYS, string> = {
   TOGGLE_FULLSCREEN: 'Toggle fullscreen workspace',
   AMBIENT_TOGGLE: 'Toggle ambient mode',
   COMPOSER_STT: 'Voice-to-text in composer',
+  PROMPT_FORGE: 'Upgrade composer draft with Prompt Forge',
   GLOBAL_DICTATION: 'VibeSpace dictation — in-app input when focused, small overlay outside',
   SCHEDULE: 'Open schedule',
   LAUNCHER: 'Open quick launcher',
@@ -28,7 +29,7 @@ export function Hotkeys() {
   const rows = Object.entries(HOTKEYS) as [keyof typeof HOTKEYS, string][];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-hotkeys flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <header>
         <h2 className="text-page-title text-foreground">Hotkeys</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -41,15 +42,14 @@ export function Hotkeys() {
           <thead>
             <tr className="bg-muted">
               <th className="px-3 py-2 text-left font-medium text-muted-foreground">Action</th>
-              <th className="px-3 py-2 text-right font-medium text-muted-foreground w-40">Shortcut</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground w-40">
+                Shortcut
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map(([key, combo], idx) => (
-              <tr
-                key={key}
-                className={idx % 2 === 0 ? 'bg-background' : 'bg-panel'}
-              >
+              <tr key={key} className={idx % 2 === 0 ? 'bg-background' : 'bg-panel'}>
                 <td className="px-3 py-2 text-foreground">{HOTKEY_LABELS[key]}</td>
                 <td className="px-3 py-2 text-right">
                   <ComboChips combo={combo} />

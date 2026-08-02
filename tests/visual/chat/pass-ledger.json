@@ -1,0 +1,484 @@
+{
+  "schemaVersion": 1,
+  "maximumPassesBeforeReassessment": 12,
+  "baseline": {
+    "revision": {
+      "kind": "commit",
+      "value": "8bd1e58cdb1ed6661eebe8d9afc3f1b86ae75696"
+    },
+    "fullDiff": 0.3409084553234114,
+    "weightedDiff": 0.3837766819429744,
+    "regions": {
+      "assistant_message": 0.1764074844074844,
+      "composer": 0.33595553859364563,
+      "header_full": 0.4747076023391813,
+      "jarvis_module": 0.5083234244946492,
+      "lower_right_flower": 0.606341252861915,
+      "paper_closeup": 0.18854166666666666,
+      "session_panel": 0.1473036961668656,
+      "sidebar_full": 0.4662217567167162,
+      "top_ribbon": 0.5596790271132377,
+      "upper_left_crane": 0.745991847826087,
+      "user_bubble": 0.4390808823529412
+    },
+    "evidence": {
+      "screenshotSha256": "e4b9696d2ad87e552800673f8fafacf822dc21a372016d1b6ef3aa0e384da877",
+      "reportSha256": "6829814f494b704df0f85694defc4d4e1d979518cda1c18dc6398d69f7acc58f",
+      "diffSha256": "ab665e69a5f0b2f29eb91d87162fac9edd2b5282a4b32d32d4c89c456496d3ed",
+      "overlaySha256": "807e6894efc9303c422ce90c06b1672a0382361b4f977bd3d0ec540eb383ed25"
+    }
+  },
+  "passes": [
+    {
+      "id": "pass-001",
+      "parentId": "baseline",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-task6-presentation"
+      },
+      "focusedChange": "Integrate the initial Origami Chat presentation and source-faithful asset set.",
+      "fullDiff": 0.6163954410710382,
+      "weightedDiff": 0.5636154824032205,
+      "regions": {
+        "assistant_message": 0.6375758835758836,
+        "composer": 0.3041789905543364,
+        "header_full": 0.647873471557682,
+        "jarvis_module": 0.512782401902497,
+        "lower_right_flower": 0.7827665803400518,
+        "paper_closeup": 0.6244661458333334,
+        "session_panel": 0.37609818615845186,
+        "sidebar_full": 0.5863371071435954,
+        "top_ribbon": 0.8881479266347687,
+        "upper_left_crane": 0.8076086956521739,
+        "user_bubble": 0.6071691176470588
+      },
+      "worstRegion": {
+        "name": "top_ribbon",
+        "diffRatio": 0.8881479266347687
+      },
+      "decision": "rejected",
+      "regressions": [
+        "Full-page and weighted scores materially regressed because the opaque grain tile covered the shell."
+      ],
+      "evidence": {
+        "screenshotSha256": "6f86967a34425e468233de6a635df4c4a207f2b68d93489bd7dd648c347f8cd8",
+        "reportSha256": "42da1dc362a146f93e25734d578d5108dd4122b33fc3908e26b23b63bf866343",
+        "diffSha256": "f531ac20610d8ebb40f346e4bb0df12512fdd6841577b8191d24aa3c1120f641",
+        "overlaySha256": "8db1c27a0d9bfb2f50e04c3d96ef5d5b3926268d6823ccb652f6be97e6764248"
+      }
+    },
+    {
+      "id": "pass-002",
+      "parentId": "baseline",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-paper-layer"
+      },
+      "focusedChange": "Move the high-contrast grain onto one faint noninteractive layer and restore warm paper surfaces.",
+      "fullDiff": 0.278577838906996,
+      "weightedDiff": 0.29967646021574956,
+      "regions": {
+        "assistant_message": 0.1584864864864865,
+        "composer": 0.25629233851731703,
+        "header_full": 0.36414584440900233,
+        "jarvis_module": 0.32766547760602455,
+        "lower_right_flower": 0.4573715422437413,
+        "paper_closeup": 0.10733072916666667,
+        "session_panel": 0.19643590897528715,
+        "sidebar_full": 0.3442872597727445,
+        "top_ribbon": 0.42186004784688996,
+        "upper_left_crane": 0.6210597826086957,
+        "user_bubble": 0.30724264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.6210597826086957
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "23843ea83369e85320274287f92753be860bf535a3c7ed66816d679d3d548d25",
+        "reportSha256": "0bbf7103232298cdb3a58470e233c713c3bd582d1646bb717292da723f1f50a9",
+        "diffSha256": "fd7a57ae1a0f6b3dcdb05af91503bb2a425703f7ac8d1752af277447fde28d48",
+        "overlaySha256": "cbab9a90d51ed90a59a0456ff591ccc8d8ebc110341d12ca8a459a83bdc4739b"
+      }
+    },
+    {
+      "id": "pass-003",
+      "parentId": "pass-002",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-decor-coordinates"
+      },
+      "focusedChange": "Place the five extracted decoration assets in their locked full-viewport source coordinates.",
+      "fullDiff": 0.18293808378544663,
+      "weightedDiff": 0.23184380114600406,
+      "regions": {
+        "assistant_message": 0.13071933471933472,
+        "composer": 0.22562255509970422,
+        "header_full": 0.23809144072301966,
+        "jarvis_module": 0.3228497820055489,
+        "lower_right_flower": 0.28716736103291673,
+        "paper_closeup": 0.10733072916666667,
+        "session_panel": 0.12698358346214805,
+        "sidebar_full": 0.2950221536214108,
+        "top_ribbon": 0.138646331738437,
+        "upper_left_crane": 0.6109375,
+        "user_bubble": 0.30724264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.6109375
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "fa487844c5f0f227f059863a69df23b83f25e7182a9836846585c23c0a2d563d",
+        "reportSha256": "68c2a0a5ccab3dde3fbfaa8ceefddc7c7fd7bac61bc3293e071755c6b1d6b34e",
+        "diffSha256": "228b24d2bee6f09a56939061f5076c47ee3ef190f1e85053317b5c7466f5eca4",
+        "overlaySha256": "d86c9a76537cd74db0e15e7b77ad3db1cfe40fb8e41cdc51eb2f907021ecd5db"
+      }
+    },
+    {
+      "id": "pass-004",
+      "parentId": "pass-003",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-sidebar-geometry"
+      },
+      "focusedChange": "Reserve an 82-pixel foliage column and constrain navigation sections to 240 pixels.",
+      "fullDiff": 0.1848620016372687,
+      "weightedDiff": 0.2321281029798678,
+      "regions": {
+        "assistant_message": 0.13071933471933472,
+        "composer": 0.22562255509970422,
+        "header_full": 0.23690412900939217,
+        "jarvis_module": 0.3228497820055489,
+        "lower_right_flower": 0.28716736103291673,
+        "paper_closeup": 0.10733072916666667,
+        "session_panel": 0.12698358346214805,
+        "sidebar_full": 0.30545123791542345,
+        "top_ribbon": 0.138646331738437,
+        "upper_left_crane": 0.5726222826086956,
+        "user_bubble": 0.30724264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.5726222826086956
+      },
+      "decision": "rejected",
+      "regressions": ["Full-page, weighted, and sidebar scores regressed against pass-003."],
+      "evidence": {
+        "screenshotSha256": "36971a5d99793dfb570ac96184877443911647531bfd954dc381c6b589bffbf0",
+        "reportSha256": "b63841eded1ada947ef14b9d5724c9cbccaf1dac486f9e7f282d183f6f8d2efa",
+        "diffSha256": "8d0238d11d832212d3e83e931002f84e968a00f49eae0a869bc23744a4585895",
+        "overlaySha256": "9004aba0ebaaed7d55cb678ed9ff590547da82c768e167cfe13a1112296b6825"
+      }
+    },
+    {
+      "id": "pass-005",
+      "parentId": "pass-003",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-composer-geometry"
+      },
+      "focusedChange": "Reduce the composer height and reserve the lower-right flower area without changing the accepted decoration coordinates.",
+      "fullDiff": 0.18139551734131967,
+      "weightedDiff": 0.22987330968026282,
+      "regions": {
+        "assistant_message": 0.13071933471933472,
+        "composer": 0.22339948478198646,
+        "header_full": 0.23809144072301966,
+        "jarvis_module": 0.3228497820055489,
+        "lower_right_flower": 0.2661487069774425,
+        "paper_closeup": 0.10733072916666667,
+        "session_panel": 0.12698358346214805,
+        "sidebar_full": 0.2950221536214108,
+        "top_ribbon": 0.138646331738437,
+        "upper_left_crane": 0.6109375,
+        "user_bubble": 0.30724264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.6109375
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "c3bc9c5a45b3a1ee462acd160d5bc700c4d37b366ca55c5aa0fca6d38850172c",
+        "reportSha256": "b3a638d8d6199135503f5ffb5ea3f24dea585df09878f8c3dc4d9437dd836778",
+        "diffSha256": "7bbd8256c31ea88e3c46086a50e0c37155a4d93eaa8e7917233ae309612a9bb6",
+        "overlaySha256": "d6234726830db82e46ed402a8241a5e0e093ff7384c0b66dbe6f31f4a671738a"
+      }
+    },
+    {
+      "id": "pass-006",
+      "parentId": "pass-005",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-serif-typography"
+      },
+      "focusedChange": "Apply a local serif stack across the scoped Chat experience.",
+      "fullDiff": 0.1824277084848146,
+      "weightedDiff": 0.2312596867207354,
+      "regions": {
+        "assistant_message": 0.13222869022869022,
+        "composer": 0.2256034729510543,
+        "header_full": 0.23889774942406522,
+        "jarvis_module": 0.3241775663892192,
+        "lower_right_flower": 0.2664114401531359,
+        "paper_closeup": 0.1109765625,
+        "session_panel": 0.12804997358483183,
+        "sidebar_full": 0.296331387857197,
+        "top_ribbon": 0.13896531100478468,
+        "upper_left_crane": 0.6135869565217391,
+        "user_bubble": 0.30974264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.6135869565217391
+      },
+      "decision": "rejected",
+      "regressions": [
+        "Full-page, weighted, and every measured region score regressed against pass-005."
+      ],
+      "evidence": {
+        "screenshotSha256": "b2335587bce9542037c0ff5d224d6b3df915f77397dcd62c25fd0e4b69284a19",
+        "reportSha256": "2f738be11af3498164a47c56437c952b03ee9b8f69eab5344ba88ca43e6d27bb",
+        "diffSha256": "277f5b4e9cee4bc44a14a5a66daa25f233fe2dac913a6e383d4e065297509c1a",
+        "overlaySha256": "2d4b384afe888139bcb9a10f778e30531529ec6bde5b697b65f8f21567b792e0"
+      }
+    },
+    {
+      "id": "pass-007",
+      "parentId": "pass-005",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-thread-width"
+      },
+      "focusedChange": "Widen the noncompact Chat thread content column from 860 to 1040 pixels.",
+      "fullDiff": 0.1847685705423834,
+      "weightedDiff": 0.2310710422574378,
+      "regions": {
+        "assistant_message": 0.1345155925155925,
+        "composer": 0.22339948478198646,
+        "header_full": 0.23809144072301966,
+        "jarvis_module": 0.3228497820055489,
+        "lower_right_flower": 0.26621439027136584,
+        "paper_closeup": 0.10338541666666666,
+        "session_panel": 0.12801084000234803,
+        "sidebar_full": 0.2950221536214108,
+        "top_ribbon": 0.138646331738437,
+        "upper_left_crane": 0.6109375,
+        "user_bubble": 0.32382352941176473
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.6109375
+      },
+      "decision": "rejected",
+      "regressions": [
+        "Full-page, weighted, assistant-message, and user-bubble scores regressed against pass-005."
+      ],
+      "evidence": {
+        "screenshotSha256": "07d7e402c7f226bbb0a46559d7d4f5997ee342fa733c799f6c52ce40b2588207",
+        "reportSha256": "2cd1f31155a3cc5a732f3325bc05d9e680c2255e3f8b1cfdac6dfbf91bd8c5fc",
+        "diffSha256": "edf6050392c3626cc9c9bd86b9985bffc9ffd6f4070f42730503f81e18a9a3a0",
+        "overlaySha256": "ac230bab3ca4015f8ca864b268ac60d5764415e9bf2e4a234d27687421235162"
+      }
+    },
+    {
+      "id": "pass-008",
+      "parentId": "pass-005",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-sidebar-row-height"
+      },
+      "focusedChange": "Raise the scoped navigation paper-strip minimum height to 36 pixels.",
+      "fullDiff": 0.18052095144633878,
+      "weightedDiff": 0.22748496506363705,
+      "regions": {
+        "assistant_message": 0.13071933471933472,
+        "composer": 0.22339948478198646,
+        "header_full": 0.23166312245259613,
+        "jarvis_module": 0.3228497820055489,
+        "lower_right_flower": 0.2661487069774425,
+        "paper_closeup": 0.10733072916666667,
+        "session_panel": 0.12698358346214805,
+        "sidebar_full": 0.29028134754656393,
+        "top_ribbon": 0.138646331738437,
+        "upper_left_crane": 0.5786005434782608,
+        "user_bubble": 0.30724264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.5786005434782608
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "4581993e7f40bda3ed6992e343a9e0aeed013291fbfaa3bfc61712ce27252732",
+        "reportSha256": "51256fa2968fb234f8e6187748c7471e02b262aa9d305346c6a02e12932593c9",
+        "diffSha256": "fd78a1ec62c7ff59fc5f6fdf939828d6da202166eeffe61fdb37a1344d32c614",
+        "overlaySha256": "61f748ef2a4f7e322b6eb6e41fc98fa8ef50241384a12fa483eba8e72a853fa7"
+      }
+    },
+    {
+      "id": "pass-009",
+      "parentId": "pass-008",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-jarvis-panel-geometry"
+      },
+      "focusedChange": "Expand the scoped Jarvis voice panel to the reference-aligned 420 by 98 pixel paper frame.",
+      "fullDiff": 0.17809492090771806,
+      "weightedDiff": 0.2218646468943516,
+      "regions": {
+        "assistant_message": 0.13071933471933472,
+        "composer": 0.22339948478198646,
+        "header_full": 0.21460216197058302,
+        "jarvis_module": 0.2844034879112168,
+        "lower_right_flower": 0.2661487069774425,
+        "paper_closeup": 0.10733072916666667,
+        "session_panel": 0.12716457628113564,
+        "sidebar_full": 0.29028134754656393,
+        "top_ribbon": 0.13865629984051037,
+        "upper_left_crane": 0.5810461956521739,
+        "user_bubble": 0.30724264705882354
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.5810461956521739
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "d34fa3018a58365ae60baa037f629e4b12535c8a08421cd976a41545c0c655e5",
+        "reportSha256": "bf0e6b7a3bcae80c04566b4cf6fc879175fe2c4a676bc1d0eb495063c6b373f5",
+        "diffSha256": "4852ea16546744f560e38eea05a1b6e56354a0f5cfb301c056ef6ac11aacd08b",
+        "overlaySha256": "dcf320836a14878c83a0dce5f9cf4c219bbe9d01750c8c316ae718455f14400e"
+      }
+    },
+    {
+      "id": "pass-010",
+      "parentId": "pass-009",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-thread-top-alignment"
+      },
+      "focusedChange": "Remove the 24-pixel noncompact thread top inset so the session and message stack aligns with the reference.",
+      "fullDiff": 0.1751261001988112,
+      "weightedDiff": 0.2171759500818176,
+      "regions": {
+        "assistant_message": 0.13717671517671517,
+        "composer": 0.22339948478198646,
+        "header_full": 0.21460216197058302,
+        "jarvis_module": 0.2844034879112168,
+        "lower_right_flower": 0.2661487069774425,
+        "paper_closeup": 0.0876171875,
+        "session_panel": 0.12961531688418415,
+        "sidebar_full": 0.2902779021933119,
+        "top_ribbon": 0.13865629984051037,
+        "upper_left_crane": 0.5811141304347827,
+        "user_bubble": 0.1745955882352941
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.5811141304347827
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "a11eb4f1a4e66989f39a39c7f38758126b56d5bee8c3853ce445454959019d0f",
+        "reportSha256": "2b881247cfc7099b7bc633e97d6057baa1f4ae759ff33305c8af7f145d792767",
+        "diffSha256": "67bafa2749e35e47cec4e10e85ddd083c447a254ddfa2582f118c289904c0f2d",
+        "overlaySha256": "0f3f4c57ae82f03e14b4699e845656f36d2e2e6d2fac8141ca5c2577d060d0af"
+      }
+    },
+    {
+      "id": "pass-011",
+      "parentId": "pass-010",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-flower-geometry"
+      },
+      "focusedChange": "Scale and shift the lower-right flower toward the comparison-region bounds.",
+      "fullDiff": 0.17976460448774337,
+      "weightedDiff": 0.22257120937076322,
+      "regions": {
+        "assistant_message": 0.13717671517671517,
+        "composer": 0.22276023280221352,
+        "header_full": 0.21460216197058302,
+        "jarvis_module": 0.2844034879112168,
+        "lower_right_flower": 0.3346282325563938,
+        "paper_closeup": 0.0876171875,
+        "session_panel": 0.12961531688418415,
+        "sidebar_full": 0.2902779021933119,
+        "top_ribbon": 0.13865629984051037,
+        "upper_left_crane": 0.5811141304347827,
+        "user_bubble": 0.1745955882352941
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.5811141304347827
+      },
+      "decision": "rejected",
+      "regressions": [
+        "Full-page, weighted, and lower-right flower scores materially regressed against pass-010."
+      ],
+      "evidence": {
+        "screenshotSha256": "eee7cb40fc128b1dec4ea039a8e60644b56607d740ea6d0e02cc9aa8a361d925",
+        "reportSha256": "9a701251a7d8a2692800cdfda6f748879de5fc73a39bc3cf0c10b81b1a9f13eb",
+        "diffSha256": "35aedb87faa5991f758ca91e23a14f773236235cca5d778ecdd04e3ea7e5fbb7",
+        "overlaySha256": "b852b6cd2e79333722b95fdafbb73e2b7470ab2353971813ea9da9224abbf658"
+      }
+    },
+    {
+      "id": "pass-012",
+      "parentId": "pass-010",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-assistant-spacing"
+      },
+      "focusedChange": "Add an 18-pixel assistant-only gap while preserving the accepted session and user alignment.",
+      "fullDiff": 0.1730464638555136,
+      "weightedDiff": 0.21474362955816892,
+      "regions": {
+        "assistant_message": 0.12357172557172558,
+        "composer": 0.22339948478198646,
+        "header_full": 0.21460216197058302,
+        "jarvis_module": 0.2844034879112168,
+        "lower_right_flower": 0.2661487069774425,
+        "paper_closeup": 0.06549479166666666,
+        "session_panel": 0.12961531688418415,
+        "sidebar_full": 0.2902779021933119,
+        "top_ribbon": 0.13865629984051037,
+        "upper_left_crane": 0.5811141304347827,
+        "user_bubble": 0.1745955882352941
+      },
+      "worstRegion": {
+        "name": "upper_left_crane",
+        "diffRatio": 0.5811141304347827
+      },
+      "decision": "kept",
+      "regressions": [],
+      "evidence": {
+        "screenshotSha256": "2f5a34cdbb8b1f1b54f523f13db3f2864acf67a392b02561cca65fe1c6cb9582",
+        "reportSha256": "c532391934fb0102be3ebc6cda45075daad7352adb0eb61bd81ff2e18431cae2",
+        "diffSha256": "cf5a64b896af02389bd38cfe8e9075714f0f64f740944ca6c273fa1ceeedda80",
+        "overlaySha256": "be0e87b6ccf0a3e81f612447b31dd4eaabab57b9eba6d1bd1d757cef85ec5f01"
+      }
+    }
+  ],
+  "reassessments": [
+    {
+      "afterPassId": "pass-012",
+      "revision": {
+        "kind": "working-tree",
+        "value": "working-tree:c7ee2b4-reassessment-001"
+      },
+      "reason": "The first twelve measured passes established the large layout gains; remaining error is concentrated in shared-shell controls and preserved product UI rather than the accepted paper stage.",
+      "nextFocus": "Verify worker-produced evidence utilities, then target the remaining sidebar, Jarvis, composer, and header seams without modifying the pet, terminal, or non-Chat surfaces."
+    }
+  ]
+}

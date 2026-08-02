@@ -1,0 +1,75 @@
+html[data-theme='sakura'] [data-sakura-route='benchmarks'] {
+  background: transparent;
+  color: #fff8f4;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+}
+
+html[data-theme='sakura'] [data-sakura-route='benchmarks'] h1,
+html[data-theme='sakura'] [data-sakura-route='benchmarks'] h2 {
+  font-family: Fraunces, Georgia, serif;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='benchmarks-filters'] {
+  padding-block: 12px;
+  border-block: 1px solid rgba(255, 239, 241, 0.14);
+  background: rgba(20, 14, 48, 0.42);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='benchmarks-chart'],
+html[data-theme='sakura'] [data-sakura-surface='benchmarks-table'],
+html[data-theme='sakura'] [data-sakura-surface='benchmark-detail'] {
+  position: relative;
+  border-color: rgba(255, 239, 241, 0.19);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.035)),
+    rgba(20, 14, 48, 0.82);
+  box-shadow:
+    0 12px 34px rgba(8, 5, 30, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='benchmarks-chart']::before,
+html[data-theme='sakura'] [data-sakura-surface='benchmarks-table']::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 1;
+  width: 2px;
+  content: '';
+  background: linear-gradient(180deg, transparent, rgba(238, 171, 183, 0.74), transparent);
+  pointer-events: none;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='benchmarks-table'] tbody tr:hover {
+  background: rgba(238, 171, 183, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-route='benchmarks'] :focus-visible,
+html[data-theme='sakura'] [data-sakura-surface='benchmark-detail'] :focus-visible {
+  outline: 2px solid #eeabb7;
+  outline-offset: 2px;
+}
+
+@supports (backdrop-filter: blur(14px)) {
+  html[data-theme='sakura'] [data-sakura-surface='benchmarks-chart'],
+  html[data-theme='sakura'] [data-sakura-surface='benchmarks-table'],
+  html[data-theme='sakura'] [data-sakura-surface='benchmark-detail'] {
+    backdrop-filter: blur(14px) saturate(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-route='benchmarks'] *,
+  html[data-theme='sakura'] [data-sakura-surface='benchmark-detail'] {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-surface^='benchmark'] {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}

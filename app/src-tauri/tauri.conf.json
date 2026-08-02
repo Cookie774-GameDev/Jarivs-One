@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "withGlobalTauri": false,
     "windows": [
       {
@@ -40,6 +41,7 @@
       }
     ],
     "security": {
+      "capabilities": ["default", "pet-mini-panel", "pet-overlay", "workbench-window"],
       "assetProtocol": {
         "enable": true,
         "scope": [

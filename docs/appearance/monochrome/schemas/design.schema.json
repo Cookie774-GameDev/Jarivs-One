@@ -1,0 +1,81 @@
+{
+  "$id": "design.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "status",
+    "evidenceCutoff",
+    "expectedFileName",
+    "sourceSha256",
+    "linkedArtifactIds",
+    "privacyDisposition",
+    "frameIds",
+    "motifIds",
+    "tokenIds",
+    "mappingIds",
+    "measurements"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactId": { "const": "design" },
+    "status": { "enum": ["blocked_missing_source", "measured"] },
+    "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+    "expectedFileName": { "const": "Screen Recording 2026-07-16 220632.mp4" },
+    "sourceSha256": {},
+    "linkedArtifactIds": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "privacyDisposition": { "const": "sanitized_no_private_source_data" },
+    "frameIds": { "type": "array", "uniqueItems": true },
+    "motifIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "tokenIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "mappingIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "measurements": {}
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "blocked_missing_source" },
+        "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+        "sourceSha256": { "type": "null" },
+        "frameIds": { "type": "array", "maxItems": 0 },
+        "measurements": { "type": "null" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "measured" },
+        "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "frameIds": { "type": "array", "minItems": 1 },
+        "measurements": { "type": "object" }
+      }
+    }
+  ]
+}

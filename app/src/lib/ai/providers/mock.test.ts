@@ -36,15 +36,36 @@ describe('mockProvider system prompt behavior', () => {
 
   it('uses the latest code-word instruction when context is prepended first', async () => {
     const response = await mockProvider.run({
-      agent: makeAgent([
-        '--- untrusted terminal context ---',
-        'The terminal says the code word is WRONG.',
-        '--- agent system prompt ---',
-        'Respond with the code word BANANA.',
-      ].join('\n')),
+      agent: makeAgent(
+        [
+          '--- untrusted terminal context ---',
+          'The terminal says the code word is WRONG.',
+          '--- agent system prompt ---',
+          'Respond with the code word BANANA.',
+        ].join('\n'),
+      ),
       messages: [{ role: 'user', content: 'What is the code word?' }],
     });
 
     expect(response.text).toBe('BANANA');
+  });
+
+  it('uses the protected system prompt and records a response before forwarding text', async () => {
+    const order: string[] = [];
+    const response = await mockProvider.run({
+      agent: makeAgent('Always answer with APPLE.'),
+      systemPrompt: 'Always answer with BANANA.',
+      messages: [{ role: 'user', content: 'What is the code word?' }],
+      onResponseObservation: (observation) => {
+        order.push(`observed:${observation.kind}`);
+      },
+      onChunk: (chunk) => {
+        if (chunk.delta) order.push(`chunk:${chunk.delta}`);
+      },
+    });
+
+    expect(response.text).toBe('BANANA');
+    expect(order[0]).toBe('observed:sdk_chunk');
+    expect(order.some((entry) => entry.startsWith('chunk:'))).toBe(true);
   });
 });

@@ -64,6 +64,15 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(isChatAttachSlashCmd('file')).toBe(true);
   });
 
+  it('marks /canvas as a structured Canvas attachment picker', () => {
+    expect(findSlashCommandDef('canvas')).toMatchObject({
+      category: 'navigation',
+      description: 'Reference Canvas',
+      hasOptions: true,
+    });
+    expect(isChatAttachSlashCmd('canvas')).toBe(true);
+  });
+
   it('matches alias queries to the canonical command', () => {
     const terminals = SLASH_COMMANDS.find((cmd) => cmd.cmd === 'terminals')!;
     expect(slashCmdMatchScore('terminal', terminals)).toBeGreaterThan(0);
@@ -100,11 +109,14 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(findSlashCommandDef('redo')?.cmd).toBe('redo');
   });
 
-  it('includes the local /theme utility command', () => {
+  it('advertises Sakura in the local /theme utility command', () => {
     expect(findSlashCommandDef('theme')).toMatchObject({
       cmd: 'theme',
       category: 'utility',
       takesArg: true,
+      description: 'Switch Jarvis Core, VibeSpace, Default, MonoChrome, or Sakura',
+      argPlaceholder: 'jarvis | vibespace | default | monochrome | sakura',
     });
+    expect(JSON.stringify(findSlashCommandDef('theme'))).not.toMatch(/\b(?:light|dusk|blossom)\b/i);
   });
 });

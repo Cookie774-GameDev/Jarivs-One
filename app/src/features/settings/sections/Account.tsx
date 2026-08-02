@@ -162,7 +162,7 @@ export function Account({ profileOnly = false }: { profileOnly?: boolean }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-account flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <h2 className="text-page-title text-foreground">Account</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -170,7 +170,11 @@ export function Account({ profileOnly = false }: { profileOnly?: boolean }) {
         </p>
       </header>
 
-      <div className="flex gap-1 border-b border-border pb-1" role="tablist" aria-label="Account sections">
+      <div
+        className="flex gap-1 border-b border-border pb-1"
+        role="tablist"
+        aria-label="Account sections"
+      >
         <Button
           size="sm"
           variant={tab === 'profile' ? 'secondary' : 'ghost'}

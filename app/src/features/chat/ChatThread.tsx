@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { useChatMessages } from './hooks';
@@ -7,14 +7,100 @@ import { ChatActivityTimeline } from './activity';
 import { ChatAgentActivityPanel } from '@/features/jarvis-interaction/AgentActivityCard';
 import { JarvisTaskProgressCard } from '@/features/jarvis-runs/JarvisTaskProgressCard';
 import { JarvisMemoryStatus } from '@/features/jarvis-memory/JarvisMemoryStatus';
+import {
+  JarvisCommandCenter,
+  useJarvisCommandCenterBinding,
+} from '@/features/jarvis-command-center/JarvisCommandCenter';
+import {
+  acknowledgeJarvisApprovalNavigation,
+  isCurrentJarvisApprovalNavigationTarget,
+  isPendingJarvisApprovalNavigation,
+  readPendingJarvisApprovalNavigation,
+  subscribeJarvisApprovalNavigation,
+  type JarvisApprovalNavigationIntent,
+} from '@/features/jarvis-command-center/approvalNavigation';
+import type {
+  JarvisCommandCenterHandlers,
+  JarvisRun,
+} from '@/features/jarvis-command-center/types';
+import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 const MAX_STREAM_SIZE_PART = 8000;
 
 export interface ChatThreadProps {
   chatId: ChatId | string;
   compact?: boolean;
+  fixtureMessages?: readonly Message[];
+}
+
+function useCurrentCanonicalRun(
+  binding: ReturnType<typeof useJarvisCommandCenterBinding>,
+  chatId: string,
+): JarvisRun | undefined {
+  type BoundDataPort = NonNullable<typeof binding>['dataPort'];
+  type Presence = Readonly<{
+    accountId: string;
+    chatId: string;
+    dataPort: BoundDataPort;
+    run?: JarvisRun;
+  }>;
+  const [presence, setPresence] = useState<Presence>();
+  const accountId = binding?.hostPort.accountId;
+  const dataPort = binding?.dataPort;
+
+  useEffect(() => {
+    if (!accountId || !dataPort) {
+      setPresence(undefined);
+      return;
+    }
+    const scope = { accountId, chatId, dataPort } as const;
+    setPresence(scope);
+    let disposed = false;
+    let generation = 0;
+    const refresh = async () => {
+      const requestGeneration = ++generation;
+      try {
+        const runs = await dataPort.getRunsForChat({
+          accountId,
+          chatId,
+          limit: 1,
+        });
+        if (!disposed && requestGeneration === generation) {
+          setPresence({
+            ...scope,
+            run: runs.find((run) => run.accountId === accountId && run.chatId === chatId),
+          });
+        }
+      } catch {
+        if (!disposed && requestGeneration === generation) {
+          setPresence(scope);
+        }
+      }
+    };
+    const unsubscribe = dataPort.subscribe(accountId, chatId, () => void refresh());
+    void refresh();
+    return () => {
+      disposed = true;
+      generation += 1;
+      unsubscribe();
+    };
+  }, [accountId, chatId, dataPort]);
+
+  return presence &&
+    presence.accountId === accountId &&
+    presence.chatId === chatId &&
+    presence.dataPort === dataPort
+    ? presence.run
+    : undefined;
 }
 
 /**
@@ -25,9 +111,11 @@ function streamingSize(message: Message | undefined): number {
   if (!message) return 0;
   let n = 0;
   for (const p of message.parts as Part[]) {
-    if (p.kind === 'text' || p.kind === 'reasoning') n += Math.min(p.text.length, MAX_STREAM_SIZE_PART);
+    if (p.kind === 'text' || p.kind === 'reasoning')
+      n += Math.min(p.text.length, MAX_STREAM_SIZE_PART);
     else if (p.kind === 'tool_call') n += Math.min(roughPayloadSize(p.args), MAX_STREAM_SIZE_PART);
-    else if (p.kind === 'tool_result') n += Math.min(roughPayloadSize(p.result ?? p.error ?? ''), MAX_STREAM_SIZE_PART);
+    else if (p.kind === 'tool_result')
+      n += Math.min(roughPayloadSize(p.result ?? p.error ?? ''), MAX_STREAM_SIZE_PART);
   }
   return n;
 }
@@ -37,7 +125,8 @@ function roughPayloadSize(value: unknown): number {
   if (typeof value === 'string') return value.length;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value).length;
   if (Array.isArray(value)) return Math.min(value.length, 100) * 64;
-  if (typeof value === 'object') return Math.min(Object.keys(value as Record<string, unknown>).length, 100) * 96;
+  if (typeof value === 'object')
+    return Math.min(Object.keys(value as Record<string, unknown>).length, 100) * 96;
   return 32;
 }
 
@@ -46,12 +135,118 @@ function roughPayloadSize(value: unknown): number {
  * streaming - but only if the user is already near the bottom. If the user
  * has scrolled up to read history, we do not yank them.
  */
-export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
-  const messages = useChatMessages(chatId);
+export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThreadProps) {
+  const persistedMessages = useChatMessages(fixtureMessages ? null : chatId);
+  const messages = fixtureMessages ?? persistedMessages;
+  const commandCenterBinding = useJarvisCommandCenterBinding();
+  const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
+    Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
+  );
+  const currentCanonicalRun = useCurrentCanonicalRun(commandCenterBinding, String(chatId));
+  const hasCanonicalRun = hasProjectedCanonicalRun || Boolean(currentCanonicalRun);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef(true);
   const fallbackAgents = useMemo(() => extractAgentCards(messages), [messages]);
   const creatorDraftKind = useMemo(() => detectCreatorDraftKind(messages), [messages]);
+  const commandCenterHandlers = useMemo<JarvisCommandCenterHandlers>(() => {
+    const hostPort = commandCenterBinding?.hostPort;
+    if (!hostPort) return {};
+    const requireBoundAccount = (accountId: string) => {
+      if (accountId !== hostPort.accountId) {
+        throw new Error('jarvis_command_center_account_mismatch');
+      }
+    };
+    return {
+      cancelRun(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.requestCancellation(runId);
+      },
+      retryScheduledTransport(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.retryScheduledTransport(runId);
+      },
+      retryLogicalRun(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.retryLogicalRun(runId);
+      },
+    };
+  }, [commandCenterBinding]);
+
+  useEffect(() => {
+    let disposed = false;
+    const openPendingApproval = (
+      requested: JarvisApprovalNavigationIntent | undefined = readPendingJarvisApprovalNavigation(),
+    ) => {
+      const accountId = commandCenterBinding?.hostPort.accountId;
+      const dataPort = commandCenterBinding?.dataPort;
+      if (
+        !requested ||
+        !accountId ||
+        !dataPort ||
+        requested.accountId !== accountId ||
+        requested.chatId !== String(chatId) ||
+        !currentCanonicalRun ||
+        requested.runId !== currentCanonicalRun.id ||
+        currentCanonicalRun.status !== 'awaiting_approval' ||
+        !isPendingJarvisApprovalNavigation(requested)
+      ) {
+        return;
+      }
+      const cards = scrollRef.current?.querySelectorAll<HTMLElement>(
+        '[data-approval-kind="canonical"][data-status="pending"]',
+      );
+      const matches = cards
+        ? Array.from(cards).filter((card) => card.dataset.approvalId === requested.approvalId)
+        : [];
+      const card = matches.length === 1 ? matches[0] : undefined;
+      if (!card) return;
+      void isCurrentJarvisApprovalNavigationTarget(dataPort, requested)
+        .then((isCurrent) => {
+          if (disposed || !isCurrent || !isPendingJarvisApprovalNavigation(requested)) {
+            return;
+          }
+          const currentCards = scrollRef.current?.querySelectorAll<HTMLElement>(
+            '[data-approval-kind="canonical"][data-status="pending"]',
+          );
+          const currentMatches = currentCards
+            ? Array.from(currentCards).filter(
+                (candidate) => candidate.dataset.approvalId === requested.approvalId,
+              )
+            : [];
+          const currentCard = currentMatches.length === 1 ? currentMatches[0] : undefined;
+          if (!currentCard || !acknowledgeJarvisApprovalNavigation(requested)) return;
+          stickyRef.current = false;
+          currentCard.scrollIntoView({
+            behavior:
+              window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+                ? 'auto'
+                : 'smooth',
+            block: 'center',
+          });
+          currentCard.focus({ preventScroll: true });
+        })
+        .catch(() => undefined);
+    };
+    const unsubscribe = subscribeJarvisApprovalNavigation(openPendingApproval);
+    const observer =
+      typeof MutationObserver === 'undefined'
+        ? undefined
+        : new MutationObserver(() => openPendingApproval());
+    if (scrollRef.current && observer) {
+      observer.observe(scrollRef.current, {
+        attributes: true,
+        attributeFilter: ['data-approval-id', 'data-approval-kind', 'data-status'],
+        childList: true,
+        subtree: true,
+      });
+    }
+    openPendingApproval();
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      unsubscribe();
+    };
+  }, [chatId, commandCenterBinding, currentCanonicalRun]);
 
   const tailSize = streamingSize(messages[messages.length - 1]);
 
@@ -79,8 +274,21 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
       aria-live="polite"
       aria-relevant="additions text"
       data-tour="chat-thread"
+      data-sakura-surface="message-scroll"
+      data-sik-evidence={
+        KERNEL_SMOKE_ENABLED && hasCanonicalRun ? SIK_EVIDENCE.chatRunShell : undefined
+      }
+      data-sik-assistant-count={
+        KERNEL_SMOKE_ENABLED && hasCanonicalRun
+          ? messages.filter((message) => message.role === 'assistant').length
+          : undefined
+      }
     >
       <div
+        data-sik-evidence={
+          KERNEL_SMOKE_ENABLED && commandCenterBinding ? SIK_EVIDENCE.chatRuntimeReady : undefined
+        }
+        data-sakura-surface="message-stack"
         className={
           compact
             ? 'flex w-full flex-col gap-3 px-2 py-3'
@@ -88,36 +296,52 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
         }
       >
         {/* Top of every chat; scrolls away with messages (not sticky). */}
-        <ChatActivityTimeline chatId={chatId} compact={compact} />
+        {!hasCanonicalRun ? <ChatActivityTimeline chatId={chatId} compact={compact} /> : null}
         {messages.length === 0 ? (
           <ThreadHint />
         ) : (
           <AnimatePresence initial={false}>
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} compact={compact} creatorDraftKind={creatorDraftKind} />
+              <MessageBubble
+                key={m.id}
+                message={m}
+                compact={compact}
+                creatorDraftKind={creatorDraftKind}
+              />
             ))}
           </AnimatePresence>
         )}
+        {hasCanonicalRun && commandCenterBinding ? (
+          <JarvisCommandCenter
+            accountId={commandCenterBinding.hostPort.accountId}
+            chatId={String(chatId)}
+            dataPort={commandCenterBinding.dataPort}
+            handlers={commandCenterHandlers}
+            compact={compact}
+          />
+        ) : null}
         <ChatAgentActivityPanel
           chatId={chatId}
           fallbackAgents={fallbackAgents}
           compact={compact}
           className={compact ? 'mx-1 mb-6' : 'sticky bottom-0 z-10 mb-8'}
         />
-        <JarvisTaskProgressCard chatId={String(chatId)} compact={compact} />
+        {!hasCanonicalRun ? (
+          <JarvisTaskProgressCard chatId={String(chatId)} compact={compact} />
+        ) : null}
         <JarvisMemoryStatus chatId={String(chatId)} />
       </div>
     </div>
   );
 }
 
-function extractAgentCards(messages: Message[]) {
+function extractAgentCards(messages: readonly Message[]) {
   return messages.flatMap((message) =>
     message.parts.flatMap((part) => (part.kind === 'agent_card' ? [part.agent] : [])),
   );
 }
 
-function detectCreatorDraftKind(messages: Message[]): JarvisCreatorKind | undefined {
+function detectCreatorDraftKind(messages: readonly Message[]): JarvisCreatorKind | undefined {
   for (const message of messages) {
     for (const part of message.parts) {
       if (part.kind !== 'question_block') continue;
@@ -130,15 +354,17 @@ function detectCreatorDraftKind(messages: Message[]): JarvisCreatorKind | undefi
 
 function ThreadHint() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+    <div
+      data-sakura-surface="thread-empty"
+      className="flex flex-col items-center justify-center gap-3 py-12 text-center"
+    >
       <div className="rounded-full border border-border bg-elevated p-3">
         <Sparkles className="h-5 w-5 text-accent-cyan" />
       </div>
       <div className="text-ui-strong text-foreground">No messages yet</div>
       <div className="text-secondary text-muted-foreground max-w-[44ch]">
-        Type below to start the conversation. Use <span className="kbd">@</span> to mention an
-        agent or <span className="kbd">{'\u2318'}</span>+
-        <span className="kbd">Enter</span> to send.
+        Type below to start the conversation. Use <span className="kbd">@</span> to mention an agent
+        or <span className="kbd">{'\u2318'}</span>+<span className="kbd">Enter</span> to send.
       </div>
     </div>
   );

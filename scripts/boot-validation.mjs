@@ -8,19 +8,68 @@
  * (PTY terminals, dictation paste) must show honest fallbacks, not crash.
  */
 import { chromium } from 'playwright-core';
+import { readFileSync } from 'node:fs';
 
 const BASE = process.env.CAPTURE_BASE_URL ?? 'http://127.0.0.1:8943';
-const CURRENT_VERSION = '1.5.0';
+const themeContract = JSON.parse(
+  readFileSync(
+    new URL('../app/src/features/appearance/themeContract.source.json', import.meta.url),
+    'utf8',
+  ),
+);
+const appPackage = JSON.parse(
+  readFileSync(new URL('../app/package.json', import.meta.url), 'utf8'),
+);
+const captureTheme = themeContract.selectableThemes?.[0]?.id;
+
+if (
+  typeof captureTheme !== 'string' ||
+  !Number.isInteger(themeContract.storeVersion) ||
+  typeof themeContract.storageKey !== 'string' ||
+  typeof appPackage.version !== 'string'
+) {
+  throw new Error('Theme contract or app package metadata is invalid.');
+}
 
 const seed = {
   state: {
     onboardingComplete: true,
-    theme: 'jarvis-core',
+    theme: captureTheme,
     navOpen: true,
-    lastSeenWhatsNewVersion: CURRENT_VERSION,
+    lastSeenWhatsNewVersion: appPackage.version,
   },
-  version: 12,
+  version: themeContract.storeVersion,
 };
+
+async function waitForStableLayout(page, selector = '#root') {
+  await page.locator(selector).waitFor({ state: 'visible' });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  await page.waitForFunction(async (targetSelector) => {
+    const target = document.querySelector(targetSelector);
+    if (!target) return false;
+
+    const snapshot = () => {
+      const rect = target.getBoundingClientRect();
+      return [
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        document.body.scrollWidth,
+        document.body.scrollHeight,
+      ].join(':');
+    };
+
+    const frames = [];
+    for (let index = 0; index < 3; index += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      frames.push(snapshot());
+    }
+    return frames.every((frame) => frame === frames[0]);
+  }, selector);
+}
 
 const errors = [];
 const browser = await chromium.launch();
@@ -36,12 +85,16 @@ page.on('console', (msg) => {
 });
 page.on('pageerror', (err) => errors.push(`pageerror: ${String(err).slice(0, 300)}`));
 
-await page.addInitScript(([s]) => {
-  window.localStorage.setItem('jarvis-ui', JSON.stringify(s));
-}, [seed]);
+await page.addInitScript(
+  ([storageKey, state]) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  },
+  [themeContract.storageKey, seed],
+);
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
-await page.waitForTimeout(3000);
+await waitForStableLayout(page);
+await page.waitForFunction(() => document.body.innerText.length >= 100);
 
 // Blank-screen check: the workspace shell must render.
 const bodyText = await page.evaluate(() => document.body.innerText.length);
@@ -52,7 +105,7 @@ console.log('boot: shell rendered, body text length', bodyText);
 for (const label of ['Schedule', 'Terminals', 'Kanban', 'Benchmarks', 'Agents', 'Skills', 'Chat']) {
   try {
     await page.getByText(label, { exact: true }).first().click({ timeout: 5000 });
-    await page.waitForTimeout(1200);
+    await waitForStableLayout(page);
     console.log(`route: ${label} OK`);
   } catch {
     errors.push(`route ${label}: nav item not clickable`);
@@ -61,8 +114,14 @@ for (const label of ['Schedule', 'Terminals', 'Kanban', 'Benchmarks', 'Agents', 
 
 // Settings via hotkey (Mod+, => Control+Comma on Linux).
 await page.keyboard.press('Control+Comma');
-await page.waitForTimeout(1200);
-const settingsVisible = await page.getByText('Appearance', { exact: true }).first().isVisible().catch(() => false);
+const appearanceHeading = page.getByText('Appearance', { exact: true }).first();
+const settingsVisible = await appearanceHeading
+  .waitFor({ state: 'visible' })
+  .then(async () => {
+    await waitForStableLayout(page);
+    return true;
+  })
+  .catch(() => false);
 console.log('settings modal visible:', settingsVisible);
 if (!settingsVisible) errors.push('Settings modal did not open via Mod+,');
 await page.keyboard.press('Escape');

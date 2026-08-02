@@ -31,17 +31,17 @@ import {
 } from 'lucide-react';
 import { useAppAdmin } from '@/lib/admin';
 import { useUIStore } from '@/stores/ui';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { HiveModelTabIcon } from '@/components/brand';
-import {
-  prefetchSettingsTab,
-  type SettingsTab,
-} from './settingsPrefetch';
+import { prefetchSettingsTab, type SettingsTab } from './settingsPrefetch';
 import { rememberSettingsTab } from './settingsTabMemory';
+import './sakura-settings.css';
 
 const Account = lazy(() => import('./sections/Account').then((m) => ({ default: m.Account })));
-const Providers = lazy(() => import('./sections/Providers').then((m) => ({ default: m.Providers })));
+const Providers = lazy(() =>
+  import('./sections/Providers').then((m) => ({ default: m.Providers })),
+);
 const SubscriptionCliBridge = lazy(() =>
   import('./sections/SubscriptionCliBridge').then((m) => ({ default: m.SubscriptionCliBridge })),
 );
@@ -53,9 +53,13 @@ const Hive = lazy(() => import('./sections/Hive').then((m) => ({ default: m.Hive
 const AllAboutMe = lazy(() =>
   import('./sections/AllAboutMe').then((m) => ({ default: m.AllAboutMe })),
 );
-const Appearance = lazy(() => import('./sections/Appearance').then((m) => ({ default: m.Appearance })));
+const Appearance = lazy(() =>
+  import('./sections/Appearance').then((m) => ({ default: m.Appearance })),
+);
 const Voice = lazy(() => import('./sections/Voice').then((m) => ({ default: m.Voice })));
-const PhoneVoice = lazy(() => import('./sections/PhoneVoice').then((m) => ({ default: m.PhoneVoice })));
+const PhoneVoice = lazy(() =>
+  import('./sections/PhoneVoice').then((m) => ({ default: m.PhoneVoice })),
+);
 const ComposerStt = lazy(() =>
   import('./sections/ComposerStt').then((m) => ({ default: m.ComposerStt })),
 );
@@ -75,7 +79,6 @@ const Admin = lazy(() => import('./sections/Admin').then((m) => ({ default: m.Ad
 const JarvisActions = lazy(() =>
   import('./sections/JarvisActions').then((m) => ({ default: m.JarvisActions })),
 );
-
 
 interface TabDef {
   id: SettingsTab;
@@ -109,6 +112,12 @@ const TABS: TabDef[] = [
 interface SettingsModalProps {
   /** Optional initial tab. Defaults to 'account' on each open. */
   initialTab?: SettingsTab;
+  /**
+   * Exposes the real non-authoritative Admin presentation for the contained
+   * visual profile. This does not change the entitlement snapshot consumed by
+   * the Admin section and must stay false in ordinary runtime.
+   */
+  visualAdminPreview?: boolean;
 }
 
 function CachedTabPanel({
@@ -136,7 +145,13 @@ function CachedTabPanel({
   );
 }
 
-function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: ReadonlySet<SettingsTab> }) {
+function SettingsTabPanels({
+  tab,
+  visited,
+}: {
+  tab: SettingsTab;
+  visited: ReadonlySet<SettingsTab>;
+}) {
   return (
     <Suspense fallback={null}>
       <CachedTabPanel id="account" active={tab === 'account'} visited={visited.has('account')}>
@@ -145,16 +160,28 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
       <CachedTabPanel id="plans" active={tab === 'plans'} visited={visited.has('plans')}>
         <Plans />
       </CachedTabPanel>
-      <CachedTabPanel id="providers" active={tab === 'providers'} visited={visited.has('providers')}>
+      <CachedTabPanel
+        id="providers"
+        active={tab === 'providers'}
+        visited={visited.has('providers')}
+      >
         <Providers />
       </CachedTabPanel>
-      <CachedTabPanel id="connections" active={tab === 'connections'} visited={visited.has('connections')}>
+      <CachedTabPanel
+        id="connections"
+        active={tab === 'connections'}
+        visited={visited.has('connections')}
+      >
         <SubscriptionCliBridge />
       </CachedTabPanel>
       <CachedTabPanel id="hive" active={tab === 'hive'} visited={visited.has('hive')}>
         <Hive />
       </CachedTabPanel>
-      <CachedTabPanel id="allaboutme" active={tab === 'allaboutme'} visited={visited.has('allaboutme')}>
+      <CachedTabPanel
+        id="allaboutme"
+        active={tab === 'allaboutme'}
+        visited={visited.has('allaboutme')}
+      >
         <AllAboutMe />
       </CachedTabPanel>
       <CachedTabPanel id="plugins" active={tab === 'plugins'} visited={visited.has('plugins')}>
@@ -167,7 +194,11 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
       >
         <LocalModels active={tab === 'localmodels'} />
       </CachedTabPanel>
-      <CachedTabPanel id="appearance" active={tab === 'appearance'} visited={visited.has('appearance')}>
+      <CachedTabPanel
+        id="appearance"
+        active={tab === 'appearance'}
+        visited={visited.has('appearance')}
+      >
         <Appearance />
       </CachedTabPanel>
       <CachedTabPanel id="voice" active={tab === 'voice'} visited={visited.has('voice')}>
@@ -231,24 +262,28 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
  * with `{ detail: { tab } }`. The Plans tab uses this to send the user
  * to Providers when they click "Add a key".
  */
-export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
+export function SettingsModal({
+  initialTab = 'account',
+  visualAdminPreview = false,
+}: SettingsModalProps) {
   const open = useUIStore((s) => s.settingsOpen);
   const setOpen = useUIStore((s) => s.setSettingsOpen);
   const isAdmin = useAppAdmin();
+  const adminTabVisible = isAdmin || visualAdminPreview;
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<SettingsTab>>(
     () => new Set<SettingsTab>([initialTab]),
   );
   const tabs = useMemo(
     () =>
-      isAdmin
+      adminTabVisible
         ? [
             ...TABS.slice(0, 1),
             { id: 'admin' as const, label: 'Admin', icon: Shield },
             ...TABS.slice(1),
           ]
         : TABS,
-    [isAdmin],
+    [adminTabVisible],
   );
 
   const selectTab = (next: SettingsTab) => {
@@ -266,8 +301,8 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
   };
 
   useEffect(() => {
-    if (!isAdmin && tab === 'admin') setTab('account');
-  }, [isAdmin, tab]);
+    if (!adminTabVisible && tab === 'admin') setTab('account');
+  }, [adminTabVisible, tab]);
 
   useEffect(() => {
     if (!open) return;
@@ -291,15 +326,29 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
         setOpen(v);
       }}
     >
-      <DialogContent className="max-w-6xl w-[min(1180px,94vw)] h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden">
+      <DialogContent
+        overlayProps={{
+          'data-monochrome-overlay': 'settings-modal',
+          'data-sakura-overlay': 'settings-modal',
+          className:
+            '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
+        }}
+        className="mc7f-settings-modal w-[min(1180px,94vw)] max-w-6xl h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden motion-reduce:!left-0 motion-reduce:!right-0 motion-reduce:!top-[round(nearest,calc(50vh-min(380px,45vh)),1px)] motion-reduce:!bottom-auto motion-reduce:!mx-auto motion-reduce:!my-0 motion-reduce:!transform-none [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none"
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Configure your account, providers, appearance, voice, hotkeys, and telemetry.
         </DialogDescription>
 
-        <div className="flex-1 min-h-0 grid grid-cols-[220px_1fr] grid-rows-[1fr]">
-          <aside className="border-r border-border bg-panel flex flex-col min-h-0">
-            <div className="px-4 py-4 shrink-0">
+        <div
+          className="flex-1 min-h-0 grid grid-cols-[220px_1fr] grid-rows-[1fr]"
+          data-sakura-surface="settings-layout"
+        >
+          <aside
+            className="border-r border-border bg-panel flex flex-col min-h-0"
+            data-sakura-surface="settings-navigation"
+          >
+            <div className="flex h-[54px] shrink-0 items-center px-4 py-0">
               <span className="text-ui-strong text-foreground">Settings</span>
             </div>
             <nav
@@ -323,7 +372,7 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
                     onFocus={() => prefetchSettingsTab(t.id)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'group flex items-center gap-2 rounded-md px-2.5 py-1.5 text-secondary text-left transition-colors',
+                      'group flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 py-0 text-secondary text-left transition-colors',
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                       active
                         ? 'bg-elevated text-foreground'
@@ -332,10 +381,7 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
                   >
                     {BrandIcon ? (
                       <BrandIcon
-                        className={cn(
-                          'h-6 w-6 shrink-0',
-                          active ? 'opacity-100' : 'opacity-70',
-                        )}
+                        className={cn('h-6 w-6 shrink-0', active ? 'opacity-100' : 'opacity-70')}
                       />
                     ) : (
                       <Icon
@@ -345,14 +391,18 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
                         )}
                       />
                     )}
-                    <span className="flex-1 truncate">{t.label}</span>
+                    <span className="h-4 flex-1 truncate leading-4">{t.label}</span>
                   </button>
                 );
               })}
             </nav>
           </aside>
 
-          <main className="overflow-y-auto px-6 py-6 min-h-0" role="tablist">
+          <main
+            className="overflow-y-auto px-6 py-6 min-h-0"
+            role="tablist"
+            data-sakura-surface="settings-content"
+          >
             <SettingsTabPanels tab={tab} visited={visitedTabs} />
           </main>
         </div>

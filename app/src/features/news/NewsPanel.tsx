@@ -9,15 +9,8 @@
  * Content is 100% preloaded static catalog — no network news API.
  */
 import * as React from 'react';
-import {
-  ExternalLink,
-  Newspaper,
-  Play,
-  Sparkles,
-  X,
-  Cpu,
-  Radio,
-} from 'lucide-react';
+import './sakura-news.css';
+import { ExternalLink, Newspaper, Play, Sparkles, X, Cpu, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { openExternal } from '@/lib/tauri';
@@ -28,17 +21,14 @@ import {
   type NewsKind,
   type NewsSectionId,
 } from './newsCatalog';
-import {
-  countNewsBySection,
-  formatNewsDate,
-  getNewsFeed,
-} from './newsSections';
+import { countNewsBySection, formatNewsDate, getNewsFeed } from './newsSections';
 
 export interface NewsPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Optional clock override for tests / demos. */
   now?: Date;
+  runtimeEffectsEnabled?: boolean;
 }
 
 type KindFilter = NewsKind | 'all';
@@ -58,10 +48,17 @@ function KindIcon({ kind, className }: { kind: NewsKind; className?: string }) {
   return <Radio className={className} />;
 }
 
-function NewsCard({ item }: { item: NewsItem }) {
+function NewsCard({
+  item,
+  runtimeEffectsEnabled,
+}: {
+  item: NewsItem;
+  runtimeEffectsEnabled: boolean;
+}) {
   const [imgFailed, setImgFailed] = React.useState(false);
 
   const open = () => {
+    if (!runtimeEffectsEnabled) return;
     void openExternal(item.url);
   };
 
@@ -79,7 +76,7 @@ function NewsCard({ item }: { item: NewsItem }) {
         aria-label={`Open: ${item.title}`}
       >
         <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-          {!imgFailed ? (
+          {runtimeEffectsEnabled && !imgFailed ? (
             <img
               src={item.imageUrl}
               alt=""
@@ -90,26 +87,23 @@ function NewsCard({ item }: { item: NewsItem }) {
               onError={() => setImgFailed(true)}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-paper-soft to-muted">
-              <Newspaper className="h-8 w-8 text-muted-foreground/50" />
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-paper-soft to-muted [html[data-theme=monochrome]_&]:bg-none">
+              <Newspaper className="h-8 w-8 text-muted-foreground/50 [html[data-theme=monochrome]_&]:text-muted-foreground" />
             </div>
           )}
           <span
             className={cn(
               'absolute left-2 top-2 inline-flex items-center gap-1 rounded-full',
               'border border-border/60 bg-panel/90 px-2 py-0.5',
-              'text-metadata font-medium text-foreground backdrop-blur-sm',
+              'text-metadata font-medium text-foreground backdrop-blur-sm [html[data-theme=monochrome]_&]:backdrop-blur-none',
             )}
           >
             <KindIcon kind={item.kind} className="h-3 w-3 text-accent-copper" />
             {NEWS_KIND_META[item.kind].label}
           </span>
           {item.kind === 'youtube' && (
-            <span
-              aria-hidden
-              className="absolute inset-0 flex items-center justify-center"
-            >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg backdrop-blur-sm">
+            <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg backdrop-blur-sm [html[data-theme=monochrome]_&]:backdrop-blur-none">
                 <Play className="h-5 w-5 fill-current" />
               </span>
             </span>
@@ -134,7 +128,7 @@ function NewsCard({ item }: { item: NewsItem }) {
             <span aria-hidden>·</span>
             <time dateTime={item.publishedAt}>{formatNewsDate(item.publishedAt)}</time>
           </div>
-          <p className="text-[10px] leading-snug text-muted-foreground/80">
+          <p className="text-[10px] leading-snug text-muted-foreground/80 [html[data-theme=monochrome]_&]:text-muted-foreground">
             Credit: {item.credit}
             {item.imageCredit ? ` · Image: ${item.imageCredit}` : null}
           </p>
@@ -144,7 +138,12 @@ function NewsCard({ item }: { item: NewsItem }) {
   );
 }
 
-export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
+export function NewsPanel({
+  open,
+  onOpenChange,
+  now,
+  runtimeEffectsEnabled = true,
+}: NewsPanelProps) {
   const [section, setSection] = React.useState<NewsSectionId>('today');
   const [kind, setKind] = React.useState<KindFilter>('all');
 
@@ -158,7 +157,7 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
 
   // Escape closes the panel.
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || !runtimeEffectsEnabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -167,27 +166,21 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, runtimeEffectsEnabled]);
 
   const feedOptions = React.useMemo(() => ({ now, kind }), [now, kind]);
   const counts = React.useMemo(() => countNewsBySection({ now }), [now]);
-  const items = React.useMemo(
-    () => getNewsFeed(section, feedOptions),
-    [section, feedOptions],
-  );
+  const items = React.useMemo(() => getNewsFeed(section, feedOptions), [section, feedOptions]);
 
   if (!open) return null;
 
   return (
-    <div
-      className="pointer-events-none fixed inset-0 z-[70] flex justify-end"
-      role="presentation"
-    >
+    <div className="pointer-events-none fixed inset-0 z-[70] flex justify-end" role="presentation">
       {/* Soft click-catcher (does not dim the whole app heavily). */}
       <button
         type="button"
         aria-label="Close news panel"
-        className="pointer-events-auto absolute inset-0 bg-black/20 backdrop-blur-[1px]"
+        className="pointer-events-auto absolute inset-0 bg-black/20 backdrop-blur-[1px] [html[data-theme=monochrome]_&]:backdrop-blur-none"
         onClick={() => onOpenChange(false)}
       />
 
@@ -197,6 +190,7 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
         aria-labelledby="news-panel-title"
         className={cn(
           'pointer-events-auto relative flex h-full w-[min(420px,100vw)] flex-col',
+          'sakura-news-panel',
           'border-l border-border bg-elevated shadow-2xl',
           'animate-in slide-in-from-right duration-200',
         )}
@@ -256,7 +250,9 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
                   <span
                     className={cn(
                       'ml-1 tabular-nums',
-                      active ? 'text-accent-copper/80' : 'text-muted-foreground/70',
+                      active
+                        ? 'text-accent-copper/80 [html[data-theme=monochrome]_&]:text-accent-copper'
+                        : 'text-muted-foreground/70 [html[data-theme=monochrome]_&]:text-muted-foreground',
                     )}
                   >
                     {counts[id]}
@@ -295,8 +291,8 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
             {NEWS_SECTION_META[section].description}
           </p>
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-paper/50 px-4 py-12 text-center">
-              <Newspaper className="h-7 w-7 text-muted-foreground/50" />
+            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-paper/50 px-4 py-12 text-center" data-sakura-state="empty">
+              <Newspaper className="h-7 w-7 text-muted-foreground/50 [html[data-theme=monochrome]_&]:text-muted-foreground" />
               <p className="text-secondary text-muted-foreground">
                 Nothing in {NEWS_SECTION_META[section].label.toLowerCase()} yet.
               </p>
@@ -312,7 +308,7 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
             <ul className="flex flex-col gap-3">
               {items.map((item) => (
                 <li key={item.id}>
-                  <NewsCard item={item} />
+                  <NewsCard item={item} runtimeEffectsEnabled={runtimeEffectsEnabled} />
                 </li>
               ))}
             </ul>
@@ -321,8 +317,8 @@ export function NewsPanel({ open, onOpenChange, now }: NewsPanelProps) {
 
         <footer className="shrink-0 border-t border-border bg-paper-soft px-4 py-2">
           <p className="text-[10px] leading-snug text-muted-foreground">
-            Curated offline snapshot. Stories open in your browser. Images and copy credited to
-            the original publishers (OpenAI, Meta, CNBC, Euronews, YouTube creators, etc.).
+            Curated offline snapshot. Stories open in your browser. Images and copy credited to the
+            original publishers (OpenAI, Meta, CNBC, Euronews, YouTube creators, etc.).
           </p>
         </footer>
       </aside>

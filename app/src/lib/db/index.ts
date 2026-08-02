@@ -9,12 +9,12 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V2 migration: Dexie sees DB_VERSION=2 and the V2 store list, then
- * auto-creates the new tables next time the user opens the app. No data is
- * touched in the V1 tables. New install paths skip straight to V2.
+ * V1 → V9 migrations preserve every existing row. Dexie replays each version's store
+ * list, creates the newer tables, and leaves every existing row untouched.
+ * New installs open directly on V9.
  */
 
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
 import type { Agent } from '@/types/agent';
 import type { Chat, Message } from '@/types/chat';
 import type { EventRow } from '@/types/event';
@@ -30,10 +30,46 @@ import type {
 } from '@/types/terminal';
 import {
   DB_NAME,
-  DB_VERSION,
   STORES_V1,
   STORES_V2,
+  STORES_V3,
+  STORES_V4,
+  STORES_V5,
+  STORES_V6,
+  STORES_V7,
+  STORES_V8,
+  STORES_V9,
+  type CanvasAssetRow,
+  type CanvasCameraRow,
+  type CanvasDocumentRow,
+  type CanvasObjectRow,
+  type CanvasPageRow,
+  type CanvasRecoveryRow,
+  type CanvasRevisionRow,
+  type CanvasSpatialRow,
+  type CanvasTemplateRow,
+  type CanvasTombstoneRow,
+  type ContextAssetRow,
+  type ContextEmbeddingRow,
+  type ContextEdgeRow,
+  type ContextEntityRow,
+  type ContextMapRow,
+  type ContextMigrationBackupRow,
+  type ContextNoteRevisionRow,
+  type ContextNoteRow,
+  type ContextProvenanceRow,
+  type ContextQuarantineRow,
+  type ContextSourceRow,
+  type JarvisApprovalRow,
+  type JarvisArtifactRow,
+  type JarvisEventRow,
+  type JarvisIdentityRevisionRow,
+  type JarvisProfileRow,
+  type JarvisRunRow,
+  type MemoryEvidenceHistoryRow,
+  type MemoryEvidenceRow,
   type Project,
+  type PromptForgeJobRow,
   type SettingsRow,
   type SyncQueueRow,
   type Workspace,
@@ -44,7 +80,12 @@ import {
  * keyed on the row's primary key field, which gives us proper typing on
  * `db.tasks.get(id)`, `.add(row)`, `.update(id, patch)` etc.
  */
-class JarvisDexie extends Dexie {
+export type JarvisDexieDependencies = {
+  indexedDB: IDBFactory;
+  IDBKeyRange: typeof IDBKeyRange;
+};
+
+export class JarvisDexie extends Dexie {
   // V1 tables
   workspaces!: EntityTable<Workspace, 'id'>;
   projects!: EntityTable<Project, 'id'>;
@@ -52,7 +93,7 @@ class JarvisDexie extends Dexie {
   messages!: EntityTable<Message, 'id'>;
   agents!: EntityTable<Agent, 'id'>;
   tasks!: EntityTable<Task, 'id'>;
-  memory_items!: EntityTable<MemoryItem, 'id'>;
+  memory_items!: EntityTable<MemoryItem | MemoryEvidenceRow, 'id'>;
   settings!: EntityTable<SettingsRow, 'key'>;
   sync_queue!: EntityTable<SyncQueueRow, 'id'>;
 
@@ -71,12 +112,69 @@ class JarvisDexie extends Dexie {
   terminal_layouts!: EntityTable<TerminalLayout, 'project_id'>;
   integrations!: EntityTable<Integration, 'id'>;
 
-  constructor() {
-    super(DB_NAME);
-    // Replay history so existing V1 users auto-migrate to V2.
+  // V3 kernel tables (additive)
+  jarvis_identity_revisions!: EntityTable<JarvisIdentityRevisionRow, 'id'>;
+  jarvis_profiles!: EntityTable<JarvisProfileRow, 'id'>;
+  jarvis_runs!: EntityTable<JarvisRunRow, 'id'>;
+  jarvis_events!: Table<JarvisEventRow, [string, number]>;
+  jarvis_approvals!: EntityTable<JarvisApprovalRow, 'id'>;
+  jarvis_artifacts!: EntityTable<JarvisArtifactRow, 'id'>;
+
+  // V4 Context Map 2.0 tables (additive)
+  context_maps!: EntityTable<ContextMapRow, 'id'>;
+  context_sources!: EntityTable<ContextSourceRow, 'id'>;
+  context_entities!: EntityTable<ContextEntityRow, 'id'>;
+  context_edges!: EntityTable<ContextEdgeRow, 'id'>;
+  context_provenance!: EntityTable<ContextProvenanceRow, 'id'>;
+  context_migration_backups!: EntityTable<ContextMigrationBackupRow, 'id'>;
+  context_quarantine!: EntityTable<ContextQuarantineRow, 'id'>;
+
+  // V5 Context content metadata tables (additive)
+  context_notes!: EntityTable<ContextNoteRow, 'id'>;
+  context_note_revisions!: EntityTable<ContextNoteRevisionRow, 'id'>;
+  context_assets!: EntityTable<ContextAssetRow, 'id'>;
+
+  // V6 local Context semantic-search metadata (additive)
+  context_embeddings!: EntityTable<ContextEmbeddingRow, 'id'>;
+
+  // V7 Prompt Forge recovery table (additive)
+  prompt_forge_jobs!: EntityTable<PromptForgeJobRow, 'id'>;
+
+  // V8 Infinite Idea Canvas tables (additive)
+  canvas_documents!: EntityTable<CanvasDocumentRow, 'id'>;
+  canvas_pages!: EntityTable<CanvasPageRow, 'id'>;
+  canvas_objects!: EntityTable<CanvasObjectRow, 'id'>;
+  canvas_spatial!: EntityTable<CanvasSpatialRow, 'id'>;
+  canvas_cameras!: EntityTable<CanvasCameraRow, 'documentId'>;
+  canvas_assets!: EntityTable<CanvasAssetRow, 'id'>;
+  canvas_templates!: EntityTable<CanvasTemplateRow, 'id'>;
+  canvas_revisions!: EntityTable<CanvasRevisionRow, 'id'>;
+  canvas_tombstones!: EntityTable<CanvasTombstoneRow, 'id'>;
+  canvas_recovery!: EntityTable<CanvasRecoveryRow, 'id'>;
+
+  // V9 curated memory evidence history (memory items remain in memory_items)
+  memory_evidence_history!: EntityTable<MemoryEvidenceHistoryRow, 'id'>;
+
+  constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
+    super(name, dependencies);
+    // Replay every additive schema version for existing installations.
     this.version(1).stores(STORES_V1);
-    this.version(DB_VERSION).stores(STORES_V2);
+    this.version(2).stores(STORES_V2);
+    this.version(3).stores(STORES_V3);
+    this.version(4).stores(STORES_V4);
+    this.version(5).stores(STORES_V5);
+    this.version(6).stores(STORES_V6);
+    this.version(7).stores(STORES_V7);
+    this.version(8).stores(STORES_V8);
+    this.version(9).stores(STORES_V9);
   }
+}
+
+export function createJarvisDb(
+  name = DB_NAME,
+  dependencies?: JarvisDexieDependencies,
+): JarvisDexie {
+  return new JarvisDexie(name, dependencies);
 }
 
 /**
@@ -84,7 +182,7 @@ class JarvisDexie extends Dexie {
  * underlying IndexedDB connection - the first read or write triggers it,
  * or call `openDb()` explicitly during bootstrap.
  */
-export const db: JarvisDexie = new JarvisDexie();
+export const db: JarvisDexie = createJarvisDb();
 
 let _openPromise: Promise<JarvisDexie> | null = null;
 
@@ -109,7 +207,38 @@ export async function closeDb(): Promise<void> {
 }
 
 export { DB_NAME, DB_VERSION } from './schema';
-export type { Workspace, Project, SettingsRow, SyncQueueRow, SyncOp, SyncStatus, StoreName } from './schema';
+export type {
+  Workspace,
+  Project,
+  SettingsRow,
+  SyncQueueRow,
+  SyncOp,
+  SyncStatus,
+  StoreName,
+  ContextMapRow,
+  ContextSourceRow,
+  ContextEntityRow,
+  ContextEdgeRow,
+  ContextProvenanceRow,
+  ContextMigrationBackupRow,
+  ContextQuarantineRow,
+  ContextNoteRow,
+  ContextNoteRevisionRow,
+  ContextAssetRow,
+  ContextEmbeddingRow,
+  PromptForgeJobRow,
+  MemoryEvidenceRow,
+  MemoryEvidenceHistoryRow,
+  CanvasDocumentRow,
+  CanvasPageRow,
+  CanvasObjectRow,
+  CanvasSpatialRow,
+  CanvasCameraRow,
+  CanvasAssetRow,
+  CanvasTemplateRow,
+  CanvasRevisionRow,
+  CanvasTombstoneRow,
+  CanvasRecoveryRow,
+} from './schema';
 export * from './repositories';
-export { seedIfEmpty, DEFAULT_AGENT_SEEDS } from './seed';
-
+export { seedIfEmpty } from './seed';

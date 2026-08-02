@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { PersonaPreset } from '@/types/common';
+import type { VoiceSessionBinding } from './voiceSessionBinding';
 
 /**
  * Voice-feature local state. Distinct from the global `useUIStore`:
@@ -39,6 +40,8 @@ interface VoiceStore {
   finalTranscript: FinalTranscript[];
   /** Active persona preset (mirrored from auth store but cached locally). */
   persona: PersonaPreset;
+  /** Immutable account/chat identity captured when this voice session opened. */
+  session: Readonly<VoiceSessionBinding> | null;
 
   // Actions
   setState: (s: VoiceState, errorMessage?: string) => void;
@@ -46,6 +49,13 @@ interface VoiceStore {
   pushFinalTranscript: (text: string) => void;
   clearTranscripts: () => void;
   setPersona: (p: PersonaPreset) => void;
+  beginSession: (binding: Readonly<VoiceSessionBinding>) => boolean;
+  setSessionRun: (
+    runId: string | undefined,
+    expectedSessionId?: string,
+    expectedActiveRunId?: string | null,
+  ) => boolean;
+  endSession: (expectedSessionId?: string) => boolean;
   reset: () => void;
 }
 
@@ -55,6 +65,7 @@ const defaults = {
   partialTranscript: '',
   finalTranscript: [] as FinalTranscript[],
   persona: 'jarvis' as PersonaPreset,
+  session: null as Readonly<VoiceSessionBinding> | null,
 };
 
 export const useVoiceStore = create<VoiceStore>((set) => ({
@@ -63,7 +74,7 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
   setState: (s, errorMessage) =>
     set({
       state: s,
-      errorMessage: s === 'error' ? errorMessage ?? 'Voice error' : null,
+      errorMessage: s === 'error' ? (errorMessage ?? 'Voice error') : null,
     }),
 
   setPartialTranscript: (text) => set({ partialTranscript: text }),
@@ -82,6 +93,60 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
   clearTranscripts: () => set({ partialTranscript: '', finalTranscript: [] }),
 
   setPersona: (p) => set({ persona: p }),
+
+  beginSession: (binding) => {
+    if (!Object.isFrozen(binding)) throw new Error('voice_session_binding_invalid');
+    let accepted = false;
+    set((state) => {
+      if (state.session) return state;
+      accepted = true;
+      return { session: binding };
+    });
+    return accepted;
+  },
+
+  setSessionRun: (runId, expectedSessionId, expectedActiveRunId) => {
+    let applied = false;
+    set((state) => {
+      if (!state.session) return state;
+      if (expectedSessionId !== undefined && state.session.sessionId !== expectedSessionId) {
+        return state;
+      }
+      if (
+        expectedActiveRunId !== undefined &&
+        (expectedActiveRunId === null
+          ? state.session.activeRunId !== undefined
+          : state.session.activeRunId !== expectedActiveRunId)
+      ) {
+        return state;
+      }
+      if (runId !== undefined && (!runId || runId.trim() !== runId)) {
+        throw new Error('voice_session_run_invalid');
+      }
+      applied = true;
+      const { activeRunId: _activeRunId, ...binding } = state.session;
+      return {
+        session: Object.freeze({
+          ...binding,
+          ...(runId === undefined ? {} : { activeRunId: runId }),
+        }),
+      };
+    });
+    return applied;
+  },
+
+  endSession: (expectedSessionId) => {
+    let applied = false;
+    set((state) => {
+      if (!state.session) return state;
+      if (expectedSessionId !== undefined && state.session.sessionId !== expectedSessionId) {
+        return state;
+      }
+      applied = true;
+      return { session: null };
+    });
+    return applied;
+  },
 
   reset: () => set(defaults),
 }));

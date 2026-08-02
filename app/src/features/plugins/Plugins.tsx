@@ -1,4 +1,5 @@
 import * as React from 'react';
+import './sakura-plugins.css';
 import {
   CheckCircle2,
   ExternalLink,
@@ -24,11 +25,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/toast';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { openExternal } from '@/lib/tauri';
+import { useAuthStore } from '@/stores/auth';
 import { PLUGIN_CATALOG } from './catalog';
-import { deletePluginCredential, setPluginCredential } from './credentials';
+import { usePluginManagementCapability } from './managementContext';
 import { pluginSearchBlob } from './providerRegistry';
-import { testPluginConnection } from './runtime';
-import { usePluginStore } from './store';
+import { selectPluginConnectionsForAccount, usePluginStore } from './store';
 import type { PluginConnection, PluginManifest } from './types';
 import { isConnectableStatus } from './types';
 import { PluginLogo } from './PluginLogo';
@@ -47,7 +50,10 @@ function defaultConnectionState(plugin: PluginManifest): PluginConnection['state
   return isConnectableStatus(plugin.status) ? 'not_connected' : 'needs_setup';
 }
 
-function statusBadgeLabel(plugin: PluginManifest, connectionState: PluginConnection['state']): string {
+function statusBadgeLabel(
+  plugin: PluginManifest,
+  connectionState: PluginConnection['state'],
+): string {
   if (plugin.status === 'needs_credentials' || plugin.status === 'blocked') {
     if (connectionState === 'connected') return STATUS_LABELS.connected;
     if (connectionState === 'error') return STATUS_LABELS.error;
@@ -60,7 +66,10 @@ function statusBadgeLabel(plugin: PluginManifest, connectionState: PluginConnect
 }
 
 export function Plugins() {
-  const connections = usePluginStore((state) => state.connections);
+  const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? '');
+  const connections = usePluginStore((state) =>
+    selectPluginConnectionsForAccount(state, accountId),
+  );
   const setEnabled = usePluginStore((state) => state.setEnabled);
   const [query, setQuery] = React.useState('');
   const [filter, setFilter] = React.useState<Filter>('all');
@@ -90,14 +99,14 @@ export function Plugins() {
   ).length;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="mc7f-plugins flex flex-col gap-5 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-page-title text-foreground">Plugins</h2>
           <p className="mt-1 max-w-2xl text-secondary text-muted-foreground">
             Connect external services and expose controlled capabilities to Jarvis agents working in
-            terminals. Credentials stay in the operating-system keychain on desktop
-            (browser preview keeps them in memory for the session only).
+            terminals. Credentials stay in the operating-system keychain on desktop (browser preview
+            keeps them in memory for the session only).
           </p>
         </div>
         <Badge variant={connectedCount ? 'success' : 'outline'}>{connectedCount} connected</Badge>
@@ -141,7 +150,7 @@ export function Plugins() {
           const connectionState = connection?.state ?? defaultConnectionState(plugin);
           const badgeLabel = statusBadgeLabel(plugin, connectionState);
           return (
-            <Card key={plugin.id} data-testid={`plugin-card-${plugin.id}`}>
+            <Card key={plugin.id} data-testid={`plugin-card-${plugin.id}`} data-sakura-surface="plugin-card" data-sakura-state={connectionState}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -187,7 +196,9 @@ export function Plugins() {
                     <label className="flex items-center gap-2 text-secondary text-muted-foreground">
                       <Switch
                         checked={connection.enabled}
-                        onCheckedChange={(enabled) => setEnabled(plugin.id, enabled)}
+                        onCheckedChange={(enabled) => {
+                          if (accountId) setEnabled(accountId, plugin.id, enabled);
+                        }}
                         aria-label={`Enable ${plugin.name} for terminal agents`}
                       />
                       Terminal access
@@ -222,26 +233,33 @@ export function Plugins() {
       </div>
 
       {visible.length === 0 && (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center text-secondary text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border p-10 text-center text-secondary text-muted-foreground" data-sakura-state="empty">
           No plugins match this search.
         </div>
       )}
 
-      <PluginSetupDialog plugin={selected} onClose={() => setSelected(null)} />
+      <PluginSetupDialog
+        accountId={accountId}
+        plugin={selected}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }
 
 function PluginSetupDialog({
+  accountId,
   plugin,
   onClose,
 }: {
+  accountId: string;
   plugin: PluginManifest | null;
   onClose: () => void;
 }) {
-  const connection = usePluginStore((state) => (plugin ? state.connections[plugin.id] : undefined));
-  const upsertConnection = usePluginStore((state) => state.upsertConnection);
-  const removeConnection = usePluginStore((state) => state.removeConnection);
+  const management = usePluginManagementCapability();
+  const connection = usePluginStore((state) =>
+    plugin ? selectPluginConnectionsForAccount(state, accountId)[plugin.id] : undefined,
+  );
   const [draft, setDraft] = React.useState<Record<string, string>>({});
   const [testing, setTesting] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -264,17 +282,25 @@ function PluginSetupDialog({
 
   function openProviderConnect() {
     if (!activePlugin.credentialUrl) return;
-    window.open(activePlugin.credentialUrl, '_blank', 'noopener,noreferrer');
-    toast.info(
-      `${activePlugin.provider} opened`,
-      requiresLocalCredential
-        ? 'Finish the provider setup in your browser, then paste the returned credential here.'
-        : 'Finish the provider authorization in your browser, then return to VibeSpace.',
+    setError('');
+    void openExternal(activePlugin.credentialUrl).then(
+      () =>
+        toast.info(
+          `${activePlugin.provider} opened`,
+          requiresLocalCredential
+            ? 'Finish the provider setup in your browser, then paste the returned credential here.'
+            : 'Finish the provider authorization in your browser, then return to VibeSpace.',
+        ),
+      () => setError(`Could not open the ${activePlugin.provider} setup page.`),
     );
   }
 
   async function connect() {
     setError('');
+    if (!accountId || !management) {
+      setError('Plugin management is unavailable until account setup finishes.');
+      return;
+    }
     for (const field of activePlugin.fields) {
       if (field.required && !draft[field.id]?.trim() && !configuredFields.has(field.id)) {
         setError(`${field.label} is required.`);
@@ -285,29 +311,22 @@ function PluginSetupDialog({
     try {
       for (const field of activePlugin.fields) {
         const value = draft[field.id]?.trim();
-        if (value) await setPluginCredential(activePlugin.id, field.id, value);
+        if (value) {
+          await management.saveCredential({
+            accountId,
+            pluginId: activePlugin.id,
+            fieldId: field.id,
+            value,
+          });
+        }
       }
-      const result = await testPluginConnection(activePlugin.id);
+      const result = await management.testConnection({
+        accountId,
+        pluginId: activePlugin.id,
+      });
       const configured = activePlugin.fields
         .filter((field) => Boolean(draft[field.id]?.trim()) || configuredFields.has(field.id))
         .map((field) => field.id);
-      const nextState: PluginConnection['state'] = result.ok
-        ? 'connected'
-        : hasAutomatedTest
-          ? 'error'
-          : 'needs_setup';
-      const next: PluginConnection = {
-        pluginId: activePlugin.id,
-        state: nextState,
-        enabled: result.ok ? (connection?.enabled ?? true) : false,
-        enabledProjectIds: connection?.enabledProjectIds ?? ['*'],
-        accountLabel: result.accountLabel,
-        error: result.ok ? undefined : result.error,
-        lastTestedAt: Date.now(),
-        configuredFields: configured,
-        updatedAt: Date.now(),
-      };
-      upsertConnection(next);
       if (!result.ok) {
         setError(result.error ?? 'Connection test failed.');
         if (!hasAutomatedTest && configured.length > 0) {
@@ -326,12 +345,13 @@ function PluginSetupDialog({
   }
 
   async function disconnect() {
+    if (!accountId || !management) {
+      setError('Plugin management is unavailable until account setup finishes.');
+      return;
+    }
     setTesting(true);
     try {
-      await Promise.all(
-        activePlugin.fields.map((field) => deletePluginCredential(activePlugin.id, field.id)),
-      );
-      removeConnection(activePlugin.id);
+      await management.disconnect({ accountId, pluginId: activePlugin.id });
       toast.success(
         `${activePlugin.name} disconnected`,
         'Saved credentials were removed from the keychain.',
@@ -344,12 +364,14 @@ function PluginSetupDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="sakura-plugin-dialog max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PluginLogo plugin={plugin} size="sm" />
             <span>
-              {connection?.state === 'connected' ? `Manage ${plugin.name}` : `Connect ${plugin.name}`}
+              {connection?.state === 'connected'
+                ? `Manage ${plugin.name}`
+                : `Connect ${plugin.name}`}
             </span>
           </DialogTitle>
           <DialogDescription>{plugin.help}</DialogDescription>
@@ -366,9 +388,28 @@ function PluginSetupDialog({
             </p>
           </div>
 
+          {(plugin.requiredScopes?.length ?? 0) > 0 && (
+            <div className="rounded-md border border-accent-cyan/25 bg-accent-cyan/5 p-3">
+              <p className="text-secondary font-medium text-foreground">Required provider scopes</p>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                VibeSpace uses only these declared permissions for this connector.
+              </p>
+              <ul className="mt-2 flex flex-col gap-1" aria-label="Required provider scopes">
+                {plugin.requiredScopes?.map((scope) => (
+                  <li
+                    key={scope}
+                    className="break-all rounded border border-border/70 bg-background/60 px-2 py-1 font-mono text-metadata text-foreground"
+                  >
+                    {scope}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {plugin.credentialUrl && (
-            <div className="relative overflow-hidden rounded-2xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/10 via-elevated to-purple-500/10 p-4">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-accent-cyan/20 blur-3xl" />
+            <div className="mc7f-plugins-credential-hero relative overflow-hidden rounded-2xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/10 via-elevated to-purple-500/10 p-4 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:bg-none">
+              <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-accent-cyan/20 blur-3xl [html[data-theme=monochrome]_&]:hidden" />
               <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-ui-strong text-foreground">
@@ -408,9 +449,12 @@ function PluginSetupDialog({
               <div className="mb-3 flex items-start gap-2">
                 <ShieldCheck className="mt-0.5 h-4 w-4 text-success" />
                 <div>
-                  <p className="text-secondary font-medium text-foreground">Secure credential storage</p>
+                  <p className="text-secondary font-medium text-foreground">
+                    Secure credential storage
+                  </p>
                   <p className="text-metadata text-muted-foreground">
-                    Values saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.
+                    Values saved here go to the OS keychain on desktop (session-only memory in
+                    browser preview). VibeSpace does not print them in logs or terminal context.
                   </p>
                 </div>
               </div>
@@ -432,7 +476,9 @@ function PluginSetupDialog({
                         setDraft((current) => ({ ...current, [field.id]: event.target.value }))
                       }
                     />
-                    {field.help && <p className="text-metadata text-muted-foreground">{field.help}</p>}
+                    {field.help && (
+                      <p className="text-metadata text-muted-foreground">{field.help}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -490,7 +536,7 @@ function PluginSetupDialog({
               <Button
                 type="button"
                 variant="destructive"
-                disabled={testing}
+                disabled={testing || !accountId || !management}
                 onClick={() => void disconnect()}
               >
                 <Unplug className="h-4 w-4" /> Disconnect
@@ -501,7 +547,11 @@ function PluginSetupDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            <Button type="button" disabled={testing} onClick={() => void connect()}>
+            <Button
+              type="button"
+              disabled={testing || !accountId || !management}
+              onClick={() => void connect()}
+            >
               {testing && <Loader2 className="h-4 w-4 animate-spin" />}
               {connection ? 'Test Connection' : 'Connect'}
             </Button>

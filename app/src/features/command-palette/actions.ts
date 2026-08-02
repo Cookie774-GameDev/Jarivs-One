@@ -5,6 +5,7 @@ import {
   CheckSquare,
   Code,
   FileText,
+  Flower2,
   History,
   Grid2X2Plus,
   LayoutGrid,
@@ -24,7 +25,7 @@ import {
   Settings,
   Smartphone,
   Globe2,
-  Sun,
+  Terminal,
   User,
   Users,
 } from 'lucide-react';
@@ -152,6 +153,18 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
+    id: 'open-canvas',
+    label: 'Open Infinite Canvas',
+    description: 'Open the local-first page and edgeless idea workspace',
+    icon: LayoutGrid,
+    page: 'root',
+    keywords: ['infinite', 'idea', 'whiteboard', 'diagram', 'sketch', 'board'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('canvas');
+      closePalette();
+    },
+  },
+  {
     id: 'open-preview-studio',
     label: 'Open Preview Studio',
     description: 'Responsive device previews for local servers and HTML',
@@ -196,10 +209,10 @@ const STATIC_ACTIONS: Action[] = [
   {
     id: 'theme',
     label: 'Theme...',
-    description: 'Dark, light, or system',
+    description: 'Jarvis Core, VibeSpace, Default, MonoChrome, or Sakura',
     icon: Palette,
     page: 'root',
-    keywords: ['dark', 'light', 'appearance', 'color'],
+    keywords: ['jarvis', 'vibespace', 'default', 'monochrome', 'sakura', 'appearance', 'color'],
     perform: ({ pushPage }) => pushPage('theme'),
   },
   {
@@ -355,13 +368,13 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
-    id: 'theme-light',
-    label: 'Light',
-    icon: Sun,
+    id: 'theme-monochrome',
+    label: 'MonoChrome',
+    icon: Terminal,
     page: 'theme',
-    keywords: ['day'],
+    keywords: ['terminal', 'console'],
     perform: ({ closePalette }) => {
-      useUIStore.getState().setTheme('light');
+      useUIStore.getState().setTheme('monochrome');
       closePalette();
     },
   },
@@ -373,6 +386,17 @@ const STATIC_ACTIONS: Action[] = [
     keywords: ['orange', 'black', 'reference'],
     perform: ({ closePalette }) => {
       useUIStore.getState().setTheme('jarvis');
+      closePalette();
+    },
+  },
+  {
+    id: 'theme-sakura',
+    label: 'Sakura',
+    icon: Flower2,
+    page: 'theme',
+    keywords: ['cel-painted', 'flower'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setTheme('sakura');
       closePalette();
     },
   },
@@ -399,13 +423,19 @@ const STATIC_ACTIONS: Action[] = [
       // do anything useful - fail with a clear message instead of dropping
       // the user into an empty grid.
       if (import.meta.env.VITE_ENABLE_COUNCIL === 'false') {
-        toast.warning('Council disabled', 'Set VITE_ENABLE_COUNCIL=true in your build environment to enable Council mode.');
+        toast.warning(
+          'Council disabled',
+          'Set VITE_ENABLE_COUNCIL=true in your build environment to enable Council mode.',
+        );
         closePalette();
         return;
       }
       const agentCount = Object.keys(useAgentStore.getState().agents).length;
       if (agentCount < 2) {
-        toast.warning('Council needs 2+ agents', 'Create at least two agents on the Agents page, then switch to Council.');
+        toast.warning(
+          'Council needs 2+ agents',
+          'Create at least two agents on the Agents page, then switch to Council.',
+        );
         closePalette();
         return;
       }

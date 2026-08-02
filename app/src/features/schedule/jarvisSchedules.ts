@@ -12,6 +12,34 @@ export type JarvisScheduleRecurrence =
   | 'custom_interval'
   | 'custom_days';
 
+export type JarvisScheduleRunHistoryStatus =
+  | 'dispatched'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out';
+
+export interface JarvisScheduleRunHistoryEntryV1 {
+  schemaVersion: 1;
+  at: number;
+  runId: string;
+  requestId: string;
+  status: JarvisScheduleRunHistoryStatus;
+  summary?: string;
+}
+
+export interface JarvisScheduleLegacyRunHistoryEntry {
+  schemaVersion: 0;
+  at: number;
+  status: 'success' | 'error';
+  summary?: string;
+}
+
+export type JarvisScheduleRunHistoryEntry =
+  | JarvisScheduleRunHistoryEntryV1
+  | JarvisScheduleLegacyRunHistoryEntry;
+
 export interface JarvisScheduleMetadata {
   kind: 'jarvis_schedule';
   prompt: string;
@@ -23,7 +51,7 @@ export interface JarvisScheduleMetadata {
   nextRunAt?: number;
   /** Dedicated chat that collects this action's outputs. Created on first run. */
   outputChatId?: string;
-  runHistory: Array<{ at: number; status: 'success' | 'error'; summary?: string }>;
+  runHistory: JarvisScheduleRunHistoryEntry[];
   errorHistory: Array<{ at: number; error: string }>;
 }
 
@@ -34,7 +62,10 @@ export interface JarvisScheduleMetadata {
  */
 export const JARVIS_SCHEDULE_HISTORY_CAP = 20;
 
-export function withJarvisScheduleMetadata(event: EventRow, metadata: JarvisScheduleMetadata): Partial<EventRow> {
+export function withJarvisScheduleMetadata(
+  event: EventRow,
+  metadata: JarvisScheduleMetadata,
+): Partial<EventRow> {
   const bounded: JarvisScheduleMetadata = {
     ...metadata,
     runHistory: metadata.runHistory.slice(-JARVIS_SCHEDULE_HISTORY_CAP),
@@ -53,7 +84,59 @@ export function withJarvisScheduleMetadata(event: EventRow, metadata: JarvisSche
 }
 
 export function serializeJarvisScheduleMetadata(metadata: JarvisScheduleMetadata): string {
-  return `jarvis_schedule:${JSON.stringify(metadata)}`;
+  return `jarvis_schedule:${JSON.stringify({
+    ...metadata,
+    runHistory: metadata.runHistory.map((entry) => {
+      if (entry.schemaVersion === 1) return entry;
+      const { schemaVersion: _schemaVersion, ...legacy } = entry;
+      return legacy;
+    }),
+  })}`;
+}
+
+function normalizeRunHistory(value: unknown): JarvisScheduleRunHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry): JarvisScheduleRunHistoryEntry[] => {
+    if (!entry || typeof entry !== 'object') return [];
+    const record = entry as Record<string, unknown>;
+    if (!Number.isFinite(record.at)) return [];
+    const summary = typeof record.summary === 'string' ? record.summary : undefined;
+    if (
+      record.schemaVersion === 1 &&
+      typeof record.runId === 'string' &&
+      record.runId.length > 0 &&
+      typeof record.requestId === 'string' &&
+      record.requestId.length > 0 &&
+      ['dispatched', 'completed', 'partial', 'failed', 'cancelled', 'timed_out'].includes(
+        String(record.status),
+      )
+    ) {
+      return [
+        {
+          schemaVersion: 1,
+          at: record.at as number,
+          runId: record.runId,
+          requestId: record.requestId,
+          status: record.status as JarvisScheduleRunHistoryStatus,
+          ...(summary === undefined ? {} : { summary }),
+        },
+      ];
+    }
+    if (
+      (record.schemaVersion === undefined || record.schemaVersion === 0) &&
+      (record.status === 'success' || record.status === 'error')
+    ) {
+      return [
+        {
+          schemaVersion: 0,
+          at: record.at as number,
+          status: record.status,
+          ...(summary === undefined ? {} : { summary }),
+        },
+      ];
+    }
+    return [];
+  });
 }
 
 export function parseJarvisScheduleMetadata(event: EventRow): JarvisScheduleMetadata | null {
@@ -61,16 +144,24 @@ export function parseJarvisScheduleMetadata(event: EventRow): JarvisScheduleMeta
   if (!raw?.startsWith('jarvis_schedule:')) return null;
   try {
     const parsed = JSON.parse(raw.slice('jarvis_schedule:'.length)) as JarvisScheduleMetadata;
-    return parsed?.kind === 'jarvis_schedule' ? parsed : null;
+    if (parsed?.kind !== 'jarvis_schedule') return null;
+    return {
+      ...parsed,
+      runHistory: normalizeRunHistory(parsed.runHistory).slice(-JARVIS_SCHEDULE_HISTORY_CAP),
+      errorHistory: Array.isArray(parsed.errorHistory)
+        ? parsed.errorHistory.slice(-JARVIS_SCHEDULE_HISTORY_CAP)
+        : [],
+    };
   } catch {
     return null;
   }
 }
 
 export function isJarvisScheduleEvent(event: EventRow): boolean {
-  return event.source === 'ai' && (
-    Boolean(parseJarvisScheduleMetadata(event)) ||
-    Boolean(event.source_ref?.context?.id?.startsWith('jarvis_schedule:'))
+  return (
+    event.source === 'ai' &&
+    (Boolean(parseJarvisScheduleMetadata(event)) ||
+      Boolean(event.source_ref?.context?.id?.startsWith('jarvis_schedule:')))
   );
 }
 
@@ -101,7 +192,8 @@ export function buildJarvisScheduleEventInput(input: {
     recurrence: input.recurrence,
     modelSelection: input.modelSelection,
     agentId: input.agentId,
-    createdBy: input.createdBy.startsWith('agt_') || input.createdBy.includes('jarvis') ? 'jarvis' : 'user',
+    createdBy:
+      input.createdBy.startsWith('agt_') || input.createdBy.includes('jarvis') ? 'jarvis' : 'user',
     nextRunAt: input.startAt,
     runHistory: [],
     errorHistory: [],
@@ -131,15 +223,27 @@ export function buildJarvisScheduleEventInput(input: {
   };
 }
 
-export function findScheduleConflicts(events: EventRow[], startAt: number, endAt: number): EventRow[] {
-  return events.filter((event) => (
-    event.status !== 'cancelled' &&
-    event.start_at < endAt &&
-    event.end_at > startAt
-  ));
+export function findScheduleConflicts(
+  events: EventRow[],
+  startAt: number,
+  endAt: number,
+): EventRow[] {
+  return events.filter(
+    (event) => event.status !== 'cancelled' && event.start_at < endAt && event.end_at > startAt,
+  );
 }
 
-export function scheduleActionSummary(action: 'created' | 'paused' | 'resumed' | 'deleted', event: Pick<EventRow, 'title'>): string {
-  const verb = action === 'created' ? 'Created' : action === 'paused' ? 'Paused' : action === 'resumed' ? 'Resumed' : 'Deleted';
+export function scheduleActionSummary(
+  action: 'created' | 'paused' | 'resumed' | 'deleted',
+  event: Pick<EventRow, 'title'>,
+): string {
+  const verb =
+    action === 'created'
+      ? 'Created'
+      : action === 'paused'
+        ? 'Paused'
+        : action === 'resumed'
+          ? 'Resumed'
+          : 'Deleted';
   return `${verb} ${event.title}.`;
 }

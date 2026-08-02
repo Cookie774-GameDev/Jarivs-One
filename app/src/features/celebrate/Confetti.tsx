@@ -5,17 +5,24 @@ import { CELEBRATE_EVENT, type CelebrationKind } from './celebrate';
  * Cozy palette — same warm tones the rest of Jarvis uses.
  */
 const PALETTE = [
-  '#c97b6e', '#7c9870', '#d4a258', '#9d8aa8',
-  '#f5e6c8', '#d97757', '#5d7855', '#b88a3f',
+  '#c97b6e',
+  '#7c9870',
+  '#d4a258',
+  '#9d8aa8',
+  '#f5e6c8',
+  '#d97757',
+  '#5d7855',
+  '#b88a3f',
 ];
+const SAKURA_PALETTE = ['#eeabb7', '#ef6f88', '#f5cec8', '#ffd978', '#9ed0b8'];
 
 interface Particle {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  life: number;        // remaining seconds
-  maxLife: number;     // initial seconds (for alpha fade)
+  life: number; // remaining seconds
+  maxLife: number; // initial seconds (for alpha fade)
   rotation: number;
   rotationVel: number;
   color: string;
@@ -51,7 +58,12 @@ function originFor(kind: CelebrationKind, w: number, h: number): { x: number; y:
   };
 }
 
-function spawn(kind: CelebrationKind, w: number, h: number): Particle[] {
+function spawn(
+  kind: CelebrationKind,
+  w: number,
+  h: number,
+  palette: readonly string[] = PALETTE,
+): Particle[] {
   const count = countFor(kind);
   const out: Particle[] = [];
   for (let i = 0; i < count; i++) {
@@ -68,7 +80,7 @@ function spawn(kind: CelebrationKind, w: number, h: number): Particle[] {
       maxLife,
       rotation: Math.random() * Math.PI * 2,
       rotationVel: (Math.random() - 0.5) * 0.3,
-      color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+      color: palette[Math.floor(Math.random() * palette.length)],
       shape: Math.random() < 0.55 ? 'rect' : 'circle',
       size: 5 + Math.random() * 5,
     });
@@ -83,10 +95,13 @@ function spawn(kind: CelebrationKind, w: number, h: number): Particle[] {
  * and runs a requestAnimationFrame loop until the field is empty.
  * Honors `prefers-reduced-motion`: when reduced, the event is ignored.
  */
-export function Confetti() {
+export function Confetti({
+  runtimeEffectsEnabled = true,
+}: { runtimeEffectsEnabled?: boolean } = {}) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -133,8 +148,8 @@ export function Confetti() {
         }
         p.x += p.vx * fs;
         p.y += p.vy * fs;
-        p.vy += 0.36 * fs;             // gravity
-        p.vx *= Math.pow(0.995, fs);   // horizontal damping
+        p.vy += 0.36 * fs; // gravity
+        p.vx *= Math.pow(0.995, fs); // horizontal damping
         p.rotation += p.rotationVel * fs;
 
         const alpha = Math.max(0, Math.min(1, p.life / p.maxLife));
@@ -167,7 +182,9 @@ export function Confetti() {
     const onCelebrate = (e: WindowEventMap[typeof CELEBRATE_EVENT]) => {
       // Reduced motion: short-circuit the canvas; toast still fires elsewhere.
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      const fresh = spawn(e.detail.kind, cssW, cssH);
+      const palette =
+        document.documentElement.dataset.theme === 'sakura' ? SAKURA_PALETTE : PALETTE;
+      const fresh = spawn(e.detail.kind, cssW, cssH, palette);
       particles.push(...fresh);
       if (rafId === null) {
         lastTime = 0;
@@ -183,11 +200,12 @@ export function Confetti() {
       if (rafId !== null) cancelAnimationFrame(rafId);
       particles = [];
     };
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   return (
     <canvas
       ref={canvasRef}
+      data-sakura-surface="celebration-canvas"
       aria-hidden="true"
       style={{
         position: 'fixed',

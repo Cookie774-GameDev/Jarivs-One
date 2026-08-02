@@ -1,4 +1,5 @@
 import * as React from 'react';
+import './sakura-clock.css';
 import { AlarmClock, BellRing, Clock, TimerReset, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,7 +55,7 @@ export function ClockToolPanel() {
   };
 
   return (
-    <section className="mb-8 rounded-xl border border-border bg-elevated/80 p-4 shadow-soft">
+    <section className="sakura-clock-panel mb-8 rounded-xl border border-border bg-elevated/80 p-4 shadow-soft">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-metadata uppercase tracking-wider text-accent-cyan">
@@ -72,7 +73,7 @@ export function ClockToolPanel() {
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[320px_1fr]">
-        <div className="rounded-lg border border-border bg-paper p-3">
+        <div className="rounded-lg border border-border bg-paper p-3" data-sakura-surface="form">
           <div className="mb-2 flex items-center gap-2 text-secondary font-medium text-foreground">
             <TimerReset className="h-4 w-4 text-accent-copper" />
             Quick timer
@@ -96,7 +97,7 @@ export function ClockToolPanel() {
           </p>
         </div>
 
-        <div className="rounded-lg border border-border bg-paper p-3">
+        <div className="rounded-lg border border-border bg-paper p-3" data-sakura-surface="registry">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-secondary font-medium text-foreground">
               <AlarmClock className="h-4 w-4 text-accent-violet" />
@@ -109,7 +110,7 @@ export function ClockToolPanel() {
             )}
           </div>
           {scheduled.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border px-3 py-5 text-center text-secondary text-muted-foreground">
+            <div className="rounded-md border border-dashed border-border px-3 py-5 text-center text-secondary text-muted-foreground" data-sakura-state="empty">
               No active clock items.
             </div>
           ) : (
@@ -117,6 +118,7 @@ export function ClockToolPanel() {
               {scheduled.map((entry) => (
                 <div
                   key={entry.id}
+                  data-sakura-state={entry.dueAt - now < 60_000 ? 'urgent' : 'active'}
                   className={cn(
                     'flex items-center justify-between gap-3 rounded-md border border-border bg-elevated px-3 py-2',
                     entry.dueAt - now < 60_000 && 'border-warning/40 bg-warning/5',

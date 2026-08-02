@@ -6,12 +6,14 @@ import type {
   PluginStatus,
   PluginTool,
 } from './types';
+import { CANVA_REQUIRED_SCOPES } from './canvaProvider';
 
 type RegistryPartial = {
   provider?: string;
   description?: string;
   authType?: PluginAuthType;
   fields?: PluginField[];
+  requiredScopes?: string[];
   status?: PluginStatus;
   docsUrl?: string;
   credentialUrl?: string;
@@ -67,10 +69,241 @@ const apiKeyHeaderTest = (
 
 /** Official provider definitions with real connection probes where possible. */
 export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
+  gmail: {
+    provider: 'Google',
+    description:
+      'Search and read bounded Gmail context, create drafts, prepare replies, and send an existing draft only after explicit approval.',
+    authType: 'oauth',
+    requiredScopes: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.compose',
+    ],
+    fields: [
+      text(
+        'client_id',
+        'Desktop OAuth client ID',
+        '...apps.googleusercontent.com',
+        'Use a Google OAuth client registered as a Desktop app. Installed apps are public clients and must not rely on a client secret.',
+      ),
+      token(
+        'refresh_token',
+        'OAuth refresh grant',
+        'Stored in the OS keychain',
+        'Complete Google consent for the gmail.readonly and gmail.compose scopes. The refresh grant stays in the OS keychain; access tokens remain in memory.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl: 'https://developers.google.com/workspace/gmail/api/reference/rest',
+    credentialUrl: 'https://console.cloud.google.com/apis/credentials',
+    help: 'Use a Desktop OAuth client and a refresh grant authorized for the narrow gmail.readonly and gmail.compose scopes. VibeSpace exchanges it only in memory and requires approval before every draft or send action.',
+    tags: ['google', 'gmail', 'oauth', 'email', 'restricted scopes'],
+    setupSteps: [
+      'Enable the Gmail API and create a Desktop OAuth client in Google Cloud.',
+      'Authorize gmail.readonly and gmail.compose in the system browser using PKCE and a loopback callback.',
+      'Save the client ID and resulting refresh grant, then run Test Connection.',
+    ],
+    supportedFeatures: ['message search', 'message and thread reading', 'drafts', 'approved send'],
+    limitations:
+      'Gmail read and compose permissions are restricted scopes. Public production use requires Google provider verification and may require an annual security assessment.',
+    tools: [
+      readTool('message_search', 'Search bounded Gmail message metadata.'),
+      readTool('message_read', 'Read one bounded Gmail message as external untrusted context.'),
+      readTool('thread_read', 'Read one bounded Gmail thread as external untrusted context.'),
+      {
+        name: 'draft_create',
+        description: 'Create one Gmail draft after explicit approval.',
+        readOnly: false,
+      },
+      {
+        name: 'reply_draft_create',
+        description: 'Create one reply draft for an exact Gmail message after explicit approval.',
+        readOnly: false,
+      },
+      {
+        name: 'draft_send',
+        description:
+          'Revalidate and send one unchanged approved Gmail draft after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
+  'google-drive': {
+    provider: 'Google',
+    description:
+      'Search bounded Google Drive metadata, read exact selected supported documents, return source links, and create a Google document only after explicit approval.',
+    authType: 'oauth',
+    requiredScopes: [
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive.file',
+    ],
+    fields: [
+      text(
+        'client_id',
+        'Desktop OAuth client ID',
+        '...apps.googleusercontent.com',
+        'Use a Google OAuth client registered as a Desktop app. Installed apps are public clients and must not rely on a client secret.',
+      ),
+      token(
+        'refresh_token',
+        'OAuth refresh grant',
+        'Stored in the OS keychain',
+        'Complete Google consent for the drive.readonly and drive.file scopes. The refresh grant stays in the OS keychain; access tokens remain in memory.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl: 'https://developers.google.com/workspace/drive/api/reference/rest/v3',
+    credentialUrl: 'https://console.cloud.google.com/apis/credentials',
+    help: 'Use a Desktop OAuth client and a refresh grant authorized for the narrow drive.readonly and drive.file scopes. VibeSpace constructs fixed Drive requests locally and requires approval before document creation.',
+    tags: ['google', 'drive', 'oauth', 'documents', 'restricted scope'],
+    setupSteps: [
+      'Enable the Google Drive API and create a Desktop OAuth client in Google Cloud.',
+      'Authorize drive.readonly and drive.file in the system browser using PKCE and a loopback callback.',
+      'Save the client ID and resulting refresh grant, then run Test Connection.',
+    ],
+    supportedFeatures: [
+      'file search',
+      'selected document reading',
+      'source links',
+      'approved Google document creation',
+    ],
+    limitations:
+      'Drive read permission is a restricted scope. Public production use requires Google provider verification and may require an annual security assessment. This connector reads Google Docs and bounded text formats; it does not parse PDF or binary files.',
+    tools: [
+      readTool('files_search', 'Search bounded Google Drive file metadata.'),
+      readTool(
+        'document_read',
+        'Read one exact supported Drive document as external untrusted context.',
+      ),
+      {
+        name: 'document_create',
+        description: 'Create one Google document after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
+  canva: {
+    provider: 'Canva',
+    description:
+      'Search bounded Canva design and brand-template metadata, read exact designs, return validated edit/view links, and create a stable preset design only after explicit approval.',
+    authType: 'oauth',
+    requiredScopes: [...CANVA_REQUIRED_SCOPES],
+    fields: [
+      text(
+        'client_id',
+        'OAuth client ID',
+        'OC-...',
+        'Use the client ID from a Canva Connect integration.',
+      ),
+      token(
+        'client_secret',
+        'OAuth client secret',
+        'Stored in the OS keychain',
+        'The secret stays in the OS keychain and is used only for the fixed token refresh endpoint.',
+      ),
+      token(
+        'refresh_token',
+        'Rotating OAuth refresh grant',
+        'Stored in the OS keychain',
+        'Canva refresh grants are single-use. VibeSpace replaces the grant atomically before making the requested resource call.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl: 'https://www.canva.dev/docs/connect/',
+    credentialUrl: 'https://www.canva.com/developers/integrations',
+    help: 'Create a Canva Connect integration, authorize the exact profile, design metadata/content, and brand-template scopes listed here, then save the client credentials and rotating refresh grant.',
+    tags: ['canva', 'design', 'oauth', 'templates', 'connect api'],
+    setupSteps: [
+      'Create or select a Canva Connect integration and configure its redirect URL.',
+      'Authorize exactly profile:read, design:meta:read, design:content:write, brandtemplate:meta:read, and brandtemplate:content:read.',
+      'Save the client ID, client secret, and current refresh grant, then run Test Connection.',
+    ],
+    supportedFeatures: [
+      'design search and exact reads',
+      'brand template search',
+      'brand template dataset inspection',
+      'approved preset design creation',
+      'structured text autofill from eligible brand templates',
+      'validated edit and view links',
+    ],
+    limitations:
+      'This implementation uses the stable Canva Connect API only. Public distribution still requires Canva provider review. Structured text Autofill requires an eligible Canva plan or development trial and the granted dataset/design scopes. Preview image, video, chart, sheet, design-copy, and direct element-editing flows are excluded and are never simulated with browser automation.',
+    tools: [
+      readTool('designs_search', 'Search bounded Canva design metadata.'),
+      readTool('design_read', 'Read one exact Canva design and validated temporary links.'),
+      readTool('brand_templates_search', 'Search bounded Canva brand-template metadata.'),
+      readTool(
+        'brand_template_dataset_read',
+        'Read one bounded brand-template dataset and identify stable text fields.',
+      ),
+      readTool('autofill_job_read', 'Read one exact Canva structured-design job.'),
+      {
+        name: 'design_create',
+        description: 'Create one stable preset Canva design after explicit approval.',
+        readOnly: false,
+      },
+      {
+        name: 'design_autofill',
+        description:
+          'Create one structured text design from an eligible brand template after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
+  zapier: {
+    provider: 'Zapier',
+    description:
+      'Discover the exact actions currently exposed by your Zapier MCP connection and run one unchanged selected action only after explicit approval.',
+    authType: 'token',
+    fields: [
+      token(
+        'connection_token',
+        'MCP connection token',
+        'Stored in the OS keychain',
+        'Generate a connection token for an “Other” MCP client. VibeSpace sends it only as an Authorization bearer header to Zapier’s fixed MCP endpoint.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl:
+      'https://help.zapier.com/hc/en-us/articles/37541658534029-Use-Zapier-MCP-with-your-client',
+    credentialUrl: 'https://mcp.zapier.com/',
+    help: 'Configure only the Zapier actions you want exposed, generate a connection token for an “Other” client, and save that token here. VibeSpace discovers the currently exposed actions and always asks for confirmation before an external write.',
+    tags: ['zapier', 'mcp', 'automation', 'configured actions', 'approval'],
+    setupSteps: [
+      'Open Zapier MCP and configure the exact actions you want available.',
+      'Choose an Other MCP client and generate a connection token.',
+      'Save the token here and run Test Connection to discover the currently exposed actions.',
+    ],
+    supportedFeatures: [
+      'configured action discovery',
+      'exact selected action identity',
+      'approved downstream action execution',
+    ],
+    limitations:
+      'Only actions currently exposed by the configured Zapier MCP connection are available. Every action invocation may consume Zapier task usage and requires explicit confirmation; VibeSpace makes no broad app-count guarantee.',
+    tools: [
+      readTool(
+        'actions_discover',
+        'Discover bounded metadata and schemas for actions currently exposed by the configured Zapier MCP connection.',
+      ),
+      {
+        name: 'action_invoke',
+        description:
+          'Re-discover and run one exact unchanged selected Zapier action after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
   openai: {
     provider: 'OpenAI',
     authType: 'api_key',
-    fields: [token('api_key', 'API key', 'sk-...', 'Create a secret key with the minimum scopes you need.')],
+    fields: [
+      token(
+        'api_key',
+        'API key',
+        'sk-...',
+        'Create a secret key with the minimum scopes you need.',
+      ),
+    ],
     credentialUrl: 'https://platform.openai.com/api-keys',
     docsUrl: 'https://platform.openai.com/docs/api-reference',
     status: 'configurable',
@@ -241,7 +474,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['voice', 'tts', 'api_key'],
     setupSteps: ['Create an ElevenLabs API key.', 'Paste and test.'],
     supportedFeatures: ['text-to-speech'],
-    httpTest: apiKeyHeaderTest('https://api.elevenlabs.io/v1/user', 'xi-api-key', 'api_key', 'subscription.tier'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.elevenlabs.io/v1/user',
+      'xi-api-key',
+      'api_key',
+      'subscription.tier',
+    ),
     tools: [readTool('voice_context', 'Read ElevenLabs account tier.')],
   },
   deepgram: {
@@ -264,7 +502,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     provider: 'Stripe',
     authType: 'api_key',
     fields: [
-      token('secret_key', 'Secret key', '<stripe-restricted-key>', 'Use a restricted key when possible.'),
+      token(
+        'secret_key',
+        'Secret key',
+        '<stripe-restricted-key>',
+        'Use a restricted key when possible.',
+      ),
     ],
     credentialUrl: 'https://dashboard.stripe.com/apikeys',
     docsUrl: 'https://docs.stripe.com/keys',
@@ -302,10 +545,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   twilio: {
     provider: 'Twilio',
     authType: 'api_key',
-    fields: [
-      text('account_sid', 'Account SID', 'AC...'),
-      token('auth_token', 'Auth token', '...'),
-    ],
+    fields: [text('account_sid', 'Account SID', 'AC...'), token('auth_token', 'Auth token', '...')],
     credentialUrl: 'https://console.twilio.com/',
     docsUrl: 'https://www.twilio.com/docs/usage/api',
     status: 'configurable',
@@ -331,7 +571,11 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     docsUrl: 'https://developers.notion.com/docs/create-a-notion-integration',
     status: 'configurable',
     tags: ['productivity', 'notes', 'token'],
-    setupSteps: ['Create an internal integration.', 'Copy the internal integration secret.', 'Share pages with the integration.'],
+    setupSteps: [
+      'Create an internal integration.',
+      'Copy the internal integration secret.',
+      'Share pages with the integration.',
+    ],
     supportedFeatures: ['notes', 'databases'],
     httpTest: {
       url: 'https://api.notion.com/v1/users/me',
@@ -496,18 +740,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   datadog: {
     provider: 'Datadog',
     authType: 'api_key',
-    fields: [
-      token('api_key', 'API key', '...'),
-      token('app_key', 'Application key', '...'),
-    ],
+    fields: [token('api_key', 'API key', '...'), token('app_key', 'Application key', '...')],
     credentialUrl: 'https://app.datadoghq.com/organization-settings/api-keys',
     docsUrl: 'https://docs.datadoghq.com/api/latest/authentication/',
     status: 'configurable',
     tags: ['analytics', 'observability', 'api_key'],
-    setupSteps: [
-      'Create Datadog API and application keys.',
-      'Paste both and test.',
-    ],
+    setupSteps: ['Create Datadog API and application keys.', 'Paste both and test.'],
     supportedFeatures: ['monitoring', 'logs'],
     httpTest: {
       url: 'https://api.datadoghq.com/api/v1/validate',
@@ -535,10 +773,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   trello: {
     provider: 'Atlassian',
     authType: 'token',
-    fields: [
-      text('api_key', 'API key', '...'),
-      token('token', 'Token', '...'),
-    ],
+    fields: [text('api_key', 'API key', '...'), token('token', 'Token', '...')],
     credentialUrl: 'https://trello.com/power-ups/admin',
     docsUrl: 'https://developer.atlassian.com/cloud/trello/guides/rest-api/api-introduction/',
     status: 'configurable',
@@ -601,10 +836,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   plaid: {
     provider: 'Plaid',
     authType: 'api_key',
-    fields: [
-      text('client_id', 'Client ID', '...'),
-      token('secret', 'Secret', '...'),
-    ],
+    fields: [text('client_id', 'Client ID', '...'), token('secret', 'Secret', '...')],
     credentialUrl: 'https://dashboard.plaid.com/developers/keys',
     docsUrl: 'https://plaid.com/docs/api/',
     status: 'needs_credentials',
@@ -691,7 +923,11 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['hosting', 'cdn', 'token'],
     setupSteps: ['Create a Cloudflare API token.', 'Paste and test.'],
     supportedFeatures: ['dns', 'workers', 'cdn'],
-    httpTest: bearerTest('https://api.cloudflare.com/client/v4/user/tokens/verify', 'token', 'result.id'),
+    httpTest: bearerTest(
+      'https://api.cloudflare.com/client/v4/user/tokens/verify',
+      'token',
+      'result.id',
+    ),
     tools: [readTool('cloud_context', 'Verify Cloudflare API access.')],
   },
   heroku: {
@@ -776,16 +1012,17 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['project management', 'stories', 'token'],
     setupSteps: ['Create a Shortcut API token.', 'Paste and test.'],
     supportedFeatures: ['stories', 'epics'],
-    httpTest: bearerTest('https://api.app.shortcut.com/api/v3/member', 'token', 'profile.email_address'),
+    httpTest: bearerTest(
+      'https://api.app.shortcut.com/api/v3/member',
+      'token',
+      'profile.email_address',
+    ),
     tools: [readTool('issues_context', 'Read Shortcut member identity.')],
   },
   'mongodb-atlas': {
     provider: 'MongoDB',
     authType: 'api_key',
-    fields: [
-      text('public_key', 'Public key', '...'),
-      token('private_key', 'Private key', '...'),
-    ],
+    fields: [text('public_key', 'Public key', '...'), token('private_key', 'Private key', '...')],
     credentialUrl: 'https://cloud.mongodb.com/v2#/account/publicApi',
     docsUrl: 'https://www.mongodb.com/docs/atlas/api/',
     status: 'configurable',
@@ -883,7 +1120,10 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['messaging', 'bots', 'token'],
     setupSteps: ['Create a bot via BotFather.', 'Paste the bot token and test.'],
     supportedFeatures: ['messaging', 'bots'],
-    httpTest: { url: 'https://api.telegram.org/bot{{token}}/getMe', accountLabelPath: 'result.username' },
+    httpTest: {
+      url: 'https://api.telegram.org/bot{{token}}/getMe',
+      accountLabelPath: 'result.username',
+    },
     tools: [readTool('identity', 'Read Telegram bot identity.')],
   },
   zendesk: {
@@ -988,16 +1228,17 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['analytics', 'apm', 'api_key'],
     setupSteps: ['Create a New Relic user API key.', 'Paste and test.'],
     supportedFeatures: ['apm', 'monitoring'],
-    httpTest: apiKeyHeaderTest('https://api.newrelic.com/v2/applications.json', 'X-Api-Key', 'api_key'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.newrelic.com/v2/applications.json',
+      'X-Api-Key',
+      'api_key',
+    ),
     tools: [readTool('observability_context', 'List New Relic applications.')],
   },
   mixpanel: {
     provider: 'Mixpanel',
     authType: 'api_key',
-    fields: [
-      text('project_id', 'Project ID', '123456'),
-      token('api_secret', 'API secret', '...'),
-    ],
+    fields: [text('project_id', 'Project ID', '123456'), token('api_secret', 'API secret', '...')],
     credentialUrl: 'https://mixpanel.com/settings/project',
     docsUrl: 'https://developer.mixpanel.com/reference/overview',
     status: 'configurable',
@@ -1030,10 +1271,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   bigcommerce: {
     provider: 'BigCommerce',
     authType: 'token',
-    fields: [
-      text('store_hash', 'Store hash', 'abc123'),
-      token('token', 'Access token', '...'),
-    ],
+    fields: [text('store_hash', 'Store hash', 'abc123'), token('token', 'Access token', '...')],
     credentialUrl: 'https://developer.bigcommerce.com/docs/start/authentication',
     docsUrl: 'https://developer.bigcommerce.com/docs/rest-management',
     status: 'configurable',
@@ -1102,10 +1340,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   chargebee: {
     provider: 'Chargebee',
     authType: 'api_key',
-    fields: [
-      text('site', 'Site name', 'your-site'),
-      token('api_key', 'API key', '...'),
-    ],
+    fields: [text('site', 'Site name', 'your-site'), token('api_key', 'API key', '...')],
     credentialUrl: 'https://www.chargebee.com/docs/2.0/api_keys.html',
     docsUrl: 'https://apidocs.chargebee.com/docs/api/',
     status: 'configurable',
@@ -1185,7 +1420,10 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     docsUrl: 'https://developer.wordpress.org/rest-api/',
     status: 'configurable',
     tags: ['cms', 'wordpress', 'api_key'],
-    setupSteps: ['Create a WordPress application password.', 'Paste site URL, username, and password.'],
+    setupSteps: [
+      'Create a WordPress application password.',
+      'Paste site URL, username, and password.',
+    ],
     supportedFeatures: ['posts', 'pages'],
     httpTest: {
       url: '{{site_url}}/wp-json/wp/v2/users/me',
@@ -1259,7 +1497,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['email', 'token'],
     setupSteps: ['Copy a Postmark server API token.', 'Paste and test.'],
     supportedFeatures: ['transactional email'],
-    httpTest: apiKeyHeaderTest('https://api.postmarkapp.com/server', 'X-Postmark-Server-Token', 'token', 'Name'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.postmarkapp.com/server',
+      'X-Postmark-Server-Token',
+      'token',
+      'Name',
+    ),
     tools: [readTool('email_context', 'Read Postmark server metadata.')],
   },
   dropbox: {
@@ -1319,16 +1562,18 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['developer tools', 'api', 'api_key'],
     setupSteps: ['Create a Postman API key.', 'Paste and test.'],
     supportedFeatures: ['collections', 'apis'],
-    httpTest: apiKeyHeaderTest('https://api.getpostman.com/me', 'X-Api-Key', 'api_key', 'user.email'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.getpostman.com/me',
+      'X-Api-Key',
+      'api_key',
+      'user.email',
+    ),
     tools: [readTool('api_context', 'Read Postman user identity.')],
   },
   algolia: {
     provider: 'Algolia',
     authType: 'api_key',
-    fields: [
-      text('app_id', 'Application ID', '...'),
-      token('api_key', 'Admin API key', '...'),
-    ],
+    fields: [text('app_id', 'Application ID', '...'), token('api_key', 'Admin API key', '...')],
     credentialUrl: 'https://dashboard.algolia.com/account/api-keys/all',
     docsUrl: 'https://www.algolia.com/doc/rest-api/search/',
     status: 'configurable',
@@ -1341,7 +1586,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     },
     tools: [readTool('search_context', 'List Algolia indexes.')],
   },
-  'launchdarkly': {
+  launchdarkly: {
     provider: 'LaunchDarkly',
     authType: 'token',
     fields: [token('token', 'Access token', 'api-...')],
@@ -1383,7 +1628,8 @@ const CATEGORY_DEFAULTS: Record<string, Partial<RegistryPartial>> = {
   },
   'Microsoft 365': {
     ...OAUTH_CATEGORY_DEFAULTS,
-    credentialUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    credentialUrl:
+      'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
     docsUrl: 'https://learn.microsoft.com/graph/auth/',
     tags: ['microsoft', 'oauth', 'productivity'],
   },
@@ -1491,6 +1737,7 @@ function mergeManifest(
     provider,
     authType,
     fields,
+    requiredScopes: base.requiredScopes,
     status,
     docsUrl,
     credentialUrl,

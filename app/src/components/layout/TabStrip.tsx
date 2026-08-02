@@ -35,6 +35,7 @@
  */
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion } from 'motion/react';
 import { Pin, Plus, X } from 'lucide-react';
@@ -52,6 +53,14 @@ import { ensureActiveChat } from '@/features/chat/chatLifecycle';
 import { sortChatsForDisplay } from '@/features/chat/chatPin';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 interface TabModel {
   id: ChatId;
@@ -61,6 +70,11 @@ interface TabModel {
 
 const ROOT_PROJECT_KEY = '__root__';
 const projectChatMemory = new Map<string, ChatId | null>();
+const LEGACY_TAB_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 
 function projectMemoryKey(projectId: ProjectId | null): string {
   return projectId ?? ROOT_PROJECT_KEY;
@@ -233,10 +247,7 @@ export function TabStrip() {
       try {
         await chatRepo.delete(id);
       } catch (err) {
-        toast.error(
-          'Could not close tab',
-          err instanceof Error ? err.message : 'Try again.',
-        );
+        toast.error('Could not close tab', err instanceof Error ? err.message : 'Try again.');
         return;
       }
       if (id === activeChatId) {
@@ -312,11 +323,15 @@ export function TabStrip() {
 
   return (
     <div
-      role="tablist"
-      aria-label="Open chats"
-      className="flex h-8 shrink-0 items-stretch gap-1 border-b border-border bg-panel px-2"
+      data-monochrome-surface="tab-strip"
+      data-sakura-shell-region="tab-strip"
+      className="sakura-shell-tab-strip flex h-8 shrink-0 items-stretch gap-1 border-b border-border bg-panel px-2"
     >
-      <div className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-hidden">
+      <div
+        role={tabs.length > 0 ? 'group' : undefined}
+        aria-label={tabs.length > 0 ? 'Open chats' : undefined}
+        className="flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto scrollbar-hidden"
+      >
         <AnimatePresence initial={false}>
           {tabs.map((tab) => (
             <TabItem
@@ -373,7 +388,16 @@ interface TabItemProps {
   onSendToPetPanel?: () => void;
 }
 
-function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel }: TabItemProps) {
+export function TabItem({
+  tab,
+  active,
+  onActivate,
+  onClose,
+  onRename,
+  onSendToPetPanel,
+}: TabItemProps) {
+  const themeMotionTransition = useThemeMotionTransition(LEGACY_TAB_TRANSITION);
+  const themeMotionLayout = useThemeMotionLayout(true);
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(tab.title);
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
@@ -409,109 +433,121 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
 
   return (
     <>
-    <motion.div
-      role="tab"
-      aria-selected={active}
-      layout
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 4 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      onClick={() => {
-        if (!editing) onActivate();
-      }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        setEditing(true);
-      }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setMenu({ x: e.clientX, y: e.clientY });
-      }}
-      className={cn(
-        'group flex h-7 max-w-[220px] shrink-0 cursor-default select-none items-center gap-1.5 self-center rounded-md border border-transparent px-2 text-secondary transition-colors',
-        active
-          ? 'bg-elevated text-foreground border-border'
-          : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
-      )}
-      title={editing ? undefined : 'Double-click to rename · Right-click for Pet panel'}
-    >
-      {tab.pinned ? (
-        <Pin
-          className="h-3 w-3 shrink-0 fill-accent-copper/80 text-accent-copper"
-          aria-label="Pinned"
-        />
-      ) : null}
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              commit();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              cancel();
-            } else {
-              // Don't let typing into the rename input trigger global hotkeys.
-              e.stopPropagation();
-            }
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="min-w-0 flex-1 bg-transparent text-secondary text-foreground outline-none"
-          aria-label={`Rename ${tab.title}`}
-        />
-      ) : (
-        <span className="min-w-0 flex-1 truncate">{tab.title}</span>
-      )}
-      <button
-        type="button"
-        aria-label={`Close ${tab.title}`}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
+      <motion.div
+        layout={themeMotionLayout}
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 4 }}
+        transition={themeMotionTransition}
         className={cn(
-          'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-opacity',
-          'hover:bg-muted hover:text-foreground',
-          active ? 'opacity-70 hover:opacity-100' : 'opacity-0 group-hover:opacity-70',
+          'group flex h-7 max-w-[220px] shrink-0 cursor-default select-none items-center gap-1.5 self-center rounded-md border border-transparent px-2 text-secondary transition-colors motion-reduce:!transform-none motion-reduce:!opacity-100',
+          active
+            ? 'bg-elevated text-foreground border-border'
+            : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
         )}
+        title={editing ? undefined : 'Double-click to rename · Right-click for Pet panel'}
       >
-        <X className="h-3 w-3" />
-      </button>
-    </motion.div>
-    {menu && (
-      <>
-        <button
-          type="button"
-          className="fixed inset-0 z-[200] cursor-default bg-transparent"
-          aria-label="Dismiss menu"
-          onClick={() => setMenu(null)}
-        />
-        <div
-          className="fixed z-[210] min-w-[180px] rounded-lg border border-border bg-panel p-1 shadow-lg"
-          style={{ left: menu.x, top: menu.y }}
-          role="menu"
-        >
+        {tab.pinned ? (
+          <Pin
+            className="h-3 w-3 shrink-0 fill-accent-copper/80 text-accent-copper"
+            aria-label="Pinned"
+          />
+        ) : null}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commit();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancel();
+              } else {
+                // Don't let typing into the rename input trigger global hotkeys.
+                e.stopPropagation();
+              }
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="min-w-0 flex-1 bg-transparent text-secondary text-foreground outline-none"
+            aria-label={`Rename ${tab.title}`}
+          />
+        ) : (
           <button
             type="button"
-            className="w-full rounded px-2.5 py-1.5 text-left text-metadata hover:bg-accent-copper/10"
-            role="menuitem"
-            onClick={() => {
-              setMenu(null);
-              onSendToPetPanel?.();
+            aria-pressed={active}
+            tabIndex={active ? 0 : -1}
+            data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}
+            onClick={onActivate}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onActivate();
+              }
             }}
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              setEditing(true);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setMenu({ x: event.clientX, y: event.clientY });
+            }}
+            className="min-w-0 flex-1 truncate text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=sakura]_&]:min-h-6"
           >
-            Send to Pet panel
+            {tab.title}
           </button>
-        </div>
-      </>
-    )}
+        )}
+        <button
+          type="button"
+          aria-label={`Close ${tab.title}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className={cn(
+            'inline-flex h-6 w-6 min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-opacity',
+            'hover:bg-muted hover:text-foreground',
+            active ? 'opacity-70 hover:opacity-100' : 'opacity-0 group-hover:opacity-70',
+          )}
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </motion.div>
+      {menu &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-[200] cursor-default bg-transparent"
+              aria-label="Dismiss menu"
+              onClick={() => setMenu(null)}
+            />
+            <div
+              className="fixed z-[210] min-w-[180px] rounded-lg border border-border bg-panel p-1 shadow-lg"
+              style={{ left: menu.x, top: menu.y }}
+              role="menu"
+            >
+              <button
+                type="button"
+                className="w-full rounded px-2.5 py-1.5 text-left text-metadata hover:bg-accent-copper/10"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  onSendToPetPanel?.();
+                }}
+              >
+                Send to Pet panel
+              </button>
+            </div>
+          </>,
+          document.body,
+        )}
     </>
   );
 }

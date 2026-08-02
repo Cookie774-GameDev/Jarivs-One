@@ -33,6 +33,7 @@ import type { QuickLinkGroupId, QuickLinkId, WorkspaceId } from '@/types/common'
 import { useQuickLinks, useQuickLinkGroups, filterByGroup } from './hooks';
 import { launchLink, QUICK_PRESETS } from './launch';
 import { LinkEditDialog } from './LinkEditDialog';
+import './launcher.sakura.css';
 
 interface LauncherDialogProps {
   open: boolean;
@@ -163,7 +164,18 @@ export function LauncherDialog({ open, onOpenChange }: LauncherDialogProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl w-[min(820px,92vw)] h-[min(640px,85vh)] p-0 flex flex-col overflow-hidden">
+        <DialogContent
+          overlayProps={{
+            'data-monochrome-overlay': 'launcher-dialog',
+            'data-sakura-overlay': 'launcher',
+            'data-vibespace-owned-chrome': 'launcher',
+            className:
+              '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:data-[state=open]:!animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
+          }}
+          data-monochrome-surface="launcher-dialog"
+          data-vibespace-owned-chrome="launcher"
+          className="w-[min(820px,92vw)] max-w-3xl h-[min(640px,85vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:shadow-none"
+        >
           <DialogHeader className="px-5 pt-5 pb-2">
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-accent-cyan" /> Quick Launch
@@ -186,7 +198,11 @@ export function LauncherDialog({ open, onOpenChange }: LauncherDialogProps) {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <FilterChip active={filter === 'all'} onClick={() => setFilter('all')} count={links.length}>
+              <FilterChip
+                active={filter === 'all'}
+                onClick={() => setFilter('all')}
+                count={links.length}
+              >
                 All
               </FilterChip>
               {groups.map((g) => (
@@ -219,7 +235,10 @@ export function LauncherDialog({ open, onOpenChange }: LauncherDialogProps) {
             </div>
           </div>
 
-          <main className="flex-1 overflow-y-auto px-5 py-4">
+          <main
+            data-monochrome-surface="launcher-grid"
+            className="flex-1 overflow-y-auto px-5 py-4 [html[data-theme=monochrome]_&]:bg-background"
+          >
             {links.length === 0 ? (
               <EmptyState onAddStarters={onAddStarters} onAddCustom={startNewLink} />
             ) : filtered.length === 0 ? (
@@ -236,7 +255,9 @@ export function LauncherDialog({ open, onOpenChange }: LauncherDialogProps) {
                     onEdit={() => startEdit(link)}
                     onDelete={() => void onDelete(link)}
                     isDragging={draggingId === link.id}
-                    isDropTarget={dragOverId === link.id && draggingId !== null && draggingId !== link.id}
+                    isDropTarget={
+                      dragOverId === link.id && draggingId !== null && draggingId !== link.id
+                    }
                     onDragStart={() => setDraggingId(link.id)}
                     onDragEnter={() => {
                       if (draggingId && draggingId !== link.id) setDragOverId(link.id);
@@ -277,7 +298,9 @@ export function LauncherDialog({ open, onOpenChange }: LauncherDialogProps) {
         open={editorOpen}
         onOpenChange={setEditorOpen}
         link={editing}
-        defaultGroupId={filter !== 'all' && filter !== 'ungrouped' ? (filter as QuickLinkGroupId) : undefined}
+        defaultGroupId={
+          filter !== 'all' && filter !== 'ungrouped' ? (filter as QuickLinkGroupId) : undefined
+        }
         groups={groups}
       />
     </>
@@ -303,7 +326,11 @@ function FilterChip({ active, count, hue, onClick, children }: FilterChipProps) 
           ? 'border-accent-cyan/60 bg-accent-cyan/10 text-foreground'
           : 'border-border bg-panel text-muted-foreground hover:border-border-mid hover:text-foreground',
       )}
-      style={hue !== undefined ? { borderLeftColor: `hsl(${hue} 70% 55%)`, borderLeftWidth: '2px' } : undefined}
+      style={
+        hue !== undefined
+          ? { borderLeftColor: `hsl(${hue} 70% 55%)`, borderLeftWidth: '2px' }
+          : undefined
+      }
     >
       <span>{children}</span>
       <span className="text-[10px] opacity-60">{count}</span>
@@ -371,13 +398,15 @@ function LinkTile({
       }}
       onDragEnd={onDragEnd}
       className={cn(
-        'group relative h-[110px] overflow-hidden rounded-md border border-border bg-panel transition-all',
+        'group relative h-[110px] overflow-hidden rounded-md border border-border bg-panel transition-all [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:!bg-panel [html[data-theme=monochrome]_&]:![background-image:none] [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:transition-none',
         'hover:border-border-mid',
-        !isDragging && 'hover:scale-[1.02]',
+        !isDragging && 'hover:scale-[1.02] [html[data-theme=monochrome]_&]:hover:scale-100',
         isDragging && 'opacity-40',
         isDropTarget && 'ring-1 ring-accent-copper',
       )}
-      style={{ background: `linear-gradient(135deg, hsl(${hue} 70% 14% / 0.85), hsl(${hue + 30} 60% 9% / 0.85))` }}
+      style={{
+        background: `linear-gradient(135deg, hsl(${hue} 70% 14% / 0.85), hsl(${hue + 30} 60% 9% / 0.85))`,
+      }}
     >
       <button
         type="button"
@@ -412,7 +441,7 @@ function LinkTile({
         <button
           type="button"
           onClick={onEdit}
-          className="rounded-sm bg-elevated/80 backdrop-blur p-1 text-muted-foreground hover:text-foreground"
+          className="rounded-sm bg-elevated/80 backdrop-blur p-1 text-muted-foreground hover:text-foreground [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:backdrop-blur-none"
           aria-label={`Edit ${link.label}`}
         >
           <Edit3 className="h-3 w-3" />
@@ -420,7 +449,7 @@ function LinkTile({
         <button
           type="button"
           onClick={onDelete}
-          className="rounded-sm bg-elevated/80 backdrop-blur p-1 text-muted-foreground hover:text-destructive"
+          className="rounded-sm bg-elevated/80 backdrop-blur p-1 text-muted-foreground hover:text-destructive [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:backdrop-blur-none"
           aria-label={`Delete ${link.label}`}
         >
           <Trash2 className="h-3 w-3" />
@@ -430,7 +459,13 @@ function LinkTile({
   );
 }
 
-function EmptyState({ onAddStarters, onAddCustom }: { onAddStarters: () => void; onAddCustom: () => void }) {
+function EmptyState({
+  onAddStarters,
+  onAddCustom,
+}: {
+  onAddStarters: () => void;
+  onAddCustom: () => void;
+}) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-cyan/10 text-accent-cyan">
@@ -439,7 +474,8 @@ function EmptyState({ onAddStarters, onAddCustom }: { onAddStarters: () => void;
       <div>
         <Label className="text-page-title text-foreground">Pin your launchpad</Label>
         <p className="text-secondary text-muted-foreground mt-1 max-w-sm">
-          One click to YouTube, Spotify, your repo, your favorite chat. Add starter links or build your own.
+          One click to YouTube, Spotify, your repo, your favorite chat. Add starter links or build
+          your own.
         </p>
       </div>
       <div className="flex gap-2">

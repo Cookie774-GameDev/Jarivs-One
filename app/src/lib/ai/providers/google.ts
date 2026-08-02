@@ -16,7 +16,13 @@
  *      usageMetadata?: { promptTokenCount, candidatesTokenCount } }`.
  */
 import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -45,6 +51,28 @@ function geminiParts(content: string | LLMContentPart[]) {
   });
 }
 
+export function buildGoogleRequestBody(req: LLMRequest) {
+  const contents = req.messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: geminiRole(message.role),
+      parts: geminiParts(message.content),
+    }));
+  if (contents.length === 0 || contents[0]?.role !== 'user') {
+    contents.unshift({ role: 'user', parts: [{ text: '' }] });
+  }
+  return {
+    contents,
+    systemInstruction: {
+      parts: [{ text: systemPromptForRequest(req) }],
+    },
+    generationConfig: {
+      temperature: req.temperature ?? req.agent.temperature ?? 0.7,
+      maxOutputTokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
+    },
+  };
+}
+
 export const googleProvider: LLMProvider = {
   id: 'google',
   name: 'Google',
@@ -59,30 +87,7 @@ export const googleProvider: LLMProvider = {
     if (!apiKey) throw new Error('Google API key not set');
 
     const model = req.agent.model.model || GOOGLE_DEFAULT_MODEL;
-
-    const contents = req.messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: geminiRole(m.role),
-        parts: geminiParts(m.content),
-      }));
-
-    // Gemini requires the first turn to be `user`. If for any reason it's not,
-    // prepend an empty user turn (parallels what Anthropic needs).
-    if (contents.length === 0 || contents[0]?.role !== 'user') {
-      contents.unshift({ role: 'user', parts: [{ text: '' }] });
-    }
-
-    const body = {
-      contents,
-      systemInstruction: {
-        parts: [{ text: req.agent.system_prompt }],
-      },
-      generationConfig: {
-        temperature: req.temperature ?? req.agent.temperature ?? 0.7,
-        maxOutputTokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
-      },
-    };
+    const body = buildGoogleRequestBody(req);
 
     // Send the key via header instead of `?key=` so it never appears in
     // URLs (DevConsole fetch log, proxies, browser devtools network tab).
@@ -97,6 +102,13 @@ export const googleProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       throw new Error(`Google ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('Google returned an empty body');
@@ -107,7 +119,10 @@ export const googleProvider: LLMProvider = {
     let finishReason: string | undefined;
     let first = true;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       if (!evt.data) continue;
 
@@ -144,7 +159,10 @@ export const googleProvider: LLMProvider = {
     }
 
     if (inputTokens === 0) {
-      const inputText = req.agent.system_prompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
+      const inputText =
+        (body.systemInstruction.parts[0]?.text ?? '') +
+        '\n' +
+        req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

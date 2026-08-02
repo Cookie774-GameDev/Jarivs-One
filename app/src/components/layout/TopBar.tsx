@@ -31,7 +31,10 @@ import { useCallStore } from '@/features/call/store';
 import { isCallConfigured, loadCallService } from '@/features/call';
 import { toast } from '@/components/ui/toast';
 import { useWhatsNew } from '@/features/whats-new';
-import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
+import { planAllowsJarvisCall } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 
 /**
  * TopBar - 40px chrome at the very top of the app.
@@ -113,7 +116,13 @@ type RouteStoreShape = {
   setRoute?: (r: Route) => void;
 };
 
+const TOP_BAR_POINTER_TARGET_CLASS = 'min-h-6 min-w-6 shrink-0';
+
 export function TopBar() {
+  const kernelSmokeEnabled = isKernelSmokeEnabled({
+    devBuild: import.meta.env.DEV,
+    explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+  });
   const navOpen = useUIStore((s) => s.navOpen);
   const toggleNav = useUIStore((s) => s.toggleNav);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
@@ -138,12 +147,8 @@ export function TopBar() {
   const { hasUpdate: hasUnseenWhatsNew, currentVersion } = useWhatsNew();
 
   // V3 — route store (defensive read; field may be absent pre-Slice 4).
-  const route = useUIStore(
-    (s) => ((s as unknown) as RouteStoreShape).route ?? 'chat',
-  );
-  const setRouteRaw = useUIStore(
-    (s) => ((s as unknown) as RouteStoreShape).setRoute,
-  );
+  const route = useUIStore((s) => (s as unknown as RouteStoreShape).route ?? 'chat');
+  const setRouteRaw = useUIStore((s) => (s as unknown as RouteStoreShape).setRoute);
 
   const setRouteWarned = React.useRef(false);
   const setRoute = React.useCallback(
@@ -200,8 +205,11 @@ export function TopBar() {
   return (
     <header
       aria-label="Application header"
+      data-monochrome-surface="top-bar"
+      data-sakura-shell-region="top-bar"
+      data-tauri-drag-region
       className={cn(
-        'drag-region relative flex shrink-0 items-center gap-2 border-b bg-panel pr-2 text-secondary transition-[height,padding,colors] duration-150',
+        'sakura-shell-top-bar drag-region relative flex min-w-0 shrink-0 items-center gap-2 border-b bg-panel pr-2 text-secondary transition-[height,padding,colors] duration-150',
         compactChrome ? 'h-7 gap-1' : 'h-10 gap-2',
         offChat ? 'border-accent-copper/40' : 'border-border',
         // Reserve room on macOS for native traffic-light buttons in
@@ -220,7 +228,7 @@ export function TopBar() {
             onClick={toggleNav}
             aria-label="Toggle navigation"
             aria-pressed={navOpen}
-            className={cn(compactChrome && 'h-5 w-5 [&_svg]:size-3')}
+            className={cn(TOP_BAR_POINTER_TARGET_CLASS, compactChrome && 'h-5 w-5 [&_svg]:size-3')}
           >
             <PanelLeft className="h-4 w-4" />
           </Button>
@@ -233,16 +241,25 @@ export function TopBar() {
           type="button"
           onClick={() => setVoiceModalOpen(true)}
           aria-label="Open Jarvis voice panel"
-          className="jarvis-breadcrumb-trigger relative rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+          data-sik-evidence={kernelSmokeEnabled ? SIK_EVIDENCE.voiceOpen : undefined}
+          className={cn(
+            TOP_BAR_POINTER_TARGET_CLASS,
+            'jarvis-breadcrumb-trigger relative grid place-items-center rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60',
+          )}
         >
           {/* Always-on Jarvis halo — soft purple→cyan pulse so the activation
               point reads as "alive". Intensifies into a ping while listening. */}
-          <span aria-hidden className="jarvis-j-glow pointer-events-none absolute -inset-1 rounded-full" />
+          <span
+            aria-hidden
+            className="jarvis-j-glow pointer-events-none absolute -inset-1 rounded-full"
+          />
           {voiceListening && (
             <span
+              data-monochrome-voice-listening-effect="true"
               className="absolute inset-0 rounded-full animate-ping"
               style={{
-                background: 'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
+                background:
+                  'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
                 opacity: 0.4,
               }}
             />
@@ -294,6 +311,7 @@ export function TopBar() {
                   aria-haspopup="menu"
                   aria-expanded={routeMenuOpen}
                   className={cn(
+                    TOP_BAR_POINTER_TARGET_CLASS,
                     'truncate rounded px-1 text-accent-copper transition-colors',
                     compactChrome ? 'text-metadata' : 'text-secondary',
                     'hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/50',
@@ -319,9 +337,7 @@ export function TopBar() {
                           className={cn(
                             'w-full rounded px-2 py-1.5 text-left text-secondary transition-colors',
                             'hover:bg-muted hover:text-foreground',
-                            active
-                              ? 'text-accent-copper font-medium'
-                              : 'text-foreground/90',
+                            active ? 'text-accent-copper font-medium' : 'text-foreground/90',
                           )}
                         >
                           {ROUTE_LABELS[r]}
@@ -337,7 +353,7 @@ export function TopBar() {
       </div>
 
       {/* Spacer (also drag region) */}
-      <div className="flex-1" />
+      <div className="min-w-3 flex-1" data-sakura-drag-space="true" data-tauri-drag-region />
 
       {/* Right cluster.
           Two layouts on the same data:
@@ -375,6 +391,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setLauncherOpen(true)}
               aria-label="Open quick launcher"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Rocket className="h-4 w-4" />
             </Button>
@@ -386,6 +403,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setAssistantOpen(true)}
               aria-label="Open Jarvis Assistant"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Sparkles className="h-4 w-4" />
             </Button>
@@ -397,6 +415,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setRoute('schedule')}
               aria-label="Open schedule"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <CalendarDays className="h-4 w-4" />
             </Button>
@@ -412,8 +431,13 @@ export function TopBar() {
               onClick={toggleChatFullscreen}
               aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               aria-pressed={chatFullscreen}
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
-              {chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {chatFullscreen ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
             </Button>
           </Hint>
 
@@ -423,19 +447,23 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setPaletteOpen(true)}
               aria-label="Open command palette"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Search className="h-4 w-4" />
             </Button>
           </Hint>
 
-          <Hint label={composerSttListening ? 'Stop dictation' : 'Voice to text'} hotkey={HOTKEYS.COMPOSER_STT}>
+          <Hint
+            label={composerSttListening ? 'Stop dictation' : 'Voice to text'}
+            hotkey={HOTKEYS.COMPOSER_STT}
+          >
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={toggleComposerStt}
               aria-label={composerSttListening ? 'Stop dictation' : 'Start dictation'}
               aria-pressed={composerSttListening}
-              className="relative"
+              className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'relative')}
             >
               {composerSttListening ? (
                 <MicWaveform volumeRef={sttVolumeRef} />
@@ -445,6 +473,7 @@ export function TopBar() {
               {composerSttListening && (
                 <span
                   aria-hidden
+                  data-monochrome-voice-listening-effect="true"
                   className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-accent-cyan/60 animate-pulse"
                 />
               )}
@@ -459,6 +488,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setNewsPanelOpen(true)}
               aria-label="Open AI news"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Newspaper className="h-4 w-4" />
             </Button>
@@ -474,12 +504,13 @@ export function TopBar() {
                   ? `What's new in v${currentVersion} (unread)`
                   : `What's new in v${currentVersion}`
               }
-              className="relative"
+              className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'relative')}
             >
               <Megaphone className="h-4 w-4" />
               {hasUnseenWhatsNew && (
                 <span
                   aria-hidden
+                  data-monochrome-unread-indicator="true"
                   className={cn(
                     'pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full',
                     'bg-accent-copper ring-2 ring-panel',
@@ -496,6 +527,7 @@ export function TopBar() {
               onClick={toggleInspector}
               aria-label="Toggle inspector"
               aria-pressed={inspectorOpen}
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <PanelRight className="h-4 w-4" />
             </Button>
@@ -508,6 +540,7 @@ export function TopBar() {
               onClick={() => setSettingsOpen(true)}
               aria-label="Settings"
               data-tour="settings"
+              className={TOP_BAR_POINTER_TARGET_CLASS}
             >
               <Settings className="h-4 w-4" />
             </Button>
@@ -516,7 +549,10 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => setRoute('account')}
-            className="pl-1 rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+            className={cn(
+              TOP_BAR_POINTER_TARGET_CLASS,
+              'grid place-items-center rounded-full pl-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60',
+            )}
             aria-label={displayName ? `Open account for ${displayName}` : 'Open account'}
           >
             <Avatar
@@ -606,7 +642,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
           onClick={toggleChatFullscreen}
           aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
           aria-pressed={chatFullscreen}
-          className="h-5 w-5 [&_svg]:size-3"
+          className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
           {chatFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
         </Button>
@@ -620,12 +656,13 @@ function CompactRightCluster(props: CompactRightClusterProps) {
             aria-label="More actions"
             aria-haspopup="menu"
             aria-expanded={overflowOpen}
-            className="relative h-5 w-5 [&_svg]:size-3"
+            className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'relative h-5 w-5 [&_svg]:size-3')}
           >
             <MoreHorizontal className="h-3 w-3" />
             {hasUnseenWhatsNew && (
               <span
                 aria-hidden
+                data-monochrome-unread-indicator="true"
                 className={cn(
                   'pointer-events-none absolute right-0.5 top-0.5 h-1 w-1 rounded-full',
                   'bg-accent-copper ring-1 ring-panel',
@@ -696,7 +733,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
           onClick={toggleInspector}
           aria-label="Toggle inspector"
           aria-pressed={inspectorOpen}
-          className="h-5 w-5 [&_svg]:size-3"
+          className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
           <PanelRight className="h-3 w-3" />
         </Button>
@@ -708,7 +745,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
           size="icon-sm"
           onClick={() => setSettingsOpen(true)}
           aria-label="Settings"
-          className="h-5 w-5 [&_svg]:size-3"
+          className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
           <Settings className="h-3 w-3" />
         </Button>
@@ -717,7 +754,10 @@ function CompactRightCluster(props: CompactRightClusterProps) {
       <button
         type="button"
         onClick={() => setRoute('account')}
-        className="pl-1 rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+        className={cn(
+          TOP_BAR_POINTER_TARGET_CLASS,
+          'grid place-items-center rounded-full pl-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60',
+        )}
         aria-label={displayName ? `Open account for ${displayName}` : 'Open account'}
       >
         <Avatar
@@ -755,9 +795,7 @@ function MenuRow({ icon, label, hotkey, onClick, accent, suffix }: MenuRowProps)
         <span className="shrink-0 text-muted-foreground">{icon}</span>
         <span className="flex-1 truncate">{label}</span>
         {suffix && (
-          <span className="shrink-0 text-metadata text-muted-foreground/80">
-            {suffix}
-          </span>
+          <span className="shrink-0 text-metadata text-muted-foreground/80">{suffix}</span>
         )}
         {hotkey && !suffix && (
           <kbd
@@ -792,12 +830,9 @@ function CompactCallRow({ closeAfter }: { closeAfter: (fn: () => void) => () => 
   const status = useCallStore((state) => state.status);
   const setCallModalOpen = useUIStore((state) => state.setCallModalOpen);
   const plan = useAuthStore((state) => state.plan);
-  const email = useAuthStore((state) => state.email);
-  const cloudEmail = useAuthStore((state) => state.cloudSession?.email);
-  const localUserId = useAuthStore((state) => state.localUserId);
   const inCall = status !== 'idle';
   const configured = isCallConfigured();
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   const onActivate = closeAfter(() => {
@@ -816,7 +851,10 @@ function CompactCallRow({ closeAfter }: { closeAfter: (fn: () => void) => () => 
       return;
     }
     if (!entitled) {
-      toast.warning('Jarvis Call requires a plan', 'Upgrade to a voice-enabled plan or use an admin-enabled build.');
+      toast.warning(
+        'Jarvis Call requires a plan',
+        'Upgrade to a voice-enabled plan or use an admin-enabled build.',
+      );
       return;
     }
     setCallModalOpen(true);
@@ -857,13 +895,10 @@ function CallTopBarButton() {
   const status = useCallStore((state) => state.status);
   const setCallModalOpen = useUIStore((state) => state.setCallModalOpen);
   const plan = useAuthStore((state) => state.plan);
-  const email = useAuthStore((state) => state.email);
-  const cloudEmail = useAuthStore((state) => state.cloudSession?.email);
-  const localUserId = useAuthStore((state) => state.localUserId);
 
   const inCall = status !== 'idle';
   const configured = isCallConfigured();
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   const handleClick = () => {
@@ -881,20 +916,34 @@ function CallTopBarButton() {
       return;
     }
     if (!entitled) {
-      toast.warning('Jarvis Call requires a plan', 'Upgrade to a voice-enabled plan or use an admin-enabled build.');
+      toast.warning(
+        'Jarvis Call requires a plan',
+        'Upgrade to a voice-enabled plan or use an admin-enabled build.',
+      );
       return;
     }
     setCallModalOpen(true);
   };
 
   return (
-    <Hint label={inCall ? 'Hang up' : !configured ? 'Phone & Voice not configured' : entitled ? 'Call Jarvis' : 'Jarvis Call requires a voice plan'}>
+    <Hint
+      label={
+        inCall
+          ? 'Hang up'
+          : !configured
+            ? 'Phone & Voice not configured'
+            : entitled
+              ? 'Call Jarvis'
+              : 'Jarvis Call requires a voice plan'
+      }
+    >
       <Button
         variant="ghost"
         size="icon-sm"
         onClick={handleClick}
         aria-label={inCall ? 'Hang up' : 'Call Jarvis'}
         className={cn(
+          TOP_BAR_POINTER_TARGET_CLASS,
           inCall && 'text-rose-500 hover:text-rose-400',
           !inCall && configured && entitled && 'text-emerald-500 hover:text-emerald-400',
           (!configured || !entitled) && !inCall && 'text-muted-foreground/50',

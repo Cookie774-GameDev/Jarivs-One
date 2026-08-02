@@ -3,17 +3,19 @@
 ## [1.5.0] - 2026-07-15
 
 ### Added
+
 - Complete spatial Workbench with Browser, Preview Studio, editor, files, notes, Jarvis, terminal, device preview, templates, wallpapers, and persistent layouts.
 - Pixel Pets, durable Jarvis task execution and private memory, subscription-aware CLI providers, synchronized themes, and wallpaper entitlements.
 
 ### Changed
+
 - Integrated all validated work from PRs #18 through #23 with the rescued Grok Workbench while preserving the existing installer and application functions.
 - Promoted the combined integration to the official v1.5.0 release line.
 
 ### Fixed
+
 - Resolved integration overlaps across Tauri capabilities, Rust command registration, command-palette actions, terminal recovery, themes, pets, providers, and Workbench routing.
 - Fixed Preview Studio compilation on non-Windows platforms without changing its Windows behavior.
-
 
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -24,7 +26,36 @@ All notable changes to Jarvis are documented here. Format follows [Keep a Change
 - **Preview Studio** — top-level `preview` route for responsive device emulation (iPhone/iPad/laptop/desktop presets), localhost discovery, loopback static HTML serving, and an isolated preview surface (separate WebView window, no host IPC) with Workbench-styled chrome and recovery cards.
 - **Vibe Browser** — top-level `browser` route launching an isolated Edge/Chrome profile under app data, CDP on `127.0.0.1`, screencast viewport, multi-tab UI, agent control modes (default ask-before-action), and Stop Agent.
 - **Browser agent tools** — allow-listed tools (`browser.navigate`, `browser.readPage`, …) with approval gates; arbitrary JS execution is rejected.
+- **Shared Intelligence Kernel** — one account-scoped canonical request,
+  response, run, event, approval, artifact, cancellation, retry, and
+  live-evidence boundary shared by typed chat, voice, schedules, and Hive
+  final responses.
+- **Jarvis Command Center** — a lazy voice-panel projection with exactly
+  **Outputs** and **Live Systems** tabs, canonical run/model status,
+  producer-verified artifacts, a textual execution map, bounded activity, safe
+  open actions, cancellation, approval navigation, and evidence-backed retry.
+- **Canonical connector actions** — exact registered operations for GitHub,
+  Gmail, Google Drive, Canva, and Zapier, with approval-bound writes and
+  producer-verified output artifacts.
 - Docs: `docs/PREVIEW_AND_BROWSER.md`.
+
+### Changed
+
+- Command Center detail subscriptions now start only while expanded, and
+  durable live-evidence reads run only on the active Live Systems tab.
+- Voice and Command Center presentation now use theme-owned contrast,
+  shrinkable relative layouts, complete text wrapping, reduced-motion and
+  background gates, and restrained accessibility announcements.
+
+### Fixed
+
+- Hardened connector credential/scope validation, output URI disclosure,
+  portable file-root containment, symlink-aware native enforcement, and
+  issued authority for AI-originated terminal or external-effect execution.
+- Prevented stale Command Center subscriptions, forged or orphaned live
+  evidence, unsafe artifact access, cross-account voice actions, noisy
+  waveform/transcript announcements, and clipped long output metadata at
+  enlarged text sizes.
 
 ## [0.1.48] - 2026-07-08
 

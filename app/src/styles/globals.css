@@ -7,6 +7,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The compact empty Context-map label needs a slightly lighter Sakura coral
+ * against the indigo card surface to clear WCAG AA at 11px. */
+html[data-theme='sakura'] [data-sakura-shell-region='navigation'] .mb-1.text-accent-copper {
+  color: #f27690;
+}
+
 /* ============================================================
    COZY CHECKLIST DESIGN SYSTEM (V2)
    Warm, paper-inspired. Earthy palette: rose, terracotta, honey,
@@ -114,88 +120,8 @@
   }
 
   /* ============================================================
-     LIGHT THEME — cream paper, warm brown ink. AAA contrast.
-     ============================================================ */
-  [data-theme='light'] {
-    --background: 36 47% 93%; /* #f5efe6  warm cream paper */
-    --background-warm: 38 50% 88%; /* #ede4d3  warmer cream */
-    --panel: 38 50% 88%; /* #ede4d3  side panels (warmer than bg) */
-    --elevated: 41 100% 98%; /* #fffbf5  paper card */
-    --paper-soft: 41 67% 95%; /* #faf3e8  nested action box */
-    --paper-done: 41 50% 92%; /* #f6efe1  done state */
-
-    --border: 41 41% 85%; /* #e6dccb  default border */
-    --border-mid: 41 30% 75%; /* stronger divider */
-    --line-soft: 41 50% 89%; /* #f0e7d6  dashed / subtle */
-    --input: 41 41% 85%;
-    --ring: 14 64% 50%; /* terracotta focus, deeper for AA */
-
-    --foreground: 25 27% 18%; /* #3a2e22  warm brown-black ink */
-    --muted: 41 50% 89%;
-    --muted-foreground: 28 16% 36%; /* #6b5d4f  secondary */
-    --ink-faint: 32 11% 56%; /* #9d8f80  tertiary */
-
-    /* Brand accents — same hues, slightly deeper for paper contrast. */
-    --accent-cyan: 14 60% 50%; /* terracotta deepened */
-    --accent-violet: 36 50% 50%; /* honey deepened */
-    --accent: 14 60% 50%;
-    --accent-foreground: 41 100% 98%;
-
-    --rose: 8 47% 55%;
-    --terracotta: 14 60% 50%;
-    --honey: 36 50% 50%;
-    --sage: 105 14% 45%;
-    --sage-deep: 99 17% 35%;
-    --lavender: 280 14% 50%;
-    --cream: 41 67% 87%;
-
-    --accent-copper: 14 60% 50%;
-    --accent-amber: 36 50% 50%;
-    --accent-amber-soft: 36 50% 50% / 0.16;
-
-    --primary: 14 60% 50%;
-    --primary-foreground: 41 100% 98%;
-    --secondary: 41 50% 89%;
-    --secondary-foreground: 25 27% 18%;
-
-    --destructive: 7 47% 46%;
-    --destructive-foreground: 41 100% 98%;
-
-    --success: 105 14% 45%;
-    --warning: 37 49% 45%;
-    --info: 280 14% 50%;
-
-    /* Severity backgrounds become tinted creams in light mode. */
-    --crit: 7 47% 46%;
-    --crit-bg: 12 67% 91%;
-    --high: 19 56% 53%;
-    --high-bg: 24 67% 90%;
-    --med: 37 49% 49%;
-    --med-bg: 38 67% 87%;
-    --low: 117 12% 49%;
-    --low-bg: 111 22% 88%;
-    --info-sev: 268 13% 57%;
-    --info-bg: 290 22% 92%;
-
-    --shadow-soft: 0 1px 2px hsl(28 25% 30% / 0.06), 0 4px 12px hsl(28 25% 30% / 0.04);
-    --shadow-lift: 0 4px 8px hsl(28 25% 30% / 0.08), 0 12px 28px hsl(28 25% 30% / 0.08);
-    --shadow-cozy: 0 8px 28px -6px hsl(14 60% 40% / 0.18), 0 2px 6px hsl(28 25% 30% / 0.1);
-
-    --ambient-deep: 36 30% 92%;
-    --ambient-phase: 0;
-    --ink-soft: 25 27% 22%;
-    --surface-warm: 41 67% 91%;
-
-    --bloom-image:
-      radial-gradient(at 22% 14%, hsl(14 70% 70% / 0.18) 0px, transparent 48%),
-      radial-gradient(at 82% 78%, hsl(105 25% 60% / 0.14) 0px, transparent 50%),
-      radial-gradient(at 0% 100%, hsl(36 65% 60% / 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsl(280 22% 65% / 0.1) 0px, transparent 50%);
-  }
-
-  /* ============================================================
      JARVIS CORE THEME - optional black/navy command-center skin.
-     Existing Dark, Light, and System themes remain available.
+     Default, VibeSpace, and MonoChrome themes remain available.
      ============================================================ */
   [data-theme='jarvis'] {
     --background: 220 38% 4%;
@@ -260,12 +186,8 @@
     --radius-lg: 14px;
 
     --shadow-soft: 0 1px 2px hsl(0 0% 0% / 0.65), 0 8px 24px hsl(0 0% 0% / 0.35);
-    --shadow-lift:
-      0 18px 50px hsl(0 0% 0% / 0.62),
-      0 0 28px hsl(29 100% 50% / 0.1);
-    --shadow-cozy:
-      0 20px 60px -12px hsl(0 0% 0% / 0.8),
-      0 0 32px hsl(29 100% 50% / 0.14);
+    --shadow-lift: 0 18px 50px hsl(0 0% 0% / 0.62), 0 0 28px hsl(29 100% 50% / 0.1);
+    --shadow-cozy: 0 20px 60px -12px hsl(0 0% 0% / 0.8), 0 0 32px hsl(29 100% 50% / 0.14);
 
     --ambient-deep: 225 44% 2%;
     --ambient-phase: 0;
@@ -764,7 +686,7 @@
       transparent 360deg
     );
   filter: blur(16px);
-  animation: jarvis-voice-tendril 6.8s ease-in-out infinite;
+  opacity: 0.72;
 }
 
 .jarvis-voice-panel::after {
@@ -803,7 +725,6 @@
     transparent 20px 29px
   );
   filter: blur(1px);
-  animation: jarvis-voice-tendril 4.8s ease-in-out infinite reverse;
 }
 
 .jarvis-voice-mic {
@@ -845,12 +766,12 @@
   inset: -16%;
   border-radius: inherit;
   background:
-    radial-gradient(circle at 50% 50%, hsl(var(--accent-cyan) / 0.18), transparent 58%),
+    radial-gradient(circle at 50% 50%, hsl(var(--accent-amber) / 0.2), transparent 58%),
     conic-gradient(
       from 90deg,
       transparent,
-      hsl(var(--accent-cyan) / 0.22),
-      hsl(var(--accent-violet) / 0.2),
+      hsl(var(--accent-copper) / 0.24),
+      hsl(var(--accent-amber) / 0.18),
       transparent
     );
   filter: blur(18px);
@@ -1191,16 +1112,6 @@
    * pronounced, reinforcing that the input is "live". */
   opacity: 0.78;
   filter: blur(12px);
-}
-
-[data-theme-preference='system'] [data-jarvis-rainbow='true']::before {
-  background: linear-gradient(
-    135deg,
-    hsl(var(--accent-copper) / 0.74),
-    hsl(var(--accent-amber) / 0.5),
-    hsl(var(--accent-copper) / 0.74)
-  );
-  animation: jarvis-rainbow-pulse 4.5s ease-in-out infinite;
 }
 
 [data-theme='jarvis'] [data-jarvis-rainbow='true']::before {
@@ -1575,6 +1486,31 @@
   animation-delay: var(--sparkle-delay, 0ms);
 }
 
+html[data-theme='monochrome'] .mc7f-api-key-save-burst .jarvis-api-key-save-burst-wave {
+  background-image: none;
+  background-color: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+html[data-theme='monochrome'] .mc7f-api-key-save-burst .jarvis-api-key-save-burst-glow {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: none;
+  filter: none;
+  mix-blend-mode: normal;
+}
+
+html[data-theme='monochrome'] .mc7f-api-key-save-burst .jarvis-sparkle {
+  background-image: none;
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: none;
+  filter: none;
+}
+
 @keyframes jarvis-sparkle-burst {
   0% {
     transform: translate(-50%, -50%) rotate(var(--sparkle-angle, 0deg)) translateX(0) scale(0);
@@ -1705,6 +1641,12 @@
   padding: 6px;
   color: hsl(var(--foreground));
   backdrop-filter: blur(18px);
+}
+
+html[data-theme='monochrome'] .jarvis-context-menu {
+  background: hsl(var(--elevated));
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .jarvis-terminal-surface .xterm {

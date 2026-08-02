@@ -31,6 +31,7 @@ import {
   validateEmail,
   validatePassword,
 } from './authValidation';
+import './sakura-auth.css';
 
 interface SignInDialogProps {
   open: boolean;
@@ -290,8 +291,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         if (!v) reset();
       }}
     >
-      <DialogContent className="max-w-[440px] overflow-hidden border-border/80 bg-elevated p-0 shadow-2xl sm:rounded-2xl">
-        <div className="relative overflow-hidden border-b border-border/70 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 pb-5 pt-6">
+      <DialogContent className="sakura-auth-dialog max-w-[440px] overflow-hidden border-border/80 bg-elevated p-0 shadow-2xl sm:rounded-2xl">
+        <div
+          className="relative overflow-hidden border-b border-border/70 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 pb-5 pt-6"
+          data-sakura-surface="auth-header"
+        >
           <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-copper/20 blur-3xl" />
           <div className="pointer-events-none absolute -left-6 bottom-0 h-28 w-28 rounded-full bg-sky-500/15 blur-3xl" />
           <DialogHeader className="relative z-10 gap-2">
@@ -331,6 +335,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
             <div
               className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5"
               role="status"
+              data-sakura-tone="warning"
             >
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
               <p className="text-sm leading-snug text-amber-100/95">
@@ -340,7 +345,10 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
           )}
 
           {!verifying && (
-            <div className="grid grid-cols-3 gap-1 rounded-xl border border-border/80 bg-muted/60 p-1">
+            <div
+              className="grid grid-cols-3 gap-1 rounded-xl border border-border/80 bg-muted/60 p-1"
+              data-sakura-surface="auth-modes"
+            >
               <ModeButton current={mode} value="signin" onSelect={selectMode} icon={<KeyRound className="h-3.5 w-3.5" />}>
                 Sign in
               </ModeButton>

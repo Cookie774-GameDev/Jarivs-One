@@ -6,6 +6,7 @@ import { SynthesizeButton } from './SynthesizeButton';
 import { cn } from '@/lib/utils';
 import { useAgentStore } from '@/stores/agents';
 import type { Agent, AgentId, Message } from '@/types';
+import './council.sakura.css';
 
 export interface CouncilViewProps {
   /**
@@ -60,9 +61,15 @@ export function CouncilView({ agentIds, messages, className }: CouncilViewProps)
   const panelRefs = useRef<Record<string, HTMLDivElement | undefined>>({});
 
   return (
-    <div className={cn('flex flex-col h-full min-h-0', className)}>
+    <div
+      className={cn('sakura-council-root flex flex-col h-full min-h-0', className)}
+      data-vibespace-owned-chrome="council"
+    >
       {/* Header bar */}
-      <div className="flex items-center justify-between gap-3 px-4 h-11 border-b border-border bg-background shrink-0">
+      <div
+        className="sakura-council-header flex items-center justify-between gap-3 px-4 h-11 border-b border-border bg-background shrink-0"
+        data-sakura-council-surface="header"
+      >
         <div className="flex items-baseline gap-2 min-w-0">
           <span className="text-ui-strong">Council</span>
           <span className="text-secondary text-muted-foreground truncate">
@@ -78,7 +85,8 @@ export function CouncilView({ agentIds, messages, className }: CouncilViewProps)
       <motion.div
         ref={containerRef}
         layout
-        className="relative flex-1 min-h-0 p-3 bg-background"
+        className="sakura-council-canvas relative flex-1 min-h-0 p-3 bg-background"
+        data-sakura-council-surface="canvas"
       >
         {agents.length === 0 ? (
           <div className="flex h-full items-center justify-center text-secondary text-muted-foreground">

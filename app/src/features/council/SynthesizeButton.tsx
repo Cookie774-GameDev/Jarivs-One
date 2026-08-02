@@ -47,7 +47,7 @@ export function SynthesizeButton({ agentIds, className }: SynthesizeButtonProps)
       size="sm"
       onClick={handleClick}
       disabled={disabled}
-      className={className}
+      className={`sakura-council-synthesize ${className ?? ''}`}
       aria-label={
         disabled
           ? 'Synthesize: needs at least 2 completed agents'

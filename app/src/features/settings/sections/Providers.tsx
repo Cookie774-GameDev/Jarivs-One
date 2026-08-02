@@ -23,15 +23,9 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import {
-  isDefaultProviderSelectable,
-  planIncludesHostedChat,
-} from '@/lib/ai/agentProviderOptions';
+import { isDefaultProviderSelectable, planIncludesHostedChat } from '@/lib/ai/agentProviderOptions';
 import { testProviderKey } from '@/lib/ai/testKey';
-import {
-  getMonthlyAllProviderUsage,
-  type LocalUsageTotals,
-} from '@/lib/usage/usageSummary';
+import { getMonthlyAllProviderUsage, type LocalUsageTotals } from '@/lib/usage/usageSummary';
 import { ProviderUsageCounter, type ProviderUsageData } from '../components/ProviderUsageCounter';
 
 interface ProviderRow {
@@ -290,7 +284,7 @@ export function Providers() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="mc7f-settings-providers flex flex-col gap-8 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <h2 className="text-page-title text-foreground">Providers</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -350,7 +344,13 @@ export function Providers() {
         <div role="radiogroup" aria-label="Default provider" className="grid gap-2 max-w-xl">
           {DEFAULT_PROVIDER_OPTIONS.map((opt) => {
             const selected = defaultProvider === opt.id;
-            const selectable = isDefaultProviderSelectable(opt.id, apiKeys, offlineMode, plan, defaultLocalModel);
+            const selectable = isDefaultProviderSelectable(
+              opt.id,
+              apiKeys,
+              offlineMode,
+              plan,
+              defaultLocalModel,
+            );
             const hasKey = Boolean(apiKeys[opt.id]?.trim());
             const subscriptionHosted =
               planIncludesHostedChat(plan) && (opt.id === 'google' || opt.id === 'deepseek');
@@ -442,7 +442,13 @@ function toProviderUsageData(totals: LocalUsageTotals): ProviderUsageData | null
   };
 }
 
-const ProviderKeyRow = memo(function ProviderKeyRow({ row, value, onSave, onClear, usageData }: ProviderKeyRowProps) {
+const ProviderKeyRow = memo(function ProviderKeyRow({
+  row,
+  value,
+  onSave,
+  onClear,
+  usageData,
+}: ProviderKeyRowProps) {
   const [draft, setDraft] = useState(value);
   const [revealed, setRevealed] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -552,7 +558,7 @@ const ProviderKeyRow = memo(function ProviderKeyRow({ row, value, onSave, onClea
       {/* Ambient glow for saved providers */}
       {isSaved && (
         <div
-          className="absolute inset-0 rounded-lg opacity-30 pointer-events-none"
+          className="absolute inset-0 rounded-lg opacity-30 pointer-events-none [html[data-theme=monochrome]_&]:hidden"
           style={{
             background: `radial-gradient(circle at 20% 20%, hsl(var(--accent-copper) / 0.15), transparent 50%)`,
           }}

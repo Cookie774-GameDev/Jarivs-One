@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import './sakura-wellness.css';
 import { Eye, X } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
@@ -33,16 +34,21 @@ import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 
 /** Seconds remaining derived from `wellnessStartedAt` + `wellnessDurationMs`. */
-function useWellnessClock(): { remainingSec: number; elapsedFrac: number } {
+function useWellnessClock({
+  active,
+  runtimeEffectsEnabled,
+}: {
+  active: boolean;
+  runtimeEffectsEnabled: boolean;
+}): { remainingSec: number; elapsedFrac: number } {
   const startedAt = useUIStore((s) => s.wellnessStartedAt);
   const durationMs = useUIStore((s) => s.wellnessDurationMs);
-  const active = useUIStore((s) => s.wellnessActive);
 
   const [, force] = useState(0);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!active) return;
+    if (!runtimeEffectsEnabled || !active) return;
     const tick = () => {
       // Bump a counter to retrigger render without holding `Date.now()`
       // in state (it changes every frame and would re-fire effects).
@@ -53,8 +59,9 @@ function useWellnessClock(): { remainingSec: number; elapsedFrac: number } {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [active]);
+  }, [active, runtimeEffectsEnabled]);
 
+  if (!runtimeEffectsEnabled) return { remainingSec: 20, elapsedFrac: 0 };
   if (!active || startedAt === null || durationMs === null) {
     return { remainingSec: 0, elapsedFrac: 0 };
   }
@@ -67,17 +74,27 @@ function useWellnessClock(): { remainingSec: number; elapsedFrac: number } {
   };
 }
 
-export function WellnessBreak() {
-  const active = useUIStore((s) => s.wellnessActive);
-  const kind = useUIStore((s) => s.wellnessKind);
+export function WellnessBreak({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}) {
+  const storedActive = useUIStore((s) => s.wellnessActive);
+  const storedKind = useUIStore((s) => s.wellnessKind);
   const endWellness = useUIStore((s) => s.endWellness);
+  const active = runtimeEffectsEnabled ? storedActive : true;
+  const kind = runtimeEffectsEnabled ? storedKind : 'eye-break-20-20-20';
 
-  const { remainingSec, elapsedFrac } = useWellnessClock();
+  const { remainingSec, elapsedFrac } = useWellnessClock({
+    active,
+    runtimeEffectsEnabled,
+  });
   const completedRef = useRef(false);
 
   // Auto-end when the timer reaches 0. The ref guards against double-
   // fire if the clock hook re-renders during the toast settle.
   useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (!active) {
       completedRef.current = false;
       return;
@@ -87,11 +104,11 @@ export function WellnessBreak() {
       endWellness();
       toast.success('Eye break complete', 'Your eyes thank you.');
     }
-  }, [active, remainingSec, endWellness]);
+  }, [active, remainingSec, endWellness, runtimeEffectsEnabled]);
 
   // Esc to skip.
   useEffect(() => {
-    if (!active) return;
+    if (!runtimeEffectsEnabled || !active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -100,17 +117,14 @@ export function WellnessBreak() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, endWellness]);
+  }, [active, endWellness, runtimeEffectsEnabled]);
 
   if (!active) return null;
 
   // Sub-headline copy varies by kind so future wellness modalities
   // (stretch, breath, hydration) can plug in without forking the
   // overlay.
-  const headline =
-    kind === 'eye-break-20-20-20'
-      ? 'Look 20 feet away'
-      : 'Take a moment';
+  const headline = kind === 'eye-break-20-20-20' ? 'Look 20 feet away' : 'Take a moment';
   const subtext =
     kind === 'eye-break-20-20-20'
       ? 'Soften your gaze on something far. Your eyes will thank you.'
@@ -118,10 +132,12 @@ export function WellnessBreak() {
 
   return (
     <div
+      data-monochrome-surface="wellness-break"
       className={cn(
         'fixed inset-0 z-[80] flex flex-col items-center justify-center',
         'bg-[hsl(var(--ambient-deep))]/95 backdrop-blur-md',
         'animate-fade-in',
+        '[html[data-theme=monochrome]_&]:!bg-background [html[data-theme=monochrome]_&]:![background-image:none] [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:animate-none',
       )}
       role="dialog"
       aria-modal="true"
@@ -136,7 +152,7 @@ export function WellnessBreak() {
     >
       {/* Soft breathing orb above the headline. */}
       <div
-        className="mb-10 h-32 w-32 rounded-full animate-breathe"
+        className="mb-10 h-32 w-32 rounded-full animate-breathe [html[data-theme=monochrome]_&]:h-20 [html[data-theme=monochrome]_&]:w-20 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:!bg-panel [html[data-theme=monochrome]_&]:![background-image:none] [html[data-theme=monochrome]_&]:![filter:none] [html[data-theme=monochrome]_&]:animate-none"
         style={{
           background:
             'radial-gradient(circle at 35% 35%, hsl(var(--accent-amber) / 0.7) 0%, hsl(var(--accent-copper) / 0.45) 50%, transparent 75%)',
@@ -146,7 +162,7 @@ export function WellnessBreak() {
       />
 
       <h1
-        className="font-display text-foreground/95 text-center"
+        className="font-display text-foreground/95 text-center [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-tight"
         style={{
           fontSize: 'clamp(2.25rem, 5vw, 4rem)',
           fontWeight: 300,
@@ -158,14 +174,14 @@ export function WellnessBreak() {
       </h1>
 
       {subtext && (
-        <p className="mt-3 max-w-md text-center text-secondary text-muted-foreground/80">
+        <p className="mt-3 max-w-md text-center text-secondary text-muted-foreground/80 [html[data-theme=monochrome]_&]:text-muted-foreground">
           {subtext}
         </p>
       )}
 
       {/* Countdown — big and serene. */}
       <div
-        className="mt-10 font-display text-accent-copper tabular-nums"
+        className="mt-10 font-display text-accent-copper tabular-nums [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-foreground"
         style={{
           fontSize: 'clamp(3rem, 8vw, 6rem)',
           fontWeight: 200,
@@ -176,7 +192,7 @@ export function WellnessBreak() {
       >
         {remainingSec}
         <span
-          className="ml-2 text-secondary text-muted-foreground/70 align-middle"
+          className="ml-2 text-secondary text-muted-foreground/70 align-middle [html[data-theme=monochrome]_&]:text-muted-foreground"
           style={{ fontSize: 'clamp(0.9rem, 1.4vw, 1.1rem)' }}
         >
           seconds
@@ -185,11 +201,12 @@ export function WellnessBreak() {
 
       {/* Progress arc — slim, subtle. */}
       <div
-        className="mt-8 h-1 w-64 max-w-[60vw] overflow-hidden rounded-full bg-foreground/10"
+        data-sakura-surface="wellness-progress"
+        className="mt-8 h-1 w-64 max-w-[60vw] overflow-hidden rounded-full bg-foreground/10 [html[data-theme=monochrome]_&]:h-px [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:bg-border-mid"
         aria-hidden
       >
         <div
-          className="h-full bg-accent-copper transition-[width] duration-200 ease-linear"
+          className="h-full bg-accent-copper transition-[width] duration-200 ease-linear [html[data-theme=monochrome]_&]:bg-foreground [html[data-theme=monochrome]_&]:transition-none"
           style={{ width: `${Math.round(elapsedFrac * 100)}%` }}
         />
       </div>
@@ -199,13 +216,15 @@ export function WellnessBreak() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={endWellness}
-          className="text-muted-foreground/70 hover:text-foreground"
+          onClick={() => {
+            if (runtimeEffectsEnabled) endWellness();
+          }}
+          className="text-muted-foreground/70 hover:text-foreground [html[data-theme=monochrome]_&]:text-muted-foreground"
           aria-label="Skip wellness break"
         >
           <X className="h-3.5 w-3.5" /> Skip break
         </Button>
-        <span className="text-metadata text-muted-foreground/50 uppercase tracking-wide">
+        <span className="text-metadata text-muted-foreground/50 uppercase tracking-wide [html[data-theme=monochrome]_&]:text-muted-foreground">
           <Eye className="mr-1 inline h-3 w-3" />
           20-20-20 rule · Esc to dismiss
         </span>

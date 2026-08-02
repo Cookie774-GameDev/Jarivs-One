@@ -122,13 +122,64 @@ export type ProviderRecordNormalizer = (
 export interface CliProviderDefinition {
   adapterId: string;
   connectionId: string;
+  promptTransport: 'prefixed-preamble' | 'unsupported';
   executableName: string;
   versionArgs: readonly string[];
   authProbeArgs?: readonly string[];
+  classifyAuthProbe?: (probe: Readonly<CliProbeResult>) => AuthProbeResult;
   modelListArgs?: readonly string[];
   buildInvocation: (request: CliInvocationRequest) => CliInvocation;
   normalizeRecord: ProviderRecordNormalizer;
 }
+
+export const KERNEL_SMOKE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
+  adapterId: 'vibespace-kernel-smoke-cli',
+  connectionId: 'vibespace-kernel-smoke-cli',
+  promptTransport: 'prefixed-preamble',
+  executableName: 'vibespace_kernel_smoke_cli',
+  versionArgs: Object.freeze(['--version']),
+  buildInvocation(request: CliInvocationRequest): CliInvocation {
+    assertCliPrompt(request.prompt);
+    return {
+      args: ['--model', requireModelId(request.modelId, 'VibeSpace kernel smoke')],
+      stdin: request.prompt,
+      ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
+    };
+  },
+  normalizeRecord(record: Readonly<Record<string, unknown>>): ProviderRecordNormalization {
+    if (record.type === 'text' && typeof record.delta === 'string') {
+      return { recognized: true, events: [{ type: 'text', delta: record.delta }] };
+    }
+    if (record.type === 'done') {
+      return {
+        recognized: true,
+        events: [
+          {
+            type: 'done',
+            ...(typeof record.finish_reason === 'string'
+              ? { finishReason: record.finish_reason }
+              : {}),
+          },
+        ],
+      };
+    }
+    if (record.type === 'error') {
+      return {
+        recognized: true,
+        events: [
+          {
+            type: 'error',
+            message:
+              typeof record.message === 'string'
+                ? record.message
+                : 'Kernel smoke provider reported an error.',
+          },
+        ],
+      };
+    }
+    return { recognized: false, events: [] };
+  },
+});
 
 export function assertCliPrompt(prompt: string): void {
   if (prompt.length > MAX_CLI_PROMPT_CHARS) {
@@ -167,6 +218,10 @@ function isTerminalBridgeStatus(status: CliEventStatus): boolean {
   );
 }
 
+function cliAbortError(): DOMException {
+  return new DOMException('The provider CLI request was aborted.', 'AbortError');
+}
+
 /**
  * Starts one already-discovered executable through Task 2's Tauri supervisor.
  * The event listener is installed before start so short-lived CLIs cannot race it.
@@ -175,6 +230,7 @@ export async function* streamCliBridge(
   request: CliStartRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<CliBridgeEvent> {
+  if (signal?.aborted) throw cliAbortError();
   const [{ invoke }, { listen }] = await Promise.all([
     import('@tauri-apps/api/core'),
     import('@tauri-apps/api/event'),
@@ -183,6 +239,7 @@ export async function* streamCliBridge(
   let wake: (() => void) | undefined;
   let terminalSeen = false;
   let started = false;
+  let cancelledAfterStart = false;
 
   const unlisten = await listen<CliBridgeEvent>(CLI_BRIDGE_EVENT, ({ payload }) => {
     if (payload.requestId !== request.requestId) return;
@@ -194,20 +251,24 @@ export async function* streamCliBridge(
 
   const abort = () => {
     void cancelCliBridge(request.requestId).catch(() => false);
+    wake?.();
+    wake = undefined;
   };
   signal?.addEventListener('abort', abort, { once: true });
 
   try {
     if (signal?.aborted) {
-      throw new Error('CLI request was cancelled before start');
+      throw cliAbortError();
     }
     await invoke<void>('cli_bridge_start', { request });
     started = true;
     if (signal?.aborted) {
       await cancelCliBridge(request.requestId).catch(() => false);
+      cancelledAfterStart = true;
     }
 
     while (!terminalSeen || queue.length > 0) {
+      if (signal?.aborted) throw cliAbortError();
       if (queue.length === 0) {
         await new Promise<void>((resolve) => {
           wake = resolve;
@@ -220,7 +281,7 @@ export async function* streamCliBridge(
   } finally {
     signal?.removeEventListener('abort', abort);
     unlisten();
-    if (started && !terminalSeen) {
+    if (started && !terminalSeen && !cancelledAfterStart) {
       await cancelCliBridge(request.requestId).catch(() => false);
     }
   }
@@ -546,21 +607,32 @@ async function probeProviderAuth(definition: CliProviderDefinition): Promise<Aut
       detail: 'No approved read-only authentication status command is available.',
     };
   }
+  const classifyUnavailable = (): AuthProbeResult =>
+    definition.classifyAuthProbe?.({
+      exitCode: null,
+      stdout: { data: '', truncated: false },
+      stderr: { data: '', truncated: false },
+      timedOut: false,
+    }) ?? {
+      status: 'unknown',
+      detail: 'Authentication status could not be verified.',
+    };
   try {
     const executable = await findExecutable(definition.executableName);
-    if (!executable) return { status: 'unknown', detail: 'Provider CLI is not installed.' };
+    if (!executable) return classifyUnavailable();
     const probe = await probeCliBridge({
       executableId: executable.executableId,
       args: [...definition.authProbeArgs],
       timeoutMs: DEFAULT_PROBE_TIMEOUT_MS,
       outputLimitBytes: DEFAULT_PROBE_OUTPUT_LIMIT_BYTES,
     });
+    if (definition.classifyAuthProbe) return definition.classifyAuthProbe(probe);
     if (probe.timedOut) return { status: 'unknown', detail: 'Authentication probe timed out.' };
     return probe.exitCode === 0
       ? { status: 'authenticated', detail: 'Authenticated via the provider CLI.' }
       : { status: 'unauthenticated', detail: 'The provider CLI reported no active session.' };
   } catch {
-    return { status: 'unknown', detail: 'Authentication status could not be verified.' };
+    return classifyUnavailable();
   }
 }
 
@@ -568,6 +640,13 @@ async function* sendProviderRequest(
   definition: CliProviderDefinition,
   request: ProviderRequest,
 ): AsyncGenerator<ProviderEvent> {
+  if (request.signal?.aborted) throw cliAbortError();
+  if (
+    request.connection.id !== definition.connectionId ||
+    request.connection.promptTransport !== definition.promptTransport
+  ) {
+    throw new Error('CLI provider prompt transport declaration mismatch.');
+  }
   const executable = await findExecutable(definition.executableName);
   if (!executable) {
     throw new Error(`${definition.executableName} CLI is not installed`);
@@ -593,7 +672,15 @@ async function* sendProviderRequest(
     },
     request.signal,
   )) {
+    if (request.signal?.aborted) throw cliAbortError();
     if (event.status === 'data' && event.stream === 'stdout') {
+      if (event.data.length > 0) {
+        request.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(event.data).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       for (const normalized of parser.push(event.data)) yield normalized;
       continue;
     }
@@ -618,6 +705,7 @@ async function* sendProviderRequest(
       return;
     }
     if (event.status === 'cancelled') {
+      if (request.signal?.aborted) throw cliAbortError();
       yield { type: 'error', message: 'Provider CLI request was cancelled.' };
       return;
     }
@@ -639,3 +727,5 @@ export function createCliProviderAdapter(definition: CliProviderDefinition): Pro
     },
   });
 }
+
+export const kernelSmokeCliAdapter = createCliProviderAdapter(KERNEL_SMOKE_CLI_DEFINITION);

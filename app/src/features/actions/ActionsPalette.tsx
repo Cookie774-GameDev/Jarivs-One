@@ -25,18 +25,8 @@
  */
 
 import * as React from 'react';
-import {
-  Sparkles,
-  Play,
-  Search,
-  HelpCircle,
-  ChevronRight,
-} from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Sparkles, Play, Search, HelpCircle, ChevronRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -63,7 +53,9 @@ function loadRecent(): string[] {
     const raw = localStorage.getItem(RECENT_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string').slice(0, RECENT_CAP) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((x) => typeof x === 'string').slice(0, RECENT_CAP)
+      : [];
   } catch {
     return [];
   }
@@ -106,10 +98,7 @@ interface Group {
   actions: ActionDef[];
 }
 
-function groupActions(
-  actions: ReadonlyArray<ActionDef>,
-  recentIds: string[],
-): Group[] {
+function groupActions(actions: ReadonlyArray<ActionDef>, recentIds: string[]): Group[] {
   // "Recent" group surfaces actions the user has invoked before in
   // most-recent-first order, so the palette feels personalised.
   const idMap = new Map(actions.map((a) => [a.id, a]));
@@ -185,8 +174,11 @@ function ParamForm({ action, onCancel, onRun }: ParamFormProps) {
   };
 
   return (
-    <div className="rounded-md border border-border bg-elevated px-3 py-2.5 mt-1 flex flex-col gap-2">
-      <div className="text-metadata uppercase tracking-wide text-muted-foreground">
+    <div
+      data-monochrome-surface="action-parameters"
+      className="rounded-md border border-border bg-elevated px-3 py-2.5 mt-1 flex flex-col gap-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
+    >
+      <div className="text-metadata uppercase tracking-wide text-muted-foreground [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-foreground">
         Run with parameters
       </div>
       {action.params.map((p) => (
@@ -232,9 +224,7 @@ function ParamField({
         placeholder={p.placeholder}
         autoFocus={p.required}
       />
-      {p.help && (
-        <p className="mt-0.5 text-metadata text-muted-foreground">{p.help}</p>
-      )}
+      {p.help && <p className="mt-0.5 text-metadata text-muted-foreground">{p.help}</p>}
     </div>
   );
 }
@@ -254,7 +244,11 @@ interface ActionRowProps {
 function ActionRow({ action, expanded, onClick, onCancel, onRun }: ActionRowProps) {
   const Icon = action.icon ?? Sparkles;
   return (
-    <li className="flex flex-col">
+    <li
+      data-monochrome-surface="action-row"
+      data-monochrome-state={expanded ? 'expanded' : 'idle'}
+      className="flex flex-col"
+    >
       <button
         type="button"
         onClick={onClick}
@@ -262,25 +256,22 @@ function ActionRow({ action, expanded, onClick, onCancel, onRun }: ActionRowProp
           'flex items-center gap-2 px-2 py-1.5 rounded-md text-left',
           'hover:bg-muted focus-visible:bg-muted focus-visible:outline-none',
           'focus-visible:ring-1 focus-visible:ring-ring',
+          '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-transparent [html[data-theme=monochrome]_&]:hover:border-l-accent-cyan [html[data-theme=monochrome]_&]:hover:bg-elevated',
+          expanded &&
+            '[html[data-theme=monochrome]_&]:border-l-accent-cyan [html[data-theme=monochrome]_&]:bg-muted',
         )}
       >
-        <Icon className="h-3.5 w-3.5 text-accent-copper shrink-0" />
+        <Icon className="h-3.5 w-3.5 text-accent-copper shrink-0 [html[data-theme=monochrome]_&]:text-accent-cyan" />
         <div className="min-w-0 flex-1">
-          <div className="text-secondary text-foreground truncate">
-            {action.label}
-          </div>
-          <div className="text-metadata text-muted-foreground truncate">
-            {action.description}
-          </div>
+          <div className="text-secondary text-foreground truncate">{action.label}</div>
+          <div className="text-metadata text-muted-foreground truncate">{action.description}</div>
         </div>
         <span className="text-metadata text-muted-foreground/60 font-mono shrink-0">
           {action.id}
         </span>
         <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
       </button>
-      {expanded && (
-        <ParamForm action={action} onCancel={onCancel} onRun={onRun} />
-      )}
+      {expanded && <ParamForm action={action} onCancel={onCancel} onRun={onRun} />}
     </li>
   );
 }
@@ -310,17 +301,11 @@ export function ActionsPalette() {
     () => allActions.filter((a) => actionMatches(a, query)),
     [allActions, query],
   );
-  const groups = React.useMemo(
-    () => groupActions(filtered, recent),
-    [filtered, recent],
-  );
+  const groups = React.useMemo(() => groupActions(filtered, recent), [filtered, recent]);
 
   const close = () => setOpen(false);
 
-  const runById = async (
-    id: string,
-    params: Record<string, unknown>,
-  ): Promise<void> => {
+  const runById = async (id: string, params: Record<string, unknown>): Promise<void> => {
     setRecent((prev) => pushRecent(prev, id));
     const result = await runAction(id, params, { source: 'user' });
     if (result.ok) close();
@@ -343,9 +328,12 @@ export function ActionsPalette() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-w-2xl top-[15vh] translate-y-0">
-        <DialogTitle className="flex items-center gap-2 text-secondary">
-          <Sparkles className="h-4 w-4 text-accent-copper" />
+      <DialogContent
+        data-monochrome-surface="actions-palette"
+        className="max-w-2xl top-[15vh] translate-y-0 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+      >
+        <DialogTitle className="flex items-center gap-2 text-secondary [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">
+          <Sparkles className="h-4 w-4 text-accent-copper [html[data-theme=monochrome]_&]:text-accent-cyan" />
           Actions
           <span className="ml-auto text-metadata text-muted-foreground/70 font-mono">
             Mod+Shift+A
@@ -353,7 +341,10 @@ export function ActionsPalette() {
         </DialogTitle>
 
         {/* Search bar */}
-        <div className="relative mt-1">
+        <div
+          data-monochrome-surface="action-search"
+          className="relative mt-1 [html[data-theme=monochrome]_&]:border-b [html[data-theme=monochrome]_&]:border-border"
+        >
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             value={query}
@@ -365,16 +356,18 @@ export function ActionsPalette() {
         </div>
 
         {/* Results */}
-        <div className="mt-2 flex flex-col gap-3 max-h-[60vh] overflow-y-auto">
+        <div
+          data-monochrome-surface="action-results"
+          className="mt-2 flex flex-col gap-3 max-h-[60vh] overflow-y-auto"
+        >
           {groups.length === 0 ? (
             <div className="text-secondary text-muted-foreground px-2 py-4 text-center">
-              No actions match{' '}
-              <span className="font-mono text-foreground">{query}</span>.
+              No actions match <span className="font-mono text-foreground">{query}</span>.
             </div>
           ) : (
             groups.map((g) => (
               <div key={g.key}>
-                <div className="flex items-center gap-1.5 mb-1 px-2 text-metadata uppercase tracking-wide text-muted-foreground">
+                <div className="flex items-center gap-1.5 mb-1 px-2 text-metadata uppercase tracking-wide text-muted-foreground [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-foreground">
                   <g.icon className="h-3 w-3" />
                   {g.label}
                 </div>
@@ -396,7 +389,7 @@ export function ActionsPalette() {
         </div>
 
         {/* Footer hint */}
-        <div className="mt-2 text-metadata text-muted-foreground/70 px-2">
+        <div className="mt-2 text-metadata text-muted-foreground/70 px-2 [html[data-theme=monochrome]_&]:border-t [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:pt-2 [html[data-theme=monochrome]_&]:font-mono">
           Click an action to run it. Custom tools you save in{' '}
           <span className="text-foreground">Tools</span> appear here too.
         </div>

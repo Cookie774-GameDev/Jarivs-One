@@ -1,0 +1,87 @@
+html[data-theme='sakura'] .mc7f-access-paywall {
+  border-radius: var(--sakura-radius-feature);
+  color: hsl(var(--sakura-ivory-hsl));
+}
+
+html[data-theme='sakura'] .mc7f-access-paywall > header h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 2rem;
+  font-weight: 500;
+}
+
+html[data-theme='sakura'] .mc7f-access-paywall [data-sakura-surface='access-status'] {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  background: var(--sakura-panel-strong-fallback);
+  box-shadow:
+    var(--shadow-lift),
+    inset 3px 0 0 hsl(var(--sakura-pink-hsl) / 0.72),
+    inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.08);
+}
+
+html[data-theme='sakura'] .mc7f-access-paywall[data-sakura-state='past-due'] [data-sakura-surface],
+html[data-theme='sakura'] .mc7f-access-paywall[data-sakura-state='locked'] [data-sakura-surface] {
+  border-color: hsl(var(--destructive) / 0.72);
+  box-shadow:
+    var(--shadow-lift),
+    inset 3px 0 0 hsl(var(--destructive));
+}
+
+html[data-theme='sakura'] .mc7f-access-paywall[data-sakura-state='grace'] [data-sakura-surface],
+html[data-theme='sakura']
+  .mc7f-access-paywall[data-sakura-state='cancel-at-period-end']
+  [data-sakura-surface] {
+  border-color: hsl(var(--warning) / 0.72);
+  box-shadow:
+    var(--shadow-lift),
+    inset 3px 0 0 hsl(var(--warning));
+}
+
+html[data-theme='sakura'] .mc7f-access-paywall [role='alert'] {
+  border-color: hsl(var(--destructive) / 0.72);
+  background: hsl(var(--destructive) / 0.16);
+}
+
+html[data-theme='sakura'] .mc7f-access-banner {
+  border-color: hsl(var(--warning) / 0.5);
+  background: hsl(var(--sakura-night-2-hsl) / 0.94);
+  box-shadow: inset 3px 0 0 hsl(var(--warning));
+}
+
+html[data-theme='sakura'] .mc7f-access-banner[data-sakura-tone='danger'] {
+  border-color: hsl(var(--destructive) / 0.72);
+  background: hsl(var(--sakura-night-hsl) / 0.96);
+  box-shadow: inset 3px 0 0 hsl(var(--destructive));
+}
+
+html[data-theme='sakura'] .mc7f-access-app-host {
+  border-color: hsl(var(--success) / 0.64);
+  background: hsl(var(--sakura-night-2-hsl) / 0.94);
+  box-shadow: inset 3px 0 0 hsl(var(--success));
+}
+
+html[data-theme='sakura'] .mc7f-access-paywall button:disabled,
+html[data-theme='sakura'] .mc7f-access-banner button:disabled,
+html[data-theme='sakura'] .mc7f-access-app-host button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] .mc7f-access-paywall *,
+  html[data-theme='sakura'] .mc7f-access-banner *,
+  html[data-theme='sakura'] .mc7f-access-app-host * {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] .mc7f-access-paywall [data-sakura-surface],
+  html[data-theme='sakura'] .mc7f-access-banner,
+  html[data-theme='sakura'] .mc7f-access-app-host {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

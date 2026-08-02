@@ -43,12 +43,7 @@ export interface SkillCardProps {
   onToggleEnabled: (name: string, next: boolean) => void;
 }
 
-export function SkillCard({
-  manifest,
-  selected,
-  onSelect,
-  onToggleEnabled,
-}: SkillCardProps) {
+export function SkillCard({ manifest, selected, onSelect, onToggleEnabled }: SkillCardProps) {
   const id = manifest.catalogId ?? manifest.name;
   const hue = manifest.colorHue ?? 35;
   const Icon = Sparkles;
@@ -59,36 +54,37 @@ export function SkillCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      onClick={() => onSelect(id)}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect(id);
-        }
-      }}
+      data-monochrome-surface="skill-manifest"
       className={cn(
-        'group flex flex-col gap-2.5 cursor-pointer transition-all',
+        'group relative flex flex-col gap-2.5 cursor-pointer transition-all',
         'rounded-xl border border-border bg-paper shadow-soft p-3.5',
         'hover:shadow-lift hover:border-accent-cream/50',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper',
-        selected && 'ring-1 ring-accent-copper border-accent-copper/60',
+        '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel',
+        '[html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:hover:shadow-none [html[data-theme=monochrome]_&]:hover:border-accent-cyan',
+        '[html[data-theme=monochrome]_&]:!border-l-accent-cyan',
+        selected &&
+          'ring-1 ring-accent-copper border-accent-copper/60 [html[data-theme=monochrome]_&]:border-accent-cyan [html[data-theme=monochrome]_&]:ring-0',
       )}
       style={{ borderLeftWidth: 3, borderLeftColor: `hsl(${hue}, 50%, 45%)` }}
     >
-      <div className="flex items-start gap-2">
+      <button
+        type="button"
+        aria-label={`Select ${manifest.title}`}
+        aria-pressed={selected}
+        onClick={() => onSelect(id)}
+        className="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:focus-visible:ring-0 [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-1 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-accent-cyan"
+      />
+
+      <div className="pointer-events-none relative z-[1] flex items-start gap-2">
         <span className="text-xl shrink-0 leading-none" aria-hidden>
           {manifest.emoji ?? (manifest.isPreset ? '⚙️' : '✨')}
         </span>
-        <div className="flex-1 min-w-0 font-display font-semibold text-foreground leading-tight text-[15px]">
+        <div className="flex-1 min-w-0 font-display font-semibold text-foreground leading-tight text-[15px] [html[data-theme=monochrome]_&]:font-mono">
           {manifest.title}
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 text-metadata text-muted-foreground">
+      <div className="pointer-events-none relative z-[1] flex items-center gap-1.5 text-metadata text-muted-foreground">
         <Icon className="h-3.5 w-3.5 text-accent-copper" />
         <span className="uppercase tracking-wider font-semibold">
           {manifest.isPreset ? 'preset' : 'custom'}
@@ -102,32 +98,29 @@ export function SkillCard({
 
       {/* 2-line body preview */}
       {summary && (
-        <p className="text-secondary text-muted-foreground leading-relaxed line-clamp-2">
+        <p className="pointer-events-none relative z-[1] text-secondary text-muted-foreground leading-relaxed line-clamp-2">
           {summary}
         </p>
       )}
 
       {/* Footer: tags + enabled switch */}
-      <div className="flex items-center justify-between gap-2 mt-auto pt-1">
+      <div className="pointer-events-none relative z-[1] flex items-center justify-between gap-2 mt-auto pt-1">
         <div className="flex flex-wrap gap-1 min-w-0">
           {(manifest.tags ?? []).slice(0, 4).map((t: string) => (
             <span
               key={t}
-              className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground border border-border"
+              className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-muted text-muted-foreground border border-border [html[data-theme=monochrome]_&]:rounded-sm"
             >
               {t}
             </span>
           ))}
         </div>
-        <div
-          className="shrink-0"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
+        <div className="pointer-events-auto relative z-10 shrink-0">
           <Switch
             checked={!!manifest.enabled}
             onCheckedChange={(v) => onToggleEnabled(id, v)}
             aria-label={manifest.enabled ? 'Disable skill' : 'Enable skill'}
+            className="h-6 [html[data-theme=monochrome]_&_span]:shadow-none"
           />
         </div>
       </div>

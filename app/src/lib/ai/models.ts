@@ -19,6 +19,12 @@ export interface ModelOption {
   provider: ProviderId;
   id: string;
   label: string;
+  /** Conservative active-catalog context capacity. Omitted when not verified. */
+  contextWindowTokens?: number;
+  /** Maximum exact input/output USD rate per million tokens from the embedded snapshot. */
+  maximumCostPerMillionUsd?: number;
+  /** Pricing provenance. Present only for exact model-level embedded metadata. */
+  costMetadataSource?: 'embedded_snapshot';
 }
 
 export const REAL_CHAT_PROVIDERS: readonly ProviderId[] = [
@@ -48,32 +54,168 @@ const CLOUD_KEY_PROVIDERS: readonly ProviderId[] = [
 ];
 
 export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
-  { provider: 'google', id: GOOGLE_DEFAULT_MODEL, label: 'Gemini 2.5 Flash Lite' },
-  { provider: 'google', id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { provider: 'google', id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  { provider: 'google', id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-  { provider: 'google', id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro' },
-  { provider: 'groq', id: GROQ_DEFAULT_MODEL, label: 'Llama 3.3 70B Versatile' },
-  { provider: 'groq', id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
-  { provider: 'groq', id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
-  { provider: 'openai', id: OPENAI_DEFAULT_MODEL, label: 'GPT-4o Mini' },
-  { provider: 'openai', id: 'gpt-4o', label: 'GPT-4o' },
-  { provider: 'openai', id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-  { provider: 'openai', id: 'gpt-5.5', label: 'GPT-5.5' },
-  { provider: 'openai', id: 'gpt-5.5-pro', label: 'GPT-5.5 Pro' },
-  { provider: 'openai', id: 'gpt-5.5-codex', label: 'GPT-5.5 Codex' },
-  { provider: 'anthropic', id: ANTHROPIC_DEFAULT_MODEL, label: 'Claude 3.5 Sonnet' },
-  { provider: 'anthropic', id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
-  { provider: 'anthropic', id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
-  { provider: 'anthropic', id: 'claude-fable-5', label: 'Claude Fable 5' },
-  { provider: 'deepseek', id: 'deepseek-chat', label: 'DeepSeek V3 Chat' },
-  { provider: 'deepseek', id: 'deepseek-reasoner', label: 'DeepSeek R1' },
-  { provider: 'openrouter', id: OPENROUTER_DEFAULT_MODEL, label: 'Claude 3.5 Sonnet (OR)' },
-  { provider: 'openrouter', id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (OR)' },
-  { provider: 'mistral', id: MISTRAL_DEFAULT_MODEL, label: 'Mistral Large' },
-  { provider: 'together', id: TOGETHER_DEFAULT_MODEL, label: 'Llama 3.3 70B (Together)' },
-  { provider: 'xai', id: XAI_DEFAULT_MODEL, label: 'Grok 2' },
-  { provider: 'xai', id: 'grok-4.3', label: 'Grok 4.3' },
+  {
+    provider: 'google',
+    id: GOOGLE_DEFAULT_MODEL,
+    label: 'Gemini 2.5 Flash Lite',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'google',
+    id: 'gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    contextWindowTokens: 1_048_576,
+    maximumCostPerMillionUsd: 2.5,
+    costMetadataSource: 'embedded_snapshot',
+  },
+  {
+    provider: 'google',
+    id: 'gemini-2.0-flash',
+    label: 'Gemini 2.0 Flash',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'google',
+    id: 'gemini-3.5-flash',
+    label: 'Gemini 3.5 Flash',
+    contextWindowTokens: 1_048_576,
+    maximumCostPerMillionUsd: 9,
+    costMetadataSource: 'embedded_snapshot',
+  },
+  {
+    provider: 'google',
+    id: 'gemini-3.1-pro',
+    label: 'Gemini 3.1 Pro',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'groq',
+    id: GROQ_DEFAULT_MODEL,
+    label: 'Llama 3.3 70B Versatile',
+    contextWindowTokens: 131_072,
+  },
+  {
+    provider: 'groq',
+    id: 'llama-3.1-8b-instant',
+    label: 'Llama 3.1 8B Instant',
+    contextWindowTokens: 131_072,
+  },
+  {
+    provider: 'groq',
+    id: 'mixtral-8x7b-32768',
+    label: 'Mixtral 8x7B',
+    contextWindowTokens: 32_768,
+  },
+  {
+    provider: 'openai',
+    id: OPENAI_DEFAULT_MODEL,
+    label: 'GPT-4o Mini',
+    contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-4o',
+    label: 'GPT-4o',
+    contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-4.1-mini',
+    label: 'GPT-4.1 Mini',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.5',
+    label: 'GPT-5.5',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.5-pro',
+    label: 'GPT-5.5 Pro',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.5-codex',
+    label: 'GPT-5.5 Codex',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'anthropic',
+    id: ANTHROPIC_DEFAULT_MODEL,
+    label: 'Claude 3.5 Sonnet',
+    contextWindowTokens: 200_000,
+  },
+  {
+    provider: 'anthropic',
+    id: 'claude-3-5-haiku-20241022',
+    label: 'Claude 3.5 Haiku',
+    contextWindowTokens: 200_000,
+  },
+  {
+    provider: 'anthropic',
+    id: 'claude-opus-4-8',
+    label: 'Claude Opus 4.8',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'anthropic',
+    id: 'claude-fable-5',
+    label: 'Claude Fable 5',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'deepseek',
+    id: 'deepseek-chat',
+    label: 'DeepSeek V3 Chat',
+    contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'deepseek',
+    id: 'deepseek-reasoner',
+    label: 'DeepSeek R1',
+    contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'openrouter',
+    id: OPENROUTER_DEFAULT_MODEL,
+    label: 'Claude 3.5 Sonnet (OR)',
+    contextWindowTokens: 200_000,
+  },
+  {
+    provider: 'openrouter',
+    id: 'google/gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash (OR)',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'mistral',
+    id: MISTRAL_DEFAULT_MODEL,
+    label: 'Mistral Large',
+    contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'together',
+    id: TOGETHER_DEFAULT_MODEL,
+    label: 'Llama 3.3 70B (Together)',
+    contextWindowTokens: 131_072,
+  },
+  {
+    provider: 'xai',
+    id: XAI_DEFAULT_MODEL,
+    label: 'Grok 2',
+    contextWindowTokens: 131_072,
+    maximumCostPerMillionUsd: 10,
+    costMetadataSource: 'embedded_snapshot',
+  },
+  {
+    provider: 'xai',
+    id: 'grok-4.3',
+    label: 'Grok 4.3',
+    contextWindowTokens: 1_000_000,
+  },
 ];
 
 // ── Dynamic Ollama model discovery ──────────────────────────────────────
@@ -230,7 +372,10 @@ export function getModelOptions(provider: ProviderId): readonly ModelOption[] {
   );
 }
 
-export function defaultModelForProvider(provider: ProviderId, localModel = OLLAMA_DEFAULT_MODEL): string {
+export function defaultModelForProvider(
+  provider: ProviderId,
+  localModel = OLLAMA_DEFAULT_MODEL,
+): string {
   switch (provider) {
     case 'anthropic':
       return ANTHROPIC_DEFAULT_MODEL;

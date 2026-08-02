@@ -1,5 +1,6 @@
-import { motion } from 'motion/react';
+import { motion, type Transition } from 'motion/react';
 import { Mic, Sparkles } from 'lucide-react';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,16 @@ import { cn } from '@/lib/utils';
 interface DemoProps {
   onFinish: () => void;
 }
+const LEGACY_HEADER_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 220,
+  damping: 28,
+} as const) satisfies Transition;
+const LEGACY_VOICE_BUTTON_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 26,
+} as const) satisfies Transition;
 
 /**
  * Final onboarding step. Encourages the user to try voice once before landing
@@ -14,6 +25,8 @@ interface DemoProps {
  * sees it for the first time.
  */
 export function Demo({ onFinish }: DemoProps) {
+  const headerTransition = useThemeMotionTransition(LEGACY_HEADER_TRANSITION);
+  const voiceButtonTransition = useThemeMotionTransition(LEGACY_VOICE_BUTTON_TRANSITION);
   const setVoiceModalOpen = useUIStore((s) => s.setVoiceModalOpen);
 
   return (
@@ -21,7 +34,7 @@ export function Demo({ onFinish }: DemoProps) {
       <motion.header
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+        transition={headerTransition}
         className="text-center max-w-xl"
       >
         <h2 className="text-hero leading-tight">You're all set</h2>
@@ -36,7 +49,7 @@ export function Demo({ onFinish }: DemoProps) {
         onClick={() => setVoiceModalOpen(true)}
         whileHover={{ scale: 1.04 }}
         whileTap={{ scale: 0.98 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 26 }}
+        transition={voiceButtonTransition}
         aria-label="Open voice modal"
         className={cn(
           'relative h-32 w-32 rounded-full bg-accent-gradient text-white',

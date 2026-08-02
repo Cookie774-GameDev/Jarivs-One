@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "page_scope": "chat-only",
+  "source_policy": {
+    "target_image_may_be_used_to_extract_decorative_assets": true,
+    "full_target_as_page_background": false,
+    "preserve_live_text_and_controls_as_dom": true
+  },
+  "assets": {
+    "paper_base": {
+      "suggested_file": "public/assets/origami-chat/paper-base.webp",
+      "type": "seamless-texture",
+      "scalable": true
+    },
+    "paper_grain": {
+      "suggested_file": "public/assets/origami-chat/paper-grain.webp",
+      "type": "seamless-texture",
+      "scalable": true
+    },
+    "top_ribbon": {
+      "suggested_file": "public/assets/origami-chat/top-ribbon.svg",
+      "anchor": "top",
+      "reference_region": "top_ribbon",
+      "stretch_mode": "horizontal-segmented"
+    },
+    "crane": {
+      "suggested_file": "public/assets/origami-chat/crane.webp",
+      "anchor": "upper-left",
+      "reference_region": "upper_left_crane",
+      "scalable": false
+    },
+    "left_foliage": {
+      "suggested_file": "public/assets/origami-chat/left-foliage.webp",
+      "anchor": "left-bottom",
+      "scalable": false
+    },
+    "bottom_mountains": {
+      "suggested_file": "public/assets/origami-chat/bottom-mountains.svg",
+      "anchor": "bottom",
+      "stretch_mode": "segmented"
+    },
+    "right_flower": {
+      "suggested_file": "public/assets/origami-chat/right-flower.webp",
+      "anchor": "bottom-right",
+      "reference_region": "lower_right_flower",
+      "scalable": false
+    },
+    "panel_9slice": {
+      "suggested_file": "public/assets/origami-chat/panel-9slice.webp",
+      "type": "nine-slice",
+      "use_for": [
+        "session panel",
+        "assistant message",
+        "composer"
+      ]
+    },
+    "sidebar_row_9slice": {
+      "suggested_file": "public/assets/origami-chat/sidebar-row-9slice.webp",
+      "type": "nine-slice",
+      "use_for": [
+        "sidebar navigation rows"
+      ]
+    },
+    "active_row_9slice": {
+      "suggested_file": "public/assets/origami-chat/sidebar-active-row-9slice.webp",
+      "type": "nine-slice",
+      "use_for": [
+        "active Chat row"
+      ]
+    },
+    "jarvis_frame_9slice": {
+      "suggested_file": "public/assets/origami-chat/jarvis-frame-9slice.webp",
+      "type": "nine-slice",
+      "use_for": [
+        "existing Jarvis voice/transcript module"
+      ]
+    }
+  }
+}

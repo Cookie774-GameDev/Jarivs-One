@@ -7,7 +7,7 @@ import { MessageSquare, Mic, MicOff, Square, Volume2, VolumeX } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceStore } from '@/features/voice/store';
-import { VoiceService } from '@/features/voice/VoiceService';
+import { formatVoiceFailure, VoiceService } from '@/features/voice/VoiceService';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { stopAllVoiceOutput } from '@/features/voice/voiceRouter';
@@ -76,18 +76,26 @@ export function PetVoiceSurface({
 
   const start = React.useCallback(() => {
     setBusy(true);
+    let startFailure: string | undefined;
+    const offError = VoiceService.on('voice:error', ({ message }) => {
+      startFailure = message;
+    });
     try {
       // Real VoiceService path used by the main Voice modal.
       const ok = VoiceService.startListening();
       if (!ok) {
-        useVoiceStore.getState().setState('error', 'Could not start microphone');
+        useVoiceStore
+          .getState()
+          .setState('error', startFailure ?? formatVoiceFailure('unknown', 'startup'));
       }
-    } catch (err) {
-      useVoiceStore
-        .getState()
-        .setState('error', err instanceof Error ? err.message : 'Voice start failed');
+    } catch {
+      useVoiceStore.getState().setState('error', formatVoiceFailure('unknown', 'startup'));
     } finally {
-      setBusy(false);
+      try {
+        offError();
+      } finally {
+        setBusy(false);
+      }
     }
   }, []);
 

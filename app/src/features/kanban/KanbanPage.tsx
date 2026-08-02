@@ -21,6 +21,23 @@ import { cn, formatRelative } from '@/lib/utils';
 import type { MilestoneItem } from '@/features/inspector/types';
 import { isMilestoneKind } from '@/features/inspector/types';
 import { useKanbanMilestones } from './hooks';
+import {
+  useThemeLayoutTransition,
+  useThemeMotionLayout,
+  useThemeMotionTransition,
+} from '@/features/appearance/themeMotion';
+import './sakura-kanban.css';
+
+const LEGACY_KANBAN_PROGRESS_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 120,
+  damping: 20,
+} as const);
+const LEGACY_KANBAN_ROW_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 420,
+  damping: 32,
+} as const);
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState<boolean>(() => {
@@ -107,7 +124,11 @@ export function KanbanPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
+    <div
+      data-monochrome-route="kanban"
+      data-sakura-route="kanban"
+      className="flex h-full flex-col gap-6 overflow-y-auto p-6 [html[data-theme=monochrome]_&]:gap-4 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:p-4 [html[data-theme=monochrome]_&_.cozy-card]:rounded-sm [html[data-theme=monochrome]_&_.cozy-card]:border [html[data-theme=monochrome]_&_.cozy-card]:border-border-mid [html[data-theme=monochrome]_&_.cozy-card]:bg-panel [html[data-theme=monochrome]_&_.cozy-card]:shadow-none"
+    >
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-1">
           <span className="eyebrow">Trace · daily focus & long-run goals</span>
@@ -211,7 +232,10 @@ interface ChecklistCardProps {
   celebrateId: string | null;
   reducedMotion: boolean;
   onCheck: (item: MilestoneItem) => void;
-  onUpdate: (id: string, patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
+  onUpdate: (
+    id: string,
+    patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>,
+  ) => void;
   onRemove: (id: string) => void;
 }
 
@@ -234,15 +258,20 @@ function ChecklistCard({
   onUpdate,
   onRemove,
 }: ChecklistCardProps) {
+  const progressTransition = useThemeLayoutTransition(LEGACY_KANBAN_PROGRESS_TRANSITION);
   const accentRing = accent === 'copper' ? 'ring-accent-copper/60' : 'ring-accent-sage/60';
   const accentText = accent === 'copper' ? 'text-accent-copper' : 'text-accent-sage';
   const accentBar = accent === 'copper' ? 'bg-accent-copper' : 'bg-accent-sage';
 
   return (
-    <section className="relative flex min-h-[360px] flex-col gap-3 overflow-hidden rounded-xl bg-paper-soft p-5 shadow-soft">
+    <section
+      data-monochrome-surface="kanban-column"
+      data-sakura-surface="kanban-column"
+      className="relative flex min-h-[360px] flex-col gap-3 overflow-hidden rounded-xl bg-paper-soft p-5 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+    >
       <div
         className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-px opacity-60',
+          'pointer-events-none absolute inset-x-0 top-0 h-px opacity-60 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid [html[data-theme=monochrome]_&]:opacity-100',
           accent === 'copper'
             ? 'bg-gradient-to-r from-transparent via-accent-copper/60 to-transparent'
             : 'bg-gradient-to-r from-transparent via-accent-sage/60 to-transparent',
@@ -250,7 +279,7 @@ function ChecklistCard({
       />
       <header className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-paper shadow-soft">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-paper shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none">
             {icon}
           </span>
           <div>
@@ -262,12 +291,12 @@ function ChecklistCard({
       </header>
 
       {progress !== undefined ? (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60 [html[data-theme=monochrome]_&]:h-px [html[data-theme=monochrome]_&]:rounded-none">
           <motion.div
             className={cn('h-full rounded-full', accentBar)}
             initial={false}
             animate={{ width: `${progress}%` }}
-            transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 120, damping: 20 }}
+            transition={progressTransition}
           />
         </div>
       ) : null}
@@ -282,17 +311,25 @@ function ChecklistCard({
               onAdd();
             }
           }}
+          aria-label={`New item for ${title}`}
           placeholder={placeholder}
           className="h-8 text-secondary"
         />
-        <Button type="button" size="sm" variant="accent" onClick={onAdd} disabled={!draft.trim()}>
+        <Button
+          type="button"
+          size="sm"
+          variant="accent"
+          onClick={onAdd}
+          disabled={!draft.trim()}
+          aria-label={`Add item to ${title}`}
+        >
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         {items.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-mid/60 px-3 py-6 text-center text-secondary text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-mid/60 px-3 py-6 text-center text-secondary text-muted-foreground [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-solid">
             {emptyHint}
           </div>
         ) : (
@@ -335,20 +372,27 @@ function ChecklistRow({
   accentRing: string;
   accentText: string;
   onCheck: () => void;
-  onUpdate: (patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
+  onUpdate: (
+    patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>,
+  ) => void;
   onRemove: () => void;
 }) {
+  const rowTransition = useThemeMotionTransition(LEGACY_KANBAN_ROW_TRANSITION);
+  const rowLayout = useThemeMotionLayout(true);
   const done = item.status === 'done';
   return (
     <motion.li
-      layout={!reducedMotion}
+      data-sakura-surface="kanban-card"
+      data-sakura-state={done ? 'complete' : 'open'}
+      layout={rowLayout}
       initial={reducedMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, transition: { duration: 0.2 } }}
-      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      exit={reducedMotion ? undefined : { opacity: 0, scale: 0.97, transition: { duration: 0.2 } }}
+      transition={rowTransition}
       className={cn(
         'group relative flex items-start gap-2 rounded-lg border border-border bg-paper px-2.5 py-2 transition-colors',
-        celebrating && `ring-2 ${accentRing} shadow-[0_0_24px_rgba(217,119,87,0.22)]`,
+        celebrating &&
+          `ring-2 ${accentRing} shadow-[0_0_24px_rgba(217,119,87,0.22)] [html[data-theme=monochrome]_&]:border-foreground [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:shadow-none`,
         done && 'opacity-75',
       )}
     >
@@ -356,9 +400,9 @@ function ChecklistRow({
         <motion.span
           aria-hidden
           className="pointer-events-none absolute inset-0 rounded-lg bg-accent-copper/10"
-          initial={{ opacity: 0.7, scale: 0.96 }}
-          animate={{ opacity: 0, scale: 1.04 }}
-          transition={{ duration: 0.85 }}
+          initial={reducedMotion ? false : { opacity: 0.7, scale: 0.96 }}
+          animate={reducedMotion ? undefined : { opacity: 0, scale: 1.04 }}
+          transition={reducedMotion ? undefined : { duration: 0.85 }}
         />
       ) : null}
       <button
@@ -384,7 +428,9 @@ function ChecklistRow({
           )}
         />
         <div className="mt-0.5 flex items-center gap-2">
-          <span className="text-metadata text-muted-foreground">{formatRelative(item.updatedAt)}</span>
+          <span className="text-metadata text-muted-foreground">
+            {formatRelative(item.updatedAt)}
+          </span>
           {item.deadlineAt ? (
             <span className="inline-flex items-center gap-1 text-metadata text-muted-foreground">
               <CalendarClock className="h-3 w-3" /> Target {formatDeadlineLabel(item.deadlineAt)}
@@ -458,7 +504,10 @@ function AnalyticsSummary({
   completedMilestones: number;
 }) {
   return (
-    <div className="cozy-card flex flex-wrap items-stretch gap-4 p-4 min-w-[280px]">
+    <div
+      data-sakura-surface="kanban-summary"
+      className="cozy-card flex flex-wrap items-stretch gap-4 p-4 min-w-[280px]"
+    >
       <StatBlock label="To-do" value={String(todoOpen)} hint="open today" />
       <StatBlock label="Done" value={todoDone > 0 ? String(todoDone) : '—'} hint="today" />
       <StatBlock label="Milestones" value={`${milestonePercent}%`} hint="complete" />
@@ -482,27 +531,26 @@ function StatBlock({ label, value, hint }: { label: string; value: string; hint:
   );
 }
 
-function LiveActivitySection({
-  tasks,
-}: {
-  tasks: ReturnType<typeof useWorkspaceOpenTasks>;
-}) {
+function LiveActivitySection({ tasks }: { tasks: ReturnType<typeof useWorkspaceOpenTasks> }) {
   return (
-    <section className="rounded-xl bg-paper-soft p-4 shadow-soft">
+    <section
+      data-sakura-surface="kanban-activity"
+      className="rounded-xl bg-paper-soft p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+    >
       <header className="mb-3 flex items-center gap-2">
         <Target className="h-4 w-4 text-accent-copper" />
         <h3 className="font-display text-ui-strong text-foreground">Live workspace activity</h3>
         <span className="eyebrow">{tasks.length}</span>
       </header>
       <p className="mb-3 text-secondary text-muted-foreground">
-        Read-only feed from terminals, chats, tools, and open Dexie tasks — same source as
-        Inspector → Today.
+        Read-only feed from terminals, chats, tools, and open Dexie tasks — same source as Inspector
+        → Today.
       </p>
       <ul className="grid gap-2 md:grid-cols-2">
         {tasks.slice(0, 8).map((t) => (
           <li
             key={t.id}
-            className="flex items-center gap-2 rounded-lg border border-border bg-paper px-3 py-2"
+            className="flex items-center gap-2 rounded-lg border border-border bg-paper px-3 py-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
           >
             <span className="eyebrow shrink-0">{t.source}</span>
             <span className="line-clamp-1 text-secondary text-foreground">{t.title}</span>

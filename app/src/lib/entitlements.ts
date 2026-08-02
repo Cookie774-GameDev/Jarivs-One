@@ -46,6 +46,7 @@ import {
   SPARK_PHASE2_HEADLINE,
   UNLIMITED_LOCAL_KOKORO_LINE,
 } from '@/lib/callVoiceMarketing';
+import type { JarvisEntitlementSnapshot } from '@/lib/jarvis/contracts';
 
 export type PlanId = 'free' | 'starter' | 'pro' | 'ultra' | 'apex';
 
@@ -140,10 +141,7 @@ const STARTER: PlanDef = {
     'Cloud sync for chats and memories across devices',
     'Smart reminders, schedule notifications',
   ],
-  hostedModels: [
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash',
-  ],
+  hostedModels: ['gemini-2.5-flash-lite', 'gemini-2.5-flash'],
   voiceMinutesPerMonth: PHONE_MINUTES_BY_PLAN.starter,
   jarvisCall: true,
   cloudSync: true,
@@ -256,13 +254,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
 };
 
 /** Order used for rendering — Free first, then ascending price. */
-export const PLAN_ORDER: ReadonlyArray<PlanId> = [
-  'free',
-  'starter',
-  'pro',
-  'ultra',
-  'apex',
-];
+export const PLAN_ORDER: ReadonlyArray<PlanId> = ['free', 'starter', 'pro', 'ultra', 'apex'];
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -304,8 +296,33 @@ function envList(name: string): string[] {
     .filter(Boolean);
 }
 
-/** Built-in owner emails always treated as admin (full wallpaper catalog, etc.). */
-const BUILTIN_ADMIN_EMAILS = new Set(['vipersel2@gmail.com']);
+export const APP_ADMIN_CAPABILITY = 'app.admin';
+
+export type EntitlementEvaluationContext = {
+  production: boolean;
+  now: number;
+};
+
+export type LocalDevelopmentEntitlementConfig = {
+  blanketAdmin: boolean;
+  adminEmails: readonly string[];
+  adminLocalIds: readonly string[];
+};
+
+const ENTITLEMENT_TTL_MS = 5 * 60_000;
+const UNAVAILABLE_ENTITLEMENT: JarvisEntitlementSnapshot = {
+  source: 'unavailable',
+  capabilities: [],
+};
+
+function entitlementContext(
+  context: Partial<EntitlementEvaluationContext> = {},
+): EntitlementEvaluationContext {
+  return {
+    production: context.production ?? import.meta.env.PROD,
+    now: context.now ?? Date.now(),
+  };
+}
 
 /**
  * Admin is a computed entitlement from build/runtime configuration, not a
@@ -318,23 +335,60 @@ function blanketAdminBuildFlagEnabled(): boolean {
   return admin === '1' || admin === 'true' || local === '1' || local === 'true';
 }
 
-export function isAdminIdentity(identity: AdminIdentity = {}): boolean {
-  // Production bundles must never honor blanket admin toggles (release CI clears them).
-  if (!import.meta.env.PROD && blanketAdminBuildFlagEnabled()) return true;
+function localDevelopmentEntitlementConfig(): LocalDevelopmentEntitlementConfig {
+  return {
+    blanketAdmin: blanketAdminBuildFlagEnabled(),
+    adminEmails: envList('VITE_JARVIS_ADMIN_EMAILS'),
+    adminLocalIds: envList('VITE_JARVIS_ADMIN_LOCAL_IDS'),
+  };
+}
 
-  const emails = envList('VITE_JARVIS_ADMIN_EMAILS');
-  const ids = envList('VITE_JARVIS_ADMIN_LOCAL_IDS');
-  const candidateEmails = [identity.email, identity.cloudEmail]
+function normalizedEntries(values: readonly string[]): Set<string> {
+  return new Set(values.map((value) => value.trim().toLowerCase()).filter(Boolean));
+}
+
+export function resolveLocalDevelopmentEntitlementSnapshot(
+  identity: AdminIdentity,
+  options: {
+    context?: Partial<EntitlementEvaluationContext>;
+    config?: LocalDevelopmentEntitlementConfig;
+  } = {},
+): JarvisEntitlementSnapshot {
+  const context = entitlementContext(options.context);
+  if (context.production) return { ...UNAVAILABLE_ENTITLEMENT };
+
+  const config = options.config ?? localDevelopmentEntitlementConfig();
+  const emails = normalizedEntries(config.adminEmails);
+  const localIds = normalizedEntries(config.adminLocalIds);
+  const identityEmails = [identity.email, identity.cloudEmail]
     .map((value) => value?.trim().toLowerCase())
     .filter(Boolean) as string[];
-  const candidateId = identity.localUserId?.trim().toLowerCase();
+  const localUserId = identity.localUserId?.trim().toLowerCase();
+  const configured =
+    config.blanketAdmin ||
+    identityEmails.some((email) => emails.has(email)) ||
+    Boolean(localUserId && localIds.has(localUserId));
 
-  if (candidateEmails.some((email) => BUILTIN_ADMIN_EMAILS.has(email))) return true;
+  if (!configured) return { ...UNAVAILABLE_ENTITLEMENT };
+  return {
+    source: 'local_development',
+    planId: 'ultra',
+    capabilities: [APP_ADMIN_CAPABILITY],
+    verifiedAt: context.now,
+    expiresAt: context.now + ENTITLEMENT_TTL_MS,
+  };
+}
 
-  return (
-    candidateEmails.some((email) => emails.includes(email)) ||
-    Boolean(candidateId && ids.includes(candidateId))
-  );
+export function entitlementSnapshotAllowsAdmin(
+  snapshot: JarvisEntitlementSnapshot,
+  contextInput: Partial<EntitlementEvaluationContext> = {},
+): boolean {
+  const context = entitlementContext(contextInput);
+  if (!Number.isFinite(snapshot.verifiedAt)) return false;
+  if (!Number.isFinite(snapshot.expiresAt) || !(snapshot.expiresAt! > context.now)) return false;
+  if (!snapshot.capabilities.includes(APP_ADMIN_CAPABILITY)) return false;
+  if (snapshot.source === 'server') return true;
+  return snapshot.source === 'local_development' && !context.production;
 }
 
 export function effectivePlan(plan: PlanId | string | null | undefined, admin = false): PlanId {

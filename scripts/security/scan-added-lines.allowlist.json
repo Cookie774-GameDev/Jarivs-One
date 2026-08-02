@@ -1,0 +1,404 @@
+{
+  "schemaVersion": "vibespace.added-line-secret-allowlist.v1",
+  "entries": [
+    {
+      "fingerprint": "b0fb557bc1746689206efc70a033cc9ece89815b3f1b00fd529a2c332c77983e",
+      "justification": "Synthetic Stripe-shaped value verifies access-gateway transport-error redaction.",
+      "line": 295,
+      "path": "app/src/features/access/accessGateway.test.ts",
+      "ruleId": "STRIPE_LIVE_SECRET"
+    },
+    {
+      "fingerprint": "addd48c5e7caa581aace6f615cf836f5c92fd98821c0788a388ffe6eacf10e57",
+      "justification": "Synthetic credential URL verifies unsafe access-gateway URLs are rejected.",
+      "line": 359,
+      "path": "app/src/features/access/accessGateway.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "d21745f53916f94f68478c1cdebf37c83c9cb8ee3db375bd0b620f68387c1f8f",
+      "justification": "Synthetic credential URL exercises secret-bearing profile detection.",
+      "line": 10,
+      "path": "app/src/features/all-about-me/allAboutMeSecurity.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "0e74b6dbc2311bd66e6e336a4aea633f255982414e4c1d12091892bfb056c3d0",
+      "justification": "Synthetic PEM header exercises secret-bearing profile detection.",
+      "line": 13,
+      "path": "app/src/features/all-about-me/allAboutMeSecurity.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "f733fd8b394ab33bdf5c924dd6b503f163f05375f3137ea4d214618d1e839cce",
+      "justification": "Synthetic PEM header verifies bounded private-key finding output.",
+      "line": 40,
+      "path": "app/src/features/all-about-me/allAboutMeSecurity.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "dc1f47b5522a4dba3aa8238322fda91f8eafc380733d926e0ecf93d0b25212da",
+      "justification": "Synthetic GitHub-shaped token verifies the profile finding limit.",
+      "line": 63,
+      "path": "app/src/features/all-about-me/allAboutMeSecurity.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "1eada301813a24879702efbcfefec4f1b1fcefbf07742b00db0810068b7251b1",
+      "justification": "Synthetic PEM header verifies browser-action output redaction.",
+      "line": 442,
+      "path": "app/src/features/browser/browserActions.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "1b4f4b34d0b475707c1d479625dc605d8db5f28a96421c374056eb214a7c08dc",
+      "justification": "Synthetic PEM header verifies secret-bearing cloud payload rejection.",
+      "line": 300,
+      "path": "app/src/features/context/contextCloudSync.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "50acbe48277e01805f668cf84d28b812e33a2708a866ffeff16c4cd79aead899",
+      "justification": "Synthetic OpenAI-shaped value verifies secret-bearing cloud payload rejection.",
+      "line": 301,
+      "path": "app/src/features/context/contextCloudSync.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "23613e9f710398d35e2230a6e5d62951e60737b637ee0a333a426f3078e24ae6",
+      "justification": "Synthetic GitHub-shaped identifier verifies token-like cloud metadata rejection.",
+      "line": 372,
+      "path": "app/src/features/context/contextCloudSync.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "56d7acefd55f8be660d06fb9e1d71073138e2876b5f464d84648d88ab70e40ae",
+      "justification": "Synthetic GitHub-shaped identifier verifies token-like cloud metadata rejection.",
+      "line": 373,
+      "path": "app/src/features/context/contextCloudSync.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "df28af9fd81e732518a0fee108561514cb5351ff8451a17bb6aa363fbcfbb264",
+      "justification": "Synthetic GitHub-shaped identifier verifies token-like cloud metadata rejection.",
+      "line": 374,
+      "path": "app/src/features/context/contextCloudSync.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "6141abcb88a4d2ca981239c1553206601eb4926d99253f825108ba2117938b02",
+      "justification": "Synthetic GitHub-shaped identifier verifies token-like cloud metadata rejection.",
+      "line": 375,
+      "path": "app/src/features/context/contextCloudSync.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "db28549a658ccea7b9980fd313cb8d9751af3a785a1db799bff04f5673f6710b",
+      "justification": "Synthetic credential URL verifies unsafe context-package imports are rejected.",
+      "line": 261,
+      "path": "app/src/features/context/contextPackageImport.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "723159ccf2497b83fc03bc329929a877ba807014e1a7ed026914be99c9f41fe0",
+      "justification": "Synthetic GitHub-shaped token verifies token-bearing proxy output is rejected.",
+      "line": 333,
+      "path": "app/src/features/context/githubContextServer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "bf2b2a5da3b860b79463e2b43e5e498dae861a142ebc94d70e5ee5906430e1a7",
+      "justification": "Synthetic GitHub-shaped token verifies decoded token-bearing content is rejected.",
+      "line": 343,
+      "path": "app/src/features/context/githubContextServer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "2651068e0150cb3525a890e7b1b0c304d8f57cf86e5aac09be79006a85fe4789",
+      "justification": "Synthetic credential URL verifies unsafe note links are sanitized.",
+      "line": 46,
+      "path": "app/src/features/context/noteRendering.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "942a89cc51e49a2666376e541c7132321c747828e6790040b5d86b7f1a00f8b6",
+      "justification": "Synthetic credential URL verifies unsafe artifact links are rejected.",
+      "line": 68,
+      "path": "app/src/features/jarvis-command-center/artifactAccess.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "76ab4c88fa1dede5c45d4c56b32c9fdbda89b5f2127ecfac62e47b4f0ac831ed",
+      "justification": "Synthetic PEM header verifies plugin output clipping and redaction.",
+      "line": 2175,
+      "path": "app/src/features/plugins/runtime.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "c27ed823f6dc4a480bc7aaf093b67d7d1f46403b0a0922de675ab4cd38ec4d03",
+      "justification": "Synthetic PEM header verifies large plugin output remains bounded.",
+      "line": 2180,
+      "path": "app/src/features/plugins/runtime.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "c19b3463b879ab4522f3da211e5b0a3429501eef36e849ed03074a688a076717",
+      "justification": "Synthetic GitHub-shaped token verifies prompt execution blocks secrets before provider use.",
+      "line": 231,
+      "path": "app/src/features/prompt-forge/promptForgeExecutor.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "41fa2cbc73148f66d17774f9c083a21e604b0f0dff548cf1104a312a44d6ea2f",
+      "justification": "Synthetic GitHub-shaped token verifies prompt composition blocks secret persistence.",
+      "line": 492,
+      "path": "app/src/features/prompt-forge/usePromptForgeComposer.test.tsx",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "70268ee501c36db4a7a72e9fffb93b313aeb819b574c5e916133106a6c04ca4f",
+      "justification": "Synthetic GitHub-shaped token verifies denied context samples are dropped.",
+      "line": 188,
+      "path": "app/src/lib/ai/context.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "992a67d1f0881eeab80615f9f63379e98b18a95500f0315305b62247bf02adda",
+      "justification": "Synthetic GitHub-shaped token verifies context denial does not reflect secret content.",
+      "line": 204,
+      "path": "app/src/lib/ai/context.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "4aea0f2162411fdc81920e7134fd8cc2602734b712bc0bc59077621051e4b2e6",
+      "justification": "Synthetic GitHub-shaped token verifies artifact secret rejection.",
+      "line": 219,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "37808e896611a51d21e8470972c04c76f322b05bc089e557acaae01bc9a3193a",
+      "justification": "Synthetic GitHub-shaped token verifies artifact OAuth-field redaction.",
+      "line": 301,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "fb9628a2fa4fcddedea0c277b5bd8e2c361f3b7ee8bd020472e0e46d1fdbc0e0",
+      "justification": "Synthetic GitHub-shaped token verifies artifact query-secret redaction.",
+      "line": 314,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "aed0df6b09ba58bfe0229df5783d85d678722c60c0bd423b22cd863e4be39764",
+      "justification": "Synthetic PEM header verifies artifact private-key redaction.",
+      "line": 326,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "2b2bfe891ae4db54fb15e3ad21fef8c48de3f1fd13e6c3d353a3d7620b1fe430",
+      "justification": "Synthetic credential URL verifies artifact URI sanitization.",
+      "line": 364,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "6a2e8284403a712b758e33e973af5b346d393e09f788a6cdece2b2357c2b161b",
+      "justification": "Synthetic GitHub-shaped token verifies artifact label-secret redaction.",
+      "line": 373,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "040bf1c8782c3cb7b84d1ced67462e5c26503b4809feab85905c1c7b643275ab",
+      "justification": "Synthetic GitHub-shaped token verifies nested artifact secret redaction.",
+      "line": 385,
+      "path": "app/src/lib/jarvis/artifactNormalizer.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "b1d281cf2dbf27bc488b6ae9feabe78b7fbd963a3382f6ba0c0105d72a37e52c",
+      "justification": "Synthetic PEM header verifies source-content admission denial.",
+      "line": 146,
+      "path": "app/src/lib/jarvis/sourcePolicy.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "66ea65bc47cec9970a427bfb4b7e2f3a4fd1b9b0bb3874ee82b06948ed9c13bf",
+      "justification": "Synthetic GitHub-shaped token verifies source-content admission denial.",
+      "line": 154,
+      "path": "app/src/lib/jarvis/sourcePolicy.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "a24039d540b4de7449ae2460d830d5b4ca130d3a82b3189d2aa141efce3f0827",
+      "justification": "Synthetic PEM header verifies safe source summaries omit secrets.",
+      "line": 159,
+      "path": "app/src/lib/jarvis/sourcePolicy.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "d2964f6d94bab0e40d31d1243c82a8dd60b851e04f14ef6ee6832b3c8eed6d96",
+      "justification": "Synthetic GitHub-shaped token verifies source-policy rejection.",
+      "line": 198,
+      "path": "app/src/lib/jarvis/sourcePolicy.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "0279318360a6e2c780c10ef435c8996ed2066d25deee630ffa3aac5584d78031",
+      "justification": "Synthetic GitHub-shaped token verifies source summaries do not reflect secrets.",
+      "line": 206,
+      "path": "app/src/lib/jarvis/sourcePolicy.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "f5948fde47832537dfafabcb67ba287f2171dfa5ab706091990f83ac3879eba8",
+      "justification": "Synthetic OpenAI-shaped value verifies MCP server output redaction.",
+      "line": 588,
+      "path": "app/src/lib/mcp/serverManager.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "232dfbb02f1cf5a2afd04cb81bf96e083b1fc371b747404cac05c65d6e86c719",
+      "justification": "Synthetic OpenAI-shaped value verifies MCP tool-result redaction.",
+      "line": 35,
+      "path": "app/src/lib/mcp/toolResult.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "3007dd5f1f2a90a1279e5531b64ee1cf0f264aaed93fbb9ba50fd4b6eff1a352",
+      "justification": "Synthetic OpenAI-shaped value verifies nested MCP output redaction.",
+      "line": 115,
+      "path": "app/src/lib/mcp/toolResult.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "1e8a4c01bd4e0e8e62b0bc6a4bfe43aba6e51e391abf3021ed608b68f8276647",
+      "justification": "Synthetic OpenAI-shaped value verifies MCP output finding bounds.",
+      "line": 136,
+      "path": "app/src/lib/mcp/toolResult.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "6d5c88b59027eac98aea9d72d327ba2f5619af91ebe0d9d987ea1b5a611a1a51",
+      "justification": "Synthetic PEM header verifies MCP tool-result redaction.",
+      "line": 154,
+      "path": "app/src/lib/mcp/toolResult.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "998a2b5d2137975802369b0c71961f70311906e9d9108b0343f9d481081cfb0e",
+      "justification": "Synthetic OpenAI-shaped value verifies clipped MCP output remains redacted.",
+      "line": 222,
+      "path": "app/src/lib/mcp/toolResult.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "ecf804f87506c74d90eedadde38e90ec8fece08d4027a9aa6cb6929d2ca70a2b",
+      "justification": "Synthetic OpenAI-shaped value verifies large MCP output remains bounded.",
+      "line": 248,
+      "path": "app/src/lib/mcp/toolResult.test.ts",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "31b516c26b34cf3829de6b6fa10e3c566c9a27849af4779fea03a5ea3d5d30ad",
+      "justification": "Synthetic PEM header is a direct positive fixture for the secret detector.",
+      "line": 15,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "99c24ae29fd62a9e00ef15c075336ff80fcbbfbbb70d07f97708bc1ee03d0df2",
+      "justification": "Synthetic GitHub-shaped token is a direct positive fixture for the secret detector.",
+      "line": 17,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "35e59d59cc0a94ac76454f0ca315d8797e3cc7f3878449b3754a7929e7d751bd",
+      "justification": "Synthetic credential URL is a direct positive fixture for the secret detector.",
+      "line": 19,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "b008159ec5128c4f9ba477bb613b91e9184dbc6459905f14632805263627bfde",
+      "justification": "Synthetic GitHub-shaped token verifies secret detector classification.",
+      "line": 36,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "cc80f043775420d0f14dd71fe6c715dd1290381b42bae2a1ccaccc635ebb0913",
+      "justification": "Synthetic PEM header verifies secret detector boundary handling.",
+      "line": 82,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "150df863b1edc83a87bd11045084ad9ae9ec6adf24fa71f592ff41216db5760d",
+      "justification": "Synthetic GitHub-shaped token verifies secret detector decision output.",
+      "line": 103,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "cdeb88d877cdd2f2423498e7fdfa1e6dcb628f3d287ecbcb6a29a57face62c4e",
+      "justification": "Synthetic GitHub-shaped token verifies bounded detector findings.",
+      "line": 111,
+      "path": "app/src/lib/security/secretDetector.test.ts",
+      "ruleId": "GITHUB_TOKEN"
+    },
+    {
+      "fingerprint": "791025b00d0af77aed75d5ec8e39af9562a7199c19331aa323897a972a11c763",
+      "justification": "Synthetic OpenAI-shaped value verifies reference-artifact privacy rejection.",
+      "line": 942,
+      "path": "scripts/visual-monochrome/reference-artifacts.test.mjs",
+      "ruleId": "OPENAI_PROJECT_KEY"
+    },
+    {
+      "fingerprint": "a94f6ae2b515c13a8165640c1cb33f2135360ed23381a8b9a9a055f1773c7eff",
+      "justification": "Synthetic credential URL verifies checkout rejects unsafe return URLs.",
+      "line": 516,
+      "path": "supabase/functions/create-access-checkout/index.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "d8fd3f039dc55ad8f451073a69737206487e9c4aac60b3c0f791a17a608b5a1e",
+      "justification": "Synthetic credential URL verifies checkout rejects unsafe redirect URLs.",
+      "line": 1214,
+      "path": "supabase/functions/create-access-checkout/index.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "8cf7621469b1ce86ff72d9bc68fe8793c7500c7a27756023ea546e3b56c7cf14",
+      "justification": "Synthetic credential URL verifies portal rejects unsafe return URLs.",
+      "line": 239,
+      "path": "supabase/functions/create-access-portal/index.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "ad835f2057ab55d68d7985bb33b4d227ea5beda1c7579564d6310b79cf34efb8",
+      "justification": "Synthetic credential URL verifies portal rejects unsafe redirect URLs.",
+      "line": 364,
+      "path": "supabase/functions/create-access-portal/index.test.ts",
+      "ruleId": "URL_CREDENTIALS"
+    },
+    {
+      "fingerprint": "4d76ac4573c3bc5d59c0e969b85cacbe893ecf74037c95e663b71c3e250c4165",
+      "justification": "Anchored parser regex literal is required to recognize PKCS#8 PEM headers; it contains no key material.",
+      "line": 92,
+      "path": "supabase/functions/github-context/index.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    },
+    {
+      "fingerprint": "bd3922b419f468fee3c4d80eae6f1e57743f0b7764e2a98051f6d0bc0f77f9d5",
+      "justification": "Anchored parser regex literal is required to recognize PKCS#1 PEM headers; it contains no key material.",
+      "line": 95,
+      "path": "supabase/functions/github-context/index.ts",
+      "ruleId": "PRIVATE_KEY_HEADER"
+    }
+  ]
+}

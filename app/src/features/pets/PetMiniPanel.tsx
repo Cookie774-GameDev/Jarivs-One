@@ -333,13 +333,13 @@ export function PetMiniPanel({
         {/* Accent top edge */}
         {!windowMode && (
           <div
-            className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-accent-copper to-transparent opacity-80"
+            className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-accent-copper to-transparent opacity-80 [html[data-theme=monochrome]_&]:hidden"
             aria-hidden
           />
         )}
 
         <div
-          className="pet-panel-top border-b border-border/80 bg-elevated/40 backdrop-blur-sm"
+          className="pet-panel-top border-b border-border/80 bg-elevated/40 backdrop-blur-sm [html[data-theme=monochrome]_&]:backdrop-blur-none"
           data-testid="pet-panel-header"
           data-collapsed={headerCollapsed ? 'true' : 'false'}
         >
@@ -563,7 +563,7 @@ export function PetMiniPanel({
 
         {lifecycle === 'confirmingClose' && (
           <div
-            className="absolute inset-0 z-10 flex items-center justify-center bg-background/85 p-4 backdrop-blur-sm"
+            className="absolute inset-0 z-10 flex items-center justify-center bg-background/85 p-4 backdrop-blur-sm [html[data-theme=monochrome]_&]:backdrop-blur-none"
             data-testid="pet-close-confirm"
             role="alertdialog"
             aria-label="Confirm close mini panel"

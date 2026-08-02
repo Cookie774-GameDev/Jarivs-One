@@ -46,21 +46,10 @@ export type ActionCategory =
  * Lifecycle of an action proposal in the chat thread. Mirrors
  * `ActionStatus` in `types/chat.ts`; kept in lock-step.
  */
-export type ActionStatus =
-  | 'pending'
-  | 'queued'
-  | 'running'
-  | 'success'
-  | 'error'
-  | 'cancelled';
+export type ActionStatus = 'pending' | 'queued' | 'running' | 'success' | 'error' | 'cancelled';
 
 /** Field type for a single parameter on an action. */
-export type ActionParamType =
-  | 'string'
-  | 'number'
-  | 'boolean'
-  | 'select'
-  | 'route';
+export type ActionParamType = 'string' | 'number' | 'boolean' | 'select' | 'route';
 
 /**
  * Parameter spec. The palette form renders an input per param; the AI
@@ -99,6 +88,25 @@ export interface ActionRunContext {
   messageId?: string;
   /** Stable proposal id — handy for surfacing per-action toasts. */
   callId?: string;
+  accountId?: string;
+  runId?: string;
+  approvalId?: string;
+  requestId?: string;
+  attemptNumber?: number;
+  signal?: AbortSignal;
+}
+
+export interface RegisteredActionExecutionContext extends ActionRunContext {
+  accountId: string;
+  runId: string;
+  approvalId: string;
+  requestId: string;
+  attemptNumber: number;
+}
+
+/** True when a caller is attempting the canonical JARVIS approval path. */
+export function hasJarvisApprovalCorrelation(context: ActionRunContext): boolean {
+  return context.runId !== undefined || context.approvalId !== undefined;
 }
 
 /** Discriminated result. Every runner must return one of these. */
@@ -152,10 +160,7 @@ export interface ActionDef {
    */
   exposeToAI?: boolean;
   /** Runner. Side-effecting; returns a result. */
-  run: (
-    params: Record<string, unknown>,
-    ctx: ActionRunContext,
-  ) => Promise<ActionResult>;
+  run: (params: Record<string, unknown>, ctx: ActionRunContext) => Promise<ActionResult>;
 }
 
 /**

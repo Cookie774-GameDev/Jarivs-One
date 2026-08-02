@@ -14,7 +14,13 @@
  * event carries the final usage block.
  */
 import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -34,6 +40,28 @@ function toOpenAiContent(content: string | LLMContentPart[]) {
   });
 }
 
+export function buildOpenAIRequestBody(req: LLMRequest) {
+  const model = req.agent.model.model || OPENAI_DEFAULT_MODEL;
+  const systemPrompt = systemPromptForRequest(req);
+  const messages = [
+    { role: 'system' as const, content: systemPrompt },
+    ...req.messages
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
+        role: message.role,
+        content: toOpenAiContent(message.content),
+      })),
+  ];
+  return {
+    model,
+    messages,
+    stream: true,
+    stream_options: { include_usage: true },
+    temperature: req.temperature ?? req.agent.temperature ?? 0.7,
+    max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
+  };
+}
+
 export const openaiProvider: LLMProvider = {
   id: 'openai',
   name: 'OpenAI',
@@ -48,26 +76,7 @@ export const openaiProvider: LLMProvider = {
     if (!apiKey) throw new Error('OpenAI API key not set');
 
     const model = req.agent.model.model || OPENAI_DEFAULT_MODEL;
-
-    // OpenAI puts the system prompt in the messages array (role: 'system').
-    // Strip any existing system messages from the user list to avoid duplicates.
-    const messages = [
-      { role: 'system' as const, content: req.agent.system_prompt },
-      ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
-        role: m.role,
-        content: toOpenAiContent(m.content),
-      })),
-    ];
-
-    const body = {
-      model,
-      messages,
-      stream: true,
-      // Asks the API to include a final usage block in the stream.
-      stream_options: { include_usage: true },
-      temperature: req.temperature ?? req.agent.temperature ?? 0.7,
-      max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
-    };
+    const body = buildOpenAIRequestBody(req);
 
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -81,6 +90,13 @@ export const openaiProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       throw new Error(`OpenAI ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('OpenAI returned an empty body');
@@ -91,7 +107,10 @@ export const openaiProvider: LLMProvider = {
     let finishReason: string | undefined;
     let first = true;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       const raw = evt.data;
       if (raw === '[DONE]') break;
@@ -127,7 +146,10 @@ export const openaiProvider: LLMProvider = {
     }
 
     if (inputTokens === 0) {
-      const inputText = [req.agent.system_prompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n');
+      const inputText = [
+        systemPromptForRequest(req),
+        ...req.messages.map((m) => llmContentToText(m.content)),
+      ].join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

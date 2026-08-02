@@ -18,6 +18,7 @@ import { Button, Input, Textarea, toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import type { ProjectId } from '@/types';
 import {
   createTextFile,
@@ -44,6 +45,7 @@ import {
   setStoredProjectRoot,
 } from './projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
+import './sakura-files.css';
 
 /** Mini Files-panel chat only — never writes into the main Chat route. */
 type MiniLine = {
@@ -179,7 +181,9 @@ export function FilesPage() {
   } | null>(null);
   const editorRef = React.useRef<HTMLTextAreaElement>(null);
   const miniScrollRef = React.useRef<HTMLDivElement>(null);
-  const jarvisAgent = useAgentStore((s) => Object.values(s.agents).find((a) => a.slug === 'jarvis') ?? null);
+  const jarvisAgent = useAgentStore(
+    (s) => findProtectedJarvisAgent(Object.values(s.agents)) ?? null,
+  );
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
 
   const dirty = content !== savedContent;
@@ -419,8 +423,17 @@ export function FilesPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-background">
-      <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-panel">
+    <div
+      data-monochrome-route="files"
+      data-sakura-route="files"
+      data-sakura-intensity="quiet"
+      className="flex h-full min-h-0 w-full bg-background [html[data-theme=monochrome]_&]:font-sans"
+    >
+      <aside
+        data-monochrome-surface="files-tree"
+        data-sakura-surface="files-tree"
+        className="flex w-[360px] shrink-0 flex-col border-r border-border bg-panel [html[data-theme=monochrome]_&]:w-[304px]"
+      >
         <div className="border-b border-border p-3 space-y-2">
           <div className="flex items-center gap-2">
             <FolderOpen className="h-4 w-4 text-accent-copper" />
@@ -431,6 +444,7 @@ export function FilesPage() {
               value={rootDraft}
               onChange={(e) => setRootDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void loadRoot(rootDraft); }}
+              aria-label="Project folder path"
               placeholder="C:\\Users\\you\\project or /home/you/project"
               className="font-mono text-metadata"
             />
@@ -473,19 +487,24 @@ export function FilesPage() {
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void createFile(); }}
+              aria-label="New file name"
               placeholder="new-file.ts"
               className="font-mono text-metadata"
               disabled={!currentDir}
             />
-            <Button size="sm" variant="ghost" onClick={() => void createFile()} disabled={!currentDir || !newFileName.trim()}>
+            <Button size="sm" variant="ghost" onClick={() => void createFile()} disabled={!currentDir || !newFileName.trim()} aria-label="Create file">
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border bg-paper-soft px-3 py-1.5">
+      <main
+        data-monochrome-surface="files-editor"
+        data-sakura-surface="files-editor"
+        className="flex min-w-0 flex-1 flex-col [html[data-theme=monochrome]_&]:bg-background"
+      >
+        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border bg-paper-soft px-3 py-1.5 [html[data-theme=monochrome]_&]:bg-panel">
           <div className="min-w-0">
             <div className="truncate font-mono text-secondary text-foreground">{selectedPath ?? 'No file selected'}</div>
             <div className="text-metadata text-muted-foreground">
@@ -503,6 +522,7 @@ export function FilesPage() {
 
         <div className="relative flex min-h-0 flex-1 flex-col gap-2 p-3">
           <Textarea
+            data-sakura-content="file-editor"
             ref={editorRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -513,6 +533,7 @@ export function FilesPage() {
               // Delay so toolbar buttons can receive the click first.
               window.setTimeout(() => setSelPopup(null), 180);
             }}
+            aria-label="File contents"
             placeholder="Open a text/code file to edit it here."
             spellCheck={false}
             className="min-h-0 flex-1 resize-none font-mono text-sm leading-5"
@@ -521,7 +542,8 @@ export function FilesPage() {
           {/* Compact selection toolbar — Files page only */}
           {selPopup && (
             <div
-              className="fixed z-50 flex items-center gap-0.5 rounded-full border border-accent-copper/40 bg-panel/95 px-1 py-0.5 shadow-lg backdrop-blur"
+              data-monochrome-surface="files-selection-tools"
+              className="fixed z-50 flex items-center gap-0.5 rounded-full border border-accent-copper/40 bg-panel/95 px-1 py-0.5 shadow-lg backdrop-blur [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
               style={{ top: selPopup.top, left: selPopup.left }}
               onMouseDown={(e) => e.preventDefault()}
             >
@@ -548,7 +570,10 @@ export function FilesPage() {
           )}
 
           {/* Mini Files Jarvis panel — isolated from main Chat */}
-          <div className="flex max-h-[42%] min-h-[140px] shrink-0 flex-col rounded-lg border border-border bg-panel shadow-soft">
+          <div
+            data-monochrome-surface="files-jarvis"
+            className="flex max-h-[42%] min-h-[140px] shrink-0 flex-col rounded-lg border border-border bg-panel shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
               <MessageSquare className="h-3.5 w-3.5 text-accent-copper" />
               <span className="text-metadata font-medium text-foreground">Ask Jarvis (this file)</span>
@@ -620,6 +645,7 @@ export function FilesPage() {
                     void askJarvisMini();
                   }
                 }}
+                aria-label="Question about selected file content"
                 placeholder="Ask about the selection…"
                 disabled={miniBusy}
                 className="h-8 text-sm"

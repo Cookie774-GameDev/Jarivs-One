@@ -1,79 +1,143 @@
-/**
- * Inline approval card for an `action_proposal` chat part.
- *
- * Renders inside an assistant message bubble whenever the AI proposed
- * an action via a fenced ```action {...}``` block (see
- * `lib/actions/parse.ts` + the splice in `lib/ai/runtime.ts`). The user
- * sees one card per proposal: action label, rationale, params, and
- * Approve/Cancel buttons.
- *
- * Lifecycle (mirrors `ActionStatus` in `types/chat.ts`):
- *   pending   -> running     (Approve clicked)
- *   running   -> success     (runner returned ok)
- *   running   -> error       (runner returned not-ok)
- *   pending   -> cancelled   (Cancel clicked)
- *
- * State updates are persisted by mutating the parent `Message`'s
- * `parts` array via `messageRepo`. The chat thread re-renders
- * automatically because `useChatMessages` is a Dexie live-query, so we
- * don't need any local state in this component beyond a transient
- * `busy` flag while a click is in-flight.
- */
-
-import { useEffect, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import * as React from 'react';
 import {
   AlertTriangle,
   Check,
+  Clock3,
+  HelpCircle,
   Loader2,
-  Play,
   X,
   type LucideIcon,
-  HelpCircle,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { messageRepo } from '@/lib/db/repositories';
-import { resolveAction, runAction } from '@/lib/actions';
-import { cancelQueuedTerminalCommand } from '@/features/terminals/terminalCommandQueue';
+
 import {
-  markTerminalExecution,
-  useTerminalExecutionStore,
-} from '@/features/terminals/terminalExecutionStore';
-import type { Part, ActionStatus } from '@/types';
-import type { MessageId } from '@/types/common';
-import {
-  beginTaskApprovalStep,
-  cancelTaskApprovalStep,
-  finishTaskApprovalStep,
+  parseTaskApprovalCallId,
+  presentJarvisApproval,
 } from '@/features/jarvis-runs/approvalBridge';
+import { resolveAction } from '@/lib/actions';
+import type { ActionRunContext } from '@/lib/actions/types';
+import type { JarvisRun } from '@/lib/jarvis/contracts';
+import type {
+  JarvisCanonicalActionExecutionResult,
+  JarvisKernelActionPort,
+} from '@/lib/jarvis/approvalEngine';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
+import type { ActionStatus, Part } from '@/types';
+import type { MessageId } from '@/types/common';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL, SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 type ActionPart = Extract<Part, { kind: 'action_proposal' }>;
+export type CanonicalApprovalPresentation = ReturnType<typeof presentJarvisApproval>;
 
 export interface ActionApprovalCardProps {
   part: ActionPart;
   allParts: Part[];
   messageId: MessageId;
   chatId: string;
+  /** Task 16B supplies this from canonical repository readback. */
+  presentation?: CanonicalApprovalPresentation;
 }
 
-/* --------------------------------------------------------------------------
- * Status visuals
- * --------------------------------------------------------------------------*/
+type ApprovalPresentationFailureCode =
+  | 'identity_missing'
+  | 'host_unavailable'
+  | 'host_released'
+  | 'request_timed_out'
+  | 'client_disposed'
+  | 'invalid_response'
+  | 'kernel_not_activated'
+  | 'request_failed';
+
+/** A native terminal handoff is running truth, never settled success. */
+export function actionStatusForCanonicalExecution(
+  outcome: JarvisCanonicalActionExecutionResult,
+): Extract<ActionStatus, 'queued' | 'success' | 'error'> {
+  if (outcome.kind === 'handoff_pending') return 'queued';
+  return outcome.result.ok ? 'success' : 'error';
+}
+
+/** @internal Pure controller; Task 16B owns production card injection. */
+export function createCanonicalApprovalCardController(
+  actions: Pick<JarvisKernelActionPort, 'decide' | 'execute'>,
+) {
+  function canonicalApprovalId(callId: string): string | undefined {
+    return parseTaskApprovalCallId(callId)?.approvalId;
+  }
+
+  type ApprovalRequest = { parentRun: JarvisRun; callId: string; context: ActionRunContext };
+  async function approve(input: ApprovalRequest) {
+    const approvalId = canonicalApprovalId(input.callId);
+    if (!approvalId) return { kind: 'invalid_approval_call' as const };
+    const decision = await actions.decide({
+      parentRun: input.parentRun,
+      approvalId,
+      decision: 'approve',
+    });
+    if (decision.kind !== 'committed') return decision;
+    if (
+      decision.value.id !== approvalId ||
+      decision.value.runId !== input.parentRun.id ||
+      decision.value.status !== 'approved'
+    ) {
+      return { kind: 'approval_state_mismatch' as const };
+    }
+    return await actions.execute({
+      parentRun: input.parentRun,
+      approvalId,
+      context: input.context,
+    });
+  }
+
+  return Object.freeze({
+    approve,
+    async deny(input: { parentRun: JarvisRun; callId: string }) {
+      const approvalId = canonicalApprovalId(input.callId);
+      if (!approvalId) return { kind: 'invalid_approval_call' as const };
+      const decision = await actions.decide({
+        parentRun: input.parentRun,
+        approvalId,
+        decision: 'deny',
+      });
+      if (decision.kind !== 'committed') return decision;
+      if (
+        decision.value.id !== approvalId ||
+        decision.value.runId !== input.parentRun.id ||
+        decision.value.status !== 'denied'
+      ) {
+        return { kind: 'approval_state_mismatch' as const };
+      }
+      return decision;
+    },
+    async approveAll(requests: readonly ApprovalRequest[]) {
+      const outcomes: Awaited<ReturnType<typeof approve>>[] = [];
+      for (const request of requests) {
+        const outcome = await approve(request);
+        outcomes.push(outcome);
+        if (outcome.kind !== 'committed') break;
+        if (outcome.value.kind === 'settled' && !outcome.value.result.ok) break;
+      }
+      return Object.freeze(outcomes);
+    },
+  });
+}
 
 interface StatusVisual {
   icon: LucideIcon;
-  /** Tailwind class for the icon colour. */
   iconClass: string;
-  /** Short status word shown next to the icon. */
   label: string;
-  /** Border accent (left edge). */
   borderClass: string;
 }
 
 const STATUS_VISUALS: Record<ActionStatus, StatusVisual> = {
   pending: {
-    icon: Play,
+    icon: Clock3,
     iconClass: 'text-accent-copper',
     label: 'Awaiting approval',
     borderClass: 'border-accent-copper/40',
@@ -110,248 +174,164 @@ const STATUS_VISUALS: Record<ActionStatus, StatusVisual> = {
   },
 };
 
-/* --------------------------------------------------------------------------
- * Param formatting
- * --------------------------------------------------------------------------*/
-
-/**
- * Render a single param value as a short, copy-friendly string. We
- * deliberately avoid pretty-printing JSON because the user is scanning
- * for "what would this do" — `cwd: C:\...` reads better than a multi-
- * line block.
- */
-function formatParamValue(v: unknown): string {
-  if (v === null || v === undefined) return '∅';
-  if (typeof v === 'string') return v.length > 80 ? v.slice(0, 77) + '…' : v;
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
+function resultLine(status: ActionStatus, error?: string): string | undefined {
+  if (status === 'queued') return 'Execution handed off.';
+  if (status === 'running') return 'Execution is still in progress.';
+  if (status === 'success') return 'Action completed.';
+  if (status === 'error') return error ?? 'The action failed.';
+  if (status === 'cancelled') return 'This action was denied or cancelled.';
+  return undefined;
 }
 
-/* --------------------------------------------------------------------------
- * Component
- * --------------------------------------------------------------------------*/
-
-export function ActionApprovalCard({
-  part,
-  allParts,
-  messageId,
-  chatId,
-}: ActionApprovalCardProps) {
-  const def = resolveAction(part.action_id);
-  const executionId = (part.result as { executionId?: string } | undefined)?.executionId;
-  const execution = useTerminalExecutionStore((state) =>
-    executionId ? state.executions[executionId] : undefined,
+/** Canonical cards load bounded presentation and mutate only through the host bridge. */
+export function ActionApprovalCard({ part, presentation }: ActionApprovalCardProps) {
+  const definition = resolveAction(part.action_id);
+  const approvalTitleId = React.useId();
+  const approvalId = React.useMemo(
+    () => parseTaskApprovalCallId(part.call_id)?.approvalId,
+    [part.call_id],
   );
-  const effectiveStatus: ActionStatus = (() => {
-    if (!execution) return part.status;
-    if (execution.status === 'queued' || execution.status === 'starting') return 'queued';
-    if (execution.status === 'running') return 'running';
-    if (execution.status === 'complete') return 'success';
-    if (execution.status === 'failed') return 'error';
-    return 'cancelled';
-  })();
-  const visual = STATUS_VISUALS[effectiveStatus] ?? STATUS_VISUALS.pending;
-  const Icon = def?.icon ?? HelpCircle;
+  const [displayStatus, setDisplayStatus] = React.useState<ActionStatus>(part.status);
+  const [resolvedPresentation, setResolvedPresentation] = React.useState<
+    CanonicalApprovalPresentation | undefined
+  >(presentation);
+  const [presentationState, setPresentationState] = React.useState<
+    'idle' | 'loading' | 'ready' | 'failed'
+  >(presentation ? 'ready' : 'idle');
+  const [presentationFailureCode, setPresentationFailureCode] =
+    React.useState<ApprovalPresentationFailureCode>();
+  const visual = STATUS_VISUALS[displayStatus] ?? STATUS_VISUALS.pending;
+  const Icon = definition?.icon ?? HelpCircle;
   const StatusIcon = visual.icon;
+  const terminalCopy = resultLine(displayStatus, part.error);
+  const [decisionState, setDecisionState] = React.useState<
+    'idle' | 'busy' | 'submitted' | 'failed'
+  >('idle');
+  const dangerous =
+    resolvedPresentation?.risk === 'dangerous' ||
+    part.action_id === 'task.cancel' ||
+    part.action_id === 'terminal.run';
 
-  const [busy, setBusy] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const busyRef = useRef(false);
-  const syncedExecutionStatusRef = useRef<string>();
-  const pendingActions = allParts.filter(
-    (p): p is ActionPart => p.kind === 'action_proposal' && p.status === 'pending',
-  );
-  const isFirstPending = pendingActions[0]?.call_id === part.call_id;
+  React.useEffect(() => setDisplayStatus(part.status), [part.status]);
 
-  /** Persist a status patch onto the matching part inside the message. */
-  const writeStatus = async (patch: Partial<ActionPart>): Promise<void> => {
-    const msg = await messageRepo.getById(messageId);
-    if (!msg) return;
-    const nextParts: Part[] = msg.parts.map((p) =>
-      p.kind === 'action_proposal' && p.call_id === part.call_id
-        ? { ...p, ...patch }
-        : p,
-    );
-    await messageRepo.update(messageId, { parts: nextParts });
-  };
+  React.useEffect(() => {
+    if (!presentation) return;
+    setResolvedPresentation(presentation);
+    setPresentationState('ready');
+    setPresentationFailureCode(undefined);
+  }, [presentation]);
 
-  useEffect(() => {
-    if (!execution || syncedExecutionStatusRef.current === execution.status) return;
-    syncedExecutionStatusRef.current = execution.status;
-    if (execution.status === 'complete') {
-      void writeStatus({ status: 'success', error: undefined });
-      finishTaskApprovalStep(part.call_id, { ok: true, summary: 'Terminal command completed.' });
-    } else if (execution.status === 'failed') {
-      const error = execution.exitCode === undefined
-        ? 'The command failed.'
-        : `The command exited with code ${execution.exitCode}.`;
-      void writeStatus({
-        status: 'error',
-        error,
-      });
-      finishTaskApprovalStep(part.call_id, { ok: false, error });
-    } else if (execution.status === 'cancelled') {
-      void writeStatus({ status: 'cancelled', error: undefined });
-      cancelTaskApprovalStep(part.call_id);
-    }
-  }, [execution?.exitCode, execution?.status]);
-
-  const handleApprove = async () => {
-    if (busyRef.current || part.status !== 'pending') return;
-    busyRef.current = true;
-    setBusy(true);
-    setLocalError(null);
-    try {
-      if (!beginTaskApprovalStep(part.call_id)) {
-        await writeStatus({ status: 'cancelled', error: undefined });
-        return;
-      }
-      await writeStatus({ status: 'running' });
-      const result = await runAction(
-        part.action_id,
-        part.params,
-        { source: 'ai', chatId, messageId, callId: part.call_id },
-        { emitToast: false },
-      );
-      const queued = result.ok
-        && typeof result.data === 'object'
-        && result.data !== null
-        && (result.data as { state?: string }).state === 'queued';
-      await writeStatus(result.ok
-        ? {
-          status: queued ? 'queued' : 'success',
-          result: result.data,
-          error: undefined,
-        }
-        : { status: 'error', error: result.error });
-      if (!queued) finishTaskApprovalStep(part.call_id, result);
-    } catch (err) {
-      const error = err instanceof Error ? err.message : 'The action could not start. Please retry.';
-      setLocalError(error);
-      await writeStatus({ status: 'error', error }).catch(() => undefined);
-      finishTaskApprovalStep(part.call_id, { ok: false, error });
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  };
-
-  const handleCancel = async () => {
-    if (busyRef.current || part.status !== 'pending') return;
-    busyRef.current = true;
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await writeStatus({ status: 'cancelled' });
-      cancelTaskApprovalStep(part.call_id);
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'The action could not be cancelled.');
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  };
-
-  const handleCancelExecution = async () => {
-    if (busyRef.current || !executionId) return;
-    busyRef.current = true;
-    setBusy(true);
-    setLocalError(null);
-    try {
-      const removedFromQueue = cancelQueuedTerminalCommand(executionId);
-      if (!removedFromQueue && execution?.sessionId) {
-        await invoke('terminal_kill', { sessionId: execution.sessionId });
-      } else if (!removedFromQueue && execution?.status === 'running') {
-        throw new Error('The running terminal session is not available to cancel.');
-      }
-      syncedExecutionStatusRef.current = 'cancelled';
-      markTerminalExecution(executionId, 'cancelled', { exitCode: null });
-      await writeStatus({ status: 'cancelled', error: undefined });
-      cancelTaskApprovalStep(part.call_id);
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'The command could not be cancelled.');
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  };
-
-  const handleApproveAll = async () => {
-    if (busyRef.current || part.status !== 'pending' || pendingActions.length <= 1) return;
-    busyRef.current = true;
-    setBusy(true);
-    setLocalError(null);
-    const runnable = pendingActions.filter((p) => resolveAction(p.action_id));
-    if (runnable.length === 0) {
-      busyRef.current = false;
-      setBusy(false);
+  React.useEffect(() => {
+    if (!approvalId || resolvedPresentation || displayStatus !== 'pending') return;
+    const identity = getActiveAccountIdentity();
+    if (!identity) {
+      setPresentationState('failed');
+      setPresentationFailureCode('identity_missing');
       return;
     }
-
-    const mark = async (callId: string, patch: Partial<ActionPart>) => {
-      const msg = await messageRepo.getById(messageId);
-      if (!msg) return;
-      await messageRepo.update(messageId, {
-        parts: msg.parts.map((p) =>
-          p.kind === 'action_proposal' && p.call_id === callId
-            ? { ...p, ...patch }
-            : p,
-        ),
+    let cancelled = false;
+    setPresentationState('loading');
+    setPresentationFailureCode(undefined);
+    void import('@/lib/jarvis/kernelClient')
+      .then(({ createJarvisKernelClient }) => {
+        const client = createJarvisKernelClient();
+        return client
+          .getApprovalPresentation({ accountId: identity.accountId, approvalId })
+          .then((response) => {
+            if (cancelled) return;
+            if (response.kind === 'unavailable') {
+              setPresentationState('failed');
+              setPresentationFailureCode(response.reason);
+              return;
+            }
+            if (response.approvalId !== approvalId) {
+              setPresentationState('failed');
+              setPresentationFailureCode('invalid_response');
+              return;
+            }
+            setResolvedPresentation(
+              Object.freeze({
+                actionId: response.actionId,
+                expectedEffect: response.expectedEffect,
+                risk: response.risk,
+                parameters: Object.freeze(
+                  response.parameters.map((value) => Object.freeze({ ...value })),
+                ),
+              }),
+            );
+            setPresentationState('ready');
+            setPresentationFailureCode(undefined);
+          })
+          .finally(() => client.dispose());
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPresentationState('failed');
+          setPresentationFailureCode('request_failed');
+        }
       });
+    return () => {
+      cancelled = true;
     };
+  }, [approvalId, displayStatus, resolvedPresentation]);
 
+  const decideCanonical = async (choice: 'approve' | 'deny') => {
+    if (!approvalId || !resolvedPresentation || decisionState === 'busy') return;
+    const identity = getActiveAccountIdentity();
+    if (!identity) {
+      setDecisionState('failed');
+      return;
+    }
+    setDecisionState('busy');
     try {
-      for (const action of runnable) {
-        beginTaskApprovalStep(action.call_id);
-        await mark(action.call_id, { status: 'running' });
-        const result = await runAction(
-          action.action_id,
-          action.params,
-          { source: 'ai', chatId, messageId, callId: action.call_id },
-          { emitToast: false },
+      const { createJarvisKernelClient } = await import('@/lib/jarvis/kernelClient');
+      const client = createJarvisKernelClient();
+      try {
+        const decision = await client.decideApproval({
+          accountId: identity.accountId,
+          approvalId,
+          decision: choice,
+        });
+        if (
+          decision.kind !== 'approval_decided' ||
+          decision.approvalId !== approvalId ||
+          decision.status !== (choice === 'approve' ? 'approved' : 'denied')
+        ) {
+          throw new Error('kernel_approval_decision_failed');
+        }
+        if (choice === 'deny') {
+          setDisplayStatus('cancelled');
+          setDecisionState('submitted');
+          return;
+        }
+        const execution = await client.executeApproval({
+          accountId: identity.accountId,
+          approvalId,
+        });
+        if (
+          execution.kind !== 'approval_execution' ||
+          execution.approvalId !== approvalId ||
+          !['queued', 'running', 'completed', 'failed'].includes(execution.status)
+        ) {
+          throw new Error('kernel_approval_execution_failed');
+        }
+        setDisplayStatus(
+          execution.status === 'queued'
+            ? 'queued'
+            : execution.status === 'running'
+              ? 'running'
+              : execution.status === 'completed'
+                ? 'success'
+                : 'error',
         );
-        const queued = result.ok
-          && typeof result.data === 'object'
-          && result.data !== null
-          && (result.data as { state?: string }).state === 'queued';
-        await mark(action.call_id, result.ok
-          ? {
-            status: queued ? 'queued' : 'success',
-            result: result.data,
-            error: undefined,
-          }
-          : { status: 'error', error: result.error });
-        if (!queued) finishTaskApprovalStep(action.call_id, result);
+        setDecisionState('submitted');
+      } finally {
+        client.dispose();
       }
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'One or more actions could not run.');
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
+    } catch {
+      setDecisionState('failed');
     }
   };
-
-  // Body text for the inline result line shown after a non-pending run.
-  const resultLine = (() => {
-    if (effectiveStatus === 'queued') {
-      return execution?.status === 'starting' ? 'Starting in Terminal.' : 'Queued in Terminal.';
-    }
-    if (effectiveStatus === 'running') return 'Running in Terminal.';
-    if (effectiveStatus === 'success') {
-      const data = part.result as { summary?: string } | undefined;
-      return data?.summary ?? 'Action completed.';
-    }
-    if (effectiveStatus === 'error') {
-      if (execution?.exitCode !== undefined) return `The command exited with code ${execution.exitCode}.`;
-      return part.error ?? 'Unknown error.';
-    }
-    if (effectiveStatus === 'cancelled') return 'You cancelled this action.';
-    return null;
-  })();
 
   return (
     <div
@@ -361,13 +341,22 @@ export function ActionApprovalCard({
         visual.borderClass,
       )}
       data-action-id={part.action_id}
-      data-status={effectiveStatus}
+      data-approval-id={approvalId}
+      data-status={displayStatus}
+      data-approval-kind={approvalId ? 'canonical' : 'legacy'}
+      role={approvalId ? 'group' : undefined}
+      aria-labelledby={approvalId ? approvalTitleId : undefined}
+      tabIndex={approvalId ? -1 : undefined}
+      data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.approvalCard : undefined}
+      data-presentation-state={KERNEL_SMOKE_ENABLED && approvalId ? presentationState : undefined}
+      data-presentation-code={
+        KERNEL_SMOKE_ENABLED && presentationState === 'failed' ? presentationFailureCode : undefined
+      }
     >
-      {/* Header: action icon + label + status badge */}
       <div className="flex items-center gap-2 text-secondary">
-        <Icon className="h-4 w-4 text-accent-copper shrink-0" />
-        <span className="font-medium text-foreground">
-          {def?.label ?? part.action_id}
+        <Icon className="h-4 w-4 shrink-0 text-accent-copper" />
+        <span id={approvalId ? approvalTitleId : undefined} className="font-medium text-foreground">
+          {resolvedPresentation?.actionId ?? definition?.label ?? part.action_id}
         </span>
         <span
           className={cn(
@@ -380,99 +369,74 @@ export function ActionApprovalCard({
         </span>
       </div>
 
-      {/* Rationale (italic muted) — AI's "why this action?" */}
-      {part.rationale && (
-        <div className="text-secondary italic text-muted-foreground leading-relaxed">
-          {part.rationale}
-        </div>
-      )}
-
-      {/* Params summary, only for actions that take any. */}
-      {Object.keys(part.params).length > 0 && (
-        <ul className="flex flex-col gap-0.5 text-metadata text-muted-foreground font-mono">
-          {Object.entries(part.params).map(([k, v]) => (
-            <li key={k} className="truncate">
-              <span className="text-foreground/80">{k}</span>
-              <span className="opacity-60"> = </span>
-              <span>{formatParamValue(v)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Footer: buttons (pending) or result text (anything else) */}
-      {part.status === 'pending' ? (
-        <div className="mt-1 flex items-center gap-2">
-          {isFirstPending && pendingActions.length > 1 && (
-            <Button
-              size="sm"
-              variant="accent"
-              onClick={handleApproveAll}
-              disabled={busy}
-              title={`Run all ${pendingActions.length} pending actions in this message`}
-            >
-              <Check className="h-3.5 w-3.5" /> Approve all ({pendingActions.length})
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="default"
-            onClick={handleApprove}
-            disabled={busy || !def}
-            title={
-              def
-                ? `Run ${def.label}`
-                : `Unknown action: ${part.action_id}. Cannot run.`
-            }
-          >
-            <Check className="h-3.5 w-3.5" /> Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleCancel}
-            disabled={busy}
-          >
-            <X className="h-3.5 w-3.5" /> Cancel
-          </Button>
-          {!def && (
-            <span className="text-metadata text-destructive">
-              Action <span className="font-mono">{part.action_id}</span> isn't
-              registered. The AI may have hallucinated the id.
-            </span>
-          )}
-        </div>
-      ) : (
+      {approvalId && resolvedPresentation ? (
         <>
-        {resultLine && (
-          <div
-            className={cn(
-              'text-secondary leading-relaxed',
-              effectiveStatus === 'error'
-                ? 'text-destructive'
-                : 'text-muted-foreground',
-            )}
-          >
-            {resultLine}
-          </div>
-        )}
-        {(effectiveStatus === 'queued' || effectiveStatus === 'running') && executionId && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleCancelExecution}
-            disabled={busy}
-          >
-            <X className="h-3.5 w-3.5" /> Cancel command
-          </Button>
-        )}
+          <p className="text-secondary italic leading-relaxed text-muted-foreground">
+            {resolvedPresentation.expectedEffect}
+          </p>
+          {resolvedPresentation.parameters.length > 0 && (
+            <ul className="flex flex-col gap-0.5 font-mono text-metadata text-muted-foreground">
+              {resolvedPresentation.parameters.map(({ field, safeValue }) => (
+                <li key={field} className="truncate">
+                  <span className="text-foreground/80">{field}</span>
+                  <span className="opacity-60"> = </span>
+                  <span>{safeValue}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
-      )}
-      {localError && (
-        <p role="alert" className="text-secondary text-destructive">
-          {localError} No duplicate action was started.
+      ) : displayStatus === 'pending' ? (
+        <p className="text-secondary leading-relaxed text-muted-foreground">
+          {approvalId
+            ? presentationState === 'failed'
+              ? 'Canonical approval details are unavailable. Retry after the protected host reconnects.'
+              : 'Loading protected approval details…'
+            : 'This historical action card is view-only. Review current state and retry manually.'}
+        </p>
+      ) : null}
+
+      {terminalCopy && (
+        <p
+          className={cn(
+            'text-secondary leading-relaxed',
+            displayStatus === 'error' ? 'text-destructive' : 'text-muted-foreground',
+          )}
+        >
+          {terminalCopy}
         </p>
       )}
+
+      {approvalId && resolvedPresentation && displayStatus === 'pending' ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={dangerous ? 'destructive' : 'secondary'}
+            disabled={decisionState === 'busy' || decisionState === 'submitted'}
+            onClick={() => void decideCanonical('approve')}
+            data-sik-evidence={
+              KERNEL_SMOKE_ENABLED
+                ? dangerous
+                  ? SIK_CONTROL.approvalConfirmDangerous
+                  : SIK_CONTROL.approvalConfirm
+                : undefined
+            }
+            data-approval-submit-state={decisionState}
+          >
+            {decisionState === 'busy' ? 'Approving…' : 'Approve fixed action'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={decisionState === 'busy' || decisionState === 'submitted'}
+            onClick={() => void decideCanonical('deny')}
+          >
+            Deny action
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

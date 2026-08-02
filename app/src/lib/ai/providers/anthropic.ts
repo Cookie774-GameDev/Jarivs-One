@@ -19,7 +19,13 @@
  *  - event: ping                  keepalive, ignore
  */
 import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -58,23 +64,34 @@ function toAnthropicContent(content: string | LLMContentPart[]): AnthropicConten
   });
 }
 
-function appendAnthropicContent(base: AnthropicContent, next: string | LLMContentPart[]): AnthropicContent {
+function appendAnthropicContent(
+  base: AnthropicContent,
+  next: string | LLMContentPart[],
+): AnthropicContent {
   if (typeof next === 'string') {
     if (typeof base === 'string') return `${base}\n\n${next}`;
     return [...base, { type: 'text' as const, text: `\n\n${next}` }];
   }
   const nextContent = toAnthropicContent(next);
   if (typeof base === 'string') {
-    return [{ type: 'text' as const, text: base }, ...(Array.isArray(nextContent) ? nextContent : [{ type: 'text' as const, text: nextContent }])];
+    return [
+      { type: 'text' as const, text: base },
+      ...(Array.isArray(nextContent)
+        ? nextContent
+        : [{ type: 'text' as const, text: nextContent }]),
+    ];
   }
-  return [...base, ...(Array.isArray(nextContent) ? nextContent : [{ type: 'text' as const, text: nextContent }])];
+  return [
+    ...base,
+    ...(Array.isArray(nextContent) ? nextContent : [{ type: 'text' as const, text: nextContent }]),
+  ];
 }
 
 function toAnthropicPayload(req: LLMRequest): {
   system: string;
   messages: { role: 'user' | 'assistant'; content: AnthropicContent }[];
 } {
-  const system = req.agent.system_prompt;
+  const system = systemPromptForRequest(req);
   const out: { role: 'user' | 'assistant'; content: AnthropicContent }[] = [];
   for (const m of req.messages) {
     if (m.role === 'system') continue; // safety: shouldn't happen, but ignore
@@ -94,6 +111,18 @@ function toAnthropicPayload(req: LLMRequest): {
   return { system, messages: out };
 }
 
+export function buildAnthropicRequestBody(req: LLMRequest) {
+  const { system, messages } = toAnthropicPayload(req);
+  return {
+    model: req.agent.model.model || ANTHROPIC_DEFAULT_MODEL,
+    max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
+    temperature: req.temperature ?? req.agent.temperature ?? 0.7,
+    system,
+    messages,
+    stream: true,
+  };
+}
+
 export const anthropicProvider: LLMProvider = {
   id: 'anthropic',
   name: 'Anthropic',
@@ -108,16 +137,7 @@ export const anthropicProvider: LLMProvider = {
     if (!apiKey) throw new Error('Anthropic API key not set');
 
     const model = req.agent.model.model || ANTHROPIC_DEFAULT_MODEL;
-    const { system, messages } = toAnthropicPayload(req);
-
-    const body = {
-      model,
-      max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
-      temperature: req.temperature ?? req.agent.temperature ?? 0.7,
-      system,
-      messages,
-      stream: true,
-    };
+    const body = buildAnthropicRequestBody(req);
 
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -135,6 +155,13 @@ export const anthropicProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       throw new Error(`Anthropic ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('Anthropic returned an empty body');
@@ -145,7 +172,10 @@ export const anthropicProvider: LLMProvider = {
     let finishReason: string | undefined;
     let first = true;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       if (!evt.event) continue;
 
@@ -198,7 +228,8 @@ export const anthropicProvider: LLMProvider = {
     // Fall back to estimates if Anthropic didn't report usage (rare, but happens
     // on some abrupt stops).
     if (inputTokens === 0) {
-      const inputText = system + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
+      const inputText =
+        body.system + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

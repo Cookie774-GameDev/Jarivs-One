@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import '@/features/local-models/sakura-local-models.css';
 import {
   AlertTriangle,
   Check,
@@ -27,10 +28,7 @@ import {
   type OllamaModelInfo,
   type OllamaPullProgress,
 } from '@/lib/ai';
-import {
-  bootstrapOllamaConnection,
-  invalidateOllamaBootstrap,
-} from '@/lib/ai/ollamaBootstrap';
+import { bootstrapOllamaConnection, invalidateOllamaBootstrap } from '@/lib/ai/ollamaBootstrap';
 import {
   getNativeOllamaStatus,
   openOllamaTroubleshooting,
@@ -96,9 +94,7 @@ function formatPullProgress(model: string, progress: OllamaPullProgress | null):
   }
 
   const early =
-    progress.percent === undefined ||
-    progress.percent < 2 ||
-    /manifest|pulling/i.test(raw);
+    progress.percent === undefined || progress.percent < 2 || /manifest|pulling/i.test(raw);
   if (early) {
     return { ...progress, model, status: `Downloading ${family}…` };
   }
@@ -137,8 +133,7 @@ function userFacingDownloadError(err: unknown): string {
     return 'Download timed out. Check your internet connection and try again.';
   if (msg.includes('size exceeded') || msg.includes('maximum allowed'))
     return 'Download exceeds the maximum allowed size. Try a smaller model.';
-  if (msg.includes('AbortError') || msg.includes('aborted'))
-    return 'Download was cancelled.';
+  if (msg.includes('AbortError') || msg.includes('aborted')) return 'Download was cancelled.';
   if (msg.includes('404') || msg.includes('not found'))
     return 'Model not found in the Ollama registry. Check the model name.';
   if (msg.includes('insufficient') || msg.includes('disk') || msg.includes('space'))
@@ -147,8 +142,7 @@ function userFacingDownloadError(err: unknown): string {
     return 'Download completed but the model could not be verified. Try re-scanning or re-downloading.';
   if (msg.includes('Could not reach Ollama'))
     return 'Ollama became unreachable during download. Check that the service is still running.';
-  if (msg.includes('Ollama pull failed'))
-    return `Ollama reported an error: ${msg.slice(0, 200)}`;
+  if (msg.includes('Ollama pull failed')) return `Ollama reported an error: ${msg.slice(0, 200)}`;
 
   return `Download failed: ${msg.slice(0, 200)}`;
 }
@@ -188,13 +182,19 @@ interface BootstrapState {
 
 let _bootstrapState: BootstrapState = { phase: 'idle', statusMsg: '' };
 let _bootstrapListeners: Array<() => void> = [];
-function notifyBootstrap() { _bootstrapListeners.forEach((fn) => fn()); }
+function notifyBootstrap() {
+  _bootstrapListeners.forEach((fn) => fn());
+}
 
 function subscribeToBootstrap(cb: () => void): () => void {
   _bootstrapListeners.push(cb);
-  return () => { _bootstrapListeners = _bootstrapListeners.filter((l) => l !== cb); };
+  return () => {
+    _bootstrapListeners = _bootstrapListeners.filter((l) => l !== cb);
+  };
 }
-function getBootstrapSnapshot(): BootstrapState { return _bootstrapState; }
+function getBootstrapSnapshot(): BootstrapState {
+  return _bootstrapState;
+}
 
 function mapEnsureStatus(status: OllamaEnsureStatus): BootstrapState {
   const phase =
@@ -401,11 +401,7 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
     reportPullProgress({ status: `Downloading ${family}…` });
 
     try {
-      await pullOllamaModel(
-        model,
-        reportPullProgress,
-        controller.signal,
-      );
+      await pullOllamaModel(model, reportPullProgress, controller.signal);
       const doneState = formatPullProgress(model, { status: 'success', done: true, percent: 100 });
       _downloads.set(model, {
         status: 'done',
@@ -440,7 +436,9 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
     })();
 
   const connected = reachable === true;
-  const notInstalled = reachable === false && (nativeStatus.installed === false || bootstrap.phase === 'not_installed');
+  const notInstalled =
+    reachable === false &&
+    (nativeStatus.installed === false || bootstrap.phase === 'not_installed');
   const canStart = reachable === false && nativeStatus.installed === true;
   const busy =
     bootstrap.phase === 'detecting' ||
@@ -454,15 +452,12 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
       await openOllamaTroubleshooting();
       toast.info('Opened Ollama troubleshooting', 'Use this only if silent startup failed.');
     } catch (err) {
-      toast.error(
-        'Could not open Ollama',
-        err instanceof Error ? err.message : String(err),
-      );
+      toast.error('Could not open Ollama', err instanceof Error ? err.message : String(err));
     }
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-local-models flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <h2 className="text-page-title text-foreground">Local Models</h2>
         <p className="mt-1 text-secondary text-muted-foreground">
@@ -488,7 +483,10 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
             )}
           />
           <div className="min-w-0">
-            <Label htmlFor="offline-toggle" className="cursor-pointer text-ui-strong text-foreground">
+            <Label
+              htmlFor="offline-toggle"
+              className="cursor-pointer text-ui-strong text-foreground"
+            >
               Fully local chat
             </Label>
             <p className="mt-0.5 text-metadata text-muted-foreground">
@@ -526,7 +524,14 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => { ensureOllamaReady().then((ok) => { if (ok) { setReachable(true); void scan(false); } }); }}
+                onClick={() => {
+                  ensureOllamaReady().then((ok) => {
+                    if (ok) {
+                      setReachable(true);
+                      void scan(false);
+                    }
+                  });
+                }}
                 disabled={busy}
               >
                 <Play className="h-3.5 w-3.5" />
@@ -536,7 +541,10 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => { autoStartAttemptedRef.current = false; void scan(); }}
+              onClick={() => {
+                autoStartAttemptedRef.current = false;
+                void scan();
+              }}
               disabled={scanning || busy}
               aria-label="Re-scan Ollama"
             >
@@ -553,7 +561,9 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
         ) : bootstrap.phase === 'error' ? (
           <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
             <p className="text-metadata text-warning">{bootstrap.statusMsg}</p>
-            {bootstrap.error ? <p className="mt-1 text-secondary text-muted-foreground">{bootstrap.error}</p> : null}
+            {bootstrap.error ? (
+              <p className="mt-1 text-secondary text-muted-foreground">{bootstrap.error}</p>
+            ) : null}
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 variant="secondary"
@@ -600,7 +610,12 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
           <Input
             value={baseDraft}
             onChange={(event) => setBaseDraft(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); saveBase(); } }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                saveBase();
+              }
+            }}
             placeholder={OLLAMA_DEFAULT_BASE}
             className="font-mono"
             spellCheck={false}
@@ -633,7 +648,8 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
         {reachable === false && nativeStatus.installed !== false && bootstrap.phase === 'idle' ? (
           <div className="rounded-md border border-border bg-panel/60 px-3 py-2">
             <p className="text-metadata text-muted-foreground">
-              Could not reach {ollamaBaseUrl()}. Jarvis checks the Ollama API directly — no tray icon required.
+              Could not reach {ollamaBaseUrl()}. Jarvis checks the Ollama API directly — no tray
+              icon required.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
@@ -684,7 +700,11 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
         </div>
 
         {installed.length > 0 ? (
-          <div role="radiogroup" aria-label="Installed local models" className="grid max-w-xl gap-2">
+          <div
+            role="radiogroup"
+            aria-label="Installed local models"
+            className="grid max-w-xl gap-2"
+          >
             {installed.map((model) => {
               const selected = sameModel(defaultLocalModel, model.name);
               return (
@@ -702,15 +722,30 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
                       : 'border-border',
                   )}
                 >
-                  <span className={cn(
-                    'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border',
-                    selected ? 'border-transparent bg-accent-gradient' : 'border-border-mid bg-background',
-                  )}>
-                    {selected ? <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} /> : null}
+                  <span
+                    className={cn(
+                      'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border',
+                      selected
+                        ? 'border-transparent bg-accent-gradient [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!bg-foreground'
+                        : 'border-border-mid bg-background',
+                    )}
+                  >
+                    {selected ? (
+                      <Check
+                        className="h-2.5 w-2.5 text-white [html[data-theme=monochrome]_&]:text-background"
+                        strokeWidth={3}
+                      />
+                    ) : null}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-mono text-ui-strong text-foreground">{model.name}</span>
-                    {model.size ? <span className="text-metadata text-muted-foreground">{formatBytes(model.size)}</span> : null}
+                    <span className="block truncate font-mono text-ui-strong text-foreground">
+                      {model.name}
+                    </span>
+                    {model.size ? (
+                      <span className="text-metadata text-muted-foreground">
+                        {formatBytes(model.size)}
+                      </span>
+                    ) : null}
                   </span>
                   {selected ? <Badge variant="success">Selected</Badge> : null}
                 </button>
@@ -719,10 +754,11 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
           </div>
         ) : (
           <p className="text-metadata text-muted-foreground">
-            {connected ? 'No models yet. Download one below.' : 'Start Ollama or click Download on any model.'}
+            {connected
+              ? 'No models yet. Download one below.'
+              : 'Start Ollama or click Download on any model.'}
           </p>
         )}
-
       </section>
 
       <Separator />
@@ -734,16 +770,21 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
             Model catalog
           </h3>
           <p className="text-secondary text-muted-foreground">
-            Click Download — Jarvis handles starting Ollama, pulling the model, and registering it automatically.
+            Click Download — Jarvis handles starting Ollama, pulling the model, and registering it
+            automatically.
           </p>
         </div>
 
         {activePull ? (
-          <PullProgressCard state={activePull} onCancel={() => {
-            for (const [, entry] of _downloads) {
-              if (entry.status === 'downloading' && entry.abortController) entry.abortController.abort();
-            }
-          }} />
+          <PullProgressCard
+            state={activePull}
+            onCancel={() => {
+              for (const [, entry] of _downloads) {
+                if (entry.status === 'downloading' && entry.abortController)
+                  entry.abortController.abort();
+              }
+            }}
+          />
         ) : null}
 
         <div className="grid max-w-2xl gap-2">
@@ -762,14 +803,22 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-ui-strong text-foreground">{model.displayName}</span>
+                    <span className="font-mono text-ui-strong text-foreground">
+                      {model.displayName}
+                    </span>
                     <Badge variant={model.recommended ? 'accent' : 'outline'}>{model.label}</Badge>
                     <Badge variant="outline">{model.size}</Badge>
                     {modelInstalled ? (
-                      <Badge variant="success"><Check className="h-3 w-3" />Installed</Badge>
+                      <Badge variant="success">
+                        <Check className="h-3 w-3" />
+                        Installed
+                      </Badge>
                     ) : null}
                     {downloadFailed ? (
-                      <Badge variant="warning"><AlertTriangle className="h-3 w-3" />Failed</Badge>
+                      <Badge variant="warning">
+                        <AlertTriangle className="h-3 w-3" />
+                        Failed
+                      </Badge>
                     ) : null}
                   </div>
                   <p className="mt-1 text-metadata text-muted-foreground">{model.blurb}</p>
@@ -797,14 +846,17 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
                     disabled={anyDownloading || busy}
                   >
                     <Download className={cn('h-3.5 w-3.5', pullingThisModel && 'animate-pulse')} />
-                    {pullingThisModel ? `Downloading ${catalogFamilyName(model.name)}` : downloadFailed ? 'Retry' : 'Download'}
+                    {pullingThisModel
+                      ? `Downloading ${catalogFamilyName(model.name)}`
+                      : downloadFailed
+                        ? 'Retry'
+                        : 'Download'}
                   </Button>
                 )}
               </div>
             );
           })}
         </div>
-
       </section>
     </div>
   );
@@ -825,7 +877,13 @@ function ConnectionBadge({
 }) {
   if (busy) return <Badge variant="outline">{bootstrapStatus || 'Working…'}</Badge>;
   if (scanning || reachable === null) return <Badge variant="outline">Checking…</Badge>;
-  if (reachable) return <Badge variant="success"><Check className="h-3 w-3" />Ollama ready</Badge>;
+  if (reachable)
+    return (
+      <Badge variant="success">
+        <Check className="h-3 w-3" />
+        Ollama ready
+      </Badge>
+    );
   if (installed === false) return <Badge variant="warning">Not installed</Badge>;
   if (installed === true) return <Badge variant="warning">Installed, stopped</Badge>;
   return <Badge variant="outline">Not connected</Badge>;
@@ -842,15 +900,25 @@ function PullProgressCard({ state, onCancel }: { state: PullState; onCancel: () 
           <p className="truncate text-metadata text-muted-foreground">{state.status}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {percent !== null ? <span className="text-metadata font-semibold text-accent-cyan">{percent}%</span> : null}
-          <Button variant="ghost" size="icon-sm" onClick={onCancel} aria-label="Cancel model download">
+          {percent !== null ? (
+            <span className="text-metadata font-semibold text-accent-cyan">{percent}%</span>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onCancel}
+            aria-label="Cancel model download"
+          >
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
-          className={cn('h-full rounded-full bg-accent-gradient transition-[width] duration-300', percent === null && 'animate-pulse')}
+          className={cn(
+            'h-full rounded-full bg-accent-gradient transition-[width] duration-300 [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!bg-foreground',
+            percent === null && 'animate-pulse',
+          )}
           style={{ width: percent === null ? '18%' : `${percent}%` }}
         />
       </div>
@@ -864,7 +932,10 @@ function PullProgressCard({ state, onCancel }: { state: PullState; onCancel: () 
 }
 
 function normalizeModelName(name: string): string {
-  return name.trim().toLowerCase().replace(/:latest$/, '');
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/:latest$/, '');
 }
 
 function sameModel(left: string, right: string): boolean {

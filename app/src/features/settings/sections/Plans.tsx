@@ -6,28 +6,14 @@
  */
 
 import * as React from 'react';
-import {
-  Sparkles,
-  KeyRound,
-  ExternalLink,
-  Crown,
-  Check,
-  Zap,
-  Orbit,
-} from 'lucide-react';
+import { Sparkles, KeyRound, ExternalLink, Crown, Check, Zap, Orbit } from 'lucide-react';
 import { HiveModelIcon } from '@/components/brand';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
-import {
-  PLANS,
-  PLAN_ORDER,
-  effectivePlan,
-  type PlanDef,
-  type PlanId,
-} from '@/lib/entitlements';
+import { PLANS, PLAN_ORDER, effectivePlan, type PlanDef, type PlanId } from '@/lib/entitlements';
 import { useAppAdmin } from '@/lib/admin';
 import {
   callCheckoutSession,
@@ -40,12 +26,12 @@ import { cn } from '@/lib/utils';
 
 const PLAN_PAGE_BACKGROUNDS: Record<PlanId, string> = {
   free: 'bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.18),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(20,184,166,0.1),transparent_36%),linear-gradient(180deg,rgba(8,47,73,0.14),transparent)]',
-  starter: 'bg-[radial-gradient(circle_at_top_left,rgba(217,119,87,0.25),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(251,146,60,0.1),transparent_36%),linear-gradient(180deg,rgba(120,53,15,0.14),transparent)]',
+  starter:
+    'bg-[radial-gradient(circle_at_top_left,rgba(217,119,87,0.25),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(251,146,60,0.1),transparent_36%),linear-gradient(180deg,rgba(120,53,15,0.14),transparent)]',
   pro: 'bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.28),transparent_40%),radial-gradient(circle_at_bottom_right,rgba(252,211,77,0.12),transparent_36%),linear-gradient(180deg,rgba(146,64,14,0.16),transparent)]',
   ultra:
     'bg-[radial-gradient(circle_at_center,rgba(124,58,237,0.5),transparent_50%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.32),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(236,72,153,0.22),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.6),transparent)]',
-  apex:
-    'bg-[radial-gradient(circle_at_center,rgba(255,133,0,0.45),transparent_46%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.34),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.24),transparent_42%),linear-gradient(180deg,rgba(8,10,15,0.72),transparent)]',
+  apex: 'bg-[radial-gradient(circle_at_center,rgba(255,133,0,0.45),transparent_46%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.34),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.24),transparent_42%),linear-gradient(180deg,rgba(8,10,15,0.72),transparent)]',
 };
 
 export function Plans() {
@@ -59,9 +45,7 @@ export function Plans() {
   const backendReady = isSignedIn && billingBackendConfigured;
 
   const openProvidersTab = () => {
-    window.dispatchEvent(
-      new CustomEvent('jarvis:settings:tab', { detail: { tab: 'providers' } }),
-    );
+    window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'providers' } }));
   };
 
   const handleUpgrade = async (tier: PlanId) => {
@@ -84,10 +68,7 @@ export function Plans() {
     try {
       await openExternal(result.url);
     } catch (err) {
-      toast.error(
-        'Could not open checkout',
-        (err as Error).message ?? 'Open the URL manually.',
-      );
+      toast.error('Could not open checkout', (err as Error).message ?? 'Open the URL manually.');
     }
   };
 
@@ -115,11 +96,16 @@ export function Plans() {
   void setSettingsOpen; // used by the outer modal
 
   return (
-    <div className={cn('relative -m-4 flex flex-col gap-6 rounded-[28px] p-4', PLAN_PAGE_BACKGROUNDS[activePlanId])}>
+    <div
+      className={cn(
+        'mc7f-settings-plans relative -m-4 flex flex-col gap-6 rounded-[28px] p-4 [html[data-theme=monochrome]_&]:m-0 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:!shadow-none [html[data-theme=monochrome]_&_*]:hover:!translate-y-0 [html[data-theme=monochrome]_&_*]:hover:!scale-100 [html[data-theme=monochrome]_&_*]:ring-0',
+        PLAN_PAGE_BACKGROUNDS[activePlanId],
+      )}
+    >
       {/* Dynamic Aurora Header */}
-      <header className="relative overflow-hidden rounded-2xl border border-border bg-slate-950 p-6 shadow-2xl">
+      <header className="relative overflow-hidden rounded-2xl border border-border bg-slate-950 p-6 shadow-2xl [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none">
         {/* Animated Aurora backgrounds */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 [html[data-theme=monochrome]_&]:hidden">
           <div className="absolute -top-[100px] -left-[10%] w-[50%] h-[300px] rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/10 blur-[80px] animate-[plan-lensing-pulse_8s_ease-in-out_infinite]" />
           <div className="absolute -top-[100px] -right-[10%] w-[40%] h-[260px] rounded-full bg-gradient-to-bl from-teal-500/15 to-cyan-500/5 blur-[70px] animate-[plan-lensing-pulse_12s_ease-in-out_infinite_2s]" />
         </div>
@@ -128,10 +114,13 @@ export function Plans() {
           <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-accent-copper/40 bg-accent-copper/10 px-3.5 py-1 text-metadata font-semibold uppercase tracking-[0.2em] text-accent-copper">
             <Sparkles className="h-3.5 w-3.5 animate-pulse" /> Choose Your Power
           </div>
-          <h2 className="font-display text-hero text-white tracking-tight">Select your Jarvis intelligence tier</h2>
+          <h2 className="font-display text-hero text-white tracking-tight">
+            Select your Jarvis intelligence tier
+          </h2>
           <p className="text-secondary text-slate-400 mt-2 max-w-2xl leading-relaxed">
-            Configure how Jarvis powers your workflow. Spark is free with your own API keys.
-            Paid tiers add hosted inference, AI phone minutes, in-app cloud voice, and unlimited local Kokoro.
+            Configure how Jarvis powers your workflow. Spark is free with your own API keys. Paid
+            tiers add hosted inference, AI phone minutes, in-app cloud voice, and unlimited local
+            Kokoro.
           </p>
         </div>
       </header>
@@ -158,22 +147,23 @@ export function Plans() {
             <>
               <span className="text-foreground font-medium">Secure checkout is configured.</span>{' '}
               Upgrades are created from your signed-in account through Supabase billing functions.
-              Your local files, workspace settings, custom tools, and keys never leave your machine on any tier.
+              Your local files, workspace settings, custom tools, and keys never leave your machine
+              on any tier.
             </>
           ) : (
             <>
-              <span className="text-foreground font-medium">Billing not configured.</span>{' '}
-              Paid checkout requires Supabase billing functions in this build.
-              Your local chat database, workspace profiles, and API key configurations remain private.
+              <span className="text-foreground font-medium">Billing not configured.</span> Paid
+              checkout requires Supabase billing functions in this build. Your local chat database,
+              workspace profiles, and API key configurations remain private.
             </>
           )}
         </p>
       </div>
 
       <p className="rounded-xl border border-border/70 bg-panel/80 px-4 py-3.5 text-secondary text-muted-foreground leading-relaxed">
-        <strong>BYOK (Bring Your Own Key) is fully supported:</strong> If you supply your own API credentials 
-        (Google Gemini, Anthropic Claude, OpenAI GPT, Groq, Ollama), Jarvis routes commands directly 
-        without charging your hosted budget or restricting your message count.
+        <strong>BYOK (Bring Your Own Key) is fully supported:</strong> If you supply your own API
+        credentials (Google Gemini, Anthropic Claude, OpenAI GPT, Groq, Ollama), Jarvis routes
+        commands directly without charging your hosted budget or restricting your message count.
       </p>
     </div>
   );
@@ -203,13 +193,13 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
         className={cn(
           'group relative flex min-h-[480px] flex-col gap-4 overflow-hidden rounded-[24px] border border-cyan-500/15 bg-gradient-to-b from-elevated/80 to-panel p-5 shadow-cozy',
           'transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_0_20px_rgba(6,182,212,0.12)]',
-          isCurrent && 'border-cyan-400/50 ring-1 ring-cyan-500/30'
+          isCurrent && 'border-cyan-400/50 ring-1 ring-cyan-500/30',
         )}
         aria-label={`${plan.label} plan, free`}
       >
         {/* Subtle border shimmer on hover */}
         <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-[24px] border border-cyan-400/40 z-0" />
-        
+
         {/* Colorful top strip */}
         <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-cyan-500 to-teal-400 z-10" />
 
@@ -228,7 +218,9 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                   </p>
                 </div>
               </div>
-              <span className="shrink-0 whitespace-nowrap font-display text-page-title text-cyan-400">Free</span>
+              <span className="shrink-0 whitespace-nowrap font-display text-page-title text-cyan-400">
+                Free
+              </span>
             </div>
             {isCurrent && (
               <Badge variant="success" className="whitespace-nowrap">
@@ -242,7 +234,10 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
           {/* Feature list */}
           <ul className="flex flex-col gap-2.5 text-secondary text-foreground/90">
             {plan.features.map((line) => (
-              <li key={line} className="flex items-start gap-2.5 rounded-xl border border-cyan-500/5 bg-cyan-500/[0.02] px-3 py-2">
+              <li
+                key={line}
+                className="flex items-start gap-2.5 rounded-xl border border-cyan-500/5 bg-cyan-500/[0.02] px-3 py-2"
+              >
                 <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-cyan-400" aria-hidden />
                 <span className="flex-1 leading-relaxed text-[11px] font-medium">{line}</span>
               </li>
@@ -251,7 +246,12 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
 
           {/* CTA */}
           <div className="mt-auto flex flex-col gap-2 pt-2">
-            <Button variant="secondary" size="sm" onClick={onAddKey} className="w-full bg-cyan-500/5 hover:bg-cyan-500/10 border-cyan-500/15 text-cyan-400">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onAddKey}
+              className="w-full bg-cyan-500/5 hover:bg-cyan-500/10 border-cyan-500/15 text-cyan-400"
+            >
               <KeyRound className="h-3.5 w-3.5" /> Add a Key
             </Button>
             <a
@@ -274,12 +274,12 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
     return (
       <article
         style={{
-          boxShadow: 'inset 0 0 16px rgba(217,119,87,0.08)'
+          boxShadow: 'inset 0 0 16px rgba(217,119,87,0.08)',
         }}
         className={cn(
           'group relative flex min-h-[480px] flex-col gap-4 overflow-hidden rounded-[24px] border border-accent-copper/20 bg-gradient-to-b from-elevated/80 to-panel p-5 animate-[plan-glow-pulse_5s_ease-in-out_infinite]',
           'transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_0_22px_rgba(217,119,87,0.18)]',
-          isCurrent && 'border-accent-copper/50 ring-1 ring-accent-copper/30'
+          isCurrent && 'border-accent-copper/50 ring-1 ring-accent-copper/30',
         )}
         aria-label={`${plan.label} plan, $${plan.priceUsd} per month`}
       >
@@ -303,7 +303,9 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                 </div>
               </div>
               <div className="shrink-0 whitespace-nowrap text-right">
-                <span className="font-display text-page-title text-accent-copper">${plan.priceUsd}</span>
+                <span className="font-display text-page-title text-accent-copper">
+                  ${plan.priceUsd}
+                </span>
                 <span className="block text-[10px] text-muted-foreground font-sans">/mo</span>
               </div>
             </div>
@@ -319,7 +321,10 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
           {/* Feature list */}
           <ul className="flex flex-col gap-2.5 text-secondary text-foreground/90">
             {plan.features.map((line) => (
-              <li key={line} className="flex items-start gap-2.5 rounded-xl border border-accent-copper/5 bg-accent-copper/[0.02] px-3 py-2">
+              <li
+                key={line}
+                className="flex items-start gap-2.5 rounded-xl border border-accent-copper/5 bg-accent-copper/[0.02] px-3 py-2"
+              >
                 <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden />
                 <span className="flex-1 leading-relaxed text-[11px] font-medium">{line}</span>
               </li>
@@ -329,11 +334,21 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
           {/* CTA */}
           <div className="mt-auto flex flex-col gap-2 pt-2">
             {isCurrent ? (
-              <Button variant="secondary" size="sm" onClick={onManage} className="w-full border-accent-copper/30 text-accent-copper/80 hover:text-accent-copper">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onManage}
+                className="w-full border-accent-copper/30 text-accent-copper/80 hover:text-accent-copper"
+              >
                 Manage Subscription
               </Button>
             ) : billingReady ? (
-              <Button variant="accent" size="sm" onClick={onUpgrade} className="w-full bg-accent-copper hover:bg-accent-copper/90 text-white shadow-lg hover:shadow-accent-copper/20 hover:scale-[1.02] transition-all">
+              <Button
+                variant="accent"
+                size="sm"
+                onClick={onUpgrade}
+                className="w-full bg-accent-copper hover:bg-accent-copper/90 text-white shadow-lg hover:shadow-accent-copper/20 hover:scale-[1.02] transition-all"
+              >
                 <Zap className="h-3.5 w-3.5" /> Upgrade — ${plan.priceUsd}/mo
               </Button>
             ) : (
@@ -356,7 +371,7 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
       >
         {/* Animated Golden Border Wrapper */}
         <div className="absolute -inset-[1.5px] rounded-[24px] bg-gradient-to-r from-yellow-500 via-amber-400 to-orange-500 opacity-60 group-hover:opacity-100 transition-opacity duration-300 animate-[plan-border-flow_4s_linear_infinite] bg-[length:200%_auto] z-0 shadow-lg" />
-        
+
         {/* Twinkling particle dots behind glass */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
           <div className="absolute top-[20%] left-[30%] w-1 h-1 rounded-full bg-yellow-300 opacity-40 animate-[plan-particle-float_6s_ease-in-out_infinite]" />
@@ -386,7 +401,9 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                 </div>
               </div>
               <div className="shrink-0 whitespace-nowrap text-right">
-                <span className="font-display text-page-title text-amber-500">${plan.priceUsd}</span>
+                <span className="font-display text-page-title text-amber-500">
+                  ${plan.priceUsd}
+                </span>
                 <span className="block text-[10px] text-muted-foreground font-sans">/mo</span>
               </div>
             </div>
@@ -402,7 +419,10 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
           {/* Feature list */}
           <ul className="flex flex-col gap-2.5 text-secondary text-foreground/90">
             {plan.features.map((line) => (
-              <li key={line} className="flex items-start gap-2.5 rounded-xl border border-yellow-500/5 bg-yellow-500/[0.01] px-3 py-2">
+              <li
+                key={line}
+                className="flex items-start gap-2.5 rounded-xl border border-yellow-500/5 bg-yellow-500/[0.01] px-3 py-2"
+              >
                 <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden />
                 <span className="flex-1 leading-relaxed text-[11px] font-medium">{line}</span>
               </li>
@@ -412,11 +432,21 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
           {/* CTA */}
           <div className="mt-auto flex flex-col gap-2 pt-2">
             {isCurrent ? (
-              <Button variant="secondary" size="sm" onClick={onManage} className="w-full border-yellow-500/30 text-amber-400/80 hover:text-amber-400">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onManage}
+                className="w-full border-yellow-500/30 text-amber-400/80 hover:text-amber-400"
+              >
                 Manage Subscription
               </Button>
             ) : billingReady ? (
-              <Button variant="accent" size="sm" onClick={onUpgrade} className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-450 hover:to-amber-550 text-white font-semibold shadow-lg hover:shadow-yellow-500/10 hover:scale-[1.02] transition-all">
+              <Button
+                variant="accent"
+                size="sm"
+                onClick={onUpgrade}
+                className="w-full bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-450 hover:to-amber-550 text-white font-semibold shadow-lg hover:shadow-yellow-500/10 hover:scale-[1.02] transition-all"
+              >
                 <Zap className="h-3.5 w-3.5" /> Upgrade — ${plan.priceUsd}/mo
               </Button>
             ) : (
@@ -439,7 +469,7 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
       >
         {/* Shifting Cosmic Border Glow */}
         <div className="absolute -inset-[2px] rounded-[24px] bg-gradient-to-r from-purple-600 via-blue-500 to-indigo-700 opacity-80 group-hover:opacity-100 transition-opacity duration-300 animate-[plan-border-flow_6s_linear_infinite] bg-[length:200%_auto] z-0 shadow-[0_0_25px_rgba(139,92,246,0.3)]" />
-        
+
         {/* Black Hole Cosmic Inner Container */}
         <div className="relative flex flex-col h-full w-full rounded-[22px] overflow-hidden p-5 z-20 gap-5 text-white bg-slate-950/95">
           {/* Rotating Deep Galaxy Gradient Background.
@@ -471,7 +501,9 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                      <h3 className="font-display text-page-title text-white tracking-tight">{plan.label}</h3>
+                      <h3 className="font-display text-page-title text-white tracking-tight">
+                        {plan.label}
+                      </h3>
                       <Badge className="whitespace-nowrap bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-600 text-white border-none font-semibold text-[8px] tracking-wide uppercase px-1.5 py-0.5 animate-[plan-shimmer-text_3s_linear_infinite] bg-[length:200%_auto]">
                         Ultimate
                       </Badge>
@@ -482,7 +514,9 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                   </div>
                 </div>
                 <div className="shrink-0 whitespace-nowrap text-right">
-                  <span className="font-display text-page-title text-purple-300 animate-[plan-shimmer-text_4s_linear_infinite] bg-gradient-to-r from-purple-300 via-pink-200 to-indigo-200 bg-clip-text text-transparent bg-[length:200%_auto]">${plan.priceUsd}</span>
+                  <span className="font-display text-page-title text-purple-300 animate-[plan-shimmer-text_4s_linear_infinite] bg-gradient-to-r from-purple-300 via-pink-200 to-indigo-200 bg-clip-text text-transparent bg-[length:200%_auto] [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!bg-clip-border [html[data-theme=monochrome]_&]:!text-foreground">
+                    ${plan.priceUsd}
+                  </span>
                   <span className="block text-[10px] text-slate-400 font-sans">/mo</span>
                 </div>
               </div>
@@ -498,7 +532,10 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
             {/* Feature list */}
             <ul className="flex flex-col gap-2.5 text-secondary text-slate-200">
               {plan.features.map((line) => (
-                <li key={line} className="flex items-start gap-2.5 rounded-xl border border-purple-500/10 bg-purple-900/[0.04] px-3 py-2">
+                <li
+                  key={line}
+                  className="flex items-start gap-2.5 rounded-xl border border-purple-500/10 bg-purple-900/[0.04] px-3 py-2"
+                >
                   <Check className="mt-1 h-3.5 w-3.5 shrink-0 text-purple-300" aria-hidden />
                   <span className="flex-1 leading-relaxed text-[11px] font-medium">{line}</span>
                 </li>
@@ -508,15 +545,30 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
             {/* CTA */}
             <div className="mt-auto flex flex-col gap-2 pt-2">
               {isCurrent ? (
-                <Button variant="secondary" size="sm" onClick={onManage} className="w-full bg-slate-900 border-purple-500/30 text-purple-300/80 hover:text-purple-300">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onManage}
+                  className="w-full bg-slate-900 border-purple-500/30 text-purple-300/80 hover:text-purple-300"
+                >
                   Manage Subscription
                 </Button>
               ) : billingReady ? (
-                <Button variant="accent" size="sm" onClick={onUpgrade} className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-550 hover:to-indigo-550 text-white font-bold shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:shadow-[0_0_30px_rgba(168,85,247,0.55)] hover:scale-[1.02] transition-all border-none">
+                <Button
+                  variant="accent"
+                  size="sm"
+                  onClick={onUpgrade}
+                  className="w-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 hover:from-purple-550 hover:to-indigo-550 text-white font-bold shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:shadow-[0_0_30px_rgba(168,85,247,0.55)] hover:scale-[1.02] transition-all border-none"
+                >
                   <Zap className="h-3.5 w-3.5" /> Upgrade — ${plan.priceUsd}/mo
                 </Button>
               ) : (
-                <Button variant="secondary" size="sm" onClick={onUpgrade} className="w-full bg-slate-900 border-purple-500/25 text-slate-300">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onUpgrade}
+                  className="w-full bg-slate-900 border-purple-500/25 text-slate-300"
+                >
                   Upgrade — ${plan.priceUsd}/mo
                 </Button>
               )}
@@ -547,7 +599,9 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                      <h3 className="font-display text-page-title tracking-tight text-white">{plan.label}</h3>
+                      <h3 className="font-display text-page-title tracking-tight text-white">
+                        {plan.label}
+                      </h3>
                       <Badge className="whitespace-nowrap border-none bg-gradient-to-r from-orange-400 via-fuchsia-500 to-blue-500 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
                         Hive flagship
                       </Badge>
@@ -558,7 +612,7 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                   </div>
                 </div>
                 <div className="shrink-0 whitespace-nowrap text-right">
-                  <span className="bg-gradient-to-r from-orange-200 via-white to-blue-200 bg-clip-text font-display text-page-title text-transparent">
+                  <span className="bg-gradient-to-r from-orange-200 via-white to-blue-200 bg-clip-text font-display text-page-title text-transparent [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!bg-clip-border [html[data-theme=monochrome]_&]:!text-foreground">
                     ${plan.priceUsd}
                   </span>
                   <span className="block font-sans text-[10px] text-orange-100/60">/mo</span>
@@ -587,7 +641,12 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
 
             <div className="mt-auto flex flex-col gap-2 pt-2">
               {isCurrent ? (
-                <Button variant="secondary" size="sm" onClick={onManage} className="w-full bg-slate-900 border-orange-300/30 text-orange-100/80 hover:text-orange-100">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onManage}
+                  className="w-full bg-slate-900 border-orange-300/30 text-orange-100/80 hover:text-orange-100"
+                >
                   Manage Subscription
                 </Button>
               ) : billingReady ? (
@@ -600,7 +659,12 @@ function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage
                   <Zap className="h-3.5 w-3.5" /> Upgrade — ${plan.priceUsd}/mo
                 </Button>
               ) : (
-                <Button variant="secondary" size="sm" onClick={onUpgrade} className="w-full bg-slate-900 text-orange-100/60">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={onUpgrade}
+                  className="w-full bg-slate-900 text-orange-100/60"
+                >
                   Upgrade — ${plan.priceUsd}/mo
                 </Button>
               )}

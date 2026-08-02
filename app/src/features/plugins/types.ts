@@ -43,6 +43,8 @@ export type PluginManifest = {
   provider: string;
   authType: PluginAuthType;
   fields: PluginField[];
+  /** Exact provider permissions required by this connector's implemented operations. */
+  requiredScopes?: string[];
   status: PluginStatus;
   docsUrl?: string;
   /** Official page to create API keys, OAuth apps, or tokens. */
@@ -53,13 +55,14 @@ export type PluginManifest = {
   setupSteps: string[];
   supportedFeatures: string[];
   limitations?: string;
-  /** When set, `testPluginConnection` runs this probe instead of a hard-coded switch. */
+  /** When set, the trusted account-scoped runtime uses this connection probe. */
   httpTest?: PluginHttpTest;
 };
 
 export type PluginConnectionState = 'connected' | 'not_connected' | 'needs_setup' | 'error';
 
 export type PluginConnection = {
+  accountId: string;
   pluginId: string;
   state: PluginConnectionState;
   enabled: boolean;
@@ -70,6 +73,10 @@ export type PluginConnection = {
   configuredFields: string[];
   updatedAt: number;
 };
+
+export type PluginConnectionsByAccount = Readonly<
+  Record<string, Readonly<Record<string, PluginConnection>>>
+>;
 
 export type PluginTestResult = {
   ok: boolean;

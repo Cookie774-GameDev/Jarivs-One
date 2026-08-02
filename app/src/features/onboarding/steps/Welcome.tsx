@@ -1,13 +1,20 @@
-import { motion } from 'motion/react';
+import { motion, type Transition } from 'motion/react';
 import { Sparkles, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { CURRENT_VERSION } from '@/features/whats-new/releases';
 
 interface WelcomeProps {
   onNext: () => void;
 }
+const LEGACY_WELCOME_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 220,
+  damping: 28,
+} as const) satisfies Transition;
 
 export function Welcome({ onNext }: WelcomeProps) {
+  const welcomeTransition = useThemeMotionTransition(LEGACY_WELCOME_TRANSITION);
   return (
     <div className="relative h-full w-full flex items-center justify-center bg-aurora-gradient overflow-hidden">
       {/* Soft aurora pulse */}
@@ -16,7 +23,7 @@ export function Welcome({ onNext }: WelcomeProps) {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+        transition={welcomeTransition}
         className="relative z-10 flex flex-col items-center text-center max-w-xl px-8 gap-6"
       >
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-elevated/60 backdrop-blur-sm px-3 py-1 text-metadata text-muted-foreground">
@@ -38,9 +45,7 @@ export function Welcome({ onNext }: WelcomeProps) {
           <ArrowRight className="h-4 w-4" />
         </Button>
 
-        <p className="text-metadata text-muted-foreground">
-          Five quick steps. Less than a minute.
-        </p>
+        <p className="text-metadata text-muted-foreground">Five quick steps. Less than a minute.</p>
       </motion.div>
     </div>
   );

@@ -33,12 +33,15 @@ function CanvasWallpaper({
     if (!context) return;
     let frame = 0;
     let animation = 0;
-    const seed = Array.from({ length: config.quality === 'high' ? 110 : config.quality === 'low' ? 34 : 66 }, (_, index) => ({
-      x: ((index * 73) % 997) / 997,
-      y: ((index * 181) % 991) / 991,
-      size: 0.5 + ((index * 29) % 19) / 9,
-      speed: 0.08 + ((index * 17) % 11) / 110,
-    }));
+    const seed = Array.from(
+      { length: config.quality === 'high' ? 110 : config.quality === 'low' ? 34 : 66 },
+      (_, index) => ({
+        x: ((index * 73) % 997) / 997,
+        y: ((index * 181) % 991) / 991,
+        size: 0.5 + ((index * 29) % 19) / 9,
+        speed: 0.08 + ((index * 17) % 11) / 110,
+      }),
+    );
 
     const draw = () => {
       const rect = canvas.getBoundingClientRect();
@@ -60,9 +63,19 @@ function CanvasWallpaper({
           { x: width * 0.72 + px * 0.025, y: height * 0.16 + py * 0.02, r: width * 0.24, hue: 28 },
         ];
         for (const cloud of clouds) {
-          const gradient = context.createRadialGradient(cloud.x, cloud.y, 0, cloud.x, cloud.y, cloud.r);
+          const gradient = context.createRadialGradient(
+            cloud.x,
+            cloud.y,
+            0,
+            cloud.x,
+            cloud.y,
+            cloud.r,
+          );
           gradient.addColorStop(0, `hsla(${cloud.hue}, 74%, 58%, ${0.12 * config.intensity})`);
-          gradient.addColorStop(0.42, `hsla(${cloud.hue + 18}, 64%, 38%, ${0.08 * config.intensity})`);
+          gradient.addColorStop(
+            0.42,
+            `hsla(${cloud.hue + 18}, 64%, 38%, ${0.08 * config.intensity})`,
+          );
           gradient.addColorStop(1, 'transparent');
           context.fillStyle = gradient;
           context.fillRect(0, 0, width, height);
@@ -76,10 +89,17 @@ function CanvasWallpaper({
         const distance = Math.hypot(x - px, y - py);
         const response = config.interactive ? Math.max(0, 1 - distance / (width * 0.22)) : 0;
         context.beginPath();
-        context.arc(x + response * (x - px) * 0.05, y + response * (y - py) * 0.05, point.size * ratio, 0, Math.PI * 2);
-        context.fillStyle = config.id === 'particles'
-          ? `rgba(238, 177, 112, ${0.18 + response * 0.5})`
-          : `rgba(244, 235, 218, ${0.22 + response * 0.55})`;
+        context.arc(
+          x + response * (x - px) * 0.05,
+          y + response * (y - py) * 0.05,
+          point.size * ratio,
+          0,
+          Math.PI * 2,
+        );
+        context.fillStyle =
+          config.id === 'particles'
+            ? `rgba(238, 177, 112, ${0.18 + response * 0.5})`
+            : `rgba(244, 235, 218, ${0.22 + response * 0.55})`;
         context.fill();
       }
       frame += 1;
@@ -102,9 +122,22 @@ function CanvasWallpaper({
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointerMove);
     };
-  }, [config.id, config.intensity, config.interactive, config.paused, config.quality, reducedMotion]);
+  }, [
+    config.id,
+    config.intensity,
+    config.interactive,
+    config.paused,
+    config.quality,
+    reducedMotion,
+  ]);
 
-  return <canvas ref={canvasRef} className="workbench-wallpaper-canvas" aria-hidden="true" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className="workbench-wallpaper-canvas [html[data-theme=monochrome]_&]:hidden"
+      aria-hidden="true"
+    />
+  );
 }
 
 export function WallpaperHost({ config }: WallpaperHostProps) {
@@ -120,15 +153,31 @@ export function WallpaperHost({ config }: WallpaperHostProps) {
       data-wallpaper={config.id}
       data-paused={paused ? 'true' : 'false'}
       className={`workbench-wallpaper workbench-wallpaper--${config.id}`}
-      style={{ pointerEvents: 'none', '--wallpaper-intensity': config.intensity } as React.CSSProperties}
+      style={
+        { pointerEvents: 'none', '--wallpaper-intensity': config.intensity } as React.CSSProperties
+      }
       aria-hidden="true"
     >
       {(config.id === 'space-clouds' || config.id === 'starfield' || config.id === 'particles') && (
         <CanvasWallpaper config={{ ...config, paused }} reducedMotion={reducedMotion} />
       )}
-      {config.id === 'custom-image' && safeAsset && <img src={safeAsset} alt="" draggable={false} />}
+      {config.id === 'custom-image' && safeAsset && (
+        <img
+          src={safeAsset}
+          alt=""
+          draggable={false}
+          className="[html[data-theme=monochrome]_&]:hidden"
+        />
+      )}
       {config.id === 'custom-video' && safeAsset && (
-        <video src={safeAsset} muted loop playsInline autoPlay={!paused} />
+        <video
+          src={safeAsset}
+          muted
+          loop
+          playsInline
+          autoPlay={!paused}
+          className="[html[data-theme=monochrome]_&]:hidden"
+        />
       )}
       <div className="workbench-wallpaper-vignette" />
     </div>

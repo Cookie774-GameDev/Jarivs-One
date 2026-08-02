@@ -39,15 +39,27 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
       toast.warning('Unsupported wallpaper file', `Choose a ${expected} file.`);
       return;
     }
-    const supportedImages = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
+    const supportedImages = new Set([
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif',
+      'image/avif',
+    ]);
     const supportedVideos = new Set(['video/mp4', 'video/webm', 'video/ogg']);
-    if ((expected === 'image' ? !supportedImages.has(file.type) : !supportedVideos.has(file.type))) {
-      toast.warning('Unsupported wallpaper format', 'Choose PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, or OGG.');
+    if (expected === 'image' ? !supportedImages.has(file.type) : !supportedVideos.has(file.type)) {
+      toast.warning(
+        'Unsupported wallpaper format',
+        'Choose PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, or OGG.',
+      );
       return;
     }
     const limit = expected === 'image' ? 2 * 1024 * 1024 : 18 * 1024 * 1024;
     if (file.size > limit) {
-      toast.warning('Wallpaper file is too large', `Choose a ${expected} under ${Math.round(limit / 1024 / 1024)} MB.`);
+      toast.warning(
+        'Wallpaper file is too large',
+        `Choose a ${expected} under ${Math.round(limit / 1024 / 1024)} MB.`,
+      );
       return;
     }
     if (expected === 'video') {
@@ -59,14 +71,19 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
     reader.onload = () => {
       if (typeof reader.result === 'string') setWallpaper('custom-image', reader.result);
     };
-    reader.onerror = () => toast.error('Could not read wallpaper', 'The selected file was not changed.');
+    reader.onerror = () =>
+      toast.error('Could not read wallpaper', 'The selected file was not changed.');
     reader.readAsDataURL(file);
   };
 
   return (
-    <div className="workbench-sheet-backdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className="workbench-sheet-backdrop [html[data-theme=monochrome]_&]:backdrop-blur-none"
+      role="presentation"
+      onMouseDown={onClose}
+    >
       <section
-        className="workbench-sheet workbench-wallpaper-sheet"
+        className="workbench-sheet workbench-wallpaper-sheet [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:shadow-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="workbench-wallpaper-title"
@@ -77,7 +94,15 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
             <p>Environment</p>
             <h2 id="workbench-wallpaper-title">Interactive wallpapers</h2>
           </div>
-          <Button type="button" size="icon" variant="ghost" aria-label="Close wallpapers" onClick={onClose}><X /></Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            aria-label="Close wallpapers"
+            onClick={onClose}
+          >
+            <X />
+          </Button>
         </header>
         <div className="workbench-wallpaper-grid">
           {BUILT_IN_WALLPAPERS.map((entry) => (
@@ -85,14 +110,20 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
               key={entry.id}
               type="button"
               data-selected={entry.id === config.id ? 'true' : 'false'}
+              className="[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:focus-visible:transform-none [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
               onClick={() => choose(entry.id)}
             >
-              <span className={`workbench-wallpaper-preview workbench-wallpaper-preview--${entry.preview}`}>
+              <span
+                className={`workbench-wallpaper-preview workbench-wallpaper-preview--${entry.preview} [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-elevated [html[data-theme=monochrome]_&]:bg-none`}
+              >
                 {(entry.id === 'custom-image' || entry.id === 'custom-video') && <ImagePlus />}
               </span>
               <strong>{entry.name}</strong>
               <small>{entry.description}</small>
-              <em>{entry.animated ? 'Motion' : 'Still'}{entry.interactive ? ' · interactive' : ''}</em>
+              <em>
+                {entry.animated ? 'Motion' : 'Still'}
+                {entry.interactive ? ' · interactive' : ''}
+              </em>
             </button>
           ))}
         </div>
@@ -103,7 +134,8 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
             variant="outline"
             onClick={() => configure({ paused: !config.paused })}
           >
-            {config.paused ? <Play /> : <Pause />}{config.paused ? 'Resume motion' : 'Pause motion'}
+            {config.paused ? <Play /> : <Pause />}
+            {config.paused ? 'Resume motion' : 'Pause motion'}
           </Button>
           <label>
             Intensity
@@ -118,14 +150,23 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
           </label>
           <label>
             Quality
-            <select value={config.quality} onChange={(event) => configure({ quality: event.target.value as 'low' | 'balanced' | 'high' })}>
+            <select
+              value={config.quality}
+              onChange={(event) =>
+                configure({ quality: event.target.value as 'low' | 'balanced' | 'high' })
+              }
+            >
               <option value="low">Low</option>
               <option value="balanced">Balanced</option>
               <option value="high">High</option>
             </select>
           </label>
           <label className="workbench-toggle">
-            <input type="checkbox" checked={config.interactive} onChange={(event) => configure({ interactive: event.target.checked })} />
+            <input
+              type="checkbox"
+              checked={config.interactive}
+              onChange={(event) => configure({ interactive: event.target.checked })}
+            />
             Pointer response
           </label>
         </div>

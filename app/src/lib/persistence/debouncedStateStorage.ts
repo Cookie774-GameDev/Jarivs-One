@@ -1,5 +1,9 @@
 import type { StateStorage } from 'zustand/middleware';
 
+export interface FlushableStateStorage extends StateStorage {
+  flush: () => void;
+}
+
 /**
  * Debounces zustand persist writes so rapid navigation (route, chat, inspector)
  * does not synchronously hammer localStorage on every store tick.
@@ -7,7 +11,7 @@ import type { StateStorage } from 'zustand/middleware';
 export function createDebouncedStateStorage(
   base: StateStorage,
   delayMs = 400,
-): StateStorage {
+): FlushableStateStorage {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: { name: string; value: string } | null = null;
 
@@ -19,7 +23,7 @@ export function createDebouncedStateStorage(
     if (!pending) return;
     const next = pending;
     pending = null;
-    base.setItem(next.name, next.value);
+    void base.setItem(next.name, next.value);
   };
 
   if (typeof window !== 'undefined') {
@@ -40,5 +44,6 @@ export function createDebouncedStateStorage(
       flush();
       base.removeItem(name);
     },
+    flush,
   };
 }

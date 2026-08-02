@@ -7,13 +7,18 @@ import {
 
 let lastRecognition: MockRecognition | null = null;
 
+type MockRecognitionErrorEvent = Event & {
+  readonly error: string;
+  readonly message?: string;
+};
+
 class MockRecognition {
   continuous = false;
   interimResults = false;
   lang = 'en-US';
   maxAlternatives = 1;
   onresult = null;
-  onerror = null;
+  onerror: ((event: MockRecognitionErrorEvent) => void) | null = null;
   onstart: ((event: Event) => void) | null = null;
   onend: ((event: Event) => void) | null = null;
   onnomatch = null;
@@ -96,6 +101,144 @@ describe('VoiceService exclusive mic lifecycle', () => {
     } finally {
       offEnd();
       window.removeEventListener(VOICE_EXCLUSIVE_STOP_EVENT, onStop);
+    }
+  });
+
+  it('uses precise shared narration when browser speech recognition is unavailable', () => {
+    const errors = vi.fn();
+    const offError = VoiceService.on('voice:error', errors);
+
+    try {
+      expect(VoiceService.startListening()).toBe(false);
+      expect(errors).toHaveBeenCalledWith({
+        kind: 'unsupported',
+        message:
+          'The action failed, sir. Action: Speech recognition availability. Cause: Built-in speech recognition is not available in this runtime.',
+      });
+      expect(VoiceService.isListening()).toBe(false);
+      expect(VoiceService.wantsListening()).toBe(false);
+    } finally {
+      offError();
+    }
+  });
+
+  it.each([
+    {
+      browserError: 'not-allowed',
+      expectedKind: 'permission_denied',
+      expectedMessage:
+        'The action failed, sir. Action: Microphone permission. Cause: Microphone permission was denied. Allow access in the browser or operating-system settings, then try again.',
+      expectedWantsListening: false,
+    },
+    {
+      browserError: 'service-not-allowed',
+      expectedKind: 'service_not_allowed',
+      expectedMessage:
+        'The action failed, sir. Action: Speech recognition access. Cause: The browser or runtime blocked its speech-recognition service. Enable that service, then try again.',
+      expectedWantsListening: false,
+    },
+    {
+      browserError: 'no-speech',
+      expectedKind: 'no_speech',
+      expectedMessage:
+        'The action failed, sir. Action: Speech recognition. Cause: No speech was detected before the recognition session ended.',
+      expectedWantsListening: true,
+    },
+    {
+      browserError: 'aborted',
+      expectedKind: 'aborted',
+      expectedMessage:
+        'The action failed, sir. Action: Speech recognition. Cause: Recognition was interrupted before a transcript was captured.',
+      expectedWantsListening: true,
+    },
+    {
+      browserError: 'audio-capture',
+      expectedKind: 'audio_capture',
+      expectedMessage:
+        'The action failed, sir. Action: Microphone capture. Cause: No working microphone input was available. Check the selected device and input settings.',
+      expectedWantsListening: false,
+    },
+    {
+      browserError: 'network',
+      expectedKind: 'network',
+      expectedMessage:
+        'The action failed, sir. Action: Speech recognition network. Cause: The recognition service could not be reached. Check the network connection, then try again.',
+      expectedWantsListening: true,
+    },
+    {
+      browserError: 'synthetic-unknown-code',
+      expectedKind: 'unknown',
+      expectedMessage:
+        'The action failed, sir. Action: Speech recognition. Cause: The browser reported an unrecognized speech-recognition failure.',
+      expectedWantsListening: true,
+    },
+  ])(
+    'maps $browserError to safe actionable narration without changing restart intent',
+    ({ browserError, expectedKind, expectedMessage, expectedWantsListening }) => {
+      Object.defineProperty(window, 'SpeechRecognition', {
+        value: MockRecognition,
+        configurable: true,
+      });
+      const errors = vi.fn();
+      const offError = VoiceService.on('voice:error', errors);
+
+      try {
+        expect(VoiceService.startListening()).toBe(true);
+        lastRecognition?.onerror?.(
+          Object.assign(new Event('error'), {
+            error: browserError,
+            message: 'synthetic browser implementation detail',
+          }),
+        );
+
+        expect(errors).toHaveBeenCalledWith({
+          kind: expectedKind,
+          message: expectedMessage,
+        });
+        expect(errors.mock.calls[0]?.[0].message).not.toContain(
+          'synthetic browser implementation detail',
+        );
+        expect(VoiceService.wantsListening()).toBe(expectedWantsListening);
+      } finally {
+        offError();
+      }
+    },
+  );
+
+  it('uses safe startup narration and releases exclusive mic ownership when recognition start throws', () => {
+    class ThrowingRecognition extends MockRecognition {
+      constructor() {
+        super();
+        this.start.mockImplementation(() => {
+          throw new Error('synthetic recognition startup detail');
+        });
+      }
+    }
+    Object.defineProperty(window, 'SpeechRecognition', {
+      value: ThrowingRecognition,
+      configurable: true,
+    });
+    const errors = vi.fn();
+    const stops = vi.fn();
+    const offError = VoiceService.on('voice:error', errors);
+    window.addEventListener(VOICE_EXCLUSIVE_STOP_EVENT, stops);
+
+    try {
+      expect(VoiceService.startListening()).toBe(false);
+      expect(errors).toHaveBeenCalledWith({
+        kind: 'unknown',
+        message:
+          'The action failed, sir. Action: Speech recognition startup. Cause: The browser could not start recognition. Stop other microphone sessions, then try again.',
+      });
+      expect(errors.mock.calls[0]?.[0].message).not.toContain(
+        'synthetic recognition startup detail',
+      );
+      expect(VoiceService.isListening()).toBe(false);
+      expect(VoiceService.wantsListening()).toBe(false);
+      expect(stops).toHaveBeenCalledOnce();
+    } finally {
+      offError();
+      window.removeEventListener(VOICE_EXCLUSIVE_STOP_EVENT, stops);
     }
   });
 });

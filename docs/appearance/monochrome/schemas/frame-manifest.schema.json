@@ -1,0 +1,212 @@
+{
+  "$id": "frame-manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "status",
+    "evidenceCutoff",
+    "expectedFileName",
+    "sourceSha256",
+    "linkedArtifactIds",
+    "privacyDisposition",
+    "source",
+    "sampling",
+    "frames"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactId": { "const": "frame-manifest" },
+    "status": { "enum": ["blocked_missing_source", "measured"] },
+    "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+    "expectedFileName": { "const": "Screen Recording 2026-07-16 220632.mp4" },
+    "sourceSha256": {},
+    "linkedArtifactIds": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "privacyDisposition": { "const": "sanitized_no_private_source_data" },
+    "source": { "type": "object" },
+    "sampling": {},
+    "frames": { "type": "array" }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "blocked_missing_source" },
+        "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+        "sourceSha256": { "type": "null" },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expectedFileName",
+            "sha256",
+            "durationMs",
+            "width",
+            "height",
+            "frameRate",
+            "codec",
+            "colorMetadata",
+            "contentCrop"
+          ],
+          "properties": {
+            "expectedFileName": {
+              "const": "Screen Recording 2026-07-16 220632.mp4"
+            },
+            "sha256": { "type": "null" },
+            "durationMs": { "type": "null" },
+            "width": { "type": "null" },
+            "height": { "type": "null" },
+            "frameRate": { "type": "null" },
+            "codec": { "type": "null" },
+            "colorMetadata": { "type": "null" },
+            "contentCrop": { "type": "null" }
+          }
+        },
+        "sampling": { "type": "null" },
+        "frames": { "type": "array", "maxItems": 0 }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "measured" },
+        "evidenceCutoff": { "const": "2026-07-30T04:58:59.5349264Z" },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expectedFileName",
+            "sha256",
+            "durationMs",
+            "width",
+            "height",
+            "frameRate",
+            "codec",
+            "colorMetadata",
+            "contentCrop"
+          ],
+          "properties": {
+            "expectedFileName": {
+              "const": "Screen Recording 2026-07-16 220632.mp4"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            },
+            "durationMs": { "type": "number", "minimum": 0 },
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "frameRate": { "type": "number", "minimum": 0 },
+            "codec": { "type": "string", "minLength": 1 },
+            "colorMetadata": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["colorSpace", "range"],
+              "properties": {
+                "colorSpace": { "type": "string", "minLength": 1 },
+                "range": { "type": "string", "minLength": 1 }
+              }
+            },
+            "contentCrop": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["x", "y", "width", "height"],
+              "properties": {
+                "x": { "type": "integer", "minimum": 0 },
+                "y": { "type": "integer", "minimum": 0 },
+                "width": { "type": "integer", "minimum": 1 },
+                "height": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        },
+        "sampling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method", "sampleCount"],
+          "properties": {
+            "method": { "type": "string", "minLength": 1 },
+            "sampleCount": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "frames": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "timestampMs",
+              "frameNumber",
+              "sceneTags",
+              "stateTags",
+              "crop",
+              "excludedRegions",
+              "purpose",
+              "privacyDisposition"
+            ],
+            "properties": {
+              "id": { "type": "string", "pattern": "^frame\\.[a-z0-9.-]+$" },
+              "timestampMs": { "type": "number", "minimum": 0 },
+              "frameNumber": { "type": "integer", "minimum": 0 },
+              "sceneTags": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string" }
+              },
+              "stateTags": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string" }
+              },
+              "crop": {
+                "type": "object",
+                "required": ["x", "y", "width", "height"],
+                "properties": {
+                  "x": { "type": "integer", "minimum": 0 },
+                  "y": { "type": "integer", "minimum": 0 },
+                  "width": { "type": "integer", "minimum": 1 },
+                  "height": { "type": "integer", "minimum": 1 }
+                },
+                "additionalProperties": false
+              },
+              "excludedRegions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["x", "y", "width", "height", "reason"],
+                  "properties": {
+                    "x": { "type": "integer", "minimum": 0 },
+                    "y": { "type": "integer", "minimum": 0 },
+                    "width": { "type": "integer", "minimum": 1 },
+                    "height": { "type": "integer", "minimum": 1 },
+                    "reason": { "type": "string", "minLength": 1 }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "purpose": { "type": "string", "minLength": 1 },
+              "privacyDisposition": {
+                "const": "sanitized_no_private_source_data"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

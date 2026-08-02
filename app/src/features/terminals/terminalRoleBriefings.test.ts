@@ -12,6 +12,10 @@ vi.mock('@/lib/fs', () => ({
 }));
 
 vi.mock('@/lib/db', () => ({
+  db: {
+    settings: {},
+    sync_queue: {},
+  },
   projectRepo: {
     getById: vi.fn(async () => undefined),
   },
@@ -94,7 +98,11 @@ describe('role briefing delivery through AGENTS.md', () => {
   const CWD = 'C:\\repo';
   const AGENTS = 'C:\\repo\\AGENTS.md';
 
-  const notFound = (path: string) => ({ ok: false as const, error: { code: 'not_found' as const }, path });
+  const notFound = (path: string) => ({
+    ok: false as const,
+    error: { code: 'not_found' as const },
+    path,
+  });
   const okWrite = (path: string) => ({ ok: true as const, path });
 
   function writtenContent(path: string): string | undefined {
@@ -103,7 +111,9 @@ describe('role briefing delivery through AGENTS.md', () => {
   }
 
   it('appends the orchestrated role prompt to the managed briefing block', async () => {
-    useAgentStore.getState().registerAgent(makeAgent('code-reviewer', 'Code Reviewer', 'Base reviewer rules.'));
+    useAgentStore
+      .getState()
+      .registerAgent(makeAgent('code-reviewer', 'Code Reviewer', 'Base reviewer rules.'));
     setTerminalRoleBriefing('proj_ctx', 'code-reviewer', 'you are a code reviewer');
     fsMocks.readTextFile.mockImplementation(async (path: string) => notFound(path));
     fsMocks.writeTextFile.mockImplementation(async (path: string) => okWrite(path));

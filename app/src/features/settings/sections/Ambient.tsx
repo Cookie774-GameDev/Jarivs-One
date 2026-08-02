@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Moon, Play, Pause, Music } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
-import { effectivePlan, isAdminIdentity } from '@/lib/entitlements';
+import { effectivePlan } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -47,9 +48,6 @@ export function Ambient() {
   const setAmbientActive = useUIStore((s) => s.setAmbientActive);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const plan = useAuthStore((s) => s.plan);
-  const email = useAuthStore((s) => s.email);
-  const cloudEmail = useAuthStore((s) => s.cloudSession?.email ?? null);
-  const localUserId = useAuthStore((s) => s.localUserId);
 
   const [previewing, setPreviewing] = useState(false);
   const [previewingMusic, setPreviewingMusic] = useState(false);
@@ -61,9 +59,14 @@ export function Ambient() {
   }, []);
 
   const thresholdMin = Math.round(ambientThresholdMs / 60000);
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const activePlan = effectivePlan(plan, admin);
-  const isMusicLive = shouldAmbientMusicPlay(ambient, ambientActive, ambientDrone, ambientAlwaysPlay);
+  const isMusicLive = shouldAmbientMusicPlay(
+    ambient,
+    ambientActive,
+    ambientDrone,
+    ambientAlwaysPlay,
+  );
   const selectedTrackLabel = getAmbientTrackDef(ambientTrack).label;
 
   useEffect(() => {
@@ -122,7 +125,7 @@ export function Ambient() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-ambient flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:backdrop-blur-none [html[data-theme=monochrome]_&_*]:transition-none [html[data-theme=monochrome]_&_*]:focus-visible:outline [html[data-theme=monochrome]_&_*]:focus-visible:outline-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-ring motion-reduce:[&_*]:!animate-none motion-reduce:[&_*]:transition-none">
       <header>
         <h2 className="text-page-title text-foreground">Ambient mode</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -183,7 +186,9 @@ export function Ambient() {
 
       <section className="flex items-start justify-between gap-3 max-w-md">
         <div>
-          <Label htmlFor="ambient-drone" className={!ambient ? 'opacity-50' : ''}>Ambient soundscape</Label>
+          <Label htmlFor="ambient-drone" className={!ambient ? 'opacity-50' : ''}>
+            Ambient soundscape
+          </Label>
           <p className="text-metadata text-muted-foreground mt-1">
             Play music on the ambient idle screen (when 24/7 is off).
           </p>
@@ -214,7 +219,8 @@ export function Ambient() {
         <div className="flex flex-col gap-2">
           <Label>Track selector</Label>
           <p className="text-metadata text-muted-foreground">
-            Pick a track to loop. 24/7 plays it always; otherwise it plays on the ambient idle screen.
+            Pick a track to loop. 24/7 plays it always; otherwise it plays on the ambient idle
+            screen.
           </p>
           <div className="grid grid-cols-2 gap-2 mt-1">
             {AMBIENT_TRACKS.map((t) => {
@@ -223,6 +229,7 @@ export function Ambient() {
                 <button
                   key={t.id}
                   type="button"
+                  data-monochrome-control-size="preserve"
                   onClick={() => {
                     setAmbientTrack(t.id);
                     if (isMusicLive) {
@@ -236,12 +243,16 @@ export function Ambient() {
                       : 'border-border bg-panel text-muted-foreground hover:border-border-mid')
                   }
                 >
-                  <Music className={`h-4 w-4 shrink-0 ${active ? 'text-accent-copper' : 'text-muted-foreground/60'}`} />
+                  <Music
+                    className={`h-4 w-4 shrink-0 ${active ? 'text-accent-copper' : 'text-muted-foreground/60'}`}
+                  />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-semibold text-foreground">{t.label}</span>
                     </div>
-                    <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{t.desc}</div>
+                    <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+                      {t.desc}
+                    </div>
                   </div>
                 </button>
               );
@@ -255,7 +266,9 @@ export function Ambient() {
           {musicStatus.state === 'playing' ? (
             <p className="text-[11px] text-accent-copper">
               Now playing: {selectedTrackLabel}
-              {previewingMusic ? ` · preview (${Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)}s)` : ''}
+              {previewingMusic
+                ? ` · preview (${Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)}s)`
+                : ''}
             </p>
           ) : null}
           <Button
@@ -266,11 +279,16 @@ export function Ambient() {
             disabled={previewingMusic}
             onClick={handlePreviewMusic}
           >
-            {previewingMusic ? <Pause className="h-3.5 w-3.5 mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+            {previewingMusic ? (
+              <Pause className="h-3.5 w-3.5 mr-1.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5 mr-1.5" />
+            )}
             Preview music ({Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)}s)
           </Button>
           <p className="text-[11px] text-muted-foreground">
-            Plays the selected track for {Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)} seconds. Volume applies live.
+            Plays the selected track for {Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)} seconds.
+            Volume applies live.
           </p>
         </div>
 
@@ -304,7 +322,11 @@ export function Ambient() {
         </p>
         <div>
           <Button onClick={handlePreview} disabled={previewing} variant="secondary">
-            {previewing ? <Pause className="h-3.5 w-3.5 mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+            {previewing ? (
+              <Pause className="h-3.5 w-3.5 mr-1.5" />
+            ) : (
+              <Play className="h-3.5 w-3.5 mr-1.5" />
+            )}
             <Moon className="h-3.5 w-3.5 mr-1.5" />
             Try ambient mode now
           </Button>

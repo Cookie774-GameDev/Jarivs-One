@@ -1,30 +1,17 @@
-/**
- * Admin — visible only when `useAppAdmin()` is true (env allowlist or
- * Supabase `app_admins` row). Summarizes unlimited access and how to manage
- * the server-side admin list.
- */
+/** Admin entitlement evidence and development-only access status. */
 import { Shield, Infinity, Cloud, KeyRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useAppAdmin, fetchCloudAdminStatus } from '@/lib/admin';
+import { useAppEntitlementSnapshot } from '@/lib/admin';
 import { useAuthStore } from '@/stores/auth';
-import { useEffect, useState } from 'react';
-import { effectivePlan } from '@/lib/entitlements';
+import { effectivePlan, entitlementSnapshotAllowsAdmin } from '@/lib/entitlements';
 
 export function Admin() {
-  const admin = useAppAdmin();
-  const plan = useAuthStore((s) => s.plan);
-  const cloudUserId = useAuthStore((s) => s.cloudSession?.user_id);
-  const cloudEmail = useAuthStore((s) => s.cloudSession?.email);
-  const [cloudListed, setCloudListed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!cloudUserId) {
-      setCloudListed(null);
-      return;
-    }
-    void fetchCloudAdminStatus(cloudUserId).then(setCloudListed);
-  }, [cloudUserId]);
+  const snapshot = useAppEntitlementSnapshot();
+  const admin = entitlementSnapshotAllowsAdmin(snapshot);
+  const plan = useAuthStore((state) => state.plan);
+  const cloudUserId = useAuthStore((state) => state.cloudSession?.user_id);
+  const cloudEmail = useAuthStore((state) => state.cloudSession?.email);
 
   if (!admin) {
     return (
@@ -34,33 +21,35 @@ export function Admin() {
     );
   }
 
-  const activePlan = effectivePlan(plan, true);
+  const activePlan = effectivePlan(plan, admin);
+  const serverVerified = snapshot.source === 'server';
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="mc7f-settings-admin flex max-w-2xl flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <div>
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-accent-cyan" />
           <h2 className="text-ui-strong text-foreground">Admin access</h2>
           <Badge variant="outline" className="border-accent-cyan/40 text-accent-cyan">
-            Active
+            {serverVerified ? 'Server verified' : 'Development only'}
           </Badge>
         </div>
         <p className="mt-2 text-secondary text-muted-foreground">
-          You have full Jarvis access — no plan paywalls, unlimited cloud voice budget when
-          signed in, and all premium features unlocked.
+          {serverVerified
+            ? 'This signed-in account has current, server-authoritative admin access.'
+            : 'This access comes from explicit local development configuration. It is not production authority.'}
         </p>
       </div>
 
-      <div className="rounded-md border border-border bg-panel p-4 flex flex-col gap-3">
+      <div className="flex flex-col gap-3 rounded-md border border-border bg-panel p-4">
         <div className="flex items-center gap-2 text-foreground">
           <Infinity className="h-4 w-4 text-accent-cyan" />
           <span className="text-ui-strong">Effective plan</span>
           <Badge>{activePlan}</Badge>
         </div>
-        <ul className="text-secondary text-muted-foreground list-disc pl-5 space-y-1">
+        <ul className="list-disc space-y-1 pl-5 text-secondary text-muted-foreground">
           <li>System voice and cloud TTS without quota blocks</li>
-          <li>Phone Jarvis and hosted features per your entitlements config</li>
+          <li>Phone Jarvis and hosted features per the verified entitlement</li>
           <li>Deepgram BYOK in Settings → Voice uses your own API credits</li>
         </ul>
       </div>
@@ -70,27 +59,27 @@ export function Admin() {
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Cloud className="h-4 w-4 text-muted-foreground" />
-          <span className="text-ui-strong text-foreground">Supabase admin list</span>
+          <span className="text-ui-strong text-foreground">Entitlement authority</span>
         </div>
         <p className="text-secondary text-muted-foreground">
           Server-side admins live in the <code className="text-foreground">app_admins</code> table.
-          Rows are checked via the <code className="text-foreground">is_app_admin</code> RPC when you
-          sign in with cloud sync.
+          Signed-in accounts use an authenticated server entitlement check that evaluates this list
+          without exposing a client admin-query endpoint. The verified result expires after five
+          minutes.
         </p>
         {cloudUserId ? (
           <p className="text-metadata text-muted-foreground">
             Signed in as {cloudEmail ?? cloudUserId}
-            {cloudListed === true ? ' · listed in app_admins' : cloudListed === false ? ' · env/local admin only' : ''}
+            {serverVerified ? ' · verified by server' : ' · development access only'}
           </p>
         ) : (
           <p className="text-metadata text-muted-foreground">
-            Sign in with cloud sync to use the Supabase admin list, or rely on env admin emails /
-            IDs.
+            Sign in with cloud sync for server-authoritative admin verification.
           </p>
         )}
         <p className="text-metadata text-muted-foreground">
           To add someone in Supabase SQL:{' '}
-          <code className="block mt-1 rounded bg-muted px-2 py-1 text-foreground text-xs">
+          <code className="mt-1 block rounded bg-muted px-2 py-1 text-xs text-foreground">
             insert into public.app_admins (user_id) select id from auth.users where email =
             &apos;you@example.com&apos;;
           </code>

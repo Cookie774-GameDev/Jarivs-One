@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prejarvis": "node ../scripts/visual-monochrome/generate-theme-contract.mjs --check",
     "jarvis": "vite",
+    "prebuild": "node ../scripts/visual-monochrome/generate-theme-contract.mjs --check",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -65,13 +67,14 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/ui": "^4.1.7",
+    "@vitest/ui": "^3.2.4",
     "autoprefixer": "^10.4.20",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vitest": "^4.1.7"
+    "vitest": "^3.2.4"
   }
 }

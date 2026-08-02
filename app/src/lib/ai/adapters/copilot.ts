@@ -101,6 +101,7 @@ export function normalizeCopilotJsonl(input: string, limits?: JsonlParserLimits)
 export const COPILOT_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'github-copilot-cli',
   connectionId: 'github-copilot-cli',
+  promptTransport: 'prefixed-preamble',
   executableName: 'copilot',
   versionArgs: Object.freeze(['version']),
   buildInvocation: buildCopilotInvocation,

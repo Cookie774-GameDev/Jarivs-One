@@ -1,41 +1,19 @@
-import type { Theme } from '@/types/common';
+import {
+  THEME_DEFINITIONS,
+  normalizePersistedTheme,
+  parseSelectableTheme,
+  parseThemeCommandArgument,
+} from './themeContract';
+import type { SelectableTheme, ThemeDefinition } from './themeContract';
 
-export type SelectableTheme = 'vibespace' | 'default';
+export type { SelectableTheme, ThemeDefinition };
 
-export type ThemeDefinition = {
-  id: SelectableTheme;
-  label: string;
-  description: string;
-};
+export const SELECTABLE_THEMES: readonly ThemeDefinition[] = THEME_DEFINITIONS;
 
-export const SELECTABLE_THEMES: readonly ThemeDefinition[] = [
-  { id: 'vibespace', label: 'VibeSpace', description: 'Pastel origami workspace.' },
-  { id: 'default', label: 'Default', description: 'Warm, focused dark workspace.' },
-] as const;
+export const migrateThemePreference = normalizePersistedTheme;
 
-const SELECTABLE_THEME_IDS = new Set<SelectableTheme>(
-  SELECTABLE_THEMES.map((theme) => theme.id),
-);
-
-export function migrateThemePreference(value: unknown): SelectableTheme {
-  if (value === 'dark' || value === 'system') return 'default';
-  if (typeof value === 'string' && SELECTABLE_THEME_IDS.has(value as SelectableTheme)) {
-    return value as SelectableTheme;
-  }
-  return 'default';
+export function isSelectableTheme(theme: unknown): theme is SelectableTheme {
+  return parseSelectableTheme(theme) !== null;
 }
 
-export function isSelectableTheme(theme: Theme): theme is SelectableTheme {
-  return SELECTABLE_THEME_IDS.has(theme as SelectableTheme);
-}
-
-const THEME_COMMAND_ALIASES: Record<string, SelectableTheme> = {
-  vibespace: 'vibespace',
-  vibe: 'vibespace',
-  default: 'default',
-  dark: 'default',
-};
-
-export function parseThemeCommandArgument(value: string): SelectableTheme | null {
-  return THEME_COMMAND_ALIASES[value.trim().toLowerCase()] ?? null;
-}
+export { parseThemeCommandArgument };

@@ -55,7 +55,7 @@ export function PanelPalette({ onAdd, open = true, onClose, onOpen }: PanelPalet
       <div className="workbench-palette-collapsed" aria-label="Workbench panels collapsed">
         <button
           type="button"
-          className="workbench-palette-reopen"
+          className="workbench-palette-reopen [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
           aria-label="Open panels"
           title="Open panels"
           onClick={() => onOpen?.()}
@@ -76,15 +76,13 @@ export function PanelPalette({ onAdd, open = true, onClose, onOpen }: PanelPalet
           <button
             key={kind}
             type="button"
+            className="[html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
             aria-label={`Add ${label}`}
             draggable
             onClick={() => onAdd(kind)}
             onDragStart={(event) => {
               event.dataTransfer.effectAllowed = 'copy';
-              event.dataTransfer.setData(
-                WORKBENCH_DRAG_MIME,
-                JSON.stringify({ version: 1, kind }),
-              );
+              event.dataTransfer.setData(WORKBENCH_DRAG_MIME, JSON.stringify({ version: 1, kind }));
             }}
           >
             <Icon aria-hidden="true" />
@@ -95,7 +93,7 @@ export function PanelPalette({ onAdd, open = true, onClose, onOpen }: PanelPalet
       <div className="workbench-palette-foot">
         <button
           type="button"
-          className="workbench-palette-close"
+          className="workbench-palette-close [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
           aria-label="Close panels"
           title="Close panels"
           onClick={() => onClose?.()}

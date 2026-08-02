@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { devConsole } from '@/features/dev-console';
+import './sakura-auth.css';
 
 const GEMINI_KEY_URL = 'https://aistudio.google.com/apikey';
 
@@ -101,7 +102,7 @@ export function RequireModelAccess() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center px-6 py-10 overflow-y-auto"
+      className="sakura-model-access fixed inset-0 z-50 bg-background flex flex-col items-center justify-center px-6 py-10 overflow-y-auto"
       role="dialog"
       aria-label="Connect a model"
     >
@@ -118,7 +119,10 @@ export function RequireModelAccess() {
         </header>
 
         {/* Primary: Google Gemini key */}
-        <section className="rounded-lg border border-accent-copper/40 bg-elevated p-4 flex flex-col gap-3">
+        <section
+          className="rounded-lg border border-accent-copper/40 bg-elevated p-4 flex flex-col gap-3"
+          data-sakura-surface="credential"
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2 text-ui-strong text-foreground">
               <KeyRound className="h-4 w-4 text-accent-copper" />

@@ -40,16 +40,12 @@ import {
   type FsEntry,
 } from '@/lib/fs';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { useAuthStore } from '@/stores/auth';
 import { buildModelPickerGroups } from '@/lib/ai/useAccessibleChatModels';
 import { basename, dirname } from './projectFiles';
 import { resolveExplorerPlaces, type ExplorerPlace } from './fileExplorerPlaces';
-import {
-  isImagePath,
-  isTextPath,
-  isVideoPath,
-  type SearchHit,
-} from './fileExplorerSearch';
+import { isImagePath, isTextPath, isVideoPath, type SearchHit } from './fileExplorerSearch';
 import {
   cancelExplorerSearchJob,
   clearExplorerSearchHits,
@@ -70,10 +66,7 @@ import {
   withExplorerImageSlot,
 } from './fileExplorerMediaLimits';
 import { groupEntriesByDate } from './fileExplorerDateGroups';
-import {
-  nextExplorerSelection,
-  seedSelectionFromHits,
-} from './fileExplorerSelection';
+import { nextExplorerSelection, seedSelectionFromHits } from './fileExplorerSelection';
 import {
   cancelFileExplorer,
   getActiveFileExplorer,
@@ -148,25 +141,60 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function FileExplorerHost() {
-  const [session, setSession] = React.useState<FileExplorerSession | null>(() => getActiveFileExplorer());
+const CONTAINED_FILE_EXPLORER_SESSION: FileExplorerSession = Object.freeze({
+  id: 0,
+  mode: 'folder',
+  title: 'Choose folder',
+  initialPath: null,
+  root: null,
+  resolve: () => undefined,
+});
 
-  React.useEffect(() => subscribeFileExplorer(() => {
-    setSession(getActiveFileExplorer());
-  }), []);
+/** MonoChrome-only flattening for sticky date-group headers (drops blur + solid bg). */
+export const FILE_EXPLORER_MONOCHROME_STICKY_HEADER_CLASS =
+  '[html[data-theme=monochrome]_&]:backdrop-blur-none [html[data-theme=monochrome]_&]:bg-background';
 
+export function FileExplorerHost({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}) {
+  const [activeSession, setActiveSession] = React.useState<FileExplorerSession | null>(() =>
+    getActiveFileExplorer(),
+  );
+
+  React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
+    return subscribeFileExplorer(() => {
+      setActiveSession(getActiveFileExplorer());
+    });
+  }, [runtimeEffectsEnabled]);
+
+  const session = runtimeEffectsEnabled ? activeSession : CONTAINED_FILE_EXPLORER_SESSION;
   if (!session) return null;
-  return <FileExplorerDialog key={session.id} session={session} />;
+  return (
+    <FileExplorerDialog
+      key={session.id}
+      session={session}
+      runtimeEffectsEnabled={runtimeEffectsEnabled}
+    />
+  );
 }
 
-function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
+function FileExplorerDialog({
+  session,
+  runtimeEffectsEnabled,
+}: {
+  session: FileExplorerSession;
+  runtimeEffectsEnabled: boolean;
+}) {
   const mode = session.mode;
   const constrainedRoot = session.root?.trim() || null;
 
   const [currentPath, setCurrentPath] = React.useState('');
   const [pathDraft, setPathDraft] = React.useState('');
   const [entries, setEntries] = React.useState<FsEntry[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState(runtimeEffectsEnabled);
   const [error, setError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<string[]>([]);
   const [statusLine, setStatusLine] = React.useState('');
@@ -180,9 +208,12 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
 
   // Mini Jarvis search — module store (survives close/reopen; does not touch main Chat)
   const [searchState, setSearchState] = React.useState(() => getExplorerSearchState());
-  React.useEffect(() => subscribeExplorerSearch(() => {
-    setSearchState(getExplorerSearchState());
-  }), []);
+  React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
+    return subscribeExplorerSearch(() => {
+      setSearchState(getExplorerSearchState());
+    });
+  }, [runtimeEffectsEnabled]);
 
   const searchQuery = searchState.query;
   const searchBusy = searchState.busy;
@@ -191,7 +222,9 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
   const searchProvider = searchState.provider;
   const searchModel = searchState.model;
 
-  const jarvisAgent = useAgentStore((s) => Object.values(s.agents).find((a) => a.slug === 'jarvis') ?? null);
+  const jarvisAgent = useAgentStore(
+    (s) => findProtectedJarvisAgent(Object.values(s.agents)) ?? null,
+  );
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const offlineMode = useAuthStore((s) => s.offlineMode);
@@ -208,12 +241,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
       }),
     [apiKeys, offlineMode, plan, defaultLocalModel],
   );
-  const flatModels = React.useMemo(
-    () => modelGroups.flatMap((g) => g.options),
-    [modelGroups],
-  );
+  const flatModels = React.useMemo(() => modelGroups.flatMap((g) => g.options), [modelGroups]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (searchProvider && searchModel) return;
     if (chatModelSelection.mode === 'single') {
       setExplorerSearchModel(chatModelSelection.providerId, chatModelSelection.modelId);
@@ -223,81 +254,84 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
     if (first) {
       setExplorerSearchModel(first.provider, first.modelId);
     }
-  }, [chatModelSelection, flatModels, searchModel, searchProvider]);
+  }, [chatModelSelection, flatModels, runtimeEffectsEnabled, searchModel, searchProvider]);
 
   // Keep search panel open while busy/has hits; seed selection without
   // clobbering a user click that is still among the hits.
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (searchHits.length > 0 || searchBusy) {
       setExplorerSearchPanelOpen(true);
     }
     if (searchHits.length === 0) return;
     const hitPaths = searchHits.map((h) => h.path);
     setSelected((prev) => seedSelectionFromHits(prev, hitPaths));
-  }, [searchHits, searchBusy]);
+  }, [runtimeEffectsEnabled, searchHits, searchBusy]);
 
   const title =
     session.title ??
     (mode === 'folder' ? 'Choose folder' : mode === 'files' ? 'Choose files' : 'Choose file');
 
-  const loadDir = React.useCallback(async (path: string) => {
-    const clean = path.trim();
-    if (!clean) {
-      setError('Enter an absolute folder path.');
-      setEntries([]);
+  const loadDir = React.useCallback(
+    async (path: string) => {
+      if (!runtimeEffectsEnabled) return;
+      const clean = path.trim();
+      if (!clean) {
+        setError('Enter an absolute folder path.');
+        setEntries([]);
+        setLoading(false);
+        setStatusLine('');
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      // Do NOT clear mini-Jarvis hits here — search is independent and must survive
+      // folder navigation + dialog close/reopen.
+      const listed = await listDirectory(clean, constrainedRoot ? { root: constrainedRoot } : {});
       setLoading(false);
-      setStatusLine('');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    // Do NOT clear mini-Jarvis hits here — search is independent and must survive
-    // folder navigation + dialog close/reopen.
-    const listed = await listDirectory(
-      clean,
-      constrainedRoot ? { root: constrainedRoot } : {},
-    );
-    setLoading(false);
-    if (!listed.ok) {
-      setEntries([]);
-      setError(describeFsError(listed.error));
-      setStatusLine('');
-      return;
-    }
-    // Keep raw listing order decision in the view layer: date groups for
-    // normal browsing (Downloads-style), score order for search hits.
-    const next = listed.entries.filter((e) => matchesExtension(e, session.extensions));
-    setCurrentPath(listed.path);
-    setPathDraft(listed.path);
-    setEntries(next);
-    const dirs = next.filter((e) => e.isDir).length;
-    const files = next.length - dirs;
-    setStatusLine(`${next.length} items · ${dirs} folders · ${files} files`);
+      if (!listed.ok) {
+        setEntries([]);
+        setError(describeFsError(listed.error));
+        setStatusLine('');
+        return;
+      }
+      // Keep raw listing order decision in the view layer: date groups for
+      // normal browsing (Downloads-style), score order for search hits.
+      const next = listed.entries.filter((e) => matchesExtension(e, session.extensions));
+      setCurrentPath(listed.path);
+      setPathDraft(listed.path);
+      setEntries(next);
+      const dirs = next.filter((e) => e.isDir).length;
+      const files = next.length - dirs;
+      setStatusLine(`${next.length} items · ${dirs} folders · ${files} files`);
 
-    // Auto grid only for modest media folders. Huge Pictures dumps stay list
-    // so we do not mount dozens of full-file thumbnail readers at once.
-    // User can still switch to Grid manually; thumbs remain size/concurrency capped.
-    const mediaCount = next.filter((e) => !e.isDir && (isImagePath(e.path) || isVideoPath(e.path))).length;
-    if (shouldAutoGridMedia(mediaCount)) {
-      setViewMode('grid');
-    } else if (mediaCount > EXPLORER_AUTO_GRID_MAX_MEDIA) {
-      setViewMode('list');
-    }
-  }, [constrainedRoot, session.extensions]);
+      // Auto grid only for modest media folders. Huge Pictures dumps stay list
+      // so we do not mount dozens of full-file thumbnail readers at once.
+      // User can still switch to Grid manually; thumbs remain size/concurrency capped.
+      const mediaCount = next.filter(
+        (e) => !e.isDir && (isImagePath(e.path) || isVideoPath(e.path)),
+      ).length;
+      if (shouldAutoGridMedia(mediaCount)) {
+        setViewMode('grid');
+      } else if (mediaCount > EXPLORER_AUTO_GRID_MAX_MEDIA) {
+        setViewMode('list');
+      }
+    },
+    [constrainedRoot, runtimeEffectsEnabled, session.extensions],
+  );
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     let cancelled = false;
     void (async () => {
       const nextPlaces = await resolveExplorerPlaces();
       if (cancelled) return;
       setPlaces(nextPlaces);
-      const home = nextPlaces.find((p) => p.id === 'home')?.path
-        ?? nextPlaces[0]?.path
-        ?? (isTauri ? '' : 'C:\\Users');
-      const start =
-        (session.initialPath && session.initialPath.trim()) ||
-        constrainedRoot ||
-        home;
+      const home =
+        nextPlaces.find((p) => p.id === 'home')?.path ??
+        nextPlaces[0]?.path ??
+        (isTauri ? '' : 'C:\\Users');
+      const start = (session.initialPath && session.initialPath.trim()) || constrainedRoot || home;
       if (start) await loadDir(start);
       else {
         setLoading(false);
@@ -307,10 +341,11 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
     return () => {
       cancelled = true;
     };
-  }, [session.initialPath, constrainedRoot, loadDir]);
+  }, [session.initialPath, constrainedRoot, loadDir, runtimeEffectsEnabled]);
 
   // Side-pane preview: images (screenshots), text samples, videos
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     let cancelled = false;
     setPreviewUrl(null);
     setPreviewText(null);
@@ -324,8 +359,7 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
     }
 
     const size =
-      entries.find((e) => e.path === path)?.size ??
-      searchHits.find((h) => h.path === path)?.size;
+      entries.find((e) => e.path === path)?.size ?? searchHits.find((h) => h.path === path)?.size;
     const access = constrainedRoot ? { root: constrainedRoot } : {};
     const hitSnippet = searchHits.find((h) => h.path === path)?.snippet;
 
@@ -387,7 +421,7 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
       setPreviewText(hitSnippet);
       setPreviewKind('text');
     }
-  }, [selected, constrainedRoot, entries, searchHits]);
+  }, [selected, constrainedRoot, entries, runtimeEffectsEnabled, searchHits]);
 
   const goUp = () => {
     const parent = parentPath(currentPath);
@@ -395,10 +429,7 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
   };
 
   /** Select entry for highlight + side preview. Files work in all modes (incl. folder pick). */
-  const selectEntry = (
-    entry: { path: string; isDir: boolean },
-    multiToggle: boolean,
-  ) => {
+  const selectEntry = (entry: { path: string; isDir: boolean }, multiToggle: boolean) => {
     setSelected((prev) => {
       const next = nextExplorerSelection(mode, entry, prev, multiToggle);
       return next ?? prev;
@@ -406,10 +437,11 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
   };
 
   const confirm = () => {
+    if (!runtimeEffectsEnabled) return;
     if (mode === 'folder') {
       const selectedFolder = selected.find((p) => {
         const hit = entries.find((e) => e.path === p) ?? searchHits.find((h) => h.path === p);
-        return hit?.isDir || (entries.some((e) => e.path === p && e.isDir));
+        return hit?.isDir || entries.some((e) => e.path === p && e.isDir);
       });
       const path = selectedFolder || currentPath;
       if (!path) return;
@@ -426,13 +458,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
   const showSearchResults = searchHits.length > 0 || searchBusy;
 
   const runJarvisSearch = () => {
+    if (!runtimeEffectsEnabled) return;
     const raw = searchQuery.trim();
     if (!raw) return;
-    const scope =
-      currentPath ||
-      places.find((p) => p.id === 'home')?.path ||
-      places[0]?.path ||
-      '';
+    const scope = currentPath || places.find((p) => p.id === 'home')?.path || places[0]?.path || '';
     void startExplorerSearch({
       query: raw,
       scopePath: scope,
@@ -449,15 +478,16 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
     });
   };
 
-  const listSource: Array<FsEntry | (SearchHit & { isDir: boolean; modifiedMs?: number; createdMs?: number })> =
-    showSearchResults
-      ? searchHits.map((h) => ({
-          name: h.name,
-          path: h.path,
-          isDir: h.isDir,
-          size: h.size,
-        }))
-      : entries;
+  const listSource: Array<
+    FsEntry | (SearchHit & { isDir: boolean; modifiedMs?: number; createdMs?: number })
+  > = showSearchResults
+    ? searchHits.map((h) => ({
+        name: h.name,
+        path: h.path,
+        isDir: h.isDir,
+        size: h.size,
+      }))
+    : entries;
 
   // Date sections (Today / Yesterday / …) for normal folder browsing only.
   // Search hits stay score-ranked without date buckets.
@@ -480,18 +510,23 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) cancelFileExplorer();
+        if (!open && runtimeEffectsEnabled) cancelFileExplorer();
       }}
     >
       <DialogContent
+        data-monochrome-route="file-explorer"
+        data-monochrome-surface="file-explorer-dialog"
         className={cn(
           'flex h-[min(760px,92vh)] w-[min(960px,97vw)] max-w-[960px] flex-col gap-0 overflow-hidden p-0',
           'border-accent-copper/30 bg-panel shadow-[0_28px_90px_-36px_hsl(var(--accent-copper)/0.6)]',
+          '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none',
         )}
         hideClose={false}
       >
-        <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-paper-soft/90 px-5 py-3 pr-12">
-          <DialogTitle className="font-display text-lg text-foreground">{title}</DialogTitle>
+        <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-paper-soft/90 px-5 py-3 pr-12 [html[data-theme=monochrome]_&]:space-y-0 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:px-3 [html[data-theme=monochrome]_&]:py-2">
+          <DialogTitle className="font-display text-lg text-foreground [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-sm [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">
+            {title}
+          </DialogTitle>
           <DialogDescription className="text-secondary text-muted-foreground">
             Places · files & folders · previews · mini Jarvis search
           </DialogDescription>
@@ -499,7 +534,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
 
         <div className="flex min-h-0 flex-1">
           {/* Places sidebar */}
-          <aside className="flex w-[148px] shrink-0 flex-col border-r border-border bg-elevated/30 py-2">
+          <aside
+            data-monochrome-surface="file-places"
+            className="flex w-[148px] shrink-0 flex-col border-r border-border bg-elevated/30 py-2 [html[data-theme=monochrome]_&]:bg-panel"
+          >
             <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Places
             </div>
@@ -531,8 +569,15 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
 
           <div className="flex min-w-0 flex-1 flex-col">
             {/* Toolbar */}
-            <div className="flex shrink-0 items-center gap-1 border-b border-border bg-elevated/40 px-2 py-1.5">
-              <Button type="button" size="icon-sm" variant="ghost" onClick={goUp} title="Up" aria-label="Up">
+            <div className="flex shrink-0 items-center gap-1 border-b border-border bg-elevated/40 px-2 py-1.5 [html[data-theme=monochrome]_&]:bg-panel">
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                onClick={goUp}
+                title="Up"
+                aria-label="Up"
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button
@@ -568,7 +613,9 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                   type="button"
                   className={cn(
                     'rounded px-2 py-0.5 text-[10px]',
-                    viewMode === 'list' ? 'bg-accent-copper/20 text-foreground' : 'text-muted-foreground',
+                    viewMode === 'list'
+                      ? 'bg-accent-copper/20 text-foreground'
+                      : 'text-muted-foreground',
                   )}
                   onClick={() => setViewMode('list')}
                 >
@@ -578,7 +625,9 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                   type="button"
                   className={cn(
                     'rounded px-2 py-0.5 text-[10px]',
-                    viewMode === 'grid' ? 'bg-accent-copper/20 text-foreground' : 'text-muted-foreground',
+                    viewMode === 'grid'
+                      ? 'bg-accent-copper/20 text-foreground'
+                      : 'text-muted-foreground',
                   )}
                   onClick={() => setViewMode('grid')}
                 >
@@ -588,7 +637,7 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
             </div>
 
             {/* Open folder status — top (was at bottom) */}
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-paper-soft/80 px-3 py-1.5">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-paper-soft/80 px-3 py-1.5 [html[data-theme=monochrome]_&]:bg-panel">
               <span
                 className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-foreground"
                 title={currentPath}
@@ -608,14 +657,17 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
 
             <div className="flex min-h-0 flex-1">
               {/* Main list / grid */}
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background/40 px-1.5 py-1.5">
+              <div
+                data-monochrome-surface="file-list"
+                className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background/40 px-1.5 py-1.5 [html[data-theme=monochrome]_&]:bg-background"
+              >
                 {loading ? (
                   <div className="flex h-full min-h-[200px] items-center justify-center gap-2 text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Loading…
                   </div>
                 ) : error ? (
                   <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 px-4 text-center">
-                    <HardDrive className="h-8 w-8 text-muted-foreground/60" />
+                    <HardDrive className="h-8 w-8 text-muted-foreground/60 [html[data-theme=monochrome]_&]:text-muted-foreground" />
                     <p className="text-secondary text-destructive">{error}</p>
                   </div>
                 ) : listSource.length === 0 ? (
@@ -624,7 +676,9 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                       <>
                         <Loader2 className="h-5 w-5 animate-spin text-accent-copper" />
                         <span>{searchStatus || 'Searching…'}</span>
-                        <span className="text-[10px]">You can close this window — search keeps running.</span>
+                        <span className="text-[10px]">
+                          You can close this window — search keeps running.
+                        </span>
                       </>
                     ) : showSearchResults ? (
                       'No search hits.'
@@ -634,145 +688,163 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                   </div>
                 ) : viewMode === 'grid' ? (
                   <div className="space-y-3 p-1">
-                    {(dateSections ?? [{ id: 'all', label: '', entries: alphaFallback ?? listSource }]).map(
-                      (section) => {
-                        let imageOrdinal = 0;
-                        return (
-                          <div key={section.id}>
-                            {section.label ? (
-                              <div className="sticky top-0 z-[1] mb-1.5 bg-background/90 px-1 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur-sm">
-                                {section.label}
-                              </div>
-                            ) : null}
-                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-                              {section.entries.map((entry) => {
-                                const isImage = !entry.isDir && isImagePath(entry.path);
-                                const thumbIndex = isImage ? imageOrdinal++ : -1;
-                                const allowThumb =
-                                  isImage &&
-                                  isWithinThumbBudget(thumbIndex) &&
-                                  shouldLoadExplorerImage(entry.size, EXPLORER_THUMB_MAX_BYTES);
-                                return (
-                                  <EntryTile
-                                    key={entry.path}
-                                    entry={entry}
-                                    selected={selected.includes(entry.path)}
-                                    mode={mode}
-                                    constrainedRoot={constrainedRoot}
-                                    allowThumb={allowThumb}
-                                    hit={searchHits.find((h) => h.path === entry.path)}
-                                    onOpen={() => {
-                                      if (entry.isDir) {
-                                        // Grid: open folder on click (same as before); also select in folder mode
-                                        void loadDir(entry.path);
-                                        if (mode === 'folder') selectEntry(entry, false);
-                                      } else {
-                                        // Files always selectable for preview (all modes, including search hits)
-                                        selectEntry(entry, mode === 'files');
-                                      }
-                                    }}
-                                    onActivate={() => {
-                                      if (entry.isDir) {
-                                        void loadDir(entry.path);
-                                        if (mode === 'folder') selectEntry(entry, false);
-                                        return;
-                                      }
-                                      if (mode === 'folder') {
-                                        // Preview only — do not confirm a file as the project folder
-                                        return;
-                                      }
-                                      resolveFileExplorer({ ok: true, paths: [entry.path] });
-                                    }}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      },
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2" role="listbox" aria-label="Folder contents">
-                    {(dateSections ?? [{ id: 'all', label: '', entries: alphaFallback ?? listSource }]).map(
-                      (section) => (
+                    {(
+                      dateSections ?? [
+                        { id: 'all', label: '', entries: alphaFallback ?? listSource },
+                      ]
+                    ).map((section) => {
+                      let imageOrdinal = 0;
+                      return (
                         <div key={section.id}>
                           {section.label ? (
-                            <div className="sticky top-0 z-[1] bg-background/90 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur-sm">
+                            <div
+                              className={cn(
+                                'sticky top-0 z-[1] mb-1.5 bg-background/90 px-1 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur-sm',
+                                FILE_EXPLORER_MONOCHROME_STICKY_HEADER_CLASS,
+                              )}
+                            >
                               {section.label}
                             </div>
                           ) : null}
-                          <ul className="space-y-0.5">
+                          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
                             {section.entries.map((entry) => {
-                              const isSelected = selected.includes(entry.path);
-                              const hit = searchHits.find((h) => h.path === entry.path);
+                              const isImage = !entry.isDir && isImagePath(entry.path);
+                              const thumbIndex = isImage ? imageOrdinal++ : -1;
+                              const allowThumb =
+                                isImage &&
+                                isWithinThumbBudget(thumbIndex) &&
+                                shouldLoadExplorerImage(entry.size, EXPLORER_THUMB_MAX_BYTES);
                               return (
-                                <li key={entry.path}>
-                                  <button
-                                    type="button"
-                                    role="option"
-                                    aria-selected={isSelected}
-                                    onClick={() => {
-                                      if (entry.isDir) {
-                                        selectEntry(entry, false);
-                                        return;
-                                      }
-                                      // Files always selectable so search hits + previews work in every mode
+                                <EntryTile
+                                  key={entry.path}
+                                  entry={entry}
+                                  selected={selected.includes(entry.path)}
+                                  mode={mode}
+                                  constrainedRoot={constrainedRoot}
+                                  allowThumb={allowThumb}
+                                  hit={searchHits.find((h) => h.path === entry.path)}
+                                  onOpen={() => {
+                                    if (entry.isDir) {
+                                      // Grid: open folder on click (same as before); also select in folder mode
+                                      void loadDir(entry.path);
+                                      if (mode === 'folder') selectEntry(entry, false);
+                                    } else {
+                                      // Files always selectable for preview (all modes, including search hits)
                                       selectEntry(entry, mode === 'files');
-                                    }}
-                                    onDoubleClick={() => {
-                                      if (entry.isDir) {
-                                        void loadDir(entry.path);
-                                        if (mode === 'folder') selectEntry(entry, false);
-                                        return;
-                                      }
-                                      if (mode === 'folder') {
-                                        // Keep selection for preview; folder confirm stays on open folder
-                                        selectEntry(entry, false);
-                                        return;
-                                      }
-                                      resolveFileExplorer({ ok: true, paths: [entry.path] });
-                                    }}
-                                    className={cn(
-                                      'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors',
-                                      'hover:bg-accent-copper/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                                      isSelected && 'bg-accent-copper/18 ring-1 ring-accent-copper/45',
-                                    )}
-                                  >
-                                    <EntryIcon entry={entry} />
-                                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                                      {entry.name}
-                                    </span>
-                                    {hit?.snippet ? (
-                                      <span className="hidden max-w-[180px] truncate text-[10px] text-muted-foreground md:inline">
-                                        {hit.snippet}
-                                      </span>
-                                    ) : null}
-                                    {entry.isDir ? (
-                                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-                                    ) : entry.size != null ? (
-                                      <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-                                        {formatSize(entry.size)}
-                                      </span>
-                                    ) : null}
-                                  </button>
-                                </li>
+                                    }
+                                  }}
+                                  onActivate={() => {
+                                    if (entry.isDir) {
+                                      void loadDir(entry.path);
+                                      if (mode === 'folder') selectEntry(entry, false);
+                                      return;
+                                    }
+                                    if (mode === 'folder') {
+                                      // Preview only — do not confirm a file as the project folder
+                                      return;
+                                    }
+                                    resolveFileExplorer({ ok: true, paths: [entry.path] });
+                                  }}
+                                />
                               );
                             })}
-                          </ul>
+                          </div>
                         </div>
-                      ),
-                    )}
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="space-y-2" role="listbox" aria-label="Folder contents">
+                    {(
+                      dateSections ?? [
+                        { id: 'all', label: '', entries: alphaFallback ?? listSource },
+                      ]
+                    ).map((section) => (
+                      <div key={section.id}>
+                        {section.label ? (
+                          <div
+                            className={cn(
+                              'sticky top-0 z-[1] bg-background/90 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur-sm',
+                              FILE_EXPLORER_MONOCHROME_STICKY_HEADER_CLASS,
+                            )}
+                          >
+                            {section.label}
+                          </div>
+                        ) : null}
+                        <ul className="space-y-0.5">
+                          {section.entries.map((entry) => {
+                            const isSelected = selected.includes(entry.path);
+                            const hit = searchHits.find((h) => h.path === entry.path);
+                            return (
+                              <li key={entry.path}>
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isSelected}
+                                  onClick={() => {
+                                    if (entry.isDir) {
+                                      selectEntry(entry, false);
+                                      return;
+                                    }
+                                    // Files always selectable so search hits + previews work in every mode
+                                    selectEntry(entry, mode === 'files');
+                                  }}
+                                  onDoubleClick={() => {
+                                    if (entry.isDir) {
+                                      void loadDir(entry.path);
+                                      if (mode === 'folder') selectEntry(entry, false);
+                                      return;
+                                    }
+                                    if (mode === 'folder') {
+                                      // Keep selection for preview; folder confirm stays on open folder
+                                      selectEntry(entry, false);
+                                      return;
+                                    }
+                                    resolveFileExplorer({ ok: true, paths: [entry.path] });
+                                  }}
+                                  className={cn(
+                                    'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors',
+                                    'hover:bg-accent-copper/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                                    isSelected &&
+                                      'bg-accent-copper/18 ring-1 ring-accent-copper/45',
+                                  )}
+                                >
+                                  <EntryIcon entry={entry} />
+                                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                                    {entry.name}
+                                  </span>
+                                  {hit?.snippet ? (
+                                    <span className="hidden max-w-[180px] truncate text-[10px] text-muted-foreground md:inline">
+                                      {hit.snippet}
+                                    </span>
+                                  ) : null}
+                                  {entry.isDir ? (
+                                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 [html[data-theme=monochrome]_&]:text-muted-foreground" />
+                                  ) : entry.size != null ? (
+                                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                                      {formatSize(entry.size)}
+                                    </span>
+                                  ) : null}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
 
               {/* Preview pane */}
-              <div className="hidden w-[200px] shrink-0 flex-col border-l border-border bg-elevated/20 p-2 md:flex">
+              <div
+                data-monochrome-surface="file-preview"
+                className="hidden w-[200px] shrink-0 flex-col border-l border-border bg-elevated/20 p-2 md:flex [html[data-theme=monochrome]_&]:bg-panel"
+              >
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Preview
                 </div>
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-background/50 p-2">
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-background/50 p-2 [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
                   {previewKind === 'loading' ? (
                     <div className="flex flex-col items-center gap-2 text-metadata text-muted-foreground">
                       <Loader2 className="h-6 w-6 animate-spin" />
@@ -791,7 +863,7 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                       <span className="shrink-0 truncate font-mono text-[10px] text-muted-foreground">
                         {selected[0] ? basename(selected[0]) : 'Text'}
                       </span>
-                      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded bg-background/80 p-1.5 font-mono text-[10px] leading-snug text-foreground/90">
+                      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded bg-background/80 p-1.5 font-mono text-[10px] leading-snug text-foreground/90 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:text-foreground">
                         {previewText}
                       </pre>
                     </div>
@@ -842,10 +914,15 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
             </div>
 
             {/* Mini Jarvis file search — fixed at bottom (where open-folder status used to sit) */}
-            <div className="shrink-0 border-t border-accent-copper/25 bg-paper-soft/95 px-3 py-2">
+            <div
+              data-monochrome-surface="file-search"
+              className="shrink-0 border-t border-accent-copper/25 bg-paper-soft/95 px-3 py-2 [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel"
+            >
               <div className="mb-1.5 flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" />
-                <span className="text-[11px] font-semibold text-foreground">Mini Jarvis file search</span>
+                <span className="text-[11px] font-semibold text-foreground">
+                  Mini Jarvis file search
+                </span>
                 {searchBusy ? (
                   <Loader2 className="h-3 w-3 animate-spin text-accent-copper" />
                 ) : searchHits.length > 0 ? (
@@ -853,7 +930,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                     {searchHits.length}
                   </span>
                 ) : null}
-                <span className="ml-auto hidden max-w-[45%] truncate text-[10px] text-muted-foreground sm:inline" title={searchState.clueSummary || searchStatus}>
+                <span
+                  className="ml-auto hidden max-w-[45%] truncate text-[10px] text-muted-foreground sm:inline"
+                  title={searchState.clueSummary || searchStatus}
+                >
                   {searchBusy || searchHits.length > 0
                     ? searchStatus || searchState.clueSummary
                     : 'Searches names + text content across Home/Documents/… (not inside pictures)'}
@@ -885,7 +965,7 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') runJarvisSearch();
                   }}
-                  placeholder='e.g. txt file with Deepgram API keys  ·  type:pdf in:documents invoice'
+                  placeholder="e.g. txt file with Deepgram API keys  ·  type:pdf in:documents invoice"
                   className="h-8 min-w-[220px] flex-1 text-sm"
                   disabled={searchBusy}
                 />
@@ -896,7 +976,11 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                   disabled={searchBusy || !searchQuery.trim()}
                   onClick={() => runJarvisSearch()}
                 >
-                  {searchBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                  {searchBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Search className="h-3.5 w-3.5" />
+                  )}
                   Find
                 </Button>
                 {(searchHits.length > 0 || searchBusy) && (
@@ -913,26 +997,22 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                 )}
               </div>
               <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-                Multi-clue: file type + words inside text files (skips images). Wide scan: Home, Documents, Desktop, Downloads + current folder.
-                Use <code className="text-foreground/80">here</code> to stay in this folder only.
+                Multi-clue: file type + words inside text files (skips images). Wide scan: Home,
+                Documents, Desktop, Downloads + current folder. Use{' '}
+                <code className="text-foreground/80">here</code> to stay in this folder only.
                 {searchState.clueSummary ? (
                   <>
                     {' '}
                     · Clues: <span className="text-foreground/85">{searchState.clueSummary}</span>
                   </>
                 ) : null}
-                {searchStatus && !searchBusy ? (
-                  <>
-                    {' '}
-                    · {searchStatus}
-                  </>
-                ) : null}
+                {searchStatus && !searchBusy ? <> · {searchStatus}</> : null}
               </p>
             </div>
           </div>
         </div>
 
-        <DialogFooter className="shrink-0 border-t border-border bg-elevated/30 px-4 py-2.5">
+        <DialogFooter className="shrink-0 border-t border-border bg-elevated/30 px-4 py-2.5 [html[data-theme=monochrome]_&]:bg-panel">
           <div className="mr-auto hidden min-w-0 max-w-[45%] truncate text-metadata text-muted-foreground sm:block">
             {mode === 'folder'
               ? selected[0] && entries.some((e) => e.path === selected[0] && e.isDir)
@@ -942,7 +1022,13 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
                 ? selected.map((p) => basename(p)).join(', ')
                 : 'Nothing selected'}
           </div>
-          <Button type="button" variant="ghost" onClick={() => cancelFileExplorer()}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              if (runtimeEffectsEnabled) cancelFileExplorer();
+            }}
+          >
             Cancel
           </Button>
           <Button type="button" variant="accent" disabled={!canConfirm} onClick={confirm}>
@@ -999,10 +1085,7 @@ function EntryTile({
     void (async () => {
       try {
         const img = await withExplorerImageSlot(() =>
-          readImageFileBase64(
-            entry.path,
-            constrainedRoot ? { root: constrainedRoot } : {},
-          ),
+          readImageFileBase64(entry.path, constrainedRoot ? { root: constrainedRoot } : {}),
         );
         if (cancelled) return;
         if (!img.ok) {
@@ -1044,7 +1127,7 @@ function EntryTile({
           : entry.path)
       }
     >
-      <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-background/60">
+      <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded-md bg-background/60 [html[data-theme=monochrome]_&]:bg-background">
         {entry.isDir ? (
           <Folder className="h-8 w-8 text-accent-honey" />
         ) : thumb ? (

@@ -23,7 +23,11 @@ export function WorkbenchCanvas() {
   const fitView = useWorkbenchStore((state) => state.fitView);
   const undo = useWorkbenchStore((state) => state.undo);
   const redo = useWorkbenchStore((state) => state.redo);
-  const panning = React.useRef<null | { clientX: number; clientY: number; x: number; y: number }>(null);
+  const panning = React.useRef<null | { clientX: number; clientY: number; x: number; y: number }>(
+    null,
+  );
+  const monochromeRaster =
+    typeof document !== 'undefined' && document.documentElement.dataset.theme === 'monochrome';
 
   // Keep store mutators in refs so per-panel handlers stay identity-stable
   // across canvas re-renders (prevents Files/Jarvis effect thrash).
@@ -59,8 +63,7 @@ export function WorkbenchCanvas() {
         onSelect: (additive: boolean) => selectPanelRef.current(id, additive),
         onBringToFront: () => bringToFrontRef.current(id),
         onUpdate: (patch) => updatePanelRef.current(id, patch),
-        onRuntimeUpdate: (patch) =>
-          updatePanelRef.current(id, patch, { recordHistory: false }),
+        onRuntimeUpdate: (patch) => updatePanelRef.current(id, patch, { recordHistory: false }),
         onDuplicate: () => duplicatePanelRef.current(id),
         onClose: () => removePanelRef.current(id),
       };
@@ -85,8 +88,7 @@ export function WorkbenchCanvas() {
       setCanvasSize({ width: root.clientWidth, height: root.clientHeight });
     };
     publish();
-    const ro =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => publish()) : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => publish()) : null;
     ro?.observe(root);
     window.addEventListener('resize', publish);
     return () => {
@@ -123,16 +125,25 @@ export function WorkbenchCanvas() {
       return;
     }
     const direction =
-      event.key === 'ArrowLeft' ? { x: -1, y: 0 } :
-      event.key === 'ArrowRight' ? { x: 1, y: 0 } :
-      event.key === 'ArrowUp' ? { x: 0, y: -1 } :
-      event.key === 'ArrowDown' ? { x: 0, y: 1 } : null;
+      event.key === 'ArrowLeft'
+        ? { x: -1, y: 0 }
+        : event.key === 'ArrowRight'
+          ? { x: 1, y: 0 }
+          : event.key === 'ArrowUp'
+            ? { x: 0, y: -1 }
+            : event.key === 'ArrowDown'
+              ? { x: 0, y: 1 }
+              : null;
     if (direction && selectedIds.length) {
       event.preventDefault();
       const distance = event.shiftKey ? 20 : 4;
       for (const id of selectedIds) {
         const panel = panels.find((entry) => entry.id === id);
-        if (panel) updatePanel(id, { x: panel.x + direction.x * distance, y: panel.y + direction.y * distance });
+        if (panel)
+          updatePanel(id, {
+            x: panel.x + direction.x * distance,
+            y: panel.y + direction.y * distance,
+          });
       }
     }
   };
@@ -145,7 +156,10 @@ export function WorkbenchCanvas() {
     const move = (moveEvent: PointerEvent) => {
       const start = panning.current;
       if (!start) return;
-      setView({ x: start.x + moveEvent.clientX - start.clientX, y: start.y + moveEvent.clientY - start.clientY });
+      setView({
+        x: start.x + moveEvent.clientX - start.clientX,
+        y: start.y + moveEvent.clientY - start.clientY,
+      });
     };
     const up = () => {
       panning.current = null;
@@ -170,7 +184,11 @@ export function WorkbenchCanvas() {
         // Never pan/zoom the canvas when the user is scrolling inside a panel
         // (Jarvis chat history, files tree, embedded pages, etc.).
         const target = event.target as HTMLElement | null;
-        if (target?.closest('.workbench-panel-body, .workbench-panel-header input, .workbench-panel-header textarea, .workbench-panel-header select')) {
+        if (
+          target?.closest(
+            '.workbench-panel-body, .workbench-panel-header input, .workbench-panel-header textarea, .workbench-panel-header select',
+          )
+        ) {
           return;
         }
         event.preventDefault();
@@ -191,7 +209,12 @@ export function WorkbenchCanvas() {
         event.preventDefault();
         try {
           const payload = JSON.parse(raw) as { version?: unknown; kind?: unknown };
-          if (payload.version !== 1 || typeof payload.kind !== 'string' || !kindSet.has(payload.kind)) return;
+          if (
+            payload.version !== 1 ||
+            typeof payload.kind !== 'string' ||
+            !kindSet.has(payload.kind)
+          )
+            return;
           const rect = rootRef.current?.getBoundingClientRect();
           if (!rect) return;
           addPanel(payload.kind as WorkbenchPanelKind, {
@@ -203,10 +226,21 @@ export function WorkbenchCanvas() {
         }
       }}
     >
-      <div className="workbench-grid" aria-hidden="true" style={{ backgroundPosition: `${view.x}px ${view.y}px`, backgroundSize: `${32 * view.zoom}px ${32 * view.zoom}px` }} />
       <div
-        className="workbench-stage"
-        style={{ transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.zoom})` }}
+        className="workbench-grid"
+        aria-hidden="true"
+        style={{
+          backgroundPosition: `${view.x}px ${view.y}px`,
+          backgroundSize: `${32 * view.zoom}px ${32 * view.zoom}px`,
+        }}
+      />
+      <div
+        className="workbench-stage [html[data-theme=monochrome]_&]:will-change-auto"
+        style={{
+          transform: monochromeRaster
+            ? `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`
+            : `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.zoom})`,
+        }}
       >
         {panels.map((panel) => {
           const handlers = getHandlers(panel.id);
@@ -228,7 +262,13 @@ export function WorkbenchCanvas() {
       </div>
       <div className="workbench-minimap" aria-hidden="true">
         {panels.slice(0, 24).map((panel) => (
-          <span key={panel.id} style={{ left: `${Math.max(3, Math.min(92, panel.x / 20))}%`, top: `${Math.max(6, Math.min(86, panel.y / 10))}%` }} />
+          <span
+            key={panel.id}
+            style={{
+              left: `${Math.max(3, Math.min(92, panel.x / 20))}%`,
+              top: `${Math.max(6, Math.min(86, panel.y / 10))}%`,
+            }}
+          />
         ))}
       </div>
       <div className="workbench-canvas-readout" aria-live="polite">

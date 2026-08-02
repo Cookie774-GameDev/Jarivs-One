@@ -1,0 +1,25 @@
+html[data-theme='sakura'] [data-monochrome-surface='wellness-break'] {
+  color: hsl(var(--sakura-ivory-hsl));
+}
+html[data-theme='sakura'] [data-monochrome-surface='wellness-break'] h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+html[data-theme='sakura']
+  [data-monochrome-surface='wellness-break']
+  [data-sakura-surface='wellness-progress'] {
+  background: hsl(var(--sakura-ivory-hsl) / 0.12);
+  box-shadow: 0 0 1rem hsl(var(--sakura-pink-hsl) / 0.18);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-monochrome-surface='wellness-break'],
+  html[data-theme='sakura'] [data-monochrome-surface='wellness-break'] * {
+    animation: none;
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-monochrome-surface='wellness-break'] {
+    background: Canvas;
+    color: CanvasText;
+  }
+}

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bindCanvasWorkspaceFlush,
   flushWorkspacePersistence,
   flushWorkspacePersistenceAndAcknowledge,
+  _resetCanvasFlushForTests,
 } from './workspaceFlush';
 import { captureLiveTree, _resetLiveCacheForTests } from '@/features/terminals/terminalLiveCache';
 import { terminalTreeStorageKey } from '@/features/terminals/terminalProjectMove';
@@ -28,6 +30,7 @@ describe('flushWorkspacePersistence', () => {
     window.localStorage.clear();
     _resetLiveCacheForTests();
     _resetTerminalSnapshotRegistryForTests();
+    _resetCanvasFlushForTests();
     useTerminalTranscriptStore.getState().reset();
     vi.useRealTimers();
   });
@@ -38,13 +41,11 @@ describe('flushWorkspacePersistence', () => {
       'jarvis:terminal:persist-now',
       () => {
         order.push('event');
-        useTerminalTranscriptStore
-          .getState()
-          .registerSession('pty-live', {
-            paneId: 'pane-a',
-            projectId: 'project-a',
-            command: 'powershell.exe',
-          });
+        useTerminalTranscriptStore.getState().registerSession('pty-live', {
+          paneId: 'pane-a',
+          projectId: 'project-a',
+          command: 'powershell.exe',
+        });
         useTerminalTranscriptStore.getState().appendOutput('pty-live', 'last second output\n');
       },
       { once: true },
@@ -65,16 +66,94 @@ describe('flushWorkspacePersistence', () => {
     expect(order.indexOf('event')).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('storage')).toBeGreaterThan(order.indexOf('event'));
     expect(window.localStorage.getItem(terminalTreeStorageKey('project-a'))).toContain('pane-a');
-    expect(window.localStorage.getItem('jarvis-terminal-transcripts')).toContain('last second output');
+    expect(window.localStorage.getItem('jarvis-terminal-transcripts')).toContain(
+      'last second output',
+    );
+  });
+
+  it('awaits bound Canvas persistence before resolving the workspace flush', async () => {
+    let release: (() => void) | undefined;
+    const flushedReasons: string[] = [];
+    const unbind = bindCanvasWorkspaceFlush(
+      (reason) =>
+        new Promise<void>((resolve) => {
+          release = () => {
+            flushedReasons.push(reason);
+            resolve();
+          };
+        }),
+    );
+
+    let settled = false;
+    const pending = flushWorkspacePersistence('tray-hide').then((result) => {
+      settled = true;
+      return result;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release?.();
+    await pending;
+    expect(flushedReasons).toEqual(['tray-hide']);
+    unbind();
+  });
+
+  it('contains a Canvas persistence failure without rejecting the workspace flush', async () => {
+    const unbind = bindCanvasWorkspaceFlush(async () => {
+      throw new Error('synthetic canvas failure');
+    });
+
+    await expect(flushWorkspacePersistence('canvas-error')).resolves.toMatchObject({
+      timedOut: false,
+      canvas: {
+        completed: 0,
+        failed: 1,
+        timedOut: false,
+      },
+    });
+    unbind();
+  });
+
+  it('returns after the 1,200 ms Canvas persistence deadline', async () => {
+    vi.useFakeTimers();
+    let release: (() => void) | undefined;
+    const unbind = bindCanvasWorkspaceFlush(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    let result: Awaited<ReturnType<typeof flushWorkspacePersistence>> | undefined;
+    const pending = flushWorkspacePersistence('canvas-timeout').then((value) => {
+      result = value;
+      return value;
+    });
+
+    await vi.advanceTimersByTimeAsync(1_200);
+    try {
+      expect(result).toMatchObject({
+        canvas: {
+          completed: 0,
+          failed: 0,
+          timedOut: true,
+        },
+      });
+    } finally {
+      release?.();
+      await pending;
+      unbind();
+    }
   });
 
   it('awaits registered terminal snapshots after synchronous storage work', async () => {
     let release: (() => void) | undefined;
     registerTerminalSnapshotFlush(
       'pane-a',
-      () => new Promise<void>((resolve) => {
-        release = resolve;
-      }),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
     );
 
     let settled = false;
@@ -86,7 +165,12 @@ describe('flushWorkspacePersistence', () => {
     expect(settled).toBe(false);
 
     release?.();
-    await expect(pending).resolves.toEqual({ completed: 1, failed: 0, timedOut: false });
+    await expect(pending).resolves.toEqual({
+      completed: 1,
+      failed: 0,
+      timedOut: false,
+      canvas: { completed: 0, failed: 0, timedOut: false },
+    });
   });
 
   it('reports snapshot rejection without rejecting the workspace flush', async () => {
@@ -98,6 +182,7 @@ describe('flushWorkspacePersistence', () => {
       completed: 0,
       failed: 1,
       timedOut: false,
+      canvas: { completed: 0, failed: 0, timedOut: false },
     });
   });
 
@@ -112,6 +197,7 @@ describe('flushWorkspacePersistence', () => {
       completed: 0,
       failed: 0,
       timedOut: true,
+      canvas: { completed: 0, failed: 0, timedOut: false },
     });
   });
 
@@ -119,21 +205,24 @@ describe('flushWorkspacePersistence', () => {
     let release: (() => void) | undefined;
     registerTerminalSnapshotFlush(
       'pane-exit',
-      () => new Promise<void>((resolve) => {
-        release = resolve;
-      }),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
     );
     const acknowledge = vi.fn(async () => undefined);
 
-    const pending = flushWorkspacePersistenceAndAcknowledge(
-      'tray-exit',
-      acknowledge,
-    );
+    const pending = flushWorkspacePersistenceAndAcknowledge('tray-exit', acknowledge);
     await Promise.resolve();
     expect(acknowledge).not.toHaveBeenCalled();
 
     release?.();
-    await expect(pending).resolves.toEqual({ completed: 1, failed: 0, timedOut: false });
+    await expect(pending).resolves.toEqual({
+      completed: 1,
+      failed: 0,
+      timedOut: false,
+      canvas: { completed: 0, failed: 0, timedOut: false },
+    });
     expect(acknowledge).toHaveBeenCalledOnce();
   });
 });

@@ -1,15 +1,11 @@
 import { useEffect } from 'react';
 import { Phone, PhoneOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
-import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
+import { planAllowsJarvisCall } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 import { useAuthStore } from '@/stores/auth';
 import { useCallStore } from './store';
 import { isCallConfigured } from './config';
@@ -44,13 +40,10 @@ export function CallButton({ compact = false }: { compact?: boolean }) {
   const setCallModalOpen = useUIStore((s) => s.setCallModalOpen);
   const callModalOpen = useUIStore((s) => s.callModalOpen);
   const plan = useAuthStore((s) => s.plan);
-  const email = useAuthStore((s) => s.email);
-  const cloudEmail = useAuthStore((s) => s.cloudSession?.email);
-  const localUserId = useAuthStore((s) => s.localUserId);
 
   const inCall = status !== 'idle';
   const configured = isCallConfigured();
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   // Open modal automatically when status flips out of idle
@@ -62,11 +55,17 @@ export function CallButton({ compact = false }: { compact?: boolean }) {
 
   const handleClick = () => {
     if (!configured) {
-      toast.info('Phone & Voice not set up', 'Open Settings → Phone & Voice to point Jarvis at the phone-jarvis cloud.');
+      toast.info(
+        'Phone & Voice not set up',
+        'Open Settings → Phone & Voice to point Jarvis at the phone-jarvis cloud.',
+      );
       return;
     }
     if (!entitled) {
-      toast.warning('Jarvis Call requires a plan', 'Upgrade to a voice-enabled plan or use an admin-enabled build.');
+      toast.warning(
+        'Jarvis Call requires a plan',
+        'Upgrade to a voice-enabled plan or use an admin-enabled build.',
+      );
       return;
     }
     if (inCall) {
@@ -102,7 +101,11 @@ export function CallButton({ compact = false }: { compact?: boolean }) {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          {!configured ? 'Phone & Voice not configured' : entitled ? label : 'Jarvis Call requires a voice plan'}
+          {!configured
+            ? 'Phone & Voice not configured'
+            : entitled
+              ? label
+              : 'Jarvis Call requires a voice plan'}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

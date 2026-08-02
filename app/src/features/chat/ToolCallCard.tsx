@@ -12,6 +12,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui';
+import { useThemeLayoutTransition } from '@/features/appearance/themeMotion';
 import { cn } from '@/lib/utils';
 import type { Part } from '@/types';
 
@@ -25,12 +26,18 @@ export interface ToolCallCardProps {
 }
 
 type Status = 'pending' | 'success' | 'error';
+const SPRING = 'spring' as const;
+const EXPANSION_TRANSITION = { type: SPRING, stiffness: 400, damping: 30, mass: 0.8 };
 
 const statusMeta: Record<
   Status,
   { label: string; variant: 'secondary' | 'success' | 'destructive'; icon: JSX.Element }
 > = {
-  pending: { label: 'Running', variant: 'secondary', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
+  pending: {
+    label: 'Running',
+    variant: 'secondary',
+    icon: <Loader2 className="h-3 w-3 animate-spin" />,
+  },
   success: { label: 'Done', variant: 'success', icon: <CheckCircle2 className="h-3 w-3" /> },
   error: { label: 'Failed', variant: 'destructive', icon: <XCircle className="h-3 w-3" /> },
 };
@@ -48,7 +55,10 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-function toolPresentation(tool: string, args: Record<string, unknown>): {
+function toolPresentation(
+  tool: string,
+  args: Record<string, unknown>,
+): {
   kind: 'edit' | 'read' | 'shell' | 'generic';
   label: string;
   path?: string;
@@ -91,6 +101,7 @@ function toolPresentation(tool: string, args: Record<string, unknown>): {
 
 export function ToolCallCard({ call, result }: ToolCallCardProps) {
   const [open, setOpen] = useState(false);
+  const expansionTransition = useThemeLayoutTransition(EXPANSION_TRANSITION);
   const status: Status = !result ? 'pending' : result.error ? 'error' : 'success';
   const meta = statusMeta[status];
   const presentation = toolPresentation(call.tool, call.args ?? {});
@@ -127,7 +138,10 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
               )}
             </div>
             {presentation.path ? (
-              <p className="truncate font-mono text-[10px] text-muted-foreground" title={presentation.path}>
+              <p
+                className="truncate font-mono text-[10px] text-muted-foreground"
+                title={presentation.path}
+              >
                 {presentation.path}
               </p>
             ) : null}
@@ -137,7 +151,10 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
             {meta.label}
           </Badge>
           <ChevronDown
-            className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')}
+            className={cn(
+              'h-3.5 w-3.5 text-muted-foreground transition-transform',
+              open && 'rotate-180',
+            )}
           />
         </button>
 
@@ -148,20 +165,21 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.8 }}
+              transition={expansionTransition}
               className="overflow-hidden border-t border-border"
             >
               <div className="space-y-2 px-3 py-2.5">
                 {presentation.preview ? (
                   <pre className="max-h-72 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-[11px] leading-relaxed">
                     {presentation.kind === 'edit'
-                      ? presentation.preview
-                          .split('\n')
-                          .map((line, i) => (
-                            <div key={i} className="bg-emerald-500/10 text-emerald-300 whitespace-pre-wrap break-all">
-                              +{line}
-                            </div>
-                          ))
+                      ? presentation.preview.split('\n').map((line, i) => (
+                          <div
+                            key={i}
+                            className="bg-emerald-500/10 text-emerald-300 whitespace-pre-wrap break-all"
+                          >
+                            +{line}
+                          </div>
+                        ))
                       : presentation.preview}
                   </pre>
                 ) : (
@@ -216,7 +234,10 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
           {meta.label}
         </Badge>
         <ChevronDown
-          className={cn('ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')}
+          className={cn(
+            'ml-auto h-3.5 w-3.5 text-muted-foreground transition-transform',
+            open && 'rotate-180',
+          )}
         />
       </button>
 
@@ -227,7 +248,7 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.8 }}
+            transition={expansionTransition}
             className="overflow-hidden border-t border-border"
           >
             <div className="space-y-3 px-3 py-2.5">
@@ -252,7 +273,9 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
                 </Section>
               )}
 
-              <div className="font-mono text-metadata text-muted-foreground">call_id: {call.call_id}</div>
+              <div className="font-mono text-metadata text-muted-foreground">
+                call_id: {call.call_id}
+              </div>
             </div>
           </motion.div>
         )}
@@ -264,7 +287,9 @@ export function ToolCallCard({ call, result }: ToolCallCardProps) {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-metadata uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mb-1 text-metadata uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
       {children}
     </div>
   );

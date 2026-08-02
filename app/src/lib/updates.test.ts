@@ -14,10 +14,12 @@ vi.mock('@tauri-apps/plugin-updater', () => ({ check: mocks.check }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: mocks.relaunch }));
 
 import { checkForAppUpdate } from './updates';
+import { MONOCHROME_VISUAL_TEST } from './runtimeProfile';
 
 describe('checkForAppUpdate persistence gates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     mocks.relaunch.mockResolvedValue(undefined);
   });
 
@@ -34,14 +36,16 @@ describe('checkForAppUpdate persistence gates', () => {
     });
     mocks.flush
       .mockImplementationOnce(
-        () => new Promise((resolve) => {
-          releaseInstallFlush = () => resolve({ completed: 1, failed: 0, timedOut: false });
-        }),
+        () =>
+          new Promise((resolve) => {
+            releaseInstallFlush = () => resolve({ completed: 1, failed: 0, timedOut: false });
+          }),
       )
       .mockImplementationOnce(
-        () => new Promise((resolve) => {
-          releaseRelaunchFlush = () => resolve({ completed: 1, failed: 0, timedOut: false });
-        }),
+        () =>
+          new Promise((resolve) => {
+            releaseRelaunchFlush = () => resolve({ completed: 1, failed: 0, timedOut: false });
+          }),
       );
 
     const pending = checkForAppUpdate({ install: true });
@@ -55,6 +59,76 @@ describe('checkForAppUpdate persistence gates', () => {
 
     releaseRelaunchFlush?.();
     await expect(pending).resolves.toMatchObject({ available: true, installed: true });
+    expect(mocks.relaunch).toHaveBeenCalledOnce();
+  });
+});
+
+describe('checkForAppUpdate runtime-profile effect guards', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    mocks.relaunch.mockResolvedValue(undefined);
+  });
+
+  it('ordinary mode calls every effect adapter exactly as before', async () => {
+    const downloadAndInstall = vi.fn();
+    mocks.check.mockResolvedValue({ version: '9.9.9', body: 'synthetic', downloadAndInstall });
+    mocks.flush.mockResolvedValue(undefined);
+    await expect(checkForAppUpdate({ install: true })).resolves.toMatchObject({
+      available: true,
+      installed: true,
+    });
+    expect(mocks.check).toHaveBeenCalledOnce();
+    expect(mocks.flush).toHaveBeenCalledTimes(2);
+    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(mocks.relaunch).toHaveBeenCalledOnce();
+  });
+
+  it('does not allow a caller-supplied plan or adapters to override compile-time authority', async () => {
+    vi.stubEnv('VITE_VIBESPACE_RUNTIME_PROFILE', MONOCHROME_VISUAL_TEST);
+    const callerCheck = vi.fn();
+    await expect(
+      checkForAppUpdate({
+        install: true,
+        plan: { updateEffectsEnabled: true },
+        seams: { checkUpdate: callerCheck },
+      } as never),
+    ).rejects.toThrow(/visual-test runtime profile/i);
+    expect(callerCheck).not.toHaveBeenCalled();
+    expect(mocks.check).not.toHaveBeenCalled();
+  });
+
+  it('visual-test mode never touches the native updater/persistence/process adapters', async () => {
+    mocks.check.mockResolvedValue({
+      version: '9.9.9',
+      body: 'synthetic update',
+      downloadAndInstall: vi.fn(),
+    });
+    vi.stubEnv('VITE_VIBESPACE_RUNTIME_PROFILE', MONOCHROME_VISUAL_TEST);
+    await expect(checkForAppUpdate({ install: true })).rejects.toThrow(/denied/i);
+    expect(mocks.check).not.toHaveBeenCalled();
+    expect(mocks.flush).not.toHaveBeenCalled();
+    expect(mocks.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('ordinary mode invokes the native updater, persistence, and process adapters', async () => {
+    const downloadAndInstall = vi.fn(async (onEvent: (event: { event: string }) => void) => {
+      onEvent({ event: 'Finished' });
+    });
+    mocks.check.mockResolvedValue({
+      version: '9.9.9',
+      body: 'synthetic update',
+      downloadAndInstall,
+    });
+    mocks.flush.mockResolvedValue({ completed: 1, failed: 0, timedOut: false });
+    await expect(checkForAppUpdate({ install: true })).resolves.toMatchObject({
+      available: true,
+      installed: true,
+    });
+    expect(mocks.check).toHaveBeenCalledOnce();
+    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(mocks.flush).toHaveBeenCalledWith('pre-update-install');
+    expect(mocks.flush).toHaveBeenCalledWith('pre-update-relaunch');
     expect(mocks.relaunch).toHaveBeenCalledOnce();
   });
 });

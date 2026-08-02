@@ -1,0 +1,393 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "frame-manifest",
+  "status": "measured",
+  "evidenceCutoff": "2026-07-30T04:58:59.5349264Z",
+  "expectedFileName": "Screen Recording 2026-07-16 220632.mp4",
+  "sourceSha256": "B7C1EF966BC3BB118472F8EFD7334A5AF792DEB3DFF240105886F05F4043F6C1",
+  "linkedArtifactIds": [
+    "component-mapping",
+    "design",
+    "design-tokens",
+    "reference-analysis",
+    "reference-spec"
+  ],
+  "privacyDisposition": "sanitized_no_private_source_data",
+  "source": {
+    "expectedFileName": "Screen Recording 2026-07-16 220632.mp4",
+    "sha256": "B7C1EF966BC3BB118472F8EFD7334A5AF792DEB3DFF240105886F05F4043F6C1",
+    "durationMs": 13269,
+    "width": 1914,
+    "height": 926,
+    "frameRate": 30,
+    "codec": "h264",
+    "colorMetadata": {
+      "colorSpace": "unspecified",
+      "range": "unspecified"
+    },
+    "contentCrop": {
+      "x": 0,
+      "y": 0,
+      "width": 1914,
+      "height": 926
+    }
+  },
+  "sampling": {
+    "method": "all_frames_extracted_plus_uniform_and_rgb-difference_motion_candidates",
+    "sampleCount": 395
+  },
+  "frames": [
+    {
+      "id": "frame.reference-000001",
+      "timestampMs": 0,
+      "frameNumber": 0,
+      "sceneTags": ["algorithmic-sample", "scope-1"],
+      "stateTags": ["uniform-sample"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "top bar and rail geometry waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000037",
+      "timestampMs": 1200,
+      "frameNumber": 36,
+      "sceneTags": ["algorithmic-sample", "scope-2"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "hover and active-sidebar transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000073",
+      "timestampMs": 2400,
+      "frameNumber": 72,
+      "sceneTags": ["algorithmic-sample", "scope-3"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "usage-card and segmented-chart palette waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000108",
+      "timestampMs": 3566.6667,
+      "frameNumber": 107,
+      "sceneTags": ["algorithmic-sample", "scope-4"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "table header, row, hover, selected, loading, and empty-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000109",
+      "timestampMs": 3600,
+      "frameNumber": 108,
+      "sceneTags": ["algorithmic-sample", "scope-5"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "provider, pricing, and form-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000110",
+      "timestampMs": 3633.3333,
+      "frameNumber": 109,
+      "sceneTags": ["algorithmic-sample", "scope-6"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "tooltip, empty-provider, loading, and page-transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000144",
+      "timestampMs": 4766.6667,
+      "frameNumber": 143,
+      "sceneTags": ["algorithmic-sample", "scope-1"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "top bar and rail geometry waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000180",
+      "timestampMs": 5966.6667,
+      "frameNumber": 179,
+      "sceneTags": ["algorithmic-sample", "scope-2"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "hover and active-sidebar transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000207",
+      "timestampMs": 6866.6667,
+      "frameNumber": 206,
+      "sceneTags": ["algorithmic-sample", "scope-3"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "usage-card and segmented-chart palette waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000208",
+      "timestampMs": 6900,
+      "frameNumber": 207,
+      "sceneTags": ["algorithmic-sample", "scope-4"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "table header, row, hover, selected, loading, and empty-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000209",
+      "timestampMs": 6933.3333,
+      "frameNumber": 208,
+      "sceneTags": ["algorithmic-sample", "scope-5"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "provider, pricing, and form-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000216",
+      "timestampMs": 7166.6667,
+      "frameNumber": 215,
+      "sceneTags": ["algorithmic-sample", "scope-6"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "tooltip, empty-provider, loading, and page-transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000252",
+      "timestampMs": 8366.6667,
+      "frameNumber": 251,
+      "sceneTags": ["algorithmic-sample", "scope-1"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "top bar and rail geometry waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000288",
+      "timestampMs": 9566.6667,
+      "frameNumber": 287,
+      "sceneTags": ["algorithmic-sample", "scope-2"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "hover and active-sidebar transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000323",
+      "timestampMs": 10733.3333,
+      "frameNumber": 322,
+      "sceneTags": ["algorithmic-sample", "scope-3"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "usage-card and segmented-chart palette waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000324",
+      "timestampMs": 10766.6667,
+      "frameNumber": 323,
+      "sceneTags": ["algorithmic-sample", "scope-4"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "table header, row, hover, selected, loading, and empty-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000325",
+      "timestampMs": 10800,
+      "frameNumber": 324,
+      "sceneTags": ["algorithmic-sample", "scope-5"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "provider, pricing, and form-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000328",
+      "timestampMs": 10900,
+      "frameNumber": 327,
+      "sceneTags": ["algorithmic-sample", "scope-6"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "tooltip, empty-provider, loading, and page-transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000329",
+      "timestampMs": 10933.3333,
+      "frameNumber": 328,
+      "sceneTags": ["algorithmic-sample", "scope-1"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "top bar and rail geometry waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000359",
+      "timestampMs": 11933.3333,
+      "frameNumber": 358,
+      "sceneTags": ["algorithmic-sample", "scope-2"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "hover and active-sidebar transition waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000360",
+      "timestampMs": 11966.6667,
+      "frameNumber": 359,
+      "sceneTags": ["algorithmic-sample", "scope-3"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "usage-card and segmented-chart palette waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    },
+    {
+      "id": "frame.reference-000395",
+      "timestampMs": 13133.3333,
+      "frameNumber": 394,
+      "sceneTags": ["algorithmic-sample", "scope-4"],
+      "stateTags": ["motion-peak"],
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "width": 1914,
+        "height": 926
+      },
+      "excludedRegions": [],
+      "purpose": "table header, row, hover, selected, loading, and empty-state waypoint; semantic presence was not machine-classified",
+      "privacyDisposition": "sanitized_no_private_source_data"
+    }
+  ]
+}

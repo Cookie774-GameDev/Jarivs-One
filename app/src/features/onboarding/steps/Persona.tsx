@@ -1,10 +1,18 @@
-import { motion } from 'motion/react';
+import { motion, type Transition } from 'motion/react';
 import { Check } from 'lucide-react';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { useAuthStore } from '@/stores/auth';
 import { PERSONAS } from './personas-data';
 import { cn } from '@/lib/utils';
 
+const LEGACY_PERSONA_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 380,
+  damping: 30,
+} as const) satisfies Transition;
+
 export function Persona() {
+  const personaTransition = useThemeMotionTransition(LEGACY_PERSONA_TRANSITION);
   const persona = useAuthStore((s) => s.personaPreset);
   const setPersona = useAuthStore((s) => s.setPersona);
 
@@ -37,7 +45,7 @@ export function Persona() {
                 hidden: { opacity: 0, y: 8 },
                 show: { opacity: 1, y: 0 },
               }}
-              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              transition={personaTransition}
               onClick={() => setPersona(p.id)}
               aria-pressed={selected}
               className={cn(

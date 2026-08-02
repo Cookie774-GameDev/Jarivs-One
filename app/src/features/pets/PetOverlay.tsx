@@ -28,6 +28,7 @@ import {
   getPetAnimationsManifest,
   resolveAtlasUrls,
 } from './petManifest';
+import { PET_CHARACTERS, resolvePetCharacterId } from './petCharacters';
 import {
   beginPetPointerGesture,
   samplePetPointerGesture,
@@ -47,6 +48,7 @@ import { petPerfRecordDragUpdate, petPerfRecordStateTransition } from './petDevP
 import { buildPetRuntimeDiagnostics, installPetRuntimeDiagGlobal } from './petRuntimeDiagnostics';
 import {
   PET_FORCE_ANIM_EVENT,
+  type PetAnimationLevel,
   type PetForceAnimDetail,
   usePetSettingsStore,
 } from './petSettingsStore';
@@ -75,6 +77,7 @@ const DEBUG_ANIMS: PetAnimId[] = [
 export interface PetOverlayProps {
   enabled?: boolean;
   reducedMotion?: boolean;
+  animationLevelOverride?: PetAnimationLevel;
   className?: string;
   panelOpen?: boolean;
   onOpenPanel?: () => void;
@@ -91,6 +94,7 @@ export interface PetOverlayProps {
 export function PetOverlay({
   enabled = true,
   reducedMotion: reducedMotionProp = false,
+  animationLevelOverride,
   className,
   panelOpen = false,
   onOpenPanel,
@@ -111,7 +115,8 @@ export function PetOverlay({
   const setPositionLocked = usePetSettingsStore((s) => s.setPositionLocked);
   const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
   const settingsEdgeSnapping = usePetSettingsStore((s) => s.edgeSnapping);
-  const animationLevel = usePetSettingsStore((s) => s.animationLevel) ?? 'calm';
+  const settingsAnimationLevel = usePetSettingsStore((s) => s.animationLevel) ?? 'calm';
+  const animationLevel = animationLevelOverride ?? settingsAnimationLevel;
   const settingsIdleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const notificationReactions = usePetSettingsStore((s) => s.notificationReactions) ?? true;
   const pointerTracking = usePetSettingsStore((s) => s.pointerTracking) ?? true;
@@ -121,6 +126,7 @@ export function PetOverlay({
   characterIdRef.current = characterId;
 
   const [animLabel, setAnimLabel] = React.useState<PetAnimId>('welcome');
+  const [renderReady, setRenderReady] = React.useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = React.useState(false);
   const [runtimeReaction, setRuntimeReaction] = React.useState<PetReactionId>('idle');
   const [pos, setPos] = React.useState({ left: 24, top: 120 });
@@ -182,6 +188,7 @@ export function PetOverlay({
     ],
   );
   const reducedMotion = motionPolicy.reducedMotion;
+  const staticPreview = PET_CHARACTERS[resolvePetCharacterId(characterId)].preview;
   const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
   const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
   const debugMode =
@@ -278,6 +285,7 @@ export function PetOverlay({
         player.setPlaybackFps(fps);
         if (motionPolicy.animationsEnabled) player.resume();
         else player.pause();
+        setRenderReady(true);
         return;
       }
 
@@ -312,6 +320,7 @@ export function PetOverlay({
           },
         );
         if (!motionPolicy.animationsEnabled) player.pause();
+        setRenderReady(true);
       } catch (err) {
         console.warn('[pets] pixi atlas load failed', resolved, charId, err);
         currentAnim.current = null;
@@ -322,6 +331,10 @@ export function PetOverlay({
 
   const playAnimRef = React.useRef(playAnim);
   playAnimRef.current = playAnim;
+
+  React.useEffect(() => {
+    setRenderReady(false);
+  }, [characterId, motionPolicy.animationsEnabled]);
 
   React.useEffect(() => {
     if (motionPolicy.animationsEnabled) playerRef.current.resume();
@@ -355,6 +368,7 @@ export function PetOverlay({
     animCache.current.clear();
     currentAnim.current = null;
     initOnce.current = false;
+    setRenderReady(false);
 
     const s0 = reducePetEvent(createInitialPetState(), { type: 'boot' });
     stateRef.current = s0;
@@ -535,7 +549,7 @@ export function PetOverlay({
 
   // Play current machine anim (walk/idle/sleep transitions). No texture thrash.
   React.useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !motionPolicy.animationsEnabled) return;
     void playAnim(animLabel);
     const s = stateRef.current;
     if (s.anim === 'idlePrimary' && s.welcomePlayed) {
@@ -543,7 +557,7 @@ export function PetOverlay({
     } else if (s.anim !== 'idleFun') {
       schedulerRef.current?.onHighPriority();
     }
-  }, [enabled, animLabel, playAnim]);
+  }, [enabled, animLabel, motionPolicy.animationsEnabled, playAnim]);
 
   // Scheduler tick
   React.useEffect(() => {
@@ -848,9 +862,10 @@ export function PetOverlay({
         data-pet-position-locked={positionLocked ? 'true' : 'false'}
         data-pet-edge-snapping={edgeSnapping ? 'true' : 'false'}
         data-pet-animation-level={animationLevel}
+        data-pet-render-ready={renderReady ? 'true' : 'false'}
         data-pet-reaction={runtimeReaction}
         data-pet-show-diag={showDiagnostics ? 'true' : 'false'}
-        data-pet-renderer="pixi"
+        data-pet-renderer={motionPolicy.animationsEnabled ? 'pixi' : 'static-image'}
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
@@ -873,7 +888,20 @@ export function PetOverlay({
             border: 'none',
             boxShadow: 'none',
           }}
-        />
+        >
+          {!motionPolicy.animationsEnabled ? (
+            <img
+              src={staticPreview}
+              alt=""
+              aria-hidden="true"
+              data-pet-static-frame="true"
+              className="block h-full w-full object-contain"
+              style={{ imageRendering: 'pixelated' }}
+              onLoad={() => setRenderReady(true)}
+              onError={() => setRenderReady(false)}
+            />
+          ) : null}
+        </div>
         <span className="sr-only" role="status" aria-live="polite">
           {runtimeReaction === 'idle' ? 'Pet is idle' : `Pet status: ${runtimeReaction}`}
         </span>

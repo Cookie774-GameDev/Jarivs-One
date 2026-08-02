@@ -19,8 +19,10 @@ describe('cleanTextForSpeech', () => {
     expect(out).toContain('code');
   });
 
-  it('converts links to their label and bare URLs to "link"', () => {
-    expect(cleanTextForSpeech('See [the docs](https://example.com/docs).')).toContain('the docs');
+  it('replaces citations and bare URLs with deterministic accessibility copy', () => {
+    expect(cleanTextForSpeech('See [the docs](https://example.com/docs).')).toContain(
+      'citation omitted',
+    );
     expect(cleanTextForSpeech('Go to https://example.com/page now')).toContain('link');
     expect(cleanTextForSpeech('Go to https://example.com/page now')).not.toContain('example.com');
   });
@@ -32,9 +34,10 @@ describe('cleanTextForSpeech', () => {
     expect(out).toContain('Done.');
   });
 
-  it('reads code verbatim when readCode=true', () => {
+  it('never reads code verbatim even when the legacy readCode flag is true', () => {
     const out = cleanTextForSpeech('```\nhello world\n```', { readCode: true });
-    expect(out).toContain('hello world');
+    expect(out).toContain('code block');
+    expect(out).not.toContain('hello world');
   });
 
   it('flattens bullet and numbered lists', () => {
@@ -93,24 +96,38 @@ describe('pullNewSpeechSegments', () => {
   it('returns only newly completed sentences from streamed text', () => {
     const first = pullNewSpeechSegments('Hello there. How are', 0);
     expect(first.segments).toEqual(['Hello there.']);
-    const second = pullNewSpeechSegments('Hello there. How are you today?', first.nextSpokenCleanLength);
+    const second = pullNewSpeechSegments(
+      'Hello there. How are you today?',
+      first.nextSpokenCleanLength,
+    );
     expect(second.segments).toEqual(['How are you today?']);
   });
 
-  it('starts speaking early word chunks before a sentence ends', () => {
+  it('withholds early word chunks until the sentence is complete', () => {
     const first = pullNewSpeechSegments('Today is', 0);
-    expect(first.segments).toEqual(['Today is']);
+    expect(first.segments).toEqual([]);
     const second = pullNewSpeechSegments('Today is Thursday', first.nextSpokenCleanLength);
-    expect(second.segments).toEqual(['Thursday']);
+    expect(second.segments).toEqual([]);
     const complete = pullNewSpeechSegments('Today is Thursday.', 0);
     expect(complete.segments).toEqual(['Today is Thursday.']);
+  });
+
+  it('recognizes Unicode sentence boundaries', () => {
+    expect(pullNewSpeechSegments('Ready。 Next！ Final？', 0).segments).toEqual([
+      'Ready。',
+      'Next！',
+      'Final？',
+    ]);
   });
 });
 
 describe('pullRemainingSpeech', () => {
   it('speaks the tail without a closing delimiter at stream end', () => {
     const partial = pullNewSpeechSegments('Hello there. Still going', 0);
-    const tail = pullRemainingSpeech('Hello there. Still going strong', partial.nextSpokenCleanLength);
+    const tail = pullRemainingSpeech(
+      'Hello there. Still going strong',
+      partial.nextSpokenCleanLength,
+    );
     expect(tail.remainder).toBe('Still going strong');
   });
 });
@@ -124,5 +141,22 @@ describe('looksLikeRawData', () => {
   });
   it('passes normal prose', () => {
     expect(looksLikeRawData('This is a normal sentence.')).toBe(false);
+  });
+
+  it('replaces JSON, paths, action macros, and citations with deterministic safe copy', () => {
+    expect(cleanTextForSpeech('{"token":"value"}')).toMatch(/structured data omitted/i);
+    const cleaned = cleanTextForSpeech(
+      'Use C:\\Users\\viper\\secret.txt. {action}\nSee [private source](https://example.test).',
+    );
+    expect(cleaned).not.toMatch(/C:\\Users|\{action\}|private source|example\.test/i);
+    expect(cleaned).toMatch(/path omitted|citation omitted/i);
+  });
+
+  it('omits inline code, embedded JSON, relative paths, and hidden metadata', () => {
+    const cleaned = cleanTextForSpeech(
+      'Run `rm -rf` in app/src/features/voice. Result: {"status":"ok"}. <developer>hidden</developer>',
+    );
+    expect(cleaned).not.toMatch(/rm -rf|app\/src|"status"|<developer>|hidden/i);
+    expect(cleaned).toMatch(/code omitted|path omitted|structured data omitted|metadata omitted/i);
   });
 });

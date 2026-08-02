@@ -36,6 +36,7 @@ function nativeConnection(input: {
     mode: 'native-api' as const,
     authSource: input.authSource ?? 'api-key',
     capabilities: capabilities(input.capabilities ?? {}),
+    promptTransport: 'native-system' as const,
     enabled: true,
   });
 }
@@ -112,6 +113,7 @@ export const OLLAMA_LOCAL_CONNECTION: Readonly<ProviderConnection> = Object.free
     localOnly: true,
     subscriptionQuota: false,
   }),
+  promptTransport: 'native-system',
   enabled: true,
 });
 

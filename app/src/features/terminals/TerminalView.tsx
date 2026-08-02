@@ -22,7 +22,8 @@
  *   metrics; once the real font swaps in, glyphs render at a different
  *   advance and the canvas grid no longer matches -> overlapping text at
  *   smaller tile sizes. Fix:
- *     a) await `document.fonts.ready` before `term.open()`,
+ *     a) briefly await `document.fonts.ready` before `term.open()`, without
+ *        allowing an unavailable font to block terminal startup forever,
  *     b) re-assign `fontFamily` after open() to bust xterm's metric cache,
  *     c) one belt-and-braces re-fit when fonts settle later.
  *
@@ -34,7 +35,7 @@ import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 
 import { Mic, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Terminal } from 'xterm';
+import { Terminal, type ITheme } from 'xterm';
 import { isTauri } from '@/lib/utils';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
@@ -58,6 +59,12 @@ import {
   resolveAgentForSlug,
 } from './agentPromptDelivery';
 import {
+  getOrCreateTerminalContextSession,
+  getTerminalContextSession,
+  subscribeTerminalContextSessions,
+  updateTerminalContextSession,
+} from './terminalContextSessionStore';
+import {
   createTerminalOutputBuffer,
   filterStartupTerminalOutput,
   findAltScreenEnter,
@@ -71,10 +78,7 @@ import {
 import { TERMINAL_CLEAR_SUPPRESS_MS } from './terminalClear';
 import { createWebglDisposeTracker } from './terminalDispose';
 import { shouldSendTerminalResize, type TerminalGridSize } from './terminalGeometry';
-import {
-  applyTerminalFollowScroll,
-  terminalUserHasScrolled,
-} from './terminalViewport';
+import { applyTerminalFollowScroll, terminalUserHasScrolled } from './terminalViewport';
 import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
 import { startSttVolumeMeter, stopSttVolumeMeter } from '@/features/composer-stt/sttVolume';
 import { VoiceService } from '@/features/voice/VoiceService';
@@ -100,9 +104,122 @@ import {
 import { registerTerminalSnapshotFlush } from './terminalSnapshotRegistry';
 import { terminalRestartDecision } from './terminalRestartPolicy';
 import {
+  attachTerminalExecution,
+  ensureTerminalExecutionExitListener,
+  failTerminalExecutionBeforeNativeExit,
+  hasCanonicalTerminalExecution,
   markTerminalExecution,
+  observeTerminalExecutionNativeExit,
+  requestTerminalExecutionCancellation,
+  terminalCancellationDisposition,
+  terminalExecutionCancellationToken,
+  type NativeTerminalExitPayload,
   useTerminalExecutionStore,
 } from './terminalExecutionStore';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import { TerminalCommandPalette } from './TerminalCommandPalette';
+import {
+  installTerminalCli,
+  installTerminalShellIntegration,
+  uninstallTerminalCli,
+  uninstallTerminalShellIntegration,
+} from './terminalCliInstall';
+import {
+  createTerminalSlashIntegration,
+  isSshSessionCommand,
+  isSupportedLocalShellCommand,
+  terminalPaletteRequestTargetsPane,
+  TERMINAL_VIBESPACE_PALETTE_EVENT,
+} from './terminalSlashIntegration';
+import type { TerminalPromptEvidence } from './terminalCommandFoundation';
+import {
+  applyTerminalTheme,
+  resolveTerminalDocumentTheme,
+  resolveTerminalTheme,
+} from './terminalTheme';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
+
+const TERMINAL_FONT_READINESS_TIMEOUT_MS = 2_000;
+const TERMINAL_OUTPUT_READINESS_TIMEOUT_MS = 2_000;
+
+type TerminalVoiceFailureKind = 'unsupported' | 'startup';
+
+export function formatTerminalVoiceFailure(kind: TerminalVoiceFailureKind): string {
+  const details =
+    kind === 'unsupported'
+      ? {
+          actionLabel: 'Terminal speech recognition availability',
+          reason: 'Speech-to-text is not available in this runtime',
+        }
+      : {
+          actionLabel: 'Terminal dictation startup',
+          reason:
+            'Speech-to-text could not start in the terminal. Check microphone access, then try again',
+        };
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: details.actionLabel,
+    reason: details.reason,
+  }).text;
+}
+
+export function awaitTerminalFontReadiness(
+  readiness: Promise<unknown> | undefined,
+  timeoutMs = TERMINAL_FONT_READINESS_TIMEOUT_MS,
+): Promise<boolean> {
+  if (!readiness) return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ready);
+    };
+    const timer = setTimeout(() => settle(false), Math.max(0, timeoutMs));
+
+    void readiness.then(
+      () => settle(true),
+      () => settle(false),
+    );
+  });
+}
+
+export function awaitTerminalOutputReadiness(
+  readiness: Promise<boolean>,
+  timeoutMs = TERMINAL_OUTPUT_READINESS_TIMEOUT_MS,
+): Promise<boolean> {
+  return awaitTerminalFontReadiness(readiness, timeoutMs);
+}
+
+export function terminalSmokeFailureCode(error: string | null): string | undefined {
+  if (!error) return undefined;
+  if (error.includes('canonical_terminal_handle_unavailable_after_restart')) {
+    return 'kernel_terminal_authority_unavailable';
+  }
+  if (error.includes('canonical_terminal_native_attach_failed')) {
+    return 'kernel_terminal_native_attach_failed';
+  }
+  if (error.includes('Canonical terminal ownership handoff failed')) {
+    return 'kernel_terminal_authority_handoff_failed';
+  }
+  if (error.includes('terminal: invalid cancellation token')) {
+    return 'kernel_terminal_cancellation_token_rejected';
+  }
+  if (error.includes('terminal: open pty failed')) return 'kernel_terminal_native_open_failed';
+  if (error.includes('terminal: spawn failed')) return 'kernel_terminal_native_spawn_failed';
+  if (error.includes('terminal: reader clone failed'))
+    return 'kernel_terminal_native_reader_failed';
+  if (error.includes('terminal: writer take failed')) return 'kernel_terminal_native_writer_failed';
+  return 'kernel_terminal_initialization_failed';
+}
 
 /**
  * When the parent owns its own chrome (`<TileGrid>`'s pane-tile or the
@@ -115,110 +232,246 @@ interface SpawnResult {
   sessionId: string;
   /** Resolved working directory reported by the backend. */
   cwd?: string;
+  /** True when the backend launched the shell with the startup command. */
+  startupCommandConsumed: boolean;
 }
-interface OutputPayload {
+export interface OutputPayload {
   sessionId: string;
   data: string;
 }
-interface ExitPayload {
-  sessionId: string;
-  code: number | null;
+
+const MAX_EARLY_TERMINAL_OUTPUT_CHUNKS = 32;
+const MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS = 65_536;
+
+export function createTerminalOutputLatch(onExactOutput: (payload: OutputPayload) => void): {
+  observe(payload: OutputPayload): void;
+  bind(sessionId: string): boolean;
+  readiness: Promise<boolean>;
+} {
+  let boundSessionId: string | undefined;
+  let pending: OutputPayload[] = [];
+  let pendingCharacters = 0;
+  let readinessResolved = false;
+  let resolveReadiness!: (ready: boolean) => void;
+  const readiness = new Promise<boolean>((resolve) => {
+    resolveReadiness = resolve;
+  });
+
+  const deliver = (payload: OutputPayload): boolean => {
+    if (payload.sessionId !== boundSessionId) return false;
+    if (!readinessResolved) {
+      readinessResolved = true;
+      resolveReadiness(true);
+    }
+    onExactOutput(payload);
+    return true;
+  };
+
+  return {
+    observe(payload) {
+      if (boundSessionId !== undefined) {
+        deliver(payload);
+        return;
+      }
+      if (payload.data.length > MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS) {
+        return;
+      }
+      while (
+        pending.length > 0 &&
+        (pending.length >= MAX_EARLY_TERMINAL_OUTPUT_CHUNKS ||
+          pendingCharacters + payload.data.length > MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS)
+      ) {
+        pendingCharacters -= pending.shift()!.data.length;
+      }
+      pending.push(payload);
+      pendingCharacters += payload.data.length;
+    },
+    bind(sessionId) {
+      if (boundSessionId !== undefined && boundSessionId !== sessionId) return false;
+      boundSessionId = sessionId;
+      const exact = pending.filter((payload) => payload.sessionId === sessionId);
+      pending = [];
+      pendingCharacters = 0;
+      for (const payload of exact) deliver(payload);
+      return exact.length > 0;
+    },
+    readiness,
+  };
 }
 
-/* ---------- Cozy palette mapped to xterm ITheme ----------
- * Dark: warm-wood/coffee surface, cream ink, copper cursor, terracotta /
- *       honey / sage / lavender ANSI palette.
- * Light: cream paper surface, brown ink, deeper copper cursor with the
- *        same hue family, just dropped in luminance for AA contrast.
- */
+export function createTerminalExitLatch(
+  onExactExit: (payload: NativeTerminalExitPayload) => void,
+): {
+  observe(payload: NativeTerminalExitPayload): void;
+  bind(sessionId: string): boolean;
+} {
+  const pending = new Map<string, NativeTerminalExitPayload>();
+  let boundSessionId: string | undefined;
+  let delivered = false;
 
-const DARK_THEME = {
-  foreground: '#f5e6c8',
-  background: '#2a2018',
-  cursor: '#d97757',
-  cursorAccent: '#2a2018',
-  selectionBackground: '#d97757',
-  selectionForeground: '#2a2018',
-  black: '#2a2018',
-  red: '#d97757', // terracotta
-  green: '#7c9870', // sage
-  yellow: '#d4a258', // honey
-  blue: '#9d8aa8', // lavender
-  magenta: '#c97b6e', // rose
-  cyan: '#7c9870',
-  white: '#f5e6c8',
-  brightBlack: '#5d4c3c',
-  brightRed: '#d97757',
-  brightGreen: '#7c9870',
-  brightYellow: '#d4a258',
-  brightBlue: '#9d8aa8',
-  brightMagenta: '#c97b6e',
-  brightCyan: '#7c9870',
-  brightWhite: '#fffbf5',
-};
+  const deliver = (payload: NativeTerminalExitPayload): boolean => {
+    if (delivered || payload.sessionId !== boundSessionId) return false;
+    delivered = true;
+    onExactExit(payload);
+    return true;
+  };
 
-const LIGHT_THEME = {
-  foreground: '#3a2e22',
-  background: '#fffbf5',
-  cursor: '#c66442',
-  cursorAccent: '#fffbf5',
-  selectionBackground: '#c66442',
-  selectionForeground: '#fffbf5',
-  black: '#3a2e22',
-  red: '#c66442',
-  green: '#5d7855',
-  yellow: '#bf8d44',
-  blue: '#8c7796',
-  magenta: '#b96e62',
-  cyan: '#5d7855',
-  white: '#3a2e22',
-  brightBlack: '#6b5d4f',
-  brightRed: '#c66442',
-  brightGreen: '#5d7855',
-  brightYellow: '#bf8d44',
-  brightBlue: '#8c7796',
-  brightMagenta: '#b96e62',
-  brightCyan: '#5d7855',
-  brightWhite: '#3a2e22',
-};
+  return {
+    observe(payload) {
+      if (boundSessionId === undefined) {
+        if (!pending.has(payload.sessionId)) pending.set(payload.sessionId, payload);
+        return;
+      }
+      deliver(payload);
+    },
+    bind(sessionId) {
+      if (boundSessionId !== undefined && boundSessionId !== sessionId) return false;
+      boundSessionId = sessionId;
+      const early = pending.get(sessionId);
+      pending.clear();
+      return early ? deliver(early) : false;
+    },
+  };
+}
 
-const JARVIS_THEME = {
-  foreground: '#eee4d7',
-  background: '#080a0f',
-  cursor: '#ff8500',
-  cursorAccent: '#080a0f',
-  selectionBackground: '#7a410f',
-  selectionForeground: '#fff5e8',
-  black: '#080a0f',
-  red: '#ff5d47',
-  green: '#47d45b',
-  yellow: '#ffb000',
-  blue: '#4ca8ff',
-  magenta: '#b37aff',
-  cyan: '#45d4d4',
-  white: '#eee4d7',
-  brightBlack: '#5f626b',
-  brightRed: '#ff7b68',
-  brightGreen: '#6ce17c',
-  brightYellow: '#ffc247',
-  brightBlue: '#7bc0ff',
-  brightMagenta: '#cb9cff',
-  brightCyan: '#7be3e3',
-  brightWhite: '#fff8ef',
-};
+export async function attachTerminalViewExecution(
+  executionId: string | undefined,
+  sessionId: string,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    attach?: typeof attachTerminalExecution;
+  } = {},
+): Promise<boolean> {
+  if (!executionId) return true;
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (!isCanonical(executionId)) return true;
+  return (dependencies.attach ?? attachTerminalExecution)(executionId, sessionId);
+}
+
+export function canonicalTerminalSpawnToken(
+  executionId: string | undefined,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    readToken?: typeof terminalExecutionCancellationToken;
+  } = {},
+): string | undefined {
+  if (!executionId) return undefined;
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (!isCanonical(executionId)) return undefined;
+  const token = (dependencies.readToken ?? terminalExecutionCancellationToken)(executionId);
+  if (!token) {
+    throw new TypeError('canonical_terminal_handle_unavailable_after_restart');
+  }
+  return token;
+}
+
+export async function settleTerminalInitializationFailure(
+  input: Readonly<{
+    executionId?: string;
+    sessionId: string;
+    nativeSessionStarted: boolean;
+    executionAttached: boolean;
+  }>,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    failBeforeNativeExit?: typeof failTerminalExecutionBeforeNativeExit;
+    requestCancellation?: typeof requestTerminalExecutionCancellation;
+    killManual?: (sessionId: string) => Promise<unknown>;
+  } = {},
+): Promise<void> {
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (input.executionId && isCanonical(input.executionId)) {
+    if (input.executionAttached) {
+      await (dependencies.requestCancellation ?? requestTerminalExecutionCancellation)(
+        input.executionId,
+      );
+    } else {
+      await (dependencies.failBeforeNativeExit ?? failTerminalExecutionBeforeNativeExit)(
+        input.executionId,
+        input.nativeSessionStarted ? 'native_attach_failed' : 'native_spawn_failed',
+      );
+    }
+  }
+  if (input.nativeSessionStarted && input.sessionId && !input.executionAttached) {
+    await (
+      dependencies.killManual ??
+      ((sessionId) => invoke('terminal_kill', { sessionId }).catch(() => undefined))
+    )(input.sessionId).catch(() => undefined);
+  }
+}
 
 const CURRENT_INPUT_FLUSH_MS = 160;
 
-function pickTheme() {
-  if (typeof document === 'undefined') return DARK_THEME;
-  const t = document.documentElement.getAttribute('data-theme');
-  if (t === 'light') return LIGHT_THEME;
-  if (t === 'jarvis') return JARVIS_THEME;
-  return DARK_THEME;
+function currentTerminalTheme() {
+  const documentTheme =
+    typeof document === 'undefined'
+      ? 'dark'
+      : resolveTerminalDocumentTheme(document.documentElement.getAttribute('data-theme'));
+  return resolveTerminalTheme({ documentTheme, explicitUserTheme: null });
+}
+
+function terminalCursorBlinkEnabled(): boolean {
+  const documentTheme =
+    typeof document === 'undefined'
+      ? 'dark'
+      : resolveTerminalDocumentTheme(document.documentElement.getAttribute('data-theme'));
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return documentTheme !== 'monochrome' && !reducedMotion;
+}
+
+export function observeTerminalDocumentTheme(
+  target: Parameters<typeof applyTerminalTheme>[0] & {
+    options: { cursorBlink?: boolean };
+  },
+  container: Pick<HTMLElement, 'style'>,
+  explicitUserTheme: Readonly<ITheme> | null,
+): MutationObserver {
+  const applyDocumentTheme = () => {
+    target.options.cursorBlink = terminalCursorBlinkEnabled();
+    const theme = applyTerminalTheme(target, {
+      documentTheme: resolveTerminalDocumentTheme(
+        document.documentElement.getAttribute('data-theme'),
+      ),
+      explicitUserTheme,
+    });
+    if (theme.background) {
+      container.style.backgroundColor = theme.background;
+    }
+  };
+
+  applyDocumentTheme();
+  const observer = new MutationObserver((mutations) => {
+    if (mutations.some((mutation) => mutation.attributeName === 'data-theme')) {
+      applyDocumentTheme();
+    }
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
+  return observer;
 }
 
 function commandToInput(command: string): string {
   return command.endsWith('\n') || command.endsWith('\r') ? command : `${command}\r`;
+}
+
+function sameTerminalPromptEvidence(
+  left: TerminalPromptEvidence,
+  right: TerminalPromptEvidence,
+): boolean {
+  return (
+    left.promptProtocol === right.promptProtocol &&
+    left.atPrompt === right.atPrompt &&
+    left.alternateScreen === right.alternateScreen &&
+    left.interactiveProgram === right.interactiveProgram &&
+    left.localShell === right.localShell &&
+    left.passwordPrompt === right.passwordPrompt &&
+    left.sshSession === right.sshSession
+  );
 }
 
 export function TerminalView({
@@ -245,8 +498,7 @@ export function TerminalView({
   projectId,
   projectName,
 }: TerminalViewProps): JSX.Element {
-  const resolvedAgentMode =
-    agentMode ?? (agentSlug ? 'default' : undefined);
+  const resolvedAgentMode = agentMode ?? (agentSlug ? 'default' : undefined);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -266,14 +518,31 @@ export function TerminalView({
   const userHasScrolledRef = useRef(false);
   const currentInputRef = useRef('');
   const currentInputFlushTimerRef = useRef<number | null>(null);
+  const contextDeliveryQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(existingSessionId ?? null);
   const [isFocused, setIsFocused] = useState(false);
   const [dictating, setDictating] = useState(false);
+  const [terminalPaletteOpen, setTerminalPaletteOpen] = useState(false);
+  const [terminalPromptEvidence, setTerminalPromptEvidence] = useState<TerminalPromptEvidence>(() =>
+    Object.freeze({
+      promptProtocol: 'none',
+      atPrompt: false,
+      alternateScreen: false,
+      interactiveProgram: false,
+      localShell: isSupportedLocalShellCommand(command),
+      passwordPrompt: false,
+      sshSession: isSshSessionCommand(startupCommand),
+    }),
+  );
   const setComposerSttListening = useUIStore((s) => s.setComposerSttListening);
   const [dropKind, setDropKind] = useState<'file' | 'context' | null>(null);
   const [powerUpTitle, setPowerUpTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [initializationPhase, setInitializationPhase] = useState('kernel_terminal_phase_mounted');
+  const terminalExecutionStatus = useTerminalExecutionStore((state) =>
+    executionId ? state.executions[executionId]?.status : undefined,
+  );
   const powerUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const coordinationSummaryFor = async (
@@ -314,6 +583,33 @@ export function TerminalView({
   useEffect(() => {
     onBlurRef.current = onBlur;
   }, [onBlur]);
+
+  useEffect(() => {
+    const openPalette = () => setTerminalPaletteOpen(true);
+    const onPaletteRequest = (event: Event) => {
+      if (!terminalPaletteRequestTargetsPane(event, paneId)) return;
+      openPalette();
+    };
+    const onPaletteHotkey = (event: KeyboardEvent) => {
+      if (
+        !focusedRef.current ||
+        !(event.ctrlKey || event.metaKey) ||
+        !event.shiftKey ||
+        event.key.toLowerCase() !== 'p'
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openPalette();
+    };
+    window.addEventListener(TERMINAL_VIBESPACE_PALETTE_EVENT, onPaletteRequest);
+    window.addEventListener('keydown', onPaletteHotkey, true);
+    return () => {
+      window.removeEventListener(TERMINAL_VIBESPACE_PALETTE_EVENT, onPaletteRequest);
+      window.removeEventListener('keydown', onPaletteHotkey, true);
+    };
+  }, [paneId]);
   useEffect(() => {
     const slug = agentSlug ?? null;
     agentSlugRef.current = slug;
@@ -372,6 +668,18 @@ export function TerminalView({
     deliveredModeRef.current = mode;
     const sessionCwd = cwdRef.current;
     if (!sessionCwd) return;
+    const terminalContextSession = getTerminalContextSession(sid);
+    if (terminalContextSession && terminalContextSession.agentSlug !== slug) {
+      updateTerminalContextSession(
+        {
+          terminalSessionId: sid,
+          paneId: terminalContextSession.paneId,
+          projectId: terminalContextSession.projectId,
+        },
+        { agentSlug: slug },
+      );
+      return;
+    }
     void (async () => {
       const coordinationSummary = await coordinationSummaryFor(mode, sessionCwd);
       const result = await deliverAgentTerminalContext({
@@ -383,6 +691,7 @@ export function TerminalView({
         projectName: projectName ?? null,
         excludeSessionId: sid,
         coordinationSummary,
+        terminalContextSession,
       });
       if (!result.ok && result.error) {
         console.warn('[Jarvis] agent briefing re-delivery failed:', result.error);
@@ -390,6 +699,73 @@ export function TerminalView({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentSlug, resolvedAgentMode]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let cancelled = false;
+
+    const regenerate = (session: ReturnType<typeof getOrCreateTerminalContextSession>): void => {
+      if (session.terminalSessionId !== activeSessionId) return;
+      const sessionCwd = cwdRef.current;
+      if (!sessionCwd) return;
+
+      const slug = session.agentSlug;
+      const mode = agentModeRef.current;
+      contextDeliveryQueueRef.current = contextDeliveryQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (cancelled) return;
+          const result = await deliverAgentTerminalContext({
+            cwd: sessionCwd,
+            agentSlug: slug,
+            agentMode: mode,
+            terminalId: activeSessionId,
+            projectId: session.projectId,
+            projectName: projectName ?? null,
+            excludeSessionId: activeSessionId,
+            coordinationSummary: await coordinationSummaryFor(mode, sessionCwd),
+            terminalContextSession: session,
+          });
+          if (cancelled) return;
+          if (result.ok) {
+            deliveredSlugRef.current = slug;
+            deliveredModeRef.current = mode;
+          } else if (result.error) {
+            console.warn('[Jarvis] Context briefing regeneration failed:', result.error);
+          }
+        });
+    };
+
+    let initialSession =
+      getTerminalContextSession(activeSessionId) ??
+      getOrCreateTerminalContextSession({
+        terminalSessionId: activeSessionId,
+        paneId: paneId ?? null,
+        projectId: projectId ?? null,
+      });
+    if (
+      initialSession.contextRevision === 0 &&
+      initialSession.agentSlug === null &&
+      agentSlugRef.current !== null
+    ) {
+      initialSession = updateTerminalContextSession(
+        {
+          terminalSessionId: activeSessionId,
+          paneId: initialSession.paneId,
+          projectId: initialSession.projectId,
+        },
+        { agentSlug: agentSlugRef.current },
+      );
+    }
+
+    const unsubscribe = subscribeTerminalContextSessions(regenerate);
+    regenerate(initialSession);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, paneId, projectId, projectName]);
 
   useEffect(() => {
     const sid = activeSessionId;
@@ -462,8 +838,30 @@ export function TerminalView({
     let deferredRestartCommand: string | null = null;
     let restartConfirmationHandled = false;
     let startupRestoreMode = false;
+    let sshSession = isSshSessionCommand(startupCommand);
     const webglDispose = createWebglDisposeTracker();
     const inputTracker = createPersistedInputTracker(currentInputRef.current);
+    const slashIntegration = createTerminalSlashIntegration({ command });
+    const publishPromptEvidence = (next: TerminalPromptEvidence) => {
+      setTerminalPromptEvidence((current) =>
+        sameTerminalPromptEvidence(current, next) ? current : next,
+      );
+    };
+    const outputLatch = createTerminalOutputLatch((payload) => {
+      publishPromptEvidence(slashIntegration.observeOutput(payload.data));
+      if (Date.now() < suppressOutputUntilRef.current) return;
+      enqueueTerminalChunks(payload.data);
+    });
+    const exitLatch = createTerminalExitLatch((payload) => {
+      if (exitFiredRef.current) return;
+      exitFiredRef.current = true;
+      const notifyParent = () => onExitRef.current?.(payload.code);
+      if (executionId && hasCanonicalTerminalExecution(executionId)) {
+        void observeTerminalExecutionNativeExit(payload).finally(notifyParent);
+      } else {
+        notifyParent();
+      }
+    });
 
     const isInteractiveAgentSession = (sid: string): boolean => {
       const currentSession = useTerminalTranscriptStore.getState().sessions[sid];
@@ -490,6 +888,7 @@ export function TerminalView({
           projectName: projectName ?? null,
           excludeSessionId: sid,
           coordinationSummary: await coordinationSummaryFor(mode, sessionCwd),
+          terminalContextSession: getTerminalContextSession(sid),
         });
         if (result.ok) {
           deliveredSlugRef.current = slug;
@@ -548,7 +947,9 @@ export function TerminalView({
         const altIdx = findAltScreenEnter(chunk);
         if (altIdx >= 0) {
           ignoreClearsUntilRef.current = 0;
-          return filterStartupTerminalOutput(chunk.slice(0, altIdx), filterOpts) + chunk.slice(altIdx);
+          return (
+            filterStartupTerminalOutput(chunk.slice(0, altIdx), filterOpts) + chunk.slice(altIdx)
+          );
         }
         return filterStartupTerminalOutput(chunk, filterOpts);
       }
@@ -589,14 +990,6 @@ export function TerminalView({
           /* backend may have torn down -- ignore */
         });
       });
-    };
-
-    const applyThemeToTerm = () => {
-      const t = termRef.current;
-      if (!t) return;
-      // xterm v5 exposes Terminal.options as a mutable proxy; assigning
-      // a new theme triggers a redraw with the new palette.
-      t.options.theme = pickTheme();
     };
 
     const flushTerminalSnapshot = async (): Promise<void> => {
@@ -715,10 +1108,10 @@ export function TerminalView({
         fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize,
         lineHeight: fontSize <= 10 ? 1.0 : 1.08,
-        cursorBlink: true,
+        cursorBlink: terminalCursorBlinkEnabled(),
         allowProposedApi: true,
         scrollback: 5000,
-        theme: pickTheme(),
+        theme: currentTerminalTheme(),
       });
       fit = new FitAddon();
       term.loadAddon(fit);
@@ -726,19 +1119,18 @@ export function TerminalView({
 
       if (cancelled) return;
 
-      // Critical: wait for JetBrains Mono (loaded via async @import in
-      // globals.css) before xterm measures cell width inside `open()`.
+      // Prefer waiting for JetBrains Mono before xterm measures cell width
+      // inside `open()`, but fail open after a short bound: browser font
+      // readiness may remain pending indefinitely in an offline WebView.
       // Without this gate, xterm bakes in fallback monospace metrics and
       // the canvas grid stops matching rendered glyphs once the real font
       // swaps in -> visible text overlap at smaller tile sizes (the
       // "mushed words" bug at 2x2+).
-      try {
-        await document.fonts?.ready;
-      } catch {
-        /* not all environments expose document.fonts.ready -- degrade */
-      }
+      setInitializationPhase('kernel_terminal_phase_font_wait');
+      await awaitTerminalFontReadiness(document.fonts?.ready);
       if (cancelled) return;
 
+      setInitializationPhase('kernel_terminal_phase_xterm_open');
       term.open(containerEl);
 
       // GPU renderer. xterm's default DOM renderer re-lays-out HTML rows on
@@ -811,11 +1203,30 @@ export function TerminalView({
         const sid = sessionRef.current;
         if (!sid) return;
 
-        // Track only printable draft input; terminal protocol and control
-        // sequences are never allowed into persisted state.
         const store = useTerminalTranscriptStore.getState();
         const currentSession = store.sessions[sid];
-        const inputUpdate = inputTracker.push(data);
+        const interactiveProgram = detectInteractiveAgentCli({
+          command: currentSession?.command ?? startupCommand ?? command,
+          startupCommand,
+          transcript: currentSession?.text ?? '',
+        });
+        const capture = slashIntegration.pushInput(data, {
+          draftEmpty: inputTracker.currentDraft().length === 0,
+          interactiveProgram,
+          passwordPrompt: false,
+          sshSession,
+        });
+        publishPromptEvidence(slashIntegration.snapshot());
+        if (capture.openPalette) {
+          setTerminalPaletteOpen(true);
+          return;
+        }
+        const forwardData = capture.forwardData;
+        if (!forwardData) return;
+
+        // Track only printable forwarded input; captured palette bytes,
+        // terminal protocol, and control sequences never enter persisted state.
+        const inputUpdate = inputTracker.push(forwardData);
         currentInputRef.current = inputUpdate.draft;
         if (inputUpdate.flushNow) {
           if (currentInputFlushTimerRef.current != null) {
@@ -827,19 +1238,22 @@ export function TerminalView({
           scheduleCurrentInputFlush();
         }
 
-        if (
-          inputUpdate.submittedText &&
-          agentSlugRef.current &&
-          detectInteractiveAgentCli({
-            command: currentSession?.command ?? startupCommand ?? command,
-            startupCommand,
-            transcript: currentSession?.text ?? '',
-          })
-        ) {
+        if (inputUpdate.submittedText && agentSlugRef.current && interactiveProgram) {
           ensureAgentBriefingForSession(sid);
         }
+        if (inputUpdate.submittedText && isSshSessionCommand(inputUpdate.submittedText)) {
+          sshSession = true;
+          publishPromptEvidence(
+            slashIntegration.updateRuntime({
+              draftEmpty: true,
+              interactiveProgram,
+              passwordPrompt: false,
+              sshSession,
+            }),
+          );
+        }
 
-        invoke('terminal_write', { sessionId: sid, data }).catch(() => {
+        invoke('terminal_write', { sessionId: sid, data: forwardData }).catch(() => {
           /* ignore: backend probably gone */
         });
       });
@@ -848,12 +1262,13 @@ export function TerminalView({
       // Each await is paired with a cancelled re-check so we never leak a
       // listener when the component unmounts mid-init (StrictMode dev).
       try {
+        if (executionId && hasCanonicalTerminalExecution(executionId)) {
+          setInitializationPhase('kernel_terminal_phase_execution_exit_listener');
+          await ensureTerminalExecutionExitListener();
+        }
+        setInitializationPhase('kernel_terminal_phase_output_listener');
         const u1 = await listen<OutputPayload>('terminal://output', (e) => {
-          if (e.payload.sessionId !== sessionRef.current) return;
-          if (Date.now() < suppressOutputUntilRef.current) return;
-          // Reassemble split ESC sequences before rendering or persisting so
-          // orphan `]4;rgb:` / `[0[` fragments never land in xterm.
-          enqueueTerminalChunks(e.payload.data);
+          outputLatch.observe(e.payload);
         });
         if (cancelled) {
           u1();
@@ -861,11 +1276,9 @@ export function TerminalView({
         }
         unlistenOutput = u1;
 
-        const u2 = await listen<ExitPayload>('terminal://exit', (e) => {
-          if (e.payload.sessionId !== sessionRef.current) return;
-          if (exitFiredRef.current) return;
-          exitFiredRef.current = true;
-          onExitRef.current?.(e.payload.code);
+        setInitializationPhase('kernel_terminal_phase_native_exit_listener');
+        const u2 = await listen<NativeTerminalExitPayload>('terminal://exit', (e) => {
+          exitLatch.observe(e.payload);
         });
         if (cancelled) {
           u2();
@@ -873,6 +1286,12 @@ export function TerminalView({
         }
         unlistenExit = u2;
       } catch (err) {
+        if (executionId && hasCanonicalTerminalExecution(executionId)) {
+          await failTerminalExecutionBeforeNativeExit(
+            executionId,
+            'pre_session_initialization_failed',
+          );
+        }
         if (cancelled) return;
         setError(String(err));
         return;
@@ -889,14 +1308,19 @@ export function TerminalView({
       }
 
       // Spawn or attach.
-      let sid: string;
+      let sid = '';
       let spawnedFresh = false;
+      let nativeSessionStarted = false;
+      let executionAttached = false;
+      let viewSessionBound = false;
+      let nativeStartupCommandConsumed = false;
       let restoredInput = '';
       let sessionCwd: string | null = cwd ?? null;
       let briefingDelivered = false;
       const slugAtSpawn = agentSlugRef.current;
       const modeAtSpawn = agentModeRef.current;
       try {
+        setInitializationPhase('kernel_terminal_phase_restore_state');
         let activeSessions: BackendTerminalInfo[] = [];
         if (existingSessionId != null || paneId) {
           try {
@@ -933,6 +1357,7 @@ export function TerminalView({
           restoredInput = restoreDecision.restoredInput;
           let spawnCommand = command;
           const isRecoveredSession = restoreDecision.source !== 'new-pane';
+          const nativeStartupCommand = isRecoveredSession ? undefined : startupCommand;
           if (isRecoveredSession) {
             const restart = terminalRestartDecision(command, startupCommand);
             spawnCommand = restart.spawnCommand;
@@ -958,6 +1383,7 @@ export function TerminalView({
           // working directory is known, so a CLI spawned directly (e.g.
           // `opencode` as the pane command) reads it on session start.
           if (cwd) {
+            setInitializationPhase('kernel_terminal_phase_agent_briefing');
             const delivery = await deliverAgentTerminalContext({
               cwd,
               agentSlug: slugAtSpawn,
@@ -973,16 +1399,9 @@ export function TerminalView({
             }
           }
 
-          const result = await invoke<SpawnResult>('terminal_spawn', {
-            command: spawnCommand,
-            cwd,
-            rows: term.rows,
-            cols: term.cols,
-            projectId: projectId,
-            projectName: projectName,
-            // Make the assignment discoverable by any process in the pane,
-            // not just AGENTS.md readers (env is inherited by child CLIs).
-            env: slugAtSpawn
+          setInitializationPhase('kernel_terminal_phase_native_spawn');
+          const spawnEnv = {
+            ...(slugAtSpawn
               ? buildAgentSpawnEnv({
                   agentSlug: slugAtSpawn,
                   agentName: resolveAgentForSlug(slugAtSpawn).name,
@@ -990,9 +1409,40 @@ export function TerminalView({
                   cwd: cwd ?? null,
                   projectName: projectName ?? null,
                 })
-              : undefined,
+              : {}),
+            ...(paneId ? { VIBESPACE_PANE_ID: paneId } : {}),
+          };
+          const result = await invoke<SpawnResult>('terminal_spawn', {
+            command: spawnCommand,
+            startupCommand: nativeStartupCommand,
+            cwd,
+            rows: term.rows,
+            cols: term.cols,
+            projectId: projectId,
+            projectName: projectName,
+            cancellationToken: canonicalTerminalSpawnToken(executionId),
+            // Make the assignment discoverable by any process in the pane,
+            // not just AGENTS.md readers (env is inherited by child CLIs).
+            env: Object.keys(spawnEnv).length > 0 ? spawnEnv : undefined,
           });
           sid = result.sessionId;
+          nativeStartupCommandConsumed = result.startupCommandConsumed;
+          nativeSessionStarted = true;
+          if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            setInitializationPhase('kernel_terminal_phase_execution_attach');
+            const attached = await attachTerminalExecution(executionId, sid);
+            if (!attached) throw new TypeError('canonical_terminal_native_attach_failed');
+            executionAttached = true;
+          }
+          sessionRef.current = sid;
+          viewSessionBound = true;
+          if (!cancelled) setActiveSessionId(sid);
+          setInitializationPhase('kernel_terminal_phase_session_bound');
+          if (nativeStartupCommandConsumed && executionId) {
+            markTerminalExecution(executionId, 'running', { sessionId: sid });
+          }
+          outputLatch.bind(sid);
+          if (exitLatch.bind(sid)) return;
           sessionCwd = result.cwd || cwd || null;
           console.log(`[Jarvis] Spawned new PTY session: ${sid}`);
 
@@ -1008,6 +1458,7 @@ export function TerminalView({
               projectName: projectName ?? null,
               excludeSessionId: sid,
               coordinationSummary: await coordinationSummaryFor(modeAtSpawn, sessionCwd),
+              terminalContextSession: getTerminalContextSession(sid),
             });
             briefingDelivered = delivery.ok;
             if (!delivery.ok && delivery.error) {
@@ -1047,6 +1498,7 @@ export function TerminalView({
               projectName: projectName ?? null,
               excludeSessionId: sid,
               coordinationSummary: await coordinationSummaryFor(modeAtSpawn, sessionCwd),
+              terminalContextSession: getTerminalContextSession(sid),
             });
             briefingDelivered = delivery.ok;
           }
@@ -1064,9 +1516,30 @@ export function TerminalView({
           }
         }
       } catch (err) {
+        await settleTerminalInitializationFailure({
+          executionId,
+          sessionId: sid,
+          nativeSessionStarted,
+          executionAttached,
+        });
         if (cancelled) return;
         setError(String(err));
         return;
+      }
+
+      if (!cancelled && !viewSessionBound) {
+        setInitializationPhase('kernel_terminal_phase_view_attach');
+        const attached = await attachTerminalViewExecution(executionId, sid);
+        if (!attached) {
+          setError('Canonical terminal ownership handoff failed.');
+          return;
+        }
+        sessionRef.current = sid;
+        viewSessionBound = true;
+        if (!cancelled) setActiveSessionId(sid);
+        setInitializationPhase('kernel_terminal_phase_session_bound');
+        outputLatch.bind(sid);
+        if (exitLatch.bind(sid)) return;
       }
 
       // Race fix: if the effect was torn down between awaiting the
@@ -1077,13 +1550,15 @@ export function TerminalView({
       // during the spawn window). We kill the orphan and bail.
       if (cancelled) {
         if (existingSessionId == null) {
-          invoke('terminal_kill', { sessionId: sid }).catch(() => {
-            /* nothing to do — PTY may have already exited */
-          });
+          if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            await requestTerminalExecutionCancellation(executionId);
+          } else
+            invoke('terminal_kill', { sessionId: sid }).catch(() => {
+              /* nothing to do — PTY may have already exited */
+            });
         }
         return;
       }
-      sessionRef.current = sid;
       if (paneId) {
         setTerminalPaneSessionId(paneId, sid);
       }
@@ -1094,7 +1569,6 @@ export function TerminalView({
         deliveredSlugRef.current = slugAtSpawn;
         deliveredModeRef.current = modeAtSpawn;
       }
-      setActiveSessionId(sid);
       // Register the session in the transcript store so the by-agent
       // index has somewhere to land subsequent appendOutput calls.
       // Doing this *after* sessionRef.current is set ensures the
@@ -1115,10 +1589,7 @@ export function TerminalView({
         currentInputRef.current = inputTracker.currentDraft();
       }
       if (spawnedFresh) {
-        ignoreClearsUntilRef.current = Math.max(
-          ignoreClearsUntilRef.current,
-          Date.now() + 1500,
-        );
+        ignoreClearsUntilRef.current = Math.max(ignoreClearsUntilRef.current, Date.now() + 1500);
         // Fresh PTY: keep the first prompt top-aligned in the pane.
         requestAnimationFrame(() => {
           if (cancelled || !termRef.current) return;
@@ -1128,20 +1599,36 @@ export function TerminalView({
       const executionWasCancelled = executionId
         ? useTerminalExecutionStore.getState().executions[executionId]?.status === 'cancelled'
         : false;
-      if (spawnedFresh && startupCommand && !deferredRestartCommand && !executionWasCancelled) {
+      if (
+        spawnedFresh &&
+        startupCommand &&
+        !nativeStartupCommandConsumed &&
+        !deferredRestartCommand &&
+        !executionWasCancelled
+      ) {
+        setInitializationPhase('kernel_terminal_phase_startup_command_readiness');
+        await awaitTerminalOutputReadiness(outputLatch.readiness);
+        if (cancelled) return;
+        const cancelledBeforeStartupWrite = executionId
+          ? useTerminalExecutionStore.getState().executions[executionId]?.status === 'cancelled'
+          : false;
+        if (cancelledBeforeStartupWrite) return;
         try {
+          setInitializationPhase('kernel_terminal_phase_startup_command_write');
           await invoke('terminal_write', {
             sessionId: sid,
             data: commandToInput(startupCommand),
           });
           markTerminalExecution(executionId, 'running', { sessionId: sid });
+          setInitializationPhase('kernel_terminal_phase_startup_command_sent');
         } catch {
           markTerminalExecution(executionId, 'failed', {
             sessionId: sid,
             exitCode: null,
           });
+          setInitializationPhase('kernel_terminal_phase_startup_command_failed');
         }
-      } else if (executionId && !executionWasCancelled) {
+      } else if (executionId && !nativeStartupCommandConsumed && !executionWasCancelled) {
         markTerminalExecution(executionId, 'running', { sessionId: sid });
       }
       if (spawnedFresh && restoredInput && !deferredRestartCommand) {
@@ -1194,19 +1681,11 @@ export function TerminalView({
       };
       window.addEventListener('jarvis:terminal:persist-now', onPersistNow);
 
-      // Theme follower -- re-skin xterm whenever the app toggles dark/light.
-      mutationObserver = new MutationObserver((muts) => {
-        for (const m of muts) {
-          if (m.attributeName === 'data-theme') {
-            applyThemeToTerm();
-            break;
-          }
-        }
-      });
-      mutationObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme'],
-      });
+      // Theme follower -- re-skin xterm whenever the active document theme changes.
+      const currentTerm = termRef.current;
+      if (currentTerm) {
+        mutationObserver = observeTerminalDocumentTheme(currentTerm, containerEl, null);
+      }
 
       // Final fit now that we have the real session dims.
       dispatchResize();
@@ -1398,7 +1877,7 @@ export function TerminalView({
         return;
       }
       if (!VoiceService.isSupported()) {
-        toast.warning('Voice unsupported', 'Speech-to-text is not available in this runtime.');
+        toast.warning('Voice unsupported', formatTerminalVoiceFailure('unsupported'));
         return;
       }
       try {
@@ -1407,8 +1886,8 @@ export function TerminalView({
         }
         VoiceService.startListening();
         setDictating(true);
-      } catch (err) {
-        toast.error('Voice error', err instanceof Error ? err.message : 'Voice could not start.');
+      } catch {
+        toast.error('Voice error', formatTerminalVoiceFailure('startup'));
         setDictating(false);
       }
     };
@@ -1459,6 +1938,24 @@ export function TerminalView({
 
   const handleKill = async () => {
     const sid = sessionRef.current;
+    if (executionId && hasCanonicalTerminalExecution(executionId)) {
+      const result = await requestTerminalExecutionCancellation(executionId);
+      const disposition = terminalCancellationDisposition(result);
+      if (disposition === 'terminal') {
+        if (!exitFiredRef.current) {
+          exitFiredRef.current = true;
+          onExitRef.current?.(
+            useTerminalExecutionStore.getState().executions[executionId]?.exitCode ?? null,
+          );
+        }
+      } else if (disposition === 'rejected') {
+        toast.error(
+          'Cancellation unavailable',
+          'The canonical terminal could not commit cancellation intent and remains open.',
+        );
+      }
+      return;
+    }
     if (sid) {
       try {
         await invoke('terminal_kill', { sessionId: sid });
@@ -1504,11 +2001,24 @@ export function TerminalView({
       : `Run the desktop build (\`npm run tauri:dev\`) to use real terminals.\n\nDetail: ${error}`;
     return (
       <div
+        data-sakura-terminal-chrome={hideChrome ? undefined : 'true'}
         className={cn(
-          'rounded-lg border border-border bg-paper-soft shadow-soft p-4 space-y-1',
+          'rounded-lg border border-border bg-paper-soft shadow-soft p-4 space-y-1 [html[data-theme=monochrome]_&]:shadow-none',
           className,
         )}
         role="status"
+        data-sik-evidence={
+          KERNEL_SMOKE_ENABLED && executionId ? SIK_EVIDENCE.terminalExecution : undefined
+        }
+        data-error-code={
+          KERNEL_SMOKE_ENABLED && executionId ? terminalSmokeFailureCode(error) : undefined
+        }
+        data-initialization-phase={
+          KERNEL_SMOKE_ENABLED && executionId ? initializationPhase : undefined
+        }
+        data-terminal-status={
+          KERNEL_SMOKE_ENABLED && executionId ? terminalExecutionStatus : undefined
+        }
       >
         <p className="text-foreground text-ui-strong">{headline}</p>
         <p className="text-secondary text-muted-foreground whitespace-pre-wrap font-mono">{body}</p>
@@ -1529,7 +2039,17 @@ export function TerminalView({
 
   return (
     <div
+      data-sakura-terminal-chrome={hideChrome ? undefined : 'true'}
       data-session-id={activeSessionId ?? undefined}
+      data-sik-evidence={
+        KERNEL_SMOKE_ENABLED && executionId ? SIK_EVIDENCE.terminalExecution : undefined
+      }
+      data-initialization-phase={
+        KERNEL_SMOKE_ENABLED && executionId ? initializationPhase : undefined
+      }
+      data-terminal-status={
+        KERNEL_SMOKE_ENABLED && executionId ? terminalExecutionStatus : undefined
+      }
       onDragOver={(e) => {
         const nextKind =
           e.dataTransfer.types.includes('application/x-jarvis-file') ||
@@ -1592,14 +2112,28 @@ export function TerminalView({
         </div>
       )}
       {!hideChrome && (
-        <StandaloneCloseChrome
-          label={command || 'terminal'}
-          onClose={() => void handleKill()}
-        />
+        <StandaloneCloseChrome label={command || 'terminal'} onClose={() => void handleKill()} />
       )}
+      <TerminalCommandPalette
+        open={terminalPaletteOpen}
+        paneId={paneId}
+        sessionId={activeSessionId}
+        projectId={projectId ?? null}
+        evidence={terminalPromptEvidence}
+        onClose={() => {
+          setTerminalPaletteOpen(false);
+          requestAnimationFrame(() => termRef.current?.focus());
+        }}
+        onNavigate={(route) => useUIStore.getState().setRoute(route)}
+        onInstallCli={installTerminalCli}
+        onUninstallCli={uninstallTerminalCli}
+        onInstallShellIntegration={installTerminalShellIntegration}
+        onUninstallShellIntegration={uninstallTerminalShellIntegration}
+      />
       <div
+        data-sakura-terminal-content="preserve"
         ref={containerRef}
-        style={{ backgroundColor: pickTheme().background }}
+        style={{ backgroundColor: currentTerminalTheme().background }}
         className="min-h-0 w-full flex-1 overflow-hidden pt-2 px-1.5 pb-1"
       />
     </div>
@@ -1607,17 +2141,9 @@ export function TerminalView({
 }
 
 /** Standalone chrome X: hold 1.5s then Confirm (matches PaneToolbar close). */
-function StandaloneCloseChrome({
-  label,
-  onClose,
-}: {
-  label: string;
-  onClose: () => void;
-}) {
+function StandaloneCloseChrome({ label, onClose }: { label: string; onClose: () => void }) {
   const [phase, setPhase] = useState<HoldConfirmPhase>('idle');
-  const ctrlRef = useRef(
-    createHoldToConfirmController({ onPhaseChange: setPhase }),
-  );
+  const ctrlRef = useRef(createHoldToConfirmController({ onPhaseChange: setPhase }));
 
   useEffect(() => {
     const ctrl = ctrlRef.current;

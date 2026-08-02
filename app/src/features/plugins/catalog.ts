@@ -36,7 +36,8 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
       ),
     ],
     status: 'implemented',
-    docsUrl: 'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
+    docsUrl:
+      'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
     credentialUrl: 'https://github.com/settings/personal-access-tokens',
     help: 'Create a fine-grained personal access token. VibeSpace tests it against the authenticated-user endpoint and never exposes it to terminals.',
     tags: ['developer tools', 'git', 'token', 'repositories'],
@@ -49,12 +50,39 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
     tools: [
       {
         name: 'identity',
-        description: 'Read the connected GitHub account identity.',
+        description: 'Read normalized connected GitHub account metadata.',
         readOnly: true,
       },
       {
         name: 'repository_context',
-        description: 'Describe repository capabilities available through this connection.',
+        description:
+          'Read normalized repository metadata and available counts for one exact owner/repository.',
+        readOnly: true,
+      },
+      {
+        name: 'issue_context',
+        description: 'Read bounded untrusted context for one exact repository issue.',
+        readOnly: true,
+      },
+      {
+        name: 'pull_request_context',
+        description: 'Read bounded untrusted context for one exact repository pull request.',
+        readOnly: true,
+      },
+      {
+        name: 'recent_commits',
+        description: 'Read up to five recent commits for one exact repository.',
+        readOnly: true,
+      },
+      {
+        name: 'latest_release',
+        description: 'Read bounded metadata for the latest published repository release.',
+        readOnly: true,
+      },
+      {
+        name: 'workflows',
+        description:
+          'Read bounded repository workflow metadata without retrieving runs, jobs, or logs.',
         readOnly: true,
       },
     ],
@@ -124,14 +152,14 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
       token(
         'key',
         'Project API key',
-        'sb_publishable_... or service role key',
-        'Prefer a publishable/anon key for read-only context. Service-role keys are highly privileged.',
+        'sb_publishable_... or anon JWT',
+        'Use a publishable/anon key for read-only context. Service-role and secret keys are rejected.',
       ),
     ],
     status: 'implemented',
     docsUrl: 'https://supabase.com/docs/guides/api/api-keys',
     credentialUrl: 'https://supabase.com/dashboard/project/_/settings/api-keys',
-    help: 'Enter the project URL and an API key. VibeSpace calls the REST root to validate the pair.',
+    help: 'Enter the project URL and a publishable/anon API key. VibeSpace rejects privileged service-role or secret keys before calling the REST root.',
     tags: ['database', 'auth', 'storage', 'api_key'],
     setupSteps: [
       'Open your Supabase project → Settings → API.',
@@ -302,6 +330,8 @@ const PRIORITY_CANDIDATES: CatalogCandidate[] = [
   { name: 'Airtable', category: 'Productivity' },
   { name: 'Coda', category: 'Productivity' },
   { name: 'Miro', category: 'Productivity' },
+  { name: 'Canva', category: 'Design' },
+  { name: 'Zapier', category: 'Productivity' },
   // Project Management (6)
   { name: 'Linear', category: 'Project Management' },
   { name: 'Jira', category: 'Project Management' },
@@ -404,6 +434,7 @@ function isVerifiedCatalogEntry(plugin: PluginManifest): boolean {
 
 const implementedIds = new Set(IMPLEMENTED_BASE.map((plugin) => plugin.id));
 const GENERATED_TARGET = PLUGIN_CATALOG_TARGET - IMPLEMENTED_BASE.length;
+const CUSTOM_RUNTIME_TESTERS = new Set(['zapier']);
 
 const GENERATED: PluginManifest[] = PRIORITY_CANDIDATES.map(({ name, category }) =>
   buildCatalogEntry(name, category),
@@ -442,6 +473,22 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
       if (fieldIds.has(field.id)) errors.push(`${plugin.id}: duplicate field ${field.id}`);
       fieldIds.add(field.id);
     }
+    const requiredScopes = plugin.requiredScopes ?? [];
+    if (
+      requiredScopes.some(
+        (scope) => typeof scope !== 'string' || !scope.trim() || scope.trim() !== scope,
+      ) ||
+      new Set(requiredScopes).size !== requiredScopes.length
+    ) {
+      errors.push(`${plugin.id}: invalid required scopes`);
+    }
+    if (
+      plugin.status === 'implemented' &&
+      plugin.authType === 'oauth' &&
+      requiredScopes.length === 0
+    ) {
+      errors.push(`${plugin.id}: implemented OAuth plugin missing required scopes`);
+    }
     if (plugin.status === 'implemented' && plugin.tools.length === 0) {
       errors.push(`${plugin.id}: implemented plugin has no tools`);
     }
@@ -452,7 +499,8 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
       (plugin.status === 'implemented' || plugin.status === 'configurable') &&
       !plugin.httpTest &&
       plugin.authType !== 'none' &&
-      plugin.authType !== 'oauth'
+      plugin.authType !== 'oauth' &&
+      !CUSTOM_RUNTIME_TESTERS.has(plugin.id)
     ) {
       errors.push(`${plugin.id}: connectable plugin missing httpTest`);
     }

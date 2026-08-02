@@ -132,7 +132,7 @@ export function About() {
     updatePhase === 'checking' || updatePhase === 'downloading' || updatePhase === 'installing';
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-about flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <h2 className="text-page-title text-foreground">About</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -157,7 +157,9 @@ export function About() {
               <span className="text-metadata text-muted-foreground font-mono">July 15, 2026</span>
             </div>
             <p className="text-secondary text-muted-foreground mt-1 leading-relaxed">
-              Complete VibeSpace integration: terminal recovery, Pixel Pets, spatial Workbench, Jarvis execution and private memory, CLI providers, synchronized themes, Browser, Preview Studio, editor, files, notes, wallpapers, and native desktop tooling.
+              Complete VibeSpace integration: terminal recovery, Pixel Pets, spatial Workbench,
+              Jarvis execution and private memory, CLI providers, synchronized themes, Browser,
+              Preview Studio, editor, files, notes, wallpapers, and native desktop tooling.
             </p>
           </div>
           <div className="relative">
@@ -181,8 +183,8 @@ export function About() {
             </div>
             <p className="text-secondary text-muted-foreground mt-1 leading-relaxed">
               Streaming voice during AI replies, unified Kokoro/system TTS routing, plugin
-              activation with the local Ollama catalog, strict Tauri CSP, and the VibeSpace
-              landing site.
+              activation with the local Ollama catalog, strict Tauri CSP, and the VibeSpace landing
+              site.
             </p>
           </div>
 
@@ -269,9 +271,9 @@ export function About() {
             <h3 className="text-ui-strong text-foreground">Updates</h3>
             <p className="text-secondary text-muted-foreground">
               Signed releases are delivered from GitHub Releases. Jarvis verifies every bundle,
-              shows pre-install warnings, and lets you update now or later. All terminal
-              information may not be saved across an update: layouts and recent output are
-              restored, but live terminal processes cannot survive the restart.
+              shows pre-install warnings, and lets you update now or later. All terminal information
+              may not be saved across an update: layouts and recent output are restored, but live
+              terminal processes cannot survive the restart.
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">

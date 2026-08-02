@@ -18,13 +18,29 @@ export interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
  * A deterministic avatar - colored gradient circle with initials.
  * Used everywhere we display an agent or user.
  */
-export function Avatar({ seed, initials, src, size = 24, className, style, children, ...props }: AvatarProps) {
+export function Avatar({
+  seed,
+  initials,
+  src,
+  size = 24,
+  className,
+  style,
+  children,
+  ...props
+}: AvatarProps) {
   const baseHue = seed ? hueFromString(seed) : 220;
   const hue2 = (baseHue + 60) % 360;
   const gradient = `linear-gradient(135deg, hsl(${baseHue}, 70%, 60%) 0%, hsl(${hue2}, 70%, 50%) 100%)`;
   const fontSize = Math.max(10, Math.floor(size * 0.4));
+  const generatedBackground = src
+    ? {}
+    : ({
+        '--vibespace-avatar-gradient': gradient,
+        background: 'var(--vibespace-avatar-background, var(--vibespace-avatar-gradient))',
+      } as React.CSSProperties);
   return (
     <div
+      data-vibespace-avatar="true"
       className={cn(
         'inline-flex items-center justify-center rounded-full overflow-hidden font-semibold text-white shrink-0 select-none',
         className,
@@ -32,7 +48,7 @@ export function Avatar({ seed, initials, src, size = 24, className, style, child
       style={{
         width: size,
         height: size,
-        background: src ? undefined : gradient,
+        ...generatedBackground,
         fontSize,
         ...style,
       }}

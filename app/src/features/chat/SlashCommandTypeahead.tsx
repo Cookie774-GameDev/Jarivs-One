@@ -1,8 +1,10 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { HiveModelIcon } from '@/components/brand';
 import { scrollPickerItemIntoView } from './pickerScroll';
+import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMotion';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import {
   BarChart3,
   Bot,
@@ -70,7 +72,14 @@ export function normalizeSlashCmd(raw: string): string {
   return SLASH_CMD_ALIASES[cmd] ?? cmd;
 }
 
-export const CHAT_ATTACH_SLASH_CMDS = new Set(['context', 'plug', 'skills', 'allaboutme', 'file']);
+export const CHAT_ATTACH_SLASH_CMDS = new Set([
+  'context',
+  'plug',
+  'skills',
+  'allaboutme',
+  'file',
+  'canvas',
+]);
 
 export function isChatAttachSlashCmd(cmd: string): boolean {
   return CHAT_ATTACH_SLASH_CMDS.has(normalizeSlashCmd(cmd));
@@ -222,20 +231,43 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
 
   { cmd: 'kanban', description: 'Reference Kanban', icon: ListTodo, category: 'navigation' },
+  {
+    cmd: 'canvas',
+    description: 'Reference Canvas',
+    icon: Network,
+    category: 'navigation',
+    hasOptions: true,
+  },
   { cmd: 'history', description: 'Reference History', icon: History, category: 'navigation' },
   { cmd: 'tools', description: 'Reference Tools', icon: Wrench, category: 'navigation' },
-  { cmd: 'agents', description: 'Reference Agents page/editor', icon: Users, category: 'navigation' },
-  { cmd: 'schedule', description: 'Reference Schedule', icon: CalendarDays, category: 'navigation' },
+  {
+    cmd: 'agents',
+    description: 'Reference Agents page/editor',
+    icon: Users,
+    category: 'navigation',
+  },
+  {
+    cmd: 'schedule',
+    description: 'Reference Schedule',
+    icon: CalendarDays,
+    category: 'navigation',
+  },
   { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 
-  { cmd: 'usage', description: 'Show truthful current-chat usage and quota availability', icon: BarChart3, category: 'utility', argPlaceholder: '[refresh|session|all]' },
+  {
+    cmd: 'usage',
+    description: 'Show truthful current-chat usage and quota availability',
+    icon: BarChart3,
+    category: 'utility',
+    argPlaceholder: '[refresh|session|all]',
+  },
   {
     cmd: 'theme',
-    description: 'Switch Jarvis Core, VibeSpace, Default, or Light',
+    description: 'Switch Jarvis Core, VibeSpace, Default, MonoChrome, or Sakura',
     icon: Palette,
     category: 'utility',
     takesArg: true,
-    argPlaceholder: 'jarvis | vibespace | default | light',
+    argPlaceholder: 'jarvis | vibespace | default | monochrome | sakura',
   },
   {
     cmd: 'undo',
@@ -290,6 +322,9 @@ export const SlashCommandTypeahead = forwardRef<
   SlashCommandTypeaheadProps
 >(function SlashCommandTypeahead({ commands, selectedCmd, query, onHoverCmd, onSelect }, ref) {
   const listRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
+  const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
+  const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
   const displayCommands = orderSlashCommandsForDisplay(commands);
 
   useImperativeHandle(ref, () => ({
@@ -325,10 +360,7 @@ export const SlashCommandTypeahead = forwardRef<
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 4, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 4, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+      {...dropdownMotion}
       className={cn(
         'jarvis-slash-dropdown w-[276px] overflow-hidden rounded-[12px] border border-border-mid/80',
         'bg-elevated/95 text-foreground backdrop-blur-xl',

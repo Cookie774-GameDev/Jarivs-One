@@ -6,14 +6,21 @@ import fs from 'node:fs';
 
 // https://vitejs.dev/config/
 const host = process.env.TAURI_DEV_HOST;
+const rawViteCacheDir = process.env.VIBESPACE_VITE_CACHE_DIR?.trim();
+if (rawViteCacheDir && !path.isAbsolute(rawViteCacheDir)) {
+  throw new Error('VIBESPACE_VITE_CACHE_DIR must be an absolute path.');
+}
+const viteCacheDir = rawViteCacheDir ? path.normalize(rawViteCacheDir) : undefined;
 
 function safeGit(args: string, fallback: string): string {
   try {
-    return execSync(`git ${args}`, {
-      cwd: path.resolve(__dirname, '..'),
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim() || fallback;
+    return (
+      execSync(`git ${args}`, {
+        cwd: path.resolve(__dirname, '..'),
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || fallback
+    );
   } catch {
     return fallback;
   }
@@ -23,14 +30,17 @@ function readAppVersion(): string {
   try {
     const raw = fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8');
     const parsed = JSON.parse(raw) as { version?: unknown };
-    return typeof parsed.version === 'string' && parsed.version.trim() ? parsed.version.trim() : '0.0.0';
+    return typeof parsed.version === 'string' && parsed.version.trim()
+      ? parsed.version.trim()
+      : '0.0.0';
   } catch {
     return '0.0.0';
   }
 }
 
 const buildGitCommit = process.env.VITE_GIT_COMMIT || safeGit('rev-parse HEAD', 'unknown');
-const buildGitBranch = process.env.VITE_GIT_BRANCH || safeGit('rev-parse --abbrev-ref HEAD', 'unknown');
+const buildGitBranch =
+  process.env.VITE_GIT_BRANCH || safeGit('rev-parse --abbrev-ref HEAD', 'unknown');
 const buildTimestamp = process.env.VITE_BUILD_TIMESTAMP || new Date().toISOString();
 const appVersion = process.env.VITE_APP_VERSION || readAppVersion();
 const frontendAssetVersion =
@@ -119,6 +129,7 @@ function manualChunks(id: string): string | undefined {
 
 export default defineConfig({
   plugins: [react()],
+  cacheDir: viteCacheDir,
 
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
@@ -160,8 +171,7 @@ export default defineConfig({
 
   build: {
     // Tauri uses Chromium on Windows and WebKit on macOS / Linux
-    target:
-      process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
+    target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
     // don't minify for debug builds
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: true,
@@ -179,4 +189,3 @@ export default defineConfig({
         },
   },
 });
-

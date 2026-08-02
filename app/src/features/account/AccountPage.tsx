@@ -27,14 +27,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuthStore } from '@/stores/auth';
+import { PLANS, PLAN_ORDER, effectivePlan, type PlanId } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 import {
-  PLANS,
-  PLAN_ORDER,
-  effectivePlan,
-  isAdminIdentity,
-  type PlanId,
-} from '@/lib/entitlements';
-import { callCheckoutSession, callCustomerPortal, isBackendBillingConfigured } from '@/lib/billing/checkout';
+  callCheckoutSession,
+  callCustomerPortal,
+  isBackendBillingConfigured,
+} from '@/lib/billing/checkout';
 import {
   CREDITS_PER_PHONE_MINUTE,
   CREDITS_PER_SMS,
@@ -51,10 +50,11 @@ import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
   ACCOUNT_TABS,
-  DEFAULT_ACCOUNT_TAB,
   resolveAccountTab,
+  resolveAccountTabFromSearch,
   type AccountTabId,
 } from './accountTabs';
+import './sakura-account.css';
 
 const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
 
@@ -68,7 +68,6 @@ const TAB_ICONS: Record<AccountTabId, React.ReactNode> = {
 
 export function AccountPage() {
   const plan = useAuthStore((s) => s.plan);
-  const email = useAuthStore((s) => s.email);
   const cloudEmail = useAuthStore((s) => s.cloudSession?.email);
   const cloudUserId = useAuthStore((s) => s.cloudSession?.user_id);
   const localUserId = useAuthStore((s) => s.localUserId);
@@ -76,12 +75,14 @@ export function AccountPage() {
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const apiKeys = useAuthStore((s) => s.apiKeys);
 
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const activePlanId = effectivePlan(plan, admin);
   const activePlan = PLANS[activePlanId];
   const configuredKeyCount = Object.values(apiKeys).filter(Boolean).length;
 
-  const [tab, setTab] = React.useState<AccountTabId>(DEFAULT_ACCOUNT_TAB);
+  const [tab, setTab] = React.useState<AccountTabId>(() =>
+    resolveAccountTabFromSearch(window.location.search),
+  );
   const [usage, setUsage] = React.useState<CombinedUsage | null>(null);
   const [usageLoading, setUsageLoading] = React.useState(false);
   const [usageError, setUsageError] = React.useState<string | null>(null);
@@ -137,7 +138,10 @@ export function AccountPage() {
       return;
     }
     if (!isBackendBillingConfigured()) {
-      toast.info('Checkout not configured', 'Supabase billing functions are missing for this build.');
+      toast.info(
+        'Checkout not configured',
+        'Supabase billing functions are missing for this build.',
+      );
       return;
     }
     const result = await callCheckoutSession(target);
@@ -148,7 +152,10 @@ export function AccountPage() {
     try {
       await openExternal(result.url);
     } catch (err) {
-      toast.error('Could not open checkout', err instanceof Error ? err.message : 'Open Stripe manually.');
+      toast.error(
+        'Could not open checkout',
+        err instanceof Error ? err.message : 'Open Stripe manually.',
+      );
     }
   };
 
@@ -175,11 +182,14 @@ export function AccountPage() {
   const who = displayName?.trim() || cloudEmail || 'You';
 
   return (
-    <main className="h-full overflow-y-auto bg-background">
+    <main className="mc7f-account-page h-full overflow-y-auto bg-background [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-0 px-4 pb-10 pt-5 sm:px-6">
         {/* Hero */}
-        <header className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,119,87,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(6,182,212,0.14),transparent_40%)]" />
+        <header
+          className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/60 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
+          data-sakura-surface="account-hero"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,119,87,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(6,182,212,0.14),transparent_40%)] [html[data-theme=monochrome]_&]:hidden" />
           <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-accent-copper/40 bg-accent-copper/10 px-3 py-1 text-metadata font-semibold uppercase tracking-[0.18em] text-accent-copper">
@@ -216,9 +226,10 @@ export function AccountPage() {
         >
           <div className="sticky top-0 z-20 -mx-1 overflow-x-auto px-1 pb-1">
             <TabsList
+              data-sakura-surface="account-tabs"
               className={cn(
                 'flex h-auto w-full min-w-max items-stretch gap-1 rounded-2xl border border-border/80',
-                'bg-panel/90 p-1.5 shadow-soft backdrop-blur-md',
+                'bg-panel/90 p-1.5 shadow-soft backdrop-blur-md [html[data-theme=monochrome]_&]:backdrop-blur-none',
               )}
             >
               {ACCOUNT_TABS.map((t) => (
@@ -273,20 +284,37 @@ export function AccountPage() {
                   title="Sign in to view usage"
                   body="Your shared company credit pool appears after you sign in with a cloud account."
                   cta={
-                    <Button type="button" variant="accent" size="sm" onClick={() => setTab('profile')}>
+                    <Button
+                      type="button"
+                      variant="accent"
+                      size="sm"
+                      onClick={() => setTab('profile')}
+                    >
                       Go to Profile
                     </Button>
                   }
                 />
               ) : usageLoading && !usage ? (
-                <div className="flex items-center justify-center gap-2 py-14 text-muted-foreground">
+                <div
+                  className="flex items-center justify-center gap-2 py-14 text-muted-foreground"
+                  data-sakura-state="loading"
+                >
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-secondary">Loading usage…</span>
                 </div>
               ) : usageError && !usage ? (
-                <div className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-4">
+                <div
+                  className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-4"
+                  data-sakura-state="error"
+                >
                   <p className="text-sm text-foreground">{usageError}</p>
-                  <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void loadUsage()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => void loadUsage()}
+                  >
                     Retry
                   </Button>
                 </div>
@@ -331,11 +359,16 @@ export function AccountPage() {
               icon={<CreditCard className="h-5 w-5 text-accent-copper" />}
             >
               <div className="flex flex-col gap-4">
-                <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
+                <div
+                  className="rounded-2xl border border-border/70 bg-background/60 p-4"
+                  data-sakura-surface="dense"
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-ui-strong text-foreground">{activePlan.label}</p>
-                      <p className="mt-1 text-metadata text-muted-foreground">{activePlan.tagline}</p>
+                      <p className="mt-1 text-metadata text-muted-foreground">
+                        {activePlan.tagline}
+                      </p>
                       <p className="mt-2 text-secondary text-muted-foreground">
                         {admin
                           ? 'Admin access unlocks paid capabilities on this device.'
@@ -357,7 +390,12 @@ export function AccountPage() {
                       <ExternalLink className="h-3.5 w-3.5" />
                       {nextTier ? `Upgrade to ${PLANS[nextTier].label}` : 'All features active'}
                     </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => void openPortal()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void openPortal()}
+                    >
                       Manage subscription
                     </Button>
                   </div>
@@ -379,7 +417,9 @@ export function AccountPage() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-ui-strong text-foreground">{p.label}</p>
-                          <span className="text-metadata text-muted-foreground">${p.priceUsd}/mo</span>
+                          <span className="text-metadata text-muted-foreground">
+                            ${p.priceUsd}/mo
+                          </span>
                         </div>
                         <p className="mt-1 text-metadata text-muted-foreground">{p.tagline}</p>
                         {current ? (
@@ -455,7 +495,9 @@ export function AccountPage() {
                   title="Documentation"
                   body="Setup guides, plan reference, and product docs on GitHub."
                   actionLabel="Open docs"
-                  onAction={() => void openExternal('https://github.com/Cookie774-GameDev/VibeSpace#readme')}
+                  onAction={() =>
+                    void openExternal('https://github.com/Cookie774-GameDev/VibeSpace#readme')
+                  }
                 />
                 <SupportCard
                   icon={<Sparkles className="h-4 w-4" />}
@@ -519,7 +561,7 @@ function PanelCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-border bg-panel p-5 shadow-soft sm:p-6">
+    <section className="sakura-account-panel rounded-3xl border border-border bg-panel p-5 shadow-soft sm:p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-elevated">
@@ -537,15 +579,7 @@ function PanelCard({
   );
 }
 
-function EmptyState({
-  title,
-  body,
-  cta,
-}: {
-  title: string;
-  body: string;
-  cta?: React.ReactNode;
-}) {
+function EmptyState({ title, body, cta }: { title: string; body: string; cta?: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-dashed border-border/80 bg-background/40 px-5 py-10 text-center">
       <p className="text-ui-strong text-foreground">{title}</p>
@@ -623,9 +657,13 @@ function UnifiedUsageBar({
   if (adminUnlimited || (pool && !Number.isFinite(pool.included))) {
     return (
       <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
-        <p className="text-metadata uppercase tracking-wide text-muted-foreground">Company credits</p>
+        <p className="text-metadata uppercase tracking-wide text-muted-foreground">
+          Company credits
+        </p>
         <p className="mt-2 text-ui-strong text-foreground">Unlimited</p>
-        <p className="mt-1 text-metadata text-muted-foreground">Admin cloud budget not metered here.</p>
+        <p className="mt-1 text-metadata text-muted-foreground">
+          Admin cloud budget not metered here.
+        </p>
       </div>
     );
   }
@@ -638,7 +676,9 @@ function UnifiedUsageBar({
     <div className="rounded-2xl border border-border/70 bg-background/55 p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-metadata uppercase tracking-wide text-muted-foreground">Shared company credits</p>
+          <p className="text-metadata uppercase tracking-wide text-muted-foreground">
+            Shared company credits
+          </p>
           {notOnPlan ? (
             <p className="mt-2 text-ui-strong text-foreground">Not on this plan</p>
           ) : (
@@ -657,7 +697,7 @@ function UnifiedUsageBar({
 
       {!notOnPlan && (
         <div
-          className="mt-3 h-3 overflow-hidden rounded-full bg-muted ring-1 ring-border/40"
+          className="mt-3 h-3 overflow-hidden rounded-full bg-muted ring-1 ring-border/40 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:ring-foreground/30"
           role="progressbar"
           aria-valuenow={pct}
           aria-valuemin={0}
@@ -666,7 +706,7 @@ function UnifiedUsageBar({
         >
           <div
             className={cn(
-              'h-full rounded-full transition-all duration-300',
+              'h-full rounded-full transition-all duration-300 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:transition-none',
               pct >= 90 ? 'bg-destructive/85' : pct >= 70 ? 'bg-amber-400/90' : 'bg-accent-cyan/85',
             )}
             style={{ width: `${Math.max(pct, 0)}%` }}

@@ -30,19 +30,11 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/toast';
-import {
-  cn,
-  formatCost,
-  formatRelative,
-  formatTokenCount,
-} from '@/lib/utils';
+import { cn, formatCost, formatRelative, formatTokenCount } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
-import {
-  fetchBenchmarks,
-  isSupportedProvider,
-  type BenchmarkRow,
-} from './benchmarkData';
+import { fetchBenchmarks, isSupportedProvider, type BenchmarkRow } from './benchmarkData';
 import { BarChart } from './BarChart';
+import './sakura-benchmarks.css';
 
 type SortKey = 'arena_score' | 'cost' | 'context';
 
@@ -57,7 +49,9 @@ const OPENROUTER_MODELS_URL = 'https://openrouter.ai/models';
 function rowTooltip(r: BenchmarkRow): string {
   const parts: string[] = [];
   parts.push(`${r.model} · ${r.provider}`);
-  parts.push(r.open_source ? `Open source${r.license ? ` (${r.license})` : ''}` : 'Closed / proprietary');
+  parts.push(
+    r.open_source ? `Open source${r.license ? ` (${r.license})` : ''}` : 'Closed / proprietary',
+  );
   if (r.cost_per_1m_input_usd != null || r.cost_per_1m_output_usd != null) {
     const i = r.cost_per_1m_input_usd != null ? `$${r.cost_per_1m_input_usd}` : '—';
     const o = r.cost_per_1m_output_usd != null ? `$${r.cost_per_1m_output_usd}` : '—';
@@ -106,8 +100,7 @@ export function BenchmarksPage() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [errorReason, setErrorReason] = React.useState<string | null>(null);
 
-  const [providerFilter, setProviderFilter] =
-    React.useState<string>(PROVIDER_FILTER_ALL);
+  const [providerFilter, setProviderFilter] = React.useState<string>(PROVIDER_FILTER_ALL);
   const [openOnly, setOpenOnly] = React.useState(false);
   const [sortKey, setSortKey] = React.useState<SortKey>('arena_score');
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
@@ -118,17 +111,12 @@ export function BenchmarksPage() {
   // Apply a fetch result to all the relevant state slots in one shot.
   // Used by initial load, manual refresh, focus refresh, and polling so
   // the four code paths can't drift apart.
-  const applyResult = React.useCallback(
-    (result: Awaited<ReturnType<typeof fetchBenchmarks>>) => {
-      setRows(result.rows);
-      setFromSnapshot(result.fromSnapshot);
-      setErrorReason(result.fromSnapshot ? result.reason ?? null : null);
-      setFetchedAt(
-        result.rows.length > 0 ? result.rows[0].fetched_at : Date.now(),
-      );
-    },
-    [],
-  );
+  const applyResult = React.useCallback((result: Awaited<ReturnType<typeof fetchBenchmarks>>) => {
+    setRows(result.rows);
+    setFromSnapshot(result.fromSnapshot);
+    setErrorReason(result.fromSnapshot ? (result.reason ?? null) : null);
+    setFetchedAt(result.rows.length > 0 ? result.rows[0].fetched_at : Date.now());
+  }, []);
 
   // Initial load.
   React.useEffect(() => {
@@ -266,7 +254,7 @@ export function BenchmarksPage() {
   }, [providerFilter, openOnly]);
 
   const selectedRow = React.useMemo(
-    () => (selectedModel ? rows.find((r) => r.model === selectedModel) ?? null : null),
+    () => (selectedModel ? (rows.find((r) => r.model === selectedModel) ?? null) : null),
     [rows, selectedModel],
   );
 
@@ -281,7 +269,11 @@ export function BenchmarksPage() {
   };
 
   return (
-    <div className="bg-paper-soft min-h-full w-full">
+    <div
+      data-monochrome-route="benchmarks"
+      data-sakura-route="benchmarks"
+      className="bg-paper-soft min-h-full w-full [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.cozy-card]:rounded-sm [html[data-theme=monochrome]_&_.cozy-card]:border [html[data-theme=monochrome]_&_.cozy-card]:border-border-mid [html[data-theme=monochrome]_&_.cozy-card]:bg-panel [html[data-theme=monochrome]_&_.cozy-card]:shadow-none"
+    >
       <div className="max-w-7xl mx-auto px-6 py-8 flex flex-col gap-6">
         {/* Header */}
         <header className="flex items-start justify-between gap-4 flex-wrap">
@@ -294,17 +286,13 @@ export function BenchmarksPage() {
                 )}
               />
               <span>
-                {loading
-                  ? 'Loading'
-                  : fromSnapshot
-                  ? 'Snapshot'
-                  : 'Live'}
+                {loading ? 'Loading' : fromSnapshot ? 'Snapshot' : 'Live'}
                 {fetchedAt && ' · last fetched '}
                 {fetchedAt && formatRelative(fetchedAt)}
               </span>
               {fromSnapshot && (
                 <span
-                  className="sev-pill med ml-2"
+                  className="sev-pill med ml-2 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid"
                   title={errorReason ?? 'Live endpoint unavailable; using frozen data.'}
                 >
                   from snapshot
@@ -328,9 +316,7 @@ export function BenchmarksPage() {
                 'border-accent-copper text-accent-copper shadow-[0_0_0_1px_hsl(var(--accent-copper)/0.4)]',
             )}
           >
-            <RefreshCw
-              className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')}
-            />
+            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
             {refreshing ? 'Fetching…' : 'Refresh'}
           </Button>
         </header>
@@ -344,8 +330,8 @@ export function BenchmarksPage() {
                 <>
                   Showing a frozen snapshot from {fetchedAt && formatRelative(fetchedAt)}.{' '}
                   <span className="text-muted-foreground">
-                    Live fetch failed ({errorReason}). Numbers below are the curated
-                    Top 50 unique-model table — hit refresh to retry.
+                    Live fetch failed ({errorReason}). Numbers below are the curated Top 50
+                    unique-model table — hit refresh to retry.
                   </span>
                 </>
               ) : (
@@ -353,8 +339,8 @@ export function BenchmarksPage() {
                   Curated Top 50 unique models (one model per row)
                   {fetchedAt ? ` · ${formatRelative(fetchedAt)}` : ''}.{' '}
                   <span className="text-muted-foreground">
-                    Ranked by Artificial Analysis Intelligence Index; OpenRouter
-                    list prices & modalities. Hit refresh for a live Arena pull.
+                    Ranked by Artificial Analysis Intelligence Index; OpenRouter list prices &
+                    modalities. Hit refresh for a live Arena pull.
                   </span>
                 </>
               )}
@@ -363,7 +349,11 @@ export function BenchmarksPage() {
         )}
 
         {/* Filters row */}
-        <section className="flex flex-wrap items-end gap-4">
+        <section
+          data-monochrome-surface="benchmarks-filters"
+          data-sakura-surface="benchmarks-filters"
+          className="flex flex-wrap items-end gap-4 [html[data-theme=monochrome]_&]:border-y [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:py-3"
+        >
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="bench-provider">Provider</Label>
             <select
@@ -408,10 +398,12 @@ export function BenchmarksPage() {
           <div className="flex items-center gap-2 h-8 self-end pb-1">
             <Switch
               id="bench-open"
+              aria-labelledby="bench-open-label"
               checked={openOnly}
               onCheckedChange={setOpenOnly}
+              className="[html[data-theme=monochrome]_&_span]:shadow-none"
             />
-            <Label htmlFor="bench-open" className="cursor-pointer">
+            <Label id="bench-open-label" htmlFor="bench-open" className="cursor-pointer">
               Open source only
             </Label>
           </div>
@@ -424,7 +416,11 @@ export function BenchmarksPage() {
         </section>
 
         {/* Bar chart */}
-        <section className="cozy-card !p-5">
+        <section
+          data-monochrome-surface="benchmarks-chart"
+          data-sakura-surface="benchmarks-chart"
+          className="cozy-card !p-5"
+        >
           <div className="flex items-baseline justify-between mb-4">
             <h2 className="text-page-title text-foreground">
               Top {Math.min(TOP_N_FOR_CHART, topForChart.length)} by Intelligence
@@ -450,11 +446,15 @@ export function BenchmarksPage() {
         </section>
 
         {/* Table */}
-        <section className="cozy-card !p-0 overflow-hidden">
+        <section
+          data-monochrome-surface="benchmarks-table"
+          data-sakura-surface="benchmarks-table"
+          className="cozy-card !p-0 overflow-hidden"
+        >
           <div className="overflow-x-auto">
-            <table className="w-full text-secondary">
+            <table className="w-full text-secondary [html[data-theme=monochrome]_&]:font-mono">
               <thead>
-                <tr className="border-b border-border bg-paper-soft text-metadata text-muted-foreground uppercase tracking-wider">
+                <tr className="border-b border-border bg-paper-soft text-metadata text-muted-foreground uppercase tracking-wider [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
                   <th className="text-left font-semibold px-4 py-3">Model</th>
                   <th className="text-left font-semibold px-4 py-3">Provider</th>
                   <th className="text-left font-semibold px-4 py-3">Type</th>
@@ -487,11 +487,9 @@ export function BenchmarksPage() {
                     key={row.model}
                     onClick={() => setSelectedModel(row.model)}
                     title={rowTooltip(row)}
-                    className="border-b border-border/60 last:border-b-0 hover:bg-paper-soft cursor-pointer transition-colors"
+                    className="border-b border-border/60 last:border-b-0 hover:bg-paper-soft cursor-pointer transition-colors [html[data-theme=monochrome]_&]:transition-none [html[data-theme=monochrome]_&]:hover:bg-muted"
                   >
-                    <td className="px-4 py-3 text-foreground font-medium">
-                      {row.model}
-                    </td>
+                    <td className="px-4 py-3 text-foreground font-medium">{row.model}</td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-metadata">
                       {row.provider}
                     </td>
@@ -533,20 +531,25 @@ export function BenchmarksPage() {
                     </td>
                     <td className="px-4 py-3 font-mono text-foreground">
                       {row.arena_score}
-                      {(row.ci_high - row.ci_low) > 0 && (
+                      {row.ci_high - row.ci_low > 0 && (
                         <span className="text-muted-foreground text-metadata ml-1">
                           ±{Math.round((row.ci_high - row.ci_low) / 2)}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3 font-mono text-right">
-                      {row.cost_per_1m_input_usd != null ||
-                      row.cost_per_1m_output_usd != null ? (
+                      {row.cost_per_1m_input_usd != null || row.cost_per_1m_output_usd != null ? (
                         <span
                           className="text-foreground"
-                          title={row.cost_estimated ? 'List-price estimate — not reported by the leaderboard feed' : undefined}
+                          title={
+                            row.cost_estimated
+                              ? 'List-price estimate — not reported by the leaderboard feed'
+                              : undefined
+                          }
                         >
-                          {row.cost_estimated ? <span className="text-muted-foreground">~</span> : null}
+                          {row.cost_estimated ? (
+                            <span className="text-muted-foreground">~</span>
+                          ) : null}
                           {row.cost_per_1m_input_usd != null
                             ? formatCost(row.cost_per_1m_input_usd)
                             : '—'}
@@ -560,12 +563,16 @@ export function BenchmarksPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 font-mono text-right text-foreground">
-                      {row.context_window != null
-                        ? formatTokenCount(row.context_window)
-                        : '—'}
+                      {row.context_window != null ? formatTokenCount(row.context_window) : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn('sev-pill', licenseSeverity(row))}>
+                      <span
+                        className={cn(
+                          'sev-pill',
+                          licenseSeverity(row),
+                          '[html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid',
+                        )}
+                      >
                         {row.license ?? (row.open_source ? 'open' : 'proprietary')}
                       </span>
                     </td>
@@ -602,10 +609,7 @@ export function BenchmarksPage() {
         </section>
       </div>
 
-      <DetailDrawer
-        row={selectedRow}
-        onClose={() => setSelectedModel(null)}
-      />
+      <DetailDrawer row={selectedRow} onClose={() => setSelectedModel(null)} />
     </div>
   );
 }
@@ -635,11 +639,7 @@ function SortableTh({ label, active, dir, onClick, align = 'left' }: SortableThP
       >
         {label}
         {active &&
-          (dir === 'desc' ? (
-            <ArrowDown className="h-3 w-3" />
-          ) : (
-            <ArrowUp className="h-3 w-3" />
-          ))}
+          (dir === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />)}
       </span>
     </th>
   );
@@ -676,10 +676,13 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
           )}
         />
         <DialogPrimitive.Content
+          data-monochrome-surface="benchmark-detail"
+          data-sakura-surface="benchmark-detail"
           className={cn(
             'fixed right-0 top-0 z-50 h-full w-full sm:max-w-md bg-elevated border-l border-border shadow-2xl',
             'flex flex-col',
             'data-[state=open]:animate-slide-up data-[state=closed]:animate-fade-out',
+            '[html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:data-[state=open]:animate-none [html[data-theme=monochrome]_&]:data-[state=closed]:animate-none',
           )}
         >
           {row && (
@@ -708,10 +711,8 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                     Intelligence score
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-hero font-mono text-foreground">
-                      {row.arena_score}
-                    </span>
-                    {(row.ci_high - row.ci_low) > 0 && (
+                    <span className="text-hero font-mono text-foreground">{row.arena_score}</span>
+                    {row.ci_high - row.ci_low > 0 && (
                       <span className="text-secondary text-muted-foreground font-mono">
                         ({row.ci_low} – {row.ci_high})
                       </span>
@@ -763,7 +764,13 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                       License
                     </dt>
                     <dd className="mt-0.5">
-                      <span className={cn('sev-pill', licenseSeverity(row))}>
+                      <span
+                        className={cn(
+                          'sev-pill',
+                          licenseSeverity(row),
+                          '[html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid',
+                        )}
+                      >
                         {row.license ?? (row.open_source ? 'open' : 'proprietary')}
                       </span>
                     </dd>
@@ -817,9 +824,7 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                   <div className="text-metadata text-muted-foreground mt-2">
                     Data source:{' '}
                     <span className="font-mono">
-                      {row.source === 'snapshot'
-                        ? 'AA unique-model snapshot'
-                        : 'Arena live'}
+                      {row.source === 'snapshot' ? 'AA unique-model snapshot' : 'Arena live'}
                     </span>
                     {' · '}
                     fetched {formatRelative(row.fetched_at)}

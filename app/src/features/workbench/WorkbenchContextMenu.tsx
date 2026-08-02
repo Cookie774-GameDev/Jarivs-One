@@ -127,7 +127,7 @@ export function WorkbenchContextMenu() {
 
   return (
     <div
-      className="workbench-context-menu"
+      className="workbench-context-menu [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
       data-testid="workbench-context-menu"
       style={{ left, top }}
       role="menu"
@@ -136,7 +136,7 @@ export function WorkbenchContextMenu() {
       onContextMenu={(event) => event.preventDefault()}
     >
       <div className="workbench-context-menu-kicker">
-        {menu.kind === 'canvas' ? 'Workbench' : panel?.title ?? 'Panel'}
+        {menu.kind === 'canvas' ? 'Workbench' : (panel?.title ?? 'Panel')}
       </div>
 
       {menu.kind === 'rename' ? (
@@ -150,9 +150,7 @@ export function WorkbenchContextMenu() {
             onChange={(e) => {
               // Functional update of draft only — do not remount/reselect input.
               setMenu((prev) =>
-                prev && prev.kind === 'rename'
-                  ? { ...prev, draft: e.target.value }
-                  : prev,
+                prev && prev.kind === 'rename' ? { ...prev, draft: e.target.value } : prev,
               );
             }}
             onClick={(e) => e.stopPropagation()}

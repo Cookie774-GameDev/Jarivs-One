@@ -411,6 +411,15 @@ verify_jwt = false
 verify_jwt = false
 
 # Authenticated metered APIs (default true; explicit for documentation).
+[functions.create-access-checkout]
+verify_jwt = true
+
+[functions.create-access-portal]
+verify_jwt = true
+
+[functions.access-lease]
+verify_jwt = true
+
 [functions.create-checkout-session]
 verify_jwt = true
 
@@ -442,6 +451,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.claim-launch-promo]
+verify_jwt = true
+
+[functions.github-context]
 verify_jwt = true
 
 # [edge_runtime.secrets]

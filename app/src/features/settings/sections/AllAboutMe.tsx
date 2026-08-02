@@ -1,5 +1,16 @@
 import * as React from 'react';
-import { AlertTriangle, Brain, Check, FileText, PauseCircle, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
+import '@/features/all-about-me/sakura-all-about-me.css';
+import {
+  AlertTriangle,
+  Brain,
+  Check,
+  FileText,
+  PauseCircle,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,10 +85,28 @@ function answersFromQuestionValues(
       byId('personalityWords') && `Vibe words: ${byId('personalityWords')}`,
       byId('toneExamples'),
       byId('signatureWords') && `Common words/slang: ${byId('signatureWords')}`,
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     toneExamples: byId('toneExamples'),
-    interests: [byId('currentFocus'), byId('biggestGoals'), byId('interests'), byId('attentionTopics'), byId('favoriteProjects')].filter(Boolean).join('\n'),
-    strongReactions: [byId('strongReactions'), byId('energyLoss'), byId('hatedVibes'), byId('dealbreakers'), byId('neverJoke')].filter(Boolean).join('\n'),
+    interests: [
+      byId('currentFocus'),
+      byId('biggestGoals'),
+      byId('interests'),
+      byId('attentionTopics'),
+      byId('favoriteProjects'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    strongReactions: [
+      byId('strongReactions'),
+      byId('energyLoss'),
+      byId('hatedVibes'),
+      byId('dealbreakers'),
+      byId('neverJoke'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     responseStyle: [
       byId('answerLength'),
       byId('energyLevel'),
@@ -85,8 +114,12 @@ function answersFromQuestionValues(
       byId('writeAsUserCleanup'),
       byId('humorSafety'),
       byId('youtubeReplyStyle'),
-    ].filter(Boolean).join('\n'),
-    personalNotes: [byId('motivation'), byId('perfectJarvis'), byId('privacyBoundaries')].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    personalNotes: [byId('motivation'), byId('perfectJarvis'), byId('privacyBoundaries')]
+      .filter(Boolean)
+      .join('\n'),
     preferences: [
       byId('answerLength'),
       byId('energyLevel'),
@@ -96,7 +129,12 @@ function answersFromQuestionValues(
       byId('codingPriority'),
       byId('tradeoffs'),
     ].filter(Boolean),
-    dislikedPatterns: [byId('avoidPhrases'), byId('correctionStyle'), byId('cheapAppSignals'), byId('dealbreakers')].filter(Boolean),
+    dislikedPatterns: [
+      byId('avoidPhrases'),
+      byId('correctionStyle'),
+      byId('cheapAppSignals'),
+      byId('dealbreakers'),
+    ].filter(Boolean),
     selectedModel: `${selectedModel.provider}/${selectedModel.model}`,
     quizResponses: responses,
   };
@@ -119,7 +157,10 @@ function QuestionField({
 }) {
   return (
     <div className="space-y-3">
-      <Label htmlFor={`all-about-me-${questionId}`} className="text-[15px] font-medium leading-snug text-foreground">
+      <Label
+        htmlFor={`all-about-me-${questionId}`}
+        className="text-[15px] font-medium leading-snug text-foreground"
+      >
         <span className="mr-2 text-metadata font-semibold text-accent-copper">{index + 1}.</span>
         {prompt}
       </Label>
@@ -138,9 +179,13 @@ function QuestionField({
         className="min-h-[88px] resize-none text-[15px] leading-relaxed"
       />
       <p className="text-[11px] text-muted-foreground">
-        <kbd className="rounded border border-border bg-panel px-1 py-px font-mono text-[10px]">Ctrl</kbd>
+        <kbd className="rounded border border-border bg-panel px-1 py-px font-mono text-[10px]">
+          Ctrl
+        </kbd>
         {' + '}
-        <kbd className="rounded border border-border bg-panel px-1 py-px font-mono text-[10px]">Enter</kbd>
+        <kbd className="rounded border border-border bg-panel px-1 py-px font-mono text-[10px]">
+          Enter
+        </kbd>
         {' next question'}
       </p>
     </div>
@@ -176,11 +221,17 @@ function ModelChoiceCard({
         className="sr-only"
       />
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-panel">
-        {selected ? <Check className="h-4 w-4 text-accent-copper" /> : <Sparkles className="h-4 w-4 text-muted-foreground" />}
+        {selected ? (
+          <Check className="h-4 w-4 text-accent-copper" />
+        ) : (
+          <Sparkles className="h-4 w-4 text-muted-foreground" />
+        )}
       </span>
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium text-foreground">{option.label}</span>
-        <span className="block truncate text-xs text-muted-foreground">{option.provider}/{option.model}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {option.provider}/{option.model}
+        </span>
       </span>
     </label>
   );
@@ -202,11 +253,15 @@ export function AllAboutMe({
     () => modelOptions ?? getAllAboutMeModelOptions(),
     [modelOptions],
   );
-  const [selectedModelId, setSelectedModelId] = React.useState(() => testDraft?.selectedModelId ?? availableModels[0]?.id ?? '');
-  const [testMode, setTestMode] = React.useState<AllAboutMeTestMode>(() => testDraft?.mode ?? 'create');
+  const [selectedModelId, setSelectedModelId] = React.useState(
+    () => testDraft?.selectedModelId ?? availableModels[0]?.id ?? '',
+  );
+  const [testMode, setTestMode] = React.useState<AllAboutMeTestMode>(
+    () => testDraft?.mode ?? 'create',
+  );
   const [testOpen, setTestOpen] = React.useState(false);
-  const [questionValues, setQuestionValues] = React.useState<Record<string, string>>(() =>
-    testDraft?.questionValues ?? initialQuestionValues(quizAnswers),
+  const [questionValues, setQuestionValues] = React.useState<Record<string, string>>(
+    () => testDraft?.questionValues ?? initialQuestionValues(quizAnswers),
   );
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
   const [testStep, setTestStep] = React.useState<TestStep>('questions');
@@ -246,12 +301,17 @@ export function AllAboutMe({
   const selectedModel = availableModels.find((option) => option.id === selectedModelId) ?? null;
   // Submit is allowed with zero answers — only a real grading model is required.
   const canGenerate = Boolean(selectedModel);
-  const currentQuestion = ALL_ABOUT_ME_TEST_QUESTIONS[currentQuestionIndex] ?? ALL_ABOUT_ME_TEST_QUESTIONS[0]!;
-  const answeredCount = ALL_ABOUT_ME_TEST_QUESTIONS.filter((question) => (questionValues[question.id] ?? '').trim()).length;
+  const currentQuestion =
+    ALL_ABOUT_ME_TEST_QUESTIONS[currentQuestionIndex] ?? ALL_ABOUT_ME_TEST_QUESTIONS[0]!;
+  const answeredCount = ALL_ABOUT_ME_TEST_QUESTIONS.filter((question) =>
+    (questionValues[question.id] ?? '').trim(),
+  ).length;
   const totalQuestions = ALL_ABOUT_ME_TEST_QUESTIONS.length;
 
   function firstUnansweredIndex(values: Record<string, string>): number {
-    const index = ALL_ABOUT_ME_TEST_QUESTIONS.findIndex((question) => !(values[question.id] ?? '').trim());
+    const index = ALL_ABOUT_ME_TEST_QUESTIONS.findIndex(
+      (question) => !(values[question.id] ?? '').trim(),
+    );
     return index === -1 ? 0 : index;
   }
 
@@ -310,7 +370,9 @@ export function AllAboutMe({
   }, []);
 
   function allQuestionsAnswered(values: Record<string, string>): boolean {
-    return ALL_ABOUT_ME_TEST_QUESTIONS.every((question) => (values[question.id] ?? '').trim().length > 0);
+    return ALL_ABOUT_ME_TEST_QUESTIONS.every(
+      (question) => (values[question.id] ?? '').trim().length > 0,
+    );
   }
 
   function openTest(mode: AllAboutMeTestMode) {
@@ -318,12 +380,15 @@ export function AllAboutMe({
       clearTimeout(choiceAdvanceTimerRef.current);
       choiceAdvanceTimerRef.current = null;
     }
-    const nextValues = testDraft?.mode === mode ? testDraft.questionValues : initialQuestionValues(quizAnswers);
+    const nextValues =
+      testDraft?.mode === mode ? testDraft.questionValues : initialQuestionValues(quizAnswers);
     setTestMode(mode);
     setQuestionValues(nextValues);
     const done = allQuestionsAnswered(nextValues);
     const nextStep: TestStep = done ? 'grade' : 'questions';
-    const nextIndex = done ? ALL_ABOUT_ME_TEST_QUESTIONS.length - 1 : firstUnansweredIndex(nextValues);
+    const nextIndex = done
+      ? ALL_ABOUT_ME_TEST_QUESTIONS.length - 1
+      : firstUnansweredIndex(nextValues);
     setTestStep(nextStep);
     setCurrentQuestionIndex(nextIndex);
     navRef.current = { testStep: nextStep, currentQuestionIndex: nextIndex };
@@ -381,7 +446,11 @@ export function AllAboutMe({
     };
   }
 
-  function updateQuestionValue(questionId: string, value: string, options?: { autoAdvanceChoice?: boolean }) {
+  function updateQuestionValue(
+    questionId: string,
+    value: string,
+    options?: { autoAdvanceChoice?: boolean },
+  ) {
     setQuestionValues((prev) => {
       const next = { ...prev, [questionId]: value };
       // Immediate save — do not wait for Next/close.
@@ -429,15 +498,19 @@ export function AllAboutMe({
 
   async function generateProfile() {
     if (!selectedModel) {
-      toast.warning('Pick a real AI model first', 'AllAboutMe.md needs a configured model, not mock/demo.');
+      toast.warning(
+        'Pick a real AI model first',
+        'AllAboutMe.md needs a configured model, not mock/demo.',
+      );
       return;
     }
     setGenerating(true);
     try {
       const answers = answersFromQuestionValues(questionValues, selectedModel);
-      const complete = completePrompt === completeAllAboutMePrompt
-        ? (prompt: string) => completeAllAboutMePrompt(prompt, selectedModel)
-        : completePrompt;
+      const complete =
+        completePrompt === completeAllAboutMePrompt
+          ? (prompt: string) => completeAllAboutMePrompt(prompt, selectedModel)
+          : completePrompt;
       const nextMarkdown = await generateAllAboutMeMarkdown(
         answers,
         complete,
@@ -455,15 +528,15 @@ export function AllAboutMe({
   const noRealModels = availableModels.length === 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-all-about-me flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header>
         <div className="flex items-center gap-2">
           <Brain className="h-5 w-5 text-accent-cyan" />
           <h2 className="text-page-title text-foreground">All About Me</h2>
         </div>
         <p className="mt-1 max-w-2xl text-secondary text-muted-foreground">
-          Build `AllAboutMe.md`, a private personality profile Jarvis uses to match your
-          tone, preferences, interests, reaction patterns, and writing style across chat.
+          Build `AllAboutMe.md`, a private personality profile Jarvis uses to match your tone,
+          preferences, interests, reaction patterns, and writing style across chat.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-metadata text-sage">
@@ -497,7 +570,8 @@ export function AllAboutMe({
                 <div>
                   <div className="text-ui-strong text-foreground">Quick popup test</div>
                   <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-                    Fly through 60 questions with a live progress bar. Answers autosave. Grade model is chosen after the last question.
+                    Fly through 60 questions with a live progress bar. Answers autosave. Grade model
+                    is chosen after the last question.
                   </p>
                 </div>
                 <Badge variant="outline" className="text-metadata">
@@ -506,7 +580,8 @@ export function AllAboutMe({
               </div>
               {noRealModels ? (
                 <div className="mt-4 rounded-md border border-dashed border-border bg-panel/60 p-3 text-sm text-muted-foreground">
-                  Connect a real AI model in Settings → Providers or download a local model before taking the test.
+                  Connect a real AI model in Settings → Providers or download a local model before
+                  taking the test.
                 </div>
               ) : null}
               <div className="mt-4 flex flex-wrap gap-2">
@@ -520,7 +595,11 @@ export function AllAboutMe({
                   Take the test
                 </Button>
                 {testDraft ? (
-                  <Button type="button" variant="secondary" onClick={() => openTest(testDraft.mode)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => openTest(testDraft.mode)}
+                  >
                     <PauseCircle className="h-3.5 w-3.5" />
                     Resume saved test
                   </Button>
@@ -544,14 +623,21 @@ export function AllAboutMe({
                       Delete the entire profile only when you want a true fresh retake.
                     </p>
                     {!deleteArmed ? (
-                      <Button type="button" variant="ghost" className="mt-3 text-destructive" onClick={() => setDeleteArmed(true)}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="mt-3 text-destructive"
+                        onClick={() => setDeleteArmed(true)}
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                         Delete AllAboutMe.md
                       </Button>
                     ) : (
                       <div className="mt-3 flex flex-wrap items-end gap-2">
                         <div className="space-y-1">
-                          <Label htmlFor="all-about-me-delete-confirm">Type delete to confirm</Label>
+                          <Label htmlFor="all-about-me-delete-confirm">
+                            Type delete to confirm
+                          </Label>
                           <input
                             id="all-about-me-delete-confirm"
                             value={deleteConfirmation}
@@ -567,7 +653,10 @@ export function AllAboutMe({
                             if (deleteProfile(deleteConfirmation)) {
                               setDeleteConfirmation('');
                               setDeleteArmed(false);
-                              toast.success('AllAboutMe.md deleted', 'You can now take a completely fresh test.');
+                              toast.success(
+                                'AllAboutMe.md deleted',
+                                'You can now take a completely fresh test.',
+                              );
                             }
                           }}
                         >
@@ -589,7 +678,8 @@ export function AllAboutMe({
               AllAboutMe.md
             </CardTitle>
             <CardDescription>
-              A stable, user-controlled profile. Automatic interaction preferences are stored separately in learning.md.
+              A stable, user-controlled profile. Automatic interaction preferences are stored
+              separately in learning.md.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -597,14 +687,17 @@ export function AllAboutMe({
               <div>
                 <div className="text-ui-strong text-foreground">Intentional profile</div>
                 <p className="text-metadata text-muted-foreground">
-                  Jarvis changes this document only when you complete the profile flow or make an explicit edit.
+                  Jarvis changes this document only when you complete the profile flow or make an
+                  explicit edit.
                 </p>
               </div>
             </div>
             {markdown ? (
               <div className="rounded-md border border-border bg-background/40 p-3">
                 <div className="text-ui-strong text-foreground">File location</div>
-                <p className="mt-1 font-mono text-xs text-accent-cyan">{ALL_ABOUT_ME_FILE_LOCATION}</p>
+                <p className="mt-1 font-mono text-xs text-accent-cyan">
+                  {ALL_ABOUT_ME_FILE_LOCATION}
+                </p>
               </div>
             ) : null}
 
@@ -678,7 +771,13 @@ export function AllAboutMe({
                   >
                     {answeredCount}/{totalQuestions} done
                   </Badge>
-                  <Button type="button" variant="ghost" size="icon-sm" onClick={closeTestSaving} aria-label="Close and save test">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={closeTestSaving}
+                    aria-label="Close and save test"
+                  >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -765,7 +864,9 @@ export function AllAboutMe({
                             type="button"
                             aria-pressed={selected}
                             onClick={() =>
-                              updateQuestionValue(currentQuestion.id, option, { autoAdvanceChoice: true })
+                              updateQuestionValue(currentQuestion.id, option, {
+                                autoAdvanceChoice: true,
+                              })
                             }
                             className={[
                               'rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-100',
@@ -779,7 +880,9 @@ export function AllAboutMe({
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Tap a choice to advance instantly.</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Tap a choice to advance instantly.
+                    </p>
                   </div>
                 )}
               </div>
@@ -813,7 +916,9 @@ export function AllAboutMe({
                     value={selectedModelId}
                     onChange={(event) => {
                       setSelectedModelId(event.currentTarget.value);
-                      persistDraft(questionValues, testMode, event.currentTarget.value, { force: true });
+                      persistDraft(questionValues, testMode, event.currentTarget.value, {
+                        force: true,
+                      });
                     }}
                     className="mt-3 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
                   >
@@ -838,9 +943,13 @@ export function AllAboutMe({
             <p className="text-[11px] text-muted-foreground">
               {testStep === 'questions' ? (
                 <>
-                  <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">Ctrl</kbd>
+                  <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">
+                    Ctrl
+                  </kbd>
                   +
-                  <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">Enter</kbd>
+                  <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">
+                    Enter
+                  </kbd>
                   {' next · Submit anytime'}
                 </>
               ) : (
@@ -866,12 +975,22 @@ export function AllAboutMe({
                     Submit
                   </Button>
                   <Button type="button" onClick={goNextQuestion}>
-                    {currentQuestionIndex >= ALL_ABOUT_ME_TEST_QUESTIONS.length - 1 ? 'Submit' : 'Next'}
+                    {currentQuestionIndex >= ALL_ABOUT_ME_TEST_QUESTIONS.length - 1
+                      ? 'Submit'
+                      : 'Next'}
                   </Button>
                 </>
               ) : (
-                <Button type="button" onClick={generateProfile} disabled={generating || !canGenerate}>
-                  {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                <Button
+                  type="button"
+                  onClick={generateProfile}
+                  disabled={generating || !canGenerate}
+                >
+                  {generating ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
                   Generate AllAboutMe.md
                 </Button>
               )}

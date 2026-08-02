@@ -1,5 +1,7 @@
 export type ConnectionMode = 'external-cli' | 'native-api' | 'local';
 
+export type JarvisPromptTransportStrategy = 'native-system' | 'prefixed-preamble' | 'unsupported';
+
 export interface ProviderCapabilities {
   text: boolean;
   images: boolean;
@@ -26,6 +28,7 @@ export interface ProviderConnection {
   authSource: string;
   modelId?: string;
   capabilities: ProviderCapabilities;
+  promptTransport: JarvisPromptTransportStrategy;
   enabled: boolean;
 }
 
@@ -90,6 +93,12 @@ export interface ProviderRequest {
   workingDirectory?: string;
   sessionId?: string;
   signal?: AbortSignal;
+  onResponseObservation?: (
+    observation:
+      | { kind: 'bytes'; byteLength: number; observedAt: number }
+      | { kind: 'sdk_chunk'; observedAt: number },
+  ) => void;
+  onActionDispatch?: (input: { observedAt: number }) => void;
 }
 
 /**

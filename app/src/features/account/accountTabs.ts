@@ -23,3 +23,7 @@ export function resolveAccountTab(value: string | null | undefined): AccountTabI
   if (value === 'more') return 'support';
   return isAccountTabId(value) ? value : DEFAULT_ACCOUNT_TAB;
 }
+
+export function resolveAccountTabFromSearch(search: string): AccountTabId {
+  return resolveAccountTab(new URLSearchParams(search).get('tab'));
+}

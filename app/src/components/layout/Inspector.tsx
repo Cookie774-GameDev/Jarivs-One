@@ -27,10 +27,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Hint, Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import {
+  Hint,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { ChatThread, Composer } from '@/features/chat';
 import { EmptyChat } from '@/features/chat/EmptyChat';
 // `useTodayEvents` exists on the V2 schedule hooks (added by the parallel
@@ -55,11 +62,19 @@ import { useToolRunsStore } from '@/features/inspector/toolRunsStore';
 import { chatRepo, messageRepo, taskRepo, terminalSessionRepo, db } from '@/lib/db';
 import { toast } from '@/components/ui/toast';
 import { cn, formatClock, formatRelative } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { useThemeLayoutTransition } from '@/features/appearance/themeMotion';
 import type { QuickLink } from '@/types/quick-link';
 import type { VibeSpaceTask } from '@/features/inspector/types';
 import type { Task, TaskPriority, TaskStatus } from '@/types/task';
 import type { Chat } from '@/types/chat';
 import type { TerminalSession } from '@/types/terminal';
+
+const LEGACY_INSPECTOR_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 import type { WorkspaceId } from '@/types/common';
 import {
   CONTEXT_MIME,
@@ -67,15 +82,20 @@ import {
   contextNodeFilePath,
   flattenContextNodes,
   formatContextAttachmentForTerminal,
-  getStoredContextSelectedFile,
-  loadStoredContextTree,
   nodeToAttachment,
   serializeContextAttachment,
-  setStoredContextSelectedFile,
   type ContextAttachment,
   type ContextTreeNode,
   type ProjectContextTree,
 } from '@/features/context/tree';
+import {
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+  getActivePersistedContextSelectedFile,
+  getActivePersistedContextTree,
+  selectPersistedContextFile,
+  type ContextPersistenceState,
+} from '@/features/context/contextPersistence';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import { createJarvisCreatorChat } from '@/features/jarvis-creator/handoff';
 import {
@@ -97,6 +117,39 @@ interface InspectorCustomTool {
   steps?: unknown[];
   emoji?: string;
   updatedAt: number;
+}
+
+function useContextPersistenceState(projectId: string | null): ContextPersistenceState | null {
+  const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? null);
+  const [state, setState] = React.useState<ContextPersistenceState | null>(null);
+
+  React.useEffect(() => {
+    if (!accountId) {
+      setState(null);
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      if (active) setState(getActiveContextPersistenceState(projectId));
+    };
+    refresh();
+    void ensureContextPersistence(projectId)
+      .then(refresh)
+      .catch(() => {
+        if (active) setState(null);
+      });
+    const onUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string | null }>).detail;
+      if ((detail?.projectId ?? null) === (projectId ?? null)) refresh();
+    };
+    window.addEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
+    };
+  }, [accountId, projectId]);
+
+  return state;
 }
 
 interface InspectorTerminalRef {
@@ -139,6 +192,7 @@ type Route =
  * instead of crashing the inspector.
  */
 export function Inspector() {
+  const themeLayoutTransition = useThemeLayoutTransition(LEGACY_INSPECTOR_TRANSITION);
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const projectId = useAuthStore((s) => s.projectId);
   const toggleInspector = useUIStore((s) => s.toggleInspector);
@@ -149,7 +203,9 @@ export function Inspector() {
   /** Holds a freshly created creator chat id until Dexie live-query catches up. */
   const stickyCreatorChatIdRef = React.useRef<string | null>(null);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
-  const jarvisAgentId = useAgentStore((s) => Object.values(s.agents).find((agent) => agent.slug === 'jarvis')?.id ?? null);
+  const jarvisAgentId = useAgentStore(
+    (s) => findProtectedJarvisAgent(Object.values(s.agents))?.id ?? null,
+  );
   const projectRoot = React.useMemo(() => getStoredProjectRoot(projectId), [projectId]);
   /** Jarvis creator needs a slightly wider column so question cards aren't squished. */
   const inspectorWidth = activeTab === 'jarvis' ? 380 : 320;
@@ -198,7 +254,10 @@ export function Inspector() {
           setActiveTab('jarvis');
         })
         .catch((err) => {
-          toast.error('Could not start Jarvis creator', err instanceof Error ? err.message : 'Try again.');
+          toast.error(
+            'Could not start Jarvis creator',
+            err instanceof Error ? err.message : 'Try again.',
+          );
         });
     };
     window.addEventListener('jarvis:terminal:attach', handleAttach);
@@ -268,7 +327,7 @@ export function Inspector() {
         : allChats.filter((c) => !c.project_id);
       const existing = filtered.length;
       const title = `New chat ${existing + 1}`;
-      
+
       const chat = await chatRepo.create({
         workspace_id: workspaceId,
         project_id: projectId ?? undefined,
@@ -290,16 +349,24 @@ export function Inspector() {
   return (
     <motion.aside
       aria-label="Inspector"
-      className="shrink-0 overflow-hidden bg-panel border-l border-border"
+      data-monochrome-surface="inspector"
+      data-sakura-shell-region="inspector"
+      className="sakura-shell-inspector shrink-0 overflow-hidden bg-panel border-l border-border"
+      style={{ '--inspector-pane-width': `${inspectorWidth}px` } as React.CSSProperties}
       initial={{ width: 0 }}
       animate={{ width: inspectorWidth }}
       exit={{ width: 0 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={themeLayoutTransition}
     >
-      <div className="flex h-full flex-col" style={{ width: inspectorWidth }}>
+      <div
+        className="sakura-shell-inspector-content flex h-full flex-col"
+        style={{ width: 'var(--inspector-pane-width)' }}
+      >
         {/* Header with Title and Close Button */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-panel-soft">
-          <span className="text-metadata font-medium uppercase tracking-wider text-muted-foreground">Inspector</span>
+          <span className="text-metadata font-medium uppercase tracking-wider text-muted-foreground">
+            Inspector
+          </span>
           <button
             type="button"
             onClick={toggleInspector}
@@ -310,7 +377,11 @@ export function Inspector() {
           </button>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex h-full min-h-0 flex-col"
+        >
           {/* NEW — route-context strip. Renders nothing for chat/agents. */}
           <RouteContextStrip workspaceId={workspaceId} />
 
@@ -333,117 +404,118 @@ export function Inspector() {
           >
             {activeTab === 'jarvis' ? (
               <>
-            <div className="flex items-center gap-1 border-b border-border bg-panel-soft px-2 py-1.5 shrink-0">
-              <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden />
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
+                <div className="flex items-center gap-1 border-b border-border bg-panel-soft px-2 py-1.5 shrink-0">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-left transition-colors',
+                          'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                        )}
+                        aria-label="Switch Jarvis chat"
+                      >
+                        <span className="truncate text-metadata font-medium text-foreground">
+                          {activeInspectorChat?.title?.trim() || 'Jarvis Chat'}
+                        </span>
+                        <ChevronDown
+                          className="h-3 w-3 shrink-0 text-muted-foreground"
+                          aria-hidden
+                        />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[288px] p-1.5">
+                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Project chats
+                      </p>
+                      {inspectorChats.length === 0 ? (
+                        <p className="px-2 py-2 text-secondary text-muted-foreground">
+                          No chats yet. Start one with +.
+                        </p>
+                      ) : (
+                        <ul className="max-h-56 overflow-y-auto scrollbar-hidden">
+                          {inspectorChats.map((chat) => {
+                            const active = chat.id === inspectorChatId;
+                            return (
+                              <li key={chat.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectorChatId(chat.id)}
+                                  className={cn(
+                                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
+                                    'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                                    active &&
+                                      'bg-muted ring-1 ring-accent-copper/35 [html[data-theme=monochrome]_&]:ring-0',
+                                  )}
+                                >
+                                  <MessageSquare
+                                    className={cn(
+                                      'h-3.5 w-3.5 shrink-0',
+                                      active ? 'text-accent-copper' : 'text-muted-foreground',
+                                    )}
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 flex-1 truncate text-secondary text-foreground">
+                                    {chat.title?.trim() || 'Untitled chat'}
+                                  </span>
+                                  <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                                    {formatRelative(chat.updated_at)}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                  <Hint label="New chat">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => void handleCreateChatInsideJarvisPanel()}
+                      aria-label="New chat"
+                      className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </Hint>
+                  <Button
                     type="button"
-                    className={cn(
-                      'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-left transition-colors',
-                      'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                    )}
-                    aria-label="Switch Jarvis chat"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={toggleInspector}
+                    aria-label="Close Jarvis panel"
+                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
                   >
-                    <span className="truncate text-metadata font-medium text-foreground">
-                      {activeInspectorChat?.title?.trim() || 'Jarvis Chat'}
-                    </span>
-                    <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-[288px] p-1.5">
-                  <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Project chats
-                  </p>
-                  {inspectorChats.length === 0 ? (
-                    <p className="px-2 py-2 text-secondary text-muted-foreground">
-                      No chats yet. Start one with +.
-                    </p>
-                  ) : (
-                    <ul className="max-h-56 overflow-y-auto scrollbar-hidden">
-                      {inspectorChats.map((chat) => {
-                        const active = chat.id === inspectorChatId;
-                        return (
-                          <li key={chat.id}>
-                            <button
-                              type="button"
-                              onClick={() => setInspectorChatId(chat.id)}
-                              className={cn(
-                                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-                                'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                                active && 'bg-muted ring-1 ring-accent-copper/35',
-                              )}
-                            >
-                              <MessageSquare
-                                className={cn(
-                                  'h-3.5 w-3.5 shrink-0',
-                                  active ? 'text-accent-copper' : 'text-muted-foreground',
-                                )}
-                                aria-hidden
-                              />
-                              <span className="min-w-0 flex-1 truncate text-secondary text-foreground">
-                                {chat.title?.trim() || 'Untitled chat'}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                                {formatRelative(chat.updated_at)}
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </PopoverContent>
-              </Popover>
-              <Hint label="New chat">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => void handleCreateChatInsideJarvisPanel()}
-                  aria-label="New chat"
-                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </Hint>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={toggleInspector}
-                aria-label="Close Jarvis panel"
-                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <TooltipProvider delayDuration={400}>
-              <div className="flex-1 min-h-0 flex flex-col bg-background overflow-x-hidden w-full min-w-0">
-                {inspectorChatId ? (
-                  <>
-                    <ChatThread chatId={inspectorChatId} compact />
-                    <Composer
-                      chatId={inspectorChatId}
-                      compact
-                      disableRouteSlashCommands
-                      placeholder="Ask Jarvis about this project..."
-                    />
-                  </>
-                ) : (
-                  <div className="flex-1 overflow-auto">
-                    <EmptyChat onNewChat={handleCreateChatInsideJarvisPanel} />
+                    <XCircle className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <TooltipProvider delayDuration={400}>
+                  <div className="flex-1 min-h-0 flex flex-col bg-background overflow-x-hidden w-full min-w-0">
+                    {inspectorChatId ? (
+                      <>
+                        <ChatThread chatId={inspectorChatId} compact />
+                        <Composer
+                          chatId={inspectorChatId}
+                          compact
+                          disableRouteSlashCommands
+                          placeholder="Ask Jarvis about this project..."
+                        />
+                      </>
+                    ) : (
+                      <div className="flex-1 overflow-auto">
+                        <EmptyChat onNewChat={handleCreateChatInsideJarvisPanel} />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </TooltipProvider>
+                </TooltipProvider>
               </>
             ) : null}
           </TabsContent>
-          <TabsContent
-            value="today"
-            className="m-0 flex-1 overflow-auto scrollbar-hidden"
-          >
+          <TabsContent value="today" className="m-0 flex-1 overflow-auto scrollbar-hidden">
             {activeTab === 'today' ? <TodayPanel /> : null}
           </TabsContent>
           <TabsContent
@@ -451,12 +523,12 @@ export function Inspector() {
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
             {activeTab === 'context' ? (
-            <InspectorContextPanel
-              inspectorOpen={inspectorOpen}
-              previewFilePath={previewFilePath}
-              projectRoot={projectRoot}
-              onPreviewFile={setPreviewFilePath}
-            />
+              <InspectorContextPanel
+                inspectorOpen={inspectorOpen}
+                previewFilePath={previewFilePath}
+                projectRoot={projectRoot}
+                onPreviewFile={setPreviewFilePath}
+              />
             ) : null}
           </TabsContent>
           <TabsContent
@@ -470,16 +542,11 @@ export function Inspector() {
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
             {activeTab === 'trace' ? (
-            <InspectorMilestonesPanel view={traceView} onViewChange={setTraceView} />
+              <InspectorMilestonesPanel view={traceView} onViewChange={setTraceView} />
             ) : null}
           </TabsContent>
-          <TabsContent
-            value="live"
-            className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
-          >
-            {activeTab === 'live' ? (
-            <InspectorActiveWorkPanel workspaceId={workspaceId} />
-            ) : null}
+          <TabsContent value="live" className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden">
+            {activeTab === 'live' ? <InspectorActiveWorkPanel workspaceId={workspaceId} /> : null}
           </TabsContent>
         </Tabs>
       </div>
@@ -545,7 +612,7 @@ function InspectorContextPanel({
   const setLauncherOpen = useUIStore((s) => s.setLauncherOpen);
   const pinFile = usePinnedStore((s) => s.pinFile);
   const pinMap = usePinnedStore((s) => s.pinMap);
-  const [tick, setTick] = React.useState(0);
+  const contextState = useContextPersistenceState(projectId);
   const [dragOver, setDragOver] = React.useState(false);
   const [contextMenu, setContextMenu] = React.useState<{
     x: number;
@@ -559,22 +626,21 @@ function InspectorContextPanel({
   } | null>(null);
 
   React.useEffect(() => {
-    const onUpdated = () => setTick((cur) => cur + 1);
-    window.addEventListener('jarvis:context-tree-updated', onUpdated);
-    return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated);
-  }, []);
-
-  React.useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
 
-  const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
+  const tree = React.useMemo(
+    () => getActivePersistedContextTree(projectId),
+    [contextState, projectId],
+  );
   const rows = React.useMemo(() => {
     if (!tree) return [] as ContextTreeNode[];
-    return flattenContextNodes(tree.nodes).filter((node) => node.kind !== 'root').slice(0, 12);
+    return flattenContextNodes(tree.nodes)
+      .filter((node) => node.kind !== 'root')
+      .slice(0, 12);
   }, [tree]);
 
   if (!tree) {
@@ -584,7 +650,12 @@ function InspectorContextPanel({
           title="Context"
           body="No active project map yet. Open Context to generate or select a project map."
         />
-        <Button variant="ghost" size="sm" onClick={() => setRoute('context')} className="justify-start">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setRoute('context')}
+          className="justify-start"
+        >
           <Boxes className="h-3.5 w-3.5" />
           Open Context
         </Button>
@@ -597,7 +668,11 @@ function InspectorContextPanel({
 
   return (
     <div
-      className={cn('flex flex-col gap-4', dragOver && 'ring-1 ring-accent-copper/40 rounded-lg')}
+      className={cn(
+        'flex flex-col gap-4',
+        dragOver &&
+          'ring-1 ring-accent-copper/40 rounded-lg [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:outline [html[data-theme=monochrome]_&]:outline-1 [html[data-theme=monochrome]_&]:outline-accent-copper',
+      )}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault();
@@ -616,7 +691,11 @@ function InspectorContextPanel({
       }}
     >
       {inspectorOpen && previewFilePath ? (
-        <InspectorMiniEditor filePath={previewFilePath} rootDir={projectRoot} onClose={() => onPreviewFile(null)} />
+        <InspectorMiniEditor
+          filePath={previewFilePath}
+          rootDir={projectRoot}
+          onClose={() => onPreviewFile(null)}
+        />
       ) : null}
 
       <Section
@@ -644,11 +723,7 @@ function InspectorContextPanel({
               mapRoot: tree.rootDir,
             });
           }}
-          onPreview={
-            inspectorOpen && mapPath
-              ? () => onPreviewFile(mapPath)
-              : undefined
-          }
+          onPreview={inspectorOpen && mapPath ? () => onPreviewFile(mapPath) : undefined}
         />
       </Section>
 
@@ -671,16 +746,27 @@ function InspectorContextPanel({
                     filePath={filePath}
                     title={node.title}
                     subtitle={node.path ?? node.summary}
-                    icon={node.kind === 'file'
-                      ? <FileText className="h-3.5 w-3.5" />
-                      : <Boxes className="h-3.5 w-3.5" />}
+                    icon={
+                      node.kind === 'file' ? (
+                        <FileText className="h-3.5 w-3.5" />
+                      ) : (
+                        <Boxes className="h-3.5 w-3.5" />
+                      )
+                    }
                     meta={node.kind}
                     onOpen={() => {
                       if (inspectorOpen && filePath) {
                         onPreviewFile(filePath);
                         return;
                       }
-                      if (filePath) setStoredContextSelectedFile(projectId, filePath);
+                      if (filePath) {
+                        void selectPersistedContextFile(projectId, filePath).catch((error) =>
+                          toast.error(
+                            'Could not select Context file',
+                            error instanceof Error ? error.message : 'Unknown persistence error',
+                          ),
+                        );
+                      }
                       setRoute('context');
                     }}
                     onContextMenu={(e) => {
@@ -692,7 +778,9 @@ function InspectorContextPanel({
                         filePath,
                       });
                     }}
-                    onPreview={inspectorOpen && filePath ? () => onPreviewFile(filePath) : undefined}
+                    onPreview={
+                      inspectorOpen && filePath ? () => onPreviewFile(filePath) : undefined
+                    }
                   />
                 </li>
               );
@@ -703,7 +791,7 @@ function InspectorContextPanel({
 
       {contextMenu ? (
         <div
-          className="fixed z-[90] min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-lg"
+          className="fixed z-[90] min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-lg [html[data-theme=monochrome]_&]:shadow-none"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
         >
@@ -821,7 +909,12 @@ function InspectorToolsPanel() {
         {sortedTools.length === 0 ? (
           <div className="flex flex-col gap-2">
             <EmptyState text="No custom tools saved yet." />
-            <Button variant="ghost" size="sm" onClick={() => setRoute('tools')} className="justify-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRoute('tools')}
+              className="justify-start"
+            >
               <Wrench className="h-3.5 w-3.5" />
               Open Tools
             </Button>
@@ -874,7 +967,11 @@ function loadStoredInspectorTools(): InspectorCustomTool[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     const state = isPlainRecord(parsed) ? parsed.state : null;
-    const candidate = isPlainRecord(state) ? state.tools : isPlainRecord(parsed) ? parsed.tools : null;
+    const candidate = isPlainRecord(state)
+      ? state.tools
+      : isPlainRecord(parsed)
+        ? parsed.tools
+        : null;
     if (!Array.isArray(candidate)) return [];
     return candidate
       .map(normalizeInspectorTool)
@@ -904,23 +1001,16 @@ function normalizeInspectorTool(raw: unknown): InspectorCustomTool | null {
 function InspectorReferencesPanel({ workspaceId }: { workspaceId: WorkspaceId | null }) {
   const projectId = useAuthStore((s) => s.projectId);
   const setRoute = useUIStore((s) => s.setRoute);
-  const [tick, setTick] = React.useState(0);
-
-  React.useEffect(() => {
-    const onContextFile = () => setTick((cur) => cur + 1);
-    window.addEventListener('jarvis:context:select-file', onContextFile);
-    window.addEventListener('jarvis:context-tree-updated', onContextFile);
-    return () => {
-      window.removeEventListener('jarvis:context:select-file', onContextFile);
-      window.removeEventListener('jarvis:context-tree-updated', onContextFile);
-    };
-  }, []);
+  const contextState = useContextPersistenceState(projectId);
 
   const selectedContextFile = React.useMemo(
-    () => getStoredContextSelectedFile(projectId),
-    [projectId, tick],
+    () => getActivePersistedContextSelectedFile(projectId),
+    [contextState, projectId],
   );
-  const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
+  const tree = React.useMemo(
+    () => getActivePersistedContextTree(projectId),
+    [contextState, projectId],
+  );
   const sessions =
     useLiveQuery(
       async () => {
@@ -1128,9 +1218,12 @@ function CustomToolResourceRow({
     <ToolResourceRow
       title={`${tool.emoji ? `${tool.emoji} ` : ''}${tool.name}`}
       actionId={actionId}
-      description={tool.description || (stepCount > 0
-        ? `${stepCount} workflow step${stepCount === 1 ? '' : 's'}`
-        : `Runs ${tool.baseAction}`)}
+      description={
+        tool.description ||
+        (stepCount > 0
+          ? `${stepCount} workflow step${stepCount === 1 ? '' : 's'}`
+          : `Runs ${tool.baseAction}`)
+      }
       icon={<Wrench className="h-3.5 w-3.5" />}
       projectId={projectId}
       onOpen={onOpen}
@@ -1249,7 +1342,9 @@ function toolAttachment({
       `Action id: ${actionId}`,
       description,
       'Use this when the user asks Jarvis to run or configure this tool.',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     path: `jarvis://tools/${actionId}`,
     tags: ['tool', actionId],
   };
@@ -1263,7 +1358,10 @@ function setContextDragData(
   event.dataTransfer.effectAllowed = 'copy';
   event.dataTransfer.setData(CONTEXT_MIME, serializeContextAttachment(attachment));
   if (filePath) event.dataTransfer.setData('application/x-jarvis-file', filePath);
-  event.dataTransfer.setData('text/plain', filePath || formatContextAttachmentForTerminal(attachment));
+  event.dataTransfer.setData(
+    'text/plain',
+    filePath || formatContextAttachmentForTerminal(attachment),
+  );
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -1329,7 +1427,11 @@ function TodayPanel() {
         emptyHint={todayEvents.length === 0 ? 'Nothing today — showing upcoming.' : undefined}
         onOpenSchedule={() => setRoute('schedule')}
       />
-      <WorkspaceTasksSection tasks={workspaceTasks.slice(0, 8)} totalOpen={openCount} kanbanToday={kanbanToday.length} />
+      <WorkspaceTasksSection
+        tasks={workspaceTasks.slice(0, 8)}
+        totalOpen={openCount}
+        kanbanToday={kanbanToday.length}
+      />
       <QuickLinksSection links={launchLinks} onManage={() => setLauncherOpen(true)} />
     </div>
   );
@@ -1364,7 +1466,9 @@ function ScheduleSection({
         </div>
       ) : (
         <>
-          {emptyHint ? <p className="text-metadata text-muted-foreground px-0.5">{emptyHint}</p> : null}
+          {emptyHint ? (
+            <p className="text-metadata text-muted-foreground px-0.5">{emptyHint}</p>
+          ) : null}
           <ul className="flex flex-col gap-1.5">
             {events.map((inst) => (
               <li
@@ -1374,10 +1478,7 @@ function ScheduleSection({
                 <span className="text-metadata font-mono text-accent-copper tabular-nums shrink-0 w-14">
                   {inst.event.all_day ? 'All day' : formatClock(inst.instanceStartMs)}
                 </span>
-                <span
-                  className="text-secondary text-foreground truncate"
-                  title={inst.event.title}
-                >
+                <span className="text-secondary text-foreground truncate" title={inst.event.title}>
                   {inst.event.title}
                 </span>
               </li>
@@ -1416,7 +1517,9 @@ function WorkspaceTasksSection({
               <span
                 className={cn(
                   'h-2 w-2 rounded-full shrink-0',
-                  t.status === 'working' ? 'bg-accent-cyan animate-pulse' : 'bg-accent-copper',
+                  t.status === 'working'
+                    ? 'bg-accent-cyan animate-pulse [html[data-theme=monochrome]_&]:animate-none'
+                    : 'bg-accent-copper',
                 )}
                 aria-hidden
               />
@@ -1431,7 +1534,9 @@ function WorkspaceTasksSection({
         </ul>
       )}
       {kanbanToday > 0 ? (
-        <p className="text-metadata text-muted-foreground px-0.5">{kanbanToday} kanban task(s) due today</p>
+        <p className="text-metadata text-muted-foreground px-0.5">
+          {kanbanToday} kanban task(s) due today
+        </p>
       ) : null}
     </Section>
   );
@@ -1453,10 +1558,7 @@ function PriorityDot({ priority }: { priority: TaskPriority }) {
 
 function QuickLinksSection({ links, onManage }: { links: QuickLink[]; onManage?: () => void }) {
   return (
-    <Section
-      label="Quick Launch"
-      icon={<Sparkles className="h-3 w-3" />}
-    >
+    <Section label="Quick Launch" icon={<Sparkles className="h-3 w-3" />}>
       {links.length === 0 ? (
         <EmptyState text="No quick launch items yet." />
       ) : (
@@ -1538,9 +1640,7 @@ function Section({ label, icon, hint, children }: SectionProps) {
           <span className="text-accent-copper">{icon}</span>
           {label}
         </span>
-        {hint && (
-          <span className="text-metadata text-muted-foreground tabular-nums">{hint}</span>
-        )}
+        {hint && <span className="text-metadata text-muted-foreground tabular-nums">{hint}</span>}
       </header>
       {children}
     </section>
@@ -1548,9 +1648,7 @@ function Section({ label, icon, hint, children }: SectionProps) {
 }
 
 function EmptyState({ text }: { text: string }) {
-  return (
-    <p className="text-secondary text-muted-foreground italic px-0.5">{text}</p>
-  );
+  return <p className="text-secondary text-muted-foreground italic px-0.5">{text}</p>;
 }
 
 // ============================================================
@@ -1570,7 +1668,7 @@ function useRoute(): Route {
  * Route-aware quick-info strip. Inserts above the existing tabs.
  *
  * Chat / Agents routes render nothing — the Today tab below is the
-  * primary surface for those. Every other route gets its own cozy
+ * primary surface for those. Every other route gets its own cozy
  * paper-card. Panels that depend on sibling slices use lazy imports
  * with `.catch` so a missing module gracefully falls back to a
  * `PlaceholderCard` instead of crashing the inspector.
@@ -1627,14 +1725,12 @@ function StripCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-paper p-3 shadow-soft">
+    <section className="rounded-lg border border-border bg-paper p-3 shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
       <header className="mb-2 flex items-center justify-between gap-2">
         <span className="text-metadata uppercase tracking-wide text-muted-foreground">
           {eyebrow}
         </span>
-        {hint && (
-          <span className="text-metadata text-accent-copper tabular-nums">{hint}</span>
-        )}
+        {hint && <span className="text-metadata text-accent-copper tabular-nums">{hint}</span>}
       </header>
       {children}
     </section>
@@ -1667,10 +1763,7 @@ function TerminalsContextPanel({ workspaceId }: { workspaceId: WorkspaceId | nul
 
   if (!isTauri) {
     return (
-      <PlaceholderCard
-        title="Active terminals"
-        body="Run the desktop build to manage terminals."
-      />
+      <PlaceholderCard title="Active terminals" body="Run the desktop build to manage terminals." />
     );
   }
 
@@ -1714,10 +1807,7 @@ function TerminalRow({ session }: { session: TerminalSession }) {
     <li className="flex items-start gap-2 rounded-md bg-paper-soft px-2 py-1.5">
       <div className="min-w-0 flex-1">
         <div className="text-secondary text-foreground truncate">{session.title}</div>
-        <div
-          className="text-metadata text-muted-foreground truncate"
-          title={session.cwd}
-        >
+        <div className="text-metadata text-muted-foreground truncate" title={session.cwd}>
           {session.cwd ?? '~'} · {formatRelative(session.created_at)}
         </div>
       </div>
@@ -1772,15 +1862,16 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
           body="No open to-dos. Add one on the Kanban page or from Trace."
         />
       ) : (
-        <details open className="group rounded-lg border border-border bg-paper p-3 shadow-soft">
+        <details
+          open
+          className="group rounded-lg border border-border bg-paper p-3 shadow-soft [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
             <span className="text-metadata uppercase tracking-wide text-muted-foreground">
               To-do
             </span>
             <span className="flex items-center gap-2">
-              <span className="text-metadata text-accent-copper tabular-nums">
-                {todos.length}
-              </span>
+              <span className="text-metadata text-accent-copper tabular-nums">{todos.length}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
             </span>
           </summary>
@@ -1800,10 +1891,7 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
                 >
                   <span className="sr-only">Complete</span>
                 </button>
-                <span
-                  className="text-secondary text-foreground truncate flex-1"
-                  title={item.title}
-                >
+                <span className="text-secondary text-foreground truncate flex-1" title={item.title}>
                   {item.title}
                 </span>
               </li>
@@ -1813,7 +1901,7 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
       )}
 
       {milestones.length > 0 ? (
-        <details className="group rounded-lg border border-border bg-paper p-3 shadow-soft">
+        <details className="group rounded-lg border border-border bg-paper p-3 shadow-soft [html[data-theme=monochrome]_&]:shadow-none">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
             <span className="text-metadata uppercase tracking-wide text-muted-foreground">
               Recent milestones
@@ -1882,15 +1970,11 @@ function StatusDot({ status }: { status: TaskStatus }) {
 
 function ContextContextPanel() {
   const projectId = useAuthStore((s) => s.projectId);
-  const [tick, setTick] = React.useState(0);
-
-  React.useEffect(() => {
-    const onUpdated = () => setTick((cur) => cur + 1);
-    window.addEventListener('jarvis:context-tree-updated', onUpdated);
-    return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated);
-  }, []);
-
-  const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
+  const contextState = useContextPersistenceState(projectId);
+  const tree = React.useMemo(
+    () => getActivePersistedContextTree(projectId),
+    [contextState, projectId],
+  );
   if (!tree) {
     return (
       <PlaceholderCard
@@ -1908,15 +1992,17 @@ function ContextContextPanel() {
       <ul className="flex flex-wrap gap-1">
         {tags.length === 0 ? (
           <li className="text-secondary text-muted-foreground italic">No tags yet.</li>
-        ) : tags.map((tag) => (
-          <li
-            key={tag}
-            className="inline-flex items-center gap-1 rounded-sm bg-paper-soft px-1.5 py-0.5 text-metadata text-foreground"
-          >
-            <Tag className="h-3 w-3 text-accent-copper" aria-hidden="true" />
-            <span>{tag}</span>
-          </li>
-        ))}
+        ) : (
+          tags.map((tag) => (
+            <li
+              key={tag}
+              className="inline-flex items-center gap-1 rounded-sm bg-paper-soft px-1.5 py-0.5 text-metadata text-foreground"
+            >
+              <Tag className="h-3 w-3 text-accent-copper" aria-hidden="true" />
+              <span>{tag}</span>
+            </li>
+          ))
+        )}
       </ul>
     </StripCard>
   );
@@ -1961,20 +2047,10 @@ function BenchmarksContextPanel() {
   }, []);
 
   if (!rows) {
-    return (
-      <PlaceholderCard
-        title="Top by Arena score"
-        body="Loading leaderboard…"
-      />
-    );
+    return <PlaceholderCard title="Top by Arena score" body="Loading leaderboard…" />;
   }
   if (rows.length === 0) {
-    return (
-      <PlaceholderCard
-        title="Top by Arena score"
-        body="No benchmark rows available yet."
-      />
-    );
+    return <PlaceholderCard title="Top by Arena score" body="No benchmark rows available yet." />;
   }
 
   return (
@@ -1988,10 +2064,7 @@ function BenchmarksContextPanel() {
             <span className="text-metadata text-muted-foreground tabular-nums shrink-0 w-4">
               {i + 1}
             </span>
-            <span
-              className="text-secondary text-foreground truncate flex-1"
-              title={r.model}
-            >
+            <span className="text-secondary text-foreground truncate flex-1" title={r.model}>
               {r.model}
             </span>
             <span className="text-metadata text-accent-copper tabular-nums shrink-0">
@@ -2025,12 +2098,7 @@ function HistoryContextPanel({ workspaceId }: { workspaceId: WorkspaceId | null 
     ) ?? [];
 
   if (chats.length === 0) {
-    return (
-      <PlaceholderCard
-        title="Last 5 chats"
-        body="Start a chat to see it here."
-      />
-    );
+    return <PlaceholderCard title="Last 5 chats" body="Start a chat to see it here." />;
   }
 
   const onJump = (chat: Chat) => {
@@ -2048,7 +2116,7 @@ function HistoryContextPanel({ workspaceId }: { workspaceId: WorkspaceId | null 
               onClick={() => onJump(c)}
               className={cn(
                 'group flex w-full items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5 text-left transition-colors',
-                'hover:bg-paper hover:ring-1 hover:ring-accent-copper/40',
+                'hover:bg-paper hover:ring-1 hover:ring-accent-copper/40 [html[data-theme=monochrome]_&]:hover:ring-0',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
               )}
             >
@@ -2056,10 +2124,7 @@ function HistoryContextPanel({ workspaceId }: { workspaceId: WorkspaceId | null 
                 className="h-3 w-3 shrink-0 text-muted-foreground"
                 aria-hidden="true"
               />
-              <span
-                className="text-secondary text-foreground truncate flex-1"
-                title={c.title}
-              >
+              <span className="text-secondary text-foreground truncate flex-1" title={c.title}>
                 {c.title || 'Untitled chat'}
               </span>
               <span className="text-metadata text-muted-foreground tabular-nums shrink-0">

@@ -1,4 +1,4 @@
-import { motion } from 'motion/react';
+import { motion, type Transition } from 'motion/react';
 import {
   ArrowRight,
   BarChart3,
@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { cn } from '@/lib/utils';
 
 interface WhatsNewProps {
@@ -41,15 +42,13 @@ const CARDS: FeatureCard[] = [
   {
     icon: Sparkles,
     title: 'Context + agents',
-    description:
-      'Generate a project skill tree so every AI starts with the right map.',
+    description: 'Generate a project skill tree so every AI starts with the right map.',
     command: 'open context',
   },
   {
     icon: BarChart3,
     title: 'Live benchmarks',
-    description:
-      'See the public Chatbot Arena scores. BYOK to run any of them.',
+    description: 'See the public Chatbot Arena scores. BYOK to run any of them.',
     command: 'open benchmarks',
   },
   {
@@ -64,12 +63,17 @@ const CARDS: FeatureCard[] = [
     description: 'Local NL command bar. No network, no AI, just regex magic.',
   },
 ];
+const LEGACY_FEATURE_CARD_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 380,
+  damping: 30,
+} as const) satisfies Transition;
 
 /**
  * Onboarding — "What's new in V3" step.
  *
  * Sits between Persona and Providers. Highlights the six BridgeMind-class
-  * additions (terminals, kanban, context/agents, benchmarks, history, the
+ * additions (terminals, kanban, context/agents, benchmarks, history, the
  * NL assistant) without hijacking the 60-second flow. Each card teaches a
  * Mod+J phrase so users can reach the feature via the assistant later.
  *
@@ -83,9 +87,7 @@ export function WhatsNew({ onNext }: WhatsNewProps) {
       <header className="text-center max-w-2xl mx-auto shrink-0">
         <span className="eyebrow block">What&apos;s new</span>
         <h2 className="font-display text-hero leading-tight mt-2">
-          Jarvis V3{' '}
-          <span className="text-muted-foreground/60 font-light">·</span>{' '}
-          Cozy Workspace
+          Jarvis V3 <span className="text-muted-foreground/60 font-light">·</span> Cozy Workspace
         </h2>
       </header>
 
@@ -120,6 +122,7 @@ export function WhatsNew({ onNext }: WhatsNewProps) {
 }
 
 function FeatureCardItem({ card }: { card: FeatureCard }) {
+  const featureCardTransition = useThemeMotionTransition(LEGACY_FEATURE_CARD_TRANSITION);
   const Icon = card.icon;
   return (
     <motion.div
@@ -127,7 +130,7 @@ function FeatureCardItem({ card }: { card: FeatureCard }) {
         hidden: { opacity: 0, y: 8 },
         show: { opacity: 1, y: 0 },
       }}
-      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+      transition={featureCardTransition}
       className={cn(
         'cozy-card flex flex-col gap-3',
         // Copper hover ring + matching border. The base cozy-card transition
@@ -139,12 +142,8 @@ function FeatureCardItem({ card }: { card: FeatureCard }) {
       <Icon className="h-6 w-6 text-accent-copper" strokeWidth={1.5} />
 
       <div className="flex flex-col gap-1.5">
-        <h3 className="font-display text-page-title text-foreground leading-tight">
-          {card.title}
-        </h3>
-        <p className="text-secondary text-muted-foreground leading-snug">
-          {card.description}
-        </p>
+        <h3 className="font-display text-page-title text-foreground leading-tight">{card.title}</h3>
+        <p className="text-secondary text-muted-foreground leading-snug">{card.description}</p>
       </div>
 
       <div className="mt-auto flex flex-wrap items-center gap-1.5 text-metadata text-muted-foreground pt-1">

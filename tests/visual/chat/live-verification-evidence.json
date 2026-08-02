@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "evidenceCommit": "e71cb480cbbcfccdbc5cd2d7f772fb6a8ca4a774",
+  "interaction": {
+    "receiptRelativePath": ".artifacts/origami-chat/origami-final-interaction-20260729-i.receipt.json",
+    "receiptSha256": "727ccb81dd975243f5f92af6eed802350410615a77343c6c7fb637797b67a826",
+    "browserSource": "msedge",
+    "viewport": {
+      "width": 1672,
+      "height": 941,
+      "deviceScaleFactor": 1
+    },
+    "structure": {
+      "root": 1,
+      "chat": 1,
+      "session": 1,
+      "composer": 1,
+      "thread": 1
+    },
+    "submission": {
+      "ctrlEnter": true,
+      "sendButton": true,
+      "messagesRendered": true
+    },
+    "decorative": {
+      "count": 1,
+      "ariaHidden": true,
+      "focusableCount": 0
+    },
+    "thread": {
+      "count": 1,
+      "hasLiveText": true,
+      "imageOnly": false
+    },
+    "shortcut": {
+      "present": true
+    },
+    "composer": {
+      "modelSelector": {
+        "present": true,
+        "enabled": true
+      },
+      "agentMode": {
+        "present": true,
+        "enabled": true,
+        "popup": "listbox"
+      },
+      "composer": {
+        "present": true,
+        "editable": true
+      },
+      "send": {
+        "present": true,
+        "disabledWhenEmpty": true
+      },
+      "dictation": {
+        "present": true,
+        "enabled": true,
+        "pressed": false
+      }
+    },
+    "modelSelector": {
+      "opened": true,
+      "closed": true
+    },
+    "agentMode": {
+      "opened": true,
+      "closed": true
+    },
+    "sendEnablement": {
+      "fillAccepted": true,
+      "sendEnabledWithText": true,
+      "sendDisabledWhenEmpty": true
+    },
+    "sessionExpand": {
+      "toggled": true,
+      "restored": true
+    },
+    "navigation": {
+      "sidebar": {
+        "present": true,
+        "enabled": true,
+        "expanded": true
+      },
+      "project": {
+        "present": true,
+        "enabled": true
+      },
+      "chat": {
+        "present": true,
+        "enabled": true
+      }
+    },
+    "focusTargets": [
+      "composer",
+      "modelSelector",
+      "agentMode",
+      "send",
+      "dictation",
+      "jarvisOpener",
+      "sessionExpand",
+      "navToggle",
+      "createProject",
+      "createChat"
+    ],
+    "reducedMotion": {
+      "media": true,
+      "jarvisPanel": true
+    },
+    "jarvis": {
+      "opened": true,
+      "status": "Ready",
+      "control": "Click to talk",
+      "commandCenterExpanded": true,
+      "transcriptPresent": true,
+      "closed": true
+    },
+    "unexpectedPageErrors": []
+  },
+  "nonChat": {
+    "receiptRelativePath": ".artifacts/origami-chat/origami-final-nonchat-20260729-g.receipt.json",
+    "receiptSha256": "86f29a6c7aa937460aafb46d67adfd5146a3344d1f7158ece8def93cc2737090",
+    "browserSource": "msedge",
+    "chatGateScope": "html[data-theme='vibespace'] body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])",
+    "viewport": {
+      "width": 1672,
+      "height": 941,
+      "deviceScaleFactor": 1
+    },
+    "cases": [
+      {
+        "caseId": "schedule-vibespace",
+        "route": "schedule",
+        "documentTheme": "vibespace",
+        "captured": true,
+        "gateActive": false,
+        "screenshotSha256": "41c982f70b3745900a629c1120be909c15b70c40314167ff7e4510594219edee"
+      },
+      {
+        "caseId": "terminal-vibespace",
+        "route": "terminal",
+        "documentTheme": "vibespace",
+        "captured": true,
+        "gateActive": false,
+        "screenshotSha256": "8f688be5d15dd628f995226298685fc3ef3da1d265fa269f2988c7521f8c8794"
+      },
+      {
+        "caseId": "settings-appearance-vibespace",
+        "route": "settings-appearance",
+        "documentTheme": "vibespace",
+        "captured": true,
+        "gateActive": false,
+        "screenshotSha256": "b4caa2d9788cc152865c36355ffb9a5c64fdc5088303c12adb2ed19b2d40c9cc"
+      },
+      {
+        "caseId": "chat-default",
+        "route": "chat",
+        "documentTheme": "dark",
+        "captured": true,
+        "gateActive": false,
+        "screenshotSha256": "02753d5f6ac3f3d3381cd71142b57ed24cd34c8164baa50cd1fcb9bb0b2f6a3a"
+      },
+      {
+        "caseId": "chat-jarvis",
+        "route": "chat",
+        "documentTheme": "jarvis",
+        "captured": true,
+        "gateActive": false,
+        "screenshotSha256": "60edaeef44de36b08b78c5a6f9e5a192892206774753a53a7840a2d94d783685"
+      },
+      {
+        "caseId": "chat-monochrome",
+        "route": "chat",
+        "documentTheme": "monochrome",
+        "captured": true,
+        "gateActive": false,
+        "screenshotSha256": "a7dee129b65618bb82f325406552f42a1589425790104b0de152c000d6ddbc00"
+      }
+    ]
+  },
+  "finalScreenshot": {
+    "relativePath": ".artifacts/origami-chat/pass-012-assistant-spacing/chat.png",
+    "sha256": "2f5a34cdbb8b1f1b54f523f13db3f2864acf67a392b02561cca65fe1c6cb9582",
+    "width": 1672,
+    "height": 941
+  },
+  "comparison": {
+    "fullDiff": 0.17304709944119306,
+    "weightedDiff": 0.21474210831767848,
+    "targetThresholdsAllMet": false
+  },
+  "humanVisibleMismatches": [
+    "header/Jarvis positioning",
+    "sidebar/foliage overlap",
+    "pet covering upper-left crane",
+    "typography/assistant layout",
+    "composer/session alignment",
+    "flower/crane scale/placement"
+  ]
+}

@@ -1,9 +1,16 @@
 import * as React from 'react';
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+
+const LEGACY_TOAST_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 
 /**
  * Lightweight in-app toast system. Self-contained (no external lib).
@@ -61,12 +68,18 @@ const variantStyles: Record<ToastVariant, { ring: string; icon: React.ReactNode 
   info: { ring: 'border-info/30', icon: <Info className="h-4 w-4 text-info" /> },
   success: { ring: 'border-success/30', icon: <Check className="h-4 w-4 text-success" /> },
   warning: { ring: 'border-warning/30', icon: <AlertTriangle className="h-4 w-4 text-warning" /> },
-  destructive: { ring: 'border-destructive/30', icon: <AlertTriangle className="h-4 w-4 text-destructive" /> },
+  destructive: {
+    ring: 'border-destructive/30',
+    icon: <AlertTriangle className="h-4 w-4 text-destructive" />,
+  },
 };
 
 export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
+  const reducedMotion = useReducedMotion();
+  const themeMotionTransition = useThemeMotionTransition(LEGACY_TOAST_TRANSITION);
+  const themeMotionLayout = useThemeMotionLayout(true);
 
   return (
     <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
@@ -76,13 +89,18 @@ export function Toaster() {
           return (
             <motion.div
               key={t.id}
-              layout
-              initial={{ opacity: 0, x: 16, scale: 0.96 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 16, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              role={t.variant === 'destructive' ? 'alert' : 'status'}
+              aria-live={t.variant === 'destructive' ? 'assertive' : 'polite'}
+              aria-atomic="true"
+              data-monochrome-surface="toaster"
+              layout={themeMotionLayout}
+              initial={reducedMotion ? false : { opacity: 0, x: 16, scale: 0.96 }}
+              animate={reducedMotion ? undefined : { opacity: 1, x: 0, scale: 1 }}
+              exit={reducedMotion ? undefined : { opacity: 0, x: 16, scale: 0.96 }}
+              transition={themeMotionTransition}
               className={cn(
-                'pointer-events-auto rounded-md border bg-elevated shadow-2xl px-3 py-2.5 min-w-[280px] max-w-[420px]',
+                'pointer-events-auto rounded-md border bg-elevated shadow-2xl px-3 py-2.5 min-w-[280px] max-w-[420px] motion-reduce:!transform-none motion-reduce:!opacity-100 motion-reduce:!transition-none',
+                '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
                 'flex items-start gap-2.5',
                 style.ring,
               )}
@@ -91,7 +109,9 @@ export function Toaster() {
               <div className="flex-1 min-w-0">
                 {t.title && <div className="text-ui-strong text-foreground">{t.title}</div>}
                 {t.description && (
-                  <div className="text-secondary text-muted-foreground mt-0.5 break-words">{t.description}</div>
+                  <div className="text-secondary text-muted-foreground mt-0.5 break-words">
+                    {t.description}
+                  </div>
                 )}
               </div>
               <button

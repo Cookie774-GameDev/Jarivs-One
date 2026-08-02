@@ -1,0 +1,136 @@
+import * as React from 'react';
+import { act, render } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { TerminalCliRuntimeResponse } from './terminalCliRuntime';
+
+const tauriMocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  listener: null as null | ((event: { payload: unknown }) => void),
+  unlisten: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: tauriMocks.invoke }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async (_event: string, listener: (event: { payload: unknown }) => void) => {
+    tauriMocks.listener = listener;
+    return tauriMocks.unlisten;
+  }),
+}));
+
+import { TerminalCliRuntimeHost } from './TerminalCliRuntimeHost';
+
+function request(requestId = 'request-status', terminalSessionId = 'tty-a') {
+  return {
+    protocolVersion: 1,
+    requestId,
+    terminalSessionId,
+    paneId: 'pane-a',
+    projectId: 'project-a',
+    method: 'status',
+    params: {},
+  };
+}
+
+async function emit(payload: unknown): Promise<void> {
+  await act(async () => {
+    tauriMocks.listener?.({ payload });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+describe('TerminalCliRuntimeHost', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tauriMocks.listener = null;
+    tauriMocks.invoke.mockResolvedValue(undefined);
+  });
+
+  it('routes a native event through the runtime and returns the exact bounded response', async () => {
+    const response = Object.freeze({
+      requestId: 'request-status',
+      ok: true,
+      code: 'ok',
+      message: 'VibeSpace is running.',
+    }) satisfies TerminalCliRuntimeResponse;
+    const execute = vi.fn(async () => response);
+
+    render(<TerminalCliRuntimeHost runtime={{ execute }} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await emit(request());
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'request-status',
+        terminalSessionId: 'tty-a',
+        method: 'status',
+      }),
+    );
+    expect(tauriMocks.invoke).toHaveBeenCalledWith('terminal_cli_respond', { response });
+  });
+
+  it('fails a malformed native event closed without exposing its payload', async () => {
+    const execute = vi.fn();
+    render(<TerminalCliRuntimeHost runtime={{ execute }} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await emit({
+      ...request('request-malformed'),
+      nonce: 'must-not-cross',
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(tauriMocks.invoke).toHaveBeenCalledWith('terminal_cli_respond', {
+      response: {
+        requestId: 'request-malformed',
+        ok: false,
+        code: 'invalid_request',
+        message: 'The terminal CLI request is invalid.',
+      },
+    });
+    expect(JSON.stringify(tauriMocks.invoke.mock.calls)).not.toContain('must-not-cross');
+  });
+
+  it('serializes requests from one terminal session and releases its listener on unmount', async () => {
+    const releases: Array<() => void> = [];
+    const execute = vi.fn(
+      (input: { requestId: string }): Promise<TerminalCliRuntimeResponse> =>
+        new Promise((resolve) => {
+          releases.push(() =>
+            resolve({
+              requestId: input.requestId,
+              ok: true,
+              code: 'ok',
+              message: 'done',
+            }),
+          );
+        }),
+    );
+    const mounted = render(<TerminalCliRuntimeHost runtime={{ execute }} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      tauriMocks.listener?.({ payload: request('request-one') });
+      tauriMocks.listener?.({ payload: request('request-two') });
+      await Promise.resolve();
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releases[0]?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    mounted.unmount();
+    expect(tauriMocks.unlisten).toHaveBeenCalledOnce();
+  });
+});

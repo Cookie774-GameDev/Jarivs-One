@@ -1,0 +1,68 @@
+html[data-theme='sakura'] [data-sakura-route='ambient'] {
+  color: #fff8f4;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(238, 171, 183, 0.2), transparent 28%),
+    linear-gradient(180deg, rgba(47, 43, 113, 0.94), #140e30 76%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='ambient-home'] .ambient-clock {
+  color: #fff7f2;
+  font-family: Fraunces, Georgia, serif;
+  text-shadow:
+    0 3px 0 rgba(68, 42, 85, 0.4),
+    0 14px 28px rgba(24, 14, 54, 0.35);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='ambient-home'] .ambient-quote {
+  color: rgba(255, 248, 244, 0.9);
+  font-family: Fraunces, Georgia, serif;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='ambient-home'] .ambient-orb {
+  background: radial-gradient(circle at 40% 35%, #fff2e8, #ef8faa 26%, #916285 57%, #2f2b71);
+  box-shadow: 0 0 34px rgba(238, 171, 183, 0.33);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='ambient-home'] .ambient-halo {
+  border-color: rgba(255, 217, 120, 0.28);
+  box-shadow: 0 0 70px rgba(238, 171, 183, 0.22);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='ambient-home'] .ambient-dot {
+  background: #eeabb7;
+  box-shadow: 0 0 9px rgba(238, 171, 183, 0.48);
+}
+
+html[data-theme='sakura'] [data-sakura-route='ambient']:focus-visible {
+  outline: 2px solid #eeabb7;
+  outline-offset: -4px;
+}
+
+@supports (backdrop-filter: blur(14px)) {
+  html[data-theme='sakura'] [data-sakura-route='ambient'] {
+    backdrop-filter: blur(14px) saturate(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-route='ambient'],
+  html[data-theme='sakura'] [data-sakura-route='ambient'] * {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+
+  html[data-theme='sakura'] [data-sakura-surface='ambient-home'] .ambient-dot {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-route='ambient'] {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    box-shadow: none;
+  }
+}

@@ -1,21 +1,18 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, PhoneOff, Lock, Unlock } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
+import { planAllowsJarvisCall } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { Orb } from '@/features/voice/Orb';
 import { PERSONAS } from '@/features/voice/personas';
 import { useCallStore, type CallStatus } from './store';
 import { getCallService } from './CallService';
+import './sakura-call.css';
 
 const STATUS_LABEL: Record<CallStatus, string> = {
   idle: 'Ready',
@@ -39,9 +36,14 @@ const STATUS_LABEL: Record<CallStatus, string> = {
  * cloud publishes data messages with role + text on every utterance; we
  * just render them here.
  */
-export function CallModal() {
+export interface CallModalProps {
+  runtimeEffectsEnabled?: boolean;
+}
+
+export function CallModal({ runtimeEffectsEnabled = true }: CallModalProps = {}) {
   const open = useUIStore((s) => s.callModalOpen);
   const setOpen = useUIStore((s) => s.setCallModalOpen);
+  const theme = useUIStore((s) => s.theme);
 
   const status = useCallStore((s) => s.status);
   const errorMessage = useCallStore((s) => s.errorMessage);
@@ -53,17 +55,14 @@ export function CallModal() {
   const callId = useCallStore((s) => s.callId);
   const setStatus = useCallStore((s) => s.setStatus);
   const plan = useAuthStore((s) => s.plan);
-  const email = useAuthStore((s) => s.email);
-  const cloudEmail = useAuthStore((s) => s.cloudSession?.email);
-  const localUserId = useAuthStore((s) => s.localUserId);
 
   const transcriptRef = useRef<HTMLDivElement | null>(null);
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   // Auto-start when the modal opens with no call yet.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !runtimeEffectsEnabled) return;
     if (status === 'idle') {
       if (!entitled) {
         setStatus('error', 'Jarvis Call requires a voice-enabled plan or an admin-enabled build.');
@@ -71,16 +70,19 @@ export function CallModal() {
       }
       void getCallService().start(persona);
     }
-  }, [open, status, persona, entitled, setStatus]);
+  }, [open, runtimeEffectsEnabled, status, persona, entitled, setStatus]);
 
   // Auto-scroll transcript
   useEffect(() => {
-    transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' });
+    transcriptRef.current?.scrollTo({
+      top: transcriptRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
   }, [transcript.length]);
 
   // Close on Esc only when not in an active call (avoid accidental hangup)
   useEffect(() => {
-    if (!open) return;
+    if (!open || !runtimeEffectsEnabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && status !== 'in-call') {
         void getCallService().stop();
@@ -89,16 +91,21 @@ export function CallModal() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, status, setOpen]);
+  }, [open, runtimeEffectsEnabled, status, setOpen]);
 
   const personaCfg = PERSONAS[persona] ?? PERSONAS.jarvis;
 
   const handleHangup = async () => {
+    if (!runtimeEffectsEnabled) {
+      setOpen(false);
+      return;
+    }
     await getCallService().stop();
     setOpen(false);
   };
 
   const handleMute = () => {
+    if (!runtimeEffectsEnabled) return;
     getCallService().setMuted(!muted);
   };
 
@@ -119,8 +126,18 @@ export function CallModal() {
   })() as 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v && status === 'in-call') return; setOpen(v); }}>
-      <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && status === 'in-call') return;
+        setOpen(v);
+      }}
+    >
+      <DialogContent
+        data-monochrome-surface="call"
+        data-sakura-surface="call"
+        className="overflow-hidden p-0 [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none sm:max-w-[520px]"
+      >
         <div className="px-6 pt-6 pb-4 flex flex-col items-center gap-3">
           <DialogTitle className="text-base font-semibold tracking-tight">
             {personaCfg.name}
@@ -130,11 +147,17 @@ export function CallModal() {
           </DialogDescription>
 
           <div className="my-4">
-            <Orb state={orbState} size={140} />
+            <Orb
+              state={orbState}
+              size={140}
+              presentation={theme === 'monochrome' ? 'monochrome-flat' : 'default'}
+            />
           </div>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm" data-call-status={status}>
             <div
+              aria-hidden="true"
+              data-call-status-indicator=""
               className={cn(
                 'h-2 w-2 rounded-full',
                 status === 'in-call' && 'bg-emerald-500 animate-pulse',
@@ -152,7 +175,10 @@ export function CallModal() {
           </div>
 
           {errorMessage && (
-            <div className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-400 max-w-full break-words">
+            <div
+              className="mt-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-400 max-w-full break-words"
+              data-call-state="error"
+            >
               {errorMessage}
             </div>
           )}
@@ -167,7 +193,8 @@ export function CallModal() {
         {/* Transcript */}
         <div
           ref={transcriptRef}
-          className="px-6 py-3 max-h-[260px] min-h-[120px] overflow-y-auto bg-muted/40 border-y border-border/40 text-sm space-y-2"
+          data-sakura-surface="call-transcript"
+          className="max-h-[260px] min-h-[120px] space-y-2 overflow-y-auto border-y border-border/40 bg-muted/40 px-6 py-3 text-sm [[data-theme=monochrome]_&]:border-border [[data-theme=monochrome]_&]:bg-panel"
         >
           {transcript.length === 0 && status !== 'in-call' && (
             <p className="text-xs text-muted-foreground text-center py-6">
@@ -200,10 +227,14 @@ export function CallModal() {
 
         {/* Confirm banner */}
         {awaitingConfirm && (
-          <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 text-xs flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-6 py-3 text-xs [[data-theme=monochrome]_&]:border-border [[data-theme=monochrome]_&]:bg-panel"
+            data-call-state="confirmation"
+          >
             <Lock className="h-3.5 w-3.5 text-amber-500" />
             <span>
-              <strong>{awaitingConfirm.tool}</strong>: {awaitingConfirm.summary}. Say <em>yes</em> to confirm.
+              <strong>{awaitingConfirm.tool}</strong>: {awaitingConfirm.summary}. Say <em>yes</em>{' '}
+              to confirm.
             </span>
           </div>
         )}

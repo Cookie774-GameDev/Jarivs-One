@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalSttHost } from './GlobalSttHost';
 import {
@@ -8,18 +8,30 @@ import {
 } from './composerSttService';
 import { rememberSttEditableFromFocus, resetSttFocusMemoryForTests } from './insertText';
 
-const voiceMocks = vi.hoisted(() => ({
-  startListening: vi.fn(() => true),
-  stopListening: vi.fn(),
-  isSupported: vi.fn(() => true),
-  isListening: vi.fn(() => false),
-  wantsListening: vi.fn(() => false),
-  setInactivityTimeoutMs: vi.fn(),
-  interruptListening: vi.fn(),
-  onVoice: vi.fn(() => () => {}),
-}));
+const voiceMocks = vi.hoisted(() => {
+  const handlers = new Map<string, (payload: unknown) => void>();
+  return {
+    handlers,
+    startListening: vi.fn(() => true),
+    stopListening: vi.fn(),
+    isSupported: vi.fn(() => true),
+    isListening: vi.fn(() => false),
+    wantsListening: vi.fn(() => false),
+    setInactivityTimeoutMs: vi.fn(),
+    interruptListening: vi.fn(),
+    onVoice: vi.fn((event: string, handler: (payload: unknown) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    }),
+  };
+});
 
 const setComposerSttListening = vi.hoisted(() => vi.fn());
+const toastMocks = vi.hoisted(() => ({
+  info: vi.fn(),
+  warning: vi.fn(),
+  error: vi.fn(),
+}));
 
 vi.mock('@/features/voice/VoiceService', () => ({
   VoiceService: {
@@ -35,7 +47,12 @@ vi.mock('@/features/voice/VoiceService', () => ({
 }));
 
 vi.mock('@/stores/ui', () => ({
-  useUIStore: (selector: (state: { composerStt: boolean; setComposerSttListening: typeof setComposerSttListening }) => unknown) =>
+  useUIStore: (
+    selector: (state: {
+      composerStt: boolean;
+      setComposerSttListening: typeof setComposerSttListening;
+    }) => unknown,
+  ) =>
     selector({
       composerStt: true,
       setComposerSttListening,
@@ -43,23 +60,24 @@ vi.mock('@/stores/ui', () => ({
 }));
 
 vi.mock('@/components/ui/toast', () => ({
-  toast: {
-    info: vi.fn(),
-    warning: vi.fn(),
-    error: vi.fn(),
-  },
+  toast: toastMocks,
 }));
 
 describe('GlobalSttHost', () => {
   beforeEach(() => {
     resetSttFocusMemoryForTests();
-    voiceMocks.startListening.mockClear();
+    voiceMocks.handlers.clear();
+    voiceMocks.startListening.mockReset().mockReturnValue(true);
     voiceMocks.stopListening.mockClear();
-    voiceMocks.isSupported.mockClear();
-    voiceMocks.isListening.mockClear();
-    voiceMocks.isListening.mockReturnValue(false);
+    voiceMocks.isSupported.mockReset().mockReturnValue(true);
+    voiceMocks.isListening.mockReset().mockReturnValue(false);
+    voiceMocks.wantsListening.mockReset().mockReturnValue(false);
     voiceMocks.interruptListening.mockClear();
+    voiceMocks.onVoice.mockClear();
     setComposerSttListening.mockClear();
+    toastMocks.info.mockClear();
+    toastMocks.warning.mockClear();
+    toastMocks.error.mockClear();
   });
 
   it('starts dictation for the last focused global field after toolbar mic steals focus', () => {
@@ -139,7 +157,9 @@ describe('GlobalSttHost', () => {
     document.body.appendChild(micButton);
     micButton.focus();
 
-    window.dispatchEvent(new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source: 'toolbar' } }));
+    window.dispatchEvent(
+      new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source: 'toolbar' } }),
+    );
 
     expect(voiceMocks.startListening).not.toHaveBeenCalled();
 
@@ -154,11 +174,128 @@ describe('GlobalSttHost', () => {
     micButton.focus();
     voiceMocks.isListening.mockReturnValue(true);
 
-    window.dispatchEvent(new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source: 'toolbar' } }));
+    window.dispatchEvent(
+      new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source: 'toolbar' } }),
+    );
 
     expect(voiceMocks.interruptListening).not.toHaveBeenCalled();
     expect(voiceMocks.startListening).not.toHaveBeenCalled();
 
     micButton.remove();
+  });
+
+  it('uses precise shared narration when global speech recognition is unsupported', () => {
+    voiceMocks.isSupported.mockReturnValueOnce(false);
+    render(<GlobalSttHost />);
+    const field = document.createElement('textarea');
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    try {
+      act(() => requestComposerSttToggle('toolbar'));
+
+      expect(toastMocks.warning).toHaveBeenCalledWith(
+        'Voice unsupported',
+        'The action failed, sir. Action: Global speech recognition availability. Cause: Speech-to-text is not available in this runtime.',
+      );
+      expect(voiceMocks.startListening).not.toHaveBeenCalled();
+    } finally {
+      field.remove();
+    }
+  });
+
+  it('uses precise shared narration when global speech recognition returns false', () => {
+    voiceMocks.startListening.mockReturnValueOnce(false);
+    render(<GlobalSttHost />);
+    const field = document.createElement('textarea');
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    try {
+      act(() => requestComposerSttToggle('toolbar'));
+
+      expect(toastMocks.warning).toHaveBeenCalledWith(
+        'Voice unsupported',
+        'The action failed, sir. Action: Global speech recognition startup. Cause: Voice-to-text could not start for the focused field. Check microphone access, then try again.',
+      );
+      expect(setComposerSttListening).not.toHaveBeenCalledWith(true);
+    } finally {
+      field.remove();
+    }
+  });
+
+  it('does not expose a thrown global speech-recognition startup detail', () => {
+    voiceMocks.startListening.mockImplementationOnce(() => {
+      throw new Error('synthetic global startup implementation detail');
+    });
+    render(<GlobalSttHost />);
+    const field = document.createElement('textarea');
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    try {
+      act(() => requestComposerSttToggle('toolbar'));
+
+      expect(toastMocks.error).toHaveBeenCalledWith(
+        'Voice error',
+        'The action failed, sir. Action: Global speech recognition startup. Cause: Voice-to-text could not start for the focused field. Check microphone access, then try again.',
+      );
+      expect(toastMocks.error.mock.calls[0]?.[1]).not.toContain(
+        'synthetic global startup implementation detail',
+      );
+      expect(setComposerSttListening).not.toHaveBeenCalledWith(true);
+    } finally {
+      field.remove();
+    }
+  });
+
+  it('uses precise shared narration when a dictation target detaches before final text', async () => {
+    render(<GlobalSttHost />);
+    const field = document.createElement('textarea');
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    act(() => requestComposerSttToggle('toolbar'));
+    await waitFor(() => expect(voiceMocks.handlers.has('voice:final')).toBe(true));
+    field.remove();
+
+    act(() => voiceMocks.handlers.get('voice:final')?.({ text: 'detached target text' }));
+
+    expect(toastMocks.warning).toHaveBeenCalledWith(
+      'Dictation',
+      'The action failed, sir. Action: Dictation insertion. Cause: The spoken text could not be inserted because the target field is no longer available.',
+    );
+  });
+
+  it('distinguishes an available field that rejects dictation insertion', async () => {
+    const insertSpy = vi
+      .spyOn(await import('./insertText'), 'insertTextIntoEditable')
+      .mockReturnValueOnce(false);
+    render(<GlobalSttHost />);
+    const field = document.createElement('div');
+    field.contentEditable = 'true';
+    Object.defineProperty(field, 'isContentEditable', { value: true, configurable: true });
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    try {
+      act(() => requestComposerSttToggle('toolbar'));
+      await waitFor(() => expect(voiceMocks.handlers.has('voice:final')).toBe(true));
+
+      act(() => voiceMocks.handlers.get('voice:final')?.({ text: 'rejected target text' }));
+
+      expect(toastMocks.warning).toHaveBeenCalledWith(
+        'Dictation',
+        'The action failed, sir. Action: Dictation insertion. Cause: The spoken text could not be inserted because the focused field did not accept input.',
+      );
+    } finally {
+      insertSpy.mockRestore();
+      field.remove();
+    }
   });
 });

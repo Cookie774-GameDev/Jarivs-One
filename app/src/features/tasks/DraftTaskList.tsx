@@ -2,10 +2,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Check, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import './sakura-tasks.css';
 import { cn, formatRelative } from '@/lib/utils';
 import type { DraftTask } from '@/types/task';
 import { TaskService } from './TaskService';
 import { useTaskStore } from './store';
+
+const SPRING = 'spring' as const;
+const DRAFT_TRANSITION = { type: SPRING, stiffness: 420, damping: 32 };
 
 /**
  * Suggested-tasks section. Renders pending DraftTasks from the action
@@ -21,6 +26,8 @@ export function DraftTaskList({ className }: DraftTaskListProps) {
   const drafts = useTaskStore((s) => s.drafts);
   const removeDraft = useTaskStore((s) => s.removeDraft);
   const flashTask = useTaskStore((s) => s.flashTask);
+  const draftLayout = useThemeMotionLayout(true);
+  const draftTransition = useThemeMotionTransition(DRAFT_TRANSITION);
 
   if (drafts.length === 0) return null;
 
@@ -51,11 +58,13 @@ export function DraftTaskList({ className }: DraftTaskListProps) {
         {drafts.map((d) => (
           <motion.div
             key={d.id}
-            layout
+            data-sakura-surface="task-draft"
+            data-sakura-state="attention"
+            layout={draftLayout}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+            exit={draftLayout ? { opacity: 0, height: 0 } : { opacity: 0 }}
+            transition={draftTransition}
             className="rounded-md border border-dashed border-accent-cyan/30 bg-panel/60 p-2.5"
           >
             <div className="flex items-start gap-2">

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "referenceTargetSha256": "1f61e223d6db54d9f32de4c3de8c98ff3028556b579b1f6a69b5317d35e8fe27",
+  "passLedgerSha256": "5458a21b861a22780c85e0df57f3ed1911e3452069ec15cefcc6214df93df005",
+  "passCount": 12,
+  "keptPassCount": 7,
+  "rejectedPassCount": 5,
+  "baseline": {
+    "revision": {
+      "kind": "commit",
+      "value": "8bd1e58cdb1ed6661eebe8d9afc3f1b86ae75696"
+    },
+    "fullDiff": 0.3409084553234114,
+    "weightedDiff": 0.3837766819429744,
+    "regions": {
+      "assistant_message": 0.1764074844074844,
+      "composer": 0.33595553859364563,
+      "header_full": 0.4747076023391813,
+      "jarvis_module": 0.5083234244946492,
+      "lower_right_flower": 0.606341252861915,
+      "paper_closeup": 0.18854166666666666,
+      "session_panel": 0.1473036961668656,
+      "sidebar_full": 0.4662217567167162,
+      "top_ribbon": 0.5596790271132377,
+      "upper_left_crane": 0.745991847826087,
+      "user_bubble": 0.4390808823529412
+    },
+    "evidence": {
+      "screenshotSha256": "e4b9696d2ad87e552800673f8fafacf822dc21a372016d1b6ef3aa0e384da877",
+      "reportSha256": "6829814f494b704df0f85694defc4d4e1d979518cda1c18dc6398d69f7acc58f",
+      "diffSha256": "ab665e69a5f0b2f29eb91d87162fac9edd2b5282a4b32d32d4c89c456496d3ed",
+      "overlaySha256": "807e6894efc9303c422ce90c06b1672a0382361b4f977bd3d0ec540eb383ed25"
+    }
+  },
+  "final": {
+    "revision": {
+      "kind": "working-tree",
+      "value": "working-tree:c7ee2b4-assistant-spacing"
+    },
+    "route": "http://127.0.0.1:4173/chat",
+    "viewport": {
+      "width": 1672,
+      "height": 941,
+      "deviceScaleFactor": 1,
+      "browserZoomPercent": 100
+    },
+    "fullDiff": 0.1730464638555136,
+    "weightedDiff": 0.21474362955816892,
+    "regions": {
+      "assistant_message": 0.12357172557172558,
+      "composer": 0.22339948478198646,
+      "header_full": 0.21460216197058302,
+      "jarvis_module": 0.2844034879112168,
+      "lower_right_flower": 0.2661487069774425,
+      "paper_closeup": 0.06549479166666666,
+      "session_panel": 0.12961531688418415,
+      "sidebar_full": 0.2902779021933119,
+      "top_ribbon": 0.13865629984051037,
+      "upper_left_crane": 0.5811141304347827,
+      "user_bubble": 0.1745955882352941
+    },
+    "evidence": {
+      "screenshotSha256": "2f5a34cdbb8b1f1b54f523f13db3f2864acf67a392b02561cca65fe1c6cb9582",
+      "reportSha256": "c532391934fb0102be3ebc6cda45075daad7352adb0eb61bd81ff2e18431cae2",
+      "diffSha256": "cf5a64b896af02389bd38cfe8e9075714f0f64f740944ca6c273fa1ceeedda80",
+      "overlaySha256": "be0e87b6ccf0a3e81f612447b31dd4eaabab57b9eba6d1bd1d757cef85ec5f01"
+    }
+  }
+}

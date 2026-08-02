@@ -1,0 +1,61 @@
+html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'][data-sakura-overlay] {
+  background: hsl(var(--sakura-night-hsl) / 0.62);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'][role='dialog'] {
+  border-color: hsl(var(--sakura-pink-hsl) / 0.42);
+  border-radius: 1.5rem;
+  background: var(--sakura-panel-fallback);
+  box-shadow:
+    inset 0 2px 0 hsl(var(--sakura-pink-hsl) / 0.78),
+    0 2.375rem 6.25rem hsl(var(--sakura-night-hsl) / 0.58);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'] [cmdk-input] {
+  min-height: 3rem;
+  caret-color: var(--sakura-pink);
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'] [cmdk-list] {
+  background: hsl(var(--sakura-night-hsl) / 0.38);
+}
+
+html[data-theme='sakura']
+  [data-vibespace-owned-chrome='command-palette']
+  [cmdk-item][data-selected='true'] {
+  border-radius: 0.625rem;
+  background: hsl(var(--sakura-pink-hsl) / 0.13);
+  box-shadow: inset 3px 0 0 hsl(var(--sakura-pink-hsl));
+}
+
+html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'] :focus-visible {
+  outline: 2px solid hsl(var(--sakura-pink-hsl));
+  outline-offset: -2px;
+}
+
+@media (max-width: 42rem) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'][role='dialog'] {
+    top: 0.75rem;
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'],
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'] * {
+    transition-duration: 0.01ms;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-vibespace-owned-chrome='command-palette'][role='dialog'],
+  html[data-theme='sakura']
+    [data-vibespace-owned-chrome='command-palette']
+    [cmdk-item][data-selected='true'] {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

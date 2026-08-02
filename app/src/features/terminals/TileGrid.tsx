@@ -58,10 +58,7 @@ import {
   resizeAdjacentTracks,
   resolvePaneAgentMode,
 } from './paneTree';
-import {
-  PaneToolbar,
-  nextFontSize,
-} from './PaneToolbar';
+import { PaneToolbar, nextFontSize } from './PaneToolbar';
 import { TerminalContextMenu } from './TerminalContextMenu';
 import { clearTerminalSession } from './terminalClear';
 import { toast } from '@/components/ui/toast';
@@ -70,12 +67,14 @@ import type { AgentCoordinationMode } from './agentCoordination';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
 import { Button } from '@/components/ui/button';
+import { parseTerminalRef, serializeTerminalRef, type TerminalRef } from './terminalRefs';
 import {
-  parseTerminalRef,
-  serializeTerminalRef,
-  type TerminalRef,
-} from './terminalRefs';
-import { attachTerminalExecution, markTerminalExecution } from './terminalExecutionStore';
+  hasCanonicalTerminalExecution,
+  markTerminalExecution,
+  requestTerminalExecutionCancellation,
+  terminalCancellationDisposition,
+  useTerminalExecutionStore,
+} from './terminalExecutionStore';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -87,6 +86,34 @@ function scheduleTerminalRefit(): void {
       window.dispatchEvent(new CustomEvent('jarvis:terminals:visible'));
     });
   });
+}
+
+export async function requestTerminalLeafClose(
+  leaf: Readonly<{ executionId?: string; sessionId?: string | null }>,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    requestCanonical?: typeof requestTerminalExecutionCancellation;
+    kill?: (sessionId: string) => Promise<unknown>;
+    forget?: (sessionId: string) => void;
+  } = {},
+): Promise<'canonical_pending' | 'canonical_terminal' | 'canonical_rejected' | 'manual_closed'> {
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (leaf.executionId && isCanonical(leaf.executionId)) {
+    const result = await (dependencies.requestCanonical ?? requestTerminalExecutionCancellation)(
+      leaf.executionId,
+    );
+    const disposition = terminalCancellationDisposition(result);
+    if (disposition === 'pending') return 'canonical_pending';
+    if (disposition === 'terminal') return 'canonical_terminal';
+    return 'canonical_rejected';
+  }
+  if (leaf.sessionId) {
+    await (dependencies.kill ?? ((sessionId) => invoke('terminal_kill', { sessionId })))(
+      leaf.sessionId,
+    ).catch(() => undefined);
+    (dependencies.forget ?? useTerminalTranscriptStore.getState().forgetSession)(leaf.sessionId);
+  }
+  return 'manual_closed';
 }
 
 interface TileGridProps {
@@ -142,7 +169,10 @@ function dataTransferHasTerminal(types: DOMStringList | readonly string[]): bool
     const list = types as DOMStringList;
     return list.contains(TERMINAL_MIME) || list.contains(TERMINAL_PANE_MIME);
   }
-  return (types as readonly string[]).includes(TERMINAL_MIME) || (types as readonly string[]).includes(TERMINAL_PANE_MIME);
+  return (
+    (types as readonly string[]).includes(TERMINAL_MIME) ||
+    (types as readonly string[]).includes(TERMINAL_PANE_MIME)
+  );
 }
 
 /* --------------------------------------------------------------------------
@@ -250,7 +280,8 @@ function inferTerminalLabel(command?: string): string {
   if (/\bclaude\b/.test(normalized)) return 'Claude';
   if (/\bcodex\b/.test(normalized)) return 'Codex';
   if (/\b(gemini|google)\b/.test(normalized)) return 'Gemini';
-  if (/\bnode\b/.test(normalized) || /\bnpm\b/.test(normalized) || /\bpnpm\b/.test(normalized)) return 'Node';
+  if (/\bnode\b/.test(normalized) || /\bnpm\b/.test(normalized) || /\bpnpm\b/.test(normalized))
+    return 'Node';
   if (/\bcargo\b|\brustc\b/.test(normalized)) return 'Rust';
   if (/\bpython\b|\bpy\b/.test(normalized)) return 'Python';
   if (/\bpowershell\b|\bpwsh\b/.test(normalized)) return 'PowerShell';
@@ -280,6 +311,18 @@ export function TileGrid({
     return focus ? [focus] : allLeaves;
   }, [allLeaves, fullscreenPaneId]);
   const didMountRef = React.useRef(false);
+  const pendingCanonicalClosePaneIds = React.useRef(new Set<string>());
+  const terminalExecutions = useTerminalExecutionStore((state) => state.executions);
+
+  React.useEffect(() => {
+    for (const paneId of [...pendingCanonicalClosePaneIds.current]) {
+      const executionId = allLeaves.find((leaf) => leaf.id === paneId)?.executionId;
+      const status = executionId ? terminalExecutions[executionId]?.status : undefined;
+      if (!status || !['complete', 'failed', 'cancelled'].includes(status)) continue;
+      pendingCanonicalClosePaneIds.current.delete(paneId);
+      onChange((currentTree) => closePane(currentTree, paneId));
+    }
+  }, [allLeaves, onChange, terminalExecutions]);
 
   const { cols, rows } = gridDimensions(leaves.length);
   const defaultTerminalFontSize = useUIStore((s) => s.defaultTerminalFontSize);
@@ -333,13 +376,9 @@ export function TileGrid({
     // Always land on equal tracks when layout/project changes unless the
     // saved layout is already equal (keeps intentional even splits).
     const nextCols =
-      s && s.cols.length === cols && tracksAreEqual(s.cols)
-        ? [...s.cols]
-        : defaultSizes(cols);
+      s && s.cols.length === cols && tracksAreEqual(s.cols) ? [...s.cols] : defaultSizes(cols);
     const nextRows =
-      s && s.rows.length === rows && tracksAreEqual(s.rows)
-        ? [...s.rows]
-        : defaultSizes(rows);
+      s && s.rows.length === rows && tracksAreEqual(s.rows) ? [...s.rows] : defaultSizes(rows);
     setColSizes(nextCols);
     setRowSizes(nextRows);
     // If we discarded unequal ratios, persist the repaired equal layout
@@ -390,11 +429,7 @@ export function TileGrid({
    * stale-closure trap and gives buttery-smooth resizing without depending
    * on requestAnimationFrame or special concurrency primitives.
    */
-  const startDrag = (
-    axis: 'col' | 'row',
-    idx: number,
-    e: React.MouseEvent<HTMLDivElement>,
-  ) => {
+  const startDrag = (axis: 'col' | 'row', idx: number, e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const container = containerRef.current;
     if (!container) return;
@@ -438,9 +473,7 @@ export function TileGrid({
         const next: SavedSizes = {
           ...prev,
           [layoutKey]:
-            axis === 'col'
-              ? { cols: latest, rows: cur.rows }
-              : { cols: cur.cols, rows: latest },
+            axis === 'col' ? { cols: latest, rows: cur.rows } : { cols: cur.cols, rows: latest },
         };
         persistSavedSizes(projectId, next);
         return next;
@@ -472,9 +505,7 @@ export function TileGrid({
       const updated: SavedSizes = {
         ...prev,
         [layoutKey]:
-          axis === 'col'
-            ? { cols: next, rows: cur.rows }
-            : { cols: cur.cols, rows: next },
+          axis === 'col' ? { cols: next, rows: cur.rows } : { cols: cur.cols, rows: next },
       };
       persistSavedSizes(projectId, updated);
       return updated;
@@ -490,19 +521,28 @@ export function TileGrid({
     // mount waiting, so we kill explicitly here. Without this, every
     // dismissed pane leaked one PTY backend-side until app exit.
     const leaf = allLeaves.find((l) => l.id === paneId);
-    const sid = leaf?.sessionId;
-    if (sid) {
-      invoke('terminal_kill', { sessionId: sid }).catch(() => {
-        /* PTY may have already exited; the tree mutation below is the
-           authoritative cleanup as far as the UI is concerned. */
+    if (!leaf) return;
+    const canonical = Boolean(leaf.executionId && hasCanonicalTerminalExecution(leaf.executionId));
+    if (canonical) pendingCanonicalClosePaneIds.current.add(paneId);
+    void requestTerminalLeafClose(leaf)
+      .then((outcome) => {
+        if (outcome === 'manual_closed' || outcome === 'canonical_terminal') {
+          pendingCanonicalClosePaneIds.current.delete(paneId);
+          onChange((currentTree) => closePane(currentTree, paneId));
+          return;
+        }
+        if (outcome === 'canonical_rejected') {
+          pendingCanonicalClosePaneIds.current.delete(paneId);
+          toast.error(
+            'Cancellation unavailable',
+            'The canonical terminal could not commit cancellation intent and remains open.',
+          );
+        }
+      })
+      .catch(() => {
+        pendingCanonicalClosePaneIds.current.delete(paneId);
+        toast.error('Cancellation unavailable', 'The canonical terminal remains open.');
       });
-      try {
-        useTerminalTranscriptStore.getState().forgetSession(sid);
-      } catch {
-        /* transcript store should never throw, but defend against it */
-      }
-    }
-    onChange((currentTree) => closePane(currentTree, paneId));
   };
 
   const handleSessionAttach = (paneId: string, sessionId: string) => {
@@ -571,10 +611,7 @@ export function TileGrid({
     );
   };
 
-  const renderTile = (
-    leaf: typeof allLeaves[number],
-    paneCountForTile = leaves.length,
-  ) => (
+  const renderTile = (leaf: (typeof allLeaves)[number], paneCountForTile = leaves.length) => (
     <Tile
       tree={tree}
       onChange={onChange}
@@ -585,15 +622,20 @@ export function TileGrid({
       onClose={() => handleClose(leaf.id)}
       onAttach={(sid) => {
         handleSessionAttach(leaf.id, sid);
-        void attachTerminalExecution(leaf.executionId, sid);
+      }}
+      onTerminalExit={(code) => {
+        markTerminalExecution(leaf.executionId, code === 0 ? 'complete' : 'failed', {
+          exitCode: code,
+        });
+        if (pendingCanonicalClosePaneIds.current.delete(leaf.id)) {
+          onChange((currentTree) => closePane(currentTree, leaf.id));
+        }
       }}
       onPendingCommandSent={() => handlePendingCommandSent(leaf.id)}
       onAgentSelection={(selection) => handleAgentSelection(leaf.id, selection)}
       onFontSizeCycle={() => handleFontSizeCycle(leaf.id)}
       onFullscreenToggle={() => onFullscreenToggle?.(leaf.id)}
-      onConnectedFilesChange={(next) =>
-        handleConnectedFilesChange(leaf.id, next)
-      }
+      onConnectedFilesChange={(next) => handleConnectedFilesChange(leaf.id, next)}
       paneCount={paneCountForTile}
       projectId={projectId}
       projectName={projectName}
@@ -609,9 +651,9 @@ export function TileGrid({
   // tile, matching the previous CSS-Grid behaviour where the unused cell
   // simply showed empty space.
   const rowChunks = React.useMemo(() => {
-    const out: (typeof leaves[number] | null)[][] = [];
+    const out: ((typeof leaves)[number] | null)[][] = [];
     for (let r = 0; r < rows; r++) {
-      const rowLeaves: (typeof leaves[number] | null)[] = [];
+      const rowLeaves: ((typeof leaves)[number] | null)[] = [];
       for (let c = 0; c < cols; c++) {
         rowLeaves.push(leaves[r * cols + c] ?? null);
       }
@@ -621,15 +663,12 @@ export function TileGrid({
   }, [leaves, cols, rows]);
 
   const fullscreenLeaf = fullscreenPaneId
-    ? allLeaves.find((leaf) => leaf.id === fullscreenPaneId) ?? null
+    ? (allLeaves.find((leaf) => leaf.id === fullscreenPaneId) ?? null)
     : null;
 
   if (fullscreenPaneId && fullscreenLeaf) {
     return (
-      <div
-        ref={containerRef}
-        className="relative flex h-full w-full overflow-hidden"
-      >
+      <div ref={containerRef} className="relative flex h-full w-full overflow-hidden">
         {allLeaves.map((leaf) => {
           const active = leaf.id === fullscreenPaneId;
           return (
@@ -650,12 +689,8 @@ export function TileGrid({
     );
   }
 
-
   return (
-    <div
-      ref={containerRef}
-      className="flex h-full w-full flex-col overflow-hidden"
-    >
+    <div ref={containerRef} className="flex h-full w-full flex-col overflow-hidden">
       {rowChunks.map((rowLeaves, rowIdx) => {
         // Build the flat list of children for this row: tile, handle,
         // tile, handle, ..., tile. We assemble manually instead of using
@@ -670,9 +705,7 @@ export function TileGrid({
               style={equalFlexStyle(colSizes[colIdx] ?? 1)}
               className="flex h-full min-h-0 min-w-0 p-0.5"
             >
-              {leaf ? (
-                renderTile(leaf)
-              ) : null}
+              {leaf ? renderTile(leaf) : null}
             </div>,
           );
           if (colIdx < cols - 1) {
@@ -758,8 +791,12 @@ interface TileProps {
   canFullscreen: boolean;
   onClose: () => void;
   onAttach: (sessionId: string) => void;
+  onTerminalExit: (code: number | null) => void;
   onPendingCommandSent: () => void;
-  onAgentSelection: (selection: { agentSlug: string | null; agentMode?: AgentCoordinationMode }) => void;
+  onAgentSelection: (selection: {
+    agentSlug: string | null;
+    agentMode?: AgentCoordinationMode;
+  }) => void;
   onFontSizeCycle: () => void;
   onFullscreenToggle: () => void;
   onConnectedFilesChange: (next: string[]) => void;
@@ -784,6 +821,7 @@ function Tile({
   canFullscreen,
   onClose,
   onAttach,
+  onTerminalExit,
   onPendingCommandSent,
   onAgentSelection,
   onFontSizeCycle,
@@ -817,11 +855,19 @@ function Tile({
       const matchesSession = detail.sessionId === leaf.sessionId;
       if (!matchesPane && !matchesSession) return;
       setIsFocused(true);
-      tileRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      tileRef.current?.scrollIntoView({
+        block: 'nearest',
+        behavior:
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'auto'
+            : 'smooth',
+      });
       window.setTimeout(() => setIsFocused(false), 2500);
     };
     window.addEventListener('jarvis:terminal:focus', onFocusTerminal as EventListener);
-    return () => window.removeEventListener('jarvis:terminal:focus', onFocusTerminal as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:terminal:focus', onFocusTerminal as EventListener);
   }, [leaf.id, leaf.sessionId]);
 
   const handleAskJarvis = () => {
@@ -836,7 +882,8 @@ function Tile({
     const sid = leaf.sessionId;
     const text = sid ? useTerminalTranscriptStore.getState().sessions[sid]?.text : '';
     if (text) {
-      navigator.clipboard.writeText(text)
+      navigator.clipboard
+        .writeText(text)
         .then(() => toast.success('Copied output', 'Terminal transcript copied to clipboard.'))
         .catch(() => toast.error('Copy failed', 'Failed to copy transcript to clipboard.'));
     } else {
@@ -884,29 +931,30 @@ function Tile({
   // The Memory Keeper / first-reply auto-namer fills `leaf.name` after the
   // first turn so a "powershell, powershell, powershell" grid promotes
   // itself to "auth-fix · db-migrate · scratch" over time.
-  const displayLabel = leaf.name || inferTerminalLabel(leaf.startupCommand || leaf.command || defaultCommand);
+  const displayLabel =
+    leaf.name || inferTerminalLabel(leaf.startupCommand || leaf.command || defaultCommand);
   const labelHasName = !!leaf.name;
-  const terminalRef = React.useMemo<TerminalRef>(() => ({
-    paneId: leaf.id,
-    sessionId: leaf.sessionId ?? undefined,
-    projectId,
-    label: displayLabel,
-    command: leaf.startupCommand || leaf.command || defaultCommand,
-    agentSlug: leaf.agentSlug ?? null,
-  }), [
-    defaultCommand,
-    displayLabel,
-    leaf.agentSlug,
-    leaf.command,
-    leaf.id,
-    leaf.sessionId,
-    leaf.startupCommand,
-    projectId,
-  ]);
-  const serializedRef = React.useMemo(
-    () => serializeTerminalRef(terminalRef),
-    [terminalRef],
+  const terminalRef = React.useMemo<TerminalRef>(
+    () => ({
+      paneId: leaf.id,
+      sessionId: leaf.sessionId ?? undefined,
+      projectId,
+      label: displayLabel,
+      command: leaf.startupCommand || leaf.command || defaultCommand,
+      agentSlug: leaf.agentSlug ?? null,
+    }),
+    [
+      defaultCommand,
+      displayLabel,
+      leaf.agentSlug,
+      leaf.command,
+      leaf.id,
+      leaf.sessionId,
+      leaf.startupCommand,
+      projectId,
+    ],
   );
+  const serializedRef = React.useMemo(() => serializeTerminalRef(terminalRef), [terminalRef]);
 
   const finishTerminalDrop = React.useCallback(
     (dropTarget: HTMLElement | null) => {
@@ -925,9 +973,7 @@ function Tile({
 
       if (!onMoveTerminal) return;
 
-      const targetProjectId = decodeDropProjectId(
-        dropTarget.dataset.terminalDropProjectId,
-      );
+      const targetProjectId = decodeDropProjectId(dropTarget.dataset.terminalDropProjectId);
       const targetProjectName = dropTarget.dataset.terminalDropProjectName ?? null;
 
       if (kind === 'project') {
@@ -1103,11 +1149,14 @@ function Tile({
     <div
       ref={tileRef}
       className={cn(
-      "flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-panel shadow-soft transition-[border-color,box-shadow,outline-color] duration-300",
-      isFocused ? "animate-terminal-focus border-accent-copper/80 ring-2 ring-accent-copper/30" : "border-border",
-      isDragOver && "jarvis-terminal-drop-hover border-accent-copper border-2 shadow-lg ring-4 ring-accent-copper/40",
-      isDragging && "pointer-events-none opacity-0"
-    )}
+        'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-lg border bg-panel shadow-soft transition-[border-color,box-shadow,outline-color] duration-300 [html[data-theme=monochrome]_&]:shadow-none',
+        isFocused
+          ? 'animate-terminal-focus border-accent-copper/80 ring-2 ring-accent-copper/30 motion-reduce:animate-none [html[data-theme=monochrome]_&]:animate-none [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:outline [html[data-theme=monochrome]_&]:outline-1 [html[data-theme=monochrome]_&]:outline-border-mid'
+          : 'border-border',
+        isDragOver &&
+          'jarvis-terminal-drop-hover border-accent-copper border-2 shadow-lg ring-4 ring-accent-copper/40',
+        isDragging && 'pointer-events-none opacity-0',
+      )}
       data-terminal-drop="pane"
       data-terminal-drop-pane-id={leaf.id}
       data-terminal-drop-project-id={encodeDropProjectId(projectId)}
@@ -1210,9 +1259,7 @@ function Tile({
             <span
               className={cn(
                 'min-w-0 flex-1 truncate text-metadata cursor-text select-text',
-                labelHasName
-                  ? 'font-display text-foreground'
-                  : 'font-mono text-muted-foreground',
+                labelHasName ? 'font-display text-foreground' : 'font-mono text-muted-foreground',
                 !labelHasName && leaf.command && 'text-foreground',
               )}
               title={
@@ -1254,7 +1301,11 @@ function Tile({
             <p className="text-sm text-muted-foreground">
               This live terminal is in the Pet panel (same PTY — not restarted).
             </p>
-            <Button size="sm" variant="outline" onClick={() => moveTerminal(leaf.sessionId!, 'main')}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => moveTerminal(leaf.sessionId!, 'main')}
+            >
               Bring back here
             </Button>
           </div>
@@ -1285,11 +1336,7 @@ function Tile({
               onAttach(sid);
             }}
             onPendingCommandSent={onPendingCommandSent}
-            onExit={(code) => markTerminalExecution(
-              leaf.executionId,
-              code === 0 ? 'complete' : code === null ? 'cancelled' : 'failed',
-              { exitCode: code },
-            )}
+            onExit={onTerminalExit}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             projectId={projectId}

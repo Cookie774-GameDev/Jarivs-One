@@ -39,8 +39,25 @@ import { SidebarFilesTree } from '@/features/files/SidebarFilesTree';
 import { openOrFocusWorkbenchWindow } from '@/features/workbench/window';
 import { useWorkbenchStore } from '@/features/workbench/store';
 import { chatPinPatch, isChatPinned, sortChatsForDisplay } from '@/features/chat/chatPin';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL, type SikControlId } from '@/lib/jarvis/smoke/evidenceIds';
+import { useThemeLayoutTransition } from '@/features/appearance/themeMotion';
+import {
+  isKernelSmokeBindingActive,
+  subscribeKernelSmokeBinding,
+} from '@/lib/ai/providers/kernelSmoke';
+
+const LEGACY_NAV_PANE_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 
 const TERMINAL_MIME = 'application/x-jarvis-terminal';
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 /**
  * NavPane - 240px expanded, 56px collapsed.
@@ -61,6 +78,12 @@ const TERMINAL_MIME = 'application/x-jarvis-terminal';
  * of silently no-oping.
  */
 export function NavPane() {
+  const themeLayoutTransition = useThemeLayoutTransition(LEGACY_NAV_PANE_TRANSITION);
+  const kernelSmokeBindingActive = React.useSyncExternalStore(
+    subscribeKernelSmokeBinding,
+    isKernelSmokeBindingActive,
+    () => false,
+  );
   const navOpen = useUIStore((s) => s.navOpen);
   const setActiveChat = useUIStore((s) => s.setActiveChat);
   const setActiveAgent = useUIStore((s) => s.setActiveAgent);
@@ -102,14 +125,8 @@ export function NavPane() {
     [] as Chat[],
   );
 
-  const pinnedChats = React.useMemo(
-    () => (chats ?? []).filter((c) => isChatPinned(c)),
-    [chats],
-  );
-  const unpinnedChats = React.useMemo(
-    () => (chats ?? []).filter((c) => !isChatPinned(c)),
-    [chats],
-  );
+  const pinnedChats = React.useMemo(() => (chats ?? []).filter((c) => isChatPinned(c)), [chats]);
+  const unpinnedChats = React.useMemo(() => (chats ?? []).filter((c) => !isChatPinned(c)), [chats]);
 
   const onTogglePinChat = async (chat: Chat) => {
     const nextPinned = !isChatPinned(chat);
@@ -120,10 +137,7 @@ export function NavPane() {
         nextPinned ? 'It will stay at the top of the sidebar.' : 'Moved back to Chats.',
       );
     } catch (err) {
-      toast.error(
-        'Could not update pin',
-        err instanceof Error ? err.message : 'Try again.',
-      );
+      toast.error('Could not update pin', err instanceof Error ? err.message : 'Try again.');
     }
   };
 
@@ -231,11 +245,14 @@ export function NavPane() {
   return (
     <motion.aside
       aria-label="Navigation"
+      data-monochrome-surface="navigation"
+      data-sakura-shell-region="navigation"
       data-nav-pane="true"
-      className="shrink-0 overflow-hidden bg-panel border-r border-border"
+      data-nav-state={navOpen ? 'expanded' : 'collapsed'}
+      className="sakura-shell-navigation shrink-0 overflow-hidden bg-panel border-r border-border"
       initial={false}
       animate={{ width: navOpen ? 240 : 56 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={themeLayoutTransition}
     >
       <div className="flex h-full w-full flex-col overflow-y-auto overflow-x-hidden scrollbar-hidden">
         <NavSection
@@ -285,12 +302,18 @@ export function NavPane() {
                 .catch((err: unknown) => {
                   toast.info(
                     'Workbench open',
-                    err instanceof Error
-                      ? err.message
-                      : 'Showing Workbench in this window.',
+                    err instanceof Error ? err.message : 'Showing Workbench in this window.',
                   );
                 });
             }}
+          />
+          <RouteItem
+            navOpen={navOpen}
+            label="Canvas"
+            icon={<LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />}
+            target="canvas"
+            route={route}
+            setRoute={setRoute}
           />
           <RouteItem
             navOpen={navOpen}
@@ -315,6 +338,11 @@ export function NavPane() {
             target="schedule"
             route={route}
             setRoute={setRoute}
+            evidenceId={
+              KERNEL_SMOKE_ENABLED && kernelSmokeBindingActive
+                ? SIK_CONTROL.scheduleFixture
+                : undefined
+            }
           />
           <RouteItem
             navOpen={navOpen}
@@ -543,17 +571,17 @@ export function NavPane() {
           collapsed={!!navSectionsCollapsed['files']}
           onToggleCollapsed={() => toggleNavSection('files')}
         >
-          <SidebarFilesTree navOpen={navOpen} active={route === 'files'} onOpenFiles={() => setRoute('files')} />
+          <SidebarFilesTree
+            navOpen={navOpen}
+            active={route === 'files'}
+            onOpenFiles={() => setRoute('files')}
+          />
         </NavSection>
 
         {/* Tiny status footer so the user knows whose workspace they're in. */}
         {navOpen && (
-          <div className="mt-auto px-3 py-2 text-metadata text-muted-foreground/70 border-t border-border/60">
-            {workspaceId ? (
-              <>Local · {localUserId?.slice(4, 8) ?? '----'}</>
-            ) : (
-              <>Initializing…</>
-            )}
+          <div className="mt-auto px-3 py-2 text-metadata text-muted-foreground/70 border-t border-border/60 [html[data-theme=monochrome]_&]:text-muted-foreground">
+            {workspaceId ? <>Local · {localUserId?.slice(4, 8) ?? '----'}</> : <>Initializing…</>}
           </div>
         )}
       </div>
@@ -582,7 +610,7 @@ interface NavSectionProps {
   children?: React.ReactNode;
 }
 
-function NavSection({
+export function NavSection({
   id: _id,
   title,
   icon,
@@ -604,7 +632,10 @@ function NavSection({
         aria-label={title}
         data-tour={dataTour}
       >
-        <span className="text-muted-foreground/60" title={title}>
+        <span
+          className="text-muted-foreground/60 [html[data-theme=monochrome]_&]:text-muted-foreground"
+          title={title}
+        >
           {icon}
         </span>
         <div className="flex w-full flex-col items-stretch gap-0.5">{children}</div>
@@ -628,7 +659,6 @@ function NavSection({
           if (target.closest('[data-nav-action="true"]')) return;
           onToggleCollapsed?.();
         }}
-        aria-expanded={!collapsed}
       >
         <button
           type="button"
@@ -636,17 +666,15 @@ function NavSection({
             event.stopPropagation();
             onToggleCollapsed?.();
           }}
-          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="inline-flex h-6 w-6 min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=monochrome]_&]:-mx-1 [html[data-theme=monochrome]_&]:text-muted-foreground"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+          aria-expanded={!collapsed}
         >
-          <ChevronDown
-            className={cn(
-              'h-3 w-3 transition-transform',
-              collapsed && '-rotate-90',
-            )}
-          />
+          <ChevronDown className={cn('h-3 w-3 transition-transform', collapsed && '-rotate-90')} />
         </button>
-        <span className="opacity-70 shrink-0">{icon}</span>
+        <span className="opacity-70 shrink-0 [html[data-theme=monochrome]_&]:opacity-100">
+          {icon}
+        </span>
         {onTitleClick ? (
           <button
             type="button"
@@ -654,7 +682,7 @@ function NavSection({
               event.stopPropagation();
               onTitleClick();
             }}
-            className="min-w-0 flex-1 truncate text-left focus-visible:outline-none"
+            className="min-w-0 flex-1 truncate text-left focus-visible:outline-none [html[data-theme=sakura]_&]:min-h-6"
           >
             {title}
           </button>
@@ -700,7 +728,7 @@ interface ProjectRowProps {
  * project detail page where the user edits name / colour / context /
  * agents.
  */
-function ProjectRow({
+export function ProjectRow({
   project: p,
   navOpen,
   active,
@@ -766,11 +794,14 @@ function ProjectRow({
         {...projectDropProps}
         title={p.name}
         aria-label={p.name}
+        aria-current={active ? 'page' : undefined}
         className={cn(
           'flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
           'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
-          active && 'bg-muted ring-inset ring-1 ring-accent-copper/40',
-          terminalDragOver && 'bg-accent-copper/10 ring-inset ring-1 ring-accent-copper/70',
+          active &&
+            'bg-muted ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
+          terminalDragOver &&
+            'bg-accent-copper/10 ring-inset ring-1 ring-accent-copper/70 [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:outline [html[data-theme=monochrome]_&]:outline-1 [html[data-theme=monochrome]_&]:outline-accent-copper',
         )}
       >
         <span
@@ -789,17 +820,20 @@ function ProjectRow({
   return (
     <div
       {...projectDropProps}
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'group flex h-7 w-full items-center gap-2 rounded-md px-2 text-body text-foreground transition-colors',
         'hover:bg-muted',
-        active && 'bg-muted text-foreground ring-inset ring-1 ring-accent-copper/40',
-        terminalDragOver && 'bg-accent-copper/10 ring-inset ring-1 ring-accent-copper/70',
+        active &&
+          'bg-muted text-foreground ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
+        terminalDragOver &&
+          'bg-accent-copper/10 ring-inset ring-1 ring-accent-copper/70 [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:outline [html[data-theme=monochrome]_&]:outline-1 [html[data-theme=monochrome]_&]:outline-accent-copper',
       )}
     >
       <button
         type="button"
         onClick={onActivate}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none [html[data-theme=sakura]_&]:min-h-6"
       >
         <span
           aria-hidden
@@ -819,8 +853,8 @@ function ProjectRow({
         aria-label={`Open ${p.name} settings`}
         title="Project settings"
         className={cn(
-          'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground',
-          'opacity-0 group-hover:opacity-70 hover:text-foreground hover:opacity-100',
+          'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground [html[data-theme=sakura]_&]:h-6 [html[data-theme=sakura]_&]:w-6 [html[data-theme=sakura]_&]:min-h-6 [html[data-theme=sakura]_&]:min-w-6',
+          'opacity-0 group-hover:opacity-70 [html[data-theme=monochrome]_&]:group-hover:opacity-100 hover:text-foreground hover:opacity-100',
           'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
         )}
       >
@@ -838,9 +872,10 @@ interface NavItemProps {
   onClick?: () => void;
   /** Product-tutorial spotlight target id (rendered as data-tour). */
   dataTour?: string;
+  evidenceId?: SikControlId;
 }
 
-function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemProps) {
+function NavItem({ icon, label, navOpen, active, onClick, dataTour, evidenceId }: NavItemProps) {
   if (!navOpen) {
     return (
       <button
@@ -849,10 +884,13 @@ function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemPro
         title={label}
         aria-label={label}
         data-tour={dataTour}
+        data-sik-evidence={evidenceId}
+        aria-current={active ? 'page' : undefined}
         className={cn(
           'flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
           'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
-          active && 'bg-muted ring-inset ring-1 ring-accent-copper/40',
+          active &&
+            'bg-muted ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
         )}
       >
         <span className="shrink-0">{icon}</span>
@@ -864,10 +902,13 @@ function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemPro
       type="button"
       onClick={onClick}
       data-tour={dataTour}
+      data-sik-evidence={evidenceId}
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'group flex h-7 w-full items-center gap-2 rounded-md px-2 text-body text-foreground transition-colors',
         'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
-        active && 'bg-muted text-foreground ring-inset ring-1 ring-accent-copper/40',
+        active &&
+          'bg-muted text-foreground ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
       )}
     >
       <span className="shrink-0">{icon}</span>
@@ -884,7 +925,7 @@ interface ChatNavRowProps {
   onTogglePin: () => void;
 }
 
-function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowProps) {
+export function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowProps) {
   const label = (chat.title || 'Untitled chat').trim() || 'Untitled chat';
   const pinned = isChatPinned(chat);
 
@@ -895,10 +936,12 @@ function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowPr
         onClick={onOpen}
         title={pinned ? `${label} (pinned)` : label}
         aria-label={pinned ? `${label}, pinned` : label}
+        aria-current={active ? 'page' : undefined}
         className={cn(
           'relative flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
           'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
-          active && 'bg-muted ring-inset ring-1 ring-accent-copper/40',
+          active &&
+            'bg-muted ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
         )}
       >
         <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
@@ -911,16 +954,18 @@ function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowPr
 
   return (
     <div
+      aria-current={active ? 'page' : undefined}
       className={cn(
         'group flex h-7 w-full items-center gap-0.5 rounded-md pr-0.5 transition-colors',
         'hover:bg-muted',
-        active && 'bg-muted ring-inset ring-1 ring-accent-copper/40',
+        active &&
+          'bg-muted ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
       )}
     >
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=sakura]_&]:min-h-6"
       >
         <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>
@@ -937,7 +982,7 @@ function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowPr
           aria-pressed={pinned}
           className={cn(
             'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors',
-            'text-muted-foreground/50 hover:bg-background/80 hover:text-accent-copper',
+            'text-muted-foreground/50 hover:bg-background/80 hover:text-accent-copper [html[data-theme=monochrome]_&]:text-muted-foreground',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
             pinned && 'opacity-100 text-accent-copper',
@@ -952,7 +997,11 @@ function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowPr
 
 function EmptyHint({ navOpen, text }: { navOpen: boolean; text: string }) {
   if (!navOpen) return null;
-  return <p className="px-2 py-1 text-metadata text-muted-foreground/60">{text}</p>;
+  return (
+    <p className="px-2 py-1 text-metadata text-muted-foreground/60 [html[data-theme=monochrome]_&]:text-muted-foreground">
+      {text}
+    </p>
+  );
 }
 
 interface RouteItemProps {
@@ -962,13 +1011,14 @@ interface RouteItemProps {
   target: Route;
   route: Route;
   setRoute: (r: Route) => void;
+  evidenceId?: SikControlId;
 }
 
 /**
  * Workspace-section row: behaves like a NavItem but binds the click to
  * `setRoute(target)` and reflects the active state from `route === target`.
  */
-function RouteItem({ icon, label, navOpen, target, route, setRoute }: RouteItemProps) {
+function RouteItem({ icon, label, navOpen, target, route, setRoute, evidenceId }: RouteItemProps) {
   const active = route === target;
   return (
     <NavItem
@@ -978,6 +1028,7 @@ function RouteItem({ icon, label, navOpen, target, route, setRoute }: RouteItemP
       active={active}
       onClick={() => setRoute(target)}
       dataTour={target}
+      evidenceId={evidenceId}
     />
   );
 }

@@ -1,7 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { JarvisEventRepository, JarvisRunRepository } from '@/lib/db/jarvisRepositories';
+import type {
+  JarvisCanonicalLiveProducerEvidence,
+  JarvisEvent,
+  JarvisRun,
+} from '@/lib/jarvis/contracts/execution';
 import {
   VOICE_COMMIT_PHRASE_DEFAULT,
   clampVoiceCommitPhrase,
+  createJarvisVoiceLiveEvidenceVerifier,
   detectCancelPhrase,
   detectCommitPhrase,
   normalizeVoicePhrase,
@@ -120,5 +127,199 @@ describe('voiceTurnCommit', () => {
         cancelPhrase: 'cancel',
       }),
     ).toEqual({ type: 'schedule_flush', draft: 'hello there' });
+  });
+});
+
+describe('createJarvisVoiceLiveEvidenceVerifier', () => {
+  const run: JarvisRun = {
+    id: 'run-voice-evidence',
+    accountId: 'account-voice',
+    chatId: 'chat-voice',
+    source: 'voice',
+    agentId: 'agent-jarvis',
+    identityVersion: 1,
+    profileRevisionId: 'profile-voice',
+    status: 'running',
+    model: {
+      providerId: 'openai-api',
+      modelId: 'gpt-5.5',
+      connectionId: 'connection-voice',
+      connectionMode: 'native-api',
+      capabilities: { tools: false, vision: false },
+      effectiveTemperature: 0.2,
+      capturedAt: 90,
+    },
+    createdAt: 100,
+    updatedAt: 100,
+    transportAttempts: [
+      {
+        schemaVersion: 1,
+        attemptNumber: 1,
+        kind: 'initial',
+        requestId: 'request-voice',
+        state: 'provider_in_flight',
+        startedEventSeq: 1,
+        effectBarrier: { state: 'open', version: 0, updatedAt: 100 },
+        createdAt: 100,
+        updatedAt: 100,
+      },
+    ],
+  };
+
+  function voiceRows(engineKind: 'tts' | 'playback'): JarvisEvent[] {
+    const eventType = engineKind === 'tts' ? 'model' : 'terminal';
+    const producerIdentity = {
+      producerKind: 'voice' as const,
+      sessionId: 'vsession-voice',
+      engineKind,
+      executionId: `voice-${engineKind}-execution`,
+    };
+    return [
+      {
+        runId: run.id,
+        seq: 2,
+        idempotencyKey: `voice-${engineKind}-start:${run.id}`,
+        type: eventType,
+        status: 'running',
+        title: engineKind === 'tts' ? 'Voice synthesis started' : 'Voice playback started',
+        safeSummary: 'A voice response phase started.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 200,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: 'request-voice',
+          attemptNumber: 1,
+          producerKind: 'voice',
+          producerIdentity,
+          resultRef: `voice-${engineKind}-start-ref`,
+          observedAt: 200,
+          phase: 'start',
+          state: 'started',
+        },
+      },
+      {
+        runId: run.id,
+        seq: 3,
+        idempotencyKey: `voice-${engineKind}-result:${run.id}`,
+        type: eventType,
+        status: 'completed',
+        title: engineKind === 'tts' ? 'Voice synthesis completed' : 'Voice playback completed',
+        safeSummary: 'A voice response phase completed.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 300,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: 'request-voice',
+          attemptNumber: 1,
+          producerKind: 'voice',
+          producerIdentity,
+          resultRef: `voice-${engineKind}-result-ref`,
+          observedAt: 300,
+          phase: 'result',
+          state: 'completed',
+        },
+      },
+    ];
+  }
+
+  function verifierFor(events: JarvisEvent[]) {
+    return createJarvisVoiceLiveEvidenceVerifier({
+      runs: { getById: vi.fn(async () => structuredClone(run)) } as never as JarvisRunRepository,
+      events: {
+        getBySeq: vi.fn(async (_accountId, _runId, seq) =>
+          structuredClone(events.find((event) => event.seq === seq)),
+        ),
+        listByRun: vi.fn(async () => structuredClone(events)),
+      } as never as JarvisEventRepository,
+    });
+  }
+
+  it.each([
+    ['tts', 'model'],
+    ['playback', 'terminal'],
+  ] as const)(
+    'revalidates exact %s start and result source pairs after a fresh boot',
+    async (engineKind, eventType) => {
+      const events = voiceRows(engineKind);
+      expect(events.map((event) => event.type)).toEqual([eventType, eventType]);
+      const identity = events[0]!.producerSourceEvidence!.producerIdentity;
+      const busy: JarvisCanonicalLiveProducerEvidence<'voice'> = {
+        schemaVersion: 1,
+        producerKind: 'voice',
+        producerIdentity: identity as Extract<typeof identity, { producerKind: 'voice' }>,
+        accountId: run.accountId,
+        runId: run.id,
+        requestId: 'request-voice',
+        attemptNumber: 1,
+        resultRef: `voice-${engineKind}-start-ref`,
+        resultEventSeq: 2,
+        state: 'busy',
+        verifiedAt: 200,
+      };
+      const completed: JarvisCanonicalLiveProducerEvidence<'voice'> = {
+        ...busy,
+        resultRef: `voice-${engineKind}-result-ref`,
+        resultEventSeq: 3,
+        state: 'completed',
+        verifiedAt: 300,
+      };
+
+      const activeVerifier = verifierFor(events);
+      const release = activeVerifier.authorizeStart(
+        events[0]!.producerSourceEvidence as Extract<
+          JarvisEvent['producerSourceEvidence'],
+          { producerKind: 'voice' }
+        >,
+      );
+      await expect(activeVerifier.verify(busy)).resolves.toEqual(busy);
+      release();
+      await expect(activeVerifier.verify(busy)).resolves.toBeNull();
+      const freshVerifier = verifierFor(structuredClone(events));
+      await expect(freshVerifier.verify(busy)).resolves.toBeNull();
+      const verified = await freshVerifier.verify(completed);
+      expect(verified).toEqual(completed);
+      expect(Object.isFrozen(verified)).toBe(true);
+      expect(JSON.stringify(events)).not.toMatch(/transcript|audio|spokenText|prompt/i);
+    },
+  );
+
+  it('rejects an ordinary status or the wrong voice producer member', async () => {
+    const events = voiceRows('tts');
+    const source = events[1]!.producerSourceEvidence!;
+    const evidence: JarvisCanonicalLiveProducerEvidence<'voice'> = {
+      schemaVersion: 1,
+      producerKind: 'voice',
+      producerIdentity: source.producerIdentity as Extract<
+        typeof source.producerIdentity,
+        { producerKind: 'voice' }
+      >,
+      accountId: run.accountId,
+      runId: run.id,
+      requestId: 'request-voice',
+      attemptNumber: 1,
+      resultRef: source.resultRef,
+      resultEventSeq: 3,
+      state: 'completed',
+      verifiedAt: 300,
+    };
+
+    const ordinaryStatus = structuredClone(events);
+    ordinaryStatus[1] = { ...ordinaryStatus[1]!, status: 'running' };
+    await expect(verifierFor(ordinaryStatus).verify(evidence)).resolves.toBeNull();
+
+    const wrongProducer: JarvisCanonicalLiveProducerEvidence<'voice'> = {
+      ...structuredClone(evidence),
+      producerIdentity: {
+        ...evidence.producerIdentity,
+        executionId: 'voice-other-execution',
+      },
+    };
+    await expect(verifierFor(events).verify(wrongProducer)).resolves.toBeNull();
   });
 });

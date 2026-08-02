@@ -38,6 +38,9 @@ describe('buildAgentPromptPayload', () => {
       agentPrompt: 'Review carefully.',
       projectName: 'VibeSpace',
       contextMapSummary: 'app/src/features/terminals — terminal system',
+      terminalContextPackPath: 'C:\\AppData\\VibeSpace\\session-context\\tty-a.md',
+      terminalContextSummary:
+        '## Active Context Maps\n- Main\n\n## Active skills\n- Build\n\n## Source and freshness warnings\n- None.',
       coordinationSummary: '## Coordination Summary\n- Gemini owns AgentRolePicker.tsx',
       coordinationFilePath: COORD,
     });
@@ -48,6 +51,10 @@ describe('buildAgentPromptPayload', () => {
     expect(payload.allowFileLocks).toBe(true);
     expect(payload.briefingBody).toContain('## Terminal identity');
     expect(payload.briefingBody).toContain('tty-a');
+    expect(payload.briefingBody).toContain('## Terminal Context');
+    expect(payload.briefingBody).toContain('session-context\\tty-a.md');
+    expect(payload.briefingBody).toContain('## Active Context Maps');
+    expect(payload.briefingBody).toContain('## Active skills');
     expect(payload.briefingBody).toContain('Gemini owns AgentRolePicker.tsx');
   });
 

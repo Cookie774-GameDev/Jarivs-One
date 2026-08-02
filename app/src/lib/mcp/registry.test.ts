@@ -11,7 +11,8 @@
  * registered by `./builtins` don't leak into the test fixtures.
  */
 
-import { toolRegistry, type ToolDef } from './registry';
+import type { CanonicalMcpEvidence } from '@/lib/jarvis/artifactProducerAdapters';
+import { createCanonicalMcpEvidenceAuthority, toolRegistry, type ToolDef } from './registry';
 
 /* -------------------------------------------------------------------------- */
 /*  Vitest globals (ambient)                                                  */
@@ -107,16 +108,10 @@ describe('toolRegistry.register / get / list', () => {
     const u1 = toolRegistry.register(
       makeTool('test.scoped', 1, { scope: 'project', tags: ['alpha'] }),
     );
-    const u2 = toolRegistry.register(
-      makeTool('test.unscoped', 2, { tags: ['beta'] }),
-    );
+    const u2 = toolRegistry.register(makeTool('test.unscoped', 2, { tags: ['beta'] }));
 
-    expect(toolRegistry.list({ scope: 'project' }).map((t) => t.name)).toEqual([
-      'test.scoped',
-    ]);
-    expect(toolRegistry.list({ tag: 'beta' }).map((t) => t.name)).toEqual([
-      'test.unscoped',
-    ]);
+    expect(toolRegistry.list({ scope: 'project' }).map((t) => t.name)).toEqual(['test.scoped']);
+    expect(toolRegistry.list({ tag: 'beta' }).map((t) => t.name)).toEqual(['test.unscoped']);
 
     u1();
     u2();
@@ -126,9 +121,11 @@ describe('toolRegistry.register / get / list', () => {
 
 describe('toolRegistry.invoke', () => {
   it('resolves with the tool result on success', async () => {
-    const u = toolRegistry.register(makeTool<{ n: number }, number>('test.add1', 0, {
-      invoke: async ({ n }) => n + 1,
-    }));
+    const u = toolRegistry.register(
+      makeTool<{ n: number }, number>('test.add1', 0, {
+        invoke: async ({ n }) => n + 1,
+      }),
+    );
 
     const out = await toolRegistry.invoke<{ n: number }, number>('test.add1', { n: 41 });
     expect(out).toBe(42);
@@ -197,6 +194,68 @@ describe('toolRegistry.subscribe', () => {
     // cleanup
     const stale = toolRegistry.get('test.sub3');
     if (stale) toolRegistry.list(); // touch list for type smoke
+    restoreWarn();
+  });
+});
+
+describe('canonical MCP artifact evidence authority', () => {
+  const evidence = Object.freeze({
+    producerId: 'mcp_result',
+    accountId: 'account-mcp',
+    runId: 'jrun_mcp',
+    requestId: 'jrequest_mcp',
+    attemptNumber: 1,
+    resultRef: 'jmcp_result_invocation-1',
+    state: 'succeeded',
+    verifiedAt: 1_786_202_500_000,
+    serverId: 'server-alpha',
+    toolName: 'tool-alpha',
+    invocationId: 'invocation-1',
+  }) satisfies CanonicalMcpEvidence;
+
+  it('requires the exact live literal server/tool registration and canonical result re-read', async () => {
+    const tool = makeTool('server-alpha.tool-alpha', Object.freeze({ ok: true }));
+    const unregister = toolRegistry.register(tool);
+    const record = Object.freeze({
+      evidence,
+      registrationName: 'server-alpha.tool-alpha',
+      tool,
+    });
+    const authority = createCanonicalMcpEvidenceAuthority({
+      readCanonicalMcpResult: async () => record,
+    });
+
+    expect(await authority.verify(evidence)).toBe(evidence);
+    expect(
+      await authority.verify(Object.freeze({ ...evidence, invocationId: 'invocation-other' })),
+    ).toBe(null);
+    unregister();
+    expect(await authority.verify(evidence)).toBe(null);
+    restoreWarn();
+  });
+
+  it('rejects a replaced literal registration and a cross-server name', async () => {
+    const first = makeTool('server-alpha.tool-alpha', Object.freeze({ ok: true }));
+    const unregisterFirst = toolRegistry.register(first);
+    const record = Object.freeze({
+      evidence,
+      registrationName: 'server-alpha.tool-alpha',
+      tool: first,
+    });
+    const authority = createCanonicalMcpEvidenceAuthority({
+      readCanonicalMcpResult: async () => record,
+    });
+    const replacement = makeTool('server-alpha.tool-alpha', Object.freeze({ ok: true }));
+    const unregisterReplacement = toolRegistry.register(replacement);
+    expect(await authority.verify(evidence)).toBe(null);
+    unregisterFirst();
+    unregisterReplacement();
+
+    const crossServer = createCanonicalMcpEvidenceAuthority({
+      readCanonicalMcpResult: async () =>
+        Object.freeze({ evidence, registrationName: 'server-other.tool-alpha', tool: first }),
+    });
+    expect(await crossServer.verify(evidence)).toBe(null);
     restoreWarn();
   });
 });

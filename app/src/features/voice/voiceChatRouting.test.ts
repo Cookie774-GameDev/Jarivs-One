@@ -11,6 +11,13 @@ const jarvisAgent = {
   id: 'agent-jarvis',
   slug: 'jarvis',
   name: 'Jarvis',
+  builtin: true,
+} as Agent;
+
+const jarvisCollision = {
+  ...jarvisAgent,
+  id: 'agent-jarvis-collision',
+  builtin: false,
 } as Agent;
 
 const criticAgent = {
@@ -35,6 +42,14 @@ describe('voiceChatRouting detection', () => {
     expect(isJarvisChat(chat, agents)).toBe(false);
   });
 
+  it('rejects a user-created jarvis slug collision as a protected voice chat', () => {
+    const collisionAgents = { [jarvisCollision.id]: jarvisCollision };
+    const chat = { active_agent_ids: [jarvisCollision.id] } as unknown as Chat;
+
+    expect(isJarvisChat(chat, collisionAgents)).toBe(false);
+    expect(isJarvisChat({ active_agent_ids: [] } as unknown as Chat, collisionAgents)).toBe(false);
+  });
+
   it('defaults generic utterances to Jarvis (no explicit agent)', () => {
     expect(detectExplicitVoiceAgentSlug('open five terminals')).toBeNull();
     expect(detectExplicitVoiceAgentSlug('hey Jarvis what is up')).toBeNull();
@@ -55,8 +70,8 @@ describe('voiceChatRouting detection', () => {
 
   it('routes dictation-into-agent phrasing', () => {
     expect(detectExplicitVoiceAgentSlug('type into critic the new paragraph')).toBe('critic');
-    expect(
-      voiceMessageTextForAgentRoute('type into critic the new paragraph', 'critic'),
-    ).toBe('the new paragraph');
+    expect(voiceMessageTextForAgentRoute('type into critic the new paragraph', 'critic')).toBe(
+      'the new paragraph',
+    );
   });
 });

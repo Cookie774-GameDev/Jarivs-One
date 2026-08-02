@@ -29,17 +29,14 @@
 import * as React from 'react';
 import { Paperclip, Trash2, Plus, AlertTriangle, FolderOpen } from 'lucide-react';
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
-import { setStoredContextSelectedFile } from '@/features/context/tree';
+import { selectPersistedContextFile } from '@/features/context/contextPersistence';
 import { chooseProjectFiles } from '@/features/files/projectFiles';
 
 interface ConnectedFilesButtonProps {
@@ -70,10 +67,7 @@ function splitPaths(blob: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-export function ConnectedFilesButton({
-  files,
-  onChange,
-}: ConnectedFilesButtonProps) {
+export function ConnectedFilesButton({ files, onChange }: ConnectedFilesButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
@@ -142,7 +136,12 @@ export function ConnectedFilesButton({
   };
 
   const openInContext = (path: string) => {
-    setStoredContextSelectedFile(projectId, path);
+    void selectPersistedContextFile(projectId, path).catch((cause) => {
+      toast.error(
+        'Could not open file in Context',
+        cause instanceof Error ? cause.message : 'The selected file is not in an active map.',
+      );
+    });
     setRoute('context');
     setOpen(false);
   };
@@ -152,18 +151,14 @@ export function ConnectedFilesButton({
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={
-            count > 0
-              ? `Connected files (${count})`
-              : 'Attach files to this pane'
-          }
+          aria-label={count > 0 ? `Connected files (${count})` : 'Attach files to this pane'}
           title={
             count > 0
               ? `${count} file${count === 1 ? '' : 's'} connected · click to manage`
               : 'Attach files to this pane'
           }
           className={cn(
-            'relative inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors',
+            'relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors',
             'hover:bg-muted hover:text-foreground',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
             count > 0 && 'text-accent-copper',
@@ -180,11 +175,7 @@ export function ConnectedFilesButton({
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="end"
-        className="w-[320px] p-0 overflow-hidden"
-      >
+      <PopoverContent side="bottom" align="end" className="w-[320px] p-0 overflow-hidden">
         <div className="flex items-center justify-between gap-2 border-b border-border bg-paper-soft px-3 py-2">
           <div className="text-ui-strong text-foreground">Connected files</div>
           <div className="text-metadata text-muted-foreground">
@@ -195,16 +186,13 @@ export function ConnectedFilesButton({
         <div className="max-h-[220px] overflow-y-auto">
           {files.length === 0 ? (
             <p className="p-3 text-secondary text-muted-foreground">
-              No files attached. Paste an absolute path below — the agent in
-              this pane will see those files when it answers.
+              No files attached. Paste an absolute path below — the agent in this pane will see
+              those files when it answers.
             </p>
           ) : (
             <ul className="divide-y divide-border">
               {files.map((p) => (
-                <li
-                  key={p}
-                  className="group flex items-center gap-2 px-3 py-1.5"
-                >
+                <li key={p} className="group flex items-center gap-2 px-3 py-1.5">
                   <button
                     type="button"
                     onClick={() => openInContext(p)}
@@ -217,7 +205,7 @@ export function ConnectedFilesButton({
                     type="button"
                     onClick={() => handleRemove(p)}
                     aria-label={`Remove ${p}`}
-                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                   >
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -241,7 +229,9 @@ export function ConnectedFilesButton({
                   handleAdd();
                 }
               }}
-              placeholder={atCap ? `Cap reached (${MAX_FILES})` : 'C:\\path\\to\\file.ts or /abs/path'}
+              placeholder={
+                atCap ? `Cap reached (${MAX_FILES})` : 'C:\\path\\to\\file.ts or /abs/path'
+              }
               disabled={atCap}
               className="font-mono text-metadata"
               spellCheck={false}

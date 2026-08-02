@@ -7,11 +7,20 @@ import { flushTranscriptStorage } from '@/features/terminals/transcriptStore';
 import { forEachLiveTree } from '@/features/terminals/terminalLiveCache';
 import { saveTerminalTree } from '@/features/terminals/terminalProjectMove';
 import { flushRegisteredTerminalSnapshots } from '@/features/terminals/terminalSnapshotRegistry';
+import { flushCanvasWorkspaceState } from './canvasWorkspaceFlush';
+import type { CanvasWorkspaceFlushResult } from './canvasWorkspaceFlush';
+
+export {
+  bindCanvasWorkspaceFlush,
+  _resetCanvasFlushForTests,
+  type CanvasWorkspaceFlushProvider,
+} from './canvasWorkspaceFlush';
 
 export interface WorkspaceFlushResult {
   completed: number;
   failed: number;
   timedOut: boolean;
+  canvas: CanvasWorkspaceFlushResult;
 }
 
 const PERSIST_KEY_PREFIXES = [
@@ -49,14 +58,14 @@ function flushDebouncedLocalStorageKeys(): void {
 }
 
 /** Flush terminal transcripts, pane trees, and persisted UI state to disk. */
-export async function flushWorkspacePersistence(
-  reason?: string,
-): Promise<WorkspaceFlushResult> {
+export async function flushWorkspacePersistence(reason?: string): Promise<WorkspaceFlushResult> {
+  const flushReason = reason ?? 'manual';
   try {
     if (typeof window !== 'undefined') {
+      const detail = { reason: flushReason };
       window.dispatchEvent(
         new CustomEvent('jarvis:terminal:persist-now', {
-          detail: { reason: reason ?? 'manual' },
+          detail,
         }),
       );
     }
@@ -68,13 +77,20 @@ export async function flushWorkspacePersistence(
   } catch (err) {
     console.warn('[workspace] persistence flush failed:', err);
   }
-  const result = await flushRegisteredTerminalSnapshots();
+  // Start the awaitable Canvas flush synchronously so bound controllers begin
+  // persisting immediately, then await it alongside the bounded terminal
+  // snapshot flush. Tray-hide/update/unload flushes thus observe the newest
+  // Canvas edit as durable instead of firing an unobservable event.
+  const [result, canvas] = await Promise.all([
+    flushRegisteredTerminalSnapshots(),
+    flushCanvasWorkspaceState(flushReason),
+  ]);
   if (reason && import.meta.env.DEV) {
     console.info(
       `[workspace] flushed persistence (${reason}; completed=${result.completed}, failed=${result.failed}, timedOut=${result.timedOut})`,
     );
   }
-  return result;
+  return { ...result, canvas };
 }
 
 export async function flushWorkspacePersistenceAndAcknowledge(

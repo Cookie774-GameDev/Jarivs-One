@@ -1,0 +1,42 @@
+html[data-theme='sakura'] .sakura-hosted-billing {
+  border-color: hsl(var(--sakura-ivory-hsl) / var(--sakura-essential-border-alpha));
+  border-radius: var(--sakura-radius-feature);
+  background: var(--sakura-panel-strong-fallback);
+  box-shadow:
+    var(--shadow-soft),
+    inset 3px 0 0 hsl(var(--sakura-pink-hsl) / 0.72),
+    inset 0 1px 0 hsl(var(--sakura-ivory-hsl) / 0.07);
+}
+
+html[data-theme='sakura'] .sakura-hosted-billing h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+html[data-theme='sakura'] .sakura-hosted-billing button {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+html[data-theme='sakura'] .sakura-hosted-billing button:hover {
+  transform: translateY(calc(-1 * var(--sakura-hover-lift)));
+  box-shadow: var(--shadow-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] .sakura-hosted-billing *,
+  html[data-theme='sakura'] .sakura-hosted-billing *::before,
+  html[data-theme='sakura'] .sakura-hosted-billing *::after {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] .sakura-hosted-billing {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+  }
+}

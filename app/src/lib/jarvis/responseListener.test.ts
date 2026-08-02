@@ -2,45 +2,41 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { startJarvisResponsePolicyListener } from './responseListener';
 
-describe('Jarvis response policy listener', () => {
+describe('retired Jarvis response policy listener', () => {
   let stop: (() => void) | undefined;
 
   afterEach(() => stop?.());
 
-  it('answers casual turns locally and prevents a slower provider duplicate', async () => {
-    const appendMessage = vi.fn().mockResolvedValue(undefined);
-    const providerListener = vi.fn();
-    stop = startJarvisResponsePolicyListener({ appendMessage, emojisEnabled: () => false });
-    window.addEventListener('jarvis:send', providerListener);
+  it('leaves protected greetings for the canonical runtime without a direct-write binding', () => {
+    const runtimeListener = vi.fn();
+    stop = startJarvisResponsePolicyListener();
+    window.addEventListener('jarvis:send', runtimeListener);
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: { chatId: 'chat-1', text: 'Hi' },
-    }));
-    await vi.waitFor(() => expect(appendMessage).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Hi', agentId: 'agent-jarvis' },
+      }),
+    );
 
-    expect(appendMessage.mock.calls[0]?.[0]).toMatchObject({
-      chat_id: 'chat-1',
-      role: 'assistant',
-      parts: [{ kind: 'text', text: 'Hey! What are we building today?' }],
-    });
-    expect(providerListener).not.toHaveBeenCalled();
-    window.removeEventListener('jarvis:send', providerListener);
+    expect(runtimeListener).toHaveBeenCalledOnce();
+    expect(startJarvisResponsePolicyListener.length).toBe(0);
+    window.removeEventListener('jarvis:send', runtimeListener);
   });
 
-  it('leaves action, attachment, and agent-directed turns for the full runtime', () => {
-    const appendMessage = vi.fn();
-    stop = startJarvisResponsePolicyListener({ appendMessage });
+  it('does not intercept action, attachment, or agent-directed turns', () => {
+    const runtimeListener = vi.fn();
+    stop = startJarvisResponsePolicyListener();
+    window.addEventListener('jarvis:send', runtimeListener);
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: { chatId: 'chat-1', text: 'Open a terminal' },
-    }));
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: { chatId: 'chat-1', text: 'Hi', filePaths: ['notes.txt'] },
-    }));
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: { chatId: 'chat-1', text: 'Hi', mentionedAgentIds: ['agent-1'] },
-    }));
+    for (const detail of [
+      { chatId: 'chat-1', text: 'Open a terminal' },
+      { chatId: 'chat-1', text: 'Hi', filePaths: ['notes.txt'] },
+      { chatId: 'chat-1', text: 'Hi', mentionedAgentIds: ['agent-1'] },
+    ]) {
+      window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+    }
 
-    expect(appendMessage).not.toHaveBeenCalled();
+    expect(runtimeListener).toHaveBeenCalledTimes(3);
+    window.removeEventListener('jarvis:send', runtimeListener);
   });
 });

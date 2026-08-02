@@ -43,7 +43,7 @@ export function CouncilGrid({ agents, messages, panelRefs, className }: CouncilG
 
   return (
     <div
-      className={'grid gap-3 h-full min-h-0 ' + (className ?? '')}
+      className={'sakura-council-grid grid gap-3 h-full min-h-0 ' + (className ?? '')}
       style={{
         gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
         gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,

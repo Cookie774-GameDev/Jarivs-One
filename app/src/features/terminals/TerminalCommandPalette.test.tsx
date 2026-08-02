@@ -1,0 +1,210 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { TerminalCommandPalette } from './TerminalCommandPalette';
+
+const evidence = {
+  promptProtocol: 'osc133',
+  atPrompt: true,
+  alternateScreen: false,
+  interactiveProgram: false,
+  localShell: true,
+  passwordPrompt: false,
+  sshSession: false,
+} as const;
+
+describe('TerminalCommandPalette', () => {
+  it('preserves ordinary overlay depth while flattening MonoChrome shadow and blur', () => {
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'VibeSpace terminal palette' });
+    expect(dialog.className).toContain('shadow-[0_18px_60px_hsl(var(--foreground)/0.28)]');
+    expect(dialog.className).toContain('backdrop-blur');
+    expect(dialog.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+    expect(dialog.className).toContain('[html[data-theme=monochrome]_&]:backdrop-blur-none');
+  });
+
+  it('renders the complete in-pane top level and filters without touching the PTY', () => {
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('dialog', { name: 'VibeSpace terminal palette' })).toBeTruthy();
+    for (const label of [
+      'Context Map',
+      'Skills',
+      'Agents',
+      'Project',
+      'Notes',
+      'Daily Note',
+      'Search',
+      'Terminals',
+      'Status',
+      'Help',
+    ]) {
+      expect(screen.getByRole('option', { name: new RegExp(`^${label}\\b`, 'i') })).toBeTruthy();
+    }
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter terminal commands' }), {
+      target: { value: 'skill' },
+    });
+    expect(screen.getByRole('option', { name: /Skills/i })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Context Map/i })).toBeNull();
+  });
+
+  it('supports arrow/Tab selection, Enter navigation, Escape, and mouse status', () => {
+    const onClose = vi.fn();
+    const onNavigate = vi.fn();
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={onClose}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    const input = screen.getByRole('combobox', { name: 'Filter terminal commands' });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onNavigate).toHaveBeenCalledWith('skills');
+
+    fireEvent.click(screen.getByRole('option', { name: /Status/i }));
+    expect(screen.getByText(/Verified local shell prompt/i)).toBeTruthy();
+    expect(screen.getByText(/pty-1/i)).toBeTruthy();
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Backspace' });
+    const returnedInput = screen.getByRole('combobox', { name: 'Filter terminal commands' });
+
+    fireEvent.keyDown(returnedInput, { key: 'ArrowUp' });
+    fireEvent.keyDown(returnedInput, { key: 'Enter' });
+    expect(onNavigate).toHaveBeenLastCalledWith('context');
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('renders nothing while closed', () => {
+    const { container } = render(
+      <TerminalCommandPalette
+        open={false}
+        paneId="pane-1"
+        sessionId={null}
+        projectId={null}
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(container.innerHTML).toBe('');
+  });
+
+  it('offers explicit reversible CLI setup without exposing native secrets', async () => {
+    const onInstallCli = vi.fn().mockResolvedValue({
+      installed: true,
+      binDir: 'C:\\Users\\Test\\.jarvis\\bin',
+      commandNames: ['vibespace', 'vs'],
+    });
+    const onUninstallCli = vi.fn().mockResolvedValue({
+      installed: false,
+      binDir: 'C:\\Users\\Test\\.jarvis\\bin',
+      commandNames: ['vibespace', 'vs'],
+    });
+    const installedShellIntegration = {
+      available: true,
+      installed: true,
+      profiles: [
+        {
+          shell: 'powershell' as const,
+          path: 'C:\\Users\\Test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1',
+          installed: true,
+        },
+      ],
+    };
+    const onInstallShellIntegration = vi.fn().mockResolvedValue(installedShellIntegration);
+    const onUninstallShellIntegration = vi.fn().mockResolvedValue({
+      ...installedShellIntegration,
+      installed: false,
+      profiles: installedShellIntegration.profiles.map((profile) => ({
+        ...profile,
+        installed: false,
+      })),
+    });
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onInstallCli={onInstallCli}
+        onUninstallCli={onUninstallCli}
+        onInstallShellIntegration={onInstallShellIntegration}
+        onUninstallShellIntegration={onUninstallShellIntegration}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('option', { name: /Help/i }));
+    expect(screen.getByText(/optional.*marked, removable block/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Install terminal commands' }));
+    expect(await screen.findByText(/Installed vibespace and vs/i)).toBeTruthy();
+    expect(onInstallCli).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove terminal commands' }));
+    expect(await screen.findByText(/Removed managed terminal commands/i)).toBeTruthy();
+    expect(onUninstallCli).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shell prompt integration' }));
+    expect(
+      await screen.findByText(/Enabled managed prompt integration for 1 shell profile/i),
+    ).toBeTruthy();
+    expect(onInstallShellIntegration).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove shell prompt integration' }));
+    expect(await screen.findByText(/Removed managed prompt integration/i)).toBeTruthy();
+    expect(onUninstallShellIntegration).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/token|nonce/i)).toBeNull();
+  });
+
+  it('fails closed without rendering native setup error details', async () => {
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onInstallShellIntegration={vi.fn().mockRejectedValue(new Error('token=must-not-render'))}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('option', { name: /Help/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shell prompt integration' }));
+    expect(await screen.findByText('Terminal command setup failed. Try again.')).toBeTruthy();
+    expect(screen.queryByText(/must-not-render/i)).toBeNull();
+  });
+});

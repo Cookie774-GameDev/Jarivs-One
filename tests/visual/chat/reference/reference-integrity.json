@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "algorithm": "sha256",
+  "entries": [
+    {
+      "path": "DESIGN.md",
+      "bytes": 8242,
+      "sha256": "17208f33a053833e0a79d2c1ce24d857f7898a305c42626f39da407b2f8f9d00"
+    },
+    {
+      "path": "asset-manifest.json",
+      "bytes": 2346,
+      "sha256": "e560d4e4d226d36b2fcef31943f8ca3dd456453eed9467fe38b4fcec96836f37"
+    },
+    {
+      "path": "crops/assistant_message.png",
+      "bytes": 377834,
+      "sha256": "3e18222a223c476ac6c731305784ae589b6e7669992a84701b94907e8159a80d"
+    },
+    {
+      "path": "crops/composer.png",
+      "bytes": 300536,
+      "sha256": "ac29618df45195c6fbff08fcabdd075efdc582067f85d8e9473cd796d059bb25"
+    },
+    {
+      "path": "crops/header_full.png",
+      "bytes": 360384,
+      "sha256": "95dac622b66488fe596225f055222edd0c2cb2d109e2720c59580e713a197d73"
+    },
+    {
+      "path": "crops/jarvis_module.png",
+      "bytes": 80353,
+      "sha256": "17fbb510a1c90534f0342a835305b95317336e2dfdb63b15eda207cdaf192307"
+    },
+    {
+      "path": "crops/lower_right_flower.png",
+      "bytes": 180294,
+      "sha256": "8f7fb33811105f473867713c54fcf5c9e5420cab8264f0b49e89f542536e7400"
+    },
+    {
+      "path": "crops/paper_closeup.png",
+      "bytes": 112906,
+      "sha256": "5b52ac6bcc3473eeb8d848c9db02357ecd07b8c678c135e39c57c8ee5d3f44fb"
+    },
+    {
+      "path": "crops/session_panel.png",
+      "bytes": 294931,
+      "sha256": "f3ed50be553e3951451030dfe88b0f34e38d0a4039c0de0e414ac88170615c14"
+    },
+    {
+      "path": "crops/sidebar_full.png",
+      "bytes": 493035,
+      "sha256": "cb545fe48e524b9a4c2399988ccc667f5a58a89dd75902eccf99e77fc39c7181"
+    },
+    {
+      "path": "crops/top_ribbon.png",
+      "bytes": 161602,
+      "sha256": "c1c610d908299fec4012b1a603d0e40c017777ffdf009f3844097bd89adc0444"
+    },
+    {
+      "path": "crops/upper_left_crane.png",
+      "bytes": 25900,
+      "sha256": "be12882c05f2f914055cea189844c1657dba9edfc274bfba9825ab88009a7e08"
+    },
+    {
+      "path": "crops/user_bubble.png",
+      "bytes": 40981,
+      "sha256": "3ae274f7e269a39e48cb3d9779985420805f55f4c6393c80db1814dd6a406797"
+    },
+    {
+      "path": "design-tokens.json",
+      "bytes": 1339,
+      "sha256": "c615406e0481c12dca4ddbf22635f0782f78242ff50900c360ecd9c8005aa6a4"
+    },
+    {
+      "path": "reference-spec.json",
+      "bytes": 3065,
+      "sha256": "75fcdbcf034b02ff3daf45abcc48efffb83cdc4fe963b52e22d6a1deec8a59c4"
+    },
+    {
+      "path": "target-chat.png",
+      "bytes": 3463908,
+      "sha256": "1f61e223d6db54d9f32de4c3de8c98ff3028556b579b1f6a69b5317d35e8fe27"
+    }
+  ]
+}

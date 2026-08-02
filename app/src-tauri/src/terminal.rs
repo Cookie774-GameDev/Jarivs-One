@@ -4,9 +4,9 @@
 //! Tauri commands (`spawn` / `write` / `resize` / `kill` / `list`) and emits 2
 //! events (`terminal://output`, `terminal://exit`).
 //!
-//! Each session gets a `tokio::task::spawn_blocking` reader that loops on a
-//! 4 KiB buffer, lossy UTF-8 decodes the bytes, and forwards them to the
-//! WebView. When the PTY closes, the same task waits the child and emits
+//! Each session gets separate blocking reader and child-waiter tasks. The
+//! waiter closes the pseudo-console master when the child exits so ConPTY
+//! releases output EOF; the reader then drains final bytes and emits one
 //! `terminal://exit` on its way out.
 //!
 //! No PII or terminal contents are ever written to logs; every failure mode
@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
@@ -41,9 +41,10 @@ pub struct TerminalState(pub Arc<AsyncMutex<HashMap<String, PtyHandle>>>);
 pub struct PtyHandle {
     info: TerminalInfo,
     writer: Arc<AsyncMutex<Box<dyn Write + Send>>>,
-    master: Arc<AsyncMutex<Box<dyn MasterPty + Send>>>,
+    master: Arc<AsyncMutex<Option<Box<dyn MasterPty + Send>>>>,
     killer: Arc<AsyncMutex<Box<dyn ChildKiller + Send + Sync>>>,
-    reader_task: JoinHandle<()>,
+    lifecycle: Arc<LifecycleArbiter>,
+    _reader_task: JoinHandle<()>,
     active: Arc<AtomicBool>,
     deleted: Arc<AtomicBool>,
 }
@@ -72,6 +73,9 @@ pub struct SpawnResponse {
     /// frontend can place per-directory artefacts (AGENTS.md, coordination
     /// doc) even when the caller did not pass an explicit `cwd`.
     pub cwd: String,
+    /// True only when the backend placed the startup command in the child
+    /// process arguments. The frontend must not replay it through PTY input.
+    pub startup_command_consumed: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -81,14 +85,356 @@ struct OutputPayload {
     data: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ExitPayload {
     session_id: String,
     code: Option<i32>,
+    reason: ExitReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cancellation_token: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KillResultKind {
+    Missing,
+    AlreadyExited,
+    DeliveryRejected,
+    SignalDelivered,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KillRequestKind {
+    CanonicalCancellation,
+    ManualTermination,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ExitReason {
+    NaturalExit,
+    AcceptedCancellation,
+    ManualTermination,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalKillResult {
+    kind: KillResultKind,
+    request_kind: KillRequestKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cancellation_token: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct KillRequest {
+    kind: KillRequestKind,
+    cancellation_token: Option<String>,
+}
+
+impl KillRequest {
+    fn canonical(cancellation_token: impl Into<String>) -> Self {
+        Self {
+            kind: KillRequestKind::CanonicalCancellation,
+            cancellation_token: Some(cancellation_token.into()),
+        }
+    }
+
+    fn manual() -> Self {
+        Self {
+            kind: KillRequestKind::ManualTermination,
+            cancellation_token: None,
+        }
+    }
+
+    fn result(&self, kind: KillResultKind) -> TerminalKillResult {
+        TerminalKillResult {
+            kind,
+            request_kind: self.kind,
+            cancellation_token: self.cancellation_token.clone(),
+        }
+    }
+}
+
+impl TerminalKillResult {
+    fn missing(request: KillRequest) -> Self {
+        request.result(KillResultKind::Missing)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct KillAttempt {
+    id: u64,
+    request: KillRequest,
+}
+
+enum KillStart {
+    Complete(TerminalKillResult),
+    Deliver(KillAttempt),
+}
+
+struct KillCompletion {
+    result: TerminalKillResult,
+    exit: Option<ExitPayload>,
+}
+
+#[derive(Clone, Debug)]
+enum LifecyclePhase {
+    Running,
+    Delivering(KillAttempt),
+    SignalDelivered(KillRequest),
+    Finalized,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ObservedExit {
+    code: Option<i32>,
+}
+
+#[derive(Debug)]
+struct LifecycleState {
+    phase: LifecyclePhase,
+    pending_exit: Option<ObservedExit>,
+    next_attempt_id: u64,
+}
+
+/// Serializes the reader's exit observation with native kill delivery.
+/// Exactly one transition receives an `ExitPayload`; that owner emits it
+/// before removing the session from the shared map.
+struct LifecycleArbiter {
+    session_id: String,
+    cancellation_token: Option<String>,
+    state: StdMutex<LifecycleState>,
+}
+
+impl LifecycleArbiter {
+    fn new(session_id: impl Into<String>, cancellation_token: Option<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            cancellation_token,
+            state: StdMutex::new(LifecycleState {
+                phase: LifecyclePhase::Running,
+                pending_exit: None,
+                next_attempt_id: 0,
+            }),
+        }
+    }
+
+    fn begin_kill(&self, request: KillRequest) -> KillStart {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(state.phase, LifecyclePhase::Finalized) {
+            return KillStart::Complete(request.result(KillResultKind::AlreadyExited));
+        }
+
+        if request.kind == KillRequestKind::CanonicalCancellation
+            && request.cancellation_token != self.cancellation_token
+        {
+            return KillStart::Complete(request.result(KillResultKind::DeliveryRejected));
+        }
+
+        if !matches!(state.phase, LifecyclePhase::Running) {
+            return KillStart::Complete(request.result(KillResultKind::DeliveryRejected));
+        }
+
+        state.next_attempt_id = state.next_attempt_id.wrapping_add(1);
+        let attempt = KillAttempt {
+            id: state.next_attempt_id,
+            request,
+        };
+        state.phase = LifecyclePhase::Delivering(attempt.clone());
+        KillStart::Deliver(attempt)
+    }
+
+    fn complete_kill(&self, attempt: KillAttempt, delivered: bool) -> KillCompletion {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let is_current_attempt = matches!(
+            &state.phase,
+            LifecyclePhase::Delivering(current) if current.id == attempt.id
+        );
+        if !is_current_attempt {
+            return KillCompletion {
+                result: attempt.request.result(KillResultKind::DeliveryRejected),
+                exit: None,
+            };
+        }
+
+        let pending_exit = state.pending_exit.take();
+        let result_kind = if delivered {
+            state.phase = LifecyclePhase::SignalDelivered(attempt.request.clone());
+            KillResultKind::SignalDelivered
+        } else {
+            state.phase = LifecyclePhase::Running;
+            KillResultKind::DeliveryRejected
+        };
+
+        let exit = pending_exit.map(|observed| {
+            let reason = if delivered {
+                Self::accepted_exit_reason(&attempt.request)
+            } else {
+                ExitReason::NaturalExit
+            };
+            state.phase = LifecyclePhase::Finalized;
+            self.exit_payload(observed.code, reason, &attempt.request)
+        });
+
+        KillCompletion {
+            result: attempt.request.result(result_kind),
+            exit,
+        }
+    }
+
+    fn observe_exit(&self, code: Option<i32>) -> Option<ExitPayload> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        match state.phase.clone() {
+            LifecyclePhase::Finalized => None,
+            LifecyclePhase::Delivering(_) => {
+                if state.pending_exit.is_none() {
+                    state.pending_exit = Some(ObservedExit { code });
+                }
+                None
+            }
+            LifecyclePhase::Running => {
+                state.phase = LifecyclePhase::Finalized;
+                Some(self.exit_payload(code, ExitReason::NaturalExit, &KillRequest::manual()))
+            }
+            LifecyclePhase::SignalDelivered(request) => {
+                state.phase = LifecyclePhase::Finalized;
+                Some(self.exit_payload(code, Self::accepted_exit_reason(&request), &request))
+            }
+        }
+    }
+
+    fn accepted_exit_reason(request: &KillRequest) -> ExitReason {
+        match request.kind {
+            KillRequestKind::CanonicalCancellation => ExitReason::AcceptedCancellation,
+            KillRequestKind::ManualTermination => ExitReason::ManualTermination,
+        }
+    }
+
+    fn exit_payload(
+        &self,
+        code: Option<i32>,
+        reason: ExitReason,
+        request: &KillRequest,
+    ) -> ExitPayload {
+        ExitPayload {
+            session_id: self.session_id.clone(),
+            code,
+            reason,
+            cancellation_token: (reason == ExitReason::AcceptedCancellation)
+                .then(|| request.cancellation_token.clone())
+                .flatten(),
+        }
+    }
+}
+
+fn emit_before_remove(
+    payload: &ExitPayload,
+    emit: impl FnOnce(&ExitPayload),
+    remove: impl FnOnce(&str),
+) {
+    emit(payload);
+    remove(&payload.session_id);
+}
+
+fn finalize_terminal_session(
+    app: &AppHandle,
+    sessions: &Arc<AsyncMutex<HashMap<String, PtyHandle>>>,
+    exit: &ExitPayload,
+) {
+    emit_before_remove(
+        exit,
+        |payload| {
+            let _ = app.emit("terminal://exit", payload);
+        },
+        |session_id| {
+            sessions.blocking_lock().remove(session_id);
+        },
+    );
+}
+
+#[derive(Clone)]
+struct KillTarget {
+    killer: Arc<AsyncMutex<Box<dyn ChildKiller + Send + Sync>>>,
+    lifecycle: Arc<LifecycleArbiter>,
+    active: Arc<AtomicBool>,
+}
+
+impl From<&PtyHandle> for KillTarget {
+    fn from(handle: &PtyHandle) -> Self {
+        Self {
+            killer: handle.killer.clone(),
+            lifecycle: handle.lifecycle.clone(),
+            active: handle.active.clone(),
+        }
+    }
+}
+
+async fn deliver_kill(
+    app: &AppHandle,
+    sessions: &Arc<AsyncMutex<HashMap<String, PtyHandle>>>,
+    target: KillTarget,
+    request: KillRequest,
+) -> TerminalKillResult {
+    let attempt = match target.lifecycle.begin_kill(request) {
+        KillStart::Complete(result) => return result,
+        KillStart::Deliver(attempt) => attempt,
+    };
+
+    let lifecycle = target.lifecycle.clone();
+    let lifecycle_for_delivery = lifecycle.clone();
+    let fallback_attempt = attempt.clone();
+    let app_for_delivery = app.clone();
+    let sessions_for_delivery = sessions.clone();
+    let delivery = spawn_blocking(move || {
+        let mut killer = target.killer.blocking_lock();
+        let delivered = killer.kill().is_ok();
+        drop(killer);
+
+        let completion = lifecycle_for_delivery.complete_kill(attempt, delivered);
+        if completion.result.kind == KillResultKind::SignalDelivered {
+            target.active.store(false, Ordering::SeqCst);
+        }
+        if let Some(exit) = &completion.exit {
+            finalize_terminal_session(&app_for_delivery, &sessions_for_delivery, exit);
+        }
+        completion.result
+    })
+    .await;
+
+    match delivery {
+        Ok(result) => result,
+        Err(_) => {
+            let completion = lifecycle.complete_kill(fallback_attempt, false);
+            if let Some(exit) = completion.exit {
+                let _ = app.emit("terminal://exit", exit.clone());
+                sessions.lock().await.remove(&exit.session_id);
+            }
+            completion.result
+        }
+    }
 }
 
 const MAX_TERMINAL_SESSIONS: usize = 10;
+const MAX_CANCELLATION_TOKEN_BYTES: usize = 512;
+const MAX_STARTUP_COMMAND_BYTES: usize = 32_768;
+
+fn valid_cancellation_token(token: &str) -> bool {
+    !token.is_empty()
+        && token == token.trim()
+        && token.len() <= MAX_CANCELLATION_TOKEN_BYTES
+        && !token.contains('\0')
+}
+
+fn validated_kill_request(cancellation_token: Option<String>) -> Result<KillRequest, String> {
+    match cancellation_token {
+        Some(token) if valid_cancellation_token(&token) => Ok(KillRequest::canonical(token)),
+        Some(_) => Err("terminal: invalid cancellation token".to_string()),
+        None => Ok(KillRequest::manual()),
+    }
+}
 
 /// Resolve which executable to launch when the caller didn't pick one.
 ///
@@ -139,6 +485,48 @@ fn is_powershell(cmd: &str) -> bool {
         .unwrap_or(unquoted);
     let lower = name.to_ascii_lowercase();
     lower == "powershell.exe" || lower == "powershell" || lower == "pwsh.exe" || lower == "pwsh"
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct TerminalLaunchSpec {
+    executable: String,
+    arguments: Vec<String>,
+    startup_command_consumed: bool,
+}
+
+fn terminal_launch_spec(
+    command: Option<String>,
+    startup_command: Option<String>,
+) -> Result<TerminalLaunchSpec, String> {
+    if let Some(startup) = startup_command.as_ref() {
+        if startup.is_empty() || startup.len() > MAX_STARTUP_COMMAND_BYTES || startup.contains('\0')
+        {
+            return Err("terminal: invalid startup command".to_string());
+        }
+    }
+
+    let executable = pick_default_shell(command);
+    let mut arguments = Vec::new();
+    let mut startup_command_consumed = false;
+
+    #[cfg(target_os = "windows")]
+    if is_powershell(&executable) {
+        arguments.push("-NoLogo".to_string());
+        arguments.push("-NoProfile".to_string());
+        if let Some(startup) = startup_command {
+            arguments.push("-Command".to_string());
+            arguments.push(startup);
+            startup_command_consumed = true;
+        } else {
+            arguments.push("-NoExit".to_string());
+        }
+    }
+
+    Ok(TerminalLaunchSpec {
+        executable,
+        arguments,
+        startup_command_consumed,
+    })
 }
 
 fn now_unix_ms() -> u64 {
@@ -196,17 +584,25 @@ pub async fn terminal_spawn(
     state: State<'_, TerminalState>,
     app: AppHandle,
     command: Option<String>,
+    startup_command: Option<String>,
     cwd: Option<String>,
     rows: u16,
     cols: u16,
     env: Option<HashMap<String, String>>,
     project_id: Option<String>,
     project_name: Option<String>,
+    cancellation_token: Option<String>,
 ) -> Result<SpawnResponse, String> {
-    let cmd_str = pick_default_shell(command);
-    let mut evicted_handles = Vec::new();
+    let cancellation_token = match cancellation_token {
+        Some(token) if valid_cancellation_token(&token) => Some(token),
+        Some(_) => return Err("terminal: invalid cancellation token".to_string()),
+        None => None,
+    };
+    let launch = terminal_launch_spec(command, startup_command)?;
+    let cmd_str = launch.executable.clone();
+    let mut evicted_targets = Vec::new();
     {
-        let mut map = state.0.lock().await;
+        let map = state.0.lock().await;
         let mut project_sessions: Vec<(String, u64)> = map
             .values()
             .filter(|h| {
@@ -230,17 +626,15 @@ pub async fn terminal_spawn(
             for i in 0..evict_count {
                 if let Some((sid, _)) = project_sessions.get(i) {
                     println!("[terminal] Evicting oldest session: {}", sid);
-                    if let Some(handle) = map.remove(sid) {
-                        evicted_handles.push(handle);
+                    if let Some(handle) = map.get(sid) {
+                        evicted_targets.push(KillTarget::from(handle));
                     }
                 }
             }
         }
     }
-    for handle in evicted_handles {
-        let mut killer = handle.killer.lock().await;
-        let _ = killer.kill();
-        handle.reader_task.abort();
+    for target in evicted_targets {
+        let _ = deliver_kill(&app, &state.0, target, KillRequest::manual()).await;
     }
 
     let pty_system = native_pty_system();
@@ -253,15 +647,14 @@ pub async fn terminal_spawn(
         })
         .map_err(|e| format!("terminal: open pty failed: {e}"))?;
 
+    let session_id = format!("tty_{}", nanoid::nanoid!(12));
     let mut builder = CommandBuilder::new(&cmd_str);
+    for argument in &launch.arguments {
+        builder.arg(argument);
+    }
     #[cfg(target_os = "windows")]
-    {
-        if is_powershell(&cmd_str) {
-            builder.arg("-NoLogo");
-            builder.arg("-NoProfile");
-            builder.arg("-NoExit");
-            builder.env("JARVIS_EMBEDDED_TERMINAL", "1");
-        }
+    if is_powershell(&cmd_str) {
+        builder.env("JARVIS_EMBEDDED_TERMINAL", "1");
     }
     let resolved_cwd = cwd.unwrap_or_else(default_terminal_cwd);
     if !resolved_cwd.is_empty() {
@@ -271,6 +664,10 @@ pub async fn terminal_spawn(
         for (k, v) in env_map {
             builder.env(k, v);
         }
+    }
+    builder.env("VIBESPACE_TERMINAL_SESSION_ID", &session_id);
+    if let Some(project_id) = &project_id {
+        builder.env("VIBESPACE_PROJECT_ID", project_id);
     }
 
     let child = pair
@@ -292,7 +689,6 @@ pub async fn terminal_spawn(
         .map_err(|e| format!("terminal: writer take failed: {e}"))?;
     let killer = child.clone_killer();
 
-    let session_id = format!("tty_{}", nanoid::nanoid!(12));
     let response_cwd = resolved_cwd.clone();
     let info = TerminalInfo {
         session_id: session_id.clone(),
@@ -315,8 +711,19 @@ pub async fn terminal_spawn(
     let active_for_task = Arc::new(AtomicBool::new(true));
     let active_flag_for_task = active_for_task.clone();
     let session_for_task = session_id.clone();
+    let lifecycle = Arc::new(LifecycleArbiter::new(
+        session_id.clone(),
+        cancellation_token,
+    ));
+    let lifecycle_for_task = lifecycle.clone();
+    let master = Arc::new(AsyncMutex::new(Some(pair.master)));
+    let master_for_waiter = master.clone();
+    let (exit_tx, exit_rx) = std::sync::mpsc::sync_channel(1);
+    let (reader_start_tx, reader_start_rx) = std::sync::mpsc::sync_channel(1);
     let reader_task = spawn_blocking(move || {
-        let mut child = child;
+        if reader_start_rx.recv().is_err() {
+            return;
+        }
         let mut reader = reader;
         let mut buf = [0u8; 4096];
         let mut pending_utf8 = Vec::new();
@@ -346,36 +753,45 @@ pub async fn terminal_spawn(
                 },
             );
         }
-        let code = child.wait().ok().map(|s| s.exit_code() as i32);
+        let code = exit_rx.recv().unwrap_or(None);
+        if let Some(exit) = lifecycle_for_task.observe_exit(code) {
+            finalize_terminal_session(&app_emit, &state_for_task, &exit);
+        }
+    });
+    let (waiter_start_tx, waiter_start_rx) = std::sync::mpsc::sync_channel(1);
+    let _waiter_task = spawn_blocking(move || {
+        if waiter_start_rx.recv().is_err() {
+            return;
+        }
+        let mut child = child;
+        let code = child.wait().ok().map(|status| status.exit_code() as i32);
         active_flag_for_task.store(false, Ordering::SeqCst);
-        // Drop exited sessions from the active map so they no longer count
-        // toward the per-project cap. This keeps natural shell exits from
-        // permanently consuming one of the 10 project slots.
-        state_for_task.blocking_lock().remove(&session_for_task);
-        let _ = app_emit.emit(
-            "terminal://exit",
-            ExitPayload {
-                session_id: session_for_task,
-                code,
-            },
-        );
+        let _ = exit_tx.send(code);
+        // ConPTY can keep its output pipe open after the child exits while the
+        // pseudo-console master remains alive. Close that owner here so the
+        // reader drains the final bytes, observes EOF, and emits one exit.
+        master_for_waiter.blocking_lock().take();
     });
 
     let deleted_flag_for_task = Arc::new(AtomicBool::new(false));
     let handle = PtyHandle {
         info,
         writer: Arc::new(AsyncMutex::new(writer)),
-        master: Arc::new(AsyncMutex::new(pair.master)),
+        master,
         killer: Arc::new(AsyncMutex::new(killer)),
-        reader_task,
+        lifecycle,
+        _reader_task: reader_task,
         active: active_for_task,
         deleted: deleted_flag_for_task,
     };
 
     state.0.lock().await.insert(session_id.clone(), handle);
+    let _ = reader_start_tx.send(());
+    let _ = waiter_start_tx.send(());
     Ok(SpawnResponse {
         session_id,
         cwd: response_cwd,
+        startup_command_consumed: launch.startup_command_consumed,
     })
 }
 
@@ -430,6 +846,8 @@ pub async fn terminal_resize(
     spawn_blocking(move || {
         let master = master_arc.blocking_lock();
         master
+            .as_ref()
+            .ok_or_else(|| "terminal: session already exited".to_string())?
             .resize(PtySize {
                 rows,
                 cols,
@@ -443,27 +861,27 @@ pub async fn terminal_resize(
     .map_err(|e| format!("terminal: spawn_blocking failed: {e}"))?
 }
 
-/// Kill the child process, drop the writer, abort the reader task, and
-/// remove the session from the map. The reader task usually still gets to
-/// emit a final `terminal://exit` event because `spawn_blocking::abort` is
-/// cooperative — the read syscall returns EOF as soon as the child dies.
+/// Request native signal delivery without removing the handle or aborting
+/// the reader. Canonical cancellation requires the exact token stored at
+/// spawn; tokenless callers retain the legacy/manual termination path.
 #[tauri::command]
 pub async fn terminal_kill(
     state: State<'_, TerminalState>,
+    app: AppHandle,
     session_id: String,
-) -> Result<(), String> {
-    let mut map = state.0.lock().await;
-    if let Some(handle) = map.remove(&session_id) {
-        handle.deleted.store(true, Ordering::SeqCst);
-        handle.active.store(false, Ordering::SeqCst);
-        handle.reader_task.abort();
-        let killer_arc = handle.killer;
-        spawn_blocking(move || {
-            let mut killer = killer_arc.blocking_lock();
-            let _ = killer.kill();
-        });
-    }
-    Ok(())
+    cancellation_token: Option<String>,
+) -> Result<TerminalKillResult, String> {
+    let request = validated_kill_request(cancellation_token)?;
+    let target = {
+        let map = state.0.lock().await;
+        map.get(&session_id).map(KillTarget::from)
+    };
+
+    let Some(target) = target else {
+        return Ok(TerminalKillResult::missing(request));
+    };
+
+    Ok(deliver_kill(&app, &state.0, target, request).await)
 }
 
 /// Reassign an active PTY to a different project without restarting the child.
@@ -504,6 +922,7 @@ pub async fn terminal_list(state: State<'_, TerminalState>) -> Result<Vec<Termin
 #[tauri::command]
 pub async fn terminal_reconcile(
     state: State<'_, TerminalState>,
+    app: AppHandle,
     active_session_ids: Vec<String>,
 ) -> Result<(), String> {
     if active_session_ids.is_empty() {
@@ -511,27 +930,238 @@ pub async fn terminal_reconcile(
         return Ok(());
     }
 
-    let mut map = state.0.lock().await;
-    let keys_to_remove: Vec<String> = map
-        .keys()
-        .filter(|k| !active_session_ids.contains(k))
-        .cloned()
-        .collect();
+    let targets: Vec<(String, KillTarget)> = {
+        let map = state.0.lock().await;
+        map.iter()
+            .filter(|(session_id, _)| !active_session_ids.contains(session_id))
+            .map(|(session_id, handle)| (session_id.clone(), KillTarget::from(handle)))
+            .collect()
+    };
 
-    for key in keys_to_remove {
-        if let Some(handle) = map.remove(&key) {
-            println!("[terminal] Killing orphaned PTY session: {}", key);
-            let mut killer = handle.killer.lock().await;
-            let _ = killer.kill();
-            handle.reader_task.abort();
-        }
+    for (session_id, target) in targets {
+        println!("[terminal] Killing orphaned PTY session: {}", session_id);
+        let _ = deliver_kill(&app, &state.0, target, KillRequest::manual()).await;
     }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_terminal_bytes, default_terminal_cwd};
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    use super::{
+        decode_terminal_bytes, default_terminal_cwd, emit_before_remove, terminal_launch_spec,
+        valid_cancellation_token, validated_kill_request, ExitReason, KillRequest, KillRequestKind,
+        KillResultKind, KillStart, LifecycleArbiter, TerminalKillResult,
+        MAX_CANCELLATION_TOKEN_BYTES,
+    };
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn powershell_startup_commands_launch_as_one_native_process() {
+        let spec = terminal_launch_spec(
+            Some("powershell.exe".to_string()),
+            Some("Write-Output 'fixture'; exit".to_string()),
+        )
+        .expect("valid startup command");
+
+        assert_eq!(spec.executable, "powershell.exe");
+        assert_eq!(
+            spec.arguments,
+            [
+                "-NoLogo",
+                "-NoProfile",
+                "-Command",
+                "Write-Output 'fixture'; exit"
+            ]
+        );
+        assert!(spec.startup_command_consumed);
+    }
+
+    #[test]
+    fn terminal_startup_commands_reject_nul_before_process_creation() {
+        assert!(terminal_launch_spec(None, Some("bad\0command".to_string())).is_err());
+    }
+
+    #[test]
+    fn missing_kill_result_preserves_canonical_request_truth() {
+        let result = TerminalKillResult::missing(KillRequest::canonical("cancel_missing"));
+
+        assert_eq!(result.kind, KillResultKind::Missing);
+        assert_eq!(result.request_kind, KillRequestKind::CanonicalCancellation);
+        assert_eq!(result.cancellation_token.as_deref(), Some("cancel_missing"));
+    }
+
+    #[test]
+    fn kill_after_reader_exit_is_already_exited() {
+        let arbiter = LifecycleArbiter::new("tty_exited", Some("cancel_exited".to_string()));
+        let exit = arbiter
+            .observe_exit(Some(0))
+            .expect("reader should finalize a natural exit");
+
+        assert_eq!(exit.reason, ExitReason::NaturalExit);
+        match arbiter.begin_kill(KillRequest::canonical("cancel_exited")) {
+            KillStart::Complete(result) => {
+                assert_eq!(result.kind, KillResultKind::AlreadyExited);
+                assert_eq!(result.cancellation_token.as_deref(), Some("cancel_exited"));
+            }
+            KillStart::Deliver(_) => panic!("an exited session must not deliver another signal"),
+        }
+    }
+
+    #[test]
+    fn wrong_or_stale_canonical_token_is_delivery_rejected() {
+        let arbiter = LifecycleArbiter::new("tty_token", Some("cancel_current".to_string()));
+
+        match arbiter.begin_kill(KillRequest::canonical("cancel_stale")) {
+            KillStart::Complete(result) => {
+                assert_eq!(result.kind, KillResultKind::DeliveryRejected);
+                assert_eq!(result.request_kind, KillRequestKind::CanonicalCancellation);
+                assert_eq!(result.cancellation_token.as_deref(), Some("cancel_stale"));
+            }
+            KillStart::Deliver(_) => panic!("a stale token must not reach native delivery"),
+        }
+    }
+
+    #[test]
+    fn native_kill_error_is_delivery_rejected() {
+        let arbiter = LifecycleArbiter::new("tty_rejected", Some("cancel_rejected".to_string()));
+        let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_rejected")) {
+            KillStart::Deliver(attempt) => attempt,
+            KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
+        };
+
+        let completion = arbiter.complete_kill(attempt, false);
+
+        assert_eq!(completion.result.kind, KillResultKind::DeliveryRejected);
+        assert!(completion.exit.is_none());
+    }
+
+    #[test]
+    fn successful_native_kill_is_signal_delivered() {
+        let arbiter = LifecycleArbiter::new("tty_delivered", Some("cancel_delivered".to_string()));
+        let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_delivered")) {
+            KillStart::Deliver(attempt) => attempt,
+            KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
+        };
+
+        let completion = arbiter.complete_kill(attempt, true);
+
+        assert_eq!(completion.result.kind, KillResultKind::SignalDelivered);
+        assert_eq!(
+            completion.result.request_kind,
+            KillRequestKind::CanonicalCancellation
+        );
+        assert_eq!(
+            completion.result.cancellation_token.as_deref(),
+            Some("cancel_delivered")
+        );
+        assert!(completion.exit.is_none());
+    }
+
+    #[test]
+    fn exit_during_delivery_waits_for_accepted_cancellation_truth() {
+        let arbiter = LifecycleArbiter::new("tty_race", Some("cancel_race".to_string()));
+        let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_race")) {
+            KillStart::Deliver(attempt) => attempt,
+            KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
+        };
+
+        assert!(arbiter.observe_exit(Some(143)).is_none());
+        let completion = arbiter.complete_kill(attempt, true);
+        let exit = completion
+            .exit
+            .expect("delivery completion should release the held exit");
+
+        assert_eq!(completion.result.kind, KillResultKind::SignalDelivered);
+        assert_eq!(exit.reason, ExitReason::AcceptedCancellation);
+        assert_eq!(exit.cancellation_token.as_deref(), Some("cancel_race"));
+        assert_eq!(exit.code, Some(143));
+    }
+
+    #[test]
+    fn exit_during_rejected_delivery_remains_natural() {
+        let arbiter = LifecycleArbiter::new("tty_race_rejected", Some("cancel_race".to_string()));
+        let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_race")) {
+            KillStart::Deliver(attempt) => attempt,
+            KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
+        };
+
+        assert!(arbiter.observe_exit(Some(0)).is_none());
+        let completion = arbiter.complete_kill(attempt, false);
+        let exit = completion
+            .exit
+            .expect("rejected delivery should release the held natural exit");
+
+        assert_eq!(completion.result.kind, KillResultKind::DeliveryRejected);
+        assert_eq!(exit.reason, ExitReason::NaturalExit);
+        assert!(exit.cancellation_token.is_none());
+    }
+
+    #[test]
+    fn tokenless_kill_is_manual_and_never_echoes_canonical_token() {
+        let arbiter = LifecycleArbiter::new("tty_manual", Some("cancel_canonical".to_string()));
+        let attempt = match arbiter.begin_kill(KillRequest::manual()) {
+            KillStart::Deliver(attempt) => attempt,
+            KillStart::Complete(_) => panic!("manual termination should reserve native delivery"),
+        };
+
+        let completion = arbiter.complete_kill(attempt, true);
+        assert_eq!(completion.result.kind, KillResultKind::SignalDelivered);
+        assert_eq!(
+            completion.result.request_kind,
+            KillRequestKind::ManualTermination
+        );
+        assert!(completion.result.cancellation_token.is_none());
+
+        let exit = arbiter
+            .observe_exit(None)
+            .expect("reader exit should finalize accepted manual termination");
+        assert_eq!(exit.reason, ExitReason::ManualTermination);
+        assert!(exit.cancellation_token.is_none());
+    }
+
+    #[test]
+    fn arbiter_emits_exactly_one_exit_payload() {
+        let arbiter = LifecycleArbiter::new("tty_once", None);
+
+        let first = arbiter.observe_exit(Some(0));
+        let second = arbiter.observe_exit(Some(1));
+
+        assert!(first.is_some());
+        assert!(second.is_none());
+    }
+
+    #[test]
+    fn reader_finalization_emits_before_session_map_removal() {
+        let arbiter = LifecycleArbiter::new("tty_finalize", None);
+        let payload = arbiter
+            .observe_exit(Some(0))
+            .expect("reader should own natural finalization");
+        let sessions = RefCell::new(HashMap::from([("tty_finalize".to_string(), ())]));
+        let events = RefCell::new(Vec::new());
+
+        emit_before_remove(
+            &payload,
+            |exit| {
+                assert!(sessions.borrow().contains_key(&exit.session_id));
+                events
+                    .borrow_mut()
+                    .push(format!("emit:{}", exit.session_id));
+            },
+            |session_id| {
+                sessions.borrow_mut().remove(session_id);
+                events.borrow_mut().push(format!("remove:{session_id}"));
+            },
+        );
+
+        assert!(sessions.borrow().is_empty());
+        assert_eq!(
+            events.into_inner(),
+            ["emit:tty_finalize", "remove:tty_finalize"].map(String::from)
+        );
+    }
 
     #[test]
     fn decode_terminal_bytes_holds_split_utf8_until_complete() {
@@ -563,6 +1193,37 @@ mod tests {
             Some(value) => std::env::set_var("HOME", value),
             None => std::env::remove_var("HOME"),
         }
+    }
+
+    #[test]
+    fn canonical_cancellation_tokens_are_bounded_and_stable() {
+        assert!(valid_cancellation_token("jcancel_native_1"));
+        assert!(!valid_cancellation_token(""));
+        assert!(!valid_cancellation_token(" leading"));
+        assert!(!valid_cancellation_token("trailing "));
+        assert!(!valid_cancellation_token(
+            &"x".repeat(MAX_CANCELLATION_TOKEN_BYTES + 1)
+        ));
+        assert!(!valid_cancellation_token("contains\0nul"));
+    }
+
+    #[test]
+    fn kill_requests_reject_malformed_tokens_before_native_delivery() {
+        assert!(validated_kill_request(Some("".to_string())).is_err());
+        assert!(validated_kill_request(Some(" stale".to_string())).is_err());
+        assert!(
+            validated_kill_request(Some("x".repeat(MAX_CANCELLATION_TOKEN_BYTES + 1))).is_err()
+        );
+        assert_eq!(
+            validated_kill_request(None).expect("manual request").kind,
+            KillRequestKind::ManualTermination
+        );
+        assert_eq!(
+            validated_kill_request(Some("jcancel_native_1".to_string()))
+                .expect("canonical request")
+                .kind,
+            KillRequestKind::CanonicalCancellation
+        );
     }
 
     #[test]

@@ -1,0 +1,86 @@
+html[data-theme='sakura'] [data-sakura-route='schedule'] {
+  background: transparent;
+  color: #fff8f4;
+  font-family: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+}
+
+html[data-theme='sakura'] [data-sakura-route='schedule'] h1,
+html[data-theme='sakura'] [data-sakura-route='schedule'] h2 {
+  font-family: Fraunces, Georgia, serif;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-header'] {
+  border-color: rgba(255, 239, 241, 0.19);
+  background: linear-gradient(180deg, rgba(25, 17, 59, 0.91), rgba(22, 15, 53, 0.79));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-timeline'],
+html[data-theme='sakura'] [data-sakura-surface='schedule-editor'],
+html[data-theme='sakura'] [data-sakura-surface='schedule-calendar'] {
+  position: relative;
+  border-color: rgba(255, 239, 241, 0.19);
+  border-radius: 16px;
+  background: rgba(20, 14, 48, 0.82);
+  box-shadow:
+    0 12px 34px rgba(8, 5, 30, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-timeline']::before,
+html[data-theme='sakura'] [data-sakura-surface='schedule-editor']::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 1;
+  width: 2px;
+  content: '';
+  background: linear-gradient(180deg, transparent, rgba(238, 171, 183, 0.74), transparent);
+  pointer-events: none;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-row'] {
+  border-color: rgba(255, 239, 241, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-row'][data-sakura-state='complete'] {
+  box-shadow: inset 3px 0 0 #9ed0b8;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-row'][data-sakura-state='attention'] {
+  box-shadow: inset 3px 0 0 #ffd978;
+}
+
+html[data-theme='sakura'] [data-sakura-surface='schedule-row'][data-sakura-state='error'] {
+  box-shadow: inset 3px 0 0 #ef6f88;
+}
+
+html[data-theme='sakura'] [data-sakura-route='schedule'] :focus-visible,
+html[data-theme='sakura'] [data-sakura-surface='schedule-calendar'] :focus-visible {
+  outline: 2px solid #eeabb7;
+  outline-offset: 2px;
+}
+
+@supports (backdrop-filter: blur(14px)) {
+  html[data-theme='sakura'] [data-sakura-surface='schedule-timeline'],
+  html[data-theme='sakura'] [data-sakura-surface='schedule-editor'],
+  html[data-theme='sakura'] [data-sakura-surface='schedule-calendar'] {
+    backdrop-filter: blur(14px) saturate(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='sakura'] [data-sakura-route='schedule'] *,
+  html[data-theme='sakura'] [data-sakura-surface='schedule-calendar'] * {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
+@media (forced-colors: active) {
+  html[data-theme='sakura'] [data-sakura-surface^='schedule-'] {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}

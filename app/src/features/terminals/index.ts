@@ -11,6 +11,17 @@ export { TileGrid } from './TileGrid';
 export { TerminalsPage } from './TerminalsPage';
 export { AgentRolePicker } from './AgentRolePicker';
 export type { TerminalViewProps } from './types';
+export * from './terminalCommandFoundation';
+export * from './terminalPromptProtocol';
+export * from './terminalSlashIntegration';
+export { TerminalCommandPalette } from './TerminalCommandPalette';
+export {
+  installTerminalCli,
+  readTerminalCliInstallStatus,
+  uninstallTerminalCli,
+} from './terminalCliInstall';
+export type { TerminalCliInstallStatus } from './terminalCliInstall';
+export { TerminalCliRuntimeHost } from './TerminalCliRuntimeHost';
 export {
   type PaneNode,
   type LeafBase,

@@ -1,81 +1,53 @@
-/**
- * Run pending action proposals on a message without user clicks.
- * Used when Jarvis auto-approve mode is on (chat Shift+Tab or voice).
- */
-import { messageRepo } from '@/lib/db/repositories';
-import { resolveAction, runAction } from './runner';
-import type { Part } from '@/types';
-import type { MessageId } from '@/types/common';
+import { parseTaskApprovalCallId } from '@/features/jarvis-runs/approvalBridge';
 import {
-  beginTaskApprovalStep,
-  finishTaskApprovalStep,
-} from '@/features/jarvis-runs/approvalBridge';
+  isJarvisAutoApprovableRegistration,
+  type JarvisActionCatalog,
+} from '@/lib/jarvis/actions/catalog';
+import type {
+  CreateJarvisApprovalInput,
+  JarvisKernelActionPort,
+} from '@/lib/jarvis/approvalEngine';
+import type { MessageId } from '@/types/common';
+import type { ActionRunContext } from './types';
 
-type ActionPart = Extract<Part, { kind: 'action_proposal' }>;
-
-async function patchActionPart(
-  messageId: MessageId,
-  callId: string,
-  patch: Partial<ActionPart>,
-): Promise<void> {
-  const msg = await messageRepo.getById(messageId);
-  if (!msg) return;
-  await messageRepo.update(messageId, {
-    parts: msg.parts.map((part) =>
-      part.kind === 'action_proposal' && part.call_id === callId ? { ...part, ...patch } : part,
-    ),
+/** @internal Pure adapter; production wiring remains owned by Task 16B. */
+export function createCanonicalAutoApprovalAdapter(input: {
+  actions: Pick<JarvisKernelActionPort, 'executeAutoApprovedSafe'>;
+  catalog: Pick<JarvisActionCatalog, 'resolve'>;
+}) {
+  return Object.freeze({
+    async execute(
+      request: Readonly<
+        CreateJarvisApprovalInput & {
+          callId: string;
+          context: ActionRunContext;
+        }
+      >,
+    ) {
+      const parsed = parseTaskApprovalCallId(request.callId);
+      if (!parsed || !('approvalId' in parsed)) {
+        return { kind: 'skipped' as const, reason: 'legacy_or_unknown' as const };
+      }
+      const registration = input.catalog.resolve(request.actionId);
+      if (!registration || registration.version !== request.actionVersion) {
+        return { kind: 'skipped' as const, reason: 'action_unavailable' as const };
+      }
+      if (!isJarvisAutoApprovableRegistration(registration)) {
+        return { kind: 'skipped' as const, reason: 'approval_required' as const };
+      }
+      const { callId: _callId, ...execution } = request;
+      return await input.actions.executeAutoApprovedSafe(execution);
+    },
   });
 }
 
-/** Approve and run every pending, resolvable action on a message. */
+/**
+ * Signature-only compatibility entrypoint until Task 16B injects the
+ * canonical adapter. It deliberately has no runner or repository authority.
+ */
 export async function autoApprovePendingActions(
-  messageId: MessageId,
-  chatId: string,
+  _messageId: MessageId,
+  _chatId: string,
 ): Promise<number> {
-  const msg = await messageRepo.getById(messageId);
-  if (!msg) return 0;
-
-  const pending = msg.parts.filter(
-    (part): part is ActionPart =>
-      part.kind === 'action_proposal' && part.status === 'pending' && Boolean(resolveAction(part.action_id)),
-  );
-  if (pending.length === 0) return 0;
-
-  let executed = 0;
-  for (const action of pending) {
-    if (!beginTaskApprovalStep(action.call_id)) {
-      await patchActionPart(messageId, action.call_id, {
-        status: 'error',
-        error: 'Task was cancelled before this approval could run.',
-      });
-      continue;
-    }
-    executed += 1;
-    await patchActionPart(messageId, action.call_id, { status: 'running' });
-    const result = await runAction(
-      action.action_id,
-      action.params,
-      {
-        source: 'ai',
-        chatId,
-        messageId,
-        callId: action.call_id,
-      },
-      { emitToast: false },
-    );
-    const queued = result.ok
-      && typeof result.data === 'object'
-      && result.data !== null
-      && (result.data as { state?: string }).state === 'queued';
-    await patchActionPart(
-      messageId,
-      action.call_id,
-      result.ok
-        ? { status: queued ? 'queued' : 'success', result: result.data, error: undefined }
-        : { status: 'error', error: result.error },
-    );
-    if (!queued) finishTaskApprovalStep(action.call_id, result);
-  }
-
-  return executed;
+  return 0;
 }

@@ -890,7 +890,8 @@ export const RELEASES: readonly Release[] = [
   {
     version: '0.1.31',
     date: '2026-06-11',
-    headline: 'Production hardening: installer repair, billing security, and a brighter Ultra galaxy',
+    headline:
+      'Production hardening: installer repair, billing security, and a brighter Ultra galaxy',
     summary:
       'Security and stability release. The Windows one-line installer is restored and rebranded for VibeSpace, subscription tiers can no longer be self-upgraded without billing, and the Ultra plan card gets its animated galaxy back at full strength.',
     sections: [
@@ -1025,7 +1026,7 @@ export const RELEASES: readonly Release[] = [
           'Added Settings -> Plugins with search, filters, connection status, setup instructions, masked credential fields, reconnect, disconnect, and terminal-access controls.',
           'Added live connection tests for GitHub, Figma, Supabase, Shopify, and Slack plus a deterministic local mock connector.',
           'Added a validated 353-entry catalog spanning developer tools, cloud, databases, productivity, communication, ecommerce, payments, analytics, design, AI, CMS, and infrastructure.',
-          'Connected and enabled plugins now contribute bounded capability descriptors and approval-gated plugin.call actions to project agents without exposing credentials.',
+          'Connected and enabled plugins contribute bounded capability descriptors without exposing credentials; executable integrations require reviewed literal action registrations.',
         ],
       },
       {

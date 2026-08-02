@@ -18,6 +18,16 @@ import type { Agent, ProviderId } from '@/types';
  */
 export type LLMRole = 'system' | 'user' | 'assistant';
 
+/** Product surface requesting an AI call through the one shared provider router. */
+export type AiPurpose =
+  | 'chat'
+  | 'voice'
+  | 'prompt_forge'
+  | 'canvas_generate'
+  | 'canvas_rewrite'
+  | 'canvas_mind_map'
+  | 'canvas_presentation';
+
 /**
  * Typed content sent to the model. Text-only messages keep using a flat string
  * for compatibility; multimodal messages use ordered parts.
@@ -39,6 +49,10 @@ export interface LLMMessage {
   content: string | LLMContentPart[];
 }
 
+export type LLMResponseObservation =
+  | { kind: 'bytes'; byteLength: number; observedAt: number }
+  | { kind: 'sdk_chunk'; observedAt: number };
+
 export function llmContentToText(content: LLMMessage['content']): string {
   if (typeof content === 'string') return content;
   return content
@@ -54,10 +68,21 @@ export function llmContentToText(content: LLMMessage['content']): string {
  * preferences; messages are the chat turns; the rest are per-call overrides.
  */
 export interface LLMRequest {
+  /** Defaults to chat at the public router boundary for existing callers. */
+  purpose?: AiPurpose;
   /** The agent making this call. Drives model + system prompt + temperature. */
   agent: Agent;
   /** Messages so far. System prompt is on the agent, not in this list. */
   messages: LLMMessage[];
+  /** Canonical protected system text. Non-kernel callers omit this field. */
+  systemPrompt?: string;
+  /** Router-owned durable attempt identity. Providers must not derive this from prompt input. */
+  protectedAttempt?: Readonly<{
+    accountId: string;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+  }>;
   /** Per-call override of the agent's max output tokens. */
   max_output_tokens?: number;
   /** Per-call override of the agent's temperature. */
@@ -72,6 +97,47 @@ export interface LLMRequest {
    * responsible for any throttling / batching.
    */
   onChunk?: (chunk: LLMStreamChunk) => void;
+  /** Trusted attempt-boundary hook invoked before a provider chunk is parsed or forwarded. */
+  onResponseObservation?: (observation: LLMResponseObservation) => void;
+  /** Trusted effect-boundary hook invoked before any tool/action dispatch. */
+  onActionDispatch?: (input: { observedAt: number }) => void;
+}
+
+export function systemPromptForRequest(req: Pick<LLMRequest, 'agent' | 'systemPrompt'>): string {
+  return req.systemPrompt ?? req.agent.system_prompt;
+}
+
+/**
+ * Wrap a fetch response body so protected-attempt evidence observes each
+ * positive-length byte chunk synchronously before an SSE parser or consumer.
+ */
+export function observeResponseBody(
+  body: ReadableStream<Uint8Array>,
+  onObservation?: LLMRequest['onResponseObservation'],
+): ReadableStream<Uint8Array> {
+  if (!onObservation) return body;
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        reader.releaseLock();
+        controller.close();
+        return;
+      }
+      if (chunk.value.byteLength > 0) {
+        onObservation({
+          kind: 'bytes',
+          byteLength: chunk.value.byteLength,
+          observedAt: Date.now(),
+        });
+      }
+      controller.enqueue(chunk.value);
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
 }
 
 /**

@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import './sakura-tools.css';
 import {
   useToolStore,
   type CustomTool,
@@ -116,7 +117,9 @@ function getEligibleBaseActions(): ActionDef[] {
 
 /** Render the params object as a single readable line for tool cards. */
 function summariseParams(params: Record<string, unknown>): string {
-  const entries = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null);
+  const entries = Object.entries(params).filter(
+    ([, v]) => v !== '' && v !== undefined && v !== null,
+  );
   if (entries.length === 0) return '— no params —';
   return entries
     .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
@@ -200,7 +203,9 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
       setBaseActionId(initial.baseAction);
       const initialSteps = initial.steps ?? [];
       setWorkflowMode(initialSteps.length > 0 || initial.baseAction === 'workflow.run');
-      setStepsJson(initialSteps.length > 0 ? JSON.stringify(initialSteps, null, 2) : defaultWorkflowJson());
+      setStepsJson(
+        initialSteps.length > 0 ? JSON.stringify(initialSteps, null, 2) : defaultWorkflowJson(),
+      );
       const stringified: Record<string, string> = {};
       for (const [k, v] of Object.entries(initial.params)) {
         stringified[k] = typeof v === 'string' ? v : JSON.stringify(v);
@@ -215,7 +220,9 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
       setBaseActionId(templateSeed.baseAction);
       const seedSteps = templateSeed.steps ?? [];
       setWorkflowMode(seedSteps.length > 0 || templateSeed.baseAction === 'workflow.run');
-      setStepsJson(seedSteps.length > 0 ? JSON.stringify(seedSteps, null, 2) : defaultWorkflowJson());
+      setStepsJson(
+        seedSteps.length > 0 ? JSON.stringify(seedSteps, null, 2) : defaultWorkflowJson(),
+      );
       const stringified: Record<string, string> = {};
       for (const [k, v] of Object.entries(templateSeed.params)) {
         stringified[k] = typeof v === 'string' ? v : JSON.stringify(v);
@@ -291,7 +298,12 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
 
   const handleDelete = () => {
     if (!initial) return;
-    if (!confirm(`Delete "${initial.name}"? This removes the local copy and queues a cloud-sync tombstone.`)) return;
+    if (
+      !confirm(
+        `Delete "${initial.name}"? This removes the local copy and queues a cloud-sync tombstone.`,
+      )
+    )
+      return;
     remove(initial.slug);
     toast.success('Tool deleted', initial.name);
     onClose();
@@ -299,16 +311,19 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        data-monochrome-surface="tool-editor"
+        data-monochrome-state={workflowMode ? 'workflow' : 'single-action'}
+        className="max-w-xl max-h-[90vh] overflow-y-auto [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wrench className="h-4 w-4 text-accent-copper" />
             {initial ? `Edit: ${initial.name}` : 'New custom tool'}
           </DialogTitle>
           <DialogDescription>
-            Wrap one built-in action or chain several into a workflow. Once
-            saved, Jarvis can propose it and you can fire it from the actions
-            palette (Mod+Shift+A).
+            Wrap one built-in action or chain several into a workflow. Once saved, Jarvis can
+            propose it and you can fire it from the actions palette (Mod+Shift+A).
           </DialogDescription>
         </DialogHeader>
 
@@ -357,18 +372,26 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
               rows={2}
             />
             <p className="mt-1 text-metadata text-muted-foreground">
-              The AI sees this when deciding whether to propose your tool.
-              Keep it short, specific, and unambiguous.
+              The AI sees this when deciding whether to propose your tool. Keep it short, specific,
+              and unambiguous.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-panel p-1">
+          <div
+            data-monochrome-surface="workflow-mode"
+            className="grid grid-cols-2 gap-2 rounded-md border border-border bg-panel p-1 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background"
+          >
             <button
               type="button"
               onClick={() => setWorkflowMode(false)}
               className={cn(
                 'rounded px-3 py-2 text-left text-secondary transition-colors',
-                !workflowMode ? 'bg-elevated text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground',
+                !workflowMode
+                  ? 'bg-elevated text-foreground shadow-soft'
+                  : 'text-muted-foreground hover:text-foreground',
+                '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
+                !workflowMode &&
+                  '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan',
               )}
               aria-pressed={!workflowMode}
             >
@@ -380,7 +403,12 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
               onClick={() => setWorkflowMode(true)}
               className={cn(
                 'rounded px-3 py-2 text-left text-secondary transition-colors',
-                workflowMode ? 'bg-elevated text-foreground shadow-soft' : 'text-muted-foreground hover:text-foreground',
+                workflowMode
+                  ? 'bg-elevated text-foreground shadow-soft'
+                  : 'text-muted-foreground hover:text-foreground',
+                '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
+                workflowMode &&
+                  '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan',
               )}
               aria-pressed={workflowMode}
             >
@@ -405,70 +433,69 @@ function ToolEditor({ open, onClose, initial, templateSeed }: ToolEditorProps) {
                 className="font-mono text-xs"
               />
               <p className="mt-1 text-metadata text-muted-foreground">
-                Use a JSON array of built-in action steps. Custom actions are blocked here to prevent cycles.
+                Use a JSON array of built-in action steps. Custom actions are blocked here to
+                prevent cycles.
               </p>
             </div>
           ) : (
-          <>
-            <div>
-            <Label htmlFor="tool-base" className="text-metadata uppercase tracking-wide">
-              Base action
-            </Label>
-            <select
-              id="tool-base"
-              value={baseActionId}
-              onChange={(e) => setBaseActionId(e.target.value)}
-              className={cn(
-                'h-8 w-full rounded-md border border-border bg-input px-2',
-                'text-secondary text-foreground',
-                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-              )}
-            >
-              {eligible.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label} — {a.id}
-                </option>
-              ))}
-            </select>
-            {baseAction && (
-              <p className="mt-1 text-metadata text-muted-foreground">
-                {baseAction.description}
-              </p>
-            )}
-            </div>
-
-            {baseAction && baseAction.params.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <div className="text-metadata uppercase tracking-wide text-muted-foreground">
-                Preset parameters
-              </div>
-              {baseAction.params.map((p) => (
-                <div key={p.key}>
-                  <Label
-                    htmlFor={`tool-param-${p.key}`}
-                    className="flex items-center gap-1 text-metadata"
-                  >
-                    <span className="font-mono text-foreground/90">{p.key}</span>
-                    <span className="text-muted-foreground">— {p.label}</span>
-                    {p.required && <span className="text-destructive">*</span>}
-                  </Label>
-                  <Input
-                    id={`tool-param-${p.key}`}
-                    type={p.type === 'number' ? 'number' : 'text'}
-                    value={paramValues[p.key] ?? ''}
-                    onChange={(e) =>
-                      setParamValues((s) => ({ ...s, [p.key]: e.target.value }))
-                    }
-                    placeholder={p.placeholder}
-                  />
-                  {p.help && (
-                    <p className="mt-1 text-metadata text-muted-foreground">{p.help}</p>
+            <>
+              <div>
+                <Label htmlFor="tool-base" className="text-metadata uppercase tracking-wide">
+                  Base action
+                </Label>
+                <select
+                  id="tool-base"
+                  value={baseActionId}
+                  onChange={(e) => setBaseActionId(e.target.value)}
+                  className={cn(
+                    'h-8 w-full rounded-md border border-border bg-input px-2',
+                    'text-secondary text-foreground',
+                    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                   )}
+                >
+                  {eligible.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label} — {a.id}
+                    </option>
+                  ))}
+                </select>
+                {baseAction && (
+                  <p className="mt-1 text-metadata text-muted-foreground">
+                    {baseAction.description}
+                  </p>
+                )}
+              </div>
+
+              {baseAction && baseAction.params.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="text-metadata uppercase tracking-wide text-muted-foreground">
+                    Preset parameters
+                  </div>
+                  {baseAction.params.map((p) => (
+                    <div key={p.key}>
+                      <Label
+                        htmlFor={`tool-param-${p.key}`}
+                        className="flex items-center gap-1 text-metadata"
+                      >
+                        <span className="font-mono text-foreground/90">{p.key}</span>
+                        <span className="text-muted-foreground">— {p.label}</span>
+                        {p.required && <span className="text-destructive">*</span>}
+                      </Label>
+                      <Input
+                        id={`tool-param-${p.key}`}
+                        type={p.type === 'number' ? 'number' : 'text'}
+                        value={paramValues[p.key] ?? ''}
+                        onChange={(e) => setParamValues((s) => ({ ...s, [p.key]: e.target.value }))}
+                        placeholder={p.placeholder}
+                      />
+                      {p.help && (
+                        <p className="mt-1 text-metadata text-muted-foreground">{p.help}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            )}
-          </>
+              )}
+            </>
           )}
         </div>
 
@@ -507,18 +534,18 @@ interface ToolCardProps {
 function ToolCard({ tool, onEdit, onRun }: ToolCardProps) {
   const stepSummary = summariseSteps(tool.steps);
   return (
-    <div className="rounded-lg border border-border bg-paper px-4 py-3 shadow-soft flex flex-col gap-2">
+    <div
+      data-monochrome-surface="tool-manifest"
+      data-monochrome-state={tool.steps?.length ? 'workflow' : 'single-action'}
+      className="rounded-lg border border-border bg-paper px-4 py-3 shadow-soft flex flex-col gap-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+    >
       <div className="flex items-start gap-2">
         <span aria-hidden className="text-2xl leading-none mt-0.5">
           {tool.emoji || '🛠'}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-body font-semibold text-foreground truncate">
-            {tool.name}
-          </div>
-          <div className="text-metadata text-muted-foreground font-mono">
-            custom.{tool.slug}
-          </div>
+          <div className="text-body font-semibold text-foreground truncate">{tool.name}</div>
+          <div className="text-metadata text-muted-foreground font-mono">custom.{tool.slug}</div>
         </div>
         <span
           className="text-metadata uppercase tracking-wide text-muted-foreground/70"
@@ -530,9 +557,7 @@ function ToolCard({ tool, onEdit, onRun }: ToolCardProps) {
       </div>
 
       {tool.description && (
-        <p className="text-secondary text-muted-foreground leading-relaxed">
-          {tool.description}
-        </p>
+        <p className="text-secondary text-muted-foreground leading-relaxed">{tool.description}</p>
       )}
 
       <div className="text-metadata text-muted-foreground/80">
@@ -562,10 +587,7 @@ export function ToolsPage() {
   const importMany = useToolStore((s) => s.importMany);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  const sorted = React.useMemo(
-    () => [...tools].sort((a, b) => b.updatedAt - a.updatedAt),
-    [tools],
-  );
+  const sorted = React.useMemo(() => [...tools].sort((a, b) => b.updatedAt - a.updatedAt), [tools]);
 
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CustomTool | null>(null);
@@ -628,23 +650,28 @@ export function ToolsPage() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-y-auto bg-paper-warm">
+    <div
+      data-monochrome-route="tools"
+      className="flex h-full w-full flex-col overflow-y-auto bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none"
+    >
       <div className="mx-auto w-full max-w-5xl p-8">
         {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
+        <div
+          data-monochrome-surface="tool-header"
+          className="flex flex-wrap items-end justify-between gap-3 mb-6 [html[data-theme=monochrome]_&]:border-b [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:pb-4"
+        >
           <div>
-            <p className="text-metadata uppercase tracking-wider text-accent-copper">
+            <p className="text-metadata uppercase tracking-wider text-accent-copper [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-accent-cyan">
               <Sparkles className="mr-1 inline h-3 w-3" />
               Custom tools
             </p>
-            <h1 className="font-display text-hero text-foreground mt-1">
+            <h1 className="font-display text-hero text-foreground mt-1 [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-page-title [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">
               Author your own actions
             </h1>
             <p className="mt-2 max-w-2xl text-secondary text-muted-foreground leading-relaxed">
-              Wrap any built-in action with preset params, or chain several
-              actions into a workflow. Save it once; Jarvis can propose it
-              from chat, and you can fire it from the actions palette
-              (Mod+Shift+A) or run it from this page.
+              Wrap any built-in action with preset params, or chain several actions into a workflow.
+              Save it once; Jarvis can propose it from chat, and you can fire it from the actions
+              palette (Mod+Shift+A) or run it from this page.
             </p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -672,47 +699,51 @@ export function ToolsPage() {
             >
               <Download className="h-3.5 w-3.5" /> Export
             </Button>
-            <Button variant="default" size="sm" onClick={() => openNew(null)}>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => openNew(null)}
+              className="[html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-foreground [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:text-foreground [html[data-theme=monochrome]_&]:hover:bg-panel"
+            >
               <Plus className="h-3.5 w-3.5" /> New tool
             </Button>
           </div>
         </div>
 
         {/* Cloud sync banner */}
-        <div className="rounded-md border border-border bg-elevated px-3 py-2 mb-6 flex items-start gap-2">
+        <div
+          data-monochrome-surface="tool-sync-status"
+          className="rounded-md border border-border bg-elevated px-3 py-2 mb-6 flex items-start gap-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <Cloud className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
           <div className="text-secondary text-muted-foreground leading-relaxed">
-            <span className="text-foreground font-medium">VibeSpace Cloud sync</span>{' '}
-            now queues private custom-tool changes for your account when signed in.
-            Export / Import still works for manual backups and offline moves.
+            <span className="text-foreground font-medium">VibeSpace Cloud sync</span> now queues
+            private custom-tool changes for your account when signed in. Export / Import still works
+            for manual backups and offline moves.
           </div>
         </div>
 
         {/* Quick-start templates (always visible — they make new tools cheap) */}
         <div className="mb-8">
-          <h2 className="text-secondary text-foreground font-medium mb-2">
-            Quick start
-          </h2>
+          <h2 className="text-secondary text-foreground font-medium mb-2">Quick start</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {QUICK_TEMPLATES.map((t) => (
               <button
                 key={t.name}
                 onClick={() => openNew(t)}
+                data-sakura-surface="tool-template"
                 className={cn(
                   'rounded-md border border-border bg-paper px-3 py-2 text-left',
                   'hover:border-accent-copper/50 hover:bg-paper-warm',
                   'transition-colors flex flex-col gap-1',
+                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:hover:border-accent-cyan [html[data-theme=monochrome]_&]:hover:bg-elevated [html[data-theme=monochrome]_&]:hover:bg-none',
                 )}
               >
                 <div className="flex items-center gap-2">
                   <span className="text-lg leading-none">{t.emoji}</span>
-                  <span className="text-secondary text-foreground font-medium">
-                    {t.name}
-                  </span>
+                  <span className="text-secondary text-foreground font-medium">{t.name}</span>
                 </div>
-                <p className="text-metadata text-muted-foreground leading-snug">
-                  {t.description}
-                </p>
+                <p className="text-metadata text-muted-foreground leading-snug">{t.description}</p>
               </button>
             ))}
           </div>
@@ -727,12 +758,14 @@ export function ToolsPage() {
             </span>
           </h2>
           {sorted.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border px-4 py-8 text-center">
+            <div
+              data-monochrome-state="empty"
+              className="rounded-md border border-dashed border-border px-4 py-8 text-center [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel"
+            >
               <Wrench className="h-6 w-6 text-muted-foreground/60 mx-auto mb-2" />
               <p className="text-secondary text-muted-foreground">
                 No tools yet. Pick a quick-start above, or click{' '}
-                <span className="text-foreground">New tool</span> to start
-                from scratch.
+                <span className="text-foreground">New tool</span> to start from scratch.
               </p>
             </div>
           ) : (
@@ -753,8 +786,8 @@ export function ToolsPage() {
         <div className="mt-10 flex items-start gap-2 text-metadata text-muted-foreground/80">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           <p>
-            Tools are stored locally under <span className="font-mono">jarvis-tools</span>{' '}
-            and mirrored into the local sync queue for signed-in VibeSpace Cloud accounts.
+            Tools are stored locally under <span className="font-mono">jarvis-tools</span> and
+            mirrored into the local sync queue for signed-in VibeSpace Cloud accounts.
           </p>
         </div>
       </div>

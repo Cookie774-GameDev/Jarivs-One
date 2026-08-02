@@ -10,7 +10,7 @@
  */
 
 export interface CleanupOptions {
-  /** When true, code blocks are read verbatim; otherwise summarized. Default false. */
+  /** @deprecated Raw code is never spoken; retained only for call-site compatibility. */
   readCode?: boolean;
   /** Max characters per chunk. Default 400 (plan target: 200-500). */
   maxChunkChars?: number;
@@ -18,12 +18,9 @@ export interface CleanupOptions {
 
 const DEFAULT_MAX_CHUNK = 520;
 
-/** Strip a fenced code block down to a short spoken summary (or keep it). */
-function handleCodeBlocks(text: string, readCode: boolean): string {
-  const fence = /```[\s\S]*?```/g;
-  if (readCode) {
-    return text.replace(/```(\w+)?\n?/g, '').replace(/```/g, '');
-  }
+/** Strip a fenced code block down to deterministic accessibility copy. */
+function handleCodeBlocks(text: string): string {
+  const fence = /(```|~~~)[\s\S]*?\1/g;
   return text.replace(fence, (block) => {
     const lines = block.split('\n').length;
     return ` (code block, ${Math.max(1, lines - 2)} lines omitted) `;
@@ -46,8 +43,8 @@ function flattenLists(text: string): string {
 function stripMarkdown(text: string): string {
   return text
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1') // links -> label
-    .replace(/`([^`]+)`/g, '$1') // inline code
+    .replace(/\[[^\]]+\]\(https?:\/\/[^)]*\)/gi, ' (citation omitted) ')
+    .replace(/`[^`\r\n]+`/g, ' (inline code omitted) ')
     .replace(/^#{1,6}\s+/gm, '') // headings
     .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
     .replace(/(\*|_)(.*?)\1/g, '$2') // italic
@@ -55,6 +52,25 @@ function stripMarkdown(text: string): string {
     .replace(/^>\s?/gm, '') // blockquotes
     .replace(/\|/g, ' ') // table pipes
     .replace(/^[-=]{3,}$/gm, ''); // hr / table separators
+}
+
+function replaceUnsafeSpeechStructures(text: string): string {
+  return text
+    .replace(
+      /<(system|developer|assistant|tool|metadata)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      ' (metadata omitted) ',
+    )
+    .replace(/`[^`\r\n]+`/g, ' (inline code omitted) ')
+    .replace(/\{[^{}\r\n]*"[^"\r\n]+"\s*:[^{}\r\n]*\}/g, ' (structured data omitted) ')
+    .replace(/\{action\}[^\r\n]*/gi, ' (action request omitted) ')
+    .replace(/\uE000JARVIS_REGION_\d+\uE001/g, '')
+    .replace(/\b[A-Za-z]:\\[^\s]+/g, 'path omitted')
+    .replace(/(^|\s)\/(?:Users|home|etc|var|tmp|opt|workspace)\/[^\s]+/g, '$1path omitted')
+    .replace(/(^|[\s("'])\.?\.?\/(?:[^\s"')]+)/g, '$1path omitted')
+    .replace(
+      /(^|[\s("'])(?:app|src|packages|services|server|client|docs|tests?|scripts?)\/[A-Za-z0-9_.@/-]+/g,
+      '$1path omitted',
+    );
 }
 
 /** Collapse repeated punctuation and whitespace. */
@@ -78,9 +94,11 @@ export function looksLikeRawData(text: string): boolean {
 /** Full cleanup pipeline. Returns speech-ready plain text. */
 export function cleanTextForSpeech(input: string, options: CleanupOptions = {}): string {
   if (!input) return '';
-  const readCode = options.readCode ?? false;
+  void options.readCode;
+  if (looksLikeRawData(input)) return 'Structured data omitted.';
   let text = input;
-  text = handleCodeBlocks(text, readCode);
+  text = handleCodeBlocks(text);
+  text = replaceUnsafeSpeechStructures(text);
   text = stripMarkdown(text);
   text = flattenLists(text);
   text = replaceUrls(text);
@@ -147,43 +165,6 @@ export function prepareForSpeech(
   return chunkText(cleaned, options.maxChunkChars ?? DEFAULT_MAX_CHUNK);
 }
 
-/** Completed sentences from streamed assistant text (no tiny partial chunks). */
-function tryPullStreamingPartial(
-  tail: string,
-  spokenCleanLength: number,
-): { segment: string; advance: number } | null {
-  const trimmedStart = tail.length - tail.trimStart().length;
-  const trimmed = tail.trimStart();
-  if (!trimmed) return null;
-
-  if (spokenCleanLength === 0) {
-    const words = trimmed.split(/\s+/).filter(Boolean);
-    if (words.length >= 2) {
-      const partial = words.slice(0, 2).join(' ');
-      if (partial.length >= 6) {
-        const endInTail = trimmedStart + partial.length;
-        const trailingSpace = tail[endInTail] === ' ' ? 1 : 0;
-        return { segment: partial, advance: endInTail + trailingSpace };
-      }
-    }
-    if (trimmed.length >= 10) {
-      let cut = trimmed.lastIndexOf(' ', Math.min(trimmed.length, 28));
-      if (cut < 8) cut = Math.min(trimmed.length, 12);
-      const partial = trimmed.slice(0, cut).trim();
-      if (partial.length >= 8) {
-        return { segment: partial, advance: trimmedStart + cut };
-      }
-    }
-    return null;
-  }
-
-  if (trimmed.length >= 8) {
-    return { segment: trimmed, advance: trimmedStart + trimmed.length };
-  }
-
-  return null;
-}
-
 export function pullNewSpeechSegments(
   rawAccumulated: string,
   spokenCleanLength: number,
@@ -198,21 +179,13 @@ export function pullNewSpeechSegments(
   const segments: string[] = [];
   let advance = 0;
 
-  const sentenceRe = /[^.!?\n]+[.!?]+(?:\s+|$)/g;
+  const sentenceRe = /[^.!?\u3002\uFF01\uFF1F\n]+[.!?\u3002\uFF01\uFF1F]+(?:\s+|$)/gu;
   let match: RegExpExecArray | null;
   while ((match = sentenceRe.exec(tail)) !== null) {
     const sentence = match[0].trim();
     if (sentence.length >= 4) {
       segments.push(sentence);
       advance = match.index + match[0].length;
-    }
-  }
-
-  if (segments.length === 0) {
-    const partial = tryPullStreamingPartial(tail, spokenCleanLength);
-    if (partial) {
-      segments.push(partial.segment);
-      advance = partial.advance;
     }
   }
 

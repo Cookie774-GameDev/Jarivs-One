@@ -1,0 +1,713 @@
+{
+  "schemaVersion": 1,
+  "authority": "vibespace.sakura.motion.v1",
+  "sourceRoot": "app/src",
+  "policies": {
+    "priorThemes": "exact-legacy-transition-object",
+    "sakura": "220ms-calm-no-overshoot-tween",
+    "reducedMotion": "zero-duration",
+    "layout": "disabled-or-zero-duration-for-sakura-and-reduced-motion"
+  },
+  "entries": [
+    {
+      "id": "shell.default",
+      "path": "app/src/components/layout/AppShell.tsx",
+      "line": 20,
+      "occurrence": 1,
+      "locator": "LEGACY_SHELL_TRANSITION",
+      "role": "root MotionConfig fallback",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30 },
+      "consumers": [
+        "app/src/components/layout/AppShell.tsx#useThemeMotionTransition(LEGACY_SHELL_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "inspector.resize",
+      "path": "app/src/components/layout/Inspector.tsx",
+      "line": 74,
+      "occurrence": 1,
+      "locator": "LEGACY_INSPECTOR_TRANSITION",
+      "role": "inspector width open and close",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30 },
+      "consumers": [
+        "app/src/components/layout/Inspector.tsx#useThemeLayoutTransition(LEGACY_INSPECTOR_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeLayoutTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "instant",
+      "semanticException": null
+    },
+    {
+      "id": "nav.resize",
+      "path": "app/src/components/layout/NavPane.tsx",
+      "line": 51,
+      "occurrence": 1,
+      "locator": "LEGACY_NAV_PANE_TRANSITION",
+      "role": "navigation width collapse and expand",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30 },
+      "consumers": [
+        "app/src/components/layout/NavPane.tsx#useThemeLayoutTransition(LEGACY_NAV_PANE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeLayoutTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "instant",
+      "semanticException": null
+    },
+    {
+      "id": "tabs.item",
+      "path": "app/src/components/layout/TabStrip.tsx",
+      "line": 74,
+      "occurrence": 1,
+      "locator": "LEGACY_TAB_TRANSITION",
+      "role": "tab entrance exit and reflow",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30 },
+      "consumers": [
+        "app/src/components/layout/TabStrip.tsx#useThemeMotionTransition(LEGACY_TAB_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "toast.item",
+      "path": "app/src/components/ui/toast.tsx",
+      "line": 10,
+      "occurrence": 1,
+      "locator": "LEGACY_TOAST_TRANSITION",
+      "role": "toast entrance exit and stack reflow",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30 },
+      "consumers": [
+        "app/src/components/ui/toast.tsx#useThemeMotionTransition(LEGACY_TOAST_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "chat.dropdown",
+      "path": "app/src/features/chat/dropdownMotion.ts",
+      "line": 7,
+      "occurrence": 1,
+      "locator": "LEGACY_DROPDOWN_TRANSITION",
+      "role": "shared chat picker dropdown entrance",
+      "legacy": { "type": "spring", "stiffness": 500, "damping": 30 },
+      "consumers": [
+        "app/src/features/chat/ModelPickerTypeahead.tsx#useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION)",
+        "app/src/features/chat/SlashCommandOptionPicker.tsx#useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION)",
+        "app/src/features/chat/SlashCommandTypeahead.tsx#useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "consumer-useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "chat.empty",
+      "path": "app/src/features/chat/EmptyChat.tsx",
+      "line": 13,
+      "occurrence": 1,
+      "locator": "spring",
+      "role": "empty chat entrance",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30, "mass": 0.8 },
+      "consumers": ["app/src/features/chat/EmptyChat.tsx#useThemeMotionTransition(spring)"],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "chat.input-token",
+      "path": "app/src/features/chat/InputToken.tsx",
+      "line": 78,
+      "occurrence": 1,
+      "locator": "TOKEN_TRANSITION",
+      "role": "composer input token entrance and exit",
+      "legacy": { "type": "spring", "stiffness": 520, "damping": 26, "mass": 0.7 },
+      "consumers": [
+        "app/src/features/chat/InputToken.tsx#useThemeMotionTransition(TOKEN_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "chat.message",
+      "path": "app/src/features/chat/MessageBubble.tsx",
+      "line": 18,
+      "occurrence": 1,
+      "locator": "MESSAGE_TRANSITION",
+      "role": "chat message entrance and reflow",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30, "mass": 0.8 },
+      "consumers": [
+        "app/src/features/chat/MessageBubble.tsx#useThemeMotionTransition(MESSAGE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "chat.tool-expansion",
+      "path": "app/src/features/chat/ToolCallCard.tsx",
+      "line": 30,
+      "occurrence": 1,
+      "locator": "EXPANSION_TRANSITION",
+      "role": "tool details height expansion",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30, "mass": 0.8 },
+      "consumers": [
+        "app/src/features/chat/ToolCallCard.tsx#useThemeLayoutTransition(EXPANSION_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeLayoutTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "instant",
+      "semanticException": null
+    },
+    {
+      "id": "council.panel",
+      "path": "app/src/features/council/AgentPanel.tsx",
+      "line": 21,
+      "occurrence": 1,
+      "locator": "PANEL_TRANSITION",
+      "role": "council agent panel entrance and reflow",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 30, "mass": 0.8 },
+      "consumers": [
+        "app/src/features/council/AgentPanel.tsx#useThemeMotionTransition(PANEL_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "council.message",
+      "path": "app/src/features/council/AgentPanel.tsx",
+      "line": 22,
+      "occurrence": 1,
+      "locator": "MESSAGE_TRANSITION",
+      "role": "council message entrance and reflow",
+      "legacy": { "type": "spring", "stiffness": 500, "damping": 32, "mass": 0.6 },
+      "consumers": [
+        "app/src/features/council/AgentPanel.tsx#useThemeMotionTransition(MESSAGE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "mode.option",
+      "path": "app/src/features/jarvis-interaction/ModeIndicator.tsx",
+      "line": 31,
+      "occurrence": 1,
+      "locator": "OPTION_TRANSITION",
+      "role": "interaction mode option entrance",
+      "legacy": { "type": "spring", "stiffness": 420, "damping": 28 },
+      "consumers": [
+        "app/src/features/jarvis-interaction/ModeIndicator.tsx#useThemeMotionTransition(OPTION_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "kanban.progress",
+      "path": "app/src/features/kanban/KanbanPage.tsx",
+      "line": 32,
+      "occurrence": 1,
+      "locator": "LEGACY_KANBAN_PROGRESS_TRANSITION",
+      "role": "kanban progress width change",
+      "legacy": { "type": "spring", "stiffness": 120, "damping": 20 },
+      "consumers": [
+        "app/src/features/kanban/KanbanPage.tsx#useThemeLayoutTransition(LEGACY_KANBAN_PROGRESS_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeLayoutTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "instant",
+      "semanticException": null
+    },
+    {
+      "id": "kanban.milestone",
+      "path": "app/src/features/kanban/KanbanPage.tsx",
+      "line": 37,
+      "occurrence": 1,
+      "locator": "LEGACY_KANBAN_ROW_TRANSITION",
+      "role": "kanban milestone entrance and reflow",
+      "legacy": { "type": "spring", "stiffness": 420, "damping": 32 },
+      "consumers": [
+        "app/src/features/kanban/KanbanPage.tsx#useThemeMotionTransition(LEGACY_KANBAN_ROW_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.step",
+      "path": "app/src/features/onboarding/Onboarding.tsx",
+      "line": 26,
+      "occurrence": 1,
+      "locator": "LEGACY_STEP_TRANSITION",
+      "role": "onboarding step entrance and exit",
+      "legacy": { "type": "spring", "stiffness": 380, "damping": 32, "mass": 0.7 },
+      "consumers": [
+        "app/src/features/onboarding/Onboarding.tsx#useThemeMotionTransition(LEGACY_STEP_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.demo-header",
+      "path": "app/src/features/onboarding/steps/Demo.tsx",
+      "line": 12,
+      "occurrence": 1,
+      "locator": "LEGACY_HEADER_TRANSITION",
+      "role": "onboarding demo header entrance",
+      "legacy": { "type": "spring", "stiffness": 220, "damping": 28 },
+      "consumers": [
+        "app/src/features/onboarding/steps/Demo.tsx#useThemeMotionTransition(LEGACY_HEADER_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.demo-orb",
+      "path": "app/src/features/onboarding/steps/Demo.tsx",
+      "line": 17,
+      "occurrence": 1,
+      "locator": "LEGACY_VOICE_BUTTON_TRANSITION",
+      "role": "onboarding voice button response",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 26 },
+      "consumers": [
+        "app/src/features/onboarding/steps/Demo.tsx#useThemeMotionTransition(LEGACY_VOICE_BUTTON_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.persona",
+      "path": "app/src/features/onboarding/steps/Persona.tsx",
+      "line": 9,
+      "occurrence": 1,
+      "locator": "LEGACY_PERSONA_TRANSITION",
+      "role": "onboarding persona option entrance",
+      "legacy": { "type": "spring", "stiffness": 380, "damping": 30 },
+      "consumers": [
+        "app/src/features/onboarding/steps/Persona.tsx#useThemeMotionTransition(LEGACY_PERSONA_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.providers",
+      "path": "app/src/features/onboarding/steps/Providers.tsx",
+      "line": 79,
+      "occurrence": 1,
+      "locator": "LEGACY_COMPAT_GRID_TRANSITION",
+      "role": "onboarding provider grid reveal",
+      "legacy": { "type": "spring", "stiffness": 380, "damping": 32 },
+      "consumers": [
+        "app/src/features/onboarding/steps/Providers.tsx#useThemeMotionTransition(LEGACY_COMPAT_GRID_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.welcome",
+      "path": "app/src/features/onboarding/steps/Welcome.tsx",
+      "line": 11,
+      "occurrence": 1,
+      "locator": "LEGACY_WELCOME_TRANSITION",
+      "role": "onboarding welcome content entrance",
+      "legacy": { "type": "spring", "stiffness": 220, "damping": 28 },
+      "consumers": [
+        "app/src/features/onboarding/steps/Welcome.tsx#useThemeMotionTransition(LEGACY_WELCOME_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "onboarding.whats-new",
+      "path": "app/src/features/onboarding/steps/WhatsNew.tsx",
+      "line": 67,
+      "occurrence": 1,
+      "locator": "LEGACY_FEATURE_CARD_TRANSITION",
+      "role": "onboarding feature card entrance",
+      "legacy": { "type": "spring", "stiffness": 380, "damping": 30 },
+      "consumers": [
+        "app/src/features/onboarding/steps/WhatsNew.tsx#useThemeMotionTransition(LEGACY_FEATURE_CARD_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "tutorial.offer",
+      "path": "app/src/features/product-tutorial/ProductTutorialOffer.tsx",
+      "line": 15,
+      "occurrence": 1,
+      "locator": "spring",
+      "role": "product tutorial offer and staggered highlights",
+      "legacy": { "type": "spring", "stiffness": 320, "damping": 28, "mass": 0.8 },
+      "consumers": [
+        "app/src/features/product-tutorial/ProductTutorialOffer.tsx#useThemeMotionTransition(spring)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "tutorial.tour",
+      "path": "app/src/features/product-tutorial/ProductTutorialTour.tsx",
+      "line": 47,
+      "occurrence": 1,
+      "locator": "LEGACY_TUTORIAL_TRANSITION",
+      "role": "tutorial spotlight coach card and progress dots",
+      "legacy": { "type": "spring", "stiffness": 380, "damping": 32, "mass": 0.75 },
+      "consumers": [
+        "app/src/features/product-tutorial/ProductTutorialTour.tsx#useThemeMotionTransition(LEGACY_TUTORIAL_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task430",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "schedule.timeline-item",
+      "path": "app/src/features/schedule/SchedulePage.tsx",
+      "line": 41,
+      "occurrence": 1,
+      "locator": "LEGACY_SCHEDULE_TIMELINE_TRANSITION",
+      "role": "schedule timeline staggered entrance",
+      "legacy": { "type": "spring", "stiffness": 240, "damping": 28 },
+      "consumers": [
+        "app/src/features/schedule/SchedulePage.tsx#useThemeMotionTransition(LEGACY_SCHEDULE_TIMELINE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "settings.hive-highlight",
+      "path": "app/src/features/settings/sections/Hive.tsx",
+      "line": 16,
+      "occurrence": 1,
+      "locator": "LEGACY_HIVE_HIGHLIGHT_TRANSITION",
+      "role": "Hive highlight card stagger",
+      "legacy": { "type": "spring", "stiffness": 200, "damping": 24 },
+      "consumers": [
+        "app/src/features/settings/sections/Hive.tsx#useThemeMotionTransition(LEGACY_HIVE_HIGHLIGHT_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "settings.hive-active",
+      "path": "app/src/features/settings/sections/Hive.tsx",
+      "line": 21,
+      "occurrence": 1,
+      "locator": "LEGACY_HIVE_ACTIVE_TRANSITION",
+      "role": "Hive active selection check",
+      "legacy": { "type": "spring", "stiffness": 400, "damping": 18 },
+      "consumers": [
+        "app/src/features/settings/sections/Hive.tsx#useThemeMotionTransition(LEGACY_HIVE_ACTIVE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "settings.hive-pipeline",
+      "path": "app/src/features/settings/sections/Hive.tsx",
+      "line": 26,
+      "occurrence": 1,
+      "locator": "LEGACY_HIVE_PIPELINE_TRANSITION",
+      "role": "Hive pipeline row stagger",
+      "legacy": { "type": "spring", "stiffness": 220, "damping": 26 },
+      "consumers": [
+        "app/src/features/settings/sections/Hive.tsx#useThemeMotionTransition(LEGACY_HIVE_PIPELINE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "task.draft",
+      "path": "app/src/features/tasks/DraftTaskList.tsx",
+      "line": 13,
+      "occurrence": 1,
+      "locator": "DRAFT_TRANSITION",
+      "role": "draft task entrance exit and reflow",
+      "legacy": { "type": "spring", "stiffness": 420, "damping": 32 },
+      "consumers": [
+        "app/src/features/tasks/DraftTaskList.tsx#useThemeMotionTransition(DRAFT_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "task.card",
+      "path": "app/src/features/tasks/TaskCard.tsx",
+      "line": 53,
+      "occurrence": 1,
+      "locator": "CARD_TRANSITION",
+      "role": "task card entrance exit and reflow",
+      "legacy": { "type": "spring", "stiffness": 420, "damping": 32 },
+      "consumers": [
+        "app/src/features/tasks/TaskCard.tsx#useThemeMotionTransition(CARD_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "voice.orb-state",
+      "path": "app/src/features/voice/Orb.tsx",
+      "line": 43,
+      "occurrence": 1,
+      "locator": "LEGACY_ORB_STATE_TRANSITION",
+      "role": "voice orb state transform and filter",
+      "legacy": { "type": "spring", "stiffness": 220, "damping": 22, "mass": 0.8 },
+      "consumers": [
+        "app/src/features/voice/Orb.tsx#useThemeMotionTransition(LEGACY_ORB_STATE_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "voice.orb-halo-idle",
+      "path": "app/src/features/voice/Orb.tsx",
+      "line": 49,
+      "occurrence": 1,
+      "locator": "LEGACY_ORB_HALO_TRANSITION",
+      "role": "voice orb idle halo transform",
+      "legacy": { "type": "spring", "stiffness": 180, "damping": 24 },
+      "consumers": [
+        "app/src/features/voice/Orb.tsx#useThemeMotionTransition(LEGACY_ORB_HALO_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": false,
+      "layoutPolicy": "not-applicable",
+      "semanticException": null
+    },
+    {
+      "id": "voice.caption",
+      "path": "app/src/features/voice/VoiceCaption.tsx",
+      "line": 9,
+      "occurrence": 1,
+      "locator": "CAPTION_TRANSITION",
+      "role": "voice caption entrance exit and reflow",
+      "legacy": { "type": "spring", "stiffness": 360, "damping": 32, "mass": 0.7 },
+      "consumers": [
+        "app/src/features/voice/VoiceCaption.tsx#useThemeMotionTransition(CAPTION_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "worker-task428",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "voice.modal",
+      "path": "app/src/features/voice/VoiceModal.tsx",
+      "line": 146,
+      "occurrence": 1,
+      "locator": "LEGACY_VOICE_PANEL_TRANSITION",
+      "role": "voice modal entrance exit and size reflow",
+      "legacy": { "type": "spring", "stiffness": 360, "damping": 30 },
+      "consumers": [
+        "app/src/features/voice/VoiceModal.tsx#useThemeMotionTransition(LEGACY_VOICE_PANEL_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeMotionTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "disabled",
+      "semanticException": null
+    },
+    {
+      "id": "voice.command-center",
+      "path": "app/src/features/voice/VoiceModal.tsx",
+      "line": 151,
+      "occurrence": 1,
+      "locator": "LEGACY_COMMAND_CENTER_TRANSITION",
+      "role": "voice command center height expansion",
+      "legacy": { "type": "spring", "stiffness": 340, "damping": 32, "mass": 0.8 },
+      "consumers": [
+        "app/src/features/voice/VoiceModal.tsx#useThemeLayoutTransition(LEGACY_COMMAND_CENTER_TRANSITION)"
+      ],
+      "sakuraReachable": true,
+      "ownerLane": "root-task427",
+      "sakuraPolicy": "shared-theme-policy",
+      "reducedMotionPolicy": "zero-duration",
+      "binding": "useThemeLayoutTransition",
+      "layoutAffecting": true,
+      "layoutPolicy": "instant",
+      "semanticException": null
+    }
+  ]
+}

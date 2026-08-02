@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plug } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveRuntimePlan } from '@/lib/runtimeProfile';
 import { getPluginLogoSources } from './pluginLogos';
 import type { PluginManifest } from './types';
 
@@ -18,7 +19,11 @@ const SIZE_CLASS = {
 } as const;
 
 export function PluginLogo({ plugin, size = 'md', className }: PluginLogoProps) {
-  const sources = useMemo(() => getPluginLogoSources(plugin), [plugin]);
+  const remoteSourcesEnabled = resolveRuntimePlan().isOrdinary;
+  const sources = useMemo(
+    () => (remoteSourcesEnabled ? getPluginLogoSources(plugin) : []),
+    [plugin, remoteSourcesEnabled],
+  );
   const [sourceIndex, setSourceIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
   const dims = SIZE_CLASS[size];

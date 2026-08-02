@@ -3,6 +3,7 @@
  * from here, never reach into a provider file directly.
  */
 export type {
+  AiPurpose,
   LLMRole,
   LLMMessage,
   LLMRequest,
@@ -14,7 +15,7 @@ export type {
 } from './types';
 export { COST_RATES, ratesFor, estimateCost, estimateInputTokens } from './types';
 
-export { runAgent } from './router';
+export { runAgent, type RunAgentRequest } from './router';
 export {
   startRuntimeListener,
   type RuntimeBindings,
@@ -42,7 +43,12 @@ export {
   pullOllamaModel,
   validateModelName,
 } from './providers/ollama';
-export type { OllamaModelInfo, OllamaPullProgress, OllamaEnsureStatus, EnsureOllamaOptions } from './providers/ollama';
+export type {
+  OllamaModelInfo,
+  OllamaPullProgress,
+  OllamaEnsureStatus,
+  EnsureOllamaOptions,
+} from './providers/ollama';
 export {
   bootstrapOllamaConnection,
   invalidateOllamaBootstrap,

@@ -1,9 +1,19 @@
 import { Command } from 'cmdk';
-import { Calendar, MessageSquare } from 'lucide-react';
-import type React from 'react';
+import { Calendar, LayoutGrid, MessageSquare } from 'lucide-react';
+import * as React from 'react';
 import { cn, formatRelative, renderHotkey } from '@/lib/utils';
 import { AgentBadge } from '@/features/agents/AgentBadge';
+import {
+  createCanvasGlobalSearchIndex,
+  createCanvasPersistenceRepository,
+  requestCanvasGlobalSearchNavigation,
+  type CanvasDocument,
+  type CanvasPersistenceRepository,
+} from '@/features/canvas';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { db } from '@/lib/db';
 import { useAgentStore } from '@/stores/agents';
+import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import {
   type Action,
@@ -12,7 +22,13 @@ import {
   emitJarvisEvent,
   useActionsForPage,
 } from './actions';
-import { type PageId, type RecentChat, type TaskListItem, usePaletteDataStore } from './store';
+import {
+  type PageId,
+  type RecentChat,
+  type TaskListItem,
+  usePaletteDataStore,
+  usePaletteStore,
+} from './store';
 
 /* ------------------------------------------------------------------------- */
 /* Shared item primitives                                                    */
@@ -20,7 +36,7 @@ import { type PageId, type RecentChat, type TaskListItem, usePaletteDataStore } 
 
 const ITEM_BASE =
   'flex items-center gap-2.5 rounded-md px-2.5 py-2 cursor-pointer select-none ' +
-  "data-[selected=true]:bg-muted data-[selected=true]:text-foreground " +
+  'data-[selected=true]:bg-muted data-[selected=true]:text-foreground ' +
   'aria-disabled:opacity-50 aria-disabled:cursor-not-allowed';
 
 function HotkeyHint({ hotkey }: { hotkey: string }) {
@@ -97,6 +113,97 @@ const ROOT_CATEGORIES: { heading: string; ids: string[] }[] = [
   },
 ];
 
+const CANVAS_SEARCH_VIEWPORT = Object.freeze({ width: 1_200, height: 800 });
+
+export function CanvasGlobalSearchItems({
+  ctx,
+  repository,
+}: {
+  ctx: ActionContext;
+  repository?: CanvasPersistenceRepository;
+}) {
+  const cloudSession = useAuthStore((state) => state.cloudSession);
+  const localUserId = useAuthStore((state) => state.localUserId);
+  const projectId = useAuthStore((state) => state.projectId);
+  const search = usePaletteStore((state) => state.search);
+  const defaultRepository = React.useMemo(() => createCanvasPersistenceRepository(db), []);
+  const activeRepository = repository ?? defaultRepository;
+  const accountId = resolveAccountIdentity({ cloudSession, localUserId })?.accountId ?? null;
+  const activeProjectId = projectId ?? 'local-project';
+  const [documents, setDocuments] = React.useState<readonly CanvasDocument[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setDocuments([]);
+    if (accountId === null) return () => undefined;
+    const scope = {
+      accountId,
+      ownerId: accountId,
+      projectId: activeProjectId,
+    };
+    void activeRepository.list(scope).then(
+      (loaded) => {
+        if (!cancelled) setDocuments(loaded);
+      },
+      () => {
+        if (!cancelled) setDocuments([]);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, activeProjectId, activeRepository]);
+
+  const index = React.useMemo(() => {
+    if (accountId === null || documents.length === 0) return undefined;
+    try {
+      return createCanvasGlobalSearchIndex({
+        ownerId: accountId,
+        projectId: activeProjectId,
+        documents,
+      });
+    } catch {
+      return undefined;
+    }
+  }, [accountId, activeProjectId, documents]);
+
+  const results = React.useMemo(() => {
+    const text = search.trim();
+    if (!index || text.length < 2) return [];
+    try {
+      return index.query({ text, limit: 20 });
+    } catch {
+      return [];
+    }
+  }, [index, search]);
+
+  if (accountId === null || results.length === 0) return null;
+  const scope = { ownerId: accountId, projectId: activeProjectId };
+
+  return (
+    <Command.Group heading="Canvas" className="palette-group">
+      {results.map((result) => (
+        <Command.Item
+          key={`${result.documentId}:${result.objectId}`}
+          value={`canvas ${result.canvasTitle} ${result.label} ${result.objectType}`}
+          onSelect={() => {
+            requestCanvasGlobalSearchNavigation(result, scope, CANVAS_SEARCH_VIEWPORT);
+            useUIStore.getState().setRoute('canvas');
+            ctx.closePalette();
+          }}
+          className={ITEM_BASE}
+        >
+          <LayoutGrid className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
+          <span className="text-body text-foreground truncate">{result.label}</span>
+          <span className="text-secondary text-muted-foreground truncate">
+            &mdash; {result.canvasTitle}
+          </span>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
 function RootPage({ ctx }: { ctx: ActionContext }) {
   const all = useActionsForPage('root');
   const byId = new Map(all.map((a) => [a.id, a]));
@@ -125,6 +232,7 @@ function RootPage({ ctx }: { ctx: ActionContext }) {
           </Command.Group>
         );
       })()}
+      <CanvasGlobalSearchItems ctx={ctx} />
     </>
   );
 }
@@ -253,13 +361,7 @@ function SwitchAgentPage({ ctx }: { ctx: ActionContext }) {
 /* Recent chats page                                                         */
 /* ------------------------------------------------------------------------- */
 
-function RecentChatItem({
-  chat,
-  onSelect,
-}: {
-  chat: RecentChat;
-  onSelect: (id: string) => void;
-}) {
+function RecentChatItem({ chat, onSelect }: { chat: RecentChat; onSelect: (id: string) => void }) {
   return (
     <Command.Item
       value={`chat ${chat.id} ${chat.title}`}
@@ -267,9 +369,7 @@ function RecentChatItem({
       className={ITEM_BASE}
     >
       <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
-      <span className="text-body text-foreground truncate">
-        {chat.title || 'Untitled chat'}
-      </span>
+      <span className="text-body text-foreground truncate">{chat.title || 'Untitled chat'}</span>
       <span className="ml-auto text-metadata text-muted-foreground shrink-0">
         {formatRelative(chat.updated_at)}
       </span>

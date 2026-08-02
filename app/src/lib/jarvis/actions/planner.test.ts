@@ -1,15 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { JarvisActionDefinition } from './catalog';
-import {
-  createJarvisPlan,
-  executeJarvisPlan,
-  reviewJarvisPlan,
-} from './planner';
+import { createJarvisPlan, executeJarvisPlan, reviewJarvisPlan } from './planner';
 
-function action(
-  id: string,
-  patch: Partial<JarvisActionDefinition> = {},
-): JarvisActionDefinition {
+function action(id: string, patch: Partial<JarvisActionDefinition> = {}): JarvisActionDefinition {
   return {
     id,
     version: 1,
@@ -36,11 +29,13 @@ function action(
 
 describe('Jarvis typed planner', () => {
   it('rejects invented action ids before execution', () => {
-    expect(() => createJarvisPlan({
-      goal: 'Do a made-up thing',
-      requestedSteps: [{ action: 'invented.action', input: {} }],
-      catalog: [action('known.action')],
-    })).toThrow(/not registered/i);
+    expect(() =>
+      createJarvisPlan({
+        goal: 'Do a made-up thing',
+        requestedSteps: [{ action: 'invented.action', input: {} }],
+        catalog: [action('known.action')],
+      }),
+    ).toThrow(/not registered/i);
   });
 
   it('requires approval for external side effects but not read-only actions', () => {
@@ -73,12 +68,17 @@ describe('Jarvis typed planner', () => {
       catalog,
     });
 
-    const first = await executeJarvisPlan(plan, catalog);
-    const second = await executeJarvisPlan(plan, catalog);
+    const executeApprovedStep = vi.fn(async () => ({ ok: true as const, summary: 'verified' }));
+    const first = await executeJarvisPlan(plan, catalog, { executeApprovedStep });
+    const second = await executeJarvisPlan(plan, catalog, { executeApprovedStep });
 
     expect(first.status).toBe('completed');
     expect(second).toEqual(first);
-    expect(definition.handler).toHaveBeenCalledTimes(1);
+    expect(executeApprovedStep).toHaveBeenCalledTimes(1);
+    expect(executeApprovedStep).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'status.read', input: {} }),
+    );
+    expect(definition.handler).not.toHaveBeenCalled();
     expect(first.steps[0]?.verification.status).toBe('verified');
   });
 });

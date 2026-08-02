@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetOverlayWindow } from './PetOverlayWindow';
 
 vi.mock('./PetOverlay', () => ({
@@ -32,7 +32,16 @@ vi.mock('./petSettingsStore', () => ({
     }),
 }));
 
+vi.mock('@/stores/ui', () => ({
+  useUIStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ theme: 'default' }),
+  applyThemeToDocument: vi.fn(),
+}));
+
 describe('PetOverlayWindow transparency shell', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   afterEach(() => {
     document.documentElement.removeAttribute('data-vibespace-view');
     document.body.removeAttribute('data-vibespace-view');
@@ -66,6 +75,26 @@ describe('PetOverlayWindow transparency shell', () => {
         overlayRoot.style.backgroundColor === 'transparent',
     ).toBe(true);
     expect(overlayRoot.querySelectorAll('[data-pet-pixi-canvas="true"]')).toHaveLength(1);
+
+    root.remove();
+  });
+
+  it('keeps the real visual shell while suppressing native and storage effects', async () => {
+    const { installPetPresentationStorageSync } = await import('./petPresentationStore');
+    const { installPetSettingsStorageSync } = await import('./petSettingsStore');
+    const { reassertPetOverlayTopmost } = await import('./petTauriBridge');
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+
+    render(<PetOverlayWindow runtimeEffectsEnabled={false} />, { container: root });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pet-overlay-root')).toBeTruthy();
+    });
+    expect(installPetPresentationStorageSync).not.toHaveBeenCalled();
+    expect(installPetSettingsStorageSync).not.toHaveBeenCalled();
+    expect(reassertPetOverlayTopmost).not.toHaveBeenCalled();
 
     root.remove();
   });

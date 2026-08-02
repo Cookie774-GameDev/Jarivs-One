@@ -2,6 +2,8 @@
  * Common shared types used across the entire app.
  */
 
+import type { SelectableTheme } from '@/features/appearance/themeContract.generated';
+
 export type ID = string;
 
 /**
@@ -42,7 +44,8 @@ export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 /**
  * Theme variants. V1 ships dark only but the hook is here.
  */
-export type Theme = 'default' | 'light' | 'jarvis' | 'vibespace' | 'dark' | 'system';
+/** @deprecated Import SelectableTheme from the canonical appearance contract. */
+export type Theme = SelectableTheme;
 
 /**
  * Persona presets the user can pick for Jarvis.

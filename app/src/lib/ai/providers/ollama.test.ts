@@ -45,7 +45,9 @@ describe('ollama provider utilities', () => {
   });
 
   it('checks reachability via /api/version', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('{"version":"0.6.0"}', { status: 200 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('{"version":"0.6.0"}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(isOllamaReachable()).resolves.toBe(true);
@@ -188,6 +190,64 @@ describe('ollama provider utilities', () => {
       messages: [{ role: 'user', content: 'open settings' }],
     });
 
+    expect(response.text).toBe('Done.');
+  });
+
+  it('sends the exact protected system prompt and observes body bytes before text', async () => {
+    const controller = new AbortController();
+    const order: string[] = [];
+    let chatInit: RequestInit | undefined;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/api/version')) {
+        return Promise.resolve(new Response('{"version":"0.6.0"}', { status: 200 }));
+      }
+      if (url.includes('/api/tags')) {
+        return Promise.resolve(jsonResponse({ models: [{ name: 'llama3.2:1b' }] }));
+      }
+      if (url.includes('/v1/chat/completions')) {
+        chatInit = init;
+        return Promise.resolve(
+          sseResponse([
+            { choices: [{ delta: { content: 'Done.' } }] },
+            { choices: [{ finish_reason: 'stop' }] },
+            '[DONE]',
+          ]),
+        );
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await ollamaProvider.run({
+      agent: {
+        id: 'agent_jarvis' as any,
+        slug: 'jarvis',
+        name: 'Jarvis',
+        description: '',
+        system_prompt: 'MUTABLE AGENT PROMPT MUST NOT BE SENT',
+        model: { provider: 'ollama', model: 'llama3.2:1b' },
+        tools_allowed: [],
+        memory_scope: 'workspace',
+        capabilities: [],
+        created_at: 1,
+        updated_at: 1,
+      },
+      systemPrompt: 'EXACT PROTECTED SYSTEM CONTRACT',
+      messages: [{ role: 'user', content: 'open settings' }],
+      signal: controller.signal,
+      onResponseObservation: (observation) => order.push(`observed:${observation.kind}`),
+      onChunk: (chunk) => {
+        if (chunk.delta) order.push(`chunk:${chunk.delta}`);
+      },
+    });
+
+    const body = JSON.parse(String(chatInit?.body));
+    expect(body.messages[0]).toEqual({
+      role: 'system',
+      content: 'EXACT PROTECTED SYSTEM CONTRACT',
+    });
+    expect(JSON.stringify(body)).not.toContain('MUTABLE AGENT PROMPT MUST NOT BE SENT');
+    expect(order[0]).toBe('observed:bytes');
     expect(response.text).toBe('Done.');
   });
 

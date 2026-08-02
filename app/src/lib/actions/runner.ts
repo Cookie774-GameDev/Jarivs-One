@@ -16,13 +16,102 @@
 import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { devConsole } from '@/features/dev-console';
+import type {
+  ExecuteJarvisApprovalInput,
+  JarvisIssuedActionExecution,
+  JarvisKernelActionPort,
+  JarvisRegisteredActionDispatchOutcome,
+} from '@/lib/jarvis/approvalEngine';
+import type { JarvisRegisteredActionDefinition } from '@/lib/jarvis/actions/catalog';
 import { getBuiltinAction, getBuiltinActions } from './registry';
 import type {
   ActionDef,
   ActionParam,
   ActionResult,
   ActionRunContext,
+  RegisteredActionExecutionContext,
 } from './types';
+import { hasJarvisApprovalCorrelation } from './types';
+import type {
+  CanonicalFileActionEvidence,
+  CanonicalFileActionEvidenceAuthority,
+} from '@/lib/jarvis/artifactProducerAdapters';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import { isCanonicalFileArtifactResult } from './registryFiles';
+
+/** @internal Re-reads a committed action result and its exact producer evidence. */
+export interface CanonicalFileActionResultReadPort {
+  readCanonicalFileActionResult(evidence: CanonicalFileActionEvidence): Promise<Readonly<{
+    evidence: CanonicalFileActionEvidence;
+    result: ActionResult;
+  }> | null>;
+}
+
+function validFileActionEvidence(evidence: CanonicalFileActionEvidence): boolean {
+  const stable = (value: string) =>
+    value.length > 0 && value.trim() === value && !value.includes('\u0000');
+  return (
+    Object.isFrozen(evidence) &&
+    evidence.producerId === 'file_action_result' &&
+    (evidence.state === 'succeeded' || evidence.state === 'partial') &&
+    evidence.actionVersion === 1 &&
+    Number.isSafeInteger(evidence.attemptNumber) &&
+    evidence.attemptNumber > 0 &&
+    Number.isSafeInteger(evidence.verifiedAt) &&
+    evidence.verifiedAt >= 0 &&
+    stable(evidence.accountId) &&
+    stable(evidence.runId) &&
+    stable(evidence.requestId) &&
+    stable(evidence.resultRef) &&
+    stable(evidence.actionId)
+  );
+}
+
+function sameFileActionEvidence(
+  left: CanonicalFileActionEvidence,
+  right: CanonicalFileActionEvidence,
+): boolean {
+  return (
+    left.producerId === right.producerId &&
+    left.accountId === right.accountId &&
+    left.runId === right.runId &&
+    left.requestId === right.requestId &&
+    left.attemptNumber === right.attemptNumber &&
+    left.resultRef === right.resultRef &&
+    left.state === right.state &&
+    left.verifiedAt === right.verifiedAt &&
+    left.actionId === right.actionId &&
+    left.actionVersion === right.actionVersion
+  );
+}
+
+/** @internal Supplied only to the trusted artifact runtime composition. */
+export function createCanonicalFileActionEvidenceAuthority(
+  port: CanonicalFileActionResultReadPort,
+): CanonicalFileActionEvidenceAuthority {
+  return Object.freeze({
+    async verify(evidence: CanonicalFileActionEvidence) {
+      if (!validFileActionEvidence(evidence)) return null;
+      const action = resolveAction(evidence.actionId);
+      if (!action || action.category !== 'file') return null;
+      let current: Awaited<ReturnType<typeof port.readCanonicalFileActionResult>>;
+      try {
+        current = await port.readCanonicalFileActionResult(evidence);
+      } catch {
+        return null;
+      }
+      if (
+        !current ||
+        !validFileActionEvidence(current.evidence) ||
+        !sameFileActionEvidence(evidence, current.evidence) ||
+        !isCanonicalFileArtifactResult(current.evidence, current.result)
+      ) {
+        return null;
+      }
+      return current.evidence;
+    },
+  });
+}
 
 /**
  * Resolve an action id to its definition.
@@ -80,9 +169,7 @@ export function getAllActions(): ActionDef[] {
  * number, "true"/"false" ↔ boolean). Anything more aggressive risks
  * masking real bugs in the AI's output.
  */
-type ParamCheck =
-  | { ok: true; value: unknown }
-  | { ok: false; error: string };
+type ParamCheck = { ok: true; value: unknown } | { ok: false; error: string };
 
 function coerceAndValidate(p: ActionParam, raw: unknown): ParamCheck {
   // Empty values get the default (or fall through unchanged).
@@ -183,13 +270,16 @@ function describe(v: unknown): string {
  * supplied but the action didn't declare) pass through verbatim — the
  * runner can use them, an action that forgot to declare them won't.
  */
-const OMITTED_ACTION_PARAM_RE = /^(?:command|script|content|prompt|rolesJson|stepsJson|body|payload)$/i;
+const OMITTED_ACTION_PARAM_RE =
+  /^(?:command|script|content|prompt|rolesJson|stepsJson|body|payload)$/i;
 
 function actionParamsForLog(params: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(params).map(([key, value]) => [
-    key,
-    OMITTED_ACTION_PARAM_RE.test(key) ? '[omitted]' : value,
-  ]));
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      OMITTED_ACTION_PARAM_RE.test(key) ? '[omitted]' : value,
+    ]),
+  );
 }
 
 function validateAndCoerceParams(
@@ -228,9 +318,26 @@ async function runActionOnce(
   params: Record<string, unknown> = {},
   ctx: ActionRunContext,
   options: { emitToast?: boolean } = {},
+  canonicalIssued = false,
 ): Promise<ActionResult> {
   const emitToast = options.emitToast ?? true;
   const startedAt = Date.now();
+  if (ctx.source === 'ai' && !canonicalIssued) {
+    if (!hasJarvisApprovalCorrelation(ctx)) {
+      const definition = resolveAction(id);
+      return {
+        ok: false,
+        error:
+          definition?.category === 'terminal'
+            ? 'AI terminal actions require canonical approval authority.'
+            : 'AI actions require canonical approval authority.',
+      };
+    }
+    return {
+      ok: false,
+      error: 'Canonical JARVIS actions require the approval authority.',
+    };
+  }
   // DevConsole breadcrumb — every action attempt shows up in the
   // `action` channel so the user (or an LLM debugging the runtime)
   // can see exactly what got tried, with what params, and what
@@ -276,7 +383,13 @@ async function runActionOnce(
     const result = await def.run(validation.params, ctx);
     if (emitToast) {
       if (result.ok) {
-        toast.success(def.label, result.summary ?? 'Done.');
+        toast.success(
+          def.label,
+          formatJarvisVerifiedNarration({
+            kind: 'success',
+            summary: result.summary?.trim() || `${def.label} completed successfully.`,
+          }).text,
+        );
       } else {
         toast.error(def.label, result.error);
       }
@@ -284,9 +397,7 @@ async function runActionOnce(
     devConsole.log({
       channel: 'action',
       level: result.ok ? 'info' : 'error',
-      message: result.ok
-        ? `Action ✓ ${id}`
-        : `Action ✗ ${id}: ${result.error}`,
+      message: result.ok ? `Action ✓ ${id}` : `Action ✗ ${id}: ${result.error}`,
       durationMs: Date.now() - startedAt,
       detail: {
         id,
@@ -317,6 +428,69 @@ async function runActionOnce(
 }
 
 const inFlightActionRuns = new Map<string, Promise<ActionResult>>();
+
+/** @internal Pure adapter; Task 16B injects the host-owned action port. */
+export function createJarvisApprovedActionRunner(port: Pick<JarvisKernelActionPort, 'execute'>) {
+  return Object.freeze({
+    execute(input: Readonly<ExecuteJarvisApprovalInput>) {
+      return port.execute(input);
+    },
+  });
+}
+
+/** @internal Host-owned dispatcher for catalog-registered builtin actions. */
+export function createJarvisRegisteredBuiltinDispatcher() {
+  return async (input: {
+    registration: Readonly<JarvisRegisteredActionDefinition>;
+    params: Readonly<Record<string, unknown>>;
+    context: RegisteredActionExecutionContext;
+    execution: JarvisIssuedActionExecution;
+  }): Promise<JarvisRegisteredActionDispatchOutcome | null> => {
+    const executor = input.registration.executor;
+    if (executor.kind !== 'builtin') return null;
+    if (input.registration.id === 'terminal.create') return null;
+    if (input.registration.id === 'task.cancel' && Reflect.ownKeys(input.params).length === 0) {
+      return {
+        kind: 'executor_returned',
+        result: {
+          ok: true,
+          summary: 'No cancellable task was selected; no task state changed.',
+          data: { state: 'unchanged' },
+        },
+      };
+    }
+    const definition = resolveAction(executor.registryActionId);
+    if (!definition || definition.id !== executor.registryActionId) {
+      return {
+        kind: 'executor_returned',
+        result: { ok: false, error: 'Registered builtin action is unavailable.' },
+      };
+    }
+    try {
+      const started = input.execution.beginExternalEffect((signal) => ({
+        completion: runActionOnce(
+          definition.id,
+          structuredClone(input.params),
+          Object.freeze({ ...input.context, signal }),
+          { emitToast: false },
+          true,
+        ),
+      }));
+      if (started.kind !== 'committed') {
+        return {
+          kind: 'executor_returned',
+          result: { ok: false, error: 'Registered action authority was revoked.' },
+        };
+      }
+      return { kind: 'executor_returned', result: await started.value.completion };
+    } catch {
+      return {
+        kind: 'executor_returned',
+        result: { ok: false, error: 'Registered builtin action failed.' },
+      };
+    }
+  };
+}
 
 /** Execute one approved proposal at most once while it is in flight. */
 export function runAction(

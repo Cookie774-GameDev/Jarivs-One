@@ -33,9 +33,14 @@ import { installPetDevPerfGlobal } from './petDevPerf';
 export interface PetHostProps {
   enabled?: boolean;
   reducedMotion?: boolean;
+  runtimeEffectsEnabled?: boolean;
 }
 
-export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp }: PetHostProps) {
+export function PetHost({
+  enabled: enabledProp,
+  reducedMotion: reducedMotionProp,
+  runtimeEffectsEnabled = true,
+}: PetHostProps) {
   const settingsEnabled = usePetSettingsStore((s) => s.enabled);
   const settingsReduced = usePetSettingsStore((s) => s.reducedMotion);
   const panelMode = usePetSettingsStore((s) => s.panelMode);
@@ -44,12 +49,13 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
 
-  const enabled = enabledProp ?? settingsEnabled;
-  const reducedMotion = reducedMotionProp ?? settingsReduced;
+  const enabled = runtimeEffectsEnabled ? (enabledProp ?? settingsEnabled) : true;
+  const reducedMotion = runtimeEffectsEnabled ? (reducedMotionProp ?? settingsReduced) : true;
+  const effectiveOverlayVisible = runtimeEffectsEnabled ? overlayVisible : true;
 
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
-  const [claimed, setClaimed] = React.useState(false);
+  const [claimed, setClaimed] = React.useState(!runtimeEffectsEnabled);
   const [tauri, setTauri] = React.useState(false);
   /** Hide sprite when mini panel is open (local UI or Tauri panel). */
   const [hideSpriteForPanel, setHideSpriteForPanel] = React.useState(false);
@@ -59,20 +65,22 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const shuttingDownRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const a = installPetPresentationStorageSync();
     const b = installPetSettingsStorageSync();
     return () => {
       a();
       b();
     };
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   React.useEffect(() => {
-    if (!claimed) return;
+    if (!runtimeEffectsEnabled || !claimed) return;
     return installPetApplicationEventAdapters();
-  }, [claimed]);
+  }, [claimed, runtimeEffectsEnabled]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (!claimPetHostInstance()) {
       console.warn('[pets] duplicate PetHost prevented');
       return;
@@ -84,11 +92,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       uninstallPerf();
       releasePetHostInstance();
     };
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
   // Cross-window panel flag (pet-overlay → main) + Tauri poll.
   React.useEffect(() => {
-    if (!claimed) return;
+    if (!runtimeEffectsEnabled || !claimed) return;
     const onStorage = (e: StorageEvent) => {
       if (e.key !== PET_PANEL_OPEN_FLAG_KEY) return;
       const open = e.newValue === '1';
@@ -106,11 +114,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       setUseInlineFallback(true);
     }
     return () => window.removeEventListener('storage', onStorage);
-  }, [claimed]);
+  }, [claimed, runtimeEffectsEnabled]);
 
   // Poll Tauri panel visibility so we never leave pet+panel both open.
   React.useEffect(() => {
-    if (!claimed || !tauri) return;
+    if (!runtimeEffectsEnabled || !claimed || !tauri) return;
     let cancelled = false;
     const tick = async () => {
       const panelVis = await isPetPanelVisible();
@@ -135,11 +143,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [claimed, tauri]);
+  }, [claimed, runtimeEffectsEnabled, tauri]);
 
   // Shutdown: never briefly respawn the pet while the app is hiding/exiting.
   React.useEffect(() => {
-    if (!claimed) return;
+    if (!runtimeEffectsEnabled || !claimed) return;
     const markShutdown = () => {
       shuttingDownRef.current = true;
       setShuttingDown(true);
@@ -160,11 +168,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       window.removeEventListener('jarvis:persist-now', onPersist);
       window.removeEventListener('jarvis:before-hide', onBeforeHide);
     };
-  }, [claimed]);
+  }, [claimed, runtimeEffectsEnabled]);
 
   // Drive Tauri pet-overlay visibility.
   React.useEffect(() => {
-    if (!claimed || !tauri) return;
+    if (!runtimeEffectsEnabled || !claimed || !tauri) return;
     let cancelled = false;
 
     const sync = async () => {
@@ -200,13 +208,22 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     return () => {
       cancelled = true;
     };
-  }, [claimed, tauri, enabled, overlayVisible, hideSpriteForPanel, shuttingDown]);
+  }, [
+    claimed,
+    enabled,
+    hideSpriteForPanel,
+    overlayVisible,
+    runtimeEffectsEnabled,
+    shuttingDown,
+    tauri,
+  ]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     if (enabled && !overlayVisible) {
       setOverlayVisible(true);
     }
-  }, [enabled, overlayVisible, setOverlayVisible]);
+  }, [enabled, overlayVisible, runtimeEffectsEnabled, setOverlayVisible]);
 
   const closePanel = React.useCallback(() => {
     setPanelOpen(false);
@@ -225,6 +242,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const openPanelBusyRef = React.useRef(false);
 
   const openPanel = React.useCallback(async () => {
+    if (!runtimeEffectsEnabled) return;
     if (openPanelBusyRef.current) return;
     openPanelBusyRef.current = true;
     try {
@@ -260,9 +278,10 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     } finally {
       openPanelBusyRef.current = false;
     }
-  }, [panelMode, tauri]);
+  }, [panelMode, runtimeEffectsEnabled, tauri]);
 
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const onOpen = () => {
       if (!usePetSettingsStore.getState().enabled) {
         usePetSettingsStore.getState().setEnabled(true);
@@ -289,9 +308,9 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       window.removeEventListener('jarvis:pet:show', onShow);
       window.removeEventListener('jarvis:pet:close-panel', onClosePanel);
     };
-  }, [closePanel, openPanel]);
+  }, [closePanel, openPanel, runtimeEffectsEnabled]);
 
-  if (!claimed || !enabled || !overlayVisible || shuttingDown) return null;
+  if (!claimed || !enabled || !effectiveOverlayVisible || shuttingDown) return null;
 
   const showStandalone = shouldShowStandalonePet({
     enabled: true,
@@ -303,7 +322,14 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const showInlineSprite = showStandalone && (!tauri || useInlineFallback);
 
   return (
-    <>
+    <div
+      data-monochrome-surface="pet-host"
+      className={
+        runtimeEffectsEnabled
+          ? 'contents [html[data-theme=monochrome]_&_*]:shadow-none'
+          : 'pointer-events-none fixed inset-0 [html[data-theme=monochrome]_&_*]:shadow-none'
+      }
+    >
       <div
         data-pet-host={tauri ? 'tauri' : 'browser'}
         data-pet-instance="1"
@@ -340,6 +366,6 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
           resizable
         />
       )}
-    </>
+    </div>
   );
 }

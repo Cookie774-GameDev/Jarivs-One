@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { normalizeOtpCode } from './authValidation';
+import './sakura-auth.css';
 
 const OTP_LENGTH = 6;
 
@@ -111,7 +112,7 @@ export function OtpCodeInput({
             disabled={disabled}
             aria-label={`Digit ${index + 1} of ${OTP_LENGTH}`}
             className={cn(
-              'h-12 w-10 sm:h-14 sm:w-11 rounded-lg border bg-elevated text-center text-xl sm:text-2xl font-semibold tabular-nums tracking-widest text-foreground',
+              'sakura-otp-input h-12 w-10 sm:h-14 sm:w-11 rounded-lg border bg-elevated text-center text-xl sm:text-2xl font-semibold tabular-nums tracking-widest text-foreground',
               'border-border shadow-sm transition-all duration-150',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan/50 focus-visible:border-accent-cyan/60 focus-visible:scale-[1.03]',
               'disabled:cursor-not-allowed disabled:opacity-50',

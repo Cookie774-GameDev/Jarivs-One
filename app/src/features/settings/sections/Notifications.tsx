@@ -14,6 +14,9 @@ const DONE_ROWS: Array<{ key: DoneNotificationKey; description: string }> = [
   { key: 'skills', description: 'Notify when a skill enable/disable action completes.' },
 ];
 
+const MONOCHROME_SWITCH_CLASS =
+  'motion-reduce:transition-none motion-reduce:[&_span]:transition-none [html[data-theme=monochrome]_&]:transition-none [html[data-theme=monochrome]_&_span]:transition-none [html[data-theme=monochrome]_&_span]:shadow-none';
+
 export function Notifications() {
   const notificationMaster = useUIStore((s) => s.notificationMaster);
   const setNotificationMaster = useUIStore((s) => s.setNotificationMaster);
@@ -23,7 +26,7 @@ export function Notifications() {
   const setAiCompletionCue = useUIStore((s) => s.setAiCompletionCue);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-notifications flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <header>
         <h2 className="text-page-title text-foreground">Notifications</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -35,11 +38,13 @@ export function Notifications() {
         <div>
           <Label htmlFor="notifications-master">Enable done notifications</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Master switch for OS/browser notifications. In-app status still appears where the work happened.
+            Master switch for OS/browser notifications. In-app status still appears where the work
+            happened.
           </p>
         </div>
         <Switch
           id="notifications-master"
+          className={MONOCHROME_SWITCH_CLASS}
           checked={notificationMaster}
           onCheckedChange={(v) => setNotificationMaster(Boolean(v))}
         />
@@ -69,6 +74,7 @@ export function Notifications() {
               </div>
               <Switch
                 id={`notification-${row.key}-${index}`}
+                className={MONOCHROME_SWITCH_CLASS}
                 checked={doneNotifications[row.key]}
                 disabled={!notificationMaster}
                 onCheckedChange={(v) => setDoneNotification(row.key, Boolean(v))}
@@ -84,11 +90,13 @@ export function Notifications() {
         <div>
           <Label htmlFor="ai-completion-cue">AI completion cue</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Adds a short system-prompt instruction that asks AI agents to clearly say when the task is done, or what remains blocked.
+            Adds a short system-prompt instruction that asks AI agents to clearly say when the task
+            is done, or what remains blocked.
           </p>
         </div>
         <Switch
           id="ai-completion-cue"
+          className={MONOCHROME_SWITCH_CLASS}
           checked={aiCompletionCue}
           onCheckedChange={(v) => setAiCompletionCue(Boolean(v))}
         />
@@ -98,12 +106,18 @@ export function Notifications() {
         <Bell className="h-4 w-4 text-accent-copper" />
         <div className="min-w-0 flex-1">
           <div className="text-ui-strong text-foreground">Test notification</div>
-          <p className="text-metadata text-muted-foreground">Sends a sample Jarvis done notification using the current settings.</p>
+          <p className="text-metadata text-muted-foreground">
+            Sends a sample Jarvis done notification using the current settings.
+          </p>
         </div>
         <Button
           size="sm"
           variant="secondary"
-          onClick={() => void notifyDone('jarvis', 'Jarvis done', 'Notification settings are working.', { allowFallbackToast: true })}
+          onClick={() =>
+            void notifyDone('jarvis', 'Jarvis done', 'Notification settings are working.', {
+              allowFallbackToast: true,
+            })
+          }
           disabled={!notificationMaster || !doneNotifications.jarvis}
         >
           Send Test

@@ -4,10 +4,21 @@ import type { AgentId } from '@/types/common';
 import {
   buildConfirmedAgentMention,
   buildSlashReferenceCommand,
+  canvasSnapshotToImageAttachment,
   extractAbsoluteFilePaths,
+  getQueuedMessageNotice,
+  getThemeCommandHelp,
+  mergeActiveCanvasSourcesForPromptForge,
+  resolveCanvasAttachmentModesForSend,
   resolveMentionedAgentIdsForSend,
 } from './Composer';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
+import { compileCanvasAiContext } from '@/features/canvas/aiContext';
+import {
+  clearActiveCanvasAiContextForTests,
+  publishActiveCanvasAiContextProvider,
+} from '@/features/canvas/aiContextRegistry';
+import { createCanvasDocument } from '@/features/canvas/contracts';
 
 function agent(id: string, slug: string): Agent {
   return {
@@ -31,9 +42,7 @@ describe('composer file path detection', () => {
       extractAbsoluteFilePaths(
         'C:\\Users\\dev\\Documents\\project\\Scripts\\Editor\\context_map.json please summarize this',
       ),
-    ).toEqual([
-      'C:\\Users\\dev\\Documents\\project\\Scripts\\Editor\\context_map.json',
-    ]);
+    ).toEqual(['C:\\Users\\dev\\Documents\\project\\Scripts\\Editor\\context_map.json']);
   });
 
   it('deduplicates repeated file paths', () => {
@@ -42,7 +51,32 @@ describe('composer file path detection', () => {
   });
 });
 
+describe('composer queued-run notice', () => {
+  it('offers explicit stop/restart or next-turn behavior for an in-flight model switch', () => {
+    expect(getQueuedMessageNotice('Use the fastest connected model.')).toEqual({
+      title: 'Model switch queued',
+      body: 'The current reply keeps its captured model. Leave this queued to review and apply on the next turn, or stop the current reply and resend to restart sooner.',
+    });
+  });
+
+  it('keeps the standard queue notice for ordinary follow-up messages', () => {
+    expect(getQueuedMessageNotice('Summarize the result next.')).toEqual({
+      title: 'Message queued',
+      body: 'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
+    });
+  });
+});
+
 describe('composer mention and slash confirmation helpers', () => {
+  it('shows only current canonical theme choices while parser aliases remain compatible', () => {
+    expect(getThemeCommandHelp()).toBe(
+      'Available themes: Jarvis Core, VibeSpace, Default, MonoChrome, Sakura. Use /theme <name>.',
+    );
+    expect(getThemeCommandHelp()).not.toMatch(
+      /(?:,\s|\bthemes:\s)(?:Light|Dark|Core|Vibe|Terminal)(?:,|\.)/,
+    );
+  });
+
   it('resolves selected mention tokens together with typed @agent mentions', () => {
     const builder = agent('agent_builder', 'builder');
     const reviewer = agent('agent_reviewer', 'reviewer');
@@ -76,5 +110,93 @@ describe('composer mention and slash confirmation helpers', () => {
       label: '/hive: Hive Balanced',
       value: 'reference:hive',
     });
+  });
+
+  it('resolves explicit Canvas picker and slash references into bounded attachment modes', () => {
+    expect(
+      resolveCanvasAttachmentModesForSend(
+        [
+          { cmd: 'canvas', value: 'canvas:selection', label: '/canvas: Selected objects' },
+          { cmd: 'canvas', value: 'canvas:selection', label: '/canvas: Selected objects' },
+        ],
+        'Summarize these',
+      ),
+    ).toEqual(['selection']);
+    expect(resolveCanvasAttachmentModesForSend([], '/canvas summarize the active board')).toEqual([
+      'current',
+    ]);
+    expect(
+      resolveCanvasAttachmentModesForSend(
+        [{ cmd: 'canvas', value: 'reference:canvas', label: '/canvas: Active Canvas' }],
+        '',
+      ),
+    ).toEqual(['current']);
+    expect(resolveCanvasAttachmentModesForSend([], 'Discuss /canvas later')).toEqual([]);
+    expect(
+      resolveCanvasAttachmentModesForSend(
+        [{ cmd: 'canvas', value: 'canvas:frame', label: '/canvas: Selected frame' }],
+        '',
+      ),
+    ).toEqual(['frame']);
+  });
+
+  it('turns a validated Canvas PNG snapshot into a vision attachment without retaining bytes', () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const image = canvasSnapshotToImageAttachment({
+      id: 'snapshot-1',
+      canvasId: 'canvas-1',
+      projectId: 'project-1',
+      capturedAt: 30,
+      filename: 'canvas-snapshot.png',
+      mimeType: 'image/png',
+      bytes,
+    });
+
+    expect(image).toEqual({
+      id: 'canvas_snapshot_snapshot-1',
+      name: 'canvas-snapshot.png',
+      mimeType: 'image/png',
+      data: 'iVBORw0KGgo=',
+      size: 8,
+    });
+    bytes[0] = 0;
+    expect(image.data).toBe('iVBORw0KGgo=');
+  });
+});
+
+describe('composer active Canvas source collection', () => {
+  it('adds the exact active account/project Canvas sources and rejects hidden-route context', () => {
+    clearActiveCanvasAiContextForTests();
+    const document = createCanvasDocument({
+      id: 'canvas-1',
+      projectId: 'project-1',
+      ownerId: 'account-1',
+      title: 'Architecture canvas',
+      now: 10,
+    });
+    publishActiveCanvasAiContextProvider({
+      accountId: 'account-1',
+      ownerId: 'account-1',
+      projectId: 'project-1',
+      canvasId: 'canvas-1',
+      getContext: () => compileCanvasAiContext({ document }),
+    });
+
+    expect(mergeActiveCanvasSourcesForPromptForge([], 'account-1', 'project-1', false)).toEqual([]);
+    expect(mergeActiveCanvasSourcesForPromptForge([], 'account-other', 'project-1', true)).toEqual(
+      [],
+    );
+    expect(
+      mergeActiveCanvasSourcesForPromptForge([], 'account-1', 'project-1', true).map(
+        ({ id, label, reference }) => ({ id, label, reference }),
+      ),
+    ).toEqual([
+      {
+        id: 'canvas:canvas-1',
+        label: 'Architecture canvas',
+        reference: 'canvas:canvas-1',
+      },
+    ]);
+    clearActiveCanvasAiContextForTests();
   });
 });

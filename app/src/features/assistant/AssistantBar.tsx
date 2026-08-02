@@ -28,6 +28,7 @@ import { parseAssistantInput } from './parse';
 import { executeIntent } from './execute';
 import { JARVIS_COMMAND_CATALOG } from './commands';
 import type { AssistantIntent } from './intents';
+import './assistant.sakura.css';
 
 interface AssistantBarProps {
   open: boolean;
@@ -85,34 +86,87 @@ function renderPreview(intent: AssistantIntent): React.ReactNode {
         <>
           → Will {verb('create chat')}{' '}
           <span className="text-foreground">'{intent.title ?? 'New chat'}'</span>
-          {intent.project ? <> in <span className="text-foreground">'{intent.project}'</span></> : null}.
+          {intent.project ? (
+            <>
+              {' '}
+              in <span className="text-foreground">'{intent.project}'</span>
+            </>
+          ) : null}
+          .
         </>
       );
     case 'open_terminals':
       return (
         <>
           → Will {verb(`open ${intent.count} terminal${intent.count === 1 ? '' : 's'}`)}
-          {intent.command ? <> with <span className="text-foreground">{intent.command}</span></> : null}
-          {intent.project ? <> in <span className="text-foreground">'{intent.project}'</span></> : null}.
+          {intent.command ? (
+            <>
+              {' '}
+              with <span className="text-foreground">{intent.command}</span>
+            </>
+          ) : null}
+          {intent.project ? (
+            <>
+              {' '}
+              in <span className="text-foreground">'{intent.project}'</span>
+            </>
+          ) : null}
+          .
         </>
       );
     case 'workbench':
-      if (intent.action === 'spawn') return <>→ Will {verb('spawn Workbench')} from <span className="text-foreground">{intent.templateId}</span>.</>;
-      if (intent.action === 'add-panel') return <>→ Will {verb(`add ${intent.count} ${intent.panelKind} panel${intent.count === 1 ? '' : 's'}`)} to Workbench.</>;
-      if (intent.action === 'set-wallpaper') return <>→ Will {verb('change Workbench wallpaper')} to <span className="text-foreground">{intent.wallpaperId}</span>.</>;
-      if (intent.action === 'pause-wallpaper') return <>→ Will {verb('pause Workbench wallpaper motion')}.</>;
-      if (intent.action === 'resume-wallpaper') return <>→ Will {verb('resume Workbench wallpaper motion')}.</>;
+      if (intent.action === 'spawn')
+        return (
+          <>
+            → Will {verb('spawn Workbench')} from{' '}
+            <span className="text-foreground">{intent.templateId}</span>.
+          </>
+        );
+      if (intent.action === 'add-panel')
+        return (
+          <>
+            → Will{' '}
+            {verb(`add ${intent.count} ${intent.panelKind} panel${intent.count === 1 ? '' : 's'}`)}{' '}
+            to Workbench.
+          </>
+        );
+      if (intent.action === 'set-wallpaper')
+        return (
+          <>
+            → Will {verb('change Workbench wallpaper')} to{' '}
+            <span className="text-foreground">{intent.wallpaperId}</span>.
+          </>
+        );
+      if (intent.action === 'pause-wallpaper')
+        return <>→ Will {verb('pause Workbench wallpaper motion')}.</>;
+      if (intent.action === 'resume-wallpaper')
+        return <>→ Will {verb('resume Workbench wallpaper motion')}.</>;
       return <>→ Will {verb('open Workbench')}.</>;
     case 'create_custom_command':
-      return <>→ Will {verb('create command')} <span className="text-foreground">'{intent.name}'</span> to run <span className="text-foreground">{intent.command}</span>.</>;
+      return (
+        <>
+          → Will {verb('create command')} <span className="text-foreground">'{intent.name}'</span>{' '}
+          to run <span className="text-foreground">{intent.command}</span>.
+        </>
+      );
     case 'run_custom_command':
-      return <>→ Will {verb('run custom command')} <span className="text-foreground">'{intent.name}'</span>.</>;
+      return (
+        <>
+          → Will {verb('run custom command')}{' '}
+          <span className="text-foreground">'{intent.name}'</span>.
+        </>
+      );
     case 'clock_timer':
       return <>→ Clock/timer tool has been removed.</>;
     case 'clock_alarm':
       return <>→ Clock/alarm tool has been removed.</>;
     case 'ask_provider':
-      return <>→ Will {verb(`ask ${intent.provider}`)}: <span className="text-foreground">{intent.prompt}</span>.</>;
+      return (
+        <>
+          → Will {verb(`ask ${intent.provider}`)}:{' '}
+          <span className="text-foreground">{intent.prompt}</span>.
+        </>
+      );
     case 'give_terminals_context':
       return <>→ Will {verb('send project context')} to all terminal panes.</>;
     case 'create_context_map':
@@ -123,11 +177,20 @@ function renderPreview(intent: AssistantIntent): React.ReactNode {
       return (
         <>
           → Will {verb('add task')} <span className="text-foreground">'{intent.title}'</span>
-          {intent.due_at
-            ? <> due <span className="text-foreground">
-                {new Date(intent.due_at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
-              </span></>
-            : null}.
+          {intent.due_at ? (
+            <>
+              {' '}
+              due{' '}
+              <span className="text-foreground">
+                {new Date(intent.due_at).toLocaleString(undefined, {
+                  weekday: 'short',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </span>
+            </>
+          ) : null}
+          .
         </>
       );
     case 'create_event':
@@ -137,9 +200,19 @@ function renderPreview(intent: AssistantIntent): React.ReactNode {
         </>
       );
     case 'schedule_call':
-      return <>→ Will {verb('schedule a Jarvis call')}: <span className="text-foreground">{intent.raw}</span></>;
+      return (
+        <>
+          → Will {verb('schedule a Jarvis call')}:{' '}
+          <span className="text-foreground">{intent.raw}</span>
+        </>
+      );
     case 'send_phone_message':
-      return <>→ Will {verb('message your phone')}: <span className="text-foreground">{intent.text}</span></>;
+      return (
+        <>
+          → Will {verb('message your phone')}:{' '}
+          <span className="text-foreground">{intent.text}</span>
+        </>
+      );
     case 'set_ambient':
       return <>→ Will {verb(`turn ambient mode ${intent.on ? 'on' : 'off'}`)}.</>;
     case 'set_fullscreen':
@@ -154,7 +227,11 @@ function renderPreview(intent: AssistantIntent): React.ReactNode {
     case 'open_schedule':
       return <>→ Will {verb('open schedule')}.</>;
     case 'navigate':
-      return <>→ Will {verb('show')} <span className="text-foreground">{intent.route}</span>.</>;
+      return (
+        <>
+          → Will {verb('show')} <span className="text-foreground">{intent.route}</span>.
+        </>
+      );
     case 'multi_step':
       return (
         <>
@@ -253,13 +330,21 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="bg-black/60" />
+        <DialogOverlay
+          className="bg-black/60"
+          data-sakura-overlay="assistant"
+          data-vibespace-owned-chrome="assistant"
+        />
         <DialogPrimitive.Content
           aria-label="Jarvis Assistant"
+          data-monochrome-surface="assistant"
+          data-vibespace-owned-chrome="assistant"
           className={cn(
             'fixed left-1/2 top-[18vh] z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2',
             'border border-border bg-elevated rounded-lg shadow-2xl',
+            '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none',
             'data-[state=open]:animate-scale-in data-[state=closed]:animate-fade-out',
+            '[[data-theme=monochrome]_&]:data-[state=open]:!animate-none [[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
             'overflow-hidden flex flex-col',
           )}
         >
@@ -305,7 +390,8 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
                 </span>
               ) : (
                 <span className="text-muted-foreground/60">
-                  Press <kbd className="kbd">&#8629;</kbd> to run · <kbd className="kbd">Esc</kbd> to close
+                  Press <kbd className="kbd">&#8629;</kbd> to run · <kbd className="kbd">Esc</kbd>{' '}
+                  to close
                 </span>
               )}
             </div>
@@ -321,6 +407,7 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
                   onClick={() => onPillClick(r)}
                   className={cn(
                     'rounded-full border border-border bg-panel px-2.5 py-0.5',
+                    '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border [[data-theme=monochrome]_&]:bg-panel',
                     'text-metadata text-muted-foreground',
                     'hover:border-border-mid hover:text-foreground transition-colors',
                   )}
@@ -335,7 +422,9 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
           {/* Footer hints */}
           <div className="border-t border-border px-4 py-2 text-metadata text-muted-foreground/80">
             <span className="text-muted-foreground">Examples:</span>{' '}
-            <span className="text-muted-foreground/70">{[...EXAMPLE_HINTS, ...JARVIS_COMMAND_CATALOG.slice(0, 12)].join(' · ')}</span>
+            <span className="text-muted-foreground/70">
+              {[...EXAMPLE_HINTS, ...JARVIS_COMMAND_CATALOG.slice(0, 12)].join(' · ')}
+            </span>
           </div>
         </DialogPrimitive.Content>
       </DialogPortal>

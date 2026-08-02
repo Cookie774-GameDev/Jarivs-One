@@ -40,14 +40,22 @@
  * every tool that consumes it).
  */
 
-import { readTextFile, writeTextFile } from '@/lib/fs';
+import { createDirectory, readTextFile, writeTextFile } from '@/lib/fs';
+import { getDataDir } from '@/lib/tauri';
 import { useAgentStore } from '@/stores/agents';
 import { composeSkillAddenda } from '@/lib/agents/skills';
-import { loadStoredContextTree, type ProjectContextTree } from '@/features/context/tree';
+import { getAllCatalogSkills } from '@/features/skills';
+import type { ContextMapRecord, ProjectContextTree } from '@/features/context/tree';
+import {
+  contextTreeFromPersistenceState,
+  ensureContextPersistence,
+} from '@/features/context/contextPersistence';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import { buildAgentPromptPayload } from './agentPromptPayload';
 import { getTerminalRoleBriefing } from './terminalRoleBriefings';
 import type { AgentCoordinationMode } from './agentCoordination';
+import { buildTerminalContextPack, type TerminalContextPack } from './terminalContextPack';
+import type { TerminalContextSession } from './terminalCommandFoundation';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                 */
@@ -58,7 +66,8 @@ export const CLAUDE_FILE_NAME = 'CLAUDE.md';
 export const GEMINI_FILE_NAME = 'GEMINI.md';
 export const COORDINATION_FILE_NAME = '.jarvis-coordination.md';
 
-export const MANAGED_BLOCK_START = '<!-- VIBESPACE:AGENT-BRIEFING:START — managed by VibeSpace, do not edit between markers -->';
+export const MANAGED_BLOCK_START =
+  '<!-- VIBESPACE:AGENT-BRIEFING:START — managed by VibeSpace, do not edit between markers -->';
 export const MANAGED_BLOCK_END = '<!-- VIBESPACE:AGENT-BRIEFING:END -->';
 
 /** Character budgets so AGENTS.md stays a briefing, not a dump. */
@@ -74,14 +83,15 @@ const MAX_OTHER_AGENT_TAIL_CHARS = 160;
  * `composeAgentBriefing`.
  */
 export const BASE_TERMINAL_AGENT_RULES = [
-  'You are one of possibly several AI CLI agents working in this project inside VibeSpace, the user\'s multi-agent workspace. Each agent runs in its own terminal pane.',
+  "You are one of possibly several AI CLI agents working in this project inside VibeSpace, the user's multi-agent workspace. Each agent runs in its own terminal pane.",
   '',
   'Shared operating rules for every agent:',
   '1. Read the shared coordination document (path below) before starting work, and append your task claim and status updates to it so agents do not overlap or conflict.',
   '2. If the coordination document shows another agent already owns a task or file, pick different work or coordinate through the document instead of duplicating effort.',
   '3. Stay inside this project directory unless the user explicitly directs you elsewhere.',
-  '4. Prefer small, verifiable changes. Run the project\'s tests when you change code.',
-  '5. Never delete or rewrite other agents\' entries in the coordination document — append only.',
+  "4. Prefer small, verifiable changes. Run the project's tests when you change code.",
+  "5. Never delete or rewrite other agents' entries in the coordination document — append only.",
+  '6. When a task or note comes from Context, include its stable `context-map://<map-id>/<entity-id>` reference in the task/files field or Context refs column of your coordination claim.',
 ].join('\n');
 
 /* -------------------------------------------------------------------------- */
@@ -171,7 +181,9 @@ export function composeAgentBriefing(inputs: AgentBriefingInputs): string {
 
   const prompt = inputs.agentPrompt.trim();
   if (prompt) {
-    sections.push(`## Your instructions (${inputs.agentName})\n${clip(prompt, MAX_AGENT_PROMPT_CHARS)}`);
+    sections.push(
+      `## Your instructions (${inputs.agentName})\n${clip(prompt, MAX_AGENT_PROMPT_CHARS)}`,
+    );
   }
 
   const projectContext = inputs.projectContext?.trim();
@@ -258,17 +270,18 @@ export function defaultCoordinationDoc(projectName?: string | null): string {
   return [
     `# VibeSpace agent coordination board${projectName ? ` — ${projectName}` : ''}`,
     '',
-    'Shared scratchpad for every AI agent working in this project. Append entries; never delete or rewrite another agent\'s rows.',
+    "Shared scratchpad for every AI agent working in this project. Append entries; never delete or rewrite another agent's rows.",
     '',
     '## How to use this board',
     '1. Before starting work, read the active claims below.',
-    '2. When you start a task, add a row claiming it (agent, task/files, status, timestamp).',
-    '3. Update your row\'s status when you finish or hand off.',
+    '2. When you start a task, add a row claiming it (agent, task/files, Context refs, status, timestamp).',
+    "3. Update your row's status when you finish or hand off.",
+    '4. For Context tasks, notes, or entities, copy the stable `context-map://<map-id>/<entity-id>` reference from the terminal Context pack into the Context refs column.',
     '',
     '## Active claims',
     '',
-    '| Agent | Task / files | Status | Updated |',
-    '|---|---|---|---|',
+    '| Agent | Task / files | Context refs | Status | Updated |',
+    '|---|---|---|---|---|',
     '',
     '## Notes between agents',
     '',
@@ -285,7 +298,12 @@ export function summarizeContextTree(tree: ProjectContextTree | null): string {
   if (tree.summary?.trim()) lines.push(tree.summary.trim());
   if (tree.rootDir) lines.push(`Project root: \`${tree.rootDir}\``);
   if (tree.recommendedEntryPoints && tree.recommendedEntryPoints.length > 0) {
-    lines.push(`Recommended entry points: ${tree.recommendedEntryPoints.slice(0, 8).map((p) => `\`${p}\``).join(', ')}`);
+    lines.push(
+      `Recommended entry points: ${tree.recommendedEntryPoints
+        .slice(0, 8)
+        .map((p) => `\`${p}\``)
+        .join(', ')}`,
+    );
   }
   const nodes = (tree.nodes ?? []).slice(0, 12);
   if (nodes.length > 0) {
@@ -366,7 +384,9 @@ export function resolveAgentForSlug(agentSlug: string): { name: string; prompt: 
   const agent = agents.find((a) => a.slug === agentSlug);
   if (!agent) return { name: agentSlug, prompt: '' };
   const addenda = agent.skills && agent.skills.length > 0 ? composeSkillAddenda(agent.skills) : '';
-  const prompt = [addenda, agent.system_prompt ?? ''].filter((p) => p.trim().length > 0).join('\n\n');
+  const prompt = [addenda, agent.system_prompt ?? '']
+    .filter((p) => p.trim().length > 0)
+    .join('\n\n');
   return { name: agent.name || agentSlug, prompt };
 }
 
@@ -386,7 +406,10 @@ export function gatherSiblingAgentActivity(opts: {
     .sort((a, b) => b.lastWriteAt - a.lastWriteAt)
     .slice(0, 8)
     .map((s) => {
-      const lines = s.text.split('\n').map((l) => l.trim()).filter(Boolean);
+      const lines = s.text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
       return {
         agentSlug: s.agentSlug as string,
         command: s.command,
@@ -411,6 +434,41 @@ export interface AgentDeliveryResult {
   error?: string;
 }
 
+export interface TerminalContextPackStorage {
+  write(terminalSessionId: string, markdown: string): Promise<string>;
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+const productionTerminalContextPackStorage: TerminalContextPackStorage = Object.freeze({
+  async write(terminalSessionId: string, markdown: string) {
+    if (
+      !/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u.test(terminalSessionId) ||
+      markdown.length === 0 ||
+      markdown.length > 24_000 ||
+      /[\u0000\u000b\u000c\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/u.test(
+        markdown,
+      )
+    ) {
+      throw new Error('terminal_context_pack_invalid');
+    }
+    const root = await getDataDir();
+    if (root === 'browser:idb') throw new Error('terminal_context_pack_storage_unavailable');
+    const { join } = await import('@tauri-apps/api/path');
+    const directory = await join(root, 'session-context');
+    const created = await createDirectory(directory, { root });
+    if (!created.ok) throw new Error('terminal_context_pack_write_failed');
+    const token = (await sha256(terminalSessionId)).slice(0, 32);
+    const path = await join(directory, `terminal-${token}.md`);
+    const written = await writeTextFile(path, markdown, { root });
+    if (!written.ok) throw new Error('terminal_context_pack_write_failed');
+    return path;
+  },
+});
+
 async function loadProjectContext(projectId: string | null | undefined): Promise<string | null> {
   if (!projectId) return null;
   try {
@@ -418,7 +476,9 @@ async function loadProjectContext(projectId: string | null | undefined): Promise
     // and non-DB consumers of the pure helpers above.
     const { projectRepo } = await import('@/lib/db');
     const project = await projectRepo.getById(projectId as never);
-    return (project as { system_prompt_context?: string } | undefined)?.system_prompt_context ?? null;
+    return (
+      (project as { system_prompt_context?: string } | undefined)?.system_prompt_context ?? null
+    );
   } catch {
     return null;
   }
@@ -446,6 +506,9 @@ export async function deliverAgentTerminalContext(opts: {
   projectName?: string | null;
   excludeSessionId?: string | null;
   coordinationSummary?: string | null;
+  terminalContextSession?: TerminalContextSession | null;
+  terminalContextPack?: TerminalContextPack | null;
+  contextPackStorage?: TerminalContextPackStorage;
 }): Promise<AgentDeliveryResult> {
   const instructionPaths = instructionFilePaths(opts.cwd);
   const agentsPath = instructionPaths[0]!;
@@ -462,7 +525,10 @@ export async function deliverAgentTerminalContext(opts: {
 
   try {
     const existingReads = await Promise.all(
-      instructionPaths.map(async (path) => ({ path, result: await readTextFile(path, { root: opts.cwd }) })),
+      instructionPaths.map(async (path) => ({
+        path,
+        result: await readTextFile(path, { root: opts.cwd }),
+      })),
     );
     const unavailable = existingReads.find(
       ({ result }) => !result.ok && result.error.code === 'unavailable',
@@ -492,10 +558,41 @@ export async function deliverAgentTerminalContext(opts: {
       : prompt;
     const projectContext = await loadProjectContext(opts.projectId);
     let contextMapSummary = '';
+    let persistedMaps: ContextMapRecord[] = [];
     try {
-      contextMapSummary = summarizeContextTree(loadStoredContextTree(opts.projectId ?? null));
+      const state = await ensureContextPersistence(opts.projectId ?? null);
+      contextMapSummary = summarizeContextTree(contextTreeFromPersistenceState(state));
+      persistedMaps = [...state.maps];
     } catch {
       contextMapSummary = '';
+      persistedMaps = [];
+    }
+
+    let terminalContextPack = opts.terminalContextPack ?? null;
+    let terminalContextPackPath: string | null = null;
+    if (opts.terminalContextSession) {
+      if (!terminalContextPack) {
+        const selectedAgent = opts.terminalContextSession.agentSlug
+          ? Object.values(useAgentStore.getState().agents).find(
+              (agent) => agent.slug === opts.terminalContextSession?.agentSlug,
+            )
+          : undefined;
+        terminalContextPack = buildTerminalContextPack({
+          session: opts.terminalContextSession,
+          projectName: opts.projectName ?? null,
+          maps: persistedMaps,
+          skills: getAllCatalogSkills().map((skill) => ({
+            id: skill.id,
+            name: skill.name,
+            description: skill.description,
+            instructions: skill.systemPromptAddendum,
+          })),
+          agent: selectedAgent ? { slug: selectedAgent.slug, name: selectedAgent.name } : null,
+        });
+      }
+      terminalContextPackPath = await (
+        opts.contextPackStorage ?? productionTerminalContextPackStorage
+      ).write(opts.terminalContextSession.terminalSessionId, terminalContextPack.markdown);
     }
 
     const payload = buildAgentPromptPayload({
@@ -508,6 +605,8 @@ export async function deliverAgentTerminalContext(opts: {
       projectName: opts.projectName,
       projectContext,
       contextMapSummary,
+      terminalContextPackPath,
+      terminalContextSummary: terminalContextPack?.markdown ?? null,
       coordinationSummary: opts.coordinationSummary,
       otherAgents: gatherSiblingAgentActivity({
         projectId: opts.projectId,
@@ -520,7 +619,9 @@ export async function deliverAgentTerminalContext(opts: {
       // Ensure the shared coordination document exists (never overwrite).
       const coordinationRead = await readTextFile(coordinationPath, { root: opts.cwd });
       if (!coordinationRead.ok && coordinationRead.error.code === 'not_found') {
-        await writeTextFile(coordinationPath, defaultCoordinationDoc(opts.projectName), { root: opts.cwd });
+        await writeTextFile(coordinationPath, defaultCoordinationDoc(opts.projectName), {
+          root: opts.cwd,
+        });
       }
     }
 

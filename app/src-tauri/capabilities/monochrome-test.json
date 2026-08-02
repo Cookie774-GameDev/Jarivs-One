@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "monochrome-test",
+  "description": "Least-privilege test-only capability for the MonoChrome isolated native visual-test session. Applies only to the dedicated monochrome-test window predeclared by scripts/visual-monochrome/native-session.ps1. Grants the minimum core/event/window/webview/app/path surface plus OS-read and dialog-open required by the visual matrix. Explicitly excludes notification, process/relaunch, updater, shell-open, external HTTP, global-shortcut, deep-link, autostart, and unscoped webview window creation. Never included in ordinary dev, build, release, or package output because the base tauri.conf.json pins an explicit production capability allowlist that this file is excluded from.",
+  "windows": ["monochrome-test"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:app:default",
+    "core:path:default",
+    "os:default",
+    "dialog:allow-open"
+  ]
+}

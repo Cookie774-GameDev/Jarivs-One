@@ -36,7 +36,8 @@ export function CouncilToggle({ className }: CouncilToggleProps) {
       onValueChange={(v) => {
         if (isMode(v)) setMode(v);
       }}
-      className={cn('inline-flex', className)}
+      className={cn('council-mode-toggle inline-flex', className)}
+      data-vibespace-owned-chrome="council"
     >
       <TabsList>
         {MODES.map(({ id, label, icon: Icon }) => (

@@ -39,8 +39,13 @@ const SUBLINES: Record<CelebrationKind, string> = {
  * gradient toast on each celebration event. Reduced-motion suppresses
  * the canvas but the toast still fires.
  */
-export function CelebrationHost(): JSX.Element {
+export function CelebrationHost({
+  runtimeEffectsEnabled = true,
+}: {
+  runtimeEffectsEnabled?: boolean;
+} = {}): JSX.Element {
   React.useEffect(() => {
+    if (!runtimeEffectsEnabled) return;
     const onCelebrate = (e: WindowEventMap[typeof CELEBRATE_EVENT]) => {
       const { kind, detail } = e.detail;
       const headline = HEADLINES[kind];
@@ -52,7 +57,19 @@ export function CelebrationHost(): JSX.Element {
     };
     window.addEventListener(CELEBRATE_EVENT, onCelebrate);
     return () => window.removeEventListener(CELEBRATE_EVENT, onCelebrate);
-  }, []);
+  }, [runtimeEffectsEnabled]);
 
-  return React.createElement(Confetti);
+  return React.createElement(
+    'div',
+    {
+      'data-monochrome-surface': 'celebration-host',
+      'data-sakura-surface': 'celebration-host',
+      className: runtimeEffectsEnabled
+        ? 'contents [html[data-theme=monochrome]_&>canvas]:hidden'
+        : 'pointer-events-none fixed inset-0',
+    },
+    React.createElement<{ runtimeEffectsEnabled?: boolean }>(Confetti, {
+      runtimeEffectsEnabled,
+    }),
+  );
 }

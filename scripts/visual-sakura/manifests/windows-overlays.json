@@ -1,0 +1,1371 @@
+{
+  "schemaVersion": 1,
+  "manifestKind": "windows-overlays",
+  "predecessorCommit": "23d617bf19e1eab98070c3477fd787a69bb157ae",
+  "sourceAuthority": "tests/visual/monochrome/route-manifest.ts",
+  "sourceCommit": "7eb708e184ee4f054a49d3e70d73e80fd4eb97ae",
+  "finalRouteIds": [
+    "chat",
+    "canvas",
+    "workbench",
+    "preview",
+    "browser",
+    "terminal",
+    "kanban",
+    "schedule",
+    "agents",
+    "agent-detail",
+    "project-detail",
+    "context",
+    "skills",
+    "benchmarks",
+    "history",
+    "tools",
+    "files",
+    "account"
+  ],
+  "settingsTabIds": [
+    "account",
+    "plans",
+    "providers",
+    "connections",
+    "hive",
+    "allaboutme",
+    "plugins",
+    "localmodels",
+    "appearance",
+    "voice",
+    "composerstt",
+    "phone",
+    "ambient",
+    "notifications",
+    "accessibility",
+    "hotkeys",
+    "jarvisactions",
+    "admin",
+    "about"
+  ],
+  "entries": [
+    {
+      "id": "detached:dictation",
+      "kind": "detached",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src/features/global-dictation/GlobalDictationOverlay.tsx"],
+      "writerPaths": [],
+      "testPaths": [
+        "app/src/features/global-dictation/GlobalDictationOverlay.test.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/global-dictation/GlobalDictationOverlay.test.tsx --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:detached:dictation",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/global-dictation/GlobalDictationOverlay.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "detached:pet-mini-panel",
+      "kind": "detached",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src/features/pets/PetMiniPanelWindow.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:detached:pet-mini-panel",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/pets/PetMiniPanelWindow.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "detached:pet-overlay",
+      "kind": "detached",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src/features/pets/PetOverlayWindow.tsx"],
+      "writerPaths": [],
+      "testPaths": [
+        "app/src/features/pets/PetOverlayWindow.test.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/pets/PetOverlayWindow.test.tsx --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:detached:pet-overlay",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/pets/PetOverlayWindow.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "detached:workbench-main",
+      "kind": "detached",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src/features/workbench/window.ts"],
+      "writerPaths": [],
+      "testPaths": [
+        "app/src/features/workbench/window.test.ts",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/workbench/window.test.ts --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:detached:workbench-main",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/workbench/window.ts",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "native:dictation",
+      "kind": "native",
+      "routeId": null,
+      "auditStatus": "native-only",
+      "availability": "native-only",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src-tauri/tauri.conf.json"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/native-window-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:native:dictation",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src-tauri/tauri.conf.json",
+        "tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "native:main",
+      "kind": "native",
+      "routeId": null,
+      "auditStatus": "native-only",
+      "availability": "native-only",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src-tauri/tauri.conf.json"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/native-window-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:native:main",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src-tauri/tauri.conf.json",
+        "tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "native:pet-mini-panel",
+      "kind": "native",
+      "routeId": null,
+      "auditStatus": "native-only",
+      "availability": "native-only",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src-tauri/src/pets.rs"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/native-window-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:native:pet-mini-panel",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src-tauri/src/pets.rs",
+        "tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "native:pet-overlay",
+      "kind": "native",
+      "routeId": null,
+      "auditStatus": "native-only",
+      "availability": "native-only",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src-tauri/src/pets.rs"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/native-window-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:native:pet-overlay",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src-tauri/src/pets.rs",
+        "tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "native:preview-surface",
+      "kind": "native",
+      "routeId": null,
+      "auditStatus": "native-only",
+      "availability": "native-only",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src-tauri/src/preview.rs"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/native-window-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:native:preview-surface",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src-tauri/src/preview.rs",
+        "tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "native:workbench-main",
+      "kind": "native",
+      "routeId": null,
+      "auditStatus": "native-only",
+      "availability": "native-only",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src/features/workbench/window.ts"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/native-window-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:native:workbench-main",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/workbench/window.ts",
+        "tests/visual/monochrome/native-window-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:actions-palette-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7C",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-027", "SAK-049"],
+      "sourcePaths": ["app/src/features/actions/ActionsPalette.tsx"],
+      "writerPaths": ["app/src/features/actions/ActionsPalette.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:actions-palette-host",
+      "fileLockPaths": ["app/src/features/actions/ActionsPalette.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:activity-strip",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/ActivityStrip.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:activity-strip",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/ActivityStrip.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:ambient-home",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/ambient/AmbientHome.tsx"],
+      "writerPaths": ["app/src/features/ambient/AmbientHome.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:ambient-home",
+      "fileLockPaths": ["app/src/features/ambient/AmbientHome.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:api-key-save-burst",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/ApiKeySaveBurst.tsx"],
+      "writerPaths": ["app/src/features/settings/ApiKeySaveBurst.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:api-key-save-burst",
+      "fileLockPaths": ["app/src/features/settings/ApiKeySaveBurst.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:app-dispatch",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/App.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:app-dispatch",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/App.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:app-shell",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/AppShell.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:app-shell",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/AppShell.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:assistant-bar-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/assistant/AssistantBar.tsx"],
+      "writerPaths": ["app/src/features/assistant/AssistantBar.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:assistant-bar-host",
+      "fileLockPaths": ["app/src/features/assistant/AssistantBar.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:call-modal",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/call/CallModal.tsx"],
+      "writerPaths": ["app/src/features/call/CallModal.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:call-modal",
+      "fileLockPaths": ["app/src/features/call/CallModal.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:celebration-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/celebrate/index.ts"],
+      "writerPaths": ["app/src/features/celebrate/index.ts"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:celebration-host",
+      "fileLockPaths": ["app/src/features/celebrate/index.ts"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:command-palette-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/command-palette/CommandPalette.tsx"],
+      "writerPaths": ["app/src/features/command-palette/CommandPalette.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:command-palette-host",
+      "fileLockPaths": ["app/src/features/command-palette/CommandPalette.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:file-explorer-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7B",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-019"],
+      "sourcePaths": ["app/src/features/files/FileExplorerDialog.tsx"],
+      "writerPaths": ["app/src/features/files/FileExplorerDialog.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:file-explorer-host",
+      "fileLockPaths": ["app/src/features/files/FileExplorerDialog.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:global-dictation-overlay",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/global-dictation/GlobalDictationOverlay.tsx"],
+      "writerPaths": ["app/src/features/global-dictation/GlobalDictationOverlay.tsx"],
+      "testPaths": [
+        "app/src/features/global-dictation/GlobalDictationOverlay.test.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/global-dictation/GlobalDictationOverlay.test.tsx --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:global-dictation-overlay",
+      "fileLockPaths": ["app/src/features/global-dictation/GlobalDictationOverlay.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:inspector",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/Inspector.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:inspector",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/Inspector.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:jarvis-context-menu",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/JarvisContextMenu.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:jarvis-context-menu",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/JarvisContextMenu.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:launcher-dialog-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/launcher/LauncherDialog.tsx"],
+      "writerPaths": ["app/src/features/launcher/LauncherDialog.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:launcher-dialog-host",
+      "fileLockPaths": ["app/src/features/launcher/LauncherDialog.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:nav-pane",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/NavPane.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:nav-pane",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/NavPane.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:news-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/news/NewsHost.tsx"],
+      "writerPaths": ["app/src/features/news/NewsHost.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:news-host",
+      "fileLockPaths": ["app/src/features/news/NewsHost.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:page-router",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/PageRouter.tsx"],
+      "writerPaths": [],
+      "testPaths": [
+        "app/src/components/layout/PageRouter.canvas.test.tsx",
+        "app/src/components/layout/PageRouter.terminals.test.tsx",
+        "app/src/components/layout/PageRouter.workbench.test.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/components/layout/PageRouter.canvas.test.tsx --maxWorkers=1 --minWorkers=1",
+        "npm --prefix app test -- src/components/layout/PageRouter.terminals.test.tsx --maxWorkers=1 --minWorkers=1",
+        "npm --prefix app test -- src/components/layout/PageRouter.workbench.test.tsx --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:page-router",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/PageRouter.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:pet-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/pets/PetHost.tsx"],
+      "writerPaths": ["app/src/features/pets/PetHost.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:pet-host",
+      "fileLockPaths": ["app/src/features/pets/PetHost.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:pet-mini-panel-window",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/pets/PetMiniPanelWindow.tsx"],
+      "writerPaths": ["app/src/features/pets/PetMiniPanelWindow.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:pet-mini-panel-window",
+      "fileLockPaths": ["app/src/features/pets/PetMiniPanelWindow.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:pet-overlay-window",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/pets/PetOverlayWindow.tsx"],
+      "writerPaths": ["app/src/features/pets/PetOverlayWindow.tsx"],
+      "testPaths": [
+        "app/src/features/pets/PetOverlayWindow.test.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/pets/PetOverlayWindow.test.tsx --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:pet-overlay-window",
+      "fileLockPaths": ["app/src/features/pets/PetOverlayWindow.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:product-tutorial-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/product-tutorial/ProductTutorialHost.tsx"],
+      "writerPaths": ["app/src/features/product-tutorial/ProductTutorialHost.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:product-tutorial-host",
+      "fileLockPaths": ["app/src/features/product-tutorial/ProductTutorialHost.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:settings-modal-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7F",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-038"],
+      "sourcePaths": ["app/src/features/settings/SettingsModal.tsx"],
+      "writerPaths": ["app/src/features/settings/SettingsModal.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-settings", "jarvis-settings", "vibespace-settings"],
+      "logicalLock": "sakura:overlay:settings-modal-host",
+      "fileLockPaths": ["app/src/features/settings/SettingsModal.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:tab-strip",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/TabStrip.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:tab-strip",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/TabStrip.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:toaster",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/ui/toast.tsx"],
+      "writerPaths": [],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:toaster",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/ui/toast.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:top-bar",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK5",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-026"],
+      "sourcePaths": ["app/src/components/layout/TopBar.tsx"],
+      "writerPaths": [],
+      "testPaths": [
+        "app/src/components/layout/TopBar.voiceSmoke.test.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/components/layout/TopBar.voiceSmoke.test.tsx --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:top-bar",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/components/layout/TopBar.tsx",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:update-warning-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/updates/UpdateWarningHost.tsx"],
+      "writerPaths": ["app/src/features/updates/UpdateWarningHost.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:update-warning-host",
+      "fileLockPaths": ["app/src/features/updates/UpdateWarningHost.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:voice-modal-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7A",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-028", "SAK-029"],
+      "sourcePaths": ["app/src/features/voice/VoiceModal.tsx"],
+      "writerPaths": ["app/src/features/voice/VoiceModal.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:voice-modal-host",
+      "fileLockPaths": ["app/src/features/voice/VoiceModal.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:wellness-break",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/wellness/WellnessBreak.tsx"],
+      "writerPaths": ["app/src/features/wellness/WellnessBreak.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:wellness-break",
+      "fileLockPaths": ["app/src/features/wellness/WellnessBreak.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:whats-new-host",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK7G",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048"],
+      "sourcePaths": ["app/src/features/whats-new/WhatsNewHost.tsx"],
+      "writerPaths": ["app/src/features/whats-new/WhatsNewHost.tsx"],
+      "testPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "behaviorCommands": [
+        "npm --prefix app test -- --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-chat", "jarvis-chat", "vibespace-chat", "origami-chat"],
+      "logicalLock": "sakura:overlay:whats-new-host",
+      "fileLockPaths": ["app/src/features/whats-new/WhatsNewHost.tsx"],
+      "sharedReadOnlyPaths": ["tests/visual/monochrome/shell-overlay-manifest.test.ts"],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    },
+    {
+      "id": "overlay:workbench-window-dispatch",
+      "kind": "overlay",
+      "routeId": null,
+      "auditStatus": "covered",
+      "availability": "production",
+      "owner": "SK9",
+      "requirements": ["SAK-010", "SAK-030", "SAK-033", "SAK-040", "SAK-048", "SAK-036"],
+      "sourcePaths": ["app/src/features/workbench/window.ts"],
+      "writerPaths": [],
+      "testPaths": [
+        "app/src/features/workbench/window.test.ts",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "behaviorCommands": [
+        "npm --prefix app test -- src/features/workbench/window.test.ts --maxWorkers=1 --minWorkers=1",
+        "node --test tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "viewports": ["1672x941", "1024x768", "narrow-desktop"],
+      "zoom": ["50%", "80%", "100%", "125%", "200%"],
+      "motion": ["no-preference", "reduce"],
+      "baselineCaptureIds": ["default-terminal", "jarvis-terminal", "vibespace-terminal"],
+      "logicalLock": "sakura:overlay:workbench-window-dispatch",
+      "fileLockPaths": [],
+      "sharedReadOnlyPaths": [
+        "app/src/features/workbench/window.ts",
+        "tests/visual/monochrome/shell-overlay-manifest.test.ts"
+      ],
+      "exclusions": [
+        "business behavior",
+        "user or remote content",
+        "non-Sakura themes",
+        "backend, schema, auth, and billing changes"
+      ],
+      "unavailableReason": null
+    }
+  ]
+}

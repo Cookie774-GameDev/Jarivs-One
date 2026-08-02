@@ -21,6 +21,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import './sakura-tasks.css';
 import { cn, formatClock, formatRelative } from '@/lib/utils';
 import type { Reminder, Task, TaskPriority } from '@/types/task';
 import type { ReminderId, TaskId } from '@/types/common';
@@ -47,8 +49,12 @@ const PRIORITY_LABEL: Record<TaskPriority, string> = {
   normal: 'Normal',
   low: 'Low',
 };
+const SPRING = 'spring' as const;
+const CARD_TRANSITION = { type: SPRING, stiffness: 420, damping: 32 };
 
-function priorityVariant(p: TaskPriority): 'accent' | 'destructive' | 'warning' | 'secondary' | 'outline' {
+function priorityVariant(
+  p: TaskPriority,
+): 'accent' | 'destructive' | 'warning' | 'secondary' | 'outline' {
   switch (p) {
     case 'urgent':
       return 'destructive';
@@ -66,6 +72,8 @@ export function TaskCard({ task, flash, className }: TaskCardProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [menuOpen, setMenuOpen] = useState(false);
+  const cardLayout = useThemeMotionLayout(true);
+  const cardTransition = useThemeMotionTransition(CARD_TRANSITION);
 
   const snoozeOpenForReminderId = useTaskStore((s) => s.snoozeOpenForReminderId);
   const openSnoozeFor = useTaskStore((s) => s.openSnoozeFor);
@@ -108,11 +116,13 @@ export function TaskCard({ task, flash, className }: TaskCardProps) {
 
   return (
     <motion.div
-      layout
+      data-sakura-surface="task-card"
+      data-sakura-state={isDone ? 'complete' : isInProgress ? 'attention' : 'open'}
+      layout={cardLayout}
       initial={flash ? { opacity: 0, y: -4 } : false}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      exit={cardLayout ? { opacity: 0, height: 0 } : { opacity: 0 }}
+      transition={cardTransition}
       className={cn(
         'group relative rounded-md border border-border bg-panel p-2.5 transition-colors',
         'hover:border-border-mid focus-within:border-accent-cyan/40',
@@ -231,7 +241,11 @@ export function TaskCard({ task, flash, className }: TaskCardProps) {
               onClick={() => setExpanded((v) => !v)}
               className="mt-1.5 flex items-center gap-1 text-metadata text-muted-foreground hover:text-foreground transition-colors"
             >
-              {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {expanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
               {expanded ? 'Hide details' : 'Why this time'}
             </button>
           )}

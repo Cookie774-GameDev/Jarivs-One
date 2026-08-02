@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   localConversationReply,
+  processJarvisResponse,
   shouldRetryBenignRefusal,
 } from './responsePolicy';
+
+it('exposes the canonical verified response processor through the compatibility policy', () => {
+  expect(processJarvisResponse).toBeTypeOf('function');
+});
 
 describe('localConversationReply', () => {
   it('answers a greeting in a short friendly response', () => {

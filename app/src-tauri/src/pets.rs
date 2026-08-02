@@ -26,20 +26,207 @@ fn windows_startup_command(executable: &Path) -> String {
     format!(r#""{safe_path}""#)
 }
 
+/// Stable named-profile identifiers for each privileged Pixel Pet HKCU effect.
+/// These match the frozen MC0B side-effect inventory row ids.
+pub(crate) const EFFECT_REGISTRY_READ: &str = "pets-36-registry-read";
+pub(crate) const EFFECT_REGISTRY_CREATE: &str = "pets-60-registry-create";
+pub(crate) const EFFECT_REGISTRY_SET: &str = "pets-65-registry-set";
+pub(crate) const EFFECT_REGISTRY_DELETE: &str = "pets-72-registry-delete";
+
+// ---------------------------------------------------------------------------
+// Named-profile privileged-effect guard (defense-in-depth).
+//
+// Production consumes task 114's crate-visible
+// crate::runtime_profile::ensure_privileged_effect_allowed; the guard runs
+// before any HKCU access. Tests inject an equivalent guard (see credentials.rs
+// for the full rationale). Unknown profiles fail closed.
+// ---------------------------------------------------------------------------
+
+#[cfg(not(test))]
+fn ensure_effect_allowed(effect: &'static str) -> Result<(), String> {
+    crate::runtime_profile::ensure_privileged_effect_allowed(
+        crate::runtime_profile::DENIED_EFFECT_REGISTRY,
+        effect,
+    )
+}
+
+#[cfg(test)]
+type TestGuard = dyn Fn(&'static str) -> Result<(), String>;
+
+#[cfg(test)]
+std::thread_local! {
+    static TEST_GUARD: std::cell::RefCell<Option<Box<TestGuard>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn ensure_effect_allowed(effect: &'static str) -> Result<(), String> {
+    TEST_GUARD.with(|slot| match &*slot.borrow() {
+        Some(guard) => guard(effect),
+        None => Err(format!(
+            "privileged effect '{effect}' denied by named-profile guard (fail closed)"
+        )),
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn install_test_guard<F>(guard: F)
+where
+    F: Fn(&'static str) -> Result<(), String> + 'static,
+{
+    TEST_GUARD.with(|slot| *slot.borrow_mut() = Some(Box::new(guard)));
+}
+
+#[cfg(test)]
+pub(crate) fn clear_test_guard() {
+    TEST_GUARD.with(|slot| *slot.borrow_mut() = None);
+}
+
+// ---------------------------------------------------------------------------
+// Injectable HKCU autostart effect seam (Windows).
+//
+// Production performs the real registry access, preserving current behavior
+// exactly (including the release-only debug guard and current_exe resolution).
+// Tests inject a counting fake so no real HKCU mutation occurs during
+// verification, while ordinary-mode tests prove the seam is invoked.
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "windows")]
+trait PetAutostartSink {
+    fn read_enabled(&self) -> Result<bool, String>;
+    fn enable(&self) -> Result<(), String>;
+    fn disable(&self) -> Result<(), String>;
+}
+
+#[cfg(all(target_os = "windows", not(test)))]
+struct RealPetAutostart;
+
+#[cfg(all(target_os = "windows", not(test)))]
+impl PetAutostartSink for RealPetAutostart {
+    fn read_enabled(&self) -> Result<bool, String> {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+        use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run = match hkcu
+            .open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Run", KEY_READ)
+        {
+            Ok(run) => run,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("failed to read Windows startup settings: {error}")),
+        };
+        Ok(run.get_value::<String, _>(PET_AUTOSTART_VALUE_NAME).is_ok())
+    }
+
+    fn enable(&self) -> Result<(), String> {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        if cfg!(debug_assertions) {
+            return Err(
+                "Start with Windows can only be changed by an installed release build".into(),
+            );
+        }
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (run, _) = hkcu
+            .create_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run")
+            .map_err(|error| format!("failed to open Windows startup settings: {error}"))?;
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("failed to resolve the installed executable: {error}"))?;
+        run.set_value(
+            PET_AUTOSTART_VALUE_NAME,
+            &windows_startup_command(&executable),
+        )
+        .map_err(|error| format!("failed to enable Windows startup: {error}"))
+    }
+
+    fn disable(&self) -> Result<(), String> {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        if cfg!(debug_assertions) {
+            return Err(
+                "Start with Windows can only be changed by an installed release build".into(),
+            );
+        }
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (run, _) = hkcu
+            .create_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run")
+            .map_err(|error| format!("failed to open Windows startup settings: {error}"))?;
+        match run.delete_value(PET_AUTOSTART_VALUE_NAME) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("failed to disable Windows startup: {error}")),
+        }
+    }
+}
+
+#[cfg(all(target_os = "windows", not(test)))]
+fn sink() -> &'static dyn PetAutostartSink {
+    &RealPetAutostart
+}
+
+#[cfg(all(target_os = "windows", test))]
+#[derive(Default)]
+struct CountingPetAutostart {
+    enabled: std::cell::RefCell<bool>,
+    counters: std::cell::RefCell<std::collections::HashMap<&'static str, usize>>,
+}
+
+#[cfg(all(target_os = "windows", test))]
+impl CountingPetAutostart {
+    fn bump(&self, effect: &'static str) {
+        *self.counters.borrow_mut().entry(effect).or_insert(0) += 1;
+    }
+    fn count(&self, effect: &'static str) -> usize {
+        self.counters.borrow().get(effect).copied().unwrap_or(0)
+    }
+    fn total(&self) -> usize {
+        self.counters.borrow().values().sum()
+    }
+}
+
+#[cfg(all(target_os = "windows", test))]
+impl PetAutostartSink for CountingPetAutostart {
+    fn read_enabled(&self) -> Result<bool, String> {
+        self.bump(EFFECT_REGISTRY_READ);
+        Ok(*self.enabled.borrow())
+    }
+    fn enable(&self) -> Result<(), String> {
+        self.bump(EFFECT_REGISTRY_CREATE);
+        self.bump(EFFECT_REGISTRY_SET);
+        *self.enabled.borrow_mut() = true;
+        Ok(())
+    }
+    fn disable(&self) -> Result<(), String> {
+        self.bump(EFFECT_REGISTRY_CREATE);
+        self.bump(EFFECT_REGISTRY_DELETE);
+        *self.enabled.borrow_mut() = false;
+        Ok(())
+    }
+}
+
+#[cfg(all(target_os = "windows", test))]
+std::thread_local! {
+    static TEST_SINK: std::cell::RefCell<Option<std::rc::Rc<CountingPetAutostart>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(all(target_os = "windows", test))]
+fn sink() -> std::rc::Rc<CountingPetAutostart> {
+    TEST_SINK
+        .with(|slot| slot.borrow().clone())
+        .expect("test pet autostart sink not installed")
+}
+
+#[cfg(all(target_os = "windows", test))]
+fn install_counting_sink() -> std::rc::Rc<CountingPetAutostart> {
+    let sink = std::rc::Rc::new(CountingPetAutostart::default());
+    TEST_SINK.with(|slot| *slot.borrow_mut() = Some(sink.clone()));
+    sink
+}
+
 #[cfg(target_os = "windows")]
 fn get_windows_startup_enabled() -> Result<bool, String> {
-    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
-    use winreg::RegKey;
-
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let run = match hkcu
-        .open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Run", KEY_READ)
-    {
-        Ok(run) => run,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(format!("failed to read Windows startup settings: {error}")),
-    };
-    Ok(run.get_value::<String, _>(PET_AUTOSTART_VALUE_NAME).is_ok())
+    ensure_effect_allowed(EFFECT_REGISTRY_READ)?;
+    sink().read_enabled()
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -49,31 +236,15 @@ fn get_windows_startup_enabled() -> Result<bool, String> {
 
 #[cfg(target_os = "windows")]
 fn set_windows_startup_enabled(enabled: bool) -> Result<bool, String> {
-    use winreg::enums::HKEY_CURRENT_USER;
-    use winreg::RegKey;
-
-    if cfg!(debug_assertions) {
-        return Err("Start with Windows can only be changed by an installed release build".into());
-    }
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (run, _) = hkcu
-        .create_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run")
-        .map_err(|error| format!("failed to open Windows startup settings: {error}"))?;
+    ensure_effect_allowed(EFFECT_REGISTRY_CREATE)?;
     if enabled {
-        let executable = std::env::current_exe()
-            .map_err(|error| format!("failed to resolve the installed executable: {error}"))?;
-        run.set_value(
-            PET_AUTOSTART_VALUE_NAME,
-            &windows_startup_command(&executable),
-        )
-        .map_err(|error| format!("failed to enable Windows startup: {error}"))?;
+        ensure_effect_allowed(EFFECT_REGISTRY_SET)?;
+        sink().enable()?;
         return Ok(true);
     }
-    match run.delete_value(PET_AUTOSTART_VALUE_NAME) {
-        Ok(()) => Ok(false),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!("failed to disable Windows startup: {error}")),
-    }
+    ensure_effect_allowed(EFFECT_REGISTRY_DELETE)?;
+    sink().disable()?;
+    Ok(false)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -874,6 +1045,121 @@ mod tests {
 
     fn allowed_actions_contains(a: &str) -> bool {
         pet_validate_action(a.to_string()).unwrap_or(false)
+    }
+
+    // ----- Named-profile guard + injectable HKCU seam tests (Windows) -----
+
+    #[cfg(target_os = "windows")]
+    fn ordinary_guard() -> impl Fn(&'static str) -> Result<(), String> {
+        |_effect| Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn visual_test_guard() -> impl Fn(&'static str) -> Result<(), String> {
+        |effect| {
+            Err(format!(
+                "privileged effect '{effect}' is disabled by the monochrome-visual-test runtime profile"
+            ))
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ordinary_mode_autostart_read_invokes_seam() {
+        install_test_guard(ordinary_guard());
+        let sink = install_counting_sink();
+        assert_eq!(get_windows_startup_enabled(), Ok(false));
+        assert_eq!(sink.count(EFFECT_REGISTRY_READ), 1);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ordinary_mode_autostart_enable_invokes_create_and_set_seams() {
+        install_test_guard(ordinary_guard());
+        let sink = install_counting_sink();
+        assert_eq!(set_windows_startup_enabled(true), Ok(true));
+        assert_eq!(sink.count(EFFECT_REGISTRY_CREATE), 1);
+        assert_eq!(sink.count(EFFECT_REGISTRY_SET), 1);
+        assert_eq!(sink.count(EFFECT_REGISTRY_DELETE), 0);
+        assert_eq!(get_windows_startup_enabled(), Ok(true));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn ordinary_mode_autostart_disable_invokes_create_and_delete_seams() {
+        install_test_guard(ordinary_guard());
+        let sink = install_counting_sink();
+        assert_eq!(set_windows_startup_enabled(false), Ok(false));
+        assert_eq!(sink.count(EFFECT_REGISTRY_CREATE), 1);
+        assert_eq!(sink.count(EFFECT_REGISTRY_DELETE), 1);
+        assert_eq!(sink.count(EFFECT_REGISTRY_SET), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn visual_test_mode_denies_autostart_read_before_hkcu() {
+        install_test_guard(visual_test_guard());
+        let sink = install_counting_sink();
+        let message =
+            get_windows_startup_enabled().expect_err("visual-test must deny registry read");
+        assert!(message.contains("monochrome-visual-test"));
+        assert_eq!(sink.total(), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn visual_test_mode_denies_autostart_write_before_hkcu() {
+        install_test_guard(visual_test_guard());
+        let sink = install_counting_sink();
+        assert!(set_windows_startup_enabled(true).is_err());
+        assert!(set_windows_startup_enabled(false).is_err());
+        assert_eq!(sink.total(), 0, "denial must precede every HKCU effect");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn unknown_profile_fails_closed_before_hkcu() {
+        clear_test_guard();
+        let sink = install_counting_sink();
+        assert!(get_windows_startup_enabled().is_err());
+        assert!(set_windows_startup_enabled(true).is_err());
+        assert_eq!(sink.total(), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn real_guard_ordinary_autostart_end_to_end() {
+        install_test_guard(|effect| {
+            crate::runtime_profile::ensure_privileged_effect_allowed(
+                crate::runtime_profile::DENIED_EFFECT_REGISTRY,
+                effect,
+            )
+        });
+        let sink = install_counting_sink();
+        let _environment = crate::runtime_profile::test_runtime_environment(None, None);
+        assert_eq!(set_windows_startup_enabled(true), Ok(true));
+        assert_eq!(sink.count(EFFECT_REGISTRY_SET), 1);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn real_guard_visual_test_autostart_denied_end_to_end() {
+        install_test_guard(|effect| {
+            crate::runtime_profile::ensure_privileged_effect_allowed(
+                crate::runtime_profile::DENIED_EFFECT_REGISTRY,
+                effect,
+            )
+        });
+        let sink = install_counting_sink();
+        let _environment = crate::runtime_profile::test_runtime_environment(
+            Some(std::ffi::OsString::from(
+                crate::runtime_profile::MONOCHROME_VISUAL_TEST,
+            )),
+            None,
+        );
+        let message = set_windows_startup_enabled(true).expect_err("visual-test must deny");
+        assert!(message.contains("monochrome-visual-test"));
+        assert_eq!(sink.total(), 0);
     }
 }
 

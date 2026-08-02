@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 2,
+  "authorityId": "b0-r1",
+  "originalB0": {
+    "preserved": true,
+    "genericChatEquivalence": "invalid",
+    "invalidReason": "The immutable B0 generic-chat captures passed only root/font/geometry readiness and therefore do not prove populated ordinary-chat equivalence.",
+    "tree": {
+      "algorithm": "sha256-path-nul-bytes-v1",
+      "roots": [
+        "tests/visual/monochrome/baselines/b0"
+      ],
+      "fileCount": 10,
+      "sha256": "1c0946f05b0dc5d467ba40bb73204a99e7a22737ab0eff71910bb0230bd48231"
+    }
+  },
+  "source": {
+    "provenance": {
+      "parentCommit": "e8ebf3c2c4e5582977c3636f4346d2b6d5f01087",
+      "branch": "codex/pr30-b0-r1-refresh-20260801",
+      "dirtyInputs": []
+    },
+    "inputBinding": {
+      "algorithm": "sha256-path-nul-bytes-v1",
+      "roots": [
+        "package.json",
+        "package-lock.json",
+        "app/index.html",
+        "app/package.json",
+        "app/postcss.config.js",
+        "app/public",
+        "app/src",
+        "app/tailwind.config.ts",
+        "app/tsconfig.json",
+        "app/tsconfig.node.json",
+        "app/vite.config.ts",
+        "playwright.monochrome.config.ts",
+        "scripts/visual-chat/capture-chat.mjs",
+        "scripts/visual-chat/chat-fixture.mjs",
+        "tests/visual/chat/fixture-data.mjs",
+        "tests/visual/monochrome/baseline-manifest.ts",
+        "tests/visual/monochrome/b0Environment.ts",
+        "tests/visual/monochrome/b0Replay.ts",
+        "tests/visual/monochrome/fixture-manifest.ts",
+        "tests/visual/monochrome/monochrome.other-themes.spec.ts",
+        "tests/visual/monochrome/route-manifest.ts",
+        "tests/visual/monochrome/styleMetrics.ts"
+      ],
+      "fileCount": 2340,
+      "sha256": "7f19fe3def4fd08f2facf92a1903d4fed54d6288477699cd230cd22449155204"
+    }
+  },
+  "fixture": {
+    "id": "chat",
+    "sha256": "48759d692d069850a3b2f734823ec06b2fcf62a667d984d52ec30247d25c4ec9",
+    "clock": "2026-07-16T12:00:00.000Z"
+  },
+  "themes": [
+    "default",
+    "jarvis",
+    "vibespace"
+  ],
+  "surfaces": [
+    "chat",
+    "settings-appearance",
+    "terminal"
+  ],
+  "viewport": {
+    "width": 1672,
+    "height": 941,
+    "deviceScaleFactor": 1
+  },
+  "browser": {
+    "type": "chromium",
+    "channel": "msedge",
+    "version": "150.0.4078.105",
+    "launchArgs": [
+      "--force-color-profile=srgb",
+      "--disable-features=PaintHolding",
+      "--mute-audio",
+      "--disable-gpu",
+      "--disable-lcd-text",
+      "--disable-font-subpixel-positioning"
+    ]
+  },
+  "readiness": {
+    "version": "b0-r1-content-pixel-quiescent-v4",
+    "expectedMessages": 2,
+    "requiresSession": true,
+    "requiresThread": true,
+    "requiresComposer": true,
+    "requiresFonts": true,
+    "stableFrames": 3,
+    "minimumQuietMs": 250,
+    "maximumQuiescenceMs": 2000,
+    "maximumQuiescenceSamples": 128,
+    "finiteAnimations": "finished-and-observed-each-sample",
+    "styleAuthority": "computed-theme-capture-geometry-font-v2",
+    "pixelAuthority": "full-frame-unmasked",
+    "petPresentation": "per-capture-explicit"
+  },
+  "captures": [
+    {
+      "caseId": "default-chat",
+      "themeId": "default",
+      "documentTheme": "dark",
+      "route": "chat",
+      "fixtureId": "chat",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/default/chat.png",
+      "sha256": "f29e8df829c0695dad31134f153f7fb0e64cfa6c8b27af6f475374f49b495e88",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "default-settings",
+      "themeId": "default",
+      "documentTheme": "dark",
+      "route": "settings-appearance",
+      "fixtureId": "settings-appearance",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/default/settings-appearance.png",
+      "sha256": "4a352256511c6f7c545f9f937e98ddfa842899ebd481ddad3c3a92121d21adad",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "default-terminal",
+      "themeId": "default",
+      "documentTheme": "dark",
+      "route": "terminal",
+      "fixtureId": "terminal-workbench",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/default/terminal-workbench.png",
+      "sha256": "5c437d598a1c59f608a7ffb30551c9d17db47bf9797c805ae9c4603170457a84",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "jarvis-chat",
+      "themeId": "jarvis",
+      "documentTheme": "jarvis",
+      "route": "chat",
+      "fixtureId": "chat",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/jarvis/chat.png",
+      "sha256": "e903d4037a5ed7516b6e96540f2857fef36b2245c245fcec2ebeeaa3d3c7dcd2",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "jarvis-settings",
+      "themeId": "jarvis",
+      "documentTheme": "jarvis",
+      "route": "settings-appearance",
+      "fixtureId": "settings-appearance",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/jarvis/settings-appearance.png",
+      "sha256": "cb10fe7e46c75fd4701403fd2cd811d35f23a6874bdf66f38e00a1b83f02e779",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "jarvis-terminal",
+      "themeId": "jarvis",
+      "documentTheme": "jarvis",
+      "route": "terminal",
+      "fixtureId": "terminal-workbench",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/jarvis/terminal-workbench.png",
+      "sha256": "56a1b1c7d0470e3273bf5f078d935b9b35dd0d40b35b2f50a60b130213e01839",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "origami-chat",
+      "themeId": "vibespace",
+      "documentTheme": "vibespace",
+      "route": "chat",
+      "fixtureId": "chat",
+      "origamiGateActive": true,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/origami/chat.png",
+      "sha256": "7b0b501591b92558d23d2ce0cca39fd77a0442b236a8b6056f0a422803abb918",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "vibespace-chat",
+      "themeId": "vibespace",
+      "documentTheme": "vibespace",
+      "route": "chat",
+      "fixtureId": "chat",
+      "origamiGateActive": true,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/chat.png",
+      "sha256": "90181b39461cf532b543c4c0e7667dea5102605880398326f8a2fc01b5a6e262",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "vibespace-settings",
+      "themeId": "vibespace",
+      "documentTheme": "vibespace",
+      "route": "settings-appearance",
+      "fixtureId": "settings-appearance",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/settings-appearance.png",
+      "sha256": "bf330995050476ca7702f7330a47dc577f8f9fd2b4079b8d6c4fcb244b660537",
+      "width": 1672,
+      "height": 941
+    },
+    {
+      "caseId": "vibespace-terminal",
+      "themeId": "vibespace",
+      "documentTheme": "vibespace",
+      "route": "terminal",
+      "fixtureId": "terminal-workbench",
+      "origamiGateActive": false,
+      "petVisible": false,
+      "outputPath": "tests/visual/monochrome/baselines/b0-r1/vibespace/terminal-workbench.png",
+      "sha256": "da1764c181e0617474853d610eab045df2211fe1f0003b8ae1dda188043925c6",
+      "width": 1672,
+      "height": 941
+    }
+  ]
+}

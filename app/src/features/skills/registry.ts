@@ -5,9 +5,9 @@
  * `skillsStore`. Legacy bundled `.md` agents are still loaded from disk.
  */
 
-import type { SkillManifest } from './loader';
+import type { SkillLoadOptions, SkillManifest, SkillManifestSource } from './loader';
 import { getUnifiedSkillManifests } from './skillCatalog';
-import { loadAllAgents } from './loader';
+import { loadAllAgents, loadAllSkills } from './loader';
 import { readSkillsStore } from './skillsStore';
 import { notifyDone } from '@/lib/notifications';
 
@@ -16,6 +16,13 @@ type Listener = (entries: SkillManifest[]) => void;
 const entries = new Map<string, SkillManifest>();
 const listeners = new Set<Listener>();
 let loaded = false;
+let discovered: SkillManifest[] = [];
+
+const SOURCE_PRECEDENCE: Record<SkillManifestSource, number> = {
+  builtin: 0,
+  user: 1,
+  project: 2,
+};
 
 function notify(): void {
   const arr = Array.from(entries.values());
@@ -34,9 +41,24 @@ function setEntries(arr: SkillManifest[]): void {
   notify();
 }
 
+function mergeSkills(catalog: SkillManifest[], local: SkillManifest[]): SkillManifest[] {
+  const merged = new Map<string, SkillManifest>();
+  for (const manifest of [...catalog, ...local]) {
+    const key = (manifest.catalogId ?? manifest.name).toLowerCase();
+    const current = merged.get(key);
+    if (!current || SOURCE_PRECEDENCE[manifest.source] > SOURCE_PRECEDENCE[current.source]) {
+      merged.set(key, manifest);
+    }
+  }
+  return [...merged.values()];
+}
+
 function refreshFromCatalog(): SkillManifest[] {
-  const skills = getUnifiedSkillManifests();
-  const agents = entries.size > 0 ? Array.from(entries.values()).filter((m) => m.kind === 'agent') : [];
+  const skills = mergeSkills(
+    getUnifiedSkillManifests(),
+    discovered.filter((manifest) => manifest.kind === 'skill'),
+  );
+  const agents = discovered.filter((manifest) => manifest.kind === 'agent');
   const all = [...skills, ...agents];
   setEntries(all);
   return all;
@@ -47,9 +69,10 @@ export const skillRegistry = {
    * Seed the unified catalog (five presets + custom skills) and merge any
    * bundled agent manifests. Idempotent.
    */
-  async loadFromDisk(opts?: { projectRoot?: string }): Promise<SkillManifest[]> {
-    const agents = await loadAllAgents(opts);
-    const skills = getUnifiedSkillManifests();
+  async loadFromDisk(opts?: SkillLoadOptions): Promise<SkillManifest[]> {
+    const [skillsOnDisk, agents] = await Promise.all([loadAllSkills(opts), loadAllAgents(opts)]);
+    discovered = [...skillsOnDisk, ...agents];
+    const skills = mergeSkills(getUnifiedSkillManifests(), skillsOnDisk);
     const all = [...skills, ...agents];
     setEntries(all);
     loaded = true;
@@ -57,7 +80,7 @@ export const skillRegistry = {
   },
 
   /** Re-read catalog + agent manifests. */
-  async reload(opts?: { projectRoot?: string }): Promise<SkillManifest[]> {
+  async reload(opts?: SkillLoadOptions): Promise<SkillManifest[]> {
     loaded = false;
     return skillRegistry.loadFromDisk(opts);
   },

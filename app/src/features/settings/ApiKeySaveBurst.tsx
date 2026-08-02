@@ -39,21 +39,17 @@ export function ApiKeySaveBurst() {
       setBursts((current) => [...current, { id, x: detail.x, y: detail.y, phase: 'expanding' }]);
 
       const timer1 = window.setTimeout(() => {
-        setBursts((current) =>
-          current.map((b) => (b.id === id ? { ...b, phase: 'holding' } : b))
-        );
+        setBursts((current) => current.map((b) => (b.id === id ? { ...b, phase: 'holding' } : b)));
       }, 400);
 
       const timer2 = window.setTimeout(() => {
         setBursts((current) =>
-          current.map((b) => (b.id === id ? { ...b, phase: 'retracting' } : b))
+          current.map((b) => (b.id === id ? { ...b, phase: 'retracting' } : b)),
         );
       }, 900);
 
       const timer3 = window.setTimeout(() => {
-        setBursts((current) =>
-          current.map((b) => (b.id === id ? { ...b, phase: 'sparkle' } : b))
-        );
+        setBursts((current) => current.map((b) => (b.id === id ? { ...b, phase: 'sparkle' } : b)));
       }, 1600);
 
       const timer4 = window.setTimeout(() => {
@@ -74,7 +70,10 @@ export function ApiKeySaveBurst() {
   if (bursts.length === 0) return null;
 
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 z-[80] overflow-hidden">
+    <div
+      aria-hidden
+      className="mc7f-api-key-save-burst pointer-events-none fixed inset-0 z-[80] overflow-hidden [html[data-theme=monochrome]_&]:grayscale"
+    >
       {bursts.map((burst) => (
         <React.Fragment key={burst.id}>
           <div
@@ -103,10 +102,12 @@ export function ApiKeySaveBurst() {
                 <div
                   key={i}
                   className="jarvis-sparkle"
-                  style={{
-                    '--sparkle-angle': `${i * 45}deg`,
-                    '--sparkle-delay': `${i * 40}ms`,
-                  } as React.CSSProperties}
+                  style={
+                    {
+                      '--sparkle-angle': `${i * 45}deg`,
+                      '--sparkle-delay': `${i * 40}ms`,
+                    } as React.CSSProperties
+                  }
                 />
               ))}
             </div>

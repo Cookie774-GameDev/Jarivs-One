@@ -1,0 +1,719 @@
+/* The warm Origami treatment is deliberately gated to the full Chat route.
+ * Compact ChatThread consumers on Schedule and other surfaces stay unchanged. */
+html[data-theme='vibespace'] body:has(main[aria-label='Workspace'] [data-vibespace-page='chat']) {
+  --vs-paper-0: #fff1df;
+  --vs-paper-1: #f9e1cb;
+  --vs-paper-2: #f7ddc6;
+  --vs-paper-peach: #f4d8be;
+  --vs-paper-edge: color-mix(in srgb, var(--vs-paper-0) 86%, white);
+  --vs-paper-crease: #d3b296;
+  --vs-cardboard: #9d7970;
+  --vs-ink: #4b3120;
+  --vs-wood: #755842;
+  --vs-coral: #fbae8e;
+  --vs-peach: #f0a280;
+  --vs-coral-deep: #c6785b;
+  --vs-lavender: #c5b0d2;
+  --vs-plum: #8e6fa4;
+  --vs-sage-deep: #758766;
+  --vs-sage: #a7b38d;
+  --vs-sky: #879eb7;
+  --vs-honey: #e6a04f;
+  --vs-leaf: #9fb667;
+  --vs-orange: #ef7f25;
+  --vs-wood-deep: #4b3120;
+  --vs-plum-deep: #755842;
+  --vs-cut-shadow:
+    0 2px 0 color-mix(in srgb, var(--vs-cardboard) 22%, transparent),
+    0 7px 15px color-mix(in srgb, var(--vs-wood-deep) 11%, transparent);
+  --vs-lift-shadow:
+    0 2px 0 color-mix(in srgb, white 72%, transparent),
+    0 12px 25px color-mix(in srgb, var(--vs-wood-deep) 15%, transparent),
+    0 22px 44px color-mix(in srgb, var(--vs-plum) 8%, transparent);
+  background-color: var(--vs-paper-0);
+  color: var(--vs-ink);
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  header[aria-label='Application header'] {
+  height: 79px;
+  min-height: 79px;
+  background:
+    url('/assets/origami-chat/paper-base.webp') center / cover no-repeat,
+    linear-gradient(90deg, var(--vs-coral) 0 38%, var(--vs-lavender) 58% 100%) top / 100% 3px
+      no-repeat,
+    linear-gradient(180deg, var(--vs-paper-0), var(--vs-paper-1)) !important;
+  border-bottom-color: color-mix(in srgb, var(--vs-cardboard) 36%, var(--vs-paper-1)) !important;
+  box-shadow:
+    inset 0 -1px 0 var(--vs-paper-edge),
+    0 3px 9px color-mix(in srgb, var(--vs-wood-deep) 8%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true'] {
+  position: relative;
+  background:
+    url('/assets/origami-chat/paper-base.webp') center / cover no-repeat,
+    linear-gradient(90deg, var(--vs-paper-1), var(--vs-paper-0)) !important;
+  border-right-color: color-mix(in srgb, var(--vs-cardboard) 36%, var(--vs-paper-1)) !important;
+  box-shadow:
+    inset -1px 0 var(--vs-paper-edge),
+    5px 0 18px color-mix(in srgb, var(--vs-wood-deep) 7%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true'][style*='width: 240px'] {
+  width: 334px !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  button {
+  background:
+    url('/assets/origami-chat/sidebar-row-9slice.webp') center / 100% 100% no-repeat,
+    color-mix(in srgb, var(--vs-paper-0) 88%, var(--vs-paper-2));
+  min-height: 36px;
+  border-radius: 4px !important;
+  box-shadow:
+    inset 0 1px var(--vs-paper-edge),
+    0 2px 3px color-mix(in srgb, var(--vs-wood) 10%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  button:hover {
+  background:
+    url('/assets/origami-chat/sidebar-row-9slice.webp') center / 100% 100% no-repeat,
+    color-mix(in srgb, var(--vs-paper-peach) 34%, var(--vs-paper-0)) !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  button.bg-muted,
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  button[class*='ring-accent'],
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  [aria-current='page'] {
+  background:
+    url('/assets/origami-chat/sidebar-active-row-9slice.webp') center / 100% 100% no-repeat,
+    linear-gradient(180deg, var(--vs-peach), var(--vs-coral)) !important;
+  border-color: var(--vs-coral-deep) !important;
+  color: var(--vs-paper-0) !important;
+  box-shadow:
+    inset 0 1px color-mix(in srgb, var(--vs-paper-peach) 70%, transparent),
+    0 3px 7px color-mix(in srgb, var(--vs-coral-deep) 24%, transparent) !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  button.bg-muted
+  span,
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-nav-pane='true']
+  button[class*='ring-accent']
+  span {
+  color: var(--vs-paper-0) !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [role='tablist'][aria-label='Open chats'] {
+  height: 64px;
+  min-height: 64px;
+  background: linear-gradient(180deg, var(--vs-paper-0), var(--vs-paper-2)) !important;
+  border-bottom-color: color-mix(in srgb, var(--vs-cardboard) 32%, var(--vs-paper-1)) !important;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--vs-wood) 7%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  aside[aria-label='Inspector'] {
+  background:
+    url('/assets/origami-chat/paper-base.webp') center / cover no-repeat,
+    linear-gradient(270deg, var(--vs-paper-1), var(--vs-paper-0)) !important;
+  border-left-color: color-mix(in srgb, var(--vs-cardboard) 34%, var(--vs-paper-1)) !important;
+  box-shadow:
+    inset 1px 0 var(--vs-paper-edge),
+    -5px 0 18px color-mix(in srgb, var(--vs-wood-deep) 7%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  main[aria-label='Workspace'] {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--vs-paper-0) !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  main[aria-label='Workspace']
+  > * {
+  position: relative;
+  z-index: 1;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-vibespace-page='chat'] {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--vs-paper-0);
+  background-image:
+    url('/assets/origami-chat/paper-base.webp'),
+    repeating-linear-gradient(
+      87deg,
+      color-mix(in srgb, var(--vs-cardboard) 4%, transparent) 0 1px,
+      transparent 1px 8px
+    ),
+    repeating-linear-gradient(
+      3deg,
+      color-mix(in srgb, white 24%, transparent) 0 1px,
+      transparent 1px 13px
+    ),
+    linear-gradient(145deg, transparent 46%, var(--vs-sage) 46% 58%, transparent 58%),
+    linear-gradient(154deg, transparent 48%, var(--vs-lavender) 48% 63%, transparent 63%),
+    linear-gradient(210deg, transparent 47%, var(--vs-coral) 47% 61%, transparent 61%),
+    linear-gradient(200deg, transparent 52%, var(--vs-paper-peach) 52% 68%, transparent 68%),
+    linear-gradient(180deg, var(--vs-paper-0), var(--vs-paper-1));
+  background-position:
+    center,
+    center,
+    center,
+    left bottom,
+    14% 100%,
+    right bottom,
+    87% 100%,
+    center;
+  background-repeat:
+    no-repeat, repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size:
+    cover,
+    auto,
+    auto,
+    31% 18%,
+    30% 16%,
+    31% 20%,
+    28% 14%,
+    100% 100%;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-vibespace-page='chat']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: url('/assets/origami-chat/paper-grain.webp') center / 256px 256px repeat;
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-vibespace-page='chat']
+  > :not(.origami-chat-decor) {
+  position: relative;
+  z-index: 2;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread'] {
+  padding-inline: clamp(24px, 4vw, 72px);
+  scrollbar-gutter: stable;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread']
+  > div {
+  padding-top: 0 !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread']
+  .justify-start {
+  margin-top: 18px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-testid='jarvis-session-panel'] {
+  position: relative;
+  min-height: 196px;
+  overflow: hidden;
+  background:
+    url('/assets/origami-chat/panel-9slice.webp') center / 100% 100% no-repeat,
+    linear-gradient(155deg, var(--vs-paper-0), var(--vs-paper-1)) !important;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 58%, var(--vs-paper-1)) !important;
+  border-radius: 5px 5px 4px 5px !important;
+  box-shadow: var(--vs-lift-shadow) !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-testid='jarvis-session-panel']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px var(--vs-paper-edge),
+    inset 0 -3px color-mix(in srgb, var(--vs-cardboard) 13%, transparent);
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-testid='jarvis-session-panel']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  background: linear-gradient(
+    225deg,
+    var(--vs-paper-peach) 0 49%,
+    var(--vs-paper-crease) 50% 53%,
+    var(--vs-paper-2) 54%
+  );
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-testid='jarvis-session-panel']
+  > div {
+  background: transparent !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-testid='jarvis-session-panel']
+  .grid
+  > div {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, white 48%, transparent), transparent 42%),
+    var(--vs-paper-0) !important;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 54%, var(--vs-paper-1)) !important;
+  border-radius: 4px !important;
+  box-shadow:
+    inset 0 1px var(--vs-paper-edge),
+    0 2px 0 color-mix(in srgb, var(--vs-cardboard) 20%, transparent),
+    0 6px 12px color-mix(in srgb, var(--vs-wood-deep) 8%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-testid='jarvis-session-panel']
+  .grid
+  > div::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(225deg, var(--vs-paper-peach) 50%, var(--vs-paper-2) 50%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread']
+  .justify-end
+  > .group
+  > .rounded-lg.bg-muted {
+  background:
+    linear-gradient(100deg, color-mix(in srgb, white 32%, transparent), transparent 36%),
+    var(--vs-paper-2) !important;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 38%, var(--vs-paper-1));
+  border-radius: 4px 10px 10px 4px !important;
+  box-shadow: var(--vs-cut-shadow);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread']
+  .justify-start
+  > div
+  > .group
+  > div:nth-child(2) {
+  position: relative;
+  overflow: hidden;
+  padding: 12px 16px !important;
+  background:
+    repeating-linear-gradient(
+      5deg,
+      color-mix(in srgb, var(--vs-cardboard) 3%, transparent) 0 1px,
+      transparent 1px 12px
+    ),
+    var(--vs-paper-0);
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 34%, var(--vs-paper-1)) !important;
+  border-left: 3px solid var(--vs-lavender) !important;
+  border-radius: 4px 12px 12px 4px;
+  box-shadow: var(--vs-cut-shadow);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread']
+  .justify-start
+  > div
+  > .group
+  > div:nth-child(2)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 15px;
+  height: 15px;
+  background: linear-gradient(225deg, var(--vs-paper-peach) 50%, var(--vs-paper-1) 50%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-thread']
+  .kbd {
+  background: color-mix(in srgb, var(--vs-lavender) 38%, var(--vs-paper-0));
+  border-color: color-mix(in srgb, var(--vs-plum) 35%, transparent);
+  color: var(--vs-plum-deep);
+  box-shadow: inset 0 1px color-mix(in srgb, white 55%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer'] {
+  min-height: 152px;
+  margin-right: 232px;
+  margin-bottom: 20px;
+  margin-left: 8px;
+  background:
+    url('/assets/origami-chat/panel-9slice.webp') center / 100% 100% no-repeat,
+    linear-gradient(180deg, var(--vs-paper-peach), var(--vs-paper-1)) !important;
+  border-top: 2px solid var(--vs-coral) !important;
+  box-shadow:
+    inset 0 1px var(--vs-paper-edge),
+    0 -3px 0 color-mix(in srgb, var(--vs-cardboard) 18%, transparent),
+    0 -12px 26px color-mix(in srgb, var(--vs-wood-deep) 10%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  [data-terminal-drop='chat'] {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, white 45%, transparent), transparent 42%),
+    var(--vs-paper-0) !important;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 52%, var(--vs-paper-1)) !important;
+  border-radius: 5px !important;
+  box-shadow:
+    inset 0 2px 5px color-mix(in srgb, var(--vs-wood-deep) 8%, transparent),
+    0 2px 0 color-mix(in srgb, white 50%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  textarea {
+  color: var(--vs-ink);
+  caret-color: var(--vs-coral-deep);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  button[aria-label='Choose model'] {
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 34%, var(--vs-paper-1));
+  background: var(--vs-paper-1);
+  box-shadow: var(--vs-cut-shadow);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  button[aria-label^='Agent Mode'] {
+  border-color: var(--vs-coral-deep) !important;
+  background: linear-gradient(180deg, var(--vs-peach), var(--vs-coral)) !important;
+  color: var(--vs-paper-0) !important;
+  box-shadow: var(--vs-cut-shadow);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  button[aria-label='Start dictation'],
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  button[aria-label='Stop dictation'],
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  button[aria-label='Send message'] {
+  background: color-mix(in srgb, var(--vs-lavender) 28%, var(--vs-paper-0));
+  border: 1px solid color-mix(in srgb, var(--vs-plum) 26%, transparent);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--vs-plum-deep) 12%, transparent);
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-tour='chat-composer']
+  .kbd {
+  background: color-mix(in srgb, var(--vs-lavender) 48%, var(--vs-paper-0));
+  border-color: color-mix(in srgb, var(--vs-plum) 36%, transparent);
+  color: var(--vs-plum-deep);
+  border-radius: 999px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .jarvis-voice-panel {
+  background:
+    url('/assets/origami-chat/jarvis-frame-9slice.webp') center / 100% 100% no-repeat,
+    linear-gradient(150deg, var(--vs-paper-0), var(--vs-paper-1)) !important;
+  width: 420px !important;
+  min-height: 98px;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 55%, var(--vs-paper-1)) !important;
+  color: var(--vs-ink);
+  backdrop-filter: none;
+  box-shadow: var(--vs-lift-shadow) !important;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .jarvis-voice-panel::before {
+  background:
+    radial-gradient(
+      circle at 20% 15%,
+      color-mix(in srgb, var(--vs-coral) 18%, transparent),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 80% 85%,
+      color-mix(in srgb, var(--vs-lavender) 18%, transparent),
+      transparent 46%
+    );
+  filter: none;
+  opacity: 1;
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .jarvis-voice-panel::after {
+  border: 1px solid var(--vs-paper-edge);
+  background: transparent;
+  pointer-events: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-vibespace-page='chat']
+  .kbd {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor
+  img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor__ribbon {
+  top: 0;
+  left: 85px;
+  width: 1140px;
+  height: 88px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor__crane {
+  top: 96px;
+  left: 14px;
+  width: 90px;
+  height: 84px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor__foliage {
+  top: 230px;
+  left: 0;
+  width: 116px;
+  height: 715px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor__mountains {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 1672px;
+  height: 80px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .origami-chat-decor__flower {
+  top: 674px;
+  left: 1378px;
+  width: 298px;
+  height: 271px;
+}
+
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  [data-vibespace-page='chat']
+  :focus-visible,
+html[data-theme='vibespace']
+  body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+  .jarvis-voice-panel
+  :focus-visible {
+  outline: 2px solid var(--vs-coral-deep);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vs-paper-0) 82%, transparent);
+}
+
+@media (forced-colors: active) {
+  html[data-theme='vibespace'] body:has(main[aria-label='Workspace'] [data-vibespace-page='chat']) {
+    forced-color-adjust: auto;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    header[aria-label='Application header'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button:hover,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button.bg-muted,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    button[class*='ring-accent'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-nav-pane='true']
+    [aria-current='page'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    aside[aria-label='Inspector'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-testid='jarvis-session-panel'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-tour='chat-composer'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .jarvis-voice-panel {
+    background-image: none !important;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat']::before {
+    display: none;
+    background: none;
+    mix-blend-mode: normal;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .origami-chat-decor {
+    display: none;
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat']
+    :focus-visible,
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .jarvis-voice-panel
+    :focus-visible {
+    outline-color: Highlight;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='vibespace'] body:has(main[aria-label='Workspace'] [data-vibespace-page='chat']) {
+    --vs-cut-shadow: 0 2px 0 color-mix(in srgb, var(--vs-cardboard) 20%, transparent);
+  }
+
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-vibespace-page='chat'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    [data-tour='chat-composer'],
+  html[data-theme='vibespace']
+    body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
+    .jarvis-voice-panel {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

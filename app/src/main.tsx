@@ -22,45 +22,44 @@ import '@fontsource/inter/700.css';
 import { App } from './App';
 import './styles/globals.css';
 import './styles/vibespace-theme.css';
+import './styles/origami-chat.css';
+import './styles/monochrome-theme.css';
+import './styles/sakura-theme.css';
 import './features/workbench/registerCommandActions';
-import { applyThemeToDocument, useUIStore } from './stores/ui';
-import { startThemeSync } from './features/appearance/themeSync';
+import { useUIStore } from './stores/ui';
+import { applyThemeSyncToApplication, startThemeSync } from './features/appearance/themeSync';
+import { resolveDevelopmentSurface } from './developmentSurface';
 
-startThemeSync((theme) => {
-  applyThemeToDocument(theme);
-  useUIStore.setState({ theme });
-});
+const devSurface = import.meta.env.DEV ? resolveDevelopmentSurface(window.location.search) : null;
 
-// Mark pet-overlay BEFORE first paint so globals.css can suppress body bg.
-// Without this, body { @apply bg-background } paints an opaque rectangle
-// behind the transparent Pixi canvas in the pet-overlay WebView.
-const bootView = new URLSearchParams(window.location.search).get('view');
-if (bootView === 'pet-overlay') {
-  document.documentElement.dataset.vibespaceView = 'pet-overlay';
-  document.documentElement.style.background = 'transparent';
-  document.documentElement.style.backgroundColor = 'transparent';
-  document.body.style.background = 'transparent';
-  document.body.style.backgroundColor = 'transparent';
-  document.body.style.backgroundImage = 'none';
-  document.body.style.margin = '0';
-  document.body.style.padding = '0';
-  document.body.style.overflow = 'hidden';
+const DevelopmentEntry =
+  import.meta.env.DEV && devSurface !== null
+    ? React.lazy(() => import('./developmentEntry'))
+    : null;
+
+if (devSurface === 'monochrome') {
+  document.documentElement.dataset.theme = 'monochrome';
+} else if (devSurface === 'sakura') {
+  document.documentElement.dataset.theme = 'sakura';
+} else {
+  startThemeSync((theme) => {
+    applyThemeSyncToApplication(theme, document, useUIStore);
+  });
 }
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
   throw new Error('#root element not found');
 }
-if (bootView === 'pet-overlay') {
-  rootEl.style.background = 'transparent';
-  rootEl.style.backgroundColor = 'transparent';
-  rootEl.style.margin = '0';
-  rootEl.style.padding = '0';
-  rootEl.style.overflow = 'hidden';
-}
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    <App />
+    {DevelopmentEntry && devSurface ? (
+      <React.Suspense fallback={null}>
+        <DevelopmentEntry surface={devSurface} />
+      </React.Suspense>
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );

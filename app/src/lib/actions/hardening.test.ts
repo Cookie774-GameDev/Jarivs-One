@@ -42,21 +42,13 @@ describe('runAction param coercion', () => {
     // terminal.bulkOpen's `count` is `type: 'number'`. The actions
     // palette uses `<input type="number">` whose value is always a
     // string, so the runner must coerce before invoking the action.
-    const result = await runAction(
-      'terminal.bulkOpen',
-      { count: '2' },
-      { source: 'user' },
-    );
+    const result = await runAction('terminal.bulkOpen', { count: '2' }, { source: 'user' });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.summary).toBe('Queued 2 terminal panes.');
   });
 
   it('rejects non-numeric strings on number-typed params', async () => {
-    const result = await runAction(
-      'terminal.bulkOpen',
-      { count: 'banana' },
-      { source: 'user' },
-    );
+    const result = await runAction('terminal.bulkOpen', { count: 'banana' }, { source: 'user' });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toMatch(/count/);
@@ -81,12 +73,7 @@ describe('runAction param coercion', () => {
     // command and an out-of-spec extra — only `command` is declared,
     // unknown keys are allowed through verbatim, so the only error
     // should be the missing required param.
-    const result = await runAction(
-      'terminal.run',
-      {},
-      { source: 'user' },
-      { emitToast: false },
-    );
+    const result = await runAction('terminal.run', {}, { source: 'user' }, { emitToast: false });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/Missing required.*command/i);
   });
@@ -155,12 +142,7 @@ describe('terminal action shell-injection guard', () => {
 
   it('navigates to the Terminals page after queueing', async () => {
     expect(useUIStore.getState().route).toBe('chat');
-    const result = await runAction(
-      'terminal.claude',
-      {},
-      { source: 'user' },
-      { emitToast: false },
-    );
+    const result = await runAction('terminal.claude', {}, { source: 'user' }, { emitToast: false });
     expect(result.ok).toBe(true);
     expect(useUIStore.getState().route).toBe('terminal');
   });
@@ -170,7 +152,7 @@ describe('terminal action shell-injection guard', () => {
     const result = await runAction(
       'terminal.powershell',
       { command: script, cwd: 'C:\\Projects\\Farm Life' },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
 
@@ -196,7 +178,7 @@ describe('terminal action shell-injection guard', () => {
     const result = await runAction(
       'terminal.run',
       { command: 'npm test', timeoutMs: 30_000 },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
     expect(result.ok).toBe(true);
@@ -223,7 +205,7 @@ describe('terminal targeted command actions', () => {
     const result = await runAction(
       'terminal.sendToRefs',
       { command: 'opencode', paneId: 'pane_1', sessionId: 'pty_1' },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
 
@@ -249,7 +231,7 @@ describe('terminal targeted command actions', () => {
           { paneId: 'pane_b', sessionId: 'pty_b' },
         ]),
       },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
 
@@ -267,7 +249,7 @@ describe('terminal targeted command actions', () => {
     const result = await runAction(
       'terminal.sendToRefs',
       { command: 'opencode' },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
 
@@ -280,7 +262,7 @@ describe('terminal targeted command actions', () => {
     const result = await runAction(
       'terminal.sendAll',
       { command: 'git status' },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
 
@@ -304,7 +286,7 @@ describe('terminal targeted command actions', () => {
     const result = await runAction(
       'terminal.inspect',
       { paneId: 'pane_inspect', sessionId: 'pty_inspect' },
-      { source: 'ai' },
+      { source: 'user' },
       { emitToast: false },
     );
 

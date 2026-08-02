@@ -39,6 +39,8 @@ vi.mock('@/features/voice/VoiceActivityWaveform', () => ({
 }));
 
 import { GlobalDictationOverlay } from './GlobalDictationOverlay';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 type SessionCallbacks = {
   onOpen?: () => void;
@@ -73,6 +75,17 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
     tauriMocks.invoke.mockResolvedValue(undefined);
   });
 
+  it('renders contained visual evidence without native listeners or speech startup', async () => {
+    render(<GlobalDictationOverlay runtimeEffectsEnabled={false} />);
+    expect(screen.getByText('VibeSpace Dictation')).toBeTruthy();
+
+    await openOverlay();
+
+    expect(tauriMocks.tauriListeners.size).toBe(0);
+    expect(tauriMocks.windowApi.show).not.toHaveBeenCalled();
+    expect(sessionMocks.createSession).not.toHaveBeenCalled();
+  });
+
   it('Ctrl+Space toggle starts a shared-pipeline session and shows the engine, never Win+H', async () => {
     let callbacks: SessionCallbacks | null = null;
     sessionMocks.createSession.mockImplementation(async (cb: SessionCallbacks) => {
@@ -99,13 +112,18 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
 
   it('shows a visible error state with Retry and a settings fix path when no engine exists', async () => {
     sessionMocks.createSession.mockRejectedValue(
-      new Error('No speech-to-text engine is available. Download a local faster-whisper model or add a Deepgram/Groq key in Settings → Speech to Text.'),
+      new Error(
+        'No speech-to-text engine is available. Download a local faster-whisper model or add a ' +
+          'Deepgram/Groq key in Settings → Speech to Text. synthetic provider detail',
+      ),
     );
 
     render(<GlobalDictationOverlay />);
     await openOverlay();
 
     expect(screen.getByText(/No speech-to-text engine is available/)).toBeTruthy();
+    expect(screen.getByText(/Global dictation availability/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic provider detail/)).toBeNull();
     expect(screen.getByRole('button', { name: /Retry dictation/i })).toBeTruthy();
     // Fix path appears both in the error message and the footer hint.
     expect(screen.getAllByText(/Settings → Speech to Text/).length).toBeGreaterThanOrEqual(1);
@@ -121,7 +139,10 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
 
     render(<GlobalDictationOverlay />);
     await openOverlay();
-    expect(screen.getByText(/Microphone permission denied/)).toBeTruthy();
+    expect(
+      screen.getByText(/Microphone capture is unavailable or permission was denied/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Microphone permission denied/)).toBeNull();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Retry dictation/i }));
@@ -166,9 +187,40 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
     vi.useRealTimers();
   });
 
+  it('preserves a batch-transcription diagnostic instead of overwriting it as empty speech', async () => {
+    let callbacks: SessionCallbacks | null = null;
+    const session = fakeSession('', 'Local faster-whisper');
+    session.stop = vi.fn(async () => {
+      callbacks?.onError?.(
+        'The action failed, sir. Action: Local faster-whisper transcription. ' +
+          'Cause: Captured audio could not be transcribed. ' +
+          'Check the selected engine and connection, then retry.',
+      );
+    });
+    sessionMocks.createSession.mockImplementation(async (cb: SessionCallbacks) => {
+      callbacks = cb;
+      return session;
+    });
+
+    render(<GlobalDictationOverlay />);
+    await openOverlay();
+    act(() => callbacks!.onOpen?.());
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Local faster-whisper transcription/)).toBeTruthy();
+    expect(screen.queryByText(/No speech was transcribed/)).toBeNull();
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith('dictation_paste_text', expect.anything());
+  });
+
   it('paste failure re-shows the overlay with a visible error and fix path', async () => {
     vi.useFakeTimers();
-    tauriMocks.invoke.mockRejectedValue(new Error('xdotool is required for dictation paste on Linux'));
+    tauriMocks.invoke.mockRejectedValue(
+      new Error('xdotool is required for dictation paste on Linux: synthetic path'),
+    );
     let callbacks: SessionCallbacks | null = null;
     sessionMocks.createSession.mockImplementation(async (cb: SessionCallbacks) => {
       callbacks = cb;
@@ -192,9 +244,23 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/Paste failed: xdotool/)).toBeTruthy();
+    expect(screen.getByText(/Linux dictation paste requires xdotool/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic path/)).toBeNull();
     expect(tauriMocks.windowApi.show).toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it('suppresses an unknown startup exception behind a precise retry path', async () => {
+    sessionMocks.createSession.mockRejectedValue(
+      new Error('synthetic dictation startup implementation detail'),
+    );
+
+    render(<GlobalDictationOverlay />);
+    await openOverlay();
+
+    expect(screen.getByText(/The dictation session could not start/)).toBeTruthy();
+    expect(screen.getByText(/selected speech-to-text engine/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic dictation startup implementation detail/)).toBeNull();
   });
 
   it('Escape cancels without pasting', async () => {
@@ -240,5 +306,35 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
     expect(screen.queryByText('some words')).toBeNull();
     expect(session.cancel).not.toHaveBeenCalled();
     expect(screen.getByText(/Listening/)).toBeTruthy();
+  });
+});
+
+describe('GlobalDictationOverlay MonoChrome appearance', () => {
+  function readComponentSource(): string {
+    return readFileSync(resolve(__dirname, 'GlobalDictationOverlay.tsx'), 'utf8');
+  }
+
+  it('flattens shadow, blur, fill, border, and radius only beneath the canonical MonoChrome gate', () => {
+    const source = readComponentSource();
+
+    // Canonical repo-wide MonoChrome gate root: matches monochrome-theme.css
+    // and the other shell-overlay appearance tests.
+    expect(source).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:backdrop-blur-none');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:bg-background');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:border-border-mid');
+    expect(source).toContain('[html[data-theme=monochrome]_&]:rounded-sm');
+
+    // The loose, non-canonical gate root must be fully normalized away.
+    expect(source).not.toContain('[[data-theme=monochrome]_&]:');
+  });
+
+  it('preserves the ordinary-theme overlay elevation, blur, and fill', () => {
+    const source = readComponentSource();
+
+    expect(source).toContain('shadow-[0_18px_60px_rgba(0,0,0,0.45)]');
+    expect(source).toContain('backdrop-blur-xl');
+    expect(source).toContain('rounded-2xl');
+    expect(source).toContain('bg-background/94');
   });
 });

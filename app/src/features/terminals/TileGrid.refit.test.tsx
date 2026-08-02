@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TileGrid } from './TileGrid';
+import { requestTerminalLeafClose, TileGrid } from './TileGrid';
 import { fromLeaves, newLeaf, type PaneNode } from './paneTree';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -41,12 +41,16 @@ describe('TileGrid terminal refit scheduling', () => {
   let originalRequestAnimationFrame: typeof window.requestAnimationFrame;
   let originalCancelAnimationFrame: typeof window.cancelAnimationFrame;
   let originalGetBoundingClientRect: typeof HTMLElement.prototype.getBoundingClientRect;
+  let originalScrollIntoView: typeof HTMLElement.prototype.scrollIntoView;
+  let originalMatchMedia: typeof window.matchMedia;
 
   beforeEach(() => {
     rafQueue = [];
     originalRequestAnimationFrame = window.requestAnimationFrame;
     originalCancelAnimationFrame = window.cancelAnimationFrame;
     originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    originalMatchMedia = window.matchMedia;
     window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       rafQueue.push(cb);
       return rafQueue.length;
@@ -69,6 +73,8 @@ describe('TileGrid terminal refit scheduling', () => {
     window.requestAnimationFrame = originalRequestAnimationFrame;
     window.cancelAnimationFrame = originalCancelAnimationFrame;
     HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    window.matchMedia = originalMatchMedia;
     vi.restoreAllMocks();
   });
 
@@ -91,18 +97,118 @@ describe('TileGrid terminal refit scheduling', () => {
     fireEvent.mouseUp(document);
     flushAnimationFrames();
 
-    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(true);
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(
+      true,
+    );
   });
 
   it('broadcasts a terminal refit after fullscreen visibility changes', () => {
     const onChange = vi.fn();
     const dispatch = vi.spyOn(window, 'dispatchEvent');
     const tree = twoPaneTree();
-    const { rerender } = render(<TileGrid tree={tree} onChange={onChange} fullscreenPaneId={null} />);
+    const { rerender } = render(
+      <TileGrid tree={tree} onChange={onChange} fullscreenPaneId={null} />,
+    );
 
     rerender(<TileGrid tree={tree} onChange={onChange} fullscreenPaneId="pane-a" />);
     flushAnimationFrames();
 
-    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(true);
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(
+      true,
+    );
+  });
+
+  it('flattens the rendered pane shadow only in MonoChrome', () => {
+    const { container } = render(<TileGrid tree={newLeaf()} onChange={vi.fn()} />);
+    const pane = container.querySelector<HTMLElement>('[data-terminal-drop="pane"]');
+
+    expect(pane?.className).toContain('shadow-soft');
+    expect(pane?.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+  });
+
+  it('uses immediate focus scrolling and non-animated focus chrome for reduced motion', () => {
+    vi.useFakeTimers();
+    try {
+      window.matchMedia = vi.fn(
+        () =>
+          ({
+            matches: true,
+            media: '(prefers-reduced-motion: reduce)',
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+          }) as MediaQueryList,
+      );
+      const scrollIntoView = vi.fn();
+      HTMLElement.prototype.scrollIntoView = scrollIntoView;
+      const tree: PaneNode = {
+        kind: 'leaf',
+        id: 'pane-focus',
+        sessionId: 'pty-focus',
+        command: 'powershell',
+      };
+      const { container } = render(<TileGrid tree={tree} onChange={vi.fn()} />);
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('jarvis:terminal:focus', {
+            detail: { sessionId: 'pty-focus', paneId: 'pane-focus' },
+          }),
+        );
+      });
+
+      const pane = container.querySelector<HTMLElement>('[data-terminal-drop="pane"]');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', behavior: 'auto' });
+      expect(pane?.className).toContain('animate-terminal-focus');
+      expect(pane?.className).toContain('motion-reduce:animate-none');
+      expect(pane?.className).toContain('[html[data-theme=monochrome]_&]:animate-none');
+      expect(pane?.className).toContain('[html[data-theme=monochrome]_&]:ring-0');
+      expect(pane?.className).toContain('[html[data-theme=monochrome]_&]:outline');
+
+      act(() => {
+        vi.advanceTimersByTime(2_500);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects unavailable canonical pane close truth without a raw kill', async () => {
+    const requestCanonical = vi.fn(async () => null);
+    const kill = vi.fn(async () => undefined);
+
+    await expect(
+      requestTerminalLeafClose(
+        { executionId: 'jterm_1', sessionId: 'pty_1' },
+        {
+          isCanonical: () => true,
+          requestCanonical,
+          kill,
+        },
+      ),
+    ).resolves.toBe('canonical_rejected');
+
+    expect(requestCanonical).toHaveBeenCalledWith('jterm_1');
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it('reports canonical pane close pending only after intent is committed', async () => {
+    const requestCanonical = vi.fn(async () => ({
+      kind: 'intent_committed' as const,
+      requestState: 'new' as const,
+      authorityState: 'current' as const,
+      cancellationRequestId: 'jcancel_1',
+      aggregate: { kind: 'handoff_pending' as const, ownerIds: ['terminal:jterm_1'] },
+    }));
+
+    await expect(
+      requestTerminalLeafClose(
+        { executionId: 'jterm_1', sessionId: 'pty_1' },
+        { isCanonical: () => true, requestCanonical },
+      ),
+    ).resolves.toBe('canonical_pending');
   });
 });

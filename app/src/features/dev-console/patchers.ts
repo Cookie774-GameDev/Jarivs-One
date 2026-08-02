@@ -98,9 +98,9 @@ function patchConsole(): () => void {
 
   for (const { method, level } of CONSOLE_METHODS) {
     const orig = original[method as keyof OriginalConsole];
-    (console as unknown as Record<string, (...args: unknown[]) => void>)[
-      method as string
-    ] = (...args: unknown[]) => {
+    (console as unknown as Record<string, (...args: unknown[]) => void>)[method as string] = (
+      ...args: unknown[]
+    ) => {
       // Always call the original first so devtools sees the real
       // entry regardless of what our patch does.
       try {
@@ -109,27 +109,30 @@ function patchConsole(): () => void {
         /* ignore */
       }
       if (isLogging) return;
-      try {
-        isLogging = true;
-        devConsole.log({
-          channel: 'console',
-          level,
-          message: summariseArgs(args),
-          detail: { method, args },
-        });
-      } catch {
-        /* never let the patch throw */
-      } finally {
-        isLogging = false;
-      }
+      const message = summariseArgs(args);
+      queueMicrotask(() => {
+        if (!installed) return;
+        try {
+          isLogging = true;
+          devConsole.log({
+            channel: 'console',
+            level,
+            message,
+            detail: { method, args },
+          });
+        } catch {
+          /* never let the patch throw */
+        } finally {
+          isLogging = false;
+        }
+      });
     };
   }
 
   return () => {
     for (const { method } of CONSOLE_METHODS) {
-      (console as unknown as Record<string, (...args: unknown[]) => void>)[
-        method as string
-      ] = original[method as keyof OriginalConsole];
+      (console as unknown as Record<string, (...args: unknown[]) => void>)[method as string] =
+        original[method as keyof OriginalConsole];
     }
   };
 }
@@ -149,12 +152,7 @@ function patchFetch(): () => void {
     init?: RequestInit,
   ): Promise<Response> {
     const start = Date.now();
-    const url =
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const method = (init?.method ?? 'GET').toUpperCase();
     const safeUrl = redactUrl(url);
     try {
@@ -181,17 +179,13 @@ function patchFetch(): () => void {
       devConsole.log({
         channel: 'fetch',
         level: 'error',
-        message: `${method} ${shortUrl(url)} → ${
-          err instanceof Error ? err.message : 'failed'
-        }`,
+        message: `${method} ${shortUrl(url)} → ${err instanceof Error ? err.message : 'failed'}`,
         durationMs: dur,
         detail: {
           url: safeUrl,
           method,
           error:
-            err instanceof Error
-              ? { name: err.name, message: err.message, stack: err.stack }
-              : err,
+            err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
         },
       });
       throw err;
@@ -339,11 +333,7 @@ function patchInvoke(): () => void {
  * doing so would pull `@tauri-apps/api/core` into the boot chunk
  * and defeat the lazy import.
  */
-type InvokeFn = (
-  cmd: string,
-  args?: unknown,
-  options?: unknown,
-) => Promise<unknown>;
+type InvokeFn = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
 
 function wrappedInvoke(original: InvokeFn): InvokeFn {
   return async (cmd, args, options) => {
@@ -362,17 +352,13 @@ function wrappedInvoke(original: InvokeFn): InvokeFn {
       devConsole.log({
         channel: 'invoke',
         level: 'error',
-        message: `invoke ${cmd} → ${
-          err instanceof Error ? err.message : 'failed'
-        }`,
+        message: `invoke ${cmd} → ${err instanceof Error ? err.message : 'failed'}`,
         durationMs: Date.now() - start,
         detail: {
           cmd,
           args,
           error:
-            err instanceof Error
-              ? { name: err.name, message: err.message, stack: err.stack }
-              : err,
+            err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
         },
       });
       throw err;
@@ -395,8 +381,7 @@ function patchDispatchEvent(): () => void {
   window.dispatchEvent = (event: Event) => {
     try {
       if (event.type.startsWith('jarvis:')) {
-        const detail =
-          event instanceof CustomEvent ? (event as CustomEvent).detail : undefined;
+        const detail = event instanceof CustomEvent ? (event as CustomEvent).detail : undefined;
         devConsole.log({
           channel: 'event',
           level: 'info',
@@ -443,7 +428,8 @@ function patchWindowErrors(): () => void {
     devConsole.log({
       channel: 'window',
       level: 'error',
-      message: reason instanceof Error ? `unhandledrejection: ${reason.message}` : 'unhandledrejection',
+      message:
+        reason instanceof Error ? `unhandledrejection: ${reason.message}` : 'unhandledrejection',
       detail: {
         reason:
           reason instanceof Error

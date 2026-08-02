@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
-import { effectivePlan, isAdminIdentity } from '@/lib/entitlements';
+import { effectivePlan } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 import { AmbientAudioEngine } from './ambientAudio';
 import { shouldAmbientMusicPlay } from './ambientPlayback';
 import { getPlayableAmbientTrack } from './tracks';
@@ -14,16 +15,13 @@ export function AmbientAudioHost() {
   const ambientTrack = useUIStore((s) => s.ambientTrack);
   const ambientVolume = useUIStore((s) => s.ambientVolume);
   const plan = useAuthStore((s) => s.plan);
-  const email = useAuthStore((s) => s.email);
-  const cloudEmail = useAuthStore((s) => s.cloudSession?.email ?? null);
-  const localUserId = useAuthStore((s) => s.localUserId);
   const shouldPlay = shouldAmbientMusicPlay(
     ambient,
     ambientActive,
     ambientDrone,
     ambientAlwaysPlay,
   );
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const playableTrack = getPlayableAmbientTrack(ambientTrack, effectivePlan(plan, admin), admin);
 
   // Synchronize playing state

@@ -1,30 +1,33 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { Theme } from '@/types/common';
 import { createDebouncedStateStorage } from '@/lib/persistence/debouncedStateStorage';
 import { safeLocalStorage, measureStorageSizes } from '@/lib/persistence/safeLocalStorage';
 import { syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import type { ProductTutorialStatus } from '@/features/product-tutorial/tutorialState';
 import { markTutorialPending } from '@/features/product-tutorial/tutorialState';
-import { migrateThemePreference } from '@/features/appearance/themes';
 import { publishThemePreference } from '@/features/appearance/themeSync';
+import {
+  THEME_FALLBACK_ID,
+  THEME_STORAGE_KEY,
+  UI_STORE_VERSION,
+  normalizePersistedTheme,
+  resolveDocumentTheme,
+} from '@/features/appearance/themeContract';
+import type { ResolvedDocumentTheme, SelectableTheme } from '@/features/appearance/themeContract';
 
 const debouncedUiStorage = createDebouncedStateStorage(safeLocalStorage);
 
-export type ResolvedTheme = 'dark' | 'light' | 'jarvis' | 'vibespace';
-
-export function resolveTheme(theme: Theme, prefersDark?: boolean): ResolvedTheme {
-  if (theme === 'default') return 'dark';
-  if (theme !== 'system') return theme;
-  const dark =
-    prefersDark ??
-    (typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches);
-  return dark ? 'dark' : 'light';
+export function flushUiStatePersistence(): void {
+  void debouncedUiStorage.flush();
 }
 
-export function applyThemeToDocument(theme: Theme): void {
+export type ResolvedTheme = ResolvedDocumentTheme;
+
+export function resolveTheme(theme: SelectableTheme): ResolvedTheme {
+  return resolveDocumentTheme(theme);
+}
+
+export function applyThemeToDocument(theme: SelectableTheme): void {
   if (typeof document === 'undefined') return;
   document.documentElement.setAttribute('data-theme', resolveTheme(theme));
   document.documentElement.setAttribute('data-theme-preference', theme);
@@ -46,6 +49,7 @@ export type DoneNotificationSettings = Record<DoneNotificationKey, boolean>;
  */
 export type Route =
   | 'chat'
+  | 'canvas'
   | 'workbench'
   | 'preview'
   | 'browser'
@@ -68,8 +72,7 @@ export type Route =
  * by the detached Workbench window so it can boot directly into its surface.
  */
 export function resolveInitialRoute(search?: string): Route {
-  const value =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const value = search ?? (typeof window !== 'undefined' ? window.location.search : '');
   return new URLSearchParams(value).get('workbench') === '1' ? 'workbench' : 'chat';
 }
 
@@ -79,7 +82,7 @@ export function resolveInitialRoute(search?: string): Route {
  */
 export type WellnessKind = 'eye-break-20-20-20';
 
-interface UIState {
+export interface UIState {
   // Layout
   navOpen: boolean;
   inspectorOpen: boolean;
@@ -114,7 +117,7 @@ interface UIState {
   productTutorialStatus: ProductTutorialStatus;
 
   // Theme + layout prefs
-  theme: Theme;
+  theme: SelectableTheme;
   density: 'compact' | 'cozy';
 
   // V2 — ambient idle home
@@ -218,7 +221,7 @@ interface UIState {
   setActiveAgent: (id: string | null) => void;
   toggleNavSection: (id: string) => void;
   setChatMode: (mode: ChatMode) => void;
-  setTheme: (t: Theme) => void;
+  setTheme: (t: SelectableTheme) => void;
   finishOnboarding: () => void;
   setProductTutorialStatus: (status: ProductTutorialStatus) => void;
   resetUI: () => void;
@@ -345,6 +348,116 @@ const defaults: Pick<
   actionsPaletteOpen: false,
 };
 
+function isPersistedRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function migratePersistedUiState(
+  persistedState: unknown,
+  version: number,
+): Record<string, unknown> {
+  let state: Record<string, unknown> = isPersistedRecord(persistedState)
+    ? { ...persistedState }
+    : {};
+
+  if (version < 1) {
+    console.info(`[useUIStore] Migrating persisted state from version ${version} to 1`);
+    const safeKeys = [
+      'navOpen',
+      'inspectorOpen',
+      'activeChatId',
+      'activeAgentId',
+      'route',
+      'navSectionsCollapsed',
+      'chatMode',
+      'theme',
+      'density',
+      'onboardingComplete',
+      'ambient',
+      'ambientThresholdMs',
+      'ambientDrone',
+      'ambientTrack',
+      'ambientVolume',
+      'ambientAlwaysPlay',
+      'composerStt',
+      'defaultTerminalFontSize',
+      'notificationMaster',
+      'doneNotifications',
+      'aiCompletionCue',
+      'lastSeenWhatsNewVersion',
+    ];
+    const migrated: Record<string, unknown> = {};
+    for (const key of safeKeys) {
+      if (key in state) migrated[key] = state[key];
+    }
+    measureStorageSizes('migration', true);
+    state = migrated;
+  }
+
+  if (version < 2) {
+    state = {
+      ...state,
+      notificationMaster: false,
+      doneNotifications: {
+        jarvis: false,
+        terminal: false,
+        tasks: false,
+        contextMaps: false,
+        skills: false,
+      },
+      aiCompletionCue: false,
+    };
+  }
+
+  if (version < 3) {
+    state = {
+      ...state,
+      productTutorialStatus:
+        'productTutorialStatus' in state
+          ? (state.productTutorialStatus as ProductTutorialStatus)
+          : null,
+    };
+  }
+
+  if (version < 4) {
+    state = {
+      ...state,
+      theme: normalizePersistedTheme(state.theme),
+    };
+  }
+
+  if (version < UI_STORE_VERSION) {
+    state = {
+      ...state,
+      theme: normalizePersistedTheme(state.theme),
+    };
+  }
+
+  return state;
+}
+
+export function mergePersistedUiState(persistedState: unknown, currentState: UIState): UIState {
+  const validatedState: Record<string, unknown> & { theme: SelectableTheme } = isPersistedRecord(
+    persistedState,
+  )
+    ? {
+        ...persistedState,
+        theme: normalizePersistedTheme(persistedState.theme),
+      }
+    : { theme: THEME_FALLBACK_ID };
+
+  const merged = {
+    ...currentState,
+    ...validatedState,
+  } as UIState & Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(currentState)) {
+    if (typeof value === 'function') merged[key] = value;
+  }
+
+  return merged;
+}
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -378,10 +491,9 @@ export const useUIStore = create<UIState>()(
         })),
       setChatMode: (mode) => set({ chatMode: mode }),
       setTheme: (t) => {
-        const theme = migrateThemePreference(t);
-        applyThemeToDocument(theme);
-        set({ theme });
-        publishThemePreference(theme);
+        applyThemeToDocument(t);
+        set({ theme: t });
+        publishThemePreference(t);
       },
       finishOnboarding: () =>
         set((s) => ({
@@ -462,83 +574,11 @@ export const useUIStore = create<UIState>()(
       toggleActionsPalette: () => set((s) => ({ actionsPaletteOpen: !s.actionsPaletteOpen })),
     }),
     {
-      name: 'jarvis-ui',
+      name: THEME_STORAGE_KEY,
       storage: createJSONStorage(() => debouncedUiStorage),
-      version: 4,
-      migrate: (persistedState: any, version: number) => {
-        let state = persistedState;
-        if (version < 1) {
-          console.info(`[useUIStore] Migrating persisted state from version ${version} to 1`);
-          const safeKeys = [
-            'navOpen',
-            'inspectorOpen',
-            'activeChatId',
-            'activeAgentId',
-            'route',
-            'navSectionsCollapsed',
-            'chatMode',
-            'theme',
-            'density',
-            'onboardingComplete',
-            'ambient',
-            'ambientThresholdMs',
-            'ambientDrone',
-            'ambientTrack',
-            'ambientVolume',
-            'ambientAlwaysPlay',
-            'composerStt',
-            'defaultTerminalFontSize',
-            'notificationMaster',
-            'doneNotifications',
-            'aiCompletionCue',
-            'lastSeenWhatsNewVersion',
-          ];
-          const migrated: Record<string, any> = {};
-          if (persistedState && typeof persistedState === 'object') {
-            for (const key of safeKeys) {
-              if (key in persistedState) {
-                migrated[key] = persistedState[key];
-              }
-            }
-          }
-          measureStorageSizes('migration', true);
-          state = migrated;
-        }
-        if (version < 2) {
-          state = {
-            ...(state && typeof state === 'object' ? state : {}),
-            notificationMaster: false,
-            doneNotifications: {
-              jarvis: false,
-              terminal: false,
-              tasks: false,
-              contextMaps: false,
-              skills: false,
-            },
-            aiCompletionCue: false,
-          };
-        }
-        if (version < 3) {
-          // Existing installs: never force the product tour.
-          // New users get `pending` via finishOnboarding.
-          state = {
-            ...(state && typeof state === 'object' ? state : {}),
-            productTutorialStatus:
-              state && typeof state === 'object' && 'productTutorialStatus' in state
-                ? (state as { productTutorialStatus: ProductTutorialStatus }).productTutorialStatus
-                : null,
-          };
-        }
-        if (version < 4) {
-          state = {
-            ...(state && typeof state === 'object' ? state : {}),
-            theme: migrateThemePreference(
-              state && typeof state === 'object' ? (state as { theme?: unknown }).theme : undefined,
-            ),
-          };
-        }
-        return state;
-      },
+      version: UI_STORE_VERSION,
+      migrate: migratePersistedUiState,
+      merge: mergePersistedUiState,
       partialize: (s) => ({
         navOpen: s.navOpen,
         inspectorOpen: s.inspectorOpen,

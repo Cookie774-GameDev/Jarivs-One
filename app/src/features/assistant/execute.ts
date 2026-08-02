@@ -12,21 +12,24 @@
  *   - Terminal intents are routed into the live terminal command queue so
  *     they spawn real PTYs or write into existing panes.
  */
-import {
-  chatRepo,
-  eventRepo,
-  projectRepo,
-  taskRepo,
-} from '@/lib/db';
+import { chatRepo, eventRepo, projectRepo, taskRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { parseEventInput } from '@/features/schedule/parseEventInput';
-import { broadcastTerminalCommand, enqueueTerminalCommand } from '@/features/terminals/terminalCommandQueue';
+import {
+  broadcastTerminalCommand,
+  enqueueTerminalCommand,
+} from '@/features/terminals/terminalCommandQueue';
 import { fireOutboundCall, sendOutboundMessage } from '@/features/call/outbound';
-import { formatContextTreeForPrompt, loadStoredContextTree } from '@/features/context/tree';
+import { formatContextTreeForPrompt } from '@/features/context/tree';
+import {
+  contextTreeFromPersistenceState,
+  ensureContextPersistence,
+} from '@/features/context/contextPersistence';
 import { useToolStore, slugify } from '@/features/tools/toolStore';
 import { runAction } from '@/lib/actions';
 import { useWorkbenchStore } from '@/features/workbench/store';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import type { AgentId, ProjectId, WorkspaceId } from '@/types/common';
 import type { AssistantIntent, AssistantResult } from './intents';
 
@@ -109,7 +112,9 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
             workbench.addPanel(intent.panelKind);
           }
           await openWindow();
-          return ok(`Added ${count} ${intent.panelKind} panel${count === 1 ? '' : 's'} to Workbench.`);
+          return ok(
+            `Added ${count} ${intent.panelKind} panel${count === 1 ? '' : 's'} to Workbench.`,
+          );
         }
         if (intent.action === 'set-wallpaper') {
           workbench.setWallpaper(intent.wallpaperId);
@@ -118,7 +123,9 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
         }
         const paused = intent.action === 'pause-wallpaper';
         workbench.configureWallpaper({ paused });
-        return ok(paused ? 'Paused Workbench wallpaper motion.' : 'Resumed Workbench wallpaper motion.');
+        return ok(
+          paused ? 'Paused Workbench wallpaper motion.' : 'Resumed Workbench wallpaper motion.',
+        );
       }
 
       // ----------------------------------------------------------------
@@ -144,7 +151,8 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
         if (!target) return fail('Tell me which project to switch to.');
         const all = await projectRepo.listByWorkspace(workspaceId);
         const exact = all.find((p) => p.name.trim().toLowerCase() === target.toLowerCase());
-        const matched = exact ?? all.find((p) => p.name.trim().toLowerCase().includes(target.toLowerCase()));
+        const matched =
+          exact ?? all.find((p) => p.name.trim().toLowerCase().includes(target.toLowerCase()));
         if (!matched) {
           return fail(`No project named '${target}'. Tip: try 'create project ${target}' first.`);
         }
@@ -252,7 +260,12 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
           tools.find((item) => item.name.trim().toLowerCase() === normalized) ??
           tools.find((item) => item.name.trim().toLowerCase().includes(normalized));
         if (!tool) return fail(`No custom command named '${name}'. Create it first.`);
-        const result = await runAction(`custom.${tool.slug}`, {}, { source: 'user' }, { emitToast: false });
+        const result = await runAction(
+          `custom.${tool.slug}`,
+          {},
+          { source: 'user' },
+          { emitToast: false },
+        );
         if (!result.ok) return fail(result.error);
         return ok(result.summary ?? `Ran '${tool.name}'.`);
       }
@@ -284,12 +297,18 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
         const contextParts: string[] = [];
         if (projectId) {
           const project = await projectRepo.getById(projectId);
-          if (project?.system_prompt_context?.trim()) contextParts.push(project.system_prompt_context.trim());
+          if (project?.system_prompt_context?.trim())
+            contextParts.push(project.system_prompt_context.trim());
         }
-        const tree = loadStoredContextTree(projectId);
+        const state = await ensureContextPersistence(projectId);
+        const tree = contextTreeFromPersistenceState(state);
         if (tree) contextParts.push(formatContextTreeForPrompt(tree));
-        const context = contextParts.join('\n\n') || 'Jarvis project context is active for this workspace.';
-        const command = context.split('\n').map((line) => (line ? `# ${line}` : '#')).join('\n');
+        const context =
+          contextParts.join('\n\n') || 'Jarvis project context is active for this workspace.';
+        const command = context
+          .split('\n')
+          .map((line) => (line ? `# ${line}` : '#'))
+          .join('\n');
         broadcastTerminalCommand({
           command,
           label: 'context',
@@ -411,7 +430,9 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
         const ui = useUIStore.getState();
         if (intent.on === undefined) {
           ui.toggleChatFullscreen();
-          return ok(useUIStore.getState().chatFullscreen ? 'Entered fullscreen.' : 'Exited fullscreen.');
+          return ok(
+            useUIStore.getState().chatFullscreen ? 'Entered fullscreen.' : 'Exited fullscreen.',
+          );
         }
         if (ui.chatFullscreen !== intent.on) {
           ui.setChatFullscreen(intent.on);
@@ -464,17 +485,29 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
       // ----------------------------------------------------------------
       case 'unknown':
       default: {
-        const suggestions = ('suggestions' in intent ? (intent as { suggestions?: string[] }).suggestions : undefined) ?? [];
-        const hint = suggestions.length > 0
-          ? ` Did you mean: ${suggestions.slice(0, 3).map((s) => `"${s}"`).join(', ')}?`
-          : '';
+        const suggestions =
+          ('suggestions' in intent
+            ? (intent as { suggestions?: string[] }).suggestions
+            : undefined) ?? [];
+        const hint =
+          suggestions.length > 0
+            ? ` Did you mean: ${suggestions
+                .slice(0, 3)
+                .map((s) => `"${s}"`)
+                .join(', ')}?`
+            : '';
         return fail(
           `I didn't catch that. Try: 'create project tiger then open 4 terminals', 'create command dev server to run npm run dev', 'call me at 3pm', or 'message me: build is done'.${hint}`,
         );
       }
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Something went wrong.';
-    return fail(message);
+  } catch {
+    return fail(
+      formatJarvisVerifiedNarration({
+        kind: 'failure',
+        actionLabel: `Assistant command (${intent.kind})`,
+        reason: 'The command executor returned an unexpected failure',
+      }).text,
+    );
   }
 }

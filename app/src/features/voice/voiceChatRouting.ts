@@ -8,6 +8,7 @@ import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { Agent, AgentId, Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
+import { findProtectedJarvisAgent, isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 
 export interface VoiceChatTarget {
   chatId: ChatId;
@@ -32,9 +33,9 @@ export function detectVoiceMention(text: string): string | null {
 /** True when the chat's bound agent is Jarvis (or unset → Jarvis default). */
 export function isJarvisChat(chat: Chat, agents: Record<string, Agent>): boolean {
   const boundId = chat.active_agent_ids?.[0];
-  if (!boundId) return true;
+  if (!boundId) return findProtectedJarvisAgent(Object.values(agents)) !== undefined;
   const bound = agents[boundId];
-  return !bound || bound.slug === JARVIS_SLUG;
+  return Boolean(bound && isProtectedJarvisAgent(bound));
 }
 
 /** Detect an explicitly named non-Jarvis agent in a voice utterance. */
@@ -60,10 +61,7 @@ export function detectExplicitVoiceAgentSlug(utterance: string): string | null {
   return null;
 }
 
-export function voiceMessageTextForAgentRoute(
-  utterance: string,
-  slug: string,
-): string {
+export function voiceMessageTextForAgentRoute(utterance: string, slug: string): string {
   const text = utterance.trim();
   const intent = IntentClassifier.classify(text);
   if (intent.intent === 'agent_route' && intent.slots.query?.trim()) {
@@ -75,7 +73,12 @@ export function voiceMessageTextForAgentRoute(
 
   const dictMatch = DICTATION_AGENT_RX.exec(text);
   if (dictMatch) {
-    return text.slice(dictMatch[0].length).replace(/^[\s,:.-]+/, '').trim() || text;
+    return (
+      text
+        .slice(dictMatch[0].length)
+        .replace(/^[\s,:.-]+/, '')
+        .trim() || text
+    );
   }
 
   return text;
@@ -101,13 +104,13 @@ async function listScopedChats(): Promise<Chat[]> {
 }
 
 /** Most recent Jarvis chat in the active project, or create one. */
-export async function ensureJarvisChatForVoice(
-  titleHint?: string,
-): Promise<ChatId | null> {
+export async function ensureJarvisChatForVoice(titleHint?: string): Promise<ChatId | null> {
   const auth = useAuthStore.getState();
   if (!auth.workspaceId) return null;
 
   const agents = useAgentStore.getState().agents;
+  const protectedJarvis = findProtectedJarvisAgent(Object.values(agents));
+  if (!protectedJarvis) return null;
   const scoped = await listScopedChats();
   const jarvisChats = scoped
     .filter((chat) => isJarvisChat(chat, agents))
@@ -122,7 +125,7 @@ export async function ensureJarvisChatForVoice(
     project_id: auth.projectId ?? undefined,
     title: titleHint?.trim() ? `New chat` : `New chat ${scoped.length + 1}`,
     mode: 'chat',
-    active_agent_ids: [],
+    active_agent_ids: [protectedJarvis.id],
   });
   return chat.id;
 }

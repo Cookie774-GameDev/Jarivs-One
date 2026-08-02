@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "8bd1e58cdb1ed6661eebe8d9afc3f1b86ae75696",
+  "origamiCommit": "30600cd4940b424a513f4b997f3cfca433a8f32b",
+  "route": "Chat",
+  "viewport": {
+    "width": 1672,
+    "height": 941,
+    "deviceScaleFactor": 1,
+    "browserZoomPercent": 100
+  },
+  "materializationCommand": "node scripts/visual-chat/materialize-baseline.mjs",
+  "captureCommand": "node scripts/visual-chat/capture-chat.mjs --dist .artifacts/origami-chat/baseline-source/app/dist --output .artifacts/origami-chat/baseline/chat.png --historical-chat-root",
+  "comparisonCommand": "node scripts/visual-chat/compare-chat.mjs --current .artifacts/origami-chat/baseline/chat.png --output .artifacts/origami-chat/baseline/compare --pass baseline --revision 8bd1e58cdb1ed6661eebe8d9afc3f1b86ae75696 --route Chat",
+  "browserSource": "msedge",
+  "historicalRoot": {
+    "injected": true,
+    "selector": "[data-terminal-drop=\"chat\"][data-terminal-drop-chat-id]",
+    "requiredDescendants": [
+      "[data-testid=\"jarvis-session-panel\"]",
+      "textarea[aria-label=\"Message\"]",
+      "[role=\"log\"][data-tour=\"chat-thread\"]"
+    ]
+  },
+  "referenceTargetSha256": "1f61e223d6db54d9f32de4c3de8c98ff3028556b579b1f6a69b5317d35e8fe27",
+  "fixtureSha256": "4db0e6aafcc439be18b5103d135bdd2e79d6f26976b04eb0c9c57e2225fd72fc",
+  "screenshotSha256": "e4b9696d2ad87e552800673f8fafacf822dc21a372016d1b6ef3aa0e384da877",
+  "reportSha256": "6829814f494b704df0f85694defc4d4e1d979518cda1c18dc6398d69f7acc58f",
+  "artifactPaths": {
+    "screenshot": ".artifacts/origami-chat/baseline/chat.png",
+    "report": ".artifacts/origami-chat/baseline/compare/report.json"
+  },
+  "scores": {
+    "fullDiffRatio": 0.3409084553234114,
+    "weightedDiffRatio": 0.3837766819429744,
+    "regions": {
+      "assistant_message": 0.1764074844074844,
+      "composer": 0.33595553859364563,
+      "header_full": 0.4747076023391813,
+      "jarvis_module": 0.5083234244946492,
+      "lower_right_flower": 0.606341252861915,
+      "paper_closeup": 0.18854166666666666,
+      "session_panel": 0.1473036961668656,
+      "sidebar_full": 0.4662217567167162,
+      "top_ribbon": 0.5596790271132377,
+      "upper_left_crane": 0.745991847826087,
+      "user_bubble": 0.4390808823529412
+    }
+  }
+}

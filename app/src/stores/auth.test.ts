@@ -2,10 +2,98 @@ import { useAuthStore } from './auth';
 import { secureDeleteApiKey, secureGetApiKey } from '@/lib/security/secureApiKeys';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 
+describe('Prompt Forge model preference', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({
+      chatModelSelection: { mode: 'none' },
+      promptForgeModelSelection: { mode: 'prefer_local' },
+    });
+  });
+
+  it('defaults separately to Prefer local and never changes the chat model', () => {
+    expect(useAuthStore.getInitialState().promptForgeModelSelection).toEqual({
+      mode: 'prefer_local',
+    });
+    useAuthStore.getState().setPromptForgeModelSelection({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connectionId: 'openai-codex',
+    });
+    expect(useAuthStore.getState().chatModelSelection).toEqual({ mode: 'none' });
+    expect(useAuthStore.getState().promptForgeModelSelection).toMatchObject({
+      mode: 'single',
+      connectionId: 'openai-codex',
+    });
+    expect(window.localStorage.getItem('jarvis-auth')).toContain(
+      '"promptForgeModelSelection":{"mode":"single"',
+    );
+  });
+
+  it('migrates prior state to the safe local-first default', async () => {
+    useAuthStore.setState({
+      promptForgeModelSelection: { mode: 'current_chat_model' },
+    });
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          apiKeys: {},
+          chatModelSelection: { mode: 'none' },
+          previousChatModelSelection: { mode: 'none' },
+        },
+        version: 13,
+      }),
+    );
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().promptForgeModelSelection).toEqual({
+      mode: 'prefer_local',
+    });
+  });
+});
+
 describe('composer STT defaults', () => {
   it('defaults to system provider and small faster-whisper model', () => {
     expect(useAuthStore.getInitialState().composerSttProvider).toBe('system');
     expect(useAuthStore.getInitialState().fasterWhisperModel).toBe('small');
+  });
+});
+
+describe('automatic model routing preference', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({ automaticModelRoutingEnabled: false });
+  });
+
+  it('defaults disabled and persists an explicit user toggle', async () => {
+    expect(useAuthStore.getInitialState().automaticModelRoutingEnabled).toBe(false);
+
+    useAuthStore.getState().setAutomaticModelRoutingEnabled(true);
+    const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
+    expect(persisted).toContain('"automaticModelRoutingEnabled":true');
+
+    useAuthStore.setState({ automaticModelRoutingEnabled: false });
+    window.localStorage.setItem('jarvis-auth', persisted);
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().automaticModelRoutingEnabled).toBe(true);
+  });
+
+  it('migrates v12 state to the safe disabled policy', async () => {
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          chatModelSelection: { mode: 'none' },
+          previousChatModelSelection: { mode: 'none' },
+          apiKeys: {},
+        },
+        version: 12,
+      }),
+    );
+
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().automaticModelRoutingEnabled).toBe(false);
   });
 });
 
@@ -159,7 +247,9 @@ describe('useAuthStore API key persistence', () => {
     });
 
     const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
-    expect(persisted).toContain('"chatModelSelection":{"mode":"single","providerId":"groq","modelId":"llama-3.3-70b-versatile"}');
+    expect(persisted).toContain(
+      '"chatModelSelection":{"mode":"single","providerId":"groq","modelId":"llama-3.3-70b-versatile"}',
+    );
     expect(persisted).toContain('"stackPreset":"off"');
   });
 
@@ -184,5 +274,103 @@ describe('useAuthStore API key persistence', () => {
     );
 
     expect(useAuthStore.getState().stackCustomSteps).toHaveLength(5);
+  });
+});
+
+describe('chat model selection history', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({
+      chatModelSelection: { mode: 'none' },
+      previousChatModelSelection: { mode: 'none' },
+      stackPreset: 'off',
+      selectedModels: {},
+      defaultProvider: 'google',
+    });
+  });
+
+  it('rotates exact previous selection atomically and ignores a same-selection write', () => {
+    useAuthStore.getState().setChatModelSelection({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+    });
+    useAuthStore.getState().setChatModelSelection({
+      mode: 'single',
+      providerId: 'google',
+      modelId: 'gemini-2.5-flash',
+    });
+
+    expect(useAuthStore.getState().previousChatModelSelection).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+    });
+    useAuthStore.getState().setChatModelSelection({
+      mode: 'single',
+      providerId: 'google',
+      modelId: 'gemini-2.5-flash',
+    });
+    expect(useAuthStore.getState().previousChatModelSelection).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+    });
+  });
+
+  it('persists normalized previous selection without credential fields', () => {
+    useAuthStore.setState({
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-4o-mini',
+      },
+    });
+    useAuthStore.getState().setChatModelSelection({
+      mode: 'single',
+      providerId: 'google',
+      modelId: 'gemini-2.5-flash',
+    });
+
+    const persisted = JSON.parse(window.localStorage.getItem('jarvis-auth') ?? '{}') as {
+      state?: { previousChatModelSelection?: unknown };
+    };
+    expect(persisted.state?.previousChatModelSelection).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-4o-mini',
+    });
+    expect(JSON.stringify(persisted.state?.previousChatModelSelection)).not.toMatch(
+      /apiKey|accessToken|accountLabel/,
+    );
+  });
+
+  it('migrates v11 state with fail-closed empty previous history', async () => {
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          chatModelSelection: {
+            mode: 'single',
+            providerId: 'google',
+            modelId: 'gemini-2.5-flash',
+          },
+          previousChatModelSelection: {
+            mode: 'single',
+            providerId: 'google',
+            modelId: ' ',
+          },
+          stackPreset: 'off',
+          selectedModels: {},
+          defaultProvider: 'google',
+          apiKeys: {},
+        },
+        version: 11,
+      }),
+    );
+
+    await useAuthStore.persist.rehydrate();
+
+    expect(useAuthStore.getState().previousChatModelSelection).toEqual({ mode: 'none' });
   });
 });

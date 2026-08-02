@@ -22,13 +22,7 @@
 
 import * as React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  ArrowLeft,
-  Save,
-  RotateCcw,
-  Trash2,
-  AlertTriangle,
-} from 'lucide-react';
+import { ArrowLeft, Save, RotateCcw, Trash2, AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +32,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/toast';
+import './sakura-projects.css';
 
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -72,9 +67,7 @@ function draftDiffers(d: DraftState, p: Project): boolean {
     d.system_prompt_context !== (p.system_prompt_context ?? '') ||
     d.no_context_mode !== Boolean(p.no_context_mode) ||
     d.allowed_agent_slugs.length !== (p.allowed_agent_slugs?.length ?? 0) ||
-    d.allowed_agent_slugs.some(
-      (s, i) => s !== (p.allowed_agent_slugs ?? [])[i],
-    )
+    d.allowed_agent_slugs.some((s, i) => s !== (p.allowed_agent_slugs ?? [])[i])
   );
 }
 
@@ -124,9 +117,7 @@ export function ProjectDetail() {
         system_prompt_context: draft.system_prompt_context,
         no_context_mode: draft.no_context_mode,
         allowed_agent_slugs:
-          draft.allowed_agent_slugs.length > 0
-            ? draft.allowed_agent_slugs
-            : undefined,
+          draft.allowed_agent_slugs.length > 0 ? draft.allowed_agent_slugs : undefined,
       });
       toast.success('Project saved', `Updated "${draft.name}".`);
     } catch (err) {
@@ -150,10 +141,7 @@ export function ProjectDetail() {
     if (!project || !workspaceId) return;
     const remaining = await projectRepo.listByWorkspace(workspaceId);
     if (remaining.length <= 1) {
-      toast.warning(
-        "Can't delete",
-        'You need at least one project. Create another first.',
-      );
+      toast.warning("Can't delete", 'You need at least one project. Create another first.');
       return;
     }
     const ok = window.confirm(
@@ -182,12 +170,18 @@ export function ProjectDetail() {
 
   if (!projectId || !project || !draft) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-paper-warm p-8">
-        <div className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-3">
+      <div
+        data-monochrome-route="project-detail"
+        data-sakura-route="project-detail"
+        className="flex h-full w-full items-center justify-center bg-paper-warm p-8 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:font-sans"
+      >
+        <div
+          data-sakura-surface="project-empty"
+          className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <div className="text-page-title text-foreground">No project selected</div>
           <p className="text-secondary text-muted-foreground">
-            Pick a project from the sidebar, or create a new one with the
-            "+" button.
+            Pick a project from the sidebar, or create a new one with the "+" button.
           </p>
           <Button variant="accent" size="sm" onClick={handleBack}>
             Back to chat
@@ -198,21 +192,26 @@ export function ProjectDetail() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft">
+    <div
+      data-monochrome-route="project-detail"
+      data-sakura-route="project-detail"
+      className="flex h-full w-full flex-col overflow-hidden bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.surface-panel]:rounded-sm [html[data-theme=monochrome]_&_.surface-panel]:border-border-mid [html[data-theme=monochrome]_&_.surface-panel]:bg-panel [html[data-theme=monochrome]_&_.surface-panel]:shadow-none"
+    >
+      <div
+        data-monochrome-surface="project-toolbar"
+        data-sakura-surface="project-toolbar"
+        className="shrink-0 flex items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel"
+      >
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleBack}
-            aria-label="Back"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label="Back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <span className="font-display text-foreground text-secondary tracking-tight">
             Project
           </span>
-          <span aria-hidden className="text-border-mid">·</span>
+          <span aria-hidden className="text-border-mid">
+            ·
+          </span>
           <span
             aria-hidden
             className="h-2 w-2 rounded-full shrink-0"
@@ -227,12 +226,7 @@ export function ProjectDetail() {
             <RotateCcw className="h-3.5 w-3.5" />
             Reset
           </Button>
-          <Button
-            variant="accent"
-            size="sm"
-            onClick={() => void handleSave()}
-            disabled={!dirty}
-          >
+          <Button variant="accent" size="sm" onClick={() => void handleSave()} disabled={!dirty}>
             <Save className="h-3.5 w-3.5" />
             Save
           </Button>
@@ -242,7 +236,11 @@ export function ProjectDetail() {
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl p-6 space-y-6">
           {/* Identity */}
-          <section className="surface-panel rounded-lg p-5 space-y-4">
+          <section
+            data-monochrome-surface="project-identity"
+            data-sakura-surface="project-identity"
+            className="surface-panel rounded-lg p-5 space-y-4"
+          >
             <div className="text-ui-strong text-foreground">Identity</div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -268,9 +266,7 @@ export function ProjectDetail() {
                   max={359}
                   step={1}
                   value={draft.color_hue}
-                  onChange={(e) =>
-                    setDraft({ ...draft, color_hue: Number(e.target.value) })
-                  }
+                  onChange={(e) => setDraft({ ...draft, color_hue: Number(e.target.value) })}
                   className="w-full"
                   style={{ accentColor: `hsl(${draft.color_hue} 65% 56%)` }}
                 />
@@ -279,40 +275,34 @@ export function ProjectDetail() {
           </section>
 
           {/* Context */}
-          <section className="surface-panel rounded-lg p-5 space-y-4">
+          <section
+            data-monochrome-surface="project-context"
+            data-sakura-surface="project-context"
+            className="surface-panel rounded-lg p-5 space-y-4"
+          >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-ui-strong text-foreground">
-                  Project context
-                </div>
+                <div className="text-ui-strong text-foreground">Project context</div>
                 <p className="text-metadata text-muted-foreground mt-0.5">
-                  Prepended to every AI request that fires while this project
-                  is active. Use it for paths, conventions, DB schema —
-                  anything every agent should know.
+                  Prepended to every AI request that fires while this project is active. Use it for
+                  paths, conventions, DB schema — anything every agent should know.
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Label
-                  htmlFor="proj-no-ctx"
-                  className="text-metadata text-muted-foreground"
-                >
+                <Label htmlFor="proj-no-ctx" className="text-metadata text-muted-foreground">
                   No-context mode
                 </Label>
                 <Switch
                   id="proj-no-ctx"
                   checked={draft.no_context_mode}
-                  onCheckedChange={(v) =>
-                    setDraft({ ...draft, no_context_mode: Boolean(v) })
-                  }
+                  onCheckedChange={(v) => setDraft({ ...draft, no_context_mode: Boolean(v) })}
                   aria-label="Toggle no-context mode"
                 />
               </div>
             </div>
             <Textarea
               value={draft.system_prompt_context}
-              onChange={(e) =>
-                setDraft({ ...draft, system_prompt_context: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, system_prompt_context: e.target.value })}
               placeholder="e.g. We use Postgres on Neon, Tailwind v4, and pnpm. The user prefers concise replies. Do not edit migrations without asking."
               className={cn(
                 'min-h-[200px] font-mono text-secondary leading-relaxed',
@@ -335,20 +325,21 @@ export function ProjectDetail() {
           </section>
 
           {/* Agents */}
-          <section className="surface-panel rounded-lg p-5 space-y-4">
+          <section
+            data-monochrome-surface="project-agents"
+            data-sakura-surface="project-agents"
+            className="surface-panel rounded-lg p-5 space-y-4"
+          >
             <div>
               <div className="text-ui-strong text-foreground">Allowed agents</div>
               <p className="text-metadata text-muted-foreground mt-0.5">
-                Optional. When empty, every agent is available in this
-                project. Pick one or more to narrow the picker for this
-                project's workflows.
+                Optional. When empty, every agent is available in this project. Pick one or more to
+                narrow the picker for this project's workflows.
               </p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               {agentList.length === 0 ? (
-                <span className="text-metadata text-muted-foreground">
-                  No agents loaded.
-                </span>
+                <span className="text-metadata text-muted-foreground">No agents loaded.</span>
               ) : (
                 agentList.map((a) => {
                   const checked = draft.allowed_agent_slugs.includes(a.slug);
@@ -396,12 +387,15 @@ export function ProjectDetail() {
           <Separator />
 
           {/* Danger zone */}
-          <section className="rounded-lg border border-destructive/30 bg-destructive/5 p-5 space-y-2">
+          <section
+            data-sakura-surface="project-danger"
+            data-sakura-state="error"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 p-5 space-y-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <div className="text-ui-strong text-destructive">Danger zone</div>
             <p className="text-metadata text-muted-foreground">
-              Deleting a project unassigns its chats but does not delete them.
-              Terminals belonging to this project are dropped from
-              localStorage on next mount.
+              Deleting a project unassigns its chats but does not delete them. Terminals belonging
+              to this project are dropped from localStorage on next mount.
             </p>
             <div>
               <Button

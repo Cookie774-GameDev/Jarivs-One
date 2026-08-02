@@ -12,6 +12,8 @@
  * The service is a *singleton*. Import the named export `VoiceService`.
  */
 
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+
 // ---------------------------------------------------------------------------
 // Minimal ambient types for the Web Speech API (avoids relying on lib.dom
 // versions that may or may not include them, and pins the shape we use).
@@ -155,6 +157,77 @@ function mapErrorKind(raw: string): VoiceErrorKind {
   }
 }
 
+type VoiceFailurePhase = 'recognition' | 'startup';
+
+export function formatVoiceFailure(
+  kind: VoiceErrorKind,
+  phase: VoiceFailurePhase = 'recognition',
+): string {
+  if (phase === 'startup') {
+    return formatJarvisVerifiedNarration({
+      kind: 'failure',
+      actionLabel: 'Speech recognition startup',
+      reason:
+        'The browser could not start recognition. Stop other microphone sessions, then try again',
+    }).text;
+  }
+
+  const details: Readonly<{ actionLabel: string; reason: string }> = (() => {
+    switch (kind) {
+      case 'unsupported':
+        return {
+          actionLabel: 'Speech recognition availability',
+          reason: 'Built-in speech recognition is not available in this runtime',
+        };
+      case 'permission_denied':
+        return {
+          actionLabel: 'Microphone permission',
+          reason:
+            'Microphone permission was denied. Allow access in the browser or operating-system settings, then try again',
+        };
+      case 'service_not_allowed':
+        return {
+          actionLabel: 'Speech recognition access',
+          reason:
+            'The browser or runtime blocked its speech-recognition service. Enable that service, then try again',
+        };
+      case 'no_speech':
+        return {
+          actionLabel: 'Speech recognition',
+          reason: 'No speech was detected before the recognition session ended',
+        };
+      case 'aborted':
+        return {
+          actionLabel: 'Speech recognition',
+          reason: 'Recognition was interrupted before a transcript was captured',
+        };
+      case 'audio_capture':
+        return {
+          actionLabel: 'Microphone capture',
+          reason:
+            'No working microphone input was available. Check the selected device and input settings',
+        };
+      case 'network':
+        return {
+          actionLabel: 'Speech recognition network',
+          reason:
+            'The recognition service could not be reached. Check the network connection, then try again',
+        };
+      case 'unknown':
+        return {
+          actionLabel: 'Speech recognition',
+          reason: 'The browser reported an unrecognized speech-recognition failure',
+        };
+    }
+  })();
+
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: details.actionLabel,
+    reason: details.reason,
+  }).text;
+}
+
 class VoiceServiceImpl extends VoiceEmitter {
   private recognition: ISpeechRecognition | null = null;
   private active = false;
@@ -222,7 +295,7 @@ class VoiceServiceImpl extends VoiceEmitter {
     if (!Ctor) {
       this.emit('voice:error', {
         kind: 'unsupported',
-        message: 'Built-in speech recognition is not available in this runtime.',
+        message: formatVoiceFailure('unsupported'),
       });
       return false;
     }
@@ -284,7 +357,7 @@ class VoiceServiceImpl extends VoiceEmitter {
       }
       this.emit('voice:error', {
         kind,
-        message: event.message || event.error || 'Voice recognition error',
+        message: formatVoiceFailure(kind),
       });
     };
 
@@ -319,11 +392,11 @@ class VoiceServiceImpl extends VoiceEmitter {
     try {
       r.start();
       return true;
-    } catch (err) {
+    } catch {
       // Some browsers throw if start() is called too quickly after stop().
       this.emit('voice:error', {
         kind: 'unknown',
-        message: err instanceof Error ? err.message : 'Failed to start recognition',
+        message: formatVoiceFailure('unknown', 'startup'),
       });
       this.clearInactivityTimer();
       this.recognition = null;

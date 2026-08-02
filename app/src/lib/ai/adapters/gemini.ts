@@ -104,6 +104,7 @@ export function normalizeGeminiJsonl(input: string, limits?: JsonlParserLimits):
 export const GEMINI_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'gemini-cli',
   connectionId: 'google-gemini-cli',
+  promptTransport: 'prefixed-preamble',
   executableName: 'gemini',
   versionArgs: Object.freeze(['--version']),
   buildInvocation: buildGeminiInvocation,

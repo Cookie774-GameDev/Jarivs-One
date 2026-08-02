@@ -1,0 +1,304 @@
+/*
+ * MonoChrome is a compact developer-console skin. Every rule is rooted in
+ * the canonical document selector so the other VibeSpace themes retain their
+ * existing values and component geometry.
+ */
+html[data-theme='monochrome'] {
+  color-scheme: dark;
+
+  --background: 222 18% 5%;
+  --background-warm: 220 16% 4%;
+  --panel: 220 14% 8%;
+  --elevated: 218 13% 11%;
+  --paper-soft: 220 13% 9%;
+  --paper-done: 218 14% 7%;
+  --surface-warm: 220 14% 8%;
+  --ambient-deep: 222 20% 3%;
+
+  --foreground: 210 15% 92%;
+  --muted: 218 12% 13%;
+  --muted-foreground: 214 10% 64%;
+  --ink-faint: 215 8% 48%;
+  --ink-soft: 210 12% 78%;
+
+  --border: 216 12% 21%;
+  --border-mid: 214 12% 31%;
+  --line-soft: 218 12% 16%;
+  --input: 216 12% 24%;
+  --ring: 175 58% 48%;
+
+  --accent-cyan: 175 58% 48%;
+  --accent-violet: 259 63% 60%;
+  --accent: 259 63% 60%;
+  --accent-foreground: 222 18% 5%;
+  --accent-copper: 38 86% 59%;
+  --accent-amber: 38 86% 59%;
+  --accent-amber-soft: 38 86% 59% / 0.14;
+
+  --rose: 0 57% 56%;
+  --terracotta: 38 86% 59%;
+  --honey: 38 86% 59%;
+  --sage: 146 50% 48%;
+  --sage-deep: 145 52% 37%;
+  --lavender: 259 63% 60%;
+  --cream: 210 15% 92%;
+
+  --primary: 175 58% 48%;
+  --primary-foreground: 222 18% 5%;
+  --secondary: 218 12% 15%;
+  --secondary-foreground: 210 15% 92%;
+  --destructive: 0 57% 56%;
+  --destructive-foreground: 210 14% 96%;
+  --success: 146 50% 48%;
+  --warning: 38 86% 59%;
+  --info: 210 72% 58%;
+
+  --crit: 0 57% 56%;
+  --crit-bg: 0 34% 14%;
+  --high: 22 74% 58%;
+  --high-bg: 22 38% 14%;
+  --med: 38 86% 59%;
+  --med-bg: 39 35% 13%;
+  --low: 146 50% 48%;
+  --low-bg: 145 32% 12%;
+  --info-sev: 210 72% 58%;
+  --info-bg: 210 35% 13%;
+
+  --radius-sm: 1px;
+  --radius: 2px;
+  --radius-lg: 3px;
+  --shadow-soft: 0 1px 0 hsl(var(--border));
+  --shadow-lift: 0 0 0 1px hsl(var(--border-mid));
+  --shadow-cozy: 0 1px 0 hsl(var(--border-mid));
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --duration-fast: 80ms;
+  --duration-base: 120ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --bloom-image: none;
+  --monochrome-top-bar-height: 36px;
+  --monochrome-tab-strip-height: 30px;
+  --monochrome-nav-expanded: 224px;
+  --monochrome-inspector-width: 304px;
+}
+
+html[data-theme='monochrome'] body {
+  background-color: hsl(var(--background));
+  background-image: var(--bloom-image);
+  color: hsl(var(--foreground));
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+html[data-theme='monochrome'] .bg-accent-gradient {
+  background-color: hsl(var(--accent-cyan));
+  background-image: none;
+  box-shadow: none;
+  color: hsl(var(--accent-foreground));
+}
+
+html[data-theme='monochrome'] .bg-accent-gradient:hover {
+  background-color: hsl(var(--accent-cyan) / 0.9);
+  background-image: none;
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [role='tab'][data-state='active'],
+html[data-theme='monochrome'] [data-monochrome-surface='ambient-home'][role='dialog'],
+html[data-theme='monochrome'] [data-pet-mini-panel='true'][role='dialog'],
+html[data-theme='monochrome']
+  [data-pet-mini-panel='true']
+  .pet-panel-nav-button[aria-current='page'] {
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] h1,
+html[data-theme='monochrome'] h2,
+html[data-theme='monochrome'] h3,
+html[data-theme='monochrome'] .font-display {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'tnum';
+  letter-spacing: -0.015em;
+}
+
+html[data-theme='monochrome'] .font-mono,
+html[data-theme='monochrome'] .eyebrow,
+html[data-theme='monochrome'] .kbd,
+html[data-theme='monochrome'] code,
+html[data-theme='monochrome'] kbd,
+html[data-theme='monochrome'] pre {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+html[data-theme='monochrome'] .eyebrow,
+html[data-theme='monochrome'] .kbd {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+html[data-theme='monochrome'] .kbd {
+  box-shadow: none;
+}
+
+html[data-theme='monochrome']
+  button:not(.rounded-full):not([data-monochrome-control-size='preserve']),
+html[data-theme='monochrome']
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not(
+    [data-monochrome-control-size='preserve']
+  ),
+html[data-theme='monochrome'] select:not([data-monochrome-control-size='preserve']) {
+  min-height: 28px;
+  height: 32px;
+  max-height: 36px;
+}
+
+html[data-theme='monochrome'] input,
+html[data-theme='monochrome'] textarea,
+html[data-theme='monochrome'] [contenteditable='true'] {
+  caret-color: hsl(var(--accent-cyan));
+}
+
+html[data-theme='monochrome'] ::selection {
+  background: hsl(var(--accent-violet) / 0.42);
+  color: hsl(var(--foreground));
+}
+
+html[data-theme='monochrome'] :focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html[data-theme='monochrome'] ::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+html[data-theme='monochrome'] ::-webkit-scrollbar-thumb {
+  background: hsl(var(--border-mid));
+  border: 1px solid hsl(var(--background));
+  border-radius: 1px;
+}
+
+html[data-theme='monochrome'] ::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='app-shell'] {
+  background: hsl(var(--background));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='top-bar'] {
+  height: var(--monochrome-top-bar-height);
+  min-height: var(--monochrome-top-bar-height);
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='navigation'] {
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='tab-strip'] {
+  height: var(--monochrome-tab-strip-height);
+  min-height: var(--monochrome-tab-strip-height);
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='inspector'] {
+  border-left: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='page-router'] {
+  background: hsl(var(--background));
+}
+
+html[data-theme='monochrome'] .jarvis-j-glow {
+  display: none;
+  background: none;
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-monochrome-voice-listening-effect='true'] {
+  display: none;
+  background: none;
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] .jarvis-bot-mark {
+  border: 1px solid hsl(var(--border-mid));
+  background: hsl(var(--accent-amber));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-vibespace-avatar] {
+  --vibespace-avatar-background: hsl(var(--accent-violet));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='navigation'] [aria-current='page'] {
+  border-left: 1px solid hsl(var(--accent-cyan));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-monochrome-unread-indicator='true'] {
+  border: 1px solid hsl(var(--panel));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='context-menu'],
+html[data-theme='monochrome'] [role='menu'],
+html[data-theme='monochrome'] [role='dialog'],
+html[data-theme='monochrome'] [data-radix-popper-content-wrapper] {
+  border: 1px solid hsl(var(--border-mid));
+  border-radius: var(--radius);
+  background: hsl(var(--elevated));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-terminal-route-cache] {
+  background: hsl(var(--background));
+}
+
+@media (forced-colors: active) {
+  html[data-theme='monochrome'] {
+    forced-color-adjust: auto;
+  }
+
+  html[data-theme='monochrome'] :focus-visible {
+    outline-color: Highlight;
+  }
+
+  html[data-theme='monochrome'] .bg-accent-gradient {
+    background-color: Highlight;
+    color: HighlightText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='monochrome'] *,
+  html[data-theme='monochrome'] *::before,
+  html[data-theme='monochrome'] *::after {
+    animation: none;
+    transition: none;
+    scroll-behavior: auto;
+  }
+}

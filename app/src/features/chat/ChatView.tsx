@@ -9,13 +9,22 @@ import { ensureActiveChat } from './chatLifecycle';
 import { cn } from '@/lib/utils';
 import { getChatDragKind, getChatDropPayload, type ChatDropKind } from './dropPayload';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
+import { OrigamiChatDecor } from './OrigamiChatDecor';
+import { MONOCHROME_CHAT_FIXTURE } from './monochromeFixture';
+import './sakura-chat.css';
 
 /**
  * Top-level chat surface. Move chats into the Pet panel via right-click on a tab
  * (TabStrip) — no permanent "Move to Pet" button clutter.
  */
 export function ChatView() {
-  const activeChatId = useUIStore((s) => s.activeChatId);
+  const storedActiveChatId = useUIStore((s) => s.activeChatId);
+  const isVisualEmptyChat = document.documentElement.dataset.monochromeChatState === 'empty-state';
+  const visualChatFixture =
+    document.documentElement.dataset.monochromeChatFixture === 'chat'
+      ? MONOCHROME_CHAT_FIXTURE
+      : undefined;
+  const activeChatId = visualChatFixture?.activeConversationId ?? storedActiveChatId;
   const [dropKind, setDropKind] = useState<ChatDropKind | null>(null);
   const [ensuringChat, setEnsuringChat] = useState(false);
   const [ensureFailed, setEnsureFailed] = useState(false);
@@ -23,7 +32,7 @@ export function ChatView() {
   const moveChat = usePetPresentationStore((s) => s.moveChat);
 
   useEffect(() => {
-    if (activeChatId) return;
+    if (activeChatId || isVisualEmptyChat) return;
     let cancelled = false;
     setEnsuringChat(true);
     setEnsureFailed(false);
@@ -40,11 +49,14 @@ export function ChatView() {
     return () => {
       cancelled = true;
     };
-  }, [activeChatId]);
+  }, [activeChatId, isVisualEmptyChat]);
 
   return (
     <TooltipProvider delayDuration={400}>
       <div
+        data-vibespace-page="chat"
+        data-monochrome-surface="chat"
+        data-sakura-surface="chat-route"
         data-terminal-drop={activeChatId ? 'chat' : undefined}
         data-terminal-drop-chat-id={activeChatId ?? undefined}
         onDragOver={(e) => {
@@ -63,27 +75,49 @@ export function ChatView() {
           e.stopPropagation();
           setDropKind(null);
           if (payload.kind === 'context') {
-            window.dispatchEvent(new CustomEvent('jarvis:context:attach', { detail: { raw: payload.raw, chatId: activeChatId } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:context:attach', {
+                detail: { raw: payload.raw, chatId: activeChatId },
+              }),
+            );
           } else if (payload.kind === 'terminal') {
-            window.dispatchEvent(new CustomEvent('jarvis:terminal:attach', { detail: { raw: payload.raw, chatId: activeChatId } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:terminal:attach', {
+                detail: { raw: payload.raw, chatId: activeChatId },
+              }),
+            );
           } else {
-            window.dispatchEvent(new CustomEvent('jarvis:file:attach', { detail: { path: payload.path, chatId: activeChatId } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:file:attach', {
+                detail: { path: payload.path, chatId: activeChatId },
+              }),
+            );
           }
         }}
         className={cn(
           'relative flex h-full w-full flex-col bg-background transition-shadow',
+          '[[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:transition-none',
           dropKind && 'ring-inset ring-2 ring-accent-copper/50',
         )}
       >
+        <OrigamiChatDecor />
         {dropKind && (
-          <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft">
-            Drop {dropKind === 'context' ? 'Context' : dropKind === 'terminal' ? 'terminal' : 'file path'} here to power up this chat
+          <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none">
+            Drop{' '}
+            {dropKind === 'context'
+              ? 'Context'
+              : dropKind === 'terminal'
+                ? 'terminal'
+                : 'file path'}{' '}
+            here to power up this chat
           </div>
         )}
-        {activeChatId ? (
+        {isVisualEmptyChat ? (
+          <EmptyChat />
+        ) : activeChatId ? (
           <>
             {isOnPet && (
-              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 shrink-0 bg-muted/40">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5 [[data-theme=monochrome]_&]:bg-panel">
                 <span className="text-metadata text-muted-foreground">
                   This chat is open in the Pet panel (same thread — not copied).
                 </span>
@@ -92,7 +126,7 @@ export function ChatView() {
                 </Button>
               </div>
             )}
-            <ChatThread chatId={activeChatId} />
+            <ChatThread chatId={activeChatId} fixtureMessages={visualChatFixture?.messages} />
             {isOnPet ? (
               <div className="border-t border-border px-4 py-3 text-secondary text-muted-foreground text-sm">
                 Type in the Pet panel for this thread. Streaming already started here keeps running.
@@ -108,7 +142,7 @@ export function ChatView() {
         ) : (
           <EmptyChat />
         )}
-        {ensureFailed && !activeChatId && !ensuringChat ? (
+        {!isVisualEmptyChat && ensureFailed && !activeChatId && !ensuringChat ? (
           <p className="px-4 pb-3 text-center text-metadata text-muted-foreground">
             Could not open a chat yet — workspace may still be loading.
           </p>

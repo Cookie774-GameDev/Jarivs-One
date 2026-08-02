@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Cpu, Sparkles, type LucideIcon } from 'lucide-react';
 import type { ProviderId } from '@/types';
 import { cn } from '@/lib/utils';
@@ -7,6 +7,9 @@ import { HiveModelIcon } from '@/components/brand';
 import type { ModelPickerGroup } from '@/lib/ai/useAccessibleChatModels';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import { scrollPickerItemIntoView } from './pickerScroll';
+import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMotion';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -29,9 +32,15 @@ export interface ModelPickerTypeaheadProps {
   /** Whether the Hive ensemble is the active chat selection. */
   hiveActive?: boolean;
   onHoverId?: (id: string) => void;
-  onSelect: (provider: ProviderId, modelId: string, connection?: Readonly<ProviderConnection>) => void;
+  onSelect: (
+    provider: ProviderId,
+    modelId: string,
+    connection?: Readonly<ProviderConnection>,
+  ) => void;
   /** Select the pinned Hive ensemble entry. When omitted, the row is hidden. */
   onSelectHive?: () => void;
+  automaticRoutingEnabled?: boolean;
+  onAutomaticRoutingChange?: (enabled: boolean) => void;
 }
 
 export interface ModelPickerTypeaheadRef {
@@ -42,24 +51,34 @@ export interface ModelPickerTypeaheadRef {
 
 export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPickerTypeaheadProps>(
   function ModelPickerTypeahead(
-    { groups, selectedId, activeProvider, activeModel, hiveActive, onHoverId, onSelect, onSelectHive },
+    {
+      groups,
+      selectedId,
+      activeProvider,
+      activeModel,
+      hiveActive,
+      onHoverId,
+      onSelect,
+      onSelectHive,
+      automaticRoutingEnabled,
+      onAutomaticRoutingChange,
+    },
     ref,
   ) {
     const listRef = useRef<HTMLDivElement>(null);
+    const reducedMotion = useReducedMotion();
+    const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
+    const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
 
-    const flatOptions = useMemo(
-      () => groups.flatMap((group) => group.options),
-      [groups],
-    );
+    const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
 
     // Navigation order: pinned Hive entry first (when available), then models.
-    const navIds = useMemo(
-      () => {
-        const usable = flatOptions.filter((option) => option.available !== false).map((option) => option.id);
-        return onSelectHive ? [HIVE_OPTION_ID, ...usable] : usable;
-      },
-      [flatOptions, onSelectHive],
-    );
+    const navIds = useMemo(() => {
+      const usable = flatOptions
+        .filter((option) => option.available !== false)
+        .map((option) => option.id);
+      return onSelectHive ? [HIVE_OPTION_ID, ...usable] : usable;
+    }, [flatOptions, onSelectHive]);
 
     const selectId = (id: string) => {
       if (id === HIVE_OPTION_ID) {
@@ -67,7 +86,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         return;
       }
       const option = flatOptions.find((item) => item.id === id);
-      if (option && option.available !== false) onSelect(option.provider, option.modelId, option.connection);
+      if (option && option.available !== false)
+        onSelect(option.provider, option.modelId, option.connection);
     };
 
     useImperativeHandle(ref, () => ({
@@ -96,14 +116,13 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
     return (
       <motion.div
-        initial={{ opacity: 0, y: 4, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 4, scale: 0.98 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        {...dropdownMotion}
         className={cn(
           'jarvis-slash-dropdown w-[338px] overflow-hidden rounded-[14px] border border-border-mid/80',
           'bg-elevated/95 text-foreground backdrop-blur-xl',
           'shadow-[0_18px_50px_rgba(0,0,0,0.52),inset_0_1px_0_hsl(var(--foreground)/0.05),0_0_30px_hsl(var(--accent-copper)/0.1)]',
+          '[html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none',
+          '[html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none',
         )}
       >
         <div className="border-b border-border bg-panel/90 px-4 py-3">
@@ -156,7 +175,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                         active
                       </span>
                     )}
-                    {isSelected && <span className="relative shrink-0 text-accent-copper">&gt;</span>}
+                    {isSelected && (
+                      <span className="relative shrink-0 text-accent-copper">&gt;</span>
+                    )}
                   </div>
                 );
               })()}
@@ -165,9 +186,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
           {groups.length === 0 ? (
             onSelectHive ? null : (
               <div className="px-4 py-6 text-center">
-                <p className="text-[13px] text-muted-foreground">
-                  No models available yet.
-                </p>
+                <p className="text-[13px] text-muted-foreground">No models available yet.</p>
                 <p className="mt-1 text-[12px] leading-4 text-muted-foreground/80">
                   Add an API key, use your subscription, or download a local model in Settings →
                   Local Models.
@@ -191,7 +210,17 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                       <div
                         key={option.id}
                         data-value={option.id}
-                        onClick={() => option.available !== false && onSelect(option.provider, option.modelId, option.connection)}
+                        data-sik-evidence={
+                          option.connection?.id === 'vibespace-kernel-smoke-native'
+                            ? SIK_CONTROL.modelTransportNative
+                            : option.connection?.id === 'vibespace-kernel-smoke-cli'
+                              ? SIK_CONTROL.modelTransportCli
+                              : undefined
+                        }
+                        onClick={() =>
+                          option.available !== false &&
+                          onSelect(option.provider, option.modelId, option.connection)
+                        }
                         onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
                         aria-disabled={option.available === false}
                         className={cn(
@@ -214,7 +243,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                             {option.label}
                           </span>
                           <span className="block truncate text-[11px] leading-4 text-muted-foreground">
-                            {option.modeLabel ?? option.modelId}{option.authLabel ? ` · ${option.authLabel}` : ''}
+                            {option.modeLabel ?? option.modelId}
+                            {option.authLabel ? ` · ${option.authLabel}` : ''}
                           </span>
                         </div>
                         {isActive && (
@@ -231,6 +261,37 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
             })
           )}
         </div>
+
+        {typeof automaticRoutingEnabled === 'boolean' && onAutomaticRoutingChange ? (
+          <button
+            type="button"
+            role="switch"
+            aria-label="Automatic routing"
+            aria-checked={automaticRoutingEnabled}
+            onClick={() => onAutomaticRoutingChange(!automaticRoutingEnabled)}
+            className="flex w-full items-center gap-3 border-t border-border bg-panel/90 px-4 py-2.5 text-left transition-colors hover:bg-muted/70"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12px] font-medium text-foreground">
+                Automatic routing
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Choose an eligible model per request
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                automaticRoutingEnabled
+                  ? 'border-accent-copper/60 bg-accent-copper/12 text-accent-copper'
+                  : 'border-border text-muted-foreground',
+              )}
+            >
+              {automaticRoutingEnabled ? 'On' : 'Off'}
+            </span>
+          </button>
+        ) : null}
 
         <div className="flex items-center gap-3 border-t border-border bg-panel/90 px-4 py-2.5 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">

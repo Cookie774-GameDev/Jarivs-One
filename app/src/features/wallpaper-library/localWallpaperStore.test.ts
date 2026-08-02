@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Exercise durable put→get via a minimal IndexedDB polyfill.
@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const memory = new Map<string, unknown>();
+const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, 'createObjectURL');
+const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL');
 
 function later(fn: () => void): void {
   setTimeout(fn, 0);
@@ -92,11 +94,30 @@ describe('localWallpaperStore durable bytes', () => {
   beforeEach(() => {
     memory.clear();
     installMemoryIdb();
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(
-      (obj: Blob | MediaSource) =>
-        `blob:memory-${obj instanceof Blob ? obj.size : 0}-${Math.random().toString(16).slice(2)}`,
-    );
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(
+        (obj: Blob | MediaSource) =>
+          `blob:memory-${obj instanceof Blob ? obj.size : 0}-${Math.random().toString(16).slice(2)}`,
+      ),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(() => undefined),
+    });
+  });
+
+  afterEach(() => {
+    if (originalCreateObjectUrl) {
+      Object.defineProperty(URL, 'createObjectURL', originalCreateObjectUrl);
+    } else {
+      Reflect.deleteProperty(URL, 'createObjectURL');
+    }
+    if (originalRevokeObjectUrl) {
+      Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectUrl);
+    } else {
+      Reflect.deleteProperty(URL, 'revokeObjectURL');
+    }
   });
 
   it('stores blob bytes and rehydrates a fresh object URL (not localStorage blob: strings)', async () => {

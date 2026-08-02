@@ -110,13 +110,20 @@ export function WorkbenchPage() {
 
   return (
     <main
-      className="workbench-shell workbench-shell--fullscreen"
+      className="workbench-shell workbench-shell--fullscreen [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans"
       aria-label="VibeSpace Workbench"
+      data-monochrome-route="workbench"
+      data-sakura-route="workbench"
+      data-sakura-intensity="standard"
       data-jarvis-suppress-context-menu
     >
       <WallpaperHost config={wallpaper} />
       <WorkbenchContextMenu />
-      <header className="workbench-toolbar">
+      <header
+        data-monochrome-surface="workbench-toolbar"
+        data-sakura-surface="workbench-toolbar"
+        className="workbench-toolbar [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-b [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
+      >
         <div className="workbench-wordmark">
           <span>
             <Sparkles />
@@ -215,7 +222,11 @@ export function WorkbenchPage() {
           <HoldExitButton onConfirmExit={exitWorkbench} />
         </div>
       </header>
-      <div className="workbench-content">
+      <div
+        data-monochrome-surface="workbench-canvas"
+        data-sakura-content="workbench-canvas"
+        className="workbench-content [html[data-theme=monochrome]_&]:bg-background"
+      >
         <PanelPalette
           onAdd={add}
           open={paletteOpen}

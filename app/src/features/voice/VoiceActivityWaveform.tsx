@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useAppForeground } from './useAppForeground';
 
 interface VoiceActivityWaveformProps {
   levelRef: React.RefObject<number>;
@@ -8,10 +9,7 @@ interface VoiceActivityWaveformProps {
 const BAR_COUNT = 36;
 const ACTIVE_FRAME_MS = 48;
 
-function drawStaticWaveform(
-  context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-): void {
+function drawStaticWaveform(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
   const rect = canvas.getBoundingClientRect();
   const scale = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.round(rect.width * scale));
@@ -42,6 +40,19 @@ export const VoiceActivityWaveform = React.memo(function VoiceActivityWaveform({
   active,
 }: VoiceActivityWaveformProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const appForeground = useAppForeground();
+  const [reducedMotion, setReducedMotion] = React.useState(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+  );
+
+  React.useEffect(() => {
+    const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!query) return;
+    const update = () => setReducedMotion(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,18 +61,20 @@ export const VoiceActivityWaveform = React.memo(function VoiceActivityWaveform({
     const context = canvas.getContext('2d');
     if (!context) return;
 
-    if (!active) {
+    if (!active || !appForeground || reducedMotion) {
       drawStaticWaveform(context, canvas);
       return;
     }
 
     let frame = 0;
+    let disposed = false;
     let smoothedLevel = 0;
     let lastDraw = 0;
     let gradient: CanvasGradient | null = null;
     let gradientHeight = 0;
 
     const draw = (time: number) => {
+      if (disposed || document.visibilityState !== 'visible') return;
       if (time - lastDraw < ACTIVE_FRAME_MS) {
         frame = window.requestAnimationFrame(draw);
         return;
@@ -115,8 +128,11 @@ export const VoiceActivityWaveform = React.memo(function VoiceActivityWaveform({
     };
 
     frame = window.requestAnimationFrame(draw);
-    return () => window.cancelAnimationFrame(frame);
-  }, [active, levelRef]);
+    return () => {
+      disposed = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [active, appForeground, levelRef, reducedMotion]);
 
-  return <canvas ref={canvasRef} className="h-8 w-full" aria-label="Live microphone level" />;
+  return <canvas ref={canvasRef} className="h-8 w-full" aria-hidden="true" />;
 });

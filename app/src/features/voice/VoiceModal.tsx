@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { AnimatePresence, motion, useMotionValue } from 'motion/react';
-import { Bot, ChevronDown, ChevronUp, Mic, UserRound, X } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
+import { useAgentStore } from '@/stores/agents';
 import { cn } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { messageRepo } from '@/lib/db';
 import { useChatMessages } from '@/features/chat/hooks';
 import {
@@ -12,25 +14,106 @@ import {
   focusVoiceChat,
   resolveVoiceChatTarget,
 } from './voiceChatRouting';
-import type { ChatId, Message } from '@/types';
+import type { ChatId } from '@/types';
 import type { VoiceState } from './store';
 import { useVoiceStore } from './store';
 import { VoiceService } from './VoiceService';
-import { SPEECH_SYNTHESIS_END_EVENT, SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT, STREAMING_VOICE_START_EVENT } from './speechSynthesis';
+import {
+  SPEECH_SYNTHESIS_END_EVENT,
+  SPEECH_SYNTHESIS_START_EVENT,
+  STREAMING_VOICE_END_EVENT,
+  STREAMING_VOICE_START_EVENT,
+} from './speechSynthesis';
 import { PERSONAS } from './personas';
-import { VoiceActivityWaveform } from './VoiceActivityWaveform';
+import { JarvisVoiceHeader } from './JarvisVoiceHeader';
+import { JarvisVoiceTranscript } from './JarvisVoiceTranscript';
+import { clampVoicePanelTranslation, shouldStartVoicePanelDrag } from './voicePanelDrag';
 import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter';
 import { resolveVoiceListenTimeoutMs } from './voiceConversation';
+import { createVoiceSessionBinding, newVoiceSessionId } from './voiceSessionBinding';
 import {
+  useThemeLayoutTransition,
+  useThemeMotionLayout,
+  useThemeMotionTransition,
+} from '@/features/appearance/themeMotion';
+import {
+  formatChatModelSelectionLabel,
   modelSelectionContextFromAuth,
   validateSendModelAccess,
 } from '@/lib/ai/modelSelection';
+import {
+  JarvisCommandCenter,
+  useJarvisCommandCenterBinding,
+} from '@/features/jarvis-command-center/JarvisCommandCenter';
+import {
+  isCurrentJarvisApprovalNavigationTarget,
+  subscribeJarvisApprovalNavigation,
+  type JarvisApprovalNavigationIntent,
+} from '@/features/jarvis-command-center/approvalNavigation';
+import type { JarvisCommandCenterHandlers } from '@/features/jarvis-command-center/types';
 import {
   processVoiceFinalEvent,
   shouldAutoSendOnSilence,
   voiceListeningHint,
   VOICE_REPLY_COOLDOWN_MS,
 } from './voiceTurnCommit';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import './voice.sakura.css';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
+function formatVoiceFailure(actionLabel: string, reason: string): string {
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel,
+    reason,
+  }).text;
+}
+
+const VOICE_SESSION_CLOSE_FAILURE = formatVoiceFailure(
+  'Voice session closure',
+  'The previous voice session could not be closed cleanly',
+);
+const VOICE_SESSION_START_FAILURE = formatVoiceFailure(
+  'Voice session startup',
+  'A Jarvis chat could not be prepared for the new voice session',
+);
+const VOICE_CHAT_TARGET_FAILURE = formatVoiceFailure(
+  'Voice message routing',
+  'No Jarvis chat target was available',
+);
+const VOICE_BOUND_CHAT_FAILURE = formatVoiceFailure(
+  'Voice message routing',
+  'The active voice session has no bound Jarvis chat',
+);
+const VOICE_MESSAGE_SAVE_FAILURE = formatVoiceFailure(
+  'Voice message',
+  'The local message could not be saved, so nothing was sent',
+);
+const KERNEL_SMOKE_VOICE_FIXTURE_SHA256 =
+  'b3bab750a95495ae54c457b54cb9a066147e36acc6a711e1a09ea05265c272f7';
+
+type SmokeSttState = 'idle' | 'transcribing' | 'submitted' | 'blocked_external';
+type SmokeSttBlocker =
+  | 'fixture_contract'
+  | 'model_unavailable'
+  | 'python_unavailable'
+  | 'engine_failed'
+  | 'transcript_mismatch';
+
+function smokeSttBlocker(error: unknown): SmokeSttBlocker {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('fixture_contract')) return 'fixture_contract';
+  if (message.includes('not downloaded')) return 'model_unavailable';
+  if (message.includes('Python 3 is required')) return 'python_unavailable';
+  if (message.includes('transcript_contract')) return 'transcript_mismatch';
+  return 'engine_failed';
+}
 
 const STATE_LABEL: Record<VoiceState, string> = {
   idle: 'Ready',
@@ -41,243 +124,231 @@ const STATE_LABEL: Record<VoiceState, string> = {
   error: 'Voice error',
 };
 
-function messageText(message: Message): string {
-  return message.parts
-    .filter(
-      (part): part is Extract<Message['parts'][number], { kind: 'text' }> => part.kind === 'text',
-    )
-    .map((part) => part.text)
-    .join('\n')
-    .trim();
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = React.useState(() =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+  );
+
+  React.useEffect(() => {
+    const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!query) return;
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+  return reduced;
 }
 
-const TENDRIL_SEEDS = [
-  { angle: 0, lenScale: 1.0, durationBase: 2.3, widthBase: 3 },
-  { angle: 45, lenScale: 0.85, durationBase: 2.7, widthBase: 2.5 },
-  { angle: 90, lenScale: 0.95, durationBase: 3.1, widthBase: 2 },
-  { angle: 135, lenScale: 0.75, durationBase: 2.9, widthBase: 3.5 },
-  { angle: 180, lenScale: 1.1, durationBase: 2.1, widthBase: 2.5 },
-  { angle: 225, lenScale: 0.9, durationBase: 3.3, widthBase: 2 },
-  { angle: 270, lenScale: 0.8, durationBase: 2.5, widthBase: 3 },
-  { angle: 315, lenScale: 1.05, durationBase: 2.8, widthBase: 2.5 },
-  { angle: 22, lenScale: 0.7, durationBase: 3.7, widthBase: 1.5 },
-  { angle: 67, lenScale: 0.65, durationBase: 4.1, widthBase: 1.5 },
-  { angle: 157, lenScale: 0.6, durationBase: 3.9, widthBase: 2 },
-  { angle: 247, lenScale: 0.75, durationBase: 4.3, widthBase: 1.5 },
-];
-
-const SymbioteOrb = React.memo(function SymbioteOrb({
-  state,
-  size = 40,
-}: {
-  state: VoiceState;
-  size?: number;
-}) {
-  const isSpeaking = state === 'speaking';
-  const isListening = state === 'listening';
-  const isThinking = state === 'thinking';
-  const active = isSpeaking || isListening || isThinking;
-  const showTendrils = active;
-
-  const coreSize = size * 0.65;
-  const half = size / 2;
-
-  return (
-    <div
-      className="relative shrink-0"
-      style={{ width: size, height: size }}
-    >
-      {/* Ambient halo */}
-      <motion.div
-        className="absolute rounded-full pointer-events-none"
-        style={{
-          inset: -size * 0.25,
-          background: 'radial-gradient(circle, rgba(255,167,31,0.4) 0%, rgba(207,98,5,0.15) 45%, transparent 70%)',
-          filter: 'blur(6px)',
-        }}
-        animate={{
-          scale: isSpeaking
-            ? [1, 1.6, 1.15, 1.7, 1.3, 1.55, 1]
-            : isListening ? [1, 1.25, 1.08, 1.2, 1] : [1, 1.06, 1],
-          opacity: isSpeaking
-            ? [0.5, 1, 0.7, 1, 0.6, 0.9, 0.5]
-            : isListening ? [0.4, 0.7, 0.4] : [0.25, 0.4, 0.25],
-        }}
-        transition={{
-          duration: isSpeaking ? 0.5 : isListening ? 2 : 3.5,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-      />
-
-      {/* Symbiote tendrils — only while active to keep the rest of the app responsive */}
-      {showTendrils
-        ? TENDRIL_SEEDS.slice(0, 6).map((seed, i) => {
-        const rad = (seed.angle * Math.PI) / 180;
-        const maxLen = half * seed.lenScale * (isSpeaking ? 2.2 : isListening ? 1.2 : isThinking ? 0.7 : 0.35);
-        const duration = seed.durationBase * (isSpeaking ? 0.22 : isListening ? 0.55 : isThinking ? 0.7 : 1);
-        const w = seed.widthBase * (isSpeaking ? 1.5 : isListening ? 1.1 : 0.8);
-        const cx = half;
-        const cy = half;
-        const tipX1 = Math.cos(rad) * maxLen;
-        const tipY1 = Math.sin(rad) * maxLen;
-        const tipX2 = Math.cos(rad + 0.4) * maxLen * 0.7;
-        const tipY2 = Math.sin(rad + 0.4) * maxLen * 0.7;
-        const tipX3 = Math.cos(rad - 0.3) * maxLen * 0.9;
-        const tipY3 = Math.sin(rad - 0.3) * maxLen * 0.9;
-        const tipX4 = Math.cos(rad + 0.15) * maxLen * 0.5;
-        const tipY4 = Math.sin(rad + 0.15) * maxLen * 0.5;
-
-        return (
-          <motion.div
-            key={i}
-            className="absolute rounded-full"
-            style={{
-              left: cx,
-              top: cy,
-              width: w,
-              height: w,
-              background:
-                'radial-gradient(circle at 35% 30%, #4a4a48 0%, #111 28%, #020202 72%, #000 100%)',
-              boxShadow: `0 0 ${w * 1.8}px rgba(255,174,44,${isSpeaking ? 0.35 : isListening ? 0.2 : 0.08}), inset 0 0 ${w}px rgba(255,255,255,0.16)`,
-              transformOrigin: 'center center',
-            }}
-            animate={{
-              x: [0, tipX1, tipX2, tipX4, tipX3, 0],
-              y: [0, tipY1, tipY2, tipY4, tipY3, 0],
-              scaleX: isSpeaking
-                ? [1, 5, 2.5, 4, 3, 1]
-                : isListening ? [1, 2.5, 1.5, 2, 1] : [1, 1.3, 1],
-              scaleY: isSpeaking
-                ? [1, 0.4, 0.7, 0.35, 0.6, 1]
-                : [1, 0.7, 1],
-              opacity: isSpeaking
-                ? [0.2, 1, 0.6, 0.9, 0.7, 0.2]
-                : isListening ? [0.1, 0.7, 0.3, 0.6, 0.1] : active ? [0.05, 0.2, 0.05] : [0.03, 0.1, 0.03],
-              rotate: [0, seed.angle, seed.angle + 20, seed.angle - 15, seed.angle + 8, 0],
-            }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.42, 0, 0.58, 1],
-              delay: i * 0.09,
-            }}
-          />
-        );
-      })
-        : null}
-
-      {/* Core orb - morphing border-radius for organic shape */}
-      <motion.div
-        className="absolute"
-        style={{
-          width: coreSize,
-          height: coreSize,
-          left: (size - coreSize) / 2,
-          top: (size - coreSize) / 2,
-          background: 'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
-          boxShadow: '0 0 10px rgba(255,167,31,0.9), 0 0 20px rgba(255,152,15,0.4)',
-        }}
-        animate={{
-          borderRadius: isSpeaking
-            ? ['50%', '38% 62% 58% 42% / 58% 38% 62% 42%', '62% 38% 42% 58% / 38% 58% 42% 62%', '42% 58% 52% 48% / 52% 42% 58% 48%', '55% 45% 48% 52% / 48% 55% 45% 52%', '50%']
-            : isListening
-              ? ['50%', '44% 56% 54% 46% / 54% 44% 56% 46%', '56% 44% 46% 54% / 44% 54% 46% 56%', '50%']
-              : ['50%', '47% 53% 51% 49% / 51% 47% 53% 49%', '50%'],
-          x: isSpeaking ? [0, 3, -2, 3.5, -2.5, 1, 0] : isListening ? [0, 1, -0.5, 0] : 0,
-          y: isSpeaking ? [0, -2, 3, -3.5, 2, -1, 0] : isListening ? [0, -0.5, 1, 0] : 0,
-          scale: isSpeaking
-            ? [1, 1.14, 0.88, 1.18, 0.92, 1.06, 1]
-            : isListening ? [1, 1.06, 0.97, 1] : [1, 1.02, 1],
-        }}
-        transition={{
-          duration: isSpeaking ? 0.55 : isListening ? 2 : 4,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-      >
-        <div
-          className="absolute rounded-full"
-          style={{
-            top: '12%', left: '16%', width: '36%', height: '26%',
-            background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.08) 60%, transparent 100%)',
-            filter: 'blur(1.5px)',
-          }}
-        />
-      </motion.div>
-    </div>
-  );
-});
+const LEGACY_VOICE_PANEL_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 360,
+  damping: 30,
+} as const);
+const LEGACY_COMMAND_CENTER_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 340,
+  damping: 32,
+  mass: 0.8,
+} as const);
 
 export function VoiceModal() {
   const open = useUIStore((state) => state.voiceModalOpen);
+  const theme = useUIStore((state) => state.theme);
   const setOpen = useUIStore((state) => state.setVoiceModalOpen);
-  const activeChatId = useUIStore((state) => state.activeChatId);
+  const localUserId = useAuthStore((state) => state.localUserId);
+  const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? null);
+  const workspaceId = useAuthStore((state) => state.workspaceId);
+  const agentRoster = useAgentStore((state) => state.agents);
   const voiceAutoListenOnOpen = useAuthStore((state) => state.voiceAutoListenOnOpen);
   const voiceEndTrigger = useAuthStore((state) => state.voiceEndTrigger);
   const voiceCommitPhrase = useAuthStore((state) => state.voiceCommitPhrase);
-  const [showTranscript, setShowTranscript] = React.useState(false);
-  const messages = useChatMessages(open && showTranscript ? activeChatId : null);
+  const fasterWhisperModel = useAuthStore((state) => state.fasterWhisperModel);
+  const chatModelSelection = useAuthStore((state) => state.chatModelSelection);
+  const commandCenterBinding = useJarvisCommandCenterBinding();
+  const [showCommandCenter, setShowCommandCenter] = React.useState(false);
+  const commandCenterDisclosureRef = React.useRef<HTMLButtonElement>(null);
+  const [expandedTranscriptIds, setExpandedTranscriptIds] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const session = useVoiceStore((voice) => voice.session);
+  const messages = useChatMessages(open && showCommandCenter ? (session?.chatId ?? null) : null);
   const state = useVoiceStore((voice) => voice.state);
   const partial = useVoiceStore((voice) => voice.partialTranscript);
   const persona = useVoiceStore((voice) => voice.persona);
   const errorMessage = useVoiceStore((voice) => voice.errorMessage);
+  const reducedMotion = usePrefersReducedMotion();
+  const panelTransition = useThemeMotionTransition(LEGACY_VOICE_PANEL_TRANSITION);
+  const panelLayout = useThemeMotionLayout('size');
+  const commandCenterTransition = useThemeLayoutTransition(LEGACY_COMMAND_CENTER_TRANSITION);
   const levelRef = React.useRef(0);
-  const transcriptRef = React.useRef<HTMLDivElement>(null);
   const pendingUtteranceRef = React.useRef('');
   const utteranceTimerRef = React.useRef<number | null>(null);
   const restartTimerRef = React.useRef<number | null>(null);
   const cooldownTimerRef = React.useRef<number | null>(null);
   const speakingRef = React.useRef(false);
   const streamingReplyRef = React.useRef(false);
+  const manuallyStoppedReplyRef = React.useRef(false);
+  const flushUtteranceRef = React.useRef<(text: string) => void>(() => undefined);
   const listeningArmedRef = React.useRef(false);
   const turnBusyRef = React.useRef(false);
+  const [smokeSttState, setSmokeSttState] = React.useState<SmokeSttState>('idle');
+  const [smokeSttBlockerCode, setSmokeSttBlockerCode] = React.useState<SmokeSttBlocker>();
+  const [smokeSttRunBound, setSmokeSttRunBound] = React.useState(false);
   // True when the mic was actively listening as external speech (e.g. a
   // Settings voice preview) started - so we can hand the mic back afterwards
   // instead of leaving push-to-talk silently disarmed.
   const resumeListeningAfterSpeechRef = React.useRef(false);
   const personaCfg = PERSONAS[persona];
+  const modelLabel = React.useMemo(
+    () =>
+      formatChatModelSelectionLabel(
+        chatModelSelection,
+        modelSelectionContextFromAuth(useAuthStore.getState()),
+      ),
+    [chatModelSelection],
+  );
+  const commandCenterHandlers = React.useMemo<JarvisCommandCenterHandlers>(() => {
+    const hostPort = commandCenterBinding?.hostPort;
+    if (!hostPort) return {};
+    const requireBoundAccount = (accountId: string) => {
+      if (accountId !== hostPort.accountId) {
+        throw new Error('jarvis_command_center_account_mismatch');
+      }
+    };
+    return {
+      cancelRun(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.requestCancellation(runId);
+      },
+      retryScheduledTransport(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.retryScheduledTransport(runId);
+      },
+      retryLogicalRun(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.retryLogicalRun(runId);
+      },
+    };
+  }, [commandCenterBinding]);
+  const eligibleCommandCenterBinding =
+    session && commandCenterBinding?.hostPort.accountId === session.accountId
+      ? commandCenterBinding
+      : undefined;
+  const commandCenterRegionId = React.useId();
+  const handleCommandCenterEscape = React.useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || !showCommandCenter) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setShowCommandCenter(false);
+      commandCenterDisclosureRef.current?.focus();
+    },
+    [showCommandCenter],
+  );
+
+  React.useEffect(() => {
+    let disposed = false;
+    let generation = 0;
+    const returnToChatApproval = (requested: JarvisApprovalNavigationIntent | undefined) => {
+      // The undefined notification emitted after the chat acknowledges this
+      // exact target must not cancel the matching voice-to-chat handoff.
+      if (!requested) return;
+      const requestGeneration = ++generation;
+      if (
+        !session ||
+        !eligibleCommandCenterBinding ||
+        requested.accountId !== session.accountId ||
+        requested.chatId !== session.chatId
+      ) {
+        return;
+      }
+      void isCurrentJarvisApprovalNavigationTarget(eligibleCommandCenterBinding.dataPort, requested)
+        .then((isCurrent) => {
+          if (disposed || requestGeneration !== generation) return;
+          if (!isCurrent) return;
+          setOpen(false);
+          focusVoiceChat(session.chatId);
+        })
+        .catch(() => undefined);
+    };
+    const unsubscribe = subscribeJarvisApprovalNavigation(returnToChatApproval);
+    return () => {
+      disposed = true;
+      generation += 1;
+      unsubscribe();
+    };
+  }, [eligibleCommandCenterBinding, session, setOpen]);
 
   // Drag state — primary-button drag on the panel chrome, clamped to viewport
   const dragX = useMotionValue(0);
   const dragY = useMotionValue(0);
   const isDragging = React.useRef(false);
   const dragStart = React.useRef({ x: 0, y: 0, mx: 0, my: 0 });
-  const panelRef = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLElement>(null);
 
-  const handleDragStart = React.useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    isDragging.current = true;
-    dragStart.current = { x: dragX.get(), y: dragY.get(), mx: e.clientX, my: e.clientY };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, [dragX, dragY]);
+  const clampPanelToViewport = React.useCallback(
+    (requested = { x: dragX.get(), y: dragY.get() }) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const next = clampVoicePanelTranslation({
+        rect: panel.getBoundingClientRect(),
+        current: { x: dragX.get(), y: dragY.get() },
+        requested,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      });
+      if (Math.abs(next.x - dragX.get()) > 0.5) dragX.set(next.x);
+      if (Math.abs(next.y - dragY.get()) > 0.5) dragY.set(next.y);
+    },
+    [dragX, dragY],
+  );
 
-  const handleDragMove = React.useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    const panel = panelRef.current;
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const rawX = dragStart.current.x + (e.clientX - dragStart.current.mx);
-    const rawY = dragStart.current.y + (e.clientY - dragStart.current.my);
-    const minX = -(rect.left - dragX.get() + rawX - rawX) + 8;
-    const maxX = vw - rect.width - (rect.left - dragX.get()) - 8;
-    const minY = -(rect.top - dragY.get()) + 8;
-    const maxY = vh - rect.height - (rect.top - dragY.get()) - 8;
-    const baseLeft = rect.left - dragX.get();
-    const baseTop = rect.top - dragY.get();
-    const clampedX = Math.max(-(baseLeft - 8), Math.min(rawX, vw - rect.width - baseLeft - 8));
-    const clampedY = Math.max(-(baseTop - 8), Math.min(rawY, vh - rect.height - baseTop - 8));
-    dragX.set(clampedX);
-    dragY.set(clampedY);
-  }, [dragX, dragY]);
+  const handleDragStart = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (!shouldStartVoicePanelDrag(e.button, e.target)) return;
+      e.preventDefault();
+      isDragging.current = true;
+      dragStart.current = { x: dragX.get(), y: dragY.get(), mx: e.clientX, my: e.clientY };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [dragX, dragY],
+  );
+
+  const handleDragMove = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging.current) return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const rawX = dragStart.current.x + (e.clientX - dragStart.current.mx);
+      const rawY = dragStart.current.y + (e.clientY - dragStart.current.my);
+      clampPanelToViewport({ x: rawX, y: rawY });
+    },
+    [clampPanelToViewport],
+  );
 
   const handleDragEnd = React.useCallback(() => {
     isDragging.current = false;
   }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const reclamp = () => clampPanelToViewport();
+    reclamp();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(reclamp);
+    observer?.observe(panel);
+    panel.addEventListener('transitionend', reclamp);
+    window.addEventListener('resize', reclamp);
+    return () => {
+      observer?.disconnect();
+      panel.removeEventListener('transitionend', reclamp);
+      window.removeEventListener('resize', reclamp);
+    };
+  }, [clampPanelToViewport, open, showCommandCenter]);
 
   const stopListening = React.useCallback((nextState: VoiceState = 'idle') => {
     listeningArmedRef.current = false;
@@ -313,6 +384,7 @@ export function VoiceModal() {
 
   /** Stop the current spoken reply and hand control straight back to the user. */
   const stopSpeaking = React.useCallback(() => {
+    manuallyStoppedReplyRef.current = true;
     stopCurrentVoiceResponse();
     speakingRef.current = false;
     streamingReplyRef.current = false;
@@ -327,7 +399,7 @@ export function VoiceModal() {
   }, [startListening]);
 
   const toggleListening = React.useCallback(() => {
-    if (state === 'speaking' || speakingRef.current) {
+    if (state === 'thinking' || state === 'speaking' || speakingRef.current) {
       stopSpeaking();
       return;
     }
@@ -343,10 +415,63 @@ export function VoiceModal() {
 
   React.useEffect(() => {
     if (!open) return;
-    void ensureJarvisChatForVoice().then((chatId) => {
-      if (chatId) focusVoiceChat(chatId);
+    let disposed = false;
+
+    const requestedIdentity = resolveAccountIdentity(useAuthStore.getState());
+    if (!requestedIdentity) {
+      void (async () => {
+        const oldSession = useVoiceStore.getState().session;
+        if (!oldSession) return;
+        await stopCurrentVoiceResponse();
+        useVoiceStore.getState().endSession(oldSession.sessionId);
+      })().catch(() => {
+        if (disposed) return;
+        useVoiceStore.getState().setState('error', VOICE_SESSION_CLOSE_FAILURE);
+      });
+      return () => void (disposed = true);
+    }
+
+    void (async () => {
+      const oldSession = useVoiceStore.getState().session;
+      if (oldSession && oldSession.accountId !== requestedIdentity.accountId) {
+        try {
+          await stopCurrentVoiceResponse();
+          useVoiceStore.getState().endSession(oldSession.sessionId);
+        } catch {
+          if (!disposed) {
+            useVoiceStore.getState().setState('error', VOICE_SESSION_CLOSE_FAILURE);
+          }
+          return;
+        }
+      }
+      if (disposed) return;
+
+      const currentIdentity = resolveAccountIdentity(useAuthStore.getState());
+      if (currentIdentity?.accountId !== requestedIdentity.accountId) return;
+
+      const currentSession = useVoiceStore.getState().session;
+      if (currentSession) return;
+
+      const chatId = await ensureJarvisChatForVoice();
+      if (disposed || !chatId) return;
+
+      const confirmedIdentity = resolveAccountIdentity(useAuthStore.getState());
+      if (confirmedIdentity?.accountId !== requestedIdentity.accountId) return;
+
+      const binding = createVoiceSessionBinding({
+        sessionId: newVoiceSessionId(),
+        accountId: requestedIdentity.accountId,
+        chatId,
+        startedAt: Date.now(),
+      });
+      if (useVoiceStore.getState().beginSession(binding)) focusVoiceChat(binding.chatId);
+    })().catch(() => {
+      if (disposed) return;
+      useVoiceStore.getState().setState('error', VOICE_SESSION_START_FAILURE);
     });
-  }, [open]);
+
+    return () => void (disposed = true);
+  }, [agentRoster, cloudAccountId, localUserId, open, workspaceId]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -373,14 +498,24 @@ export function VoiceModal() {
 
     const restartListening = () => {
       if (turnBusyRef.current) return;
-      if (!useUIStore.getState().voiceModalOpen || speakingRef.current || !listeningArmedRef.current) return;
+      if (
+        !useUIStore.getState().voiceModalOpen ||
+        speakingRef.current ||
+        !listeningArmedRef.current
+      )
+        return;
       if (!handsFree() && !listeningArmedRef.current) return;
       if (VoiceService.isListening() || VoiceService.wantsListening()) return;
       if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
       restartTimerRef.current = window.setTimeout(() => {
         restartTimerRef.current = null;
         if (turnBusyRef.current) return;
-        if (!useUIStore.getState().voiceModalOpen || speakingRef.current || !listeningArmedRef.current) return;
+        if (
+          !useUIStore.getState().voiceModalOpen ||
+          speakingRef.current ||
+          !listeningArmedRef.current
+        )
+          return;
         if (VoiceService.isListening() || VoiceService.wantsListening()) return;
         startListening();
       }, 180);
@@ -436,13 +571,21 @@ export function VoiceModal() {
       void (async () => {
         const target = await resolveVoiceChatTarget(text);
         if (!target) {
-          useVoiceStore.getState().setState('error', 'Could not open a Jarvis chat.');
+          useVoiceStore.getState().setState('error', VOICE_CHAT_TARGET_FAILURE);
           releaseTurnAndRestart();
           return;
         }
 
-        focusVoiceChat(target.chatId);
-        const chatId = target.chatId;
+        const boundSession = useVoiceStore.getState().session;
+        const chatId = target.agentId ? target.chatId : boundSession?.chatId;
+        const accountId = target.agentId ? undefined : boundSession?.accountId;
+        const voiceSessionId = target.agentId ? undefined : boundSession?.sessionId;
+        if (!chatId) {
+          useVoiceStore.getState().setState('error', VOICE_BOUND_CHAT_FAILURE);
+          releaseTurnAndRestart();
+          return;
+        }
+        focusVoiceChat(chatId);
         const messageText = target.messageText.trim();
         if (!messageText) {
           useVoiceStore.getState().setState('error', 'Say something for Jarvis to send.');
@@ -474,6 +617,7 @@ export function VoiceModal() {
             new CustomEvent('jarvis:send', {
               detail: {
                 chatId,
+                ...(accountId && voiceSessionId ? { accountId, voiceSessionId } : {}),
                 text: messageText,
                 agentId: target.agentId,
                 mentionedAgentIds: target.mentionedAgentIds,
@@ -482,16 +626,14 @@ export function VoiceModal() {
               },
             }),
           );
-        } catch (error) {
-          toast.error(
-            'Voice message failed',
-            error instanceof Error ? error.message : 'Could not send.',
-          );
-          useVoiceStore.getState().setState('error', 'Could not send the voice message.');
+        } catch {
+          toast.error('Voice message failed', VOICE_MESSAGE_SAVE_FAILURE);
+          useVoiceStore.getState().setState('error', VOICE_MESSAGE_SAVE_FAILURE);
           releaseTurnAndRestart();
         }
       })();
     };
+    flushUtteranceRef.current = (text: string) => flushUtterance(text);
 
     let partialTimer: number | null = null;
     let pendingPartial = '';
@@ -594,6 +736,8 @@ export function VoiceModal() {
     ];
 
     const onStreamingStart = () => {
+      manuallyStoppedReplyRef.current = false;
+      flushUtteranceRef.current = () => undefined;
       streamingReplyRef.current = true;
       turnBusyRef.current = true;
       if (speakingRef.current) return;
@@ -604,9 +748,11 @@ export function VoiceModal() {
     const onStreamingEnd = () => {
       streamingReplyRef.current = false;
       speakingRef.current = false;
+      if (manuallyStoppedReplyRef.current) return;
       scheduleRestartAfterReply();
     };
     const onSpeechStart = () => {
+      manuallyStoppedReplyRef.current = false;
       if (streamingReplyRef.current) return;
       // Capture BEFORE flipping turnBusy: a mid-listen preview (turn not
       // busy, mic live) must resume the mic after the speech ends.
@@ -620,6 +766,7 @@ export function VoiceModal() {
     const onSpeechEnd = () => {
       if (streamingReplyRef.current) return;
       speakingRef.current = false;
+      if (manuallyStoppedReplyRef.current) return;
       scheduleRestartAfterReply();
     };
     window.addEventListener(STREAMING_VOICE_START_EVENT, onStreamingStart);
@@ -640,6 +787,7 @@ export function VoiceModal() {
       listeningArmedRef.current = false;
       turnBusyRef.current = false;
       streamingReplyRef.current = false;
+      manuallyStoppedReplyRef.current = false;
       window.removeEventListener(STREAMING_VOICE_START_EVENT, onStreamingStart);
       window.removeEventListener(STREAMING_VOICE_END_EVENT, onStreamingEnd);
       window.removeEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechStart);
@@ -648,188 +796,208 @@ export function VoiceModal() {
     };
   }, [open, startListening, voiceAutoListenOnOpen, stopListening]);
 
+  const runSmokeSttFixture = React.useCallback(async () => {
+    if (!KERNEL_SMOKE_ENABLED || smokeSttState === 'transcribing') return;
+    setSmokeSttState('transcribing');
+    setSmokeSttBlockerCode(undefined);
+    setSmokeSttRunBound(false);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const transcript = await (async () => {
+        const fixture = await invoke<unknown>('sik_smoke_voice_fixture');
+        if (!fixture || typeof fixture !== 'object' || Array.isArray(fixture)) {
+          throw new Error('fixture_contract');
+        }
+        const record = fixture as Record<string, unknown>;
+        if (
+          Object.keys(record).sort().join('|') !== 'audioBase64|mimeType|sha256' ||
+          record.mimeType !== 'audio/wav' ||
+          record.sha256 !== KERNEL_SMOKE_VOICE_FIXTURE_SHA256 ||
+          typeof record.audioBase64 !== 'string' ||
+          record.audioBase64.length === 0
+        ) {
+          throw new Error('fixture_contract');
+        }
+        return invoke<string>('faster_whisper_transcribe', {
+          model: fasterWhisperModel ?? 'small',
+          audioBase64: record.audioBase64,
+        });
+      })();
+      const expectedTranscript = KERNEL_SMOKE_SCENARIOS.native_stt_voice_turn.safeTextFixture;
+      if (typeof transcript !== 'string' || transcript.trim() !== expectedTranscript) {
+        throw new Error('transcript_contract');
+      }
+      setSmokeSttState('submitted');
+      flushUtteranceRef.current(expectedTranscript);
+    } catch (error) {
+      setSmokeSttBlockerCode(smokeSttBlocker(error));
+      setSmokeSttState('blocked_external');
+    }
+  }, [fasterWhisperModel, smokeSttState]);
+
+  React.useEffect(() => {
+    if (smokeSttState === 'submitted' && session?.activeRunId) setSmokeSttRunBound(true);
+  }, [session?.activeRunId, smokeSttState]);
+
   const listeningHint =
     state === 'listening'
       ? voiceListeningHint(voiceCommitPhrase, voiceAutoListenOnOpen, voiceEndTrigger)
       : STATE_LABEL[state];
 
-  React.useEffect(() => {
-    const node = transcriptRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, partial]);
-
   if (!open) return null;
-
-  const transcript = messages
-    .filter(
-      (message) =>
-        message.role === 'user' || message.role === 'assistant' || message.role === 'agent',
-    )
-    .map((message) => ({ ...message, displayText: messageText(message) }))
-    .filter((message) => message.displayText);
-  const visibleTranscript = transcript.slice(-3);
 
   return (
     <AnimatePresence>
       <motion.aside
         ref={panelRef}
-        initial={{ opacity: 0, x: 16, y: -6, scale: 0.96 }}
-        animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-        exit={{ opacity: 0, x: 12, scale: 0.97 }}
-        transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+        layout={panelLayout}
+        initial={reducedMotion ? false : { opacity: 0, x: 16, y: -6, scale: 0.96 }}
+        animate={reducedMotion ? undefined : { opacity: 1, x: 0, y: 0, scale: 1 }}
+        exit={reducedMotion ? undefined : { opacity: 0, x: 12, scale: 0.97 }}
+        transition={panelTransition}
         style={{ x: dragX, y: dragY }}
-        className="jarvis-voice-panel fixed right-3 top-3 z-[90] w-[286px] overflow-hidden rounded-[9px] border border-white/10 bg-[#090909]/95 backdrop-blur-xl"
+        className={cn(
+          'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[0.5625rem] border border-border bg-elevated/95 text-foreground backdrop-blur-sm',
+          '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:backdrop-blur-none',
+          '[[data-theme=monochrome]_&]:before:!hidden [[data-theme=monochrome]_&]:after:!hidden',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-drag-row::after]:!hidden',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!shadow-none',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!shadow-none',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![background-image:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![filter:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:!shadow-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![transform:none]',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-shell::before]:!hidden',
+          showCommandCenter ? 'w-[26.25rem]' : 'w-[17.875rem]',
+        )}
         aria-label="Jarvis voice session"
+        data-monochrome-surface="voice"
+        data-vibespace-owned-chrome="voice"
+        data-voice-appearance-state={state}
+        data-reduced-motion={reducedMotion ? 'true' : 'false'}
+        data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceState : undefined}
+        data-voice-state={KERNEL_SMOKE_ENABLED ? state : undefined}
       >
         {/* Primary-button drag handle — single compact row */}
-        <div
-          className="jarvis-voice-drag-row cursor-grab active:cursor-grabbing"
+        <JarvisVoiceHeader
+          state={state}
+          personaName={personaCfg.name}
+          listeningHint={listeningHint}
+          errorMessage={errorMessage}
+          voiceAutoListenOnOpen={voiceAutoListenOnOpen}
+          voiceCommitPhrase={voiceCommitPhrase}
+          levelRef={levelRef}
+          voiceControlEvidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceStop : undefined}
+          onClose={() => {
+            handleVoiceModuleClosed();
+            setOpen(false);
+          }}
+          onToggleListening={toggleListening}
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              handleVoiceModuleClosed();
-              setOpen(false);
-            }}
-            className="absolute right-1.5 top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Close Jarvis voice session"
-            title="Close"
-          >
-            <X className="h-2.5 w-2.5" />
-          </button>
+        />
 
-          <div className="relative z-[1] flex items-center gap-1.5 pl-2 pr-5 py-1">
+        {KERNEL_SMOKE_ENABLED ? (
+          <div className="relative z-[1] flex gap-1 border-t border-white/[0.06] px-2 py-1 [[data-theme=monochrome]_&]:border-border">
             <button
               type="button"
-              onClick={toggleListening}
-              className={cn(
-                'jarvis-voice-orb-button flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/70',
-                (state === 'listening' || state === 'speaking') && 'is-active',
-              )}
-              aria-label={
-                state === 'speaking'
-                  ? 'Stop response'
-                  : state === 'listening'
-                    ? 'Stop listening'
-                    : state === 'paused'
-                      ? 'Resume listening'
-                      : voiceAutoListenOnOpen
-                        ? 'Listening active'
-                        : 'Click to talk'
+              data-sik-evidence={SIK_EVIDENCE.voiceTranscript}
+              onClick={() =>
+                flushUtteranceRef.current(KERNEL_SMOKE_SCENARIOS.voice_turn_stop.safeTextFixture)
               }
-              title={
-                state === 'speaking'
-                  ? 'Stop Jarvis mid-reply and ask something else'
-                  : state === 'listening'
-                    ? 'Stop listening'
-                    : state === 'paused'
-                      ? 'Listening paused after silence — click to resume'
-                      : voiceAutoListenOnOpen
-                        ? `Hands-free — say "${voiceCommitPhrase}" to send`
-                        : 'Click to let Jarvis hear you'
-              }
+              className="min-h-7 rounded border border-border px-2 py-1 text-xs text-muted-foreground"
             >
-              <SymbioteOrb state={state} size={30} />
+              Submit fixed transcript
             </button>
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[11px] font-medium leading-4 text-foreground">
-                {personaCfg.name}
-              </span>
-              <span
-                className={cn(
-                  'flex items-center gap-1 text-[9px] leading-3',
-                  state === 'error' ? 'text-destructive' : 'text-muted-foreground',
-                )}
-              >
-                <span
-                  className={cn(
-                    'h-1.5 w-1.5 rounded-full',
-                    state === 'error'
-                      ? 'bg-destructive'
-                      : 'bg-success shadow-[0_0_5px_hsl(var(--success)/0.75)]',
-                  )}
-                />
-                {state === 'error' && errorMessage ? errorMessage : listeningHint}
-              </span>
-            </div>
-            <div className="mx-auto min-w-0 flex-1">
-              <VoiceActivityWaveform levelRef={levelRef} active={state === 'listening'} />
-            </div>
-            <div className="jarvis-voice-mic flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full">
-              <Mic className="h-2.5 w-2.5 text-muted-foreground" strokeWidth={1.8} />
-            </div>
+            <button
+              type="button"
+              data-sik-evidence={SIK_EVIDENCE.voiceSttFixture}
+              onClick={() => void runSmokeSttFixture()}
+              disabled={smokeSttState === 'transcribing'}
+              className="min-h-7 rounded border border-border px-2 py-1 text-xs text-muted-foreground disabled:opacity-50"
+            >
+              Transcribe fixed audio
+            </button>
+            <output
+              hidden
+              data-sik-evidence={SIK_EVIDENCE.voiceSttState}
+              data-stt-state={smokeSttState}
+              data-engine-id="faster-whisper"
+              data-model-id={fasterWhisperModel ?? 'small'}
+              data-fixture-sha256={KERNEL_SMOKE_VOICE_FIXTURE_SHA256}
+              data-session-bound={session ? 'true' : 'false'}
+              data-run-bound={smokeSttRunBound ? 'true' : 'false'}
+              data-blocker-code={smokeSttBlockerCode}
+            />
           </div>
-        </div>
+        ) : null}
 
-        {/* Transcript dropdown toggle */}
+        {/* Command Center disclosure */}
         <button
+          ref={commandCenterDisclosureRef}
           type="button"
-          onClick={() => setShowTranscript((v) => !v)}
-          className="relative z-[1] flex w-full items-center justify-center gap-1 border-t border-white/[0.06] px-2 py-px text-[8px] text-muted-foreground/55 transition-colors hover:bg-white/[0.035] hover:text-muted-foreground"
+          onClick={() => setShowCommandCenter((visible) => !visible)}
+          aria-expanded={showCommandCenter}
+          aria-controls={commandCenterRegionId}
+          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted"
         >
-          <span>Transcript</span>
-          {showTranscript
-            ? <ChevronUp className="h-2 w-2" />
-            : <ChevronDown className="h-2 w-2" />
-          }
+          <span className="shrink-0 font-medium text-foreground">Command Center</span>
+          {showCommandCenter ? (
+            <span
+              className="ml-auto min-w-0 break-words text-right text-xs leading-tight"
+              title={modelLabel}
+            >
+              {modelLabel}
+            </span>
+          ) : null}
+          {showCommandCenter ? (
+            <ChevronUp className="h-2.5 w-2.5 shrink-0" />
+          ) : (
+            <ChevronDown className="ml-auto h-2.5 w-2.5 shrink-0" />
+          )}
         </button>
 
         <AnimatePresence>
-          {showTranscript && (
+          {showCommandCenter && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              id={commandCenterRegionId}
+              initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+              animate={reducedMotion ? undefined : { height: 'auto', opacity: 1 }}
+              exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
+              transition={commandCenterTransition}
               className="overflow-hidden"
+              onKeyDown={handleCommandCenterEscape}
+              data-motion-kind={
+                reducedMotion ? 'none' : theme === 'sakura' ? 'instant-layout' : 'spring'
+              }
             >
-              <div
-                ref={transcriptRef}
-                className="max-h-[60px] space-y-0.5 overflow-y-auto px-2 pb-1.5 pt-0.5"
-              >
-                {transcript.length === 0 && !partial ? (
-                  <div className="flex h-[20px] items-center justify-center text-center text-[8px] text-muted-foreground">
-                    {activeChatId ? 'Listening...' : 'Open a chat first.'}
-                  </div>
-                ) : null}
-                {visibleTranscript.map((message) => {
-                  const user = message.role === 'user';
-                  return (
-                    <div
-                      key={message.id}
-                      className="grid grid-cols-[12px_32px_1fr] items-center gap-0.5 text-[8px] leading-3"
-                    >
-                      <span
-                        className={cn(
-                          'flex h-[12px] w-[12px] items-center justify-center rounded-full border',
-                          user
-                            ? 'border-info/80 text-info'
-                            : 'border-accent-copper/80 text-accent-copper',
-                        )}
-                      >
-                        {user ? <UserRound className="h-1.5 w-1.5" /> : <Bot className="h-1.5 w-1.5" />}
-                      </span>
-                      <span className={cn('text-[8px] font-medium', user ? 'text-info' : 'text-accent-copper')}>
-                        {user ? 'You' : 'Jarvis:'}
-                      </span>
-                      <span className="min-w-0 truncate text-foreground/80">{message.displayText}</span>
-                    </div>
-                  );
-                })}
-                {partial ? (
-                  <div className="grid grid-cols-[12px_32px_1fr] items-center gap-0.5 text-[8px] leading-3">
-                    <span className="flex h-[12px] w-[12px] items-center justify-center rounded-full border border-info/80 text-info">
-                      <UserRound className="h-1.5 w-1.5" />
-                    </span>
-                    <span className="text-[8px] font-medium text-info">You</span>
-                    <span className="min-w-0 truncate text-foreground/70">{partial}</span>
-                  </div>
-                ) : null}
-              </div>
+              <JarvisVoiceTranscript
+                messages={messages}
+                partial={partial}
+                hasBoundChat={Boolean(session?.chatId)}
+                expandedIds={expandedTranscriptIds}
+                onToggleExpanded={(messageId) =>
+                  setExpandedTranscriptIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(messageId)) next.delete(messageId);
+                    else next.add(messageId);
+                    return next;
+                  })
+                }
+              />
+              {eligibleCommandCenterBinding && session ? (
+                <JarvisCommandCenter
+                  accountId={session.accountId}
+                  chatId={session.chatId}
+                  dataPort={eligibleCommandCenterBinding.dataPort}
+                  handlers={commandCenterHandlers}
+                  compact
+                  embedded
+                />
+              ) : (
+                <p className="border-t border-border/70 px-2 py-3 text-center text-xs text-muted-foreground">
+                  Command Center is unavailable for this voice session.
+                </p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

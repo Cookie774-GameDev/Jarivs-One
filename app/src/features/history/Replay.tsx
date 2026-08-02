@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Play, Pause, ExternalLink, MessageSquare } from 'lucide-react';
 import { messageRepo, chatRepo } from '@/lib/db';
 import { useUIStore } from '@/stores/ui';
@@ -187,12 +187,13 @@ function ReplayHeader({
     return Array.from(seen) as Chat['active_agent_ids'];
   }, [chat.active_agent_ids, messages]);
 
-  const agentLabels = agentIds
-    .map((id) => agents[id]?.name)
-    .filter((n): n is string => Boolean(n));
+  const agentLabels = agentIds.map((id) => agents[id]?.name).filter((n): n is string => Boolean(n));
 
   return (
-    <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-paper/40 px-5 py-4">
+    <header
+      data-sakura-surface="replay-header"
+      className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-paper/40 px-5 py-4"
+    >
       <div className="min-w-0">
         <h1 className="font-display text-page-title text-foreground truncate">
           {chat.title || 'Untitled chat'}
@@ -253,6 +254,7 @@ function Scrubber({
   onSpeed,
 }: ScrubberProps) {
   const railRef = React.useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
   const lastIdx = Math.max(0, total - 1);
   const ratio = lastIdx === 0 ? 1 : position / lastIdx;
 
@@ -294,7 +296,10 @@ function Scrubber({
   }, [total]);
 
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-paper/30 px-5 py-2.5">
+    <div
+      data-sakura-surface="replay-scrubber"
+      className="flex shrink-0 items-center gap-3 border-b border-border bg-paper/30 px-5 py-2.5"
+    >
       <Hint label={playing ? 'Pause (Space)' : 'Play (Space)'}>
         <Button
           size="icon-sm"
@@ -340,13 +345,12 @@ function Scrubber({
       >
         <motion.div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 rounded-full"
+          className="pointer-events-none absolute inset-y-0 left-0 rounded-full [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:!bg-foreground [html[data-theme=monochrome]_&]:![background-image:none]"
           style={{
-            background:
-              'linear-gradient(90deg, hsl(var(--terracotta)) 0%, hsl(var(--honey)) 100%)',
+            background: 'linear-gradient(90deg, hsl(var(--terracotta)) 0%, hsl(var(--honey)) 100%)',
           }}
           animate={{ width: `${ratio * 100}%` }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
+          transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: 'easeOut' }}
         />
         {/* Tick marks sit above the fill but below the thumb. */}
         <div className="pointer-events-none absolute inset-0 flex items-center">
@@ -367,7 +371,7 @@ function Scrubber({
         </div>
         <span
           aria-hidden
-          className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-accent-copper bg-background shadow-soft"
+          className="pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-accent-copper bg-background shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-foreground [html[data-theme=monochrome]_&]:shadow-none"
           style={{ left: `${ratio * 100}%` }}
         />
       </div>
@@ -488,7 +492,9 @@ function PartList({ parts, compact = false }: { parts: Part[]; compact?: boolean
 function PartView({ part }: { part: Part }) {
   switch (part.kind) {
     case 'text':
-      return <p className="whitespace-pre-wrap break-words text-body text-foreground">{part.text}</p>;
+      return (
+        <p className="whitespace-pre-wrap break-words text-body text-foreground">{part.text}</p>
+      );
     case 'reasoning':
       return (
         <p className="whitespace-pre-wrap break-words text-secondary italic text-muted-foreground">
@@ -542,11 +548,15 @@ function truncate(s: string, n: number): string {
 
 function ReplayEmpty({ message }: { message?: string } = {}) {
   return (
-    <div className="flex h-full items-center justify-center px-8 text-center">
+    <div
+      data-sakura-state="empty"
+      className="flex h-full items-center justify-center px-8 text-center"
+    >
       <div className="max-w-[40ch]">
         <div className="font-display text-page-title text-foreground">Pick a chat to replay</div>
         <p className="mt-2 text-secondary text-muted-foreground">
-          {message ?? 'Choose a past conversation from the rail to step through it message-by-message.'}
+          {message ??
+            'Choose a past conversation from the rail to step through it message-by-message.'}
         </p>
       </div>
     </div>

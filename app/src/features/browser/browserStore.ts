@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
-  BrowserAgentAction,
   BrowserConsoleEntry,
   BrowserControlMode,
+  BrowserReviewedAction,
+  BrowserReviewedActionStatus,
   BrowserRuntimeInfo,
   BrowserTab,
 } from './browserTypes';
@@ -24,13 +25,57 @@ function blankTab(url = 'about:blank'): BrowserTab {
   };
 }
 
-interface BrowserState {
+const BROWSER_REVIEW_LIMIT = 100;
+
+function cloneBrowserJson<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneBrowserJson(entry)) as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, cloneBrowserJson(entry)]),
+    ) as T;
+  }
+  return value;
+}
+
+function cloneReviewedAction(action: BrowserReviewedAction): BrowserReviewedAction {
+  return {
+    ...action,
+    requester: {
+      kind: 'agent',
+      agent: { ...action.requester.agent },
+      ...(action.requester.runId ? { runId: action.requester.runId } : {}),
+    },
+    target: {
+      ...action.target,
+      ...(action.target.coordinates ? { coordinates: { ...action.target.coordinates } } : {}),
+    },
+    parameters: cloneBrowserJson(action.parameters),
+  };
+}
+
+const SAFE_RESULTS = new Set([
+  'Denied by user.',
+  'Denied by local browser stop.',
+  'Browser Operator execution is unavailable until canonical approval is active.',
+  'Browser Operator review expired.',
+]);
+
+function safeResult(status: Exclude<BrowserReviewedActionStatus, 'pending'>, result?: string) {
+  if (result && SAFE_RESULTS.has(result)) return result;
+  if (status === 'denied') return 'Denied by user.';
+  if (status === 'expired') return 'Browser Operator review expired.';
+  return 'Browser Operator execution is unavailable until canonical approval is active.';
+}
+
+export interface BrowserState {
   tabs: BrowserTab[];
   activeTabId: string;
   runtime: BrowserRuntimeInfo | null;
   frameDataUrl: string | null;
   consoleEntries: BrowserConsoleEntry[];
-  agentActions: BrowserAgentAction[];
+  agentActions: BrowserReviewedAction[];
   agentArmed: boolean;
   sidebarOpen: boolean;
   consoleOpen: boolean;
@@ -48,8 +93,12 @@ interface BrowserState {
   closedStack: BrowserTab[];
   pushConsole: (level: BrowserConsoleEntry['level'], text: string) => void;
   clearConsole: () => void;
-  enqueueAgentAction: (action: Omit<BrowserAgentAction, 'id' | 'createdAt' | 'status'>) => string;
-  resolveAgentAction: (id: string, status: BrowserAgentAction['status'], result?: string) => void;
+  enqueueAgentAction: (action: BrowserReviewedAction) => string;
+  resolveAgentAction: (
+    id: string,
+    status: Exclude<BrowserReviewedActionStatus, 'pending'>,
+    result?: string,
+  ) => void;
   abortAgentActions: () => void;
   setAgentArmed: (v: boolean) => void;
   setControlMode: (tabId: string, mode: BrowserControlMode) => void;
@@ -135,30 +184,31 @@ export const useBrowserStore = create<BrowserState>()(
         })),
       clearConsole: () => set({ consoleEntries: [] }),
       enqueueAgentAction: (action) => {
-        const id = tabId();
-        const entry: BrowserAgentAction = {
-          ...action,
-          id,
-          createdAt: Date.now(),
-          status: 'pending',
-        };
+        const existing = get().agentActions.find((candidate) => candidate.id === action.id);
+        if (existing) return existing.id;
+        const entry = cloneReviewedAction({ ...action, status: 'pending', result: undefined });
         set((s) => ({
-          agentActions: [entry, ...s.agentActions].slice(0, 100),
+          agentActions: [
+            entry,
+            ...s.agentActions.filter((candidate) => candidate.id !== entry.id),
+          ].slice(0, BROWSER_REVIEW_LIMIT),
           agentArmed: true,
         }));
-        return id;
+        return entry.id;
       },
       resolveAgentAction: (id, status, result) =>
         set((s) => ({
           agentActions: s.agentActions.map((a) =>
-            a.id === id ? { ...a, status, result } : a,
+            a.id === id && a.status === 'pending'
+              ? { ...a, status, result: safeResult(status, result) }
+              : a,
           ),
         })),
       abortAgentActions: () =>
         set((s) => ({
           agentActions: s.agentActions.map((a) =>
-            a.status === 'pending' || a.status === 'running' || a.status === 'approved'
-              ? { ...a, status: 'aborted' }
+            a.status === 'pending'
+              ? { ...a, status: 'denied', result: 'Denied by local browser stop.' }
               : a,
           ),
           agentArmed: false,

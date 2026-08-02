@@ -13,7 +13,7 @@
  * - Honors `signal` between words.
  */
 import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateInputTokens, llmContentToText } from '../types';
+import { estimateInputTokens, llmContentToText, systemPromptForRequest } from '../types';
 import { sleep } from '@/lib/utils';
 
 /** Extract a direct QA/code-word response contract from the system prompt. */
@@ -74,7 +74,8 @@ export const mockProvider: LLMProvider = {
   async run(req: LLMRequest): Promise<LLMResponse> {
     const lastUser = [...req.messages].reverse().find((m) => m.role === 'user');
     const userText = lastUser ? llmContentToText(lastUser.content) : '';
-    const reply = buildReply(userText, req.agent.system_prompt);
+    const systemPrompt = systemPromptForRequest(req);
+    const reply = buildReply(userText, systemPrompt);
     const tokens = splitForStream(reply);
 
     // Aim for ~2s total. With ~50 words that's ~40ms/word; jitter keeps it
@@ -99,6 +100,7 @@ export const mockProvider: LLMProvider = {
       }
 
       acc += tok;
+      req.onResponseObservation?.({ kind: 'sdk_chunk', observedAt: Date.now() });
       // Whitespace-only chunks count as deltas too (preserves spacing).
       req.onChunk?.({ delta: tok, first });
       first = false;
@@ -114,7 +116,7 @@ export const mockProvider: LLMProvider = {
     req.onChunk?.({ delta: '', done: true });
 
     const inputText =
-      req.agent.system_prompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
+      systemPrompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
     const input_tokens = estimateInputTokens(inputText);
     const output_tokens = estimateInputTokens(acc);
 

@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "status": "production-ui-effects-implemented-browser-verified",
+  "theme": {
+    "id": "sakura",
+    "label": "Sakura",
+    "description": "Cel-painted dusk workspace.",
+    "variant": "Sakura Dusk"
+  },
+  "palette": {
+    "night": "#140E30",
+    "night2": "#232051",
+    "indigo": "#2F2B71",
+    "periwinkle": "#4E518A",
+    "orchid": "#916285",
+    "lavender": "#A082AA",
+    "pink": "#EEABB7",
+    "coral": "#EF6F88",
+    "peach": "#F5CEC8",
+    "ivory": "#FFF7F2",
+    "gold": "#FFD978",
+    "mint": "#9ED0B8",
+    "destructiveDerived": "#B33A55"
+  },
+  "sceneGradient": {
+    "angleDegrees": 180,
+    "stops": [
+      { "offset": 0, "color": "#F6CBC4" },
+      { "offset": 25, "color": "#E595AD" },
+      { "offset": 48, "color": "#A482B4" },
+      { "offset": 70, "color": "#4E518A" },
+      { "offset": 100, "color": "#140E30" }
+    ]
+  },
+  "productionSceneGradient": {
+    "angleDegrees": 180,
+    "stops": [
+      { "offset": 0, "color": "#F5CEC8" },
+      { "offset": 24, "color": "#EEABB7" },
+      { "offset": 46, "color": "#A082AA" },
+      { "offset": 70, "color": "#4E518A" },
+      { "offset": 100, "color": "#140E30" }
+    ]
+  },
+  "material": {
+    "panelNightAlphaRange": [0.72, 0.92],
+    "panelNightAlpha": 0.76,
+    "strongPanelIndigoAlpha": 0.91,
+    "softIvoryAlphaRange": [0.05, 0.11],
+    "softIvoryAlpha": 0.07,
+    "grainOpacity": 0.08,
+    "decorativeStroke": { "color": "#FFEFF1", "alpha": 0.19 },
+    "decorativeStrokeStrong": { "color": "#FFEFF1", "alpha": 0.32 },
+    "blurPxRange": [14, 18],
+    "blurPx": 14,
+    "radiiPx": { "compactMin": 9, "compactMax": 12, "card": 16, "feature": 23 }
+  },
+  "typography": {
+    "display": "Fraunces",
+    "interface": ["Plus Jakarta Sans", "Inter"],
+    "technical": "JetBrains Mono",
+    "sectionLabel": "narrow uppercase sans"
+  },
+  "semantic": {
+    "foreground": "ivory",
+    "active": "pink",
+    "primaryAction": "coral",
+    "attention": "gold",
+    "success": "mint",
+    "destructive": "destructiveDerived"
+  },
+  "contrastGates": {
+    "normalTextAA": 4.5,
+    "largeTextAA": 3,
+    "essentialNonText": 3,
+    "largeTextDefinition": "24 CSS px regular or 18.66 CSS px bold",
+    "ivoryMinimumAlphaByOpaqueSurface": {
+      "night": 0.466,
+      "night2": 0.491,
+      "indigo": 0.537,
+      "periwinkle": 0.72
+    },
+    "essentialIvoryStrokeMinimumAlphaByOpaqueSurface": {
+      "night": 0.353,
+      "night2": 0.36,
+      "indigo": 0.39,
+      "periwinkle": 0.511
+    },
+    "destructive": {
+      "background": "#B33A55",
+      "foreground": "#FFF7F2",
+      "textContrast": 5.43,
+      "fillContrastAgainstNight": 3.22,
+      "fillContrastAgainstNight2": 2.62,
+      "fillContrastAgainstIndigo": 2.14,
+      "requiresExplicitBoundaryOn": ["night2", "indigo"],
+      "requiresRedundantLabelOrIcon": true
+    }
+  },
+  "motion": {
+    "panelTransitionMsRange": [180, 280],
+    "petalDrift": "slow and sparse",
+    "reducedMotion": "disable animation and transitions; preserve final state"
+  },
+  "evidence": {
+    "realAppBrowserMatrix": {
+      "status": "pass",
+      "tests": 8,
+      "viewports": ["1440x900", "1024x768"],
+      "modes": ["normal", "reduced-motion", "forced-colors", "default-theme-isolation"],
+      "pixelDiffEquivalence": false
+    },
+    "pending": ["native", "assistive-technology", "zoom", "performance-trace"]
+  }
+}

@@ -3,7 +3,13 @@ import { toast } from '@/components/ui/toast';
 import { Avatar } from '@/components/ui/avatar';
 import { useUIStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
-import { containsWakePhrase, isWakeWordAutoOpenAllowed, readWakeWordEnabled, WAKE_WORD_SETTING_EVENT } from './wakeWord';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import {
+  containsWakePhrase,
+  isWakeWordAutoOpenAllowed,
+  readWakeWordEnabled,
+  WAKE_WORD_SETTING_EVENT,
+} from './wakeWord';
 import { VOICE_EXCLUSIVE_START_EVENT, VOICE_EXCLUSIVE_STOP_EVENT } from './VoiceService';
 import { speakWithSettings } from './voiceRouter';
 import {
@@ -56,6 +62,18 @@ interface WakeSpeechRecognition {
 
 type WakeSpeechRecognitionCtor = new () => WakeSpeechRecognition;
 type WakeStatus = 'listening' | 'heard' | 'unsupported' | 'blocked';
+
+const WAKE_WORD_MICROPHONE_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Wake-word microphone',
+  reason:
+    'Jarvis could not access the microphone. Check microphone permissions and device availability',
+}).text;
+const VOICE_ACKNOWLEDGEMENT_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Voice acknowledgement',
+  reason: 'Jarvis could not play the wake-word acknowledgement. Voice mode is still open',
+}).text;
 
 function getRecognitionCtor(): WakeSpeechRecognitionCtor | null {
   if (typeof window === 'undefined') return null;
@@ -160,12 +178,11 @@ export function WakeWordHost() {
         setVoiceModalOpen(true);
         window.setTimeout(() => {
           if (document.visibilityState !== 'visible') return;
-          void speakWithSettings(VOICE_ACKNOWLEDGEMENT_TEXT, { allowBackground: true }).catch((err) => {
-            toast.warning(
-              'Voice acknowledgement unavailable',
-              err instanceof Error ? err.message : 'Jarvis could not play the acknowledgement.',
-            );
-          });
+          void speakWithSettings(VOICE_ACKNOWLEDGEMENT_TEXT, { allowBackground: true }).catch(
+            () => {
+              toast.warning('Voice acknowledgement unavailable', VOICE_ACKNOWLEDGEMENT_FAILURE);
+            },
+          );
         }, 140);
       };
       recognition.onerror = (event) => {
@@ -175,10 +192,7 @@ export function WakeWordHost() {
           event.error === 'audio-capture';
         if (blocked) {
           setStatus('blocked');
-          toast.warning(
-            'Wake word unavailable',
-            'Jarvis could not access the microphone. Check microphone permissions and device availability.',
-          );
+          toast.warning('Wake word unavailable', WAKE_WORD_MICROPHONE_FAILURE);
           stopRecognition(recognitionRef);
           return;
         }

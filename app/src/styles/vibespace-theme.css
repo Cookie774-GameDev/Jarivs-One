@@ -1,5 +1,5 @@
-/* VibeSpace: a pastel origami workspace skin. Kept separate from globals.css
- * so the established Dark, Light, and Jarvis Core skins remain unchanged. */
+/* VibeSpace: a pastel workspace skin. Chat-specific Origami presentation
+ * lives in origami-chat.css so every shared-shell override stays route gated. */
 html[data-theme='vibespace'] {
   --background: 36 65% 95%;
   --background-warm: 29 72% 92%;
@@ -79,33 +79,10 @@ html[data-theme='vibespace'] body {
   background-image: var(--bloom-image);
 }
 
-/* Softer Light: lower glare and gentler separators while preserving the
- * existing warm-paper character and AA text contrast. */
-html[data-theme='light'] {
-  --background: 38 46% 96%;
-  --background-warm: 36 43% 93%;
-  --panel: 36 40% 93%;
-  --elevated: 42 58% 98%;
-  --paper-soft: 39 48% 96%;
-  --paper-done: 39 38% 94%;
-  --border: 34 26% 87%;
-  --border-mid: 32 22% 78%;
-  --line-soft: 36 31% 91%;
-  --input: 34 26% 87%;
-  --foreground: 25 24% 21%;
-  --muted: 37 35% 93%;
-  --muted-foreground: 27 15% 39%;
-  --ink-faint: 29 10% 55%;
-  --shadow-soft: 0 2px 8px hsl(28 22% 36% / 0.05), 0 8px 22px hsl(28 22% 36% / 0.035);
-  --shadow-lift: 0 8px 20px hsl(28 22% 36% / 0.07), 0 18px 40px hsl(14 45% 45% / 0.055);
-  --bloom-image:
-    radial-gradient(at 18% 12%, hsl(14 62% 78% / 0.12) 0, transparent 46%),
-    radial-gradient(at 82% 82%, hsl(105 24% 70% / 0.1) 0, transparent 48%),
-    radial-gradient(at 100% 0%, hsl(280 24% 78% / 0.07) 0, transparent 46%);
-}
-
 @media (prefers-reduced-motion: no-preference) {
   html[data-theme='vibespace'] body {
-    transition: background-color 180ms ease, color 180ms ease;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
   }
 }

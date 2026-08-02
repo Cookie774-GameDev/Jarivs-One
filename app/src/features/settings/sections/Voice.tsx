@@ -13,7 +13,10 @@ import {
 import { useAuthStore } from '@/stores/auth';
 import type { PersonaPreset, VoiceEngine, VoicePresetId } from '@/types/common';
 import { PERSONAS } from '@/features/onboarding/steps/personas-data';
-import { getInstalledSpeechVoices, isSpeechSynthesisSupported } from '@/features/voice/speechSynthesis';
+import {
+  getInstalledSpeechVoices,
+  isSpeechSynthesisSupported,
+} from '@/features/voice/speechSynthesis';
 import {
   cancelVoicePreview,
   previewVoiceWithSettings,
@@ -22,11 +25,7 @@ import {
 import { useAppAdmin } from '@/lib/admin';
 import { effectivePlan, planAllowsVoiceWithAdmin } from '@/lib/entitlements';
 import { getCombinedUsage } from '@/features/billing/planLimits';
-import {
-  getDeepgramVoiceKey,
-  getOpenAIVoiceKey,
-  setVoiceApiKey,
-} from '@/lib/security/voiceKeys';
+import { getDeepgramVoiceKey, getOpenAIVoiceKey, setVoiceApiKey } from '@/lib/security/voiceKeys';
 import { testDeepgramVoiceKey } from '@/features/voice/providers/deepgramSpeak';
 import { Input } from '@/components/ui/input';
 import { VOICE_PROFILES, type VoiceProfile } from '@/features/voice/voiceProfiles';
@@ -54,10 +53,113 @@ import {
   VOICE_COMMIT_PHRASE_MAX_LEN,
   VOICE_COMMIT_PHRASE_MIN_LEN,
 } from '@/features/voice/voiceTurnCommit';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 
 type MicStatus = 'idle' | 'testing' | 'ok' | 'denied' | 'unavailable';
 type LocalVoiceStatus = 'idle' | 'checking' | 'ready' | 'missing' | 'unsupported';
 type KokoroStatus = 'idle' | 'downloading' | 'ready' | 'testing' | 'error';
+type VoiceSettingsFailureKind =
+  | 'installed_voice_inspection'
+  | 'kokoro_test'
+  | 'local_voice_unavailable'
+  | 'microphone_access'
+  | 'microphone_capture'
+  | 'microphone_device'
+  | 'microphone_unknown'
+  | 'microphone_unavailable'
+  | 'windows_speech_settings';
+
+const VOICE_ENGINE_LABELS: Readonly<Record<VoiceEngine, string>> = {
+  deepgram: 'Deepgram',
+  kokoro: 'Kokoro',
+  local: 'Local',
+  system: 'System',
+};
+
+const VOICE_SETTINGS_FAILURE_DETAILS: Readonly<
+  Record<VoiceSettingsFailureKind, Readonly<{ actionLabel: string; reason: string }>>
+> = {
+  installed_voice_inspection: {
+    actionLabel: 'Installed voice inspection',
+    reason:
+      'Installed voices could not be inspected. Check Windows speech voice packages, then try the check again',
+  },
+  kokoro_test: {
+    actionLabel: 'Kokoro voice test',
+    reason:
+      'The local neural voice could not synthesize the test phrase. Jarvis will use the Windows Natural voice; check the local model in Settings → Voice, then try again',
+  },
+  local_voice_unavailable: {
+    actionLabel: 'Local voice availability',
+    reason:
+      'This runtime does not provide system speech synthesis. Select Kokoro or another available voice engine in Settings → Voice',
+  },
+  microphone_access: {
+    actionLabel: 'Microphone permission test',
+    reason:
+      'Microphone access was not granted. Check the operating-system and VibeSpace microphone permissions, confirm an input device is available, then try again',
+  },
+  microphone_capture: {
+    actionLabel: 'Microphone capture',
+    reason:
+      'The selected microphone could not be opened. Close other apps using the device, check the input settings, then try again',
+  },
+  microphone_device: {
+    actionLabel: 'Microphone device check',
+    reason:
+      'No usable microphone input was found. Connect or enable an input device, confirm it is selected in the operating-system settings, then try again',
+  },
+  microphone_unknown: {
+    actionLabel: 'Microphone test',
+    reason:
+      'Microphone access could not be verified. Check permissions and the selected input device, then try again',
+  },
+  microphone_unavailable: {
+    actionLabel: 'Microphone availability',
+    reason:
+      'This runtime does not provide microphone access. Open VibeSpace in the desktop app or a browser with microphone support, then try again',
+  },
+  windows_speech_settings: {
+    actionLabel: 'Windows speech settings',
+    reason:
+      'Windows Speech settings could not be opened automatically. Open Settings → Time & language → Speech manually, install a voice package, then check local voices again',
+  },
+};
+
+function formatVoiceSettingsFailure(kind: VoiceSettingsFailureKind): string {
+  const details = VOICE_SETTINGS_FAILURE_DETAILS[kind];
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: details.actionLabel,
+    reason: details.reason,
+  }).text;
+}
+
+function formatVoicePreviewFailure(engine: VoiceEngine): string {
+  const engineLabel = VOICE_ENGINE_LABELS[engine];
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: `${engineLabel} voice preview`,
+    reason: `The selected voice could not play. Check the ${engineLabel} engine in Settings → Voice, then try the preview again`,
+  }).text;
+}
+
+function microphoneFailureKind(error: unknown): VoiceSettingsFailureKind {
+  const name =
+    error && typeof error === 'object' && 'name' in error && typeof error.name === 'string'
+      ? error.name
+      : '';
+  if (['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(name)) {
+    return 'microphone_access';
+  }
+  if (['DevicesNotFoundError', 'NotFoundError'].includes(name)) {
+    return 'microphone_device';
+  }
+  if (['AbortError', 'NotReadableError', 'TrackStartError'].includes(name)) {
+    return 'microphone_capture';
+  }
+  return 'microphone_unknown';
+}
 
 /**
  * The two free local voice presets surfaced in Settings — Jarvis and Friday.
@@ -145,7 +247,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
   async function testMic() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setMicStatus('unavailable');
-      toast.error('Microphone unavailable', 'No mediaDevices API in this runtime.');
+      toast.error('Microphone unavailable', formatVoiceSettingsFailure('microphone_unavailable'));
       return;
     }
     setMicStatus('testing');
@@ -155,10 +257,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
       stream.getTracks().forEach((t) => t.stop());
       setMicStatus('ok');
       toast.success('Microphone ready', 'Permission granted and a track was opened.');
-    } catch (err) {
+    } catch (error) {
       setMicStatus('denied');
-      const reason = err instanceof Error ? err.message : 'Permission denied';
-      toast.warning('Mic test failed', reason);
+      toast.warning('Mic test failed', formatVoiceSettingsFailure(microphoneFailureKind(error)));
     }
   }
 
@@ -230,12 +331,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
     setPreviewingVoice(nextVoice);
     try {
       await previewVoiceWithSettings(nextVoice, engine);
-    } catch (err) {
+    } catch {
       if (previewSeqRef.current !== seq) return;
-      toast.error(
-        'Voice preview failed',
-        err instanceof Error ? err.message : 'Could not play this voice.',
-      );
+      toast.error('Voice preview failed', formatVoicePreviewFailure(engine));
     } finally {
       if (previewSeqRef.current === seq) {
         setPreviewingVoice(null);
@@ -250,7 +348,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
       if (showToast) {
         toast.warning(
           'Local voice unavailable',
-          'Speech synthesis is not available in this runtime.',
+          formatVoiceSettingsFailure('local_voice_unavailable'),
         );
       }
       return;
@@ -273,13 +371,13 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
           'Install a Windows speech voice pack, then check again.',
         );
       }
-    } catch (err) {
+    } catch {
       setLocalVoiceStatus('missing');
       setLocalVoiceNames([]);
       if (showToast) {
         toast.error(
           'Local voice check failed',
-          err instanceof Error ? err.message : 'Could not inspect installed voices.',
+          formatVoiceSettingsFailure('installed_voice_inspection'),
         );
       }
     }
@@ -342,11 +440,11 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
       await previewVoiceWithSettings(voicePreset, 'kokoro');
       setKokoroStatus('ready');
       toast.success('Kokoro voice', 'Played the test phrase with the local neural voice.');
-    } catch (err) {
+    } catch {
       setKokoroStatus('error');
-      const msg = err instanceof Error ? err.message : 'Kokoro synthesis failed.';
-      setKokoroError(`${msg} The Windows Natural voice will be used instead.`);
-      toast.error('Kokoro test failed', msg);
+      const message = formatVoiceSettingsFailure('kokoro_test');
+      setKokoroError(message);
+      toast.error('Kokoro test failed', message);
     }
   }
 
@@ -358,16 +456,16 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
         'Windows Speech settings opened',
         'Add a voice package, then return to Jarvis and check local voices.',
       );
-    } catch (err) {
+    } catch {
       toast.warning(
         'Open speech settings manually',
-        err instanceof Error ? err.message : 'Install a local system voice and check again.',
+        formatVoiceSettingsFailure('windows_speech_settings'),
       );
     }
   }
 
   return (
-    <div className="flex flex-col gap-8 max-w-4xl">
+    <div className="mc7f-settings-voice flex max-w-4xl flex-col gap-8 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:backdrop-blur-none [html[data-theme=monochrome]_&_*]:transition-none [html[data-theme=monochrome]_&_*]:focus-visible:outline [html[data-theme=monochrome]_&_*]:focus-visible:outline-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-ring motion-reduce:[&_*]:!animate-none motion-reduce:[&_*]:transition-none">
       <header className="space-y-1">
         <h2 className="text-page-title text-foreground">Voice</h2>
         <p className="text-secondary text-muted-foreground">
@@ -404,8 +502,8 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
           <div className="flex flex-col gap-1">
             <Label htmlFor="speak-replies-toggle">Speak Jarvis replies</Label>
             <p className="text-metadata text-muted-foreground">
-              Also read completed replies aloud when you send messages from the chat composer.
-              The voice panel always speaks replies while it is open.
+              Also read completed replies aloud when you send messages from the chat composer. The
+              voice panel always speaks replies while it is open.
             </p>
           </div>
           <Switch
@@ -491,31 +589,31 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
             </div>
           ) : null}
           {!voiceAutoListenOnOpen || voiceEndTrigger === 'silence' ? (
-          <div className="rounded-md border border-border bg-panel p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Label htmlFor="voice-silence-delay">Pause before Jarvis responds</Label>
-              <span className="text-metadata font-medium text-foreground">
-                {voiceSilenceDelayLabel(voiceSilenceDelayMs)}
-              </span>
+            <div className="rounded-md border border-border bg-panel p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Label htmlFor="voice-silence-delay">Pause before Jarvis responds</Label>
+                <span className="text-metadata font-medium text-foreground">
+                  {voiceSilenceDelayLabel(voiceSilenceDelayMs)}
+                </span>
+              </div>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                How long you stay quiet after speaking before Jarvis sends your message.
+              </p>
+              <input
+                id="voice-silence-delay"
+                type="range"
+                min={VOICE_SILENCE_DELAY_MS_MIN}
+                max={VOICE_SILENCE_DELAY_MS_MAX}
+                step={250}
+                value={voiceSilenceDelayMs}
+                onChange={(event) => setVoiceSilenceDelayMs(Number(event.target.value))}
+                className="mt-3 w-full accent-[hsl(var(--accent-cyan))]"
+              />
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MIN)}</span>
+                <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MAX)}</span>
+              </div>
             </div>
-            <p className="mt-1 text-metadata text-muted-foreground">
-              How long you stay quiet after speaking before Jarvis sends your message.
-            </p>
-            <input
-              id="voice-silence-delay"
-              type="range"
-              min={VOICE_SILENCE_DELAY_MS_MIN}
-              max={VOICE_SILENCE_DELAY_MS_MAX}
-              step={250}
-              value={voiceSilenceDelayMs}
-              onChange={(event) => setVoiceSilenceDelayMs(Number(event.target.value))}
-              className="mt-3 w-full accent-[hsl(var(--accent-cyan))]"
-            />
-            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-              <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MIN)}</span>
-              <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MAX)}</span>
-            </div>
-          </div>
           ) : null}
           {voiceAutoListenOnOpen ? (
             <div className="rounded-md border border-border bg-panel p-4">
@@ -549,7 +647,8 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
             <div className="min-w-0">
               <Label htmlFor="voice-auto-approve-toggle">Auto-run Jarvis commands (voice)</Label>
               <p className="mt-1 text-metadata text-muted-foreground">
-                When on, voice requests like “open five terminals” run immediately without Approve cards.
+                When on, voice requests like “open five terminals” run immediately without Approve
+                cards.
               </p>
             </div>
             <Switch
@@ -562,7 +661,8 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
             <div className="min-w-0">
               <Label htmlFor="chat-auto-approve-toggle">Auto-run Jarvis commands (chat)</Label>
               <p className="mt-1 text-metadata text-muted-foreground">
-                Same for typed chat. Toggle quickly with {renderHotkey(HOTKEYS.JARVIS_BUBBLE)} while chatting.
+                Same for typed chat. Toggle quickly with {renderHotkey(HOTKEYS.JARVIS_BUBBLE)} while
+                chatting.
               </p>
             </div>
             <Switch
@@ -643,7 +743,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
               <Input
                 type="password"
                 className="font-mono w-full sm:min-w-[240px] sm:flex-1"
-                placeholder={systemOpenAIConfigured ? 'OpenAI key saved — paste to replace' : 'OpenAI API key'}
+                placeholder={
+                  systemOpenAIConfigured ? 'OpenAI key saved — paste to replace' : 'OpenAI API key'
+                }
                 value={systemOpenAIDraft}
                 onChange={(event) => setSystemOpenAIDraft(event.target.value)}
                 autoComplete="off"
@@ -656,7 +758,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
               <Input
                 type="password"
                 className="font-mono w-full sm:min-w-[240px] sm:flex-1"
-                placeholder={deepgramConfigured ? 'Deepgram key saved — paste to replace' : 'Deepgram API key'}
+                placeholder={
+                  deepgramConfigured ? 'Deepgram key saved — paste to replace' : 'Deepgram API key'
+                }
                 value={systemDeepgramDraft}
                 onChange={(event) => setSystemDeepgramDraft(event.target.value)}
                 autoComplete="off"
@@ -667,7 +771,11 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
                 disabled={deepgramTesting}
                 onClick={() => void saveSystemDeepgramKey()}
               >
-                {deepgramTesting ? 'Testing…' : deepgramConfigured ? 'Update & test' : 'Connect Deepgram'}
+                {deepgramTesting
+                  ? 'Testing…'
+                  : deepgramConfigured
+                    ? 'Update & test'
+                    : 'Connect Deepgram'}
               </Button>
             </div>
           </div>
@@ -800,7 +908,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
                   onClick={() => void testKokoro()}
                   disabled={kokoroStatus === 'downloading' || kokoroStatus === 'testing'}
                 >
-                  <Play className={cn('h-3.5 w-3.5', kokoroStatus === 'testing' && 'animate-pulse')} />
+                  <Play
+                    className={cn('h-3.5 w-3.5', kokoroStatus === 'testing' && 'animate-pulse')}
+                  />
                   Test Kokoro voice
                 </Button>
               </div>
@@ -891,6 +1001,7 @@ function PersonaCard({ persona, selected, onSelect }: PersonaCardProps) {
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
+      data-monochrome-control-size="preserve"
       className={cn(
         'group relative flex min-h-[92px] flex-col items-start gap-1 rounded-md border bg-panel p-3 text-left transition-colors',
         'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -902,7 +1013,12 @@ function PersonaCard({ persona, selected, onSelect }: PersonaCardProps) {
       {selected && (
         <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-accent-cyan" strokeWidth={3} />
       )}
-      <span className={cn('text-ui-strong', selected ? 'text-accent-gradient' : 'text-foreground')}>
+      <span
+        className={cn(
+          'text-ui-strong [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!text-foreground [html[data-theme=monochrome]_&]:![-webkit-text-fill-color:currentColor]',
+          selected ? 'text-accent-gradient' : 'text-foreground',
+        )}
+      >
         {persona.name}
       </span>
       <span className="text-metadata text-muted-foreground line-clamp-2">{persona.tone}</span>
@@ -922,10 +1038,7 @@ interface VoiceCardProps {
 function VoiceSpeakingBars() {
   const delays = ['0ms', '120ms', '240ms', '360ms'];
   return (
-    <span
-      className="inline-flex h-3 w-3.5 items-end justify-center gap-[1.5px]"
-      aria-hidden
-    >
+    <span className="inline-flex h-3 w-3.5 items-end justify-center gap-[1.5px]" aria-hidden>
       {delays.map((delay) => (
         <span
           key={delay}
@@ -955,10 +1068,14 @@ function VoiceCard({ profile, selected, onSelect, onPreview, previewing }: Voice
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
+        data-monochrome-control-size="preserve"
         className="flex min-h-[92px] w-full flex-col items-start gap-1 rounded-md px-3 pb-1 pt-3 text-left focus-visible:outline-none"
       >
         <span
-          className={cn('text-ui-strong', selected ? 'text-accent-gradient' : 'text-foreground')}
+          className={cn(
+            'text-ui-strong [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!text-foreground [html[data-theme=monochrome]_&]:![-webkit-text-fill-color:currentColor]',
+            selected ? 'text-accent-gradient' : 'text-foreground',
+          )}
         >
           {profile.name}
         </span>
@@ -982,7 +1099,9 @@ function VoiceCard({ profile, selected, onSelect, onPreview, previewing }: Voice
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           previewing && 'border-accent-cyan/50 text-accent-cyan',
         )}
-        aria-label={previewing ? `${profile.name} voice preview playing` : `Preview ${profile.name} voice`}
+        aria-label={
+          previewing ? `${profile.name} voice preview playing` : `Preview ${profile.name} voice`
+        }
       >
         {previewing ? <VoiceSpeakingBars /> : <Play className="h-3 w-3" />}
         {previewing ? 'Playing' : 'Preview'}
@@ -1017,6 +1136,7 @@ function VoiceConversationModeCard({
       type="button"
       onClick={onSelect}
       aria-pressed={selected}
+      data-monochrome-control-size="preserve"
       className={cn(
         'relative flex min-h-[96px] flex-col items-start gap-1.5 rounded-md border bg-panel p-4 text-left transition-colors',
         'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -1028,7 +1148,12 @@ function VoiceConversationModeCard({
       {selected ? (
         <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-accent-cyan" strokeWidth={3} />
       ) : null}
-      <span className={cn('text-ui-strong', selected ? 'text-accent-gradient' : 'text-foreground')}>
+      <span
+        className={cn(
+          'text-ui-strong [html[data-theme=monochrome]_&]:!bg-none [html[data-theme=monochrome]_&]:!text-foreground [html[data-theme=monochrome]_&]:![-webkit-text-fill-color:currentColor]',
+          selected ? 'text-accent-gradient' : 'text-foreground',
+        )}
+      >
         {title}
       </span>
       <span className="text-metadata text-muted-foreground">{description}</span>
@@ -1052,6 +1177,7 @@ function VoiceEngineCard({
       disabled={disabled}
       aria-pressed={selected}
       data-engine={engine}
+      data-monochrome-control-size="preserve"
       className={cn(
         'flex min-h-[96px] items-start gap-3 rounded-md border bg-panel p-4 text-left transition-colors',
         'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',

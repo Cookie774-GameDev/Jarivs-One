@@ -1,7 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PROVIDER_CATALOG, PROVIDER_CONNECTIONS, getProviderConnectionDescriptor } from './catalog';
+import {
+  buildProviderCatalog,
+  CONNECTION_MODEL_OPTIONS,
+  PROVIDER_CATALOG,
+  PROVIDER_CONNECTIONS,
+  getProviderConnectionDescriptor,
+} from './catalog';
 import {
   CLI_BRIDGE_EVENT,
   MAX_CLI_PROMPT_CHARS,
@@ -12,7 +18,7 @@ import {
   type CliStartRequest,
 } from './cliBridge';
 import { buildClaudeInvocation } from './claude';
-import { buildCodexInvocation } from './codex';
+import { buildCodexInvocation, classifyCodexAuthProbe, CODEX_CLI_DEFINITION } from './codex';
 import { buildCopilotInvocation } from './copilot';
 import { buildGeminiInvocation } from './gemini';
 import { buildOpenCodeInvocation } from './opencode';
@@ -37,6 +43,43 @@ const EXPECTED_CONNECTIONS = [
 ] as const;
 
 describe('provider capability catalog', () => {
+  it('adds the dedicated credential-free smoke surface only behind the exact dev gate', () => {
+    const disabled = buildProviderCatalog({ devBuild: true, explicitFlag: undefined });
+    const production = buildProviderCatalog({ devBuild: false, explicitFlag: '1' });
+    const enabled = buildProviderCatalog({ devBuild: true, explicitFlag: '1' });
+
+    expect(disabled.catalog).not.toHaveProperty('vibespace-kernel-smoke');
+    expect(production.catalog).not.toHaveProperty('vibespace-kernel-smoke');
+    expect(disabled.connections.some(({ id }) => id === 'vibespace-kernel-smoke-cli')).toBe(false);
+    expect(enabled.catalog['vibespace-kernel-smoke']).toMatchObject({
+      id: 'vibespace-kernel-smoke',
+      externalCli: {
+        adapterId: 'vibespace-kernel-smoke-cli',
+        connectionId: 'vibespace-kernel-smoke-cli',
+        executableName: 'vibespace_kernel_smoke_cli',
+      },
+    });
+    expect(
+      enabled.connections.filter(({ providerId }) => providerId === 'vibespace-kernel-smoke'),
+    ).toEqual([
+      expect.objectContaining({
+        id: 'vibespace-kernel-smoke-native',
+        adapterId: 'vibespace-kernel-smoke-native',
+        providerId: 'vibespace-kernel-smoke',
+        mode: 'native-api',
+        authSource: 'debug-native-attestation',
+        promptTransport: 'native-system',
+      }),
+      expect.objectContaining({
+        id: 'vibespace-kernel-smoke-cli',
+        adapterId: 'vibespace-kernel-smoke-cli',
+        providerId: 'vibespace-kernel-smoke',
+        mode: 'external-cli',
+        authSource: 'debug-native-attestation',
+      }),
+    ]);
+  });
+
   it('covers the ten approved families and fifteen distinct connections', () => {
     expect(Object.keys(PROVIDER_CATALOG)).toEqual([
       'openai',
@@ -191,6 +234,55 @@ describe('provider capability catalog', () => {
       modelListArgs: ['models'],
     });
   });
+
+  it('publishes a frozen current model catalog only for the Codex subscription connection', () => {
+    expect(CONNECTION_MODEL_OPTIONS['openai-codex']).toEqual([
+      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', contextWindowTokens: 1_000_000 },
+      { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', contextWindowTokens: 1_000_000 },
+      { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', contextWindowTokens: 1_000_000 },
+    ]);
+    expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);
+    expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['openai-codex'])).toBe(true);
+    expect(
+      CONNECTION_MODEL_OPTIONS['openai-codex']?.every((option) => Object.isFrozen(option)),
+    ).toBe(true);
+    expect(CONNECTION_MODEL_OPTIONS['openai-api']).toBeUndefined();
+  });
+
+  it('enables the Codex subscription bridge only for an exact ChatGPT login method', () => {
+    const probe = (
+      stdout: string,
+      overrides: Partial<{
+        exitCode: number | null;
+        stderr: string;
+        timedOut: boolean;
+        truncated: boolean;
+      }> = {},
+    ) => ({
+      exitCode: overrides.exitCode ?? 0,
+      stdout: { data: stdout, truncated: overrides.truncated ?? false },
+      stderr: { data: overrides.stderr ?? '', truncated: false },
+      timedOut: overrides.timedOut ?? false,
+    });
+
+    expect(classifyCodexAuthProbe(probe('Logged in using ChatGPT'))).toEqual({
+      status: 'authenticated',
+      detail: 'Authenticated through ChatGPT.',
+    });
+    for (const result of [
+      probe('Logged in using an API key'),
+      probe('Logged in using ChatGPT', { truncated: true }),
+      probe('Unexpected future output'),
+      probe('', { exitCode: 1 }),
+      probe('', { timedOut: true }),
+    ]) {
+      expect(classifyCodexAuthProbe(result)).toEqual({
+        status: 'unauthenticated',
+        detail: 'ChatGPT subscription sign-in is not active.',
+      });
+    }
+    expect(CODEX_CLI_DEFINITION.classifyAuthProbe).toBe(classifyCodexAuthProbe);
+  });
 });
 
 describe('shell-free provider command vectors', () => {
@@ -266,7 +358,9 @@ describe('shell-free provider command vectors', () => {
       '--output-format=json',
       '--model=gpt-5',
     ]);
-    expect(buildQwenInvocation({ prompt: optionLookingPrompt, modelId: 'qwen3-coder' }).args).toEqual([
+    expect(
+      buildQwenInvocation({ prompt: optionLookingPrompt, modelId: 'qwen3-coder' }).args,
+    ).toEqual([
       '-p',
       optionLookingPrompt,
       '--output-format',
@@ -384,6 +478,7 @@ describe('typed Tauri CLI bridge client', () => {
     const controller = new AbortController();
     const stream = streamCliBridge(request, controller.signal);
     const firstEvent = stream.next();
+    const aborted = expect(firstEvent).rejects.toMatchObject({ name: 'AbortError' });
 
     await vi.waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('cli_bridge_start', { request });
@@ -416,7 +511,7 @@ describe('typed Tauri CLI bridge client', () => {
           status: 'cancelled',
         },
       });
-      await firstEvent;
+      await aborted;
       await stream.return(undefined);
     }
 

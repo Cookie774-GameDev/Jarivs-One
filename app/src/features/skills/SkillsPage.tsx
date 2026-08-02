@@ -10,13 +10,19 @@ import { readSkillsStore } from '@/features/skills/skillsStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { SkillCard } from './SkillCard';
 import { SkillEditor } from './SkillEditor';
+import './sakura-skills.css';
 
 type FilterTab = 'all' | 'preset' | 'custom';
+
+const SKILL_FILTERS: ReadonlyArray<{ value: FilterTab; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'preset', label: 'Presets' },
+  { value: 'custom', label: 'Custom' },
+];
 
 function manifestMatchesQuery(m: SkillManifest, q: string): boolean {
   if (!q) return true;
@@ -35,6 +41,7 @@ export function SkillsPage() {
   const [query, setQuery] = React.useState('');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const filterRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const refresh = React.useCallback(() => {
     setManifests(skillRegistry.list('skill'));
@@ -123,23 +130,62 @@ export function SkillsPage() {
     toast.success('Restored', 'All presets reset.');
   };
 
+  const handleFilterKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) => {
+    let nextIndex: number;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        nextIndex = (currentIndex + 1) % SKILL_FILTERS.length;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        nextIndex = (currentIndex - 1 + SKILL_FILTERS.length) % SKILL_FILTERS.length;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = SKILL_FILTERS.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    setTab(SKILL_FILTERS[nextIndex].value);
+    filterRefs.current[nextIndex]?.focus();
+  };
+
   const showDetailMobile = !!selected;
 
   return (
-    <div className="h-full w-full flex bg-background overflow-hidden">
+    <div
+      data-monochrome-route="skills"
+      className="h-full w-full flex bg-background overflow-hidden"
+    >
       <aside
+        data-monochrome-surface="skill-registry"
         className={cn(
           'w-full flex-col border-border bg-panel/60',
           'md:w-80 md:shrink-0 md:border-r',
           showDetailMobile ? 'hidden md:flex' : 'flex',
+          '[html[data-theme=monochrome]_&]:bg-panel',
         )}
       >
-        <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between gap-2">
-          <div className="eyebrow">
+        <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between gap-2 [html[data-theme=monochrome]_&]:border-b [html[data-theme=monochrome]_&]:border-border">
+          <div className="eyebrow [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide [html[data-theme=monochrome]_&]:text-foreground">
             {counts.presets} presets · {counts.custom} custom
           </div>
           <div className="flex gap-1">
-            <Button variant="ghost" size="icon-sm" onClick={handleRestoreAllPresets} title="Restore all presets">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleRestoreAllPresets}
+              title="Restore all presets"
+            >
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>
             <Button variant="accent" size="icon-sm" onClick={handleCreate} title="New custom skill">
@@ -148,20 +194,38 @@ export function SkillsPage() {
           </div>
         </div>
 
-        <div className="px-4 pb-2 shrink-0">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
-            <TabsList className="w-full">
-              <TabsTrigger value="all" className="flex-1">
-                All
-              </TabsTrigger>
-              <TabsTrigger value="preset" className="flex-1">
-                Presets
-              </TabsTrigger>
-              <TabsTrigger value="custom" className="flex-1">
-                Custom
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div
+          data-monochrome-surface="skill-filters"
+          className="px-4 pb-2 shrink-0 [html[data-theme=monochrome]_&]:pt-2"
+        >
+          <div
+            role="radiogroup"
+            aria-label="Skill filters"
+            aria-orientation="horizontal"
+            className="inline-flex h-8 w-full items-center gap-0.5 rounded-md bg-muted p-0.5 text-muted-foreground"
+          >
+            {SKILL_FILTERS.map((filter, index) => {
+              const active = tab === filter.value;
+              return (
+                <button
+                  key={filter.value}
+                  ref={(element) => {
+                    filterRefs.current[index] = element;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={active ? 0 : -1}
+                  data-state={active ? 'active' : 'inactive'}
+                  onClick={() => setTab(filter.value)}
+                  onKeyDown={(event) => handleFilterKeyDown(event, index)}
+                  className="inline-flex flex-1 items-center justify-center whitespace-nowrap rounded-sm px-2.5 py-1 text-secondary font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-elevated data-[state=active]:text-foreground data-[state=active]:shadow-sm [html[data-theme=monochrome]_&]:shadow-none"
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="px-4 pb-3 shrink-0">
@@ -179,7 +243,10 @@ export function SkillsPage() {
 
         <Separator />
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hidden">
+        <div
+          data-monochrome-state={loading ? 'loading' : filtered.length === 0 ? 'empty' : 'ready'}
+          className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hidden [html[data-theme=monochrome]_&]:space-y-1"
+        >
           {loading ? (
             <div className="text-secondary text-muted-foreground text-center py-8">Loading…</div>
           ) : filtered.length === 0 ? (
@@ -210,9 +277,11 @@ export function SkillsPage() {
       </aside>
 
       <section
+        data-monochrome-surface="skill-detail"
         className={cn(
           'flex-1 min-w-0 flex-col',
           showDetailMobile ? 'flex' : 'hidden md:flex',
+          '[html[data-theme=monochrome]_&]:bg-background',
         )}
       >
         {selected && (
@@ -232,17 +301,22 @@ export function SkillsPage() {
             onDeleted={() => setSelectedId(null)}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center p-10">
-            <div className="rounded-xl bg-paper border border-border shadow-soft p-8 max-w-md text-center space-y-3">
-              <div className="text-4xl">✦</div>
+          <div
+            data-monochrome-state="empty"
+            className="flex-1 flex items-center justify-center p-10"
+          >
+            <div className="rounded-xl bg-paper border border-border shadow-soft p-8 max-w-md text-center space-y-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+              <div className="text-4xl [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-accent-cyan">
+                ✦
+              </div>
               <div className="eyebrow">5 focused presets + yours</div>
-              <h1 className="font-display text-3xl font-semibold text-foreground leading-tight tracking-tight">
+              <h1 className="font-display text-3xl font-semibold text-foreground leading-tight tracking-tight [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-xl [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">
                 Skill library
               </h1>
               <p className="text-secondary text-muted-foreground leading-relaxed">
                 Pick a card to edit instructions inline, or press <strong>+</strong> to create a
-                custom skill. Skills selected via <code className="kbd">/skills</code> in chat inject
-                runtime instructions into the next message.
+                custom skill. Skills selected via <code className="kbd">/skills</code> in chat
+                inject runtime instructions into the next message.
               </p>
               <Button variant="accent" size="sm" onClick={handleCreate}>
                 <Plus className="h-3.5 w-3.5" />

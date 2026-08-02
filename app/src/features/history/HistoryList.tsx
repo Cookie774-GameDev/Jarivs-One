@@ -125,6 +125,7 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
   return (
     <aside
       aria-label="Past chats"
+      data-sakura-surface="history-list"
       className="flex w-[320px] shrink-0 flex-col border-r border-border bg-panel"
     >
       <header className="border-b border-border px-4 py-3">
@@ -190,7 +191,8 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                     className={cn(
                       'flex w-full items-start gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
                       'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                      selected && 'bg-paper ring-1 ring-accent-copper/40',
+                      selected &&
+                        'bg-paper ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:ring-0',
                     )}
                   >
                     <Avatar seed={seed} size={24} className="mt-0.5" />

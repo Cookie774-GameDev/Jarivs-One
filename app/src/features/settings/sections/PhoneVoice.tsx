@@ -108,7 +108,9 @@ function writePhoneSettingsDraft(settings: PhoneSettings): void {
   }
 }
 
-export function mergePhoneSettingsForDisplay(remote: PhoneSettings | null | undefined): PhoneSettings {
+export function mergePhoneSettingsForDisplay(
+  remote: PhoneSettings | null | undefined,
+): PhoneSettings {
   const draft = readPhoneSettingsDraft();
   return {
     ...DEFAULT_SETTINGS,
@@ -158,15 +160,23 @@ export function PhoneVoice() {
           return;
         }
 
-        const { data, error } = await (supa as ReturnType<typeof getSupabaseClient> & {
-          from: (t: string) => {
-            select: (q: string) => {
-              eq: (col: string, v: string) => {
-                maybeSingle: () => Promise<{ data: PhoneSettings | null; error: { code?: string; message: string } | null }>;
+        const { data, error } = await (
+          supa as ReturnType<typeof getSupabaseClient> & {
+            from: (t: string) => {
+              select: (q: string) => {
+                eq: (
+                  col: string,
+                  v: string,
+                ) => {
+                  maybeSingle: () => Promise<{
+                    data: PhoneSettings | null;
+                    error: { code?: string; message: string } | null;
+                  }>;
+                };
               };
             };
-          };
-        })
+          }
+        )
           .from('phone_settings')
           .select('*')
           .eq('user_id', uid)
@@ -218,7 +228,10 @@ export function PhoneVoice() {
       if (options.notify) {
         toast.success('Auto saved', 'Phone settings saved on this device.');
       } else if (!options.silentLocal) {
-        toast.info('Saved locally', 'Phone settings will sync when VibeSpace Cloud sign-in is available.');
+        toast.info(
+          'Saved locally',
+          'Phone settings will sync when VibeSpace Cloud sign-in is available.',
+        );
       }
       return;
     }
@@ -232,19 +245,18 @@ export function PhoneVoice() {
     setSaving(true);
     try {
       // Loose-typed call so this compiles before we regen Supabase Database types
-      const { error } = await (supa as unknown as {
-        from: (t: string) => {
-          upsert: (
-            row: Record<string, unknown>,
-            opts: { onConflict: string },
-          ) => Promise<{ error: { message: string } | null }>;
-        };
-      })
+      const { error } = await (
+        supa as unknown as {
+          from: (t: string) => {
+            upsert: (
+              row: Record<string, unknown>,
+              opts: { onConflict: string },
+            ) => Promise<{ error: { message: string } | null }>;
+          };
+        }
+      )
         .from('phone_settings')
-        .upsert(
-          { user_id: userId, ...next },
-          { onConflict: 'user_id' },
-        );
+        .upsert({ user_id: userId, ...next }, { onConflict: 'user_id' });
       if (error) throw new Error(error.message);
       if (options.notify) {
         toast.success('Auto saved', 'Phone settings updated.');
@@ -261,7 +273,7 @@ export function PhoneVoice() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-phone-voice flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none [html[data-theme=monochrome]_&_*]:!animate-none [html[data-theme=monochrome]_&_*]:!blur-none [html[data-theme=monochrome]_&_*]:backdrop-blur-none [html[data-theme=monochrome]_&_*]:transition-none [html[data-theme=monochrome]_&_*]:focus-visible:outline [html[data-theme=monochrome]_&_*]:focus-visible:outline-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&_*]:focus-visible:outline-ring motion-reduce:[&_*]:!animate-none motion-reduce:[&_*]:transition-none">
       <header>
         <h2 className="text-page-title text-foreground">Phone & Voice</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -280,7 +292,11 @@ export function PhoneVoice() {
       <Separator />
 
       {/* 2. PIN */}
-      <PinCard userId={userId} pinLength={settings.pin_length ?? 6} onSaved={() => toast.success('PIN updated')} />
+      <PinCard
+        userId={userId}
+        pinLength={settings.pin_length ?? 6}
+        onSaved={() => toast.success('PIN updated')}
+      />
 
       <Separator />
 
@@ -295,9 +311,7 @@ export function PhoneVoice() {
       {/* 4. BYOK */}
       <ByokCard
         keys={settings.byok_provider_keys ?? {}}
-        onChange={(byok_provider_keys) =>
-          void save({ byok_provider_keys }, { notify: true })
-        }
+        onChange={(byok_provider_keys) => void save({ byok_provider_keys }, { notify: true })}
         saving={saving}
       />
 
@@ -308,7 +322,9 @@ export function PhoneVoice() {
         triggers={settings.outbound_triggers ?? DEFAULT_SETTINGS.outbound_triggers!}
         onChange={(outbound_triggers) => save({ outbound_triggers })}
         userPhoneNumber={settings.user_phone_number ?? ''}
-        onPhoneDraftChange={(user_phone_number) => patchPhoneSettingsDraft(settings, { user_phone_number })}
+        onPhoneDraftChange={(user_phone_number) =>
+          patchPhoneSettingsDraft(settings, { user_phone_number })
+        }
         onPhoneChange={(user_phone_number) => save({ user_phone_number }, { silentLocal: true })}
       />
 
@@ -397,13 +413,17 @@ function PrivacyCard() {
         What happens when you call (or are called)
       </p>
       <ul className="text-xs space-y-1 list-disc list-inside">
-        <li>Your voice goes to the Jarvis Call cloud service for live transcription and replies.</li>
+        <li>
+          Your voice goes to the Jarvis Call cloud service for live transcription and replies.
+        </li>
         <li>The transcript goes to the AI provider you configured (Anthropic / Groq / etc.).</li>
         <li>
-          <strong>Your files NEVER leave this computer.</strong> The AI can read files only by asking the
-          local Jarvis bridge. We use the same MCP registry the rest of Jarvis uses.
+          <strong>Your files NEVER leave this computer.</strong> The AI can read files only by
+          asking the local Jarvis bridge. We use the same MCP registry the rest of Jarvis uses.
         </li>
-        <li>Call metadata is kept 30 days for debugging. You can delete any time from this panel.</li>
+        <li>
+          Call metadata is kept 30 days for debugging. You can delete any time from this panel.
+        </li>
       </ul>
     </section>
   );
@@ -441,12 +461,14 @@ function PinCard({
     }
     setSaving(true);
     try {
-      const { error } = await (supa as unknown as {
-        rpc: (
-          name: string,
-          args: Record<string, unknown>,
-        ) => Promise<{ error: { message: string } | null }>;
-      }).rpc('set_phone_pin', {
+      const { error } = await (
+        supa as unknown as {
+          rpc: (
+            name: string,
+            args: Record<string, unknown>,
+          ) => Promise<{ error: { message: string } | null }>;
+        }
+      ).rpc('set_phone_pin', {
         p_user_id: userId,
         p_pin: pin,
       });
@@ -499,13 +521,7 @@ function PinCard({
 // Allowed callers (caller-ID skip-PIN)
 // ---------------------------------------------------------------------------
 
-function AllowlistCard({
-  list,
-  onChange,
-}: {
-  list: string[];
-  onChange: (next: string[]) => void;
-}) {
+function AllowlistCard({ list, onChange }: { list: string[]; onChange: (next: string[]) => void }) {
   const [draft, setDraft] = useState('');
 
   const add = () => {
@@ -523,8 +539,8 @@ function AllowlistCard({
     <section className="flex flex-col gap-3">
       <Label>Allowed callers (skip PIN)</Label>
       <p className="text-xs text-muted-foreground">
-        Numbers in E.164 format (e.g. <code className="font-mono">+15551234567</code>). Calls from these numbers
-        skip the PIN and go straight to Sage.
+        Numbers in E.164 format (e.g. <code className="font-mono">+15551234567</code>). Calls from
+        these numbers skip the PIN and go straight to Sage.
       </p>
 
       <div className="flex gap-2 max-w-md">
@@ -591,10 +607,7 @@ function ByokCard({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  const dirty = useMemo(
-    () => JSON.stringify(local) !== JSON.stringify(keys),
-    [local, keys],
-  );
+  const dirty = useMemo(() => JSON.stringify(local) !== JSON.stringify(keys), [local, keys]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -684,12 +697,7 @@ function KeyInput({
             autoComplete="off"
             spellCheck={false}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            type="button"
-            onClick={() => setRevealed((r) => !r)}
-          >
+          <Button variant="outline" size="sm" type="button" onClick={() => setRevealed((r) => !r)}>
             {revealed ? 'Hide' : 'Show'}
           </Button>
         </div>
@@ -835,8 +843,9 @@ function UnlockCard({
     <section className="flex flex-col gap-3">
       <Label>Shell unlock phrase</Label>
       <p className="text-xs text-muted-foreground">
-        Sage will not run shell commands until you say this phrase mid-call. Resets at hangup.
-        Pick something you would not say accidentally. Default: <code className="font-mono">unlock shell</code>.
+        Sage will not run shell commands until you say this phrase mid-call. Resets at hangup. Pick
+        something you would not say accidentally. Default:{' '}
+        <code className="font-mono">unlock shell</code>.
       </p>
 
       <div className="flex gap-2 max-w-md">
