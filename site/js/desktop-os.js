@@ -15,6 +15,10 @@
   function init() {
     frame = document.getElementById("desktopOS");
     if (!frame) return;
+    if (frame.dataset.vsClone === "true") {
+      initWorkspaceClone(frame);
+      return;
+    }
     wallpaper = frame.querySelector(".desktop-wallpaper");
     windows = frame.querySelector(".desktop-windows");
     dock = frame.querySelector(".desktop-dock");
@@ -1051,6 +1055,85 @@
       }, 200);
     });
     renderStack("fast");
+  }
+
+  // ============ VIBESPACE WORKSPACE PREVIEW ============
+  // A focused visual clone for the website: it intentionally demonstrates
+  // navigation, chat, presets, and appearance without pretending to be the app.
+  function initWorkspaceClone(host) {
+    var state = { shell: "mac", active: "chat", hasReply: false };
+    var prompts = {
+      chat: ["Plan my next feature", "Review this design", "Turn this into tasks", "Help me ship today"],
+      terminals: ["Open a build terminal", "Check the latest logs", "Run a focused test", "Ask a reviewer"],
+      agents: ["Choose a teammate", "Start a small task", "Review the plan", "Save the result"],
+      files: ["Add project context", "Review recent files", "Find a decision", "Open a source"],
+      schedule: ["Plan today", "Make room to focus", "Add a reminder", "Review this week"]
+    };
+
+    function esc(value) {
+      return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;");
+    }
+
+    function activeLabel() {
+      return { chat: "Chat", terminals: "Terminals", agents: "Agents", files: "Files", schedule: "Schedule" }[state.active] || "Chat";
+    }
+
+    function mainBody() {
+      if (state.active === "terminals") {
+        return '<div class="vsc-terminal-view"><div class="vsc-terminal-heading"><strong>Terminals</strong><span>10 / 10 panes</span><button type="button" data-vsc-demo="terminal">+ Add pane</button></div><div class="vsc-terminal-grid">' + ["Builder", "Critic", "Coder", "Scout"].map(function (name, index) { return '<div class="vsc-terminal-card"><div><i class="vsc-agent-dot a' + index + '"></i><strong>' + name + '</strong><small>PowerShell</small></div><p>PS C:\\Users\\viper&gt; <b>' + (index === 1 ? 'checking build…' : '_') + '</b></p></div>'; }).join("") + '</div></div>';
+      }
+      if (state.active === "agents") {
+        return '<div class="vsc-agents-view"><span>TEAM ROOM</span><h3>Pick the right teammate for the next move.</h3><div class="vsc-agent-list"><button type="button" data-vsc-demo="agent"><i class="vsc-agent-dot jarvis"></i><div><strong>Jarvis</strong><small>Keeps the project moving</small></div><b>Ready</b></button><button type="button" data-vsc-demo="agent"><i class="vsc-agent-dot coder"></i><div><strong>Coder</strong><small>Builds the focused change</small></div><b>Ready</b></button><button type="button" data-vsc-demo="agent"><i class="vsc-agent-dot critic"></i><div><strong>Critic</strong><small>Checks the details before you ship</small></div><b>Ready</b></button></div></div>';
+      }
+      if (state.active === "files") {
+        return '<div class="vsc-files-view"><span>PROJECT CONTEXT</span><h3>The important stuff stays close.</h3><div class="vsc-file-stack"><div><i>MD</i><strong>launch-notes.md</strong><small>Updated now</small></div><div><i>TS</i><strong>workspace.tsx</strong><small>Edited 8m ago</small></div><div><i>✦</i><strong>project-context</strong><small>3 linked decisions</small></div></div></div>';
+      }
+      if (state.active === "schedule") {
+        return '<div class="vsc-schedule-view"><span>TODAY</span><h3>Keep the next step obvious.</h3><div><p><b>11:00</b> Finish the homepage pass</p><p><b>2:30</b> Check the build and notes</p><p><b>4:00</b> Ship the reviewed version</p></div></div>';
+      }
+      return '<div class="vsc-chat-view"><div class="vsc-chat-empty"><i>✦</i><h3>' + (state.hasReply ? 'That sounds like a good place to start.' : 'What are you building today?') + '</h3><p>' + (state.hasReply ? 'Jarvis turned your idea into a clear first move. Keep the rest of the project here as it grows.' : 'Start with a thought, a file, or a messy idea. VibeSpace keeps the useful context with it.') + '</p></div><div class="vsc-prompt-row">' + prompts.chat.map(function (prompt) { return '<button type="button" data-vsc-prompt="' + esc(prompt) + '">' + esc(prompt) + '</button>'; }).join("") + '</div></div>';
+    }
+
+    function render() {
+      host.dataset.vsShell = state.shell;
+      host.innerHTML = [
+        '<div class="vsc-shell">',
+          '<div class="vsc-titlebar"><div class="vsc-window-controls"><i></i><i></i><i></i></div><div class="vsc-crumb"><b>▣</b><strong>Workspace</strong><span>/</span><strong>Project</strong><span>/</span><em>' + activeLabel() + '</em></div><div class="vsc-top-actions"><button type="button" aria-label="Search">⌕</button><button type="button" aria-label="Voice">◌</button><button type="button" data-vsc-settings aria-label="Open preferences">⚙</button><i>J</i></div></div>',
+          '<div class="vsc-content">',
+            '<aside class="vsc-sidebar"><div class="vsc-side-label">WORKSPACE</div><nav>',
+              '<button data-vsc-nav="chat"><i>▱</i>Chat</button><button data-vsc-nav="terminals"><i>›_</i>Terminals</button><button data-vsc-nav="agents"><i>✦</i>Agents</button><button data-vsc-nav="schedule"><i>◫</i>Schedule</button><button data-vsc-nav="files"><i>▤</i>Files</button>',
+            '</nav><div class="vsc-side-group"><span>PROJECTS <b>+</b></span><button class="vsc-project"><i></i>VibeSpace website</button></div><div class="vsc-side-group"><span>CHATS <b>+</b></span><button class="vsc-chat-name">▱ New chat 1</button></div><div class="vsc-side-group vsc-side-agents"><span>AGENTS <b>+</b></span><button><i class="vsc-agent-dot jarvis"></i>Jarvis</button><button><i class="vsc-agent-dot coder"></i>Coder</button></div></aside>',
+            '<main class="vsc-main"><div class="vsc-mainbar"><span>New chat 1 <b>×</b></span><button type="button" data-vsc-demo="new">＋</button></div><div class="vsc-canvas">' + mainBody() + '</div><form class="vsc-composer"><div><input aria-label="Message Jarvis" placeholder="Message Jarvis… (use @ to mention an agent)" /><span>Choose model⌄</span><b>Agent Mode</b></div><button type="submit">↗</button></form></main>',
+          '</div>',
+          '<div class="vsc-settings" hidden><div class="vsc-settings-head"><strong>Preferences</strong><button type="button" data-vsc-close>×</button></div><label><span>Appearance</span><b>Dark</b></label><div class="vsc-settings-shell"><span>Window style</span><div><button type="button" data-vsc-shell="mac">Mac</button><button type="button" data-vsc-shell="windows">Windows</button></div></div><small>Changes the preview shell only.</small></div>',
+        '</div>'
+      ].join("");
+      host.classList.add("is-clone-ready");
+
+      host.querySelectorAll("[data-vsc-nav]").forEach(function (button) {
+        var selected = button.dataset.vscNav === state.active;
+        button.classList.toggle("is-active", selected);
+        button.addEventListener("click", function () { state.active = button.dataset.vscNav; state.hasReply = false; render(); });
+      });
+      host.querySelectorAll("[data-vsc-prompt]").forEach(function (button) {
+        button.addEventListener("click", function () { state.hasReply = true; render(); });
+      });
+      host.querySelectorAll("[data-vsc-demo]").forEach(function (button) {
+        button.addEventListener("click", function () { state.hasReply = true; state.active = "chat"; render(); });
+      });
+      var form = host.querySelector(".vsc-composer");
+      form.addEventListener("submit", function (event) { event.preventDefault(); state.hasReply = true; state.active = "chat"; render(); });
+      var settingsButton = host.querySelector("[data-vsc-settings]");
+      var settings = host.querySelector(".vsc-settings");
+      settingsButton.addEventListener("click", function () { settings.hidden = false; });
+      host.querySelector("[data-vsc-close]").addEventListener("click", function () { settings.hidden = true; });
+      host.querySelectorAll("[data-vsc-shell]").forEach(function (button) {
+        var selected = button.dataset.vscShell === state.shell;
+        button.classList.toggle("is-active", selected);
+        button.addEventListener("click", function () { state.shell = button.dataset.vscShell; render(); });
+      });
+    }
+    render();
   }
 
   // Boot

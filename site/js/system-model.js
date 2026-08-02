@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 30158)
-Total output lines: 2305
-
 /* VibeSpace website Phase 2
  * Progressive, dependency-free upgrades for the approved marketing sections.
  * All selectors and styles are scoped under the vs2-* namespace.
@@ -452,14 +449,15 @@ Total output lines: 2305
 
   function buildPhone(phoneSection) {
     if (!phoneSection) return null;
+    phoneSection.id = 'phone';
     phoneSection.className = 'vs2-section vs2-phone-section';
     phoneSection.innerHTML = [
       '<div class="vs2-section-head vs2-centered">',
-        '<div class="vs2-kicker">VibeSpace in your pocket</div>',
-        '<h2>A modern phone demo. <em>Everything has a purpose.</em></h2>',
-        '<p class="vs2-lead">Open the apps, browse the VibeSpace repository, call a contact, or play a game. The same experience reflows for desktop, tablet, and mobile.</p>',
+        '<div class="vs2-kicker">Interactive</div>',
+        '<h2>Call, message, <em>and stay in the loop.</em></h2>',
+        '<p class="vs2-lead">A small live preview of VibeSpace on your phone. Start with Jarvis, then explore only what you need.</p>',
       '</div>',
-      '<div class="vs2-phone-layout">',
+      '<div class="vs2-phone-layout vs2-phone-layout--solo">',
         '<div class="vs2-phone-stage">',
           '<div class="vs2-phone-device" aria-label="Interactive VibeSpace phone">',
             '<div class="vs2-phone-speaker" aria-hidden="true"></div>',
@@ -471,18 +469,8 @@ Total output lines: 2305
               '</div>',
               '<div class="vs2-phone-viewport"></div>',
             '</div>',
-            '<button class="vs2-physical-home" type="button" aria-label="Go to phone home screen"><span></span></button>',
           '</div>',
         '</div>',
-        '<aside class="vs2-phone-guide" aria-live="polite">',
-          '<span class="vs2-phone-guide-label">Now showing</span>',
-          '<h3>Phone Home</h3>',
-          '<p>Choose an app. The physical Home button always returns here.</p>',
-          '<div class="vs2-phone-guide-features">',
-            '<span>Live time</span><span>Touch ready</span><span>Keyboard ready</span><span>Safe fallbacks</span>',
-          '</div>',
-          '<div class="vs2-phone-guide-tip"><strong>Try this</strong><p>Open Safari or Chrome, switch repository tabs, then open a real GitHub destination.</p></div>',
-        '</aside>',
       '</div>'
     ].join('');
 
@@ -497,6 +485,7 @@ Total output lines: 2305
     var photoCaptures = 0;
 
     function setGuide(appId) {
+      if (!guideTitle || !guideCopy) return;
       if (appId === 'home') {
         guideTitle.textContent = 'Phone Home';
         guideCopy.textContent = 'Choose an app. The physical Home button always returns here.';
@@ -1107,7 +1096,18 @@ Total output lines: 2305
         photoCaptures += 1;
         var status = query('.vs2-camera-status', body);
         status.textContent = 'Captured · saved to Photos';
-        query('.vs2-cam…158 tokens truncated…dy).classList.toggle('is-flipped');
+        query('.vs2-camera-preview', body).classList.add('is-captured');
+        window.setTimeout(function () {
+          var preview = query('.vs2-camera-preview', body);
+          if (preview) preview.classList.remove('is-captured');
+        }, 240);
+      });
+      query('[data-camera-tone]', body).addEventListener('click', function (event) {
+        query('.vs2-camera-preview', body).classList.toggle('is-cool');
+        event.currentTarget.textContent = event.currentTarget.textContent === 'Warm' ? 'Cool' : 'Warm';
+      });
+      query('[data-camera-flip]', body).addEventListener('click', function () {
+        query('.vs2-camera-subject', body).classList.toggle('is-flipped');
       });
       appCleanup = function () {};
     }
@@ -1532,17 +1532,17 @@ Total output lines: 2305
 
     updateClock();
     var clockTimer = window.setInterval(updateClock, 1000);
-    physicalHome.addEventListener('click', showHome);
+    if (physicalHome) physicalHome.addEventListener('click', showHome);
     var unregisterVisibility = registerVisibility(function (hidden) {
       if (typeof appVisibility === 'function') appVisibility(hidden);
     });
     registerCleanup(function () {
       stopApp();
       window.clearInterval(clockTimer);
-      physicalHome.removeEventListener('click', showHome);
+      if (physicalHome) physicalHome.removeEventListener('click', showHome);
       unregisterVisibility();
     });
-    showHome();
+    openApp('calls');
 
     return {
       openApp: openApp,
@@ -1635,103 +1635,52 @@ Total output lines: 2305
 
   function buildAgentSection(section) {
     if (!section) return null;
-    section.className = 'vs2-section vs2-agent-section';
+    var stories = {
+      build: { label: 'Build', title: 'Turn an idea into a focused first pass.', prompt: '“Make the homepage feel like the actual app.”', people: [['J', 'Jarvis', 'turns the idea into a clear brief', 'copper'], ['C', 'Coder', 'works on the small, useful changes', 'cyan'], ['✓', 'You', 'see the result and choose the next move', 'sage']], result: 'A clean first pass with the changed files and the next choice waiting for you.' },
+      research: { label: 'Research', title: 'Get the useful answer before you commit.', prompt: '“What should we fix before we ship?”', people: [['J', 'Jarvis', 'collects the real question', 'copper'], ['R', 'Researcher', 'brings back the few sources that matter', 'plum'], ['✓', 'You', 'get a plain-language answer', 'sage']], result: 'A short answer, linked sources, and no wall of confusing agent jargon.' },
+      review: { label: 'Review', title: 'Give the last look to someone picky.', prompt: '“Check this before it goes live.”', people: [['J', 'Jarvis', 'keeps the scope small', 'copper'], ['C', 'Critic', 'checks the details that can bite later', 'plum'], ['✓', 'You', 'get the call: ready or fix this', 'sage']], result: 'A simple review: what passed, what needs attention, and why.' }
+    };
+    var active = 'build';
+
+    section.className = 'vs2-section vs2-team-section';
     section.innerHTML = [
-      '<div class="vs2-section-head">',
-        '<div class="vs2-kicker">Jarvis-directed agents</div>',
-        '<h2>Your team, <em>each with a clear assignment.</em></h2>',
-        '<p class="vs2-lead">Click an agent to inspect the task, Context Map sources, approved tools, and expected output. Jarvis coordinates the handoffs while every specialist stays scoped.</p>',
+      '<div class="vs2-section-head vs2-centered">',
+        '<div class="vs2-kicker">Your team</div>',
+        '<h2>Good help, <em>without the whole circus.</em></h2>',
+        '<p class="vs2-lead">Pick the kind of help you need. VibeSpace keeps the story small, visible, and easy to follow.</p>',
       '</div>',
-      '<div class="vs2-agent-workspace">',
-        '<div class="vs2-agent-cards" role="list" aria-label="Agent assignments"></div>',
-        '<article class="vs2-agent-detail" aria-live="polite">',
-          '<div class="vs2-agent-detail-head"><span class="vs2-agent-avatar"></span><div><small>Selected agent</small><h3></h3><p></p></div><span class="vs2-agent-detail-status"></span></div>',
-          '<div class="vs2-agent-task"><span>Current assignment</span><strong></strong></div>',
-          '<div class="vs2-agent-detail-grid">',
-            '<div><span>Context Map sources</span><ul data-agent-context></ul></div>',
-            '<div><span>Approved tools</span><ul data-agent-tools></ul></div>',
-          '</div>',
-          '<div class="vs2-agent-output"><span>Expected output</span><p></p></div>',
-          '<div class="vs2-agent-progress"><span></span><strong></strong></div>',
-        '</article>',
-      '</div>',
-      '<p class="vs2-agent-note">This view shows assignments, sources, tools, status, and outputs—not private model chain-of-thought.</p>'
+      '<div class="vs2-team-story">',
+        '<div class="vs2-team-picker" role="tablist" aria-label="Choose a team flow"></div>',
+        '<div class="vs2-team-stage" aria-live="polite"></div>',
+      '</div>'
     ].join('');
 
-    var cardsContainer = query('.vs2-agent-cards', section);
-    var detail = query('.vs2-agent-detail', section);
-    var currentAgent = null;
+    var picker = query('.vs2-team-picker', section);
+    var stage = query('.vs2-team-stage', section);
 
-    AGENTS.forEach(function (agent) {
-      var card = create('button', 'vs2-agent-card tone-' + agent.color);
-      card.type = 'button';
-      card.dataset.agent = agent.id;
-      card.setAttribute('role', 'listitem');
-      card.setAttribute('aria-pressed', 'false');
-      card.innerHTML = [
-        '<span class="vs2-agent-card-top"><span class="vs2-agent-mini-avatar">' + agent.name.charAt(0) + '</span><span class="vs2-agent-state"><i></i>' + agent.status + '</span></span>',
-        '<span class="vs2-agent-card-copy"><strong>' + agent.name + '</strong><small>' + agent.role + '</small></span>',
-        '<span class="vs2-agent-card-task">' + agent.task + '</span>',
-        '<span class="vs2-agent-card-meta"><span>' + agent.context.length + ' sources</span><span>' + agent.tools.length + ' tools</span></span>',
-        '<span class="vs2-agent-card-progress"><i style="width:' + agent.progress + '%"></i></span>'
-      ].join('');
-      card.addEventListener('click', function () { selectAgent(agent.id); });
-      if (finePointerQuery && finePointerQuery.matches && !reducedMotion()) {
-        card.addEventListener('pointermove', function (event) {
-          var rect = card.getBoundingClientRect();
-          var x = (event.clientX - rect.left) / rect.width - 0.5;
-          var y = (event.clientY - rect.top) / rect.height - 0.5;
-          card.style.setProperty('--tilt-x', (-y * 5).toFixed(2) + 'deg');
-          card.style.setProperty('--tilt-y', (x * 7).toFixed(2) + 'deg');
-          card.style.setProperty('--glow-x', ((x + 0.5) * 100).toFixed(1) + '%');
-          card.style.setProperty('--glow-y', ((y + 0.5) * 100).toFixed(1) + '%');
-        });
-        card.addEventListener('pointerleave', function () {
-          card.style.removeProperty('--tilt-x');
-          card.style.removeProperty('--tilt-y');
-          card.style.removeProperty('--glow-x');
-          card.style.removeProperty('--glow-y');
-        });
-      }
-      cardsContainer.appendChild(card);
-    });
-
-    function fillList(list, items) {
-      removeAllChildren(list);
-      items.forEach(function (item) {
-        var li = create('li', '', item);
-        list.appendChild(li);
+    function render() {
+      var story = stories[active];
+      removeAllChildren(picker);
+      Object.keys(stories).forEach(function (key) {
+        var button = create('button', 'vs2-team-choice' + (key === active ? ' is-active' : ''), stories[key].label);
+        button.type = 'button';
+        button.setAttribute('role', 'tab');
+        button.setAttribute('aria-selected', key === active ? 'true' : 'false');
+        button.addEventListener('click', function () { active = key; render(); });
+        picker.appendChild(button);
+      });
+      stage.innerHTML = '<div class="vs2-team-request"><span>Your request</span><strong>' + story.prompt + '</strong></div><div class="vs2-team-copy"><span>How it moves</span><h3>' + story.title + '</h3><p>Three clear roles. One result you can actually use.</p></div><div class="vs2-team-people"></div><div class="vs2-team-result"><i>✓</i><div><span>What comes back</span><strong>' + story.result + '</strong></div></div>';
+      var people = query('.vs2-team-people', stage);
+      story.people.forEach(function (person, index) {
+        var item = create('div', 'vs2-team-person tone-' + person[3]);
+        item.style.setProperty('--team-delay', (index * 90) + 'ms');
+        item.innerHTML = '<i>' + person[0] + '</i><div><strong>' + person[1] + '</strong><small>' + person[2] + '</small></div>';
+        people.appendChild(item);
       });
     }
 
-    function selectAgent(id) {
-      var agent = AGENTS.filter(function (item) { return item.id === id; })[0] || AGENTS[0];
-      currentAgent = agent;
-      queryAll('.vs2-agent-card', section).forEach(function (card) {
-        var selected = card.dataset.agent === agent.id;
-        card.classList.toggle('is-selected', selected);
-        card.setAttribute('aria-pressed', selected ? 'true' : 'false');
-      });
-      var avatar = query('.vs2-agent-avatar', detail);
-      avatar.textContent = agent.name.charAt(0);
-      avatar.className = 'vs2-agent-avatar tone-' + agent.color;
-      query('h3', detail).textContent = agent.name;
-      query('.vs2-agent-detail-head p', detail).textContent = agent.role;
-      query('.vs2-agent-detail-status', detail).textContent = agent.status;
-      query('.vs2-agent-task strong', detail).textContent = agent.task;
-      fillList(query('[data-agent-context]', detail), agent.context);
-      fillList(query('[data-agent-tools]', detail), agent.tools);
-      query('.vs2-agent-output p', detail).textContent = agent.output;
-      query('.vs2-agent-progress span', detail).style.width = agent.progress + '%';
-      query('.vs2-agent-progress strong', detail).textContent = agent.progress + '%';
-    }
-
-    selectAgent('jarvis');
-    return {
-      select: selectAgent,
-      selected: function () { return currentAgent && currentAgent.id; },
-      section: section
-    };
+    render();
+    return { select: function (key) { if (stories[key]) { active = key; render(); } }, selected: function () { return active; }, section: section };
   }
 
   /* ---------------------------------------------------------------------- */
@@ -2240,29 +2189,53 @@ Total output lines: 2305
     });
   }
 
+  function enableScrollMotion() {
+    var targets = queryAll('#features, #swarm, #phone, #council, #foundry, #pricing, #download, #letter');
+    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || !window.IntersectionObserver) {
+      targets.forEach(function (target) { target.classList.add('vs2-scroll-visible'); });
+      return;
+    }
+
+    targets.forEach(function (target) { target.classList.add('vs2-scroll-item'); });
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('vs2-scroll-visible');
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: .12, rootMargin: '0px 0px -6% 0px' });
+    targets.forEach(function (target) { observer.observe(target); });
+    registerCleanup(function () { observer.disconnect(); });
+  }
+
   function initialise() {
     if (window.__VibeSpacePhase2Initialized) return;
 
     var legacyVoice = document.getElementById('voice') || query('.vs-system-section');
     var legacyCalling = document.getElementById('calling');
-    var phoneSection = document.getElementById('calling-demo');
+    var phoneSection = document.getElementById('calling-demo') || document.getElementById('phone');
     if (!phoneSection && legacyCalling && (query('#jarvisCallDemo', legacyCalling) || query('.jarvis-call-demo', legacyCalling))) {
       phoneSection = legacyCalling;
       legacyCalling = null;
     }
     var providerSection = document.getElementById('hive');
     var agentSection = document.getElementById('council');
-    var workbenchSection = document.getElementById('inspector');
+    var workbenchSection = document.getElementById('inspector') || document.getElementById('foundry');
 
     if (!legacyVoice && !phoneSection && !providerSection && !agentSection && !workbenchSection) return;
     window.__VibeSpacePhase2Initialized = true;
     document.documentElement.classList.add('vs2-ready');
 
-    var story = buildSystemStory(legacyVoice, legacyCalling, phoneSection);
+    if (legacyVoice && legacyVoice.parentNode) legacyVoice.parentNode.removeChild(legacyVoice);
+    if (legacyCalling && legacyCalling.parentNode) legacyCalling.parentNode.removeChild(legacyCalling);
+    var story = null;
     var phone = buildPhone(phoneSection);
-    var providers = buildProviderSection(providerSection);
+    if (providerSection && providerSection.parentNode) providerSection.parentNode.removeChild(providerSection);
+    var providers = null;
     var agents = buildAgentSection(agentSection);
     var foundry = buildFoundry(workbenchSection);
+    enableScrollMotion();
 
     document.addEventListener('visibilitychange', handleVisibility);
     registerCleanup(function () {
@@ -2270,7 +2243,7 @@ Total output lines: 2305
     });
 
     window.VibeSpacePhase2 = {
-      version: '2.1.0-foundry',
+      version: '2.2.0-workspace',
       story: story,
       phone: phone,
       providers: providers,

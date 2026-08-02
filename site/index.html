@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VibeSpace — Vibe Coding AI Workspace</title>
-  <meta name="description" content="VibeSpace is the cozy all-in-one AI workspace for vibe coders: multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills, memory, tasks, and Inspector — one local-first desktop app. Apache 2.0 open source." />
+  <meta name="description" content="VibeSpace is a warm, local-first workspace for chat, terminals, agents, tasks, calls, and project context — one desktop app for the messy middle of building. Apache 2.0 open source." />
   <meta name="theme-color" content="#2E2823" />
   <meta name="author" content="VibeSpace" />
   <link rel="icon" type="image/png" href="images/vibespace-logo.png" />
@@ -80,9 +80,8 @@
       <nav class="nav-links" id="navLinks" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#swarm">Terminals</a>
-        <a href="#voice">Voice</a>
-        <a href="#calling">Calling</a>
-        <a href="#hive">Hive</a>
+        <a href="#phone">Interactive</a>
+        <a href="#foundry">Foundry</a>
         <a href="#pricing">Pricing</a>
         <a href="/access/">Access</a>
         <a href="#download">Download</a>
@@ -99,8 +98,8 @@
     <div class="hero-grid">
       <div>
         <span class="eyebrow"><span class="dot-live"></span> v0.1.47 &middot; vibe coding app</span>
-        <h1 id="heroH1"><span class="word">Vibe</span> <span class="word">coding</span> <span class="word">for</span> <span class="word">vibe</span> <span class="word">coders.</span> <span class="word"><em>By</em></span> <span class="word"><em>a</em></span> <span class="word"><em>vibe</em></span> <span class="word"><em>coder.</em></span></h1>
-        <p class="lead">VibeSpace is the cozy all-in-one AI workspace for builders who context-switch all day: chat with every model, convene agent councils, code in terminal swarms, talk to Jarvis hands-free, make AI phone calls, manage tasks, remember everything, and keep shipping.</p>
+        <h1 id="heroH1"><span class="word">One</span> <span class="word">place</span> <span class="word">to</span> <span class="word">think,</span> <span class="word">build,</span> <span class="word">and</span> <span class="word"><em>keep</em></span> <span class="word"><em>moving.</em></span></h1>
+        <p class="lead">VibeSpace keeps your chats, terminals, agents, projects, voice, and next moves together—so your work feels connected instead of scattered across ten tabs.</p>
         <div class="hero-cta">
           <a class="btn primary lg" href="#download">Download VibeSpace</a>
           <a class="btn ghost lg" href="https://github.com/Cookie774-GameDev/VibeSpace" target="_blank" rel="noopener"><span data-ic="star"></span> Star on GitHub</a>
@@ -134,7 +133,7 @@
 
         <!-- DESKTOP SIMULATOR -->
         <div class="sim-panel active" id="simDesktop">
-          <div class="desktop-frame" id="desktopOS">
+          <div class="desktop-frame" id="desktopOS" data-vs-clone="true">
             <div class="desktop-boot">
               <div class="desktop-boot-logo">VibeSpace</div>
               <div class="desktop-boot-msg">Starting VibeSpace...</div>
@@ -574,94 +573,8 @@
     </div>
   </section>
 
-  <!-- FLOW CIRCLE -->
-  <section id="story">
-    <div class="sec-head center reveal">
-      <div class="kicker">How it flows</div>
-      <h2>One system, <em>always moving.</em></h2>
-      <p class="lead">Describe, explore, build, ship — then memory feeds the next loop. The whole thing runs as one connected cycle.</p>
-    </div>
-    <div class="flow-circle reveal" id="flowCircle">
-      <div class="flow-orbit">
-        <svg class="flow-ring" viewBox="0 0 400 400" fill="none" aria-hidden="true">
-          <circle cx="200" cy="200" r="150" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 6"/>
-          <circle class="flow-ring-anim" cx="200" cy="200" r="150" stroke="var(--copper)" stroke-width="1.5" stroke-dasharray="20 940" stroke-linecap="round"/>
-          <line class="flow-arrow" x1="56" y1="200" x2="344" y2="200" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 5"/>
-          <line class="flow-arrow" x1="200" y1="56" x2="200" y2="344" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 5"/>
-        </svg>
-        <div class="flow-hub">
-          <span class="flow-hub-label">VibeSpace</span>
-          <span class="flow-hub-sub">one memory</span>
-        </div>
-        <div class="flow-node flow-node-1" data-flow="0">
-          <div class="flow-node-ico" data-ic="chat" style="color:var(--copper-soft)"></div>
-          <div class="flow-node-title">1. Describe</div>
-          <div class="flow-node-desc">Type or speak intent. Jarvis routes to the right agents.</div>
-        </div>
-        <div class="flow-node flow-node-2" data-flow="1">
-          <div class="flow-node-ico" data-ic="council" style="color:var(--plum)"></div>
-          <div class="flow-node-title">2. Council</div>
-          <div class="flow-node-desc">Researcher, Coder, Critic think in parallel — visible, not hidden.</div>
-        </div>
-        <div class="flow-node flow-node-3" data-flow="2">
-          <div class="flow-node-ico" data-ic="terminal" style="color:var(--sage)"></div>
-          <div class="flow-node-title">3. Swarm</div>
-          <div class="flow-node-desc">Scout, Builder, Reviewer work the PTY grid. You approve.</div>
-        </div>
-        <div class="flow-node flow-node-4" data-flow="3">
-          <div class="flow-node-ico" data-ic="tasks" style="color:var(--gold)"></div>
-          <div class="flow-node-title">4. Ship</div>
-          <div class="flow-node-desc">Critic synthesizes. Kanban updates. Memory saves. Loop again.</div>
-        </div>
-      </div>
-      <div class="flow-legend">
-        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--copper-soft)"></span> Describe</span>
-        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--plum)"></span> Council</span>
-        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--sage)"></span> Swarm</span>
-        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--gold)"></span> Ship</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- JARVIS VOICE -->
-  <section id="voice">
-    <div class="sec-head reveal">
-      <div class="kicker">Jarvis voice</div>
-      <h2>Talk to your AI. <em>Hands-free.</em></h2>
-      <p class="lead">Push-to-talk with local Kokoro voices &mdash; free and unlimited for everyone. Jarvis and Friday presets need no key. Optional premium cloud voices on paid plans, with automatic fallback so it always works.</p>
-    </div>
-    <div class="grid g3 reveal-stagger">
-      <div class="card" style="text-align:center">
-        <div class="call-ring">J</div>
-        <h3>Jarvis &amp; Friday</h3>
-        <p>Free local voice presets. Calm British-inspired Jarvis and fast tactical Friday. No API key required. Unlimited usage.</p>
-      </div>
-      <div class="card"><div class="ico copper" data-ic="voice"></div><h3>Premium cloud voice</h3><p>Best-in-class neural voices on paid plans, metered and private, routed through a secure backend. Auto-falls-back to local when quota runs out.</p></div>
-      <div class="card"><div class="ico sage" data-ic="voice"></div><h3>Push-to-talk</h3><p><kbd>Mod+Space</kbd> opens the voice panel. Hands-free turn-taking with end/cancel phrases. Wake word gated on hands-free mode. Composer mic is separate.</p></div>
-    </div>
-  </section>
-
-  <!-- AI CALLING -->
-  <section id="calling">
-    <div class="sec-head reveal">
-      <div class="kicker">AI calling</div>
-      <h2>Phone your AI like a friend. <em>It picks up.</em></h2>
-      <p class="lead">VibeSpace ships a real calling layer. Dial your assistant from any phone through Twilio, or tap Call in the desktop app for a free LiveKit WebRTC session. Jarvis can call you when something important happens.</p>
-    </div>
-    <div class="grid g3 reveal-stagger">
-      <div class="card"><span class="num"></span><h3>Call from any phone</h3><p>Path A uses Twilio Programmable Voice + Media Streams so a real number routes into Jarvis. PSTN minutes included on paid tiers.</p></div>
-      <div class="card"><h3>Tap to call in-app</h3><p>Path C uses LiveKit WebRTC. No telco minutes, lower latency, same assistant brain inside your VibeSpace window. Free on every plan.</p></div>
-      <div class="card"><h3>Let Jarvis call you</h3><p>Outbound triggers ring your phone for build failures, deadline alerts, errors, or manual check-ins. Per-plan minute budgets keep it honest.</p></div>
-    </div>
-    <div class="grid g3 reveal-stagger" style="margin-top:16px">
-      <div class="card"><h3>The 9pm dog walk</h3><p>Call Jarvis while walking. Ask what changed in a project, add a task, or summarize the file you forgot to read.</p></div>
-      <div class="card"><h3>The 2am build failure</h3><p>Jarvis can call when a build fails, read the traceback, name the file, and leave you a morning fix list.</p></div>
-      <div class="card"><h3>The driving-home TODO</h3><p>Hands stay on the wheel. Tell Jarvis the task, priority, due date, and project. It lands in your list.</p></div>
-    </div>
-  </section>
-
   <!-- INTERACTIVE CALLING DEMO -->
-  <section id="calling-demo">
+  <section id="phone">
     <div class="sec-head center reveal">
       <div class="kicker">Try it now</div>
       <h2>Call Jarvis. <em>Right here.</em></h2>
@@ -851,8 +764,8 @@
         </div>
       </div>
       <div class="card">
-        <h3>Built for vibe coders</h3>
-        <p>Describe intent, let agents explore, build, review, and synthesize. VibeSpace is the AI workspace for people who ship by conversation, terminal, and taste.</p>
+        <h3>Built for the way projects actually move</h3>
+        <p>Describe what matters, let focused help explore, build, and review, then keep the useful result close to the work.</p>
         <p style="margin-top:14px">
           <span class="chip live">Mention routing</span>
           <span class="chip live">Synthesis</span>
@@ -864,10 +777,10 @@
   </section>
 
   <!-- INSPECTOR & KANBAN -->
-  <section id="inspector">
+  <section id="foundry">
     <div class="sec-head reveal">
       <div class="kicker">New in v0.1.47</div>
-      <h2>Inspector &amp; Kanban. <em>See the work.</em></h2>
+      <h2>Inspector &amp; Kanban. <em>Keep the next move clear.</em></h2>
       <p class="lead">The Inspector panel surfaces Today, Quick Launch, Context, Tools Run, Trace milestones, and Active Work. The Kanban board is milestone-driven and aligned with the Inspector trace store, so what you see matches what happened.</p>
     </div>
     <div class="grid g3 reveal-stagger">
@@ -1055,7 +968,7 @@
     <div class="letter reveal">
       <h2>A note from the maker.</h2>
       <p>I wanted one place. Not seven. One warm desktop window where every model I pay for could sit at the same table, where my voice could find the right one, and where my to-do list updated itself when I said something out loud.</p>
-      <p><strong>VibeSpace is that place.</strong> A vibe coding app built for vibe coders by a vibe coder. Agents, code, calls, prompts, research, tasks, memory, skills, and the messy middle of building real software.</p>
+      <p><strong>VibeSpace is that place.</strong> One workspace for agents, code, calls, prompts, research, tasks, memory, skills, and the messy middle of building real software.</p>
       <p>It is unfinished, honest, and shipping. The core is open-source under Apache 2.0. Local-first by default. Bring your own keys. Use Ollama offline. Call it from the app. Fork it if you want. Keep moving.</p>
       <p class="sig">With care,<br /><strong>VibeSpace</strong><br />Maker &middot; Apache 2.0 &middot; Forever forkable</p>
     </div>
@@ -1086,15 +999,14 @@
     <div class="foot-inner">
       <div class="foot-col">
         <a class="brand" href="#top" style="margin-bottom:12px;display:flex;gap:10px;align-items:center"><img src="images/vibespace-logo.png" width="30" height="30" alt="" style="border-radius:8px" /><span>VibeSpace</span></a>
-        <p style="color:var(--muted);max-width:300px;font-size:14px">The cozy all-in-one AI workspace for vibe coders. Built by a vibe coder. Shipped in public.</p>
+        <p style="color:var(--muted);max-width:300px;font-size:14px">A warm, local-first workspace for the messy middle of building. Shipped in public.</p>
       </div>
       <div class="foot-col">
         <strong>Product</strong>
         <a href="#features">Features</a>
         <a href="#swarm">Terminals</a>
-        <a href="#voice">Voice</a>
-        <a href="#calling">Calling</a>
-        <a href="#hive">Hive</a>
+        <a href="#phone">Interactive</a>
+        <a href="#foundry">Foundry</a>
         <a href="#download">Download</a>
         <a href="/access/">VibeSpace Access</a>
       </div>
