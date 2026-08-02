@@ -46,15 +46,18 @@ describe('appearance theme registry', () => {
     expect(migrateThemePreference('light')).toBe('monochrome');
     expect(migrateThemePreference('dark')).toBe('default');
     expect(migrateThemePreference('system')).toBe('default');
+    expect(migrateThemePreference('jarvis')).toBe('default');
+    expect(migrateThemePreference('light')).toBe('default');
+    expect(migrateThemePreference('default')).toBe('default');
     expect(migrateThemePreference('vibespace')).toBe('vibespace');
     expect(migrateThemePreference('sakura')).toBe('sakura');
     expect(migrateThemePreference('dusk')).toBe('default');
     expect(migrateThemePreference('unknown')).toBe('default');
   });
 
-  it('parses friendly /theme arguments', () => {
+  it('parses commands for the two supported appearances only', () => {
     expect(parseThemeCommandArgument('VibeSpace')).toBe('vibespace');
-    expect(parseThemeCommandArgument('jarvis core')).toBe('jarvis');
+    expect(parseThemeCommandArgument('default')).toBe('default');
     expect(parseThemeCommandArgument('dark')).toBe('default');
     expect(parseThemeCommandArgument('light')).toBe('monochrome');
     expect(parseThemeCommandArgument('terminal')).toBe('monochrome');
