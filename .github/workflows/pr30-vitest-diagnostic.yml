@@ -1,0 +1,68 @@
+name: PR 30 merged-state Vitest diagnostic
+
+on:
+  push:
+    branches:
+      - codex/shared-intelligence-kernel-design-20260716
+    paths:
+      - .github/workflows/pr30-vitest-diagnostic.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr30-vitest-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  vitest-diagnostic:
+    name: Capture exact merged-state Vitest failure
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/shared-intelligence-kernel-design-20260716
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reproduce the conflict-resolved merge state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --force
+          git merge --no-ff -X ours origin/main \
+            -m "Diagnostic merge of main into PR #30"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Vitest and capture complete output
+        id: vitest
+        continue-on-error: true
+        env:
+          NO_COLOR: "1"
+        shell: bash
+        run: |
+          set -o pipefail
+          npm --prefix app run test -- --reporter=verbose 2>&1 | tee pr30-vitest-output.txt
+
+      - name: Upload Vitest diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr30-vitest-diagnostic
+          path: pr30-vitest-output.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Preserve failing status
+        if: steps.vitest.outcome == 'failure'
+        run: exit 1
