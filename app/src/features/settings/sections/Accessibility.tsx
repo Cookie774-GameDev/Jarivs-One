@@ -117,8 +117,7 @@ export function Accessibility() {
         </Label>
         <p className="text-metadata text-muted-foreground">
           Hide non-essential workspace chrome while keeping an always-visible exit control. Toggle
-          with{' '}
-          <span className="kbd">{renderHotkey(HOTKEYS.TOGGLE_FULLSCREEN)}</span>.
+          with <span className="kbd">{renderHotkey(HOTKEYS.TOGGLE_FULLSCREEN)}</span>.
         </p>
       </section>
 

@@ -175,8 +175,7 @@ export function Appearance() {
                 description: string;
               }>
             ).map((behavior) => {
-              const selected =
-                fullscreenPreferences.systemFullscreenBehavior === behavior.id;
+              const selected = fullscreenPreferences.systemFullscreenBehavior === behavior.id;
               return (
                 <button
                   key={behavior.id}
@@ -212,9 +211,7 @@ export function Appearance() {
           label="Remember Workspace Focus Mode"
           description="Remember whether internal workspace chrome was hidden."
           checked={fullscreenPreferences.rememberFocusMode}
-          onCheckedChange={(enabled) =>
-            setFullscreenPreferences({ rememberFocusMode: enabled })
-          }
+          onCheckedChange={(enabled) => setFullscreenPreferences({ rememberFocusMode: enabled })}
         />
         <SettingSwitch
           id="remember-system-fullscreen"
@@ -249,8 +246,7 @@ export function Appearance() {
                 ? 'Native fullscreen is unavailable in this environment.'
                 : nativePending
                   ? 'Changing native fullscreen…'
-                  : fullscreenPreferences.systemFullscreenBehavior ===
-                      'reveal-on-edge-hover'
+                  : fullscreenPreferences.systemFullscreenBehavior === 'reveal-on-edge-hover'
                     ? 'Edge reveal is managed by your operating system or window manager.'
                     : 'System bars stay hidden for the fullscreen session when the operating system supports it.')}
         </p>

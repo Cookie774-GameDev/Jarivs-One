@@ -30,9 +30,11 @@ describe('Appearance theme selector', () => {
 
     const themes = screen.getByRole('radiogroup', { name: 'App theme' });
     expect(within(themes).getAllByRole('radio')).toHaveLength(5);
-    expect(within(themes).getByRole('radio', { name: /Default/ }).getAttribute('aria-checked')).toBe(
-      'true',
-    );
+    expect(
+      within(themes)
+        .getByRole('radio', { name: /Default/ })
+        .getAttribute('aria-checked'),
+    ).toBe('true');
 
     fireEvent.click(screen.getByRole('radio', { name: /VibeSpace/ }));
     expect(useUIStore.getState().theme).toBe('vibespace');

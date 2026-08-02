@@ -434,11 +434,7 @@ export function TopBar() {
               aria-pressed={focusActive}
               className={TOP_BAR_POINTER_TARGET_CLASS}
             >
-              {focusActive ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
+              {focusActive ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </Hint>
 
