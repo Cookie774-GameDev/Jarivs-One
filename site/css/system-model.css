@@ -3998,6 +3998,236 @@ html[data-site-appearance="vibespace"] .vs2-workbench-run {
 /* Motion                                                                   */
 /* ----------------------------------------------------------------------- */
 
+/* ----------------------------------------------------------------------- */
+/* VibeSpace story refresh: one phone and an easy-to-read team flow        */
+/* ----------------------------------------------------------------------- */
+
+.vs2-phone-layout--solo {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 580px;
+  margin: 0 auto;
+}
+
+.vs2-phone-layout--solo .vs2-phone-stage {
+  min-height: 650px;
+}
+
+.vs2-team-section {
+  position: relative;
+  overflow: clip;
+}
+
+.vs2-team-section::before {
+  content: "";
+  position: absolute;
+  inset: 18% auto auto 4%;
+  width: 270px;
+  height: 270px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cyan, #4dd8e8) 16%, transparent), transparent 69%);
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.vs2-team-story {
+  position: relative;
+  max-width: 1000px;
+  margin: 38px auto 0;
+  padding: clamp(20px, 4vw, 42px);
+  border: 1px solid color-mix(in srgb, var(--line, rgba(255,255,255,.14)) 92%, var(--copper, #e0925c));
+  border-radius: 28px;
+  background: linear-gradient(130deg, color-mix(in srgb, var(--bg2, #211d1c) 94%, var(--cyan, #4dd8e8)) 0%, var(--bg2, #211d1c) 52%, color-mix(in srgb, var(--bg2, #211d1c) 90%, var(--plum, #b98ae8)) 100%);
+  box-shadow: 0 28px 70px rgba(0,0,0,.23), inset 0 1px rgba(255,255,255,.08);
+}
+
+.vs2-team-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 5px;
+  border: 1px solid var(--line, rgba(255,255,255,.14));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg, #171313) 80%, transparent);
+}
+
+.vs2-team-choice {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted, #aaa0a0);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: color .2s ease, background .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.vs2-team-choice:hover,
+.vs2-team-choice:focus-visible {
+  color: var(--text, #f5eeee);
+  transform: translateY(-1px);
+}
+
+.vs2-team-choice.is-active {
+  color: #241714;
+  background: linear-gradient(135deg, #f3b081, #e98e65);
+  box-shadow: 0 6px 15px rgba(221,119,75,.25);
+}
+
+.vs2-team-stage {
+  display: grid;
+  grid-template-columns: minmax(200px, .8fr) minmax(230px, 1fr);
+  gap: 18px 30px;
+  align-items: start;
+  margin-top: 27px;
+}
+
+.vs2-team-request,
+.vs2-team-result {
+  padding: 17px 18px;
+  border-radius: 17px;
+}
+
+.vs2-team-request {
+  background: color-mix(in srgb, var(--bg, #171313) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--copper, #e0925c) 42%, var(--line, rgba(255,255,255,.14)));
+}
+
+.vs2-team-request span,
+.vs2-team-copy > span,
+.vs2-team-result span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted, #aaa0a0);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+
+.vs2-team-request strong {
+  color: var(--text, #f5eeee);
+  font-size: 17px;
+  line-height: 1.34;
+}
+
+.vs2-team-copy h3 {
+  margin: 0;
+  color: var(--text, #f5eeee);
+  font-size: clamp(22px, 3vw, 31px);
+  line-height: 1.07;
+  letter-spacing: -.035em;
+}
+
+.vs2-team-copy p {
+  margin: 10px 0 0;
+  color: var(--muted, #aaa0a0);
+  line-height: 1.55;
+}
+
+.vs2-team-people {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.vs2-team-person {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--team-line, var(--line, rgba(255,255,255,.14)));
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--bg, #171313) 65%, transparent);
+  animation: vs2-team-arrive .45s both cubic-bezier(.2,.8,.2,1);
+  animation-delay: var(--team-delay, 0ms);
+}
+
+.vs2-team-person > i,
+.vs2-team-result > i {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  color: var(--team-ink, #201817);
+  background: var(--team-color, var(--copper, #e0925c));
+  font-style: normal;
+  font-weight: 900;
+}
+
+.vs2-team-person strong,
+.vs2-team-person small {
+  display: block;
+}
+
+.vs2-team-person strong {
+  color: var(--text, #f5eeee);
+  font-size: 13px;
+}
+
+.vs2-team-person small {
+  margin-top: 3px;
+  color: var(--muted, #aaa0a0);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.vs2-team-person.tone-copper { --team-color: #eea16f; --team-line: rgba(238,161,111,.38); }
+.vs2-team-person.tone-cyan { --team-color: #63d9e3; --team-line: rgba(99,217,227,.37); }
+.vs2-team-person.tone-plum { --team-color: #c7a3ec; --team-line: rgba(199,163,236,.38); }
+.vs2-team-person.tone-sage { --team-color: #8ec088; --team-line: rgba(142,192,136,.38); }
+
+.vs2-team-result {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(142,192,136,.36);
+  background: linear-gradient(110deg, rgba(67,106,69,.24), color-mix(in srgb, var(--bg, #171313) 70%, transparent));
+}
+
+.vs2-team-result > i { --team-color: #8ec088; }
+.vs2-team-result strong { color: var(--text, #f5eeee); line-height: 1.45; }
+
+.vs2-scroll-item {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity .72s ease, transform .72s cubic-bezier(.2,.75,.25,1);
+}
+
+.vs2-scroll-item.vs2-scroll-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes vs2-team-arrive {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 720px) {
+  .vs2-phone-layout--solo .vs2-phone-stage { min-height: 0; }
+  .vs2-team-story { padding: 18px; border-radius: 22px; }
+  .vs2-team-stage { grid-template-columns: 1fr; gap: 18px; }
+  .vs2-team-people { grid-template-columns: 1fr; }
+}
+
+html[data-site-appearance="vibespace"] .vs2-team-story {
+  background: linear-gradient(130deg, #f7ebe0, #fff8ef 51%, #f1e5fa);
+  box-shadow: 0 24px 58px rgba(95,55,31,.13), inset 0 1px #fff;
+}
+
+html[data-site-appearance="vibespace"] .vs2-team-request,
+html[data-site-appearance="vibespace"] .vs2-team-person {
+  background: rgba(255,255,255,.78);
+}
+
 @keyframes vs2-sheen {
   0%, 20% { transform: translateX(-115%); }
   55%, 100% { transform: translateX(115%); }
