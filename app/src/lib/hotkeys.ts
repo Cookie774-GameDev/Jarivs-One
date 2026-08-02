@@ -98,6 +98,7 @@ export const HOTKEYS = {
   ESCAPE: 'Escape',
   // V2
   TOGGLE_FULLSCREEN: 'Mod+Shift+F',
+  TOGGLE_SYSTEM_FULLSCREEN: 'F11',
   AMBIENT_TOGGLE: 'Mod+Shift+.',
   COMPOSER_STT: 'Ctrl+CapsLock',
   PROMPT_FORGE: 'Mod+Shift+U',

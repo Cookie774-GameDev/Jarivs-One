@@ -127,6 +127,7 @@ import { ensureActiveChat, branchChatFromMessage } from '@/features/chat/chatLif
 import { MONOCHROME_CHAT_FIXTURE } from '@/features/chat/monochromeFixture';
 import type { ChatId, MessageId } from '@/types/common';
 import { useHotkey, HOTKEYS } from '@/lib/hotkeys';
+import { FullscreenHost } from '@/features/fullscreen';
 import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
 import { TerminalCliRuntimeHost } from '@/features/terminals';
@@ -1826,17 +1827,6 @@ function useDesktopReopenLifecycle() {
 function GlobalHotkeysHost() {
   useGlobalHotkeys();
 
-  // V2 — fullscreen chat toggle.
-  const toggleChatFullscreen = useUIStore((s) => s.toggleChatFullscreen);
-  useHotkey(
-    HOTKEYS.TOGGLE_FULLSCREEN,
-    (e) => {
-      e.preventDefault();
-      toggleChatFullscreen();
-    },
-    { whenInputs: true },
-  );
-
   // V2 — manual ambient toggle (Mod+Shift+.).
   const setAmbientActive = useUIStore((s) => s.setAmbientActive);
   const ambientEnabled = useUIStore((s) => s.ambient);
@@ -1948,7 +1938,8 @@ function CommandPaletteHost() {
 }
 
 export function resolveSettingsModalInitialTab(plan: RuntimePlan): SettingsTabMemoryValue {
-  return plan.isVisualTest ? (monochromeSettingsTabOverride ?? 'account') : getLastSettingsTab();
+  // Settings → Account was removed; Account Center is the profile route.
+  return plan.isVisualTest ? (monochromeSettingsTabOverride ?? 'plans') : getLastSettingsTab();
 }
 
 function SettingsModalHost({ plan }: { plan: RuntimePlan }) {
@@ -2154,6 +2145,7 @@ function WorkspaceRoot() {
         <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
       ) : null}
       {plan.globalHotkeyEnabled ? <GlobalHotkeysHost /> : null}
+      {plan.globalHotkeyEnabled ? <FullscreenHost /> : null}
       {plan.idleEnabled ? <IdleDetectionHost /> : null}
       <AppShell>
         <ActiveCanvas />
