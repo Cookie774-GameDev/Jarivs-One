@@ -2877,6 +2877,414 @@
 }
 
 /* ----------------------------------------------------------------------- */
+/* Build Your Own AI / VibeModel Foundry                                    */
+/* ----------------------------------------------------------------------- */
+
+.vs2-foundry-section::before,
+.vs2-foundry-section::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.vs2-foundry-section::before {
+  top: 14%;
+  left: -7%;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--plum, #b98ae8) 16%, transparent), transparent 68%);
+}
+
+.vs2-foundry-section::after {
+  right: -5%;
+  bottom: 10%;
+  width: 380px;
+  height: 380px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--cyan, #4dd8e8) 13%, transparent), transparent 69%);
+}
+
+.vs2-foundry-shell {
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 94% 4%, color-mix(in srgb, var(--plum, #b98ae8) 13%, transparent), transparent 29%),
+    radial-gradient(circle at 4% 96%, color-mix(in srgb, var(--cyan, #4dd8e8) 9%, transparent), transparent 30%),
+    linear-gradient(140deg, color-mix(in srgb, var(--panel-2, #3a332e) 96%, transparent), var(--panel, #302a26));
+  box-shadow: 0 34px 90px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.06);
+}
+
+.vs2-foundry-topline {
+  min-height: 52px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.12));
+  padding: 12px 19px;
+  background: color-mix(in srgb, var(--bg, #261f1b) 34%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted, #c6b9ae);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.vs2-foundry-topline > span {
+  flex: 0 0 auto;
+  color: var(--fg, #f5eee7);
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.vs2-foundry-topline i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--sage, #6f8f66);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sage, #6f8f66) 16%, transparent);
+}
+
+.vs2-foundry-topline small {
+  max-width: 520px;
+  color: var(--muted, #c6b9ae);
+  text-align: right;
+}
+
+.vs2-foundry-rail {
+  border-bottom: 1px solid var(--border, rgba(255,255,255,.12));
+  padding: 14px clamp(15px, 3vw, 28px);
+  background: color-mix(in srgb, var(--panel, #302a26) 72%, transparent);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vs2-foundry-step {
+  min-height: 46px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--muted, #c6b9ae);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.vs2-foundry-step:disabled {
+  cursor: not-allowed;
+  opacity: .43;
+}
+
+.vs2-foundry-step:not(:disabled):hover { transform: translateY(-1px); }
+
+.vs2-foundry-step b {
+  width: 23px;
+  height: 23px;
+  flex: 0 0 23px;
+  border: 1px solid color-mix(in srgb, var(--border, rgba(255,255,255,.12)) 92%, transparent);
+  border-radius: 50%;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+}
+
+.vs2-foundry-step span { font-size: 11px; font-weight: 800; }
+
+.vs2-foundry-step.is-active {
+  border-color: color-mix(in srgb, var(--copper, #e0925c) 48%, transparent);
+  background: color-mix(in srgb, var(--copper, #e0925c) 10%, transparent);
+  color: var(--fg, #f5eee7);
+}
+
+.vs2-foundry-step.is-active b,
+.vs2-foundry-step.is-complete b {
+  border-color: var(--copper, #e0925c);
+  background: var(--copper, #e0925c);
+  color: #fff;
+}
+
+.vs2-foundry-step.is-complete { color: var(--fg, #f5eee7); }
+
+.vs2-foundry-workspace {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(248px, .34fr);
+}
+
+.vs2-foundry-stage {
+  min-width: 0;
+  padding: clamp(22px, 4vw, 38px);
+}
+
+.vs2-foundry-stage-heading { max-width: 725px; }
+
+.vs2-foundry-stage-heading > span,
+.vs2-foundry-summary-label {
+  color: var(--copper, #e0925c);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+
+.vs2-foundry-stage-heading h3 {
+  margin: 10px 0 0;
+  color: var(--fg, #f5eee7);
+  font: 600 clamp(28px, 3.3vw, 42px)/1.08 var(--font-display, Fraunces, Georgia, serif);
+  letter-spacing: -.025em;
+}
+
+.vs2-foundry-stage-heading p {
+  max-width: 690px;
+  margin: 13px 0 0;
+  color: var(--muted, #c6b9ae);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.vs2-foundry-hardware {
+  margin-top: 28px;
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 18px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--bg, #261f1b) 34%, transparent);
+  display: grid;
+  grid-template-columns: minmax(135px, .56fr) minmax(0, 1.44fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.vs2-foundry-hardware strong,
+.vs2-foundry-hardware small { display: block; }
+.vs2-foundry-hardware strong { color: var(--fg, #f5eee7); font-size: 12px; }
+.vs2-foundry-hardware small { margin-top: 5px; color: var(--muted, #c6b9ae); font-size: 10px; line-height: 1.45; }
+
+.vs2-foundry-profile-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+
+.vs2-foundry-profile {
+  min-width: 0;
+  min-height: 68px;
+  border: 1px solid color-mix(in srgb, var(--border, rgba(255,255,255,.12)) 82%, transparent);
+  border-radius: 13px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--panel, #302a26) 56%, transparent);
+  color: var(--muted, #c6b9ae);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.vs2-foundry-profile:hover { transform: translateY(-1px); }
+.vs2-foundry-profile.is-selected { border-color: color-mix(in srgb, var(--plum, #b98ae8) 60%, transparent); background: color-mix(in srgb, var(--plum, #b98ae8) 10%, transparent); color: var(--fg, #f5eee7); }
+.vs2-foundry-profile strong, .vs2-foundry-profile small { display: block; }
+.vs2-foundry-profile strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.vs2-foundry-profile small { margin-top: 5px; font-size: 8px; line-height: 1.35; }
+
+.vs2-foundry-recommendation {
+  margin: 18px 0 11px;
+  color: var(--muted, #c6b9ae);
+  font-size: 11px;
+}
+
+.vs2-foundry-recommendation span {
+  margin-right: 8px;
+  color: var(--sage, #6f8f66);
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.vs2-foundry-model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.vs2-foundry-model {
+  position: relative;
+  min-width: 0;
+  min-height: 178px;
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(255,255,255,.12));
+  border-radius: 19px;
+  padding: 17px;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--panel-2, #3a332e) 80%, transparent), color-mix(in srgb, var(--bg, #261f1b) 44%, transparent));
+  color: var(--muted, #c6b9ae);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.vs2-foundry-model::after { content: ""; position: absolute; right: -22px; bottom: -25px; width: 112px; height: 112px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--plum, #b98ae8) 20%, transparent), transparent 66%); }
+.vs2-foundry-model:hover { transform: translateY(-2px); }
+.vs2-foundry-model.is-selected { border-color: color-mix(in srgb, var(--copper, #e0925c) 62%, transparent); box-shadow: 0 18px 36px rgba(0,0,0,.17), inset 0 0 0 1px color-mix(in srgb, var(--copper, #e0925c) 16%, transparent); }
+.vs2-foundry-model-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vs2-foundry-model-top small { color: var(--plum, #b98ae8); font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.vs2-foundry-model-top i { border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 999px; padding: 4px 7px; color: var(--muted, #c6b9ae); font-size: 9px; font-style: normal; }
+.vs2-foundry-model strong { display: block; margin-top: 20px; color: var(--fg, #f5eee7); font: 600 24px/1 var(--font-display, Fraunces, Georgia, serif); }
+.vs2-foundry-model p { position: relative; z-index: 1; margin: 8px 0 0; max-width: 290px; font-size: 11px; line-height: 1.5; }
+.vs2-foundry-model-check { position: absolute; z-index: 2; right: 15px; bottom: 13px; opacity: 0; color: var(--copper, #e0925c); font-size: 10px; font-weight: 900; transition: opacity 180ms ease; }
+.vs2-foundry-model.is-selected .vs2-foundry-model-check { opacity: 1; }
+
+.vs2-foundry-stage-actions { margin-top: 24px; display: flex; align-items: center; gap: 10px; }
+.vs2-foundry-next { min-height: 46px; border-radius: 14px; padding: 0 17px; font-size: 12px; }
+.vs2-foundry-back { min-height: 42px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 13px; padding: 0 15px; background: transparent; color: var(--muted, #c6b9ae); cursor: pointer; font-size: 11px; font-weight: 800; }
+.vs2-foundry-back:hover:not(:disabled) { color: var(--fg, #f5eee7); background: rgba(255,255,255,.045); }
+.vs2-foundry-back:disabled { cursor: not-allowed; opacity: .45; }
+
+.vs2-foundry-summary {
+  min-width: 0;
+  border-left: 1px solid var(--border, rgba(255,255,255,.12));
+  padding: clamp(22px, 3vw, 32px) clamp(18px, 2.6vw, 28px);
+  background: color-mix(in srgb, var(--bg, #261f1b) 28%, transparent);
+}
+
+.vs2-foundry-orb {
+  position: relative;
+  width: 70px;
+  height: 70px;
+  margin-top: 17px;
+  border: 1px solid color-mix(in srgb, var(--copper, #e0925c) 42%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #f0b58c, var(--copper, #e0925c) 48%, var(--copper-deep, #b5613a) 100%);
+  box-shadow: 0 0 0 12px color-mix(in srgb, var(--copper, #e0925c) 7%, transparent), 0 12px 28px color-mix(in srgb, var(--copper, #e0925c) 20%, transparent);
+  color: #fff8f2;
+  display: grid;
+  place-items: center;
+  font: 700 30px/1 var(--font-display, Fraunces, Georgia, serif);
+}
+
+.vs2-foundry-orb i { position: absolute; inset: -11px; border: 1px dashed color-mix(in srgb, var(--plum, #b98ae8) 45%, transparent); border-radius: inherit; animation: vs2-orbit 12s linear infinite; }
+.vs2-foundry-summary > strong { display: block; overflow: hidden; margin-top: 20px; color: var(--fg, #f5eee7); font: 600 24px/1.1 var(--font-display, Fraunces, Georgia, serif); text-overflow: ellipsis; white-space: nowrap; }
+.vs2-foundry-summary > p { margin: 9px 0 0; color: var(--muted, #c6b9ae); font-size: 11px; line-height: 1.55; }
+.vs2-foundry-summary-meta { margin-top: 17px; display: flex; flex-wrap: wrap; gap: 6px; }
+.vs2-foundry-summary-meta span { border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 999px; padding: 5px 8px; color: var(--muted, #c6b9ae); font-size: 9px; font-weight: 800; }
+
+.vs2-foundry-status { margin-top: 27px; padding-top: 19px; border-top: 1px solid var(--border, rgba(255,255,255,.12)); }
+.vs2-foundry-status > span { color: var(--muted, #c6b9ae); font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.vs2-foundry-status ol { margin: 13px 0 0; padding: 0; list-style: none; counter-reset: foundry; display: grid; gap: 10px; }
+.vs2-foundry-status li { counter-increment: foundry; color: var(--muted, #c6b9ae); font-size: 10px; transition: color 180ms ease; }
+.vs2-foundry-status li::before { content: counter(foundry); width: 18px; height: 18px; margin-right: 8px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 50%; color: inherit; display: inline-grid; place-items: center; font-size: 8px; font-weight: 900; }
+.vs2-foundry-status li.is-active { color: var(--fg, #f5eee7); font-weight: 800; }
+.vs2-foundry-status li.is-active::before { border-color: var(--copper, #e0925c); color: var(--copper, #e0925c); }
+.vs2-foundry-status li.is-complete { color: var(--sage, #6f8f66); }
+.vs2-foundry-status li.is-complete::before { border-color: var(--sage, #6f8f66); background: var(--sage, #6f8f66); color: #fff; }
+
+.vs2-foundry-form { max-width: 700px; margin-top: 28px; display: grid; gap: 15px; }
+.vs2-foundry-form label { color: var(--fg, #f5eee7); font-size: 11px; font-weight: 800; }
+.vs2-foundry-form input, .vs2-foundry-form textarea { width: 100%; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 14px; margin-top: 7px; padding: 12px 13px; background: color-mix(in srgb, var(--bg, #261f1b) 50%, transparent); color: var(--fg, #f5eee7); resize: vertical; font: inherit; font-size: 13px; line-height: 1.5; }
+.vs2-foundry-form input::placeholder, .vs2-foundry-form textarea::placeholder { color: color-mix(in srgb, var(--muted, #c6b9ae) 70%, transparent); }
+.vs2-foundry-form .vs2-foundry-optional { border-top: 1px solid var(--border, rgba(255,255,255,.12)); margin-top: 2px; padding-top: 16px; }
+.vs2-foundry-optional small { display: block; margin-top: 6px; color: var(--muted, #c6b9ae); font-size: 10px; font-weight: 400; line-height: 1.45; }
+
+.vs2-foundry-lesson-grid { margin-top: 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.vs2-foundry-lesson { min-width: 0; min-height: 92px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 17px; padding: 12px; background: color-mix(in srgb, var(--bg, #261f1b) 25%, transparent); color: var(--muted, #c6b9ae); cursor: pointer; display: grid; grid-template-columns: 34px minmax(0,1fr) auto; grid-template-rows: auto auto; column-gap: 10px; text-align: left; transition: border-color 180ms ease, background 180ms ease, transform 180ms ease; }
+.vs2-foundry-lesson:hover { transform: translateY(-1px); }
+.vs2-foundry-lesson i { grid-row: 1 / span 2; width: 33px; height: 33px; border-radius: 10px; background: color-mix(in srgb, var(--plum, #b98ae8) 18%, transparent); color: var(--plum, #b98ae8); display: grid; place-items: center; font-size: 13px; font-style: normal; font-weight: 900; }
+.vs2-foundry-lesson.tone-cyan i { background: color-mix(in srgb, var(--cyan, #4dd8e8) 16%, transparent); color: var(--cyan, #4dd8e8); }
+.vs2-foundry-lesson.tone-copper i { background: color-mix(in srgb, var(--copper, #e0925c) 16%, transparent); color: var(--copper, #e0925c); }
+.vs2-foundry-lesson.tone-sage i { background: color-mix(in srgb, var(--sage, #6f8f66) 18%, transparent); color: var(--sage, #6f8f66); }
+.vs2-foundry-lesson strong { overflow: hidden; color: var(--fg, #f5eee7); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.vs2-foundry-lesson small { align-self: start; margin-top: 3px; font-size: 10px; line-height: 1.4; }
+.vs2-foundry-lesson b { grid-column: 3; grid-row: 1 / span 2; align-self: center; color: var(--copper, #e0925c); font-size: 9px; }
+.vs2-foundry-lesson.is-selected { border-color: color-mix(in srgb, var(--sage, #6f8f66) 56%, transparent); background: color-mix(in srgb, var(--sage, #6f8f66) 8%, transparent); }
+.vs2-foundry-lesson.is-selected b { color: var(--sage, #6f8f66); }
+
+.vs2-foundry-approved { max-width: 700px; margin-top: 17px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 15px; padding: 13px; background: color-mix(in srgb, var(--panel, #302a26) 55%, transparent); }
+.vs2-foundry-approved > span { color: var(--fg, #f5eee7); font-size: 10px; font-weight: 900; }
+.vs2-foundry-approved > div { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.vs2-foundry-approved > div span { border: 1px solid color-mix(in srgb, var(--sage, #6f8f66) 40%, transparent); border-radius: 999px; padding: 5px 8px; background: color-mix(in srgb, var(--sage, #6f8f66) 10%, transparent); color: var(--sage, #6f8f66); font-size: 9px; font-weight: 800; }
+.vs2-foundry-approved small { display: block; margin-top: 9px; color: var(--muted, #c6b9ae); font-size: 10px; line-height: 1.45; }
+
+.vs2-foundry-train-card { max-width: 710px; margin-top: 28px; border: 1px solid color-mix(in srgb, var(--plum, #b98ae8) 37%, transparent); border-radius: 20px; padding: 20px; background: radial-gradient(circle at 0 0, color-mix(in srgb, var(--plum, #b98ae8) 15%, transparent), transparent 37%), color-mix(in srgb, var(--bg, #261f1b) 38%, transparent); display: grid; grid-template-columns: 76px minmax(0,1fr); align-items: center; gap: 18px; }
+.vs2-foundry-train-orb { position: relative; width: 68px; height: 68px; border: 1px solid color-mix(in srgb, var(--plum, #b98ae8) 55%, transparent); border-radius: 50%; background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--plum, #b98ae8) 86%, #fff 14%), var(--plum, #b98ae8)); color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 900; }
+.vs2-foundry-train-orb i { position: absolute; inset: -8px; border: 1px dashed color-mix(in srgb, var(--plum, #b98ae8) 55%, transparent); border-radius: inherit; animation: vs2-orbit 5.5s linear infinite; }
+.vs2-foundry-train-card span { color: var(--plum, #b98ae8); font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.vs2-foundry-train-card strong { display: block; margin-top: 7px; color: var(--fg, #f5eee7); font: 600 23px/1.1 var(--font-display, Fraunces, Georgia, serif); }
+.vs2-foundry-train-card p { margin: 7px 0 0; color: var(--muted, #c6b9ae); font-size: 11px; line-height: 1.5; }
+.vs2-foundry-train-steps { max-width: 710px; margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.vs2-foundry-train-steps li { min-height: 53px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 14px; padding: 9px 12px; color: var(--muted, #c6b9ae); display: flex; align-items: center; gap: 10px; transition: border-color 180ms ease, background 180ms ease; }
+.vs2-foundry-train-steps li > i { width: 24px; height: 24px; flex: 0 0 24px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-style: normal; font-weight: 900; }
+.vs2-foundry-train-steps li strong, .vs2-foundry-train-steps li small { display: block; }
+.vs2-foundry-train-steps li strong { color: var(--fg, #f5eee7); font-size: 11px; }
+.vs2-foundry-train-steps li small { margin-top: 2px; font-size: 9px; line-height: 1.3; }
+.vs2-foundry-train-steps li.is-active { border-color: color-mix(in srgb, var(--plum, #b98ae8) 54%, transparent); background: color-mix(in srgb, var(--plum, #b98ae8) 8%, transparent); }
+.vs2-foundry-train-steps li.is-active > i { border-color: var(--plum, #b98ae8); color: var(--plum, #b98ae8); }
+.vs2-foundry-train-steps li.is-complete { border-color: color-mix(in srgb, var(--sage, #6f8f66) 46%, transparent); }
+.vs2-foundry-train-steps li.is-complete > i { border-color: var(--sage, #6f8f66); background: var(--sage, #6f8f66); color: #fff; }
+
+.vs2-foundry-compare { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; }
+.vs2-foundry-compare > div { min-width: 0; min-height: 132px; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 17px; padding: 15px; background: color-mix(in srgb, var(--bg, #261f1b) 30%, transparent); }
+.vs2-foundry-compare .vs2-foundry-candidate { border-color: color-mix(in srgb, var(--copper, #e0925c) 54%, transparent); background: color-mix(in srgb, var(--copper, #e0925c) 9%, transparent); }
+.vs2-foundry-compare span, .vs2-foundry-compare strong, .vs2-foundry-compare small { display: block; }
+.vs2-foundry-compare span { color: var(--muted, #c6b9ae); font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.vs2-foundry-compare strong { overflow: hidden; margin-top: 18px; color: var(--fg, #f5eee7); font: 600 20px/1.1 var(--font-display, Fraunces, Georgia, serif); text-overflow: ellipsis; white-space: nowrap; }
+.vs2-foundry-compare small { margin-top: 7px; color: var(--muted, #c6b9ae); font-size: 10px; line-height: 1.4; }
+.vs2-foundry-evidence { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
+.vs2-foundry-evidence > div { border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: 15px; padding: 13px; background: color-mix(in srgb, var(--panel, #302a26) 46%, transparent); }
+.vs2-foundry-evidence strong, .vs2-foundry-evidence span { display: block; }
+.vs2-foundry-evidence strong { color: var(--fg, #f5eee7); font-size: 11px; }
+.vs2-foundry-evidence span { margin-top: 5px; color: var(--muted, #c6b9ae); font-size: 10px; line-height: 1.45; }
+.vs2-foundry-launch { margin-top: 13px; border: 1px solid color-mix(in srgb, var(--sage, #6f8f66) 50%, transparent); border-radius: 15px; padding: 13px; background: color-mix(in srgb, var(--sage, #6f8f66) 10%, transparent); display: flex; align-items: center; gap: 10px; }
+.vs2-foundry-launch[hidden] { display: none; }
+.vs2-foundry-launch > span { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: var(--sage, #6f8f66); color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 900; }
+.vs2-foundry-launch strong, .vs2-foundry-launch p { display: block; margin: 0; }
+.vs2-foundry-launch strong { color: var(--fg, #f5eee7); font-size: 11px; }
+.vs2-foundry-launch p { margin-top: 3px; color: var(--muted, #c6b9ae); font-size: 10px; line-height: 1.4; }
+
+.vs2-foundry-footnote { max-width: 800px; margin: 16px auto 0; color: var(--muted, #c6b9ae); font-size: 11px; line-height: 1.55; text-align: center; }
+
+html[data-site-appearance="vibespace"] .vs2-foundry-shell { border-color: rgba(74,94,106,.25); box-shadow: 0 32px 78px rgba(63,76,78,.17), inset 0 1px rgba(255,255,255,.7); }
+html[data-site-appearance="vibespace"] .vs2-foundry-topline,
+html[data-site-appearance="vibespace"] .vs2-foundry-summary { background: rgba(248,241,232,.44); }
+html[data-site-appearance="vibespace"] .vs2-foundry-model,
+html[data-site-appearance="vibespace"] .vs2-foundry-profile,
+html[data-site-appearance="vibespace"] .vs2-foundry-lesson,
+html[data-site-appearance="vibespace"] .vs2-foundry-compare > div { background: rgba(255,255,255,.38); }
+
+@media (max-width: 950px) {
+  .vs2-foundry-workspace { grid-template-columns: 1fr; }
+  .vs2-foundry-summary { border-top: 1px solid var(--border, rgba(255,255,255,.12)); border-left: 0; display: grid; grid-template-columns: 84px minmax(0,1fr); column-gap: 17px; }
+  .vs2-foundry-summary-label { grid-column: 1 / -1; }
+  .vs2-foundry-orb { grid-row: 2 / span 3; }
+  .vs2-foundry-summary > strong { margin-top: 16px; }
+  .vs2-foundry-summary-meta { margin-top: 10px; }
+  .vs2-foundry-status { grid-column: 1 / -1; margin-top: 17px; }
+  .vs2-foundry-status ol { grid-template-columns: repeat(5, minmax(0,1fr)); gap: 7px; }
+  .vs2-foundry-status li { font-size: 9px; line-height: 1.4; }
+  .vs2-foundry-status li::before { display: block; margin: 0 0 5px; }
+}
+
+@media (max-width: 700px) {
+  .vs2-foundry-topline { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .vs2-foundry-topline small { text-align: left; }
+  .vs2-foundry-rail { overflow-x: auto; grid-template-columns: repeat(5, minmax(122px, 1fr)); }
+  .vs2-foundry-step { min-height: 42px; }
+  .vs2-foundry-hardware { grid-template-columns: 1fr; }
+  .vs2-foundry-model-grid, .vs2-foundry-lesson-grid, .vs2-foundry-evidence { grid-template-columns: 1fr; }
+  .vs2-foundry-compare { grid-template-columns: 1fr; }
+  .vs2-foundry-compare > div { min-height: 92px; }
+  .vs2-foundry-compare strong { margin-top: 10px; }
+}
+
+@media (max-width: 480px) {
+  .vs2-foundry-stage { padding: 20px 15px; }
+  .vs2-foundry-profile-picker { grid-template-columns: 1fr; }
+  .vs2-foundry-profile { min-height: 55px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px; }
+  .vs2-foundry-profile small { grid-column: 1 / -1; margin-top: -4px; }
+  .vs2-foundry-status ol { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .vs2-foundry-summary { grid-template-columns: 68px minmax(0,1fr); padding: 20px 15px; }
+  .vs2-foundry-orb { width: 56px; height: 56px; font-size: 24px; }
+  .vs2-foundry-summary > strong { font-size: 21px; }
+  .vs2-foundry-train-card { grid-template-columns: 60px minmax(0,1fr); padding: 15px; gap: 12px; }
+  .vs2-foundry-train-orb { width: 56px; height: 56px; }
+}
+
+/* ----------------------------------------------------------------------- */
 /* Inspector + Kanban                                                       */
 /* ----------------------------------------------------------------------- */
 
