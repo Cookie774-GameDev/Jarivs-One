@@ -42,8 +42,8 @@ jobs:
           MAIN_SHA="$(git rev-parse origin/main)"
           MERGE_BASE_SHA="$(git merge-base "$START_SHA" "$MAIN_SHA")"
 
-          # PR #30 is the authoritative side for the seven intentional appearance
-          # conflicts. All non-conflicting main changes are still merged normally.
+          # PR #30 wins only intentional conflict hunks. Every non-conflicting
+          # commit from main is merged normally.
           git merge --no-ff -X ours "$MAIN_SHA" \
             -m "Merge main into PR #30 and resolve intentional appearance conflicts"
 
@@ -53,90 +53,8 @@ jobs:
             exit 1
           fi
 
-          # Main's website appearance work touched the same top-level HTML regions
-          # as PR #30's access/security updates. Reapply its six small integration
-          # hooks deterministically while keeping PR #30's newer page structure.
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("site/index.html")
-          text = path.read_text(encoding="utf-8")
-
-          prepaint = """  <script>
-    (function () {
-      var key = 'vibespace-site-appearance';
-      var allowed = { default: true, vibespace: true };
-      var query = new URLSearchParams(window.location.search).get('appearance');
-      var stored = null;
-      try { stored = window.localStorage.getItem(key); } catch (_) {}
-      var appearance = allowed[query] ? query : (allowed[stored] ? stored : 'default');
-      document.documentElement.dataset.siteAppearance = appearance;
-    })();
-  </script>
-"""
-          if "vibespace-site-appearance" not in text:
-              marker = '  <link rel="icon" type="image/png" href="images/vibespace-logo.png" />\n'
-              if marker not in text:
-                  raise SystemExit("favicon marker missing while restoring site appearance prepaint")
-              text = text.replace(marker, marker + prepaint, 1)
-
-          stylesheet = '  <link rel="stylesheet" href="css/site-appearance.css" />\n'
-          if stylesheet not in text:
-              marker = '  <link rel="stylesheet" href="css/origami-scroll-world.css" />\n'
-              if marker not in text:
-                  raise SystemExit("origami stylesheet marker missing")
-              text = text.replace(marker, marker + stylesheet, 1)
-
-          frame = """  <div class="vibe-fold-frame" aria-hidden="true">
-    <div class="vibe-fold-spine"></div>
-    <div class="vibe-fold-rail vibe-fold-rail--right"></div>
-    <div class="vibe-fold-band vibe-fold-band--top"></div>
-  </div>
-"""
-          if 'class="vibe-fold-frame"' not in text:
-              marker = '  <div id="cursor-glow"></div>\n'
-              if marker not in text:
-                  raise SystemExit("cursor glow marker missing")
-              text = text.replace(marker, marker + frame, 1)
-
-          switch = """      <div class="site-appearance-switch" role="group" aria-label="Website appearance">
-        <button type="button" data-appearance-choice="default" aria-pressed="true">Default</button>
-        <button type="button" data-appearance-choice="vibespace" aria-pressed="false">VibeSpace</button>
-      </div>
-"""
-          if 'class="site-appearance-switch"' not in text:
-              marker = '      <a class="brand" href="#top"><img src="images/vibespace-logo.png" width="34" height="34" alt="VibeSpace logo" /><span>VibeSpace</span></a>\n'
-              if marker not in text:
-                  raise SystemExit("navigation brand marker missing")
-              text = text.replace(marker, marker + switch, 1)
-
-          if 'class="vibe-stage-stack"' not in text:
-              old = '      <div>\n        <div class="sim-tabs" id="simTabs">\n'
-              new = """      <div class="vibe-stage-stack">
-        <span class="vibe-sheet-layer vibe-sheet-layer--back" aria-hidden="true"></span>
-        <span class="vibe-sheet-layer vibe-sheet-layer--middle" aria-hidden="true"></span>
-        <span class="vibe-sheet-layer vibe-sheet-layer--front" aria-hidden="true"></span>
-        <div class="sim-tabs" id="simTabs">
-"""
-              if old not in text:
-                  raise SystemExit("hero simulator wrapper marker missing")
-              text = text.replace(old, new, 1)
-
-          script = '  <script src="js/site-appearance.js" defer></script>\n'
-          if script not in text:
-              marker = '  <script src="js/motion.js" defer></script>\n'
-              if marker not in text:
-                  raise SystemExit("motion script marker missing")
-              text = text.replace(marker, marker + script, 1)
-
-          path.write_text(text, encoding="utf-8")
-          PY
-
-          git add site/index.html
-          if ! git diff --cached --quiet; then
-            git commit -m "fix(site): preserve main appearance integration in PR 30"
-          fi
-
+          # Verify that main's current site, audit, and taskbar work survived the
+          # merge alongside PR #30's access/security page structure.
           test -f docs/ideas/TASKBAR_AI_USAGE_MODULE.md
           test -f docs/operations/VIBESPACE_AUDIT_LOG.md
           test -f site/css/site-appearance.css
@@ -146,7 +64,10 @@ jobs:
           grep -q 'href="/access/"' site/index.html
           grep -q 'css/site-appearance.css' site/index.html
           grep -q 'js/site-appearance.js' site/index.html
+          grep -q 'vibespace-site-appearance' site/index.html
+          grep -q 'class="site-appearance-switch"' site/index.html
 
+          # The helper is one-time only and must not land in the product branch.
           git rm .github/workflows/pr30-sync-main-once.yml
           git commit -m "chore: remove one-time PR 30 sync workflow"
 
@@ -159,8 +80,8 @@ jobs:
             pr30-sync-result "^$START_SHA" "^$MAIN_SHA"
           git bundle verify pr30-merge.bundle
 
-          # The imported taskbar specification intentionally uses Markdown hard-break
-          # spaces. Check all other merged paths for whitespace errors without rewriting it.
+          # Main's taskbar specification intentionally uses Markdown hard-break
+          # spaces; check every other merged path for whitespace errors.
           git diff --check "$START_SHA..$RESULT_SHA" -- . \
             ':(exclude)docs/ideas/TASKBAR_AI_USAGE_MODULE.md'
 
