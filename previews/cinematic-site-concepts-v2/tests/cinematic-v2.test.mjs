@@ -125,3 +125,66 @@ test('every declared cinematic asset exists inside the delivery budget', async (
     }
   }
 });
+
+test('loop controller owns at most one animation frame through its lifecycle', async () => {
+  const { createLoopController } = await import('../runtime/experience.mjs');
+  let nextId = 0;
+  const pending = new Map();
+  const requestFrame = (callback) => {
+    const id = ++nextId;
+    pending.set(id, callback);
+    return id;
+  };
+  const cancelFrame = (id) => pending.delete(id);
+  const loop = createLoopController({
+    requestFrame,
+    cancelFrame,
+    onFrame() {},
+  });
+
+  loop.start();
+  loop.start();
+  assert.equal(pending.size, 1);
+
+  loop.pause();
+  assert.equal(pending.size, 0);
+
+  loop.resume();
+  loop.resume();
+  assert.equal(pending.size, 1);
+
+  loop.destroy();
+  assert.equal(pending.size, 0);
+});
+
+test('plate presentation crossfades only neighboring scenes with bounded styles', async () => {
+  const { WORLDS } = await import('../worlds.mjs');
+  const { computePlatePresentation } = await import('../runtime/renderer.mjs');
+  const world = WORLDS['machine-opera'];
+  const presentation = computePlatePresentation(
+    {
+      progress: 0.55,
+      actIndex: 3,
+      local: 0.85,
+      plateA: 3,
+      plateB: 4,
+      blend: 0.78,
+    },
+    world,
+    { x: 0.7, y: -0.4 },
+  );
+
+  assert.equal(presentation.length, 7);
+  assert.ok(presentation[3].opacity > 0);
+  assert.ok(presentation[4].opacity > 0);
+  assert.equal(
+    presentation.filter(({ opacity }) => opacity > 0).length,
+    2,
+  );
+  for (const style of presentation) {
+    assert.ok(style.opacity >= 0 && style.opacity <= 1);
+    assert.ok(style.scale >= 1 && style.scale <= 1.9);
+    assert.ok(Math.abs(style.x) <= 8);
+    assert.ok(Math.abs(style.y) <= 8);
+  }
+});
