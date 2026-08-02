@@ -114,6 +114,20 @@ function platformArtifactNames(releaseVersion) {
       ],
     },
     {
+      platform: 'darwin-x86_64',
+      names: [
+        `VibeSpace_${releaseVersion}_x64.app.tar.gz`,
+        `VibeSpace_${releaseVersion}_x86_64.app.tar.gz`,
+        `Jarvis One_${releaseVersion}_x64.app.tar.gz`,
+        `Jarvis One_${releaseVersion}_x86_64.app.tar.gz`,
+        `Jarvis.One_${releaseVersion}_x64.app.tar.gz`,
+        `VibeSpace-${releaseVersion}-macOS-x86_64.app.tar.gz`,
+        `VibeSpace-${releaseVersion}-macOS-x86_64.tar.gz`,
+        `Jarvis-One-${releaseVersion}-macOS-x86_64.app.tar.gz`,
+        `Jarvis-One-${releaseVersion}-macOS-x86_64.tar.gz`,
+      ],
+    },
+    {
       platform: 'linux-x86_64',
       names: [
         `VibeSpace_${releaseVersion}_amd64.AppImage`,
@@ -164,9 +178,6 @@ async function platformEntry(platform, artifactName, entriesByName, context) {
   context.bindings.push(signatureFile);
   if (signatureFile.snapshot.size > BigInt(MAX_SIGNATURE_BYTES)) {
     throw new Error(`Signature exceeds ${MAX_SIGNATURE_BYTES} bytes: ${signatureName}`);
-  }
-  if (signatureFile.snapshot.mtimeNs < artifact.snapshot.mtimeNs) {
-    throw new Error(`Stale signature for ${artifactName}: ${signatureName} is older than artifact`);
   }
 
   const signature = (await signatureFile.handle.readFile('utf8')).trim();

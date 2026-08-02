@@ -195,6 +195,18 @@ jobs:
             echo "Signed updater artifacts are required for an official release."
             exit 1
           fi
+          UPDATER_PUBLIC_KEY="$(
+            node -e "const config = require('./app/src-tauri/tauri.conf.json'); process.stdout.write(config.plugins.updater.pubkey)"
+          )"
+          test -n "$UPDATER_PUBLIC_KEY"
+          for signature in assets/*.sig; do
+            artifact="${signature%.sig}"
+            test -f "$artifact"
+            node scripts/verify-updater-signature.mjs \
+              --artifact "$artifact" \
+              --signature "$signature" \
+              --public-key "$UPDATER_PUBLIC_KEY"
+          done
           VERSION="${TAG#v}"
           node scripts/build-updater-manifest.mjs \
             --version "$VERSION" \

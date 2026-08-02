@@ -178,6 +178,7 @@ test('selects deterministic version-bound artifacts for every updater platform',
     await addArtifact(assetsDir, 'A-VibeSpace_9.9.9_amd64.AppImage');
     await addArtifact(assetsDir, `VibeSpace_${VERSION}_amd64.AppImage`);
     await addArtifact(assetsDir, `VibeSpace_${VERSION}_aarch64.app.tar.gz`);
+    await addArtifact(assetsDir, `VibeSpace_${VERSION}_x64.app.tar.gz`);
     await addArtifact(assetsDir, `VibeSpace-${VERSION}-Windows-x64.exe`);
 
     const first = await buildManifest(assetsDir);
@@ -188,6 +189,7 @@ test('selects deterministic version-bound artifacts for every updater platform',
     assert.deepEqual(Object.keys(first.manifest.platforms), [
       'windows-x86_64',
       'darwin-aarch64',
+      'darwin-x86_64',
       'linux-x86_64',
     ]);
     assert.equal(first.manifest.pub_date, PUB_DATE);
@@ -198,6 +200,10 @@ test('selects deterministic version-bound artifacts for every updater platform',
     assert.equal(
       first.manifest.platforms['darwin-aarch64'].url,
       `https://example.test/releases/v${VERSION}/VibeSpace_${VERSION}_aarch64.app.tar.gz`,
+    );
+    assert.equal(
+      first.manifest.platforms['darwin-x86_64'].url,
+      `https://example.test/releases/v${VERSION}/VibeSpace_${VERSION}_x64.app.tar.gz`,
     );
     assert.equal(
       first.manifest.platforms['linux-x86_64'].url,
@@ -257,6 +263,10 @@ test('preserves explicit VibeSpace and legacy Jarvis naming variants', async () 
     ['darwin-aarch64', `Jarvis One_${VERSION}_aarch64.app.tar.gz`],
     ['darwin-aarch64', `VibeSpace-${VERSION}-macOS-aarch64.tar.gz`],
     ['darwin-aarch64', `Jarvis-One-${VERSION}-macOS-aarch64.tar.gz`],
+    ['darwin-x86_64', `VibeSpace_${VERSION}_x64.app.tar.gz`],
+    ['darwin-x86_64', `Jarvis One_${VERSION}_x64.app.tar.gz`],
+    ['darwin-x86_64', `VibeSpace-${VERSION}-macOS-x86_64.tar.gz`],
+    ['darwin-x86_64', `Jarvis-One-${VERSION}-macOS-x86_64.tar.gz`],
     ['linux-x86_64', `VibeSpace_${VERSION}_amd64.AppImage`],
     ['linux-x86_64', `Jarvis One_${VERSION}_amd64.AppImage`],
     ['linux-x86_64', `VibeSpace-${VERSION}-Linux-x86_64.AppImage`],
@@ -314,7 +324,7 @@ test('fails when a recognized updater artifact has no regular signature file', a
   });
 });
 
-test('rejects empty, oversized, and stale signatures without logging their contents', async () => {
+test('rejects empty and oversized signatures without logging their contents', async () => {
   const cases = [
     {
       signature: ' \r\n\t',
@@ -338,18 +348,9 @@ test('rejects empty, oversized, and stale signatures without logging their conte
       assert.doesNotMatch(output, /SIGNING_MATERIAL_MUST_NOT_BE_LOGGED/iu);
     });
   }
+});
 
-  await withAssets(async ({ assetsDir }) => {
-    const artifact = `VibeSpace-${VERSION}-Windows-x64.exe`;
-    await addArtifact(assetsDir, artifact);
-    const now = new Date('2026-07-30T20:00:00.000Z');
-    const old = new Date('2026-07-30T19:59:50.000Z');
-    await utimes(path.join(assetsDir, artifact), now, now);
-    await utimes(path.join(assetsDir, `${artifact}.sig`), old, old);
-
-    await expectFailure(assetsDir, undefined, /stale signature/iu);
-  });
-
+test('treats artifact and signature timestamps as non-authoritative metadata', async () => {
   await withAssets(async ({ assetsDir }) => {
     const artifact = `VibeSpace-${VERSION}-Windows-x64.exe`;
     await addArtifact(assetsDir, artifact);
@@ -364,7 +365,11 @@ test('rejects empty, oversized, and stale signatures without logging their conte
       new Date('2026-07-30T20:00:00.100Z'),
     );
 
-    await expectFailure(assetsDir, undefined, /stale signature/iu);
+    const { manifest } = await buildManifest(assetsDir);
+    assert.equal(
+      manifest.platforms['windows-x86_64'].url,
+      `https://example.test/releases/v${VERSION}/${artifact}`,
+    );
   });
 });
 
