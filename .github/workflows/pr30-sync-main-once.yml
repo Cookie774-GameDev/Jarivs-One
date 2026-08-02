@@ -62,7 +62,18 @@ jobs:
           path = Path("site/index.html")
           text = path.read_text(encoding="utf-8")
 
-          prepaint = """  <script>\n    (function () {\n      var key = 'vibespace-site-appearance';\n      var allowed = { default: true, vibespace: true };\n      var query = new URLSearchParams(window.location.search).get('appearance');\n      var stored = null;\n      try { stored = window.localStorage.getItem(key); } catch (_) {}\n      var appearance = allowed[query] ? query : (allowed[stored] ? stored : 'default');\n      document.documentElement.dataset.siteAppearance = appearance;\n    })();\n  </script>\n"""
+          prepaint = """  <script>
+    (function () {
+      var key = 'vibespace-site-appearance';
+      var allowed = { default: true, vibespace: true };
+      var query = new URLSearchParams(window.location.search).get('appearance');
+      var stored = null;
+      try { stored = window.localStorage.getItem(key); } catch (_) {}
+      var appearance = allowed[query] ? query : (allowed[stored] ? stored : 'default');
+      document.documentElement.dataset.siteAppearance = appearance;
+    })();
+  </script>
+"""
           if "vibespace-site-appearance" not in text:
               marker = '  <link rel="icon" type="image/png" href="images/vibespace-logo.png" />\n'
               if marker not in text:
@@ -76,14 +87,23 @@ jobs:
                   raise SystemExit("origami stylesheet marker missing")
               text = text.replace(marker, marker + stylesheet, 1)
 
-          frame = """  <div class="vibe-fold-frame" aria-hidden="true">\n    <div class="vibe-fold-spine"></div>\n    <div class="vibe-fold-rail vibe-fold-rail--right"></div>\n    <div class="vibe-fold-band vibe-fold-band--top"></div>\n  </div>\n"""
+          frame = """  <div class="vibe-fold-frame" aria-hidden="true">
+    <div class="vibe-fold-spine"></div>
+    <div class="vibe-fold-rail vibe-fold-rail--right"></div>
+    <div class="vibe-fold-band vibe-fold-band--top"></div>
+  </div>
+"""
           if 'class="vibe-fold-frame"' not in text:
               marker = '  <div id="cursor-glow"></div>\n'
               if marker not in text:
                   raise SystemExit("cursor glow marker missing")
               text = text.replace(marker, marker + frame, 1)
 
-          switch = """      <div class="site-appearance-switch" role="group" aria-label="Website appearance">\n        <button type="button" data-appearance-choice="default" aria-pressed="true">Default</button>\n        <button type="button" data-appearance-choice="vibespace" aria-pressed="false">VibeSpace</button>\n      </div>\n"""
+          switch = """      <div class="site-appearance-switch" role="group" aria-label="Website appearance">
+        <button type="button" data-appearance-choice="default" aria-pressed="true">Default</button>
+        <button type="button" data-appearance-choice="vibespace" aria-pressed="false">VibeSpace</button>
+      </div>
+"""
           if 'class="site-appearance-switch"' not in text:
               marker = '      <a class="brand" href="#top"><img src="images/vibespace-logo.png" width="34" height="34" alt="VibeSpace logo" /><span>VibeSpace</span></a>\n'
               if marker not in text:
@@ -92,7 +112,12 @@ jobs:
 
           if 'class="vibe-stage-stack"' not in text:
               old = '      <div>\n        <div class="sim-tabs" id="simTabs">\n'
-              new = """      <div class="vibe-stage-stack">\n        <span class="vibe-sheet-layer vibe-sheet-layer--back" aria-hidden="true"></span>\n        <span class="vibe-sheet-layer vibe-sheet-layer--middle" aria-hidden="true"></span>\n        <span class="vibe-sheet-layer vibe-sheet-layer--front" aria-hidden="true"></span>\n        <div class="sim-tabs" id="simTabs">\n"""
+              new = """      <div class="vibe-stage-stack">
+        <span class="vibe-sheet-layer vibe-sheet-layer--back" aria-hidden="true"></span>
+        <span class="vibe-sheet-layer vibe-sheet-layer--middle" aria-hidden="true"></span>
+        <span class="vibe-sheet-layer vibe-sheet-layer--front" aria-hidden="true"></span>
+        <div class="sim-tabs" id="simTabs">
+"""
               if old not in text:
                   raise SystemExit("hero simulator wrapper marker missing")
               text = text.replace(old, new, 1)
@@ -133,7 +158,11 @@ jobs:
           git bundle create pr30-merge.bundle \
             pr30-sync-result "^$START_SHA" "^$MAIN_SHA"
           git bundle verify pr30-merge.bundle
-          git diff --check "$START_SHA..$RESULT_SHA"
+
+          # The imported taskbar specification intentionally uses Markdown hard-break
+          # spaces. Check all other merged paths for whitespace errors without rewriting it.
+          git diff --check "$START_SHA..$RESULT_SHA" -- . \
+            ':(exclude)docs/ideas/TASKBAR_AI_USAGE_MODULE.md'
 
       - uses: actions/upload-artifact@v4
         with:
