@@ -144,7 +144,7 @@ test('catalog defines three visually independent seven-act worlds', async () => 
 
 test('every full-screen entrypoint exposes the cinematic lifecycle', async () => {
   for (const [id, file] of Object.entries(ENTRIES)) {
-    const html = await readFile(new URL(`../${file}`, ROOT), 'utf8');
+    const html = await readFile(new URL(file, ROOT), 'utf8');
     assert.match(html, new RegExp(`<body[^>]+data-world="${id}"`));
     assert.match(html, /data-loader-progress>000%/);
     assert.match(html, /Enter with sound/);
@@ -384,31 +384,42 @@ git commit -m "feat: add cinematic world art systems"
 - Consumes Tasks 1–3.
 - Produces the loader-to-gate-to-scroll-world lifecycle.
 
-- [ ] **Step 1: Add failing renderer and lifecycle source contracts**
+- [ ] **Step 1: Add failing renderer and lifecycle behavior contracts**
 
-Assert that the runtime:
+Assert that starting the same lifecycle twice still owns one scheduled frame,
+that hiding cancels it, and that resuming schedules one new frame:
 
 ```js
-test('experience runtime owns one visibility-aware loop and semantic act state', async () => {
-  const source = await readFile(new URL('../runtime/experience.mjs', ROOT), 'utf8');
-  assert.match(source, /requestAnimationFrame/);
-  assert.match(source, /cancelAnimationFrame/);
-  assert.match(source, /visibilitychange/);
-  assert.match(source, /data-active-act/);
-  assert.match(source, /preloadCritical/);
-  assert.match(source, /createWorldRenderer/);
-});
+test('loop controller never owns more than one animation frame', async () => {
+  const { createLoopController } = await import('../runtime/experience.mjs');
+  let nextId = 0;
+  const pending = new Set();
+  const loop = createLoopController({
+    requestFrame(callback) {
+      const id = ++nextId;
+      pending.add(id);
+      return id;
+    },
+    cancelFrame(id) {
+      pending.delete(id);
+    },
+    onFrame() {},
+  });
 
-test('experience CSS defines cinematic and editorial fallback compositions', async () => {
-  const css = await readFile(new URL('../experience.css', ROOT), 'utf8');
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(css, /@media \(max-width: 1099px\)/);
-  assert.match(css, /\.plate-stack/);
-  assert.match(css, /\[data-world="first-contact"\]/);
-  assert.match(css, /\[data-world="memory-forest"\]/);
-  assert.match(css, /\[data-world="machine-opera"\]/);
+  loop.start();
+  loop.start();
+  assert.equal(pending.size, 1);
+  loop.pause();
+  assert.equal(pending.size, 0);
+  loop.resume();
+  assert.equal(pending.size, 1);
+  loop.destroy();
+  assert.equal(pending.size, 0);
 });
 ```
+
+The three HTML entrypoint behavior test from Task 1 remains responsible for
+proving that the runtime and stylesheet are actually consumed.
 
 - [ ] **Step 2: Run the tests and confirm RED**
 
@@ -477,16 +488,52 @@ git commit -m "feat: build cinematic scroll experience runtime"
 - Adds sound to the shared lifecycle without changing pure timeline behavior.
 - Produces the grading handoff route.
 
-- [ ] **Step 1: Add failing sound and gallery tests**
+- [ ] **Step 1: Add failing sound and gallery behavior tests**
 
 ```js
 test('procedural score remains gesture-gated and destroyable', async () => {
-  const source = await readFile(new URL('../runtime/sound.mjs', ROOT), 'utf8');
-  assert.match(source, /AudioContext/);
-  assert.match(source, /async start/);
-  assert.match(source, /setMuted/);
-  assert.match(source, /destroy/);
-  assert.doesNotMatch(source, /new AudioContext\(\);\s*[^}]*resume\(\)/s);
+  const { createWorldScore } = await import('../runtime/sound.mjs');
+  let contextsCreated = 0;
+  const fakeContext = {
+    currentTime: 0,
+    destination: {},
+    createGain() {
+      return {
+        gain: {
+          value: 0,
+          cancelScheduledValues() {},
+          linearRampToValueAtTime() {},
+          setValueAtTime() {},
+        },
+        connect() {},
+      };
+    },
+    createDynamicsCompressor() { return { connect() {} }; },
+    createOscillator() {
+      return {
+        type: 'sine',
+        frequency: { value: 0 },
+        detune: { value: 0 },
+        connect() {},
+        start() {},
+        stop() {},
+      };
+    },
+    async resume() {},
+    async close() {},
+  };
+  const score = createWorldScore('first-contact', {
+    createContext() {
+      contextsCreated += 1;
+      return fakeContext;
+    },
+  });
+
+  assert.equal(contextsCreated, 0);
+  await score.start();
+  assert.equal(contextsCreated, 1);
+  score.setMuted(true);
+  await score.destroy();
 });
 
 test('gallery links directly to the three full-screen worlds', async () => {
