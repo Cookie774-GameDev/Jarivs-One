@@ -9,7 +9,7 @@ describe('UI theme resolution', () => {
     useUIStore.setState({ theme: 'default' });
   });
 
-  it('keeps legacy Jarvis rendering available for migration compatibility', () => {
+  it('keeps Jarvis Core as an independent selectable theme', () => {
     expect(resolveTheme('jarvis')).toBe('jarvis');
     applyThemeToDocument('jarvis');
     expect(document.documentElement.getAttribute('data-theme')).toBe('jarvis');

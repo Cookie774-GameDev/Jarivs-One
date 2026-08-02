@@ -1,5 +1,7 @@
 import * as React from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
+import { SignInDialog } from '@/features/auth/SignInDialog';
 import { getSupabaseClient, type TypedSupabaseClient } from '@/lib/supabase/client';
 import { openExternal } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
@@ -477,19 +479,149 @@ export function isAccessGateEnabled(environment: AccessBuildEnvironment): boolea
   return typeof configured === 'string' && configured.trim().toLowerCase() === 'true';
 }
 
+function publishInstalledCloudSession(session: Session | null): boolean {
+  const userId = session?.user.id?.trim() ?? '';
+  const previousUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+  if (!userId) {
+    useAuthStore.setState({ cloudSession: null, plan: 'free' });
+    return false;
+  }
+  useAuthStore.setState({
+    cloudSession: {
+      user_id: userId,
+      email: session?.user.email ?? '',
+      expires_at: session?.expires_at ?? 0,
+    },
+    ...(previousUserId && previousUserId !== userId ? { plan: 'free' as const } : {}),
+  });
+  return true;
+}
+
+function InstalledCloudAuthentication({
+  configured,
+  onSignIn,
+  onCreateAccount,
+}: {
+  configured: boolean;
+  onSignIn: () => void;
+  onCreateAccount: () => void;
+}) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
+      <section className="w-full max-w-md rounded-3xl border border-border/80 bg-elevated p-7 shadow-2xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-copper">
+          VibeSpace Access
+        </p>
+        <h1 className="mt-3 text-2xl font-semibold text-foreground">Sign in to VibeSpace</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Sign in or create an account before VibeSpace verifies your trial or subscription.
+        </p>
+        {!configured ? (
+          <p
+            className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100"
+            role="alert"
+          >
+            Cloud authentication is not configured in this build. Install the official release
+            or contact VibeSpace support.
+          </p>
+        ) : null}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <Button type="button" onClick={onSignIn}>
+            Sign in
+          </Button>
+          <Button type="button" variant="outline" onClick={onCreateAccount}>
+            Create account
+          </Button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export function InstalledAccessAppHost({ children }: { children: React.ReactNode }) {
   const featureTier = useAuthStore((state) => state.plan);
   const environment = import.meta.env as AccessBuildEnvironment;
+  const accessGateEnabled = isAccessGateEnabled(environment);
   const appVersion = environment.VITE_APP_VERSION?.trim() || '0.0.0';
   const publicKeyConfiguration = environment.VITE_ACCESS_LEASE_PUBLIC_KEYS;
+  const cloudConfigured = getSupabaseClient() !== null;
+  const [authReady, setAuthReady] = React.useState(!accessGateEnabled);
+  const [hasCloudSession, setHasCloudSession] = React.useState(false);
+  const [signInOpen, setSignInOpen] = React.useState(false);
+  const [signInMode, setSignInMode] = React.useState<'signin' | 'signup'>('signin');
   const runtime = React.useMemo(
     () => createInstalledRuntime(featureTier, appVersion, publicKeyConfiguration),
     [appVersion, featureTier, publicKeyConfiguration],
   );
 
+  React.useEffect(() => {
+    if (!accessGateEnabled) {
+      setAuthReady(true);
+      return undefined;
+    }
+
+    const client = getSupabaseClient();
+    if (!client) {
+      publishInstalledCloudSession(null);
+      setHasCloudSession(false);
+      setAuthReady(true);
+      return undefined;
+    }
+
+    let active = true;
+    const publish = (session: Session | null) => {
+      if (!active) return;
+      setHasCloudSession(publishInstalledCloudSession(session));
+      setAuthReady(true);
+    };
+
+    void client.auth
+      .getSession()
+      .then(({ data, error }) => publish(error ? null : data.session))
+      .catch(() => publish(null));
+
+    const { data } = client.auth.onAuthStateChange((_event, session) => publish(session));
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+  }, [accessGateEnabled]);
+
+  const openAuthentication = (mode: 'signin' | 'signup') => {
+    setSignInMode(mode);
+    setSignInOpen(true);
+  };
+
+  if (accessGateEnabled && !authReady) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+        <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+          Checking your VibeSpace session…
+        </p>
+      </main>
+    );
+  }
+
+  if (accessGateEnabled && !hasCloudSession) {
+    return (
+      <>
+        <InstalledCloudAuthentication
+          configured={cloudConfigured}
+          onSignIn={() => openAuthentication('signin')}
+          onCreateAccount={() => openAuthentication('signup')}
+        />
+        <SignInDialog
+          open={signInOpen}
+          onOpenChange={setSignInOpen}
+          initialMode={signInMode}
+        />
+      </>
+    );
+  }
+
   return (
     <AccessAppHost
-      enabled={isAccessGateEnabled(environment)}
+      enabled={accessGateEnabled}
       runtime={runtime}
       privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
       termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
