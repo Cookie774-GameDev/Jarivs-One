@@ -54,7 +54,7 @@ function buildStage(world, stack, copyRoot) {
           <p class="act-body">${act.body}</p>
           ${
             act.cta
-              ? `<a class="act-cta" href="${world.downloadUrl}">${act.cta}<span aria-hidden="true">↗</span></a>`
+              ? `<a class="act-cta" href="${world.downloadUrl}" tabindex="-1">${act.cta}<span aria-hidden="true">↗</span></a>`
               : ''
           }
         </section>
@@ -249,7 +249,15 @@ function createAtmosphere(canvas, world) {
   }
 
   resize();
-  return { draw, resize };
+  return {
+    draw,
+    resize,
+    destroy() {
+      context.clearRect(0, 0, width, height);
+      canvas.width = 1;
+      canvas.height = 1;
+    },
+  };
 }
 
 export function createSceneRenderer({ world, experience, canvas, stack, copyRoot }) {
@@ -285,6 +293,8 @@ export function createSceneRenderer({ world, experience, canvas, stack, copyRoot
         act.classList.toggle('is-active', active);
         act.classList.toggle('is-past', index < frame.actIndex);
         act.setAttribute('aria-hidden', String(!active));
+        const callToAction = act.querySelector('.act-cta');
+        if (callToAction) callToAction.tabIndex = active ? 0 : -1;
       });
       actNumber.textContent = String(frame.actIndex + 1).padStart(2, '0');
       cue.textContent = world.acts[frame.actIndex].cue;
@@ -307,5 +317,10 @@ export function createSceneRenderer({ world, experience, canvas, stack, copyRoot
     resize,
     plates,
     audioButton: experience.querySelector('[data-audio-toggle]'),
+    destroy() {
+      atmosphere.destroy();
+      stack.replaceChildren();
+      copyRoot.replaceChildren();
+    },
   };
 }

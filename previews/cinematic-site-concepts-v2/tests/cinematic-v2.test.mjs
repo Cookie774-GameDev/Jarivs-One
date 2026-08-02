@@ -157,6 +157,17 @@ test('loop controller owns at most one animation frame through its lifecycle', a
   assert.equal(pending.size, 0);
 });
 
+test('loader display climbs cinematically without outrunning real readiness', async () => {
+  const { computeLoaderDisplay } = await import('../runtime/experience.mjs');
+
+  assert.equal(computeLoaderDisplay(0, 100, 2200), 0);
+  assert.ok(computeLoaderDisplay(350, 100, 2200) > 0);
+  assert.ok(computeLoaderDisplay(350, 100, 2200) < 97);
+  assert.equal(computeLoaderDisplay(2200, 100, 2200), 97);
+  assert.ok(computeLoaderDisplay(1600, 20, 2200) <= 20);
+  assert.ok(computeLoaderDisplay(10_000, 100, 2200) < 100);
+});
+
 test('plate presentation crossfades only neighboring scenes with bounded styles', async () => {
   const { WORLDS } = await import('../worlds.mjs');
   const { computePlatePresentation } = await import('../runtime/renderer.mjs');
@@ -187,4 +198,70 @@ test('plate presentation crossfades only neighboring scenes with bounded styles'
     assert.ok(Math.abs(style.x) <= 8);
     assert.ok(Math.abs(style.y) <= 8);
   }
+});
+
+test('procedural score remains gesture-gated and destroyable', async () => {
+  const { createWorldScore } = await import('../runtime/sound.mjs');
+  let contextsCreated = 0;
+  let contextClosed = false;
+  const fakeContext = {
+    currentTime: 0,
+    destination: {},
+    createGain() {
+      return {
+        gain: {
+          value: 0,
+          cancelScheduledValues() {},
+          linearRampToValueAtTime() {},
+          setValueAtTime() {},
+        },
+        connect() {},
+      };
+    },
+    createDynamicsCompressor() {
+      return { connect() {} };
+    },
+    createOscillator() {
+      return {
+        type: 'sine',
+        frequency: { value: 0 },
+        detune: { value: 0 },
+        connect() {},
+        start() {},
+        stop() {},
+      };
+    },
+    async resume() {},
+    async close() {
+      contextClosed = true;
+    },
+  };
+  const score = createWorldScore('first-contact', {
+    createContext() {
+      contextsCreated += 1;
+      return fakeContext;
+    },
+  });
+
+  assert.equal(contextsCreated, 0);
+  score.update(0.5, 0.02);
+  assert.equal(contextsCreated, 0);
+  await score.start();
+  await score.start();
+  assert.equal(contextsCreated, 1);
+  score.setMuted(true);
+  await score.destroy();
+  assert.equal(contextClosed, true);
+});
+
+test('gallery links directly to the three full-screen worlds', async () => {
+  const html = await readFile(new URL('index.html', ROOT), 'utf8');
+
+  for (const file of Object.values(ENTRIES)) {
+    assert.match(html, new RegExp(`href="${file}"`));
+  }
+  assert.equal((html.match(/class="world-portal"/g) || []).length, 3);
+  assert.doesNotMatch(html, /iframe/);
+  assert.match(html, /gallery\.css/);
+  assert.match(html, /gallery\.mjs/);
 });

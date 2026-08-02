@@ -310,9 +310,14 @@ body[data-world="memory-forest"] .plate::after {
 
 body[data-world="machine-opera"] .plate::after {
   background:
-    linear-gradient(90deg, rgba(239, 235, 226, 0.72), transparent 42%),
-    linear-gradient(0deg, rgba(239, 235, 226, 0.2), transparent 48%);
-  mix-blend-mode: screen;
+    linear-gradient(
+      270deg,
+      rgba(239, 235, 226, 0.86),
+      rgba(239, 235, 226, 0.64) 36%,
+      transparent 67%
+    ),
+    linear-gradient(90deg, rgba(239, 235, 226, 0.36), transparent 38%),
+    linear-gradient(0deg, rgba(239, 235, 226, 0.18), transparent 48%);
 }
 
 #world-canvas {

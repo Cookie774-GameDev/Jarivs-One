@@ -50,6 +50,23 @@ export function createLoopController({
   };
 }
 
+export function computeLoaderDisplay(
+  elapsedMilliseconds,
+  actualPercent,
+  minimumDuration = 2200,
+) {
+  const elapsed = Math.max(0, Number.isFinite(elapsedMilliseconds) ? elapsedMilliseconds : 0);
+  const duration = Math.max(1, minimumDuration);
+  const timeProgress = clamp(elapsed / duration, 0, 1);
+  const authoredCeiling = 97 * (1 - Math.pow(1 - timeProgress, 2.2));
+  const readinessCeiling = clamp(
+    Number.isFinite(actualPercent) ? actualPercent : 0,
+    0,
+    97,
+  );
+  return Math.min(authoredCeiling, readinessCeiling);
+}
+
 function delay(milliseconds) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
@@ -133,21 +150,46 @@ async function bootstrapExperience() {
     },
   });
 
-  const minimumLoader = delay(2200);
+  const loaderDuration = 2200;
+  const loaderStarted = performance.now();
+  const minimumLoader = delay(loaderDuration);
+  let actualProgress = 0;
   let displayedProgress = 0;
+  let loaderFrameId = 0;
+  let loading = true;
+  const animateLoader = (time) => {
+    displayedProgress = computeLoaderDisplay(
+      time - loaderStarted,
+      actualProgress,
+      loaderDuration,
+    );
+    setLoaderProgress(loader, loaderOutput, displayedProgress);
+    if (loading) loaderFrameId = requestAnimationFrame(animateLoader);
+  };
+  loaderFrameId = requestAnimationFrame(animateLoader);
+
   try {
     const preload = preloadCritical({
       images: world.assets.plates,
       fonts: document.fonts?.ready,
       rendererReady: Promise.resolve(renderer),
       onProgress(value) {
-        displayedProgress = value === 100 ? 97 : value;
-        setLoaderProgress(loader, loaderOutput, displayedProgress);
+        actualProgress = value;
       },
     });
     await Promise.all([preload, minimumLoader]);
+    loading = false;
+    cancelAnimationFrame(loaderFrameId);
+    displayedProgress = computeLoaderDisplay(
+      loaderDuration,
+      actualProgress,
+      loaderDuration,
+    );
+    setLoaderProgress(loader, loaderOutput, displayedProgress);
     await finishLoader(loader, loaderOutput, displayedProgress);
   } catch (error) {
+    loading = false;
+    cancelAnimationFrame(loaderFrameId);
     console.error('Cinematic preload failed.', error);
     loader.dataset.error = 'true';
     loaderLabel.textContent = world.loader.retry;
@@ -201,25 +243,33 @@ async function bootstrapExperience() {
     document.body.dataset.sound = muted ? 'off' : 'on';
   });
 
-  window.addEventListener('pointermove', (event) => {
+  const handlePointer = (event) => {
     pointerTarget = {
       x: clamp((event.clientX / window.innerWidth - 0.5) * 2, -1, 1),
       y: clamp((event.clientY / window.innerHeight - 0.5) * 2, -1, 1),
     };
-  });
-  window.addEventListener('resize', renderer.resize);
-  document.addEventListener('visibilitychange', () => {
+  };
+  const handleVisibility = () => {
     if (!entered) return;
     if (document.hidden) loop.pause();
     else {
       lastTime = performance.now();
       loop.resume();
     }
-  });
-  window.addEventListener('pagehide', () => {
+  };
+  const handlePageHide = () => {
     loop.destroy();
     score?.destroy();
-  });
+    renderer.destroy();
+    window.removeEventListener('pointermove', handlePointer);
+    window.removeEventListener('resize', renderer.resize);
+    document.removeEventListener('visibilitychange', handleVisibility);
+  };
+
+  window.addEventListener('pointermove', handlePointer);
+  window.addEventListener('resize', renderer.resize);
+  document.addEventListener('visibilitychange', handleVisibility);
+  window.addEventListener('pagehide', handlePageHide, { once: true });
 }
 
 if (typeof document !== 'undefined') {
