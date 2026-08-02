@@ -8,6 +8,17 @@
   <meta name="theme-color" content="#2E2823" />
   <meta name="author" content="VibeSpace" />
   <link rel="icon" type="image/png" href="images/vibespace-logo.png" />
+  <script>
+    (function () {
+      var key = 'vibespace-site-appearance';
+      var allowed = { default: true, vibespace: true };
+      var query = new URLSearchParams(window.location.search).get('appearance');
+      var stored = null;
+      try { stored = window.localStorage.getItem(key); } catch (_) {}
+      var appearance = allowed[query] ? query : (allowed[stored] ? stored : 'default');
+      document.documentElement.dataset.siteAppearance = appearance;
+    })();
+  </script>
 
   <meta property="og:title" content="VibeSpace — Vibe Coding AI Workspace" />
   <meta property="og:description" content="Every model, agent, voice, and task under one roof. Multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills, memory, and Inspector. Local-first, BYOK, Apache 2.0." />
@@ -27,6 +38,7 @@
   <link rel="stylesheet" href="css/phone-os.css" />
   <link rel="stylesheet" href="css/desktop-os.css" />
   <link rel="stylesheet" href="css/origami-scroll-world.css" />
+  <link rel="stylesheet" href="css/site-appearance.css" />
 
   <script type="application/ld+json">
   {
@@ -51,11 +63,20 @@
     <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><div class="orb o4"></div>
   </div>
   <div id="cursor-glow"></div>
+  <div class="vibe-fold-frame" aria-hidden="true">
+    <div class="vibe-fold-spine"></div>
+    <div class="vibe-fold-rail vibe-fold-rail--right"></div>
+    <div class="vibe-fold-band vibe-fold-band--top"></div>
+  </div>
 
   <!-- NAV -->
   <header class="nav" id="nav">
     <div class="nav-inner">
       <a class="brand" href="#top"><img src="images/vibespace-logo.png" width="34" height="34" alt="VibeSpace logo" /><span>VibeSpace</span></a>
+      <div class="site-appearance-switch" role="group" aria-label="Website appearance">
+        <button type="button" data-appearance-choice="default" aria-pressed="true">Default</button>
+        <button type="button" data-appearance-choice="vibespace" aria-pressed="false">VibeSpace</button>
+      </div>
       <nav class="nav-links" id="navLinks" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#swarm">Terminals</a>
@@ -101,7 +122,10 @@
           </div>
         </div>
       </div>
-      <div>
+      <div class="vibe-stage-stack">
+        <span class="vibe-sheet-layer vibe-sheet-layer--back" aria-hidden="true"></span>
+        <span class="vibe-sheet-layer vibe-sheet-layer--middle" aria-hidden="true"></span>
+        <span class="vibe-sheet-layer vibe-sheet-layer--front" aria-hidden="true"></span>
         <div class="sim-tabs" id="simTabs">
           <button class="sim-tab active" data-sim="desktop"><span data-ic="computer"></span> Computer</button>
           <button class="sim-tab" data-sim="phone"><span data-ic="phone"></span> Phone</button>
@@ -1105,6 +1129,7 @@
   <script src="js/scroll-world-engine.js" defer></script>
   <script src="js/origami-scroll-world.js" defer></script>
   <script src="js/motion.js" defer></script>
+  <script src="js/site-appearance.js" defer></script>
   <script>
     // Interactive Jarvis calling demo (uses VSDialogue, so must load after dialogue.js)
     (function(){

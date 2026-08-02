@@ -726,3 +726,27 @@ describe('call-start handler', () => {
     });
   });
 });
+
+describe('call-start server app version', () => {
+  it('fails closed before access, budget, or provider work when APP_VERSION is absent', async () => {
+    const log: CallLog = { order: [] };
+    const deps = makeDeps({ appVersion: undefined }, log);
+    const res = await handleCallStart(deps, postReq({ to: VALID_NUMBER }));
+
+    assert.equal(res.status, 503);
+    assert.deepEqual(await json(res), { error: 'access_unavailable' });
+    assert.ok(!log.order.includes('getAppAccess'));
+    assert.ok(!log.order.includes('reserveBudget'));
+    assert.ok(!log.order.includes('callProvider'));
+  });
+
+  it('fails closed on malformed server versions rather than entering prelaunch', async () => {
+    const log: CallLog = { order: [] };
+    const deps = makeDeps({ appVersion: 'not-a-semver' }, log);
+    const res = await handleCallStart(deps, postReq({ to: VALID_NUMBER }));
+
+    assert.equal(res.status, 503);
+    assert.ok(!log.order.includes('getAppAccess'));
+    assert.ok(!log.order.includes('reserveBudget'));
+  });
+});

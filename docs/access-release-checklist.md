@@ -151,6 +151,7 @@ Follow [the Stripe and Supabase runbook](stripe-setup.md).
 - [ ] Optional feature products remain distinct subscriptions with their existing prices.
 - [ ] `STRIPE_APP_ACCESS_PRICE_ID` names only the dedicated test-mode Access price.
 - [ ] Required platform and operator secrets exist without being copied into evidence.
+- [ ] Server `APP_VERSION` is valid SemVer and exactly matches `VITE_APP_VERSION` plus the signed release.
 - [ ] Read-only preflight confirms the selected target and records that `app_access_*` objects are
       absent or match the reviewed release SHA; no project reference or object contents enter this
       repository.
