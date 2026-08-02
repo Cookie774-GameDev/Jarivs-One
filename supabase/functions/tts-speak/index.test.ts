@@ -29,9 +29,16 @@ test('checks authoritative app access under the user JWT before billable work', 
   assert.ok(access < provider);
 });
 
-test('uses only the server app version and fails closed on access ambiguity', () => {
-  assert.match(source, /const APP_VERSION = Deno\.env\.get\('APP_VERSION'\)/);
-  assert.match(source, /p_app_version:\s*APP_VERSION/);
+test('uses the shared server app version and fails closed on access ambiguity', () => {
+  assert.match(
+    source,
+    /const APP_VERSION = resolveServerAppVersion\(Deno\.env\.get\('APP_VERSION'\)\)/,
+  );
+  assert.match(source, /p_app_version:\s*appVersion/);
+  assert.match(
+    source,
+    /import \{[\s\S]*?isAuthoritativePrelaunchConfig,[\s\S]*?resolveServerAppVersion,[\s\S]*?\} from '\.\.\/_shared\/appVersion\.ts'/,
+  );
   assert.match(
     source,
     /import \{ evaluateAppAccessGate \} from '\.\.\/_shared\/appAccessGate\.ts'/,
@@ -41,6 +48,23 @@ test('uses only the server app version and fails closed on access ambiguity', ()
   assert.doesNotMatch(source, /USABLE_APP_ACCESS_STATUSES/);
   assert.doesNotMatch(source, /function isUsableAppAccess/);
   assert.doesNotMatch(source, /body\.(?:appVersion|app_version|canUseApp|accessStatus)/);
+});
+
+test('allows absent version only under the authoritative prelaunch row', () => {
+  const auth = position('await userClient.auth.getUser(jwt)');
+  const launchConfig = position(".from('app_access_launch_config')");
+  const access = position("await userClient.rpc('get_app_access'");
+  const provider = position('audio = await callOpenAI');
+
+  assert.ok(auth < launchConfig);
+  assert.ok(launchConfig < access);
+  assert.ok(access < provider);
+  assert.match(source, /APP_VERSION\.kind === 'version'/);
+  assert.match(source, /!isAuthoritativePrelaunchConfig\(launchConfig\)/);
+  assert.match(
+    source,
+    /launchConfigError \|\| !isAuthoritativePrelaunchConfig\(launchConfig\)[\s\S]*?access_unavailable/,
+  );
 });
 
 test('denied or unavailable app access returns safely before provider and billing effects', () => {

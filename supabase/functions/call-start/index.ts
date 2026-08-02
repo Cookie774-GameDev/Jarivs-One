@@ -22,6 +22,7 @@
 import { json } from '../_shared/voice.ts';
 import { estimateCallCostUsd, MAX_CALL_SECONDS } from '../_shared/budget.ts';
 import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
+import { resolveServerAppVersion } from '../_shared/appVersion.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -124,9 +125,14 @@ export async function handleCallStart(deps: HandlerDeps, req: Request): Promise<
   // Must run before budget reservation, provider config, and the Twilio call.
   // Uses the user's own JWT so the RPC sees auth.uid(). The app version comes
   // from server configuration (deps.appVersion), never from the client body.
+  const configuredVersion = resolveServerAppVersion(deps.appVersion);
+  if (configuredVersion.kind !== 'version') {
+    return json({ error: 'access_unavailable' }, 503, origin);
+  }
+
   let access: AppAccessResponse | null;
   try {
-    access = await deps.getAppAccess(jwt, deps.appVersion);
+    access = await deps.getAppAccess(jwt, configuredVersion.value);
   } catch {
     access = null;
   }
@@ -270,8 +276,7 @@ if (_Deno?.serve) {
 
   // Bounded installed-app version from SERVER configuration only. The client
   // body is never trusted for version/entitlement. Empty -> null (RPC default).
-  const INSTALLED_APP_VERSION =
-    (_Deno.env.get('INSTALLED_APP_VERSION') ?? '').trim().slice(0, 128) || undefined;
+  const APP_VERSION = _Deno.env.get('APP_VERSION');
 
   // Dynamic import so the Node test runner never resolves Deno URLs.
   const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.46.2');
@@ -377,7 +382,7 @@ if (_Deno?.serve) {
     },
     minReserveSeconds: MIN_RESERVE_SECONDS,
     maxCallSeconds: MAX_CALL_SECONDS,
-    appVersion: INSTALLED_APP_VERSION,
+    appVersion: APP_VERSION,
   };
 
   _Deno.serve(async (req: Request) => handleCallStart(deps, req));

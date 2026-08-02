@@ -83,6 +83,7 @@ screenshots, fixtures, or Git.
 | `ACCESS_LEASE_KEY_ID`         | Operator-set          | Bounded `kid` naming the current offline-lease verification key  |
 | `ACCESS_LEASE_SIGNING_JWK`    | Operator-set          | P-256 private JWK used only by the server-side lease signer      |
 | `APP_BASE_URL`                | Operator-set          | Exact credential-free HTTPS public origin                        |
+| `APP_VERSION`                 | Operator-set          | Exact signed desktop SemVer used by server Access authorization  |
 | `APP_ACCESS_GRACE_DAYS`       | Optional operator-set | Webhook grace duration; committed default is `3`                 |
 | Feature price variables       | Operator-set          | Existing optional-plan Price IDs listed above                    |
 
@@ -102,6 +103,11 @@ exclude it from backup/indexing, prevent command echo and process capture, inges
 printing it, verify only the key names, and delete it immediately after successful ingestion under
 the organization's secure-cleanup policy. Abort if the tool cannot meet this lifecycle. Do not
 invent an ad hoc shell-variable or clipboard workflow.
+
+`APP_VERSION` must be a bounded SemVer matching `VITE_APP_VERSION` and the exact signed desktop
+release. Configure it before deploying any Access-aware Edge Function. `call-start` fails closed
+when it is missing or malformed. Cloud TTS tolerates a missing value only while the authoritative
+launch row is disabled or scheduled in the future; after launch it also fails closed.
 
 `ACCESS_LEASE_SIGNING_JWK` must be a private P-256 JWK with signing use and must never reach the
 desktop client. `ACCESS_LEASE_KEY_ID` must be a bounded, non-secret identifier. Keep the public JWK

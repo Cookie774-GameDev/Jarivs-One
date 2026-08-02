@@ -19,6 +19,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
 import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
 import {
+  isAuthoritativePrelaunchConfig,
+  resolveServerAppVersion,
+} from '../_shared/appVersion.ts';
+import {
   APPROVED_PRESETS,
   APPROVED_PROVIDERS,
   COST_PER_SECOND_USD,
@@ -31,7 +35,7 @@ import {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const APP_VERSION = Deno.env.get('APP_VERSION') ?? '';
+const APP_VERSION = resolveServerAppVersion(Deno.env.get('APP_VERSION'));
 
 const CLOUD_TIMEOUT_MS = 20_000;
 const RATE_WINDOW_MS = 60_000;
@@ -206,12 +210,33 @@ async function handleRequest(req: Request): Promise<Response> {
   if (!APPROVED_PROVIDERS.has(provider)) return json({ error: 'invalid_provider' }, 400, origin);
   if (!APPROVED_PRESETS.has(preset)) return json({ error: 'invalid_preset' }, 400, origin);
 
-  if (!APP_VERSION) return json({ error: 'access_unavailable' }, 503, origin);
+  let appVersion: string | null = null;
+  if (APP_VERSION.kind === 'version') {
+    appVersion = APP_VERSION.value;
+  } else {
+    // Missing/malformed server configuration is tolerated only while
+    // the authoritative launch row says the gate is disabled or still
+    // scheduled in the future. Once launched, fail closed so a null
+    // version cannot be interpreted as a usable prelaunch build.
+    try {
+      const { data: launchConfig, error: launchConfigError } = await userClient
+        .from('app_access_launch_config')
+        .select('enabled, launch_at')
+        .eq('id', 1)
+        .maybeSingle();
+      if (launchConfigError || !isAuthoritativePrelaunchConfig(launchConfig)) {
+        return json({ error: 'access_unavailable' }, 503, origin);
+      }
+    } catch {
+      return json({ error: 'access_unavailable' }, 503, origin);
+    }
+  }
+
   let accessData: unknown;
   let accessError: unknown;
   try {
     ({ data: accessData, error: accessError } = await userClient.rpc('get_app_access', {
-      p_app_version: APP_VERSION,
+      p_app_version: appVersion,
     }));
   } catch {
     return json({ error: 'access_unavailable' }, 503, origin);
