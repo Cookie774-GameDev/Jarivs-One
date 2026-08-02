@@ -1,9 +1,9 @@
 # VibeSpace Fullscreen System Upgrade Design
 
-**Task:** `VS-PR31-FULLSCREEN-20260802T135507Z-ROOT`  
-**PR:** `Cookie774-GameDev/VibeSpace#31`  
-**Starting commit:** `227fdf738095c13896842811db6d8c98b60182a0`  
-**Source prompt:** `FullScreen Prompt.txt`  
+**Task:** `VS-PR31-FULLSCREEN-20260802T135507Z-ROOT`
+**PR:** `Cookie774-GameDev/VibeSpace#31`
+**Starting commit:** `227fdf738095c13896842811db6d8c98b60182a0`
+**Source prompt:** `FullScreen Prompt.txt`
 **Source prompt SHA-256:** `1EABFCB64455B8496E7978AC86D6B0F2F3388067A0284EA7A7438DCD71106371`
 
 ## Objective
