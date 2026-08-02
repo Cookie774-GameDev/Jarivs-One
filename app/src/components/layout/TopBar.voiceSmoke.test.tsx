@@ -8,7 +8,6 @@ const ui = vi.hoisted(() => ({
   voiceListening: false,
   composerSttListening: false,
   composerStt: true,
-  chatFullscreen: false,
   route: 'chat',
   toggleNav: vi.fn(),
   toggleInspector: vi.fn(),
@@ -19,7 +18,6 @@ const ui = vi.hoisted(() => ({
   setAssistantOpen: vi.fn(),
   setWhatsNewOpen: vi.fn(),
   setNewsPanelOpen: vi.fn(),
-  toggleChatFullscreen: vi.fn(),
   setRoute: vi.fn(),
 }));
 const smokeGate = vi.hoisted(() => ({ enabled: false }));
@@ -91,7 +89,6 @@ describe('TopBar voice smoke evidence', () => {
     ui.voiceListening = false;
     ui.composerSttListening = false;
     ui.route = 'chat';
-    ui.chatFullscreen = false;
     whatsNew.hasUpdate = false;
   });
 

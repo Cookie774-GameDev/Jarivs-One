@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 
 import { flushUiStatePersistence, useUIStore, type Route } from '@/stores/ui';
+import { useFullscreenStore } from '@/features/fullscreen/fullscreenStore';
 import { resolveDocumentTheme, THEME_STORAGE_KEY } from '@/features/appearance/themeContract';
 import { useAuthStore } from '@/stores/auth';
 import {
@@ -1062,23 +1063,21 @@ const TERMINAL_ACTIONS: ActionDef[] = [
 ];
 
 /**
- * Chat-canvas actions. `chat.fullscreen` is the most-used composer
- * gesture; surfacing it as an action lets the AI propose distraction-
- * free mode for long writing tasks.
+ * Chat-canvas actions. The stable `chat.fullscreen` ID now targets
+ * workspace Focus Mode so integrations retain compatibility.
  */
 const CHAT_ACTIONS: ActionDef[] = [
   {
     id: 'chat.fullscreen',
     category: 'chat',
-    label: 'Toggle chat fullscreen',
-    description:
-      'Hide the nav pane + tasks rail to focus the chat canvas. Toggles back when invoked again.',
+    label: 'Toggle Workspace Focus Mode',
+    description: 'Hide non-essential workspace chrome. Toggles back when invoked again.',
     icon: Maximize2,
     params: [],
     run: async () => {
-      useUIStore.getState().toggleChatFullscreen();
-      const now = useUIStore.getState().chatFullscreen;
-      return ok(`Chat fullscreen: ${now ? 'on' : 'off'}.`);
+      useFullscreenStore.getState().toggleFocus();
+      const now = useFullscreenStore.getState().focusActive;
+      return ok(`Workspace Focus Mode: ${now ? 'on' : 'off'}.`);
     },
   },
 ];

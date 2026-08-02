@@ -22,6 +22,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Hint } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useUIStore } from '@/stores/ui';
+import { useFullscreenStore } from '@/features/fullscreen/fullscreenStore';
 import { useAuthStore } from '@/stores/auth';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { cn, isMac } from '@/lib/utils';
@@ -138,8 +139,8 @@ export function TopBar() {
   const setAssistantOpen = useUIStore((s) => s.setAssistantOpen);
   const setWhatsNewOpen = useUIStore((s) => s.setWhatsNewOpen);
   const setNewsPanelOpen = useUIStore((s) => s.setNewsPanelOpen);
-  const chatFullscreen = useUIStore((s) => s.chatFullscreen);
-  const toggleChatFullscreen = useUIStore((s) => s.toggleChatFullscreen);
+  const focusActive = useFullscreenStore((s) => s.focusActive);
+  const toggleFocus = useFullscreenStore((s) => s.toggleFocus);
 
   // Drives the unseen-dot indicator on the "What's new" button. The
   // hook is backed by Zustand so this re-renders the moment the user
@@ -185,11 +186,11 @@ export function TopBar() {
   // V3.1 — compact chrome.
   // The user wants more vertical room for terminals; specifically the
   // top bar should shrink whenever the user is on the terminal route
-  // OR has flipped chat-fullscreen on. We collapse height to 28px and
+  // OR has enabled Workspace Focus Mode. We collapse height to 28px and
   // funnel low-frequency buttons (launcher, assistant, schedule, search,
   // voice, call, what's-new) into a `⋯` overflow popover so the right
   // cluster stays just: fullscreen, more, settings, avatar.
-  const compactChrome = route === 'terminal' || chatFullscreen;
+  const compactChrome = route === 'terminal' || focusActive;
   const [overflowOpen, setOverflowOpen] = React.useState(false);
 
   const toggleComposerStt = React.useCallback(() => {
@@ -366,8 +367,8 @@ export function TopBar() {
         <CompactRightCluster
           overflowOpen={overflowOpen}
           setOverflowOpen={setOverflowOpen}
-          chatFullscreen={chatFullscreen}
-          toggleChatFullscreen={toggleChatFullscreen}
+          focusActive={focusActive}
+          toggleFocus={toggleFocus}
           voiceListening={composerSttListening}
           setLauncherOpen={setLauncherOpen}
           setAssistantOpen={setAssistantOpen}
@@ -422,18 +423,18 @@ export function TopBar() {
           </Hint>
 
           <Hint
-            label={chatFullscreen ? 'Exit fullscreen' : 'Fullscreen workspace'}
+            label={focusActive ? 'Exit Focus Mode' : 'Enter Focus Mode'}
             hotkey={HOTKEYS.TOGGLE_FULLSCREEN}
           >
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={toggleChatFullscreen}
-              aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-              aria-pressed={chatFullscreen}
+              onClick={toggleFocus}
+              aria-label={focusActive ? 'Exit Focus Mode' : 'Enter Focus Mode'}
+              aria-pressed={focusActive}
               className={TOP_BAR_POINTER_TARGET_CLASS}
             >
-              {chatFullscreen ? (
+              {focusActive ? (
                 <Minimize2 className="h-4 w-4" />
               ) : (
                 <Maximize2 className="h-4 w-4" />
@@ -568,7 +569,7 @@ export function TopBar() {
 }
 
 /**
- * Compact right-cluster for the terminal route + chat-fullscreen mode.
+ * Compact right-cluster for the terminal route + Workspace Focus Mode.
  *
  * Renders inline: Fullscreen toggle, ⋯ overflow popover, Settings, small
  * avatar. Everything else (Quick launcher, Assistant, Schedule, Search,
@@ -581,8 +582,8 @@ export function TopBar() {
 interface CompactRightClusterProps {
   overflowOpen: boolean;
   setOverflowOpen: (v: boolean) => void;
-  chatFullscreen: boolean;
-  toggleChatFullscreen: () => void;
+  focusActive: boolean;
+  toggleFocus: () => void;
   voiceListening: boolean;
   setLauncherOpen: (v: boolean) => void;
   setAssistantOpen: (v: boolean) => void;
@@ -605,8 +606,8 @@ function CompactRightCluster(props: CompactRightClusterProps) {
   const {
     overflowOpen,
     setOverflowOpen,
-    chatFullscreen,
-    toggleChatFullscreen,
+    focusActive,
+    toggleFocus,
     voiceListening,
     setLauncherOpen,
     setAssistantOpen,
@@ -633,18 +634,18 @@ function CompactRightCluster(props: CompactRightClusterProps) {
   return (
     <div className="no-drag flex items-center gap-0.5">
       <Hint
-        label={chatFullscreen ? 'Exit fullscreen' : 'Fullscreen workspace'}
+        label={focusActive ? 'Exit Focus Mode' : 'Enter Focus Mode'}
         hotkey={HOTKEYS.TOGGLE_FULLSCREEN}
       >
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={toggleChatFullscreen}
-          aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          aria-pressed={chatFullscreen}
+          onClick={toggleFocus}
+          aria-label={focusActive ? 'Exit Focus Mode' : 'Enter Focus Mode'}
+          aria-pressed={focusActive}
           className={cn(TOP_BAR_POINTER_TARGET_CLASS, 'h-5 w-5 [&_svg]:size-3')}
         >
-          {chatFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+          {focusActive ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
         </Button>
       </Hint>
 

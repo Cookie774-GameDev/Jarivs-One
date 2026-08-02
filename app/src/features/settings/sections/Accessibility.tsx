@@ -113,10 +113,11 @@ export function Accessibility() {
       <section className="flex flex-col gap-2">
         <Label className="flex items-center gap-2">
           <Maximize2 className="h-3.5 w-3.5 text-accent-cyan" />
-          Fullscreen workspace
+          Workspace Focus Mode
         </Label>
         <p className="text-metadata text-muted-foreground">
-          Hide the sidebar and to-do drawer for distraction-free focus. Toggle with{' '}
+          Hide non-essential workspace chrome while keeping an always-visible exit control. Toggle
+          with{' '}
           <span className="kbd">{renderHotkey(HOTKEYS.TOGGLE_FULLSCREEN)}</span>.
         </p>
       </section>

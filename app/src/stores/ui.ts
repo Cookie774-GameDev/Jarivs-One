@@ -136,9 +136,6 @@ export interface UIState {
   /** When true, audio plays continuously even outside ambient mode. */
   ambientAlwaysPlay: boolean;
 
-  // V2 — fullscreen canvas
-  chatFullscreen: boolean;
-
   // V2 — launcher
   launcherOpen: boolean;
   /** V2 — Jarvis Assistant natural-language command bar (Mod+J). */
@@ -234,8 +231,6 @@ export interface UIState {
   setAmbientTrack: (t: AmbientTrack) => void;
   setAmbientVolume: (v: number) => void;
   setAmbientAlwaysPlay: (v: boolean) => void;
-  toggleChatFullscreen: () => void;
-  setChatFullscreen: (v: boolean) => void;
   setLauncherOpen: (v: boolean) => void;
   setAssistantOpen: (v: boolean) => void;
   setWhatsNewOpen: (v: boolean) => void;
@@ -280,7 +275,6 @@ const defaults: Pick<
   | 'ambientTrack'
   | 'ambientVolume'
   | 'ambientAlwaysPlay'
-  | 'chatFullscreen'
   | 'launcherOpen'
   | 'assistantOpen'
   | 'whatsNewOpen'
@@ -321,7 +315,6 @@ const defaults: Pick<
   ambientTrack: 'music-1',
   ambientVolume: 55,
   ambientAlwaysPlay: false,
-  chatFullscreen: false,
   launcherOpen: false,
   assistantOpen: false,
   whatsNewOpen: false,
@@ -519,20 +512,6 @@ export const useUIStore = create<UIState>()(
       setAmbientTrack: (t) => set({ ambientTrack: t }),
       setAmbientVolume: (v) => set({ ambientVolume: Math.max(0, Math.min(100, v)) }),
       setAmbientAlwaysPlay: (v) => set({ ambientAlwaysPlay: v }),
-      toggleChatFullscreen: () =>
-        set((s) => {
-          const next = !s.chatFullscreen;
-          if (typeof document !== 'undefined') {
-            document.documentElement.setAttribute('data-fullscreen', next ? 'true' : 'false');
-          }
-          return { chatFullscreen: next };
-        }),
-      setChatFullscreen: (v) => {
-        if (typeof document !== 'undefined') {
-          document.documentElement.setAttribute('data-fullscreen', v ? 'true' : 'false');
-        }
-        set({ chatFullscreen: v });
-      },
       setLauncherOpen: (v) => set({ launcherOpen: v }),
       setAssistantOpen: (v) => set({ assistantOpen: v }),
       setWhatsNewOpen: (v) => set({ whatsNewOpen: v }),

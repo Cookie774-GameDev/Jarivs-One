@@ -15,6 +15,7 @@
 import { chatRepo, eventRepo, projectRepo, taskRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { useFullscreenStore } from '@/features/fullscreen/fullscreenStore';
 import { parseEventInput } from '@/features/schedule/parseEventInput';
 import {
   broadcastTerminalCommand,
@@ -427,17 +428,19 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
 
       // ----------------------------------------------------------------
       case 'set_fullscreen': {
-        const ui = useUIStore.getState();
+        const fullscreen = useFullscreenStore.getState();
         if (intent.on === undefined) {
-          ui.toggleChatFullscreen();
+          fullscreen.toggleFocus();
           return ok(
-            useUIStore.getState().chatFullscreen ? 'Entered fullscreen.' : 'Exited fullscreen.',
+            useFullscreenStore.getState().focusActive
+              ? 'Entered Focus Mode.'
+              : 'Exited Focus Mode.',
           );
         }
-        if (ui.chatFullscreen !== intent.on) {
-          ui.setChatFullscreen(intent.on);
+        if (fullscreen.focusActive !== intent.on) {
+          fullscreen.setFocusActive(intent.on);
         }
-        return ok(intent.on ? 'Entered fullscreen.' : 'Exited fullscreen.');
+        return ok(intent.on ? 'Entered Focus Mode.' : 'Exited Focus Mode.');
       }
 
       // ----------------------------------------------------------------

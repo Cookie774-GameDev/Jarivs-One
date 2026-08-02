@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { useFullscreenStore } from '@/features/fullscreen';
 import { useUIStore } from '@/stores/ui';
 import { Appearance } from './Appearance';
 
@@ -7,14 +8,29 @@ describe('Appearance theme selector', () => {
   afterEach(() => {
     cleanup();
     useUIStore.setState({ theme: 'default' });
+    useFullscreenStore.setState({
+      focusActive: false,
+      systemActive: false,
+      activationOrder: [],
+      preferences: {
+        rememberFocusMode: false,
+        rememberSystemFullscreen: false,
+        restoreFullscreenOnRestart: false,
+        systemFullscreenBehavior: 'always-hidden',
+      },
+      nativeAvailability: 'web-preview',
+      nativePending: false,
+      error: null,
+    });
   });
 
   it('renders exactly five accessible theme choices and applies VibeSpace', () => {
     useUIStore.setState({ theme: 'default' });
     render(<Appearance />);
 
-    expect(screen.getAllByRole('radio')).toHaveLength(5);
-    expect(screen.getByRole('radio', { name: /Default/ }).getAttribute('aria-checked')).toBe(
+    const themes = screen.getByRole('radiogroup', { name: 'App theme' });
+    expect(within(themes).getAllByRole('radio')).toHaveLength(5);
+    expect(within(themes).getByRole('radio', { name: /Default/ }).getAttribute('aria-checked')).toBe(
       'true',
     );
 
@@ -46,5 +62,32 @@ describe('Appearance theme selector', () => {
     fireEvent.click(monochrome);
     expect(useUIStore.getState().theme).toBe('monochrome');
     expect(document.documentElement.dataset.theme).toBe('monochrome');
+  });
+
+  it('exposes independent system fullscreen behavior and safe restoration preferences', () => {
+    render(<Appearance />);
+
+    const systemToggle = screen.getByRole('switch', { name: 'True System Fullscreen' });
+    expect(systemToggle.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/installed VibeSpace desktop app/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Reveal on Edge Hover' }));
+    expect(useFullscreenStore.getState().preferences.systemFullscreenBehavior).toBe(
+      'reveal-on-edge-hover',
+    );
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Remember Workspace Focus Mode' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Remember True System Fullscreen' }));
+    fireEvent.click(
+      screen.getByRole('switch', {
+        name: 'Restore fullscreen state when VibeSpace restarts',
+      }),
+    );
+
+    expect(useFullscreenStore.getState().preferences).toMatchObject({
+      rememberFocusMode: true,
+      rememberSystemFullscreen: true,
+      restoreFullscreenOnRestart: true,
+    });
   });
 });

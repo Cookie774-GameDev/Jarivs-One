@@ -2,6 +2,8 @@ import { Cpu, Flower2, Moon, Sparkles, Terminal } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { useFullscreenStore, type SystemFullscreenBehavior } from '@/features/fullscreen';
 import { cn } from '@/lib/utils';
 import { SELECTABLE_THEMES, type SelectableTheme } from '@/features/appearance/themes';
 
@@ -24,6 +26,13 @@ export function Appearance() {
   const density = useUIStore((s) => s.density);
   const defaultTerminalFontSize = useUIStore((s) => s.defaultTerminalFontSize);
   const setDefaultTerminalFontSize = useUIStore((s) => s.setDefaultTerminalFontSize);
+  const systemFullscreenActive = useFullscreenStore((s) => s.systemActive);
+  const nativeAvailability = useFullscreenStore((s) => s.nativeAvailability);
+  const nativePending = useFullscreenStore((s) => s.nativePending);
+  const fullscreenError = useFullscreenStore((s) => s.error);
+  const fullscreenPreferences = useFullscreenStore((s) => s.preferences);
+  const requestSystemFullscreen = useFullscreenStore((s) => s.requestSystemActive);
+  const setFullscreenPreferences = useFullscreenStore((s) => s.setPreferences);
 
   function setDensity(d: 'compact' | 'cozy') {
     // density has no dedicated action in the store yet; setState is the safe
@@ -120,6 +129,135 @@ export function Appearance() {
 
       <Separator />
 
+      <section className="flex max-w-md flex-col gap-4" aria-labelledby="fullscreen-settings">
+        <div>
+          <h3 id="fullscreen-settings" className="text-ui-strong text-foreground">
+            Fullscreen
+          </h3>
+          <p className="text-metadata text-muted-foreground mt-1">
+            Workspace Focus Mode and native display fullscreen remain independent.
+          </p>
+        </div>
+
+        <SettingSwitch
+          id="system-fullscreen-active"
+          label="True System Fullscreen"
+          description="Use the installed desktop app's native fullscreen window."
+          checked={systemFullscreenActive}
+          disabled={nativeAvailability !== 'available' || nativePending}
+          onCheckedChange={(enabled) => {
+            void requestSystemFullscreen(enabled);
+          }}
+        />
+
+        <div className="flex flex-col gap-2">
+          <Label>System fullscreen display behavior</Label>
+          <div
+            className="grid grid-cols-2 gap-2"
+            role="radiogroup"
+            aria-label="System fullscreen display behavior"
+          >
+            {(
+              [
+                {
+                  id: 'always-hidden',
+                  label: 'Always Hidden',
+                  description: 'Keep native system chrome hidden until fullscreen exits.',
+                },
+                {
+                  id: 'reveal-on-edge-hover',
+                  label: 'Reveal on Edge Hover',
+                  description: 'Let the operating system reveal its chrome at the screen edge.',
+                },
+              ] satisfies Array<{
+                id: SystemFullscreenBehavior;
+                label: string;
+                description: string;
+              }>
+            ).map((behavior) => {
+              const selected =
+                fullscreenPreferences.systemFullscreenBehavior === behavior.id;
+              return (
+                <button
+                  key={behavior.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={behavior.label}
+                  onClick={() =>
+                    setFullscreenPreferences({
+                      systemFullscreenBehavior: behavior.id,
+                    })
+                  }
+                  className={cn(
+                    'flex flex-col items-start gap-1 rounded-md border bg-panel px-3 py-2.5 text-left transition-colors',
+                    'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                    selected
+                      ? 'border-accent-cyan/50 shadow-[0_0_0_1px_hsl(var(--accent-cyan)/0.3)]'
+                      : 'border-border',
+                  )}
+                >
+                  <span className="text-ui-strong text-foreground">{behavior.label}</span>
+                  <span className="text-metadata text-muted-foreground">
+                    {behavior.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <SettingSwitch
+          id="remember-focus-mode"
+          label="Remember Workspace Focus Mode"
+          description="Remember whether internal workspace chrome was hidden."
+          checked={fullscreenPreferences.rememberFocusMode}
+          onCheckedChange={(enabled) =>
+            setFullscreenPreferences({ rememberFocusMode: enabled })
+          }
+        />
+        <SettingSwitch
+          id="remember-system-fullscreen"
+          label="Remember True System Fullscreen"
+          description="Remember whether the native window occupied the display."
+          checked={fullscreenPreferences.rememberSystemFullscreen}
+          onCheckedChange={(enabled) =>
+            setFullscreenPreferences({ rememberSystemFullscreen: enabled })
+          }
+        />
+        <SettingSwitch
+          id="restore-fullscreen-on-restart"
+          label="Restore fullscreen state when VibeSpace restarts"
+          description="Restore remembered layers after a clean same-version restart, never after recovery."
+          checked={fullscreenPreferences.restoreFullscreenOnRestart}
+          onCheckedChange={(enabled) =>
+            setFullscreenPreferences({ restoreFullscreenOnRestart: enabled })
+          }
+        />
+
+        <p
+          className={cn(
+            'text-metadata',
+            fullscreenError ? 'text-destructive' : 'text-muted-foreground',
+          )}
+          role={fullscreenError ? 'alert' : 'status'}
+        >
+          {fullscreenError ??
+            (nativeAvailability === 'web-preview'
+              ? 'True System Fullscreen requires the installed VibeSpace desktop app.'
+              : nativeAvailability === 'unavailable'
+                ? 'Native fullscreen is unavailable in this environment.'
+                : nativePending
+                  ? 'Changing native fullscreen…'
+                  : fullscreenPreferences.systemFullscreenBehavior ===
+                      'reveal-on-edge-hover'
+                    ? 'Edge reveal is managed by your operating system or window manager.'
+                    : 'System bars stay hidden for the fullscreen session when the operating system supports it.')}
+        </p>
+      </section>
+
+      <Separator />
+
       <section className="flex flex-col gap-3 max-w-md">
         <div className="flex items-center justify-between">
           <div>
@@ -142,6 +280,30 @@ export function Appearance() {
           className="h-1.5 w-full appearance-none rounded-lg bg-border cursor-pointer accent-accent-cyan"
         />
       </section>
+    </div>
+  );
+}
+
+function SettingSwitch(props: {
+  id: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <Label htmlFor={props.id}>{props.label}</Label>
+        <p className="text-metadata text-muted-foreground mt-1">{props.description}</p>
+      </div>
+      <Switch
+        id={props.id}
+        checked={props.checked}
+        disabled={props.disabled}
+        onCheckedChange={(enabled) => props.onCheckedChange(Boolean(enabled))}
+      />
     </div>
   );
 }
