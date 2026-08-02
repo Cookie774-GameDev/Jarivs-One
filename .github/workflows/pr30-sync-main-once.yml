@@ -1,0 +1,288 @@
+name: PR 30 one-time sync with main
+
+on:
+  push:
+    branches:
+      - codex/shared-intelligence-kernel-design-20260716
+    paths:
+      - .github/workflows/pr30-sync-main-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr30-sync-main-once
+  cancel-in-progress: false
+
+env:
+  PR30_BRANCH: codex/shared-intelligence-kernel-design-20260716
+  SYNC_ARTIFACT: pr30-sync-bundle
+
+jobs:
+  prepare:
+    name: Prepare conflict-resolved merge
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PR30_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge current main and preserve both product surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --force
+
+          START_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          MERGE_BASE_SHA="$(git merge-base "$START_SHA" "$MAIN_SHA")"
+
+          # PR #30 is the authoritative side for the seven intentional appearance
+          # conflicts. All non-conflicting main changes are still merged normally.
+          git merge --no-ff -X ours "$MAIN_SHA" \
+            -m "Merge main into PR #30 and resolve intentional appearance conflicts"
+
+          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+            echo "Unresolved merge conflicts remain."
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          # Main's website appearance work touched the same top-level HTML regions
+          # as PR #30's access/security updates. Reapply its six small integration
+          # hooks deterministically while keeping PR #30's newer page structure.
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("site/index.html")
+          text = path.read_text(encoding="utf-8")
+
+          prepaint = """  <script>\n    (function () {\n      var key = 'vibespace-site-appearance';\n      var allowed = { default: true, vibespace: true };\n      var query = new URLSearchParams(window.location.search).get('appearance');\n      var stored = null;\n      try { stored = window.localStorage.getItem(key); } catch (_) {}\n      var appearance = allowed[query] ? query : (allowed[stored] ? stored : 'default');\n      document.documentElement.dataset.siteAppearance = appearance;\n    })();\n  </script>\n"""
+          if "vibespace-site-appearance" not in text:
+              marker = '  <link rel="icon" type="image/png" href="images/vibespace-logo.png" />\n'
+              if marker not in text:
+                  raise SystemExit("favicon marker missing while restoring site appearance prepaint")
+              text = text.replace(marker, marker + prepaint, 1)
+
+          stylesheet = '  <link rel="stylesheet" href="css/site-appearance.css" />\n'
+          if stylesheet not in text:
+              marker = '  <link rel="stylesheet" href="css/origami-scroll-world.css" />\n'
+              if marker not in text:
+                  raise SystemExit("origami stylesheet marker missing")
+              text = text.replace(marker, marker + stylesheet, 1)
+
+          frame = """  <div class="vibe-fold-frame" aria-hidden="true">\n    <div class="vibe-fold-spine"></div>\n    <div class="vibe-fold-rail vibe-fold-rail--right"></div>\n    <div class="vibe-fold-band vibe-fold-band--top"></div>\n  </div>\n"""
+          if 'class="vibe-fold-frame"' not in text:
+              marker = '  <div id="cursor-glow"></div>\n'
+              if marker not in text:
+                  raise SystemExit("cursor glow marker missing")
+              text = text.replace(marker, marker + frame, 1)
+
+          switch = """      <div class="site-appearance-switch" role="group" aria-label="Website appearance">\n        <button type="button" data-appearance-choice="default" aria-pressed="true">Default</button>\n        <button type="button" data-appearance-choice="vibespace" aria-pressed="false">VibeSpace</button>\n      </div>\n"""
+          if 'class="site-appearance-switch"' not in text:
+              marker = '      <a class="brand" href="#top"><img src="images/vibespace-logo.png" width="34" height="34" alt="VibeSpace logo" /><span>VibeSpace</span></a>\n'
+              if marker not in text:
+                  raise SystemExit("navigation brand marker missing")
+              text = text.replace(marker, marker + switch, 1)
+
+          if 'class="vibe-stage-stack"' not in text:
+              old = '      <div>\n        <div class="sim-tabs" id="simTabs">\n'
+              new = """      <div class="vibe-stage-stack">\n        <span class="vibe-sheet-layer vibe-sheet-layer--back" aria-hidden="true"></span>\n        <span class="vibe-sheet-layer vibe-sheet-layer--middle" aria-hidden="true"></span>\n        <span class="vibe-sheet-layer vibe-sheet-layer--front" aria-hidden="true"></span>\n        <div class="sim-tabs" id="simTabs">\n"""
+              if old not in text:
+                  raise SystemExit("hero simulator wrapper marker missing")
+              text = text.replace(old, new, 1)
+
+          script = '  <script src="js/site-appearance.js" defer></script>\n'
+          if script not in text:
+              marker = '  <script src="js/motion.js" defer></script>\n'
+              if marker not in text:
+                  raise SystemExit("motion script marker missing")
+              text = text.replace(marker, marker + script, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          git add site/index.html
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(site): preserve main appearance integration in PR 30"
+          fi
+
+          test -f docs/ideas/TASKBAR_AI_USAGE_MODULE.md
+          test -f docs/operations/VIBESPACE_AUDIT_LOG.md
+          test -f site/css/site-appearance.css
+          test -f site/css/system-model.css
+          test -f site/js/site-appearance.js
+          test -f site/js/system-model.js
+          grep -q 'href="/access/"' site/index.html
+          grep -q 'css/site-appearance.css' site/index.html
+          grep -q 'js/site-appearance.js' site/index.html
+
+          git rm .github/workflows/pr30-sync-main-once.yml
+          git commit -m "chore: remove one-time PR 30 sync workflow"
+
+          RESULT_SHA="$(git rev-parse HEAD)"
+          printf 'START_SHA=%s\nMAIN_SHA=%s\nMERGE_BASE_SHA=%s\nRESULT_SHA=%s\n' \
+            "$START_SHA" "$MAIN_SHA" "$MERGE_BASE_SHA" "$RESULT_SHA" > pr30-sync.env
+
+          git branch -f pr30-sync-result "$RESULT_SHA"
+          git bundle create pr30-merge.bundle \
+            pr30-sync-result "^$START_SHA" "^$MAIN_SHA"
+          git bundle verify pr30-merge.bundle
+          git diff --check "$START_SHA..$RESULT_SHA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.SYNC_ARTIFACT }}
+          path: |
+            pr30-merge.bundle
+            pr30-sync.env
+          if-no-files-found: error
+          retention-days: 1
+
+  frontend:
+    name: Verify merged frontend, TypeScript, build, Vitest, and release manifest
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PR30_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SYNC_ARTIFACT }}
+          path: .pr30-sync
+
+      - name: Check out the exact conflict-resolved result
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .pr30-sync/pr30-sync.env
+          git fetch .pr30-sync/pr30-merge.bundle \
+            refs/heads/pr30-sync-result:refs/remotes/pr30-sync/result
+          test "$(git rev-parse refs/remotes/pr30-sync/result)" = "$RESULT_SHA"
+          git checkout --detach "$RESULT_SHA"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build (Vite)
+        run: npm run build
+
+      - name: Test (Vitest)
+        run: npm --prefix app run test
+
+      - name: Test release manifest
+        run: npm run test:release-manifest
+
+  rust:
+    name: Verify merged Rust release check
+    needs: prepare
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PR30_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SYNC_ARTIFACT }}
+          path: .pr30-sync
+
+      - name: Check out the exact conflict-resolved result
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .pr30-sync/pr30-sync.env
+          git fetch .pr30-sync/pr30-merge.bundle \
+            refs/heads/pr30-sync-result:refs/remotes/pr30-sync/result
+          test "$(git rev-parse refs/remotes/pr30-sync/result)" = "$RESULT_SHA"
+          git checkout --detach "$RESULT_SHA"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: cargo check --release
+        working-directory: app/src-tauri
+        run: cargo check --release
+
+  publish:
+    name: Publish the verified sync commit to PR 30
+    needs: [prepare, frontend, rust]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.PR30_BRANCH }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SYNC_ARTIFACT }}
+          path: .pr30-sync
+
+      - name: Verify ancestry and fast-forward the PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .pr30-sync/pr30-sync.env
+
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [ "$CURRENT_SHA" != "$START_SHA" ]; then
+            echo "PR branch moved during verification; refusing to overwrite it."
+            echo "Expected: $START_SHA"
+            echo "Current:  $CURRENT_SHA"
+            exit 1
+          fi
+
+          git fetch .pr30-sync/pr30-merge.bundle \
+            refs/heads/pr30-sync-result:refs/remotes/pr30-sync/result
+          test "$(git rev-parse refs/remotes/pr30-sync/result)" = "$RESULT_SHA"
+          git merge-base --is-ancestor "$START_SHA" "$RESULT_SHA"
+          git merge-base --is-ancestor "$MAIN_SHA" "$RESULT_SHA"
+
+          if git ls-tree -r --name-only "$RESULT_SHA" | grep -qx '.github/workflows/pr30-sync-main-once.yml'; then
+            echo "One-time workflow unexpectedly remains in the final tree."
+            exit 1
+          fi
+
+          git push origin "$RESULT_SHA:refs/heads/$PR30_BRANCH"
