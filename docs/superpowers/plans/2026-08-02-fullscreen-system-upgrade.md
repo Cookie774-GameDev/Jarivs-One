@@ -15,7 +15,7 @@ Tauri window adapter, owns native truth and activation order, and leaves
 `AppShell` children mounted while shell chrome changes. Existing public action
 IDs remain compatible and target Workspace Focus Mode.
 
-**Tech Stack:** React 19, TypeScript, Zustand persist middleware, Vitest,
+**Tech Stack:** React 18.3.1, TypeScript, Zustand persist middleware, Vitest,
 Testing Library, Tauri 2 JavaScript window API, Tailwind/Radix-style existing
 UI primitives.
 
@@ -552,8 +552,8 @@ it.each([
   );
 
   expect(screen.queryByLabelText('Application header')).toBeNull();
-  expect(Boolean(screen.queryByLabelText('Primary navigation'))).toBe(expectNav);
-  expect(screen.queryByTestId('application-tab-strip')).toBeNull();
+  expect(Boolean(screen.queryByLabelText('Navigation'))).toBe(expectNav);
+  expect(screen.queryByLabelText('Open chats')).toBeNull();
   expect(screen.getByTestId('stateful-workspace')).toBeTruthy();
 });
 
