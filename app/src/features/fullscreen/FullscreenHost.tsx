@@ -45,7 +45,7 @@ export function FullscreenHost({
 
   React.useEffect(() => {
     let disposed = false;
-    let unsubscribe = () => undefined;
+    let unsubscribe: () => void = () => undefined;
     let currentVersion: string | null = null;
     const releaseAdapter = configureFullscreenAdapter(adapter);
 
