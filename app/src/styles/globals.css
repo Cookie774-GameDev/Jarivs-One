@@ -980,18 +980,6 @@ html[data-theme='sakura'] [data-sakura-shell-region='navigation'] .mb-1.text-acc
 }
 
 /* ============================================================
-   V2 — FULLSCREEN canvas mode
-   V3.1 — Side rail stays visible in fullscreen (user request:
-          "side pane in the side okay"). The left NavPane keeps its rail
-          so the user can always switch routes. Use Mod+B to also
-          hide the NavPane manually for true distraction-free.
-   ============================================================ */
-
-[data-fullscreen='true'] main[aria-label='Workspace'] {
-  background: hsl(var(--background));
-}
-
-/* ============================================================
    API key input — rainbow pulsating border + radial flow
    ------------------------------------------------------------
    Applied to provider/API-key Input fields and the onboarding

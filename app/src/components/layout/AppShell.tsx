@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, type Transition } from 'motion/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { resolveTheme, useUIStore } from '@/stores/ui';
 import { SakuraBackdrop } from '@/features/appearance/sakura';
+import { FocusModeExit, useFullscreenStore } from '@/features/fullscreen';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
@@ -49,8 +50,13 @@ export function AppShell({ children }: AppShellProps) {
   const chatMode = useUIStore((s) => s.chatMode);
   const route = useUIStore((s) => s.route);
   const theme = useUIStore((s) => s.theme);
+  const focusActive = useFullscreenStore((s) => s.focusActive);
   const sakuraActive = resolveTheme(theme) === 'sakura';
   const workbenchFullscreen = route === 'workbench' || isWorkbenchDetachedSearch();
+  const dedicatedFocusRoute = route === 'chat' || route === 'terminal';
+  const showTopBar = !focusActive;
+  const showNavigation = !focusActive || !dedicatedFocusRoute;
+  const showPeripheralChrome = !focusActive;
   const themeMotionTransition = useThemeMotionTransition(LEGACY_SHELL_TRANSITION);
 
   // Workbench owns the entire app chrome (full screen surface).
@@ -104,6 +110,8 @@ export function AppShell({ children }: AppShellProps) {
           }
           data-monochrome-surface="app-shell"
           data-sakura-shell={sakuraActive ? 'true' : undefined}
+          data-focus-mode={focusActive ? 'true' : undefined}
+          data-focus-mode-route={focusActive ? route : undefined}
         >
           {sakuraActive && <SakuraBackdrop route={route} />}
           <div
@@ -115,7 +123,7 @@ export function AppShell({ children }: AppShellProps) {
             data-sakura-shell-frame={sakuraActive ? 'true' : undefined}
             data-sakura-shell-boundary={sakuraActive ? 'application' : undefined}
           >
-            <TopBar />
+            {showTopBar && <TopBar />}
 
             <div
               className={
@@ -125,10 +133,10 @@ export function AppShell({ children }: AppShellProps) {
               }
               data-sakura-shell-body={sakuraActive ? 'true' : undefined}
             >
-              <NavPane />
+              {showNavigation && <NavPane />}
 
               <div className="flex min-w-0 flex-1 flex-col">
-                <TabStrip />
+                {showPeripheralChrome && <TabStrip />}
                 <main
                   aria-label="Workspace"
                   className="min-h-0 min-w-0 flex-1 overflow-auto"
@@ -136,13 +144,16 @@ export function AppShell({ children }: AppShellProps) {
                 >
                   {children}
                 </main>
-                {chatMode === 'council' && <CouncilActivityStrip />}
+                {showPeripheralChrome && chatMode === 'council' && <CouncilActivityStrip />}
               </div>
 
-              <AnimatePresence initial={false}>
-                {inspectorOpen && <Inspector key="inspector" />}
-              </AnimatePresence>
+              {showPeripheralChrome && (
+                <AnimatePresence initial={false}>
+                  {inspectorOpen && <Inspector key="inspector" />}
+                </AnimatePresence>
+              )}
             </div>
+            <FocusModeExit />
           </div>
         </div>
       </TooltipProvider>
