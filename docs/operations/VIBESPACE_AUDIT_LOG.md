@@ -6,7 +6,7 @@ This file is the append-only operational record for scheduled **read-only** audi
 
 ## Current status
 
-Last completed audit: **2026-08-04 05:00 UTC**
+Last completed audit: **2026-08-04 13:00 UTC**
 
 | Severity | Open findings |
 |---|---:|
@@ -25,18 +25,19 @@ Last completed audit: **2026-08-04 05:00 UTC**
 4. **VS-AUDIT-003 — High:** The connected Supabase project appeared to be AccessRevamp rather than the production VibeSpace backend.
 5. **VS-AUDIT-004 — High:** The connected Stripe account and Supabase payment catalog/runtime were mismatched at the last successful live check. Neither environment could be refreshed in this run.
 6. **VS-AUDIT-005 — High:** The public-repository Stripe-key-pattern push-protection bypass remains unverified and unresolved.
-7. **VS-AUDIT-013 — Medium:** Draft PR #31 still has no green validation for its exact head, is now six commits behind `main`, and still does not contain the taskbar-usage files described by the bot report.
+7. **VS-AUDIT-013 — Medium:** Draft PR #31 still has no green validation for its exact head, is now seven commits behind `main`, and still does not contain the taskbar-usage files described by the bot report.
 8. **VS-AUDIT-014 / VS-AUDIT-015 — Informational:** Previously reported Google/Stripe and Vercel administrative sign-ins still require owner confirmation if they were not recognized.
 
 ### Changes since the previous run
 
 - **No new findings, severity changes, or resolutions.**
-- **VS-AUDIT-013 changed:** PR #31 remains open, unmerged, and draft at head `57ca83a89e4659e7464c1533398f9cd2143f7a28`. It remains 37 commits ahead but is now **six commits behind** `main`. GitHub exposed no workflow run or combined status for that exact head. The reported native taskbar file remains absent at that head.
+- **VS-AUDIT-013 changed:** PR #31 remains open, unmerged, and draft at head `57ca83a89e4659e7464c1533398f9cd2143f7a28`. It remains 37 commits ahead but is now **seven commits behind** `main`; the additional divergence is the prior audit-log commit, not application code. GitHub exposed no workflow run or combined status for that exact head. The reported native taskbar file remains absent at that head.
 - No application-code commit landed on `main` after the previous audit. The only newer default-branch commit was the prior audit-log update.
-- Current indexed repository searches again returned no literal `sk_live_`, `whsec_`, `STRIPE_SECRET_KEY`, or `SUPABASE_SERVICE_ROLE_KEY` match. This does not resolve the historical push-protection bypass or prove repository history is clean.
-- Gmail now reports **1,309 unread inbox messages**, **59 unread spam messages**, and **219 unread trash messages**. Targeted searches of the previous eight hours found no clear inbound VibeSpace support, billing, refund, login, security, payment, or bug report, including relevant spam/trash checks.
+- Current indexed repository searches again returned no literal `sk_live_`, `whsec_`, or `SUPABASE_SERVICE_ROLE_KEY` match. This does not resolve the historical push-protection bypass or prove repository history is clean.
+- The current `app/src-tauri/tauri.conf.json` still exposes `$APPDATA/**`, `$HOME/Downloads/**`, and `$RESOURCE/**` through the asset protocol and retains broad outbound WebView origins. This run did not establish an exploit, and no application-code/configuration commit changed the file since the prior review.
+- Gmail now reports **1,315 unread inbox messages**, **60 unread spam messages**, and **219 unread trash messages**. Targeted searches of the previous eight hours found no clear inbound VibeSpace support, billing, refund, login, security, payment, or bug report, including relevant spam/trash checks.
 - No new account-security, payment, dispute, refund, webhook, or billing alert email was identified in the checked interval.
-- Supabase Security Advisor and read-only SQL could not be refreshed because the connector requested interactive user input in this non-interactive run.
+- Supabase Security Advisor and API logs could not be refreshed because the connector requested interactive user input in this non-interactive run.
 - Stripe account and object reads could not be refreshed for the same connector limitation. Supabase- and Stripe-backed findings retain their last successfully validated evidence timestamps and were not represented as newly confirmed.
 
 ---
@@ -46,7 +47,7 @@ Last completed audit: **2026-08-04 05:00 UTC**
 ### VS-AUDIT-012 — Verified sessions can update any customer profile
 
 - **Severity:** Critical
-- **Status:** Open; not revalidated in the 2026-08-04 05:00 UTC run because Supabase access required interactive input
+- **Status:** Open; not revalidated in the 2026-08-04 13:00 UTC run because Supabase access required interactive input
 - **Source:** Supabase live RLS policies, profile schema, and row counts
 - **First seen:** 2026-08-02 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -59,7 +60,7 @@ Last completed audit: **2026-08-04 05:00 UTC**
 ### VS-AUDIT-001 — Verified-session RLS policies allow cross-user reads
 
 - **Severity:** Critical
-- **Status:** Open; not revalidated in the 2026-08-04 05:00 UTC run because Supabase access required interactive input
+- **Status:** Open; not revalidated in the 2026-08-04 13:00 UTC run because Supabase access required interactive input
 - **Source:** Supabase live database policies and grants
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -72,7 +73,7 @@ Last completed audit: **2026-08-04 05:00 UTC**
 ### VS-AUDIT-002 — Refund-request insertion is not bound to the signed-in owner
 
 - **Severity:** High
-- **Status:** Open; not revalidated in the 2026-08-04 05:00 UTC run
+- **Status:** Open; not revalidated in the 2026-08-04 13:00 UTC run
 - **Source:** Supabase live RLS policies and grants
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -114,7 +115,7 @@ Last completed audit: **2026-08-04 05:00 UTC**
 - **Status:** Open pending validation and revocation decision
 - **Source:** GitHub secret-scanning notification and current repository searches
 - **First seen:** 2026-08-01 20:01 UTC
-- **Last seen:** 2026-08-04 05:00 UTC
+- **Last seen:** 2026-08-04 13:00 UTC
 - **Affected component:** Public source repository and credential hygiene
 - **Immediate owner attention:** Yes
 - **Evidence summary:** GitHub previously reported that push protection was bypassed for a detected Stripe API-key pattern in a test file. Current indexed searches found no literal selected live-key prefixes or key names, but that cannot prove the historical value was synthetic, removed from history, or revoked.
@@ -127,10 +128,10 @@ Last completed audit: **2026-08-04 05:00 UTC**
 - **Status:** Open / unmerged draft / exact current head unvalidated
 - **Source:** GitHub PR state, branch comparison, current-head file fetch, workflow lookup, and status lookup
 - **First seen:** 2026-08-02 19:17 UTC
-- **Last seen:** 2026-08-04 05:00 UTC
+- **Last seen:** 2026-08-04 13:00 UTC
 - **Affected component:** PR #31 merge readiness
 - **Immediate owner attention:** Yes, before review or merge
-- **Evidence summary:** PR #31 remains draft at `57ca83a89e4659e7464c1533398f9cd2143f7a28`, changes 59 files, is 37 commits ahead and six behind `main`, and has no workflow run or combined status for the exact head. The compare inventory still contains none of the named taskbar-usage implementation files, and `app/src-tauri/src/taskbar_usage.rs` returns 404 at the current head.
+- **Evidence summary:** PR #31 remains draft at `57ca83a89e4659e7464c1533398f9cd2143f7a28`, changes 59 files, is 37 commits ahead and seven behind `main`, and has no workflow run or combined status for the exact head. The additional behind commit since the previous run is the prior audit-log commit. The compare inventory still contains none of the named taskbar-usage implementation files, and `app/src-tauri/src/taskbar_usage.rs` returns 404 at the current head.
 - **Potential impact:** Reviewers may believe missing or unvalidated functionality is present. Merging could ship regressions or omit a production-blocking feature.
 - **Recommended remediation:** Reconcile branch contents with reported implementation, sync with current `main`, and run all required frontend, Rust, release, browser, and native Windows tests on the exact final head before merging.
 
@@ -140,10 +141,10 @@ Last completed audit: **2026-08-04 05:00 UTC**
 - **Status:** Open
 - **Source:** Gmail label counts and targeted inbox/spam/trash searches
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-04 05:00 UTC
+- **Last seen:** 2026-08-04 13:00 UTC
 - **Affected component:** Customer-support operations
 - **Immediate owner attention:** No, unless customers are already being directed to the current aliases
-- **Evidence summary:** The merged Gmail account contains 1,309 unread inbox messages, 59 unread spam messages, and 219 unread trash messages. Targeted searches across the previous eight hours found no clear inbound VibeSpace operational request. The exact public support aliases and routing rules remain unverified.
+- **Evidence summary:** The merged Gmail account contains 1,315 unread inbox messages, 60 unread spam messages, and 219 unread trash messages. Targeted searches across the previous eight hours found no clear inbound VibeSpace operational request. The exact public support aliases and routing rules remain unverified.
 - **Potential impact:** Customer requests can be buried or missed, and no reliable support SLA can be established.
 - **Recommended remediation:** Confirm the public support address with a delivery test from an unrelated account and route it to a dedicated VibeSpace queue with ownership and response-state tracking.
 
@@ -163,13 +164,13 @@ Last completed audit: **2026-08-04 05:00 UTC**
 ### VS-AUDIT-009 — Desktop WebView file/network allowlists remain broad
 
 - **Severity:** Medium
-- **Status:** Open / hardening review; no application-code change occurred after the previous validation
+- **Status:** Open / hardening review; configuration re-read in this run
 - **Source:** `app/src-tauri/tauri.conf.json` and default-branch commit history
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-04 05:00 UTC
+- **Last seen:** 2026-08-04 13:00 UTC
 - **Affected component:** Tauri asset protocol and Content Security Policy
 - **Immediate owner attention:** No immediate exploit was demonstrated
-- **Evidence summary:** The validated configuration exposes broad application-data, Downloads, and resource roots and broad external WebView allowances. No application-code or configuration commit landed after the previous audit.
+- **Evidence summary:** The current configuration exposes `$APPDATA/**`, `$HOME/Downloads/**`, and `$RESOURCE/**` through the asset protocol and permits a broad set of external WebView connection origins. No application-code/configuration commit changed the file after the previous audit.
 - **Potential impact:** A renderer compromise could have broader local-file visibility or external exfiltration options than necessary.
 - **Recommended remediation:** Narrow roots and origins to feature-specific requirements, avoid exposing the full Downloads directory, isolate privileged windows, and add allowlist regression tests.
 
@@ -238,6 +239,42 @@ Last completed audit: **2026-08-04 05:00 UTC**
 ---
 
 ## Audit run history
+
+### Run: 2026-08-04 13:00 UTC
+
+**Checks completed**
+
+- Gmail: inbox/spam/trash unread counts; VibeSpace-specific search; broad recent operational-term review; payment/platform/account-security search; and explicit relevant spam/trash searches over the previous eight hours. No email or inbox state was changed.
+- GitHub: public repository metadata; latest default-branch commits; open issue and PR activity; PR #31 metadata, branch divergence, exact-head workflow/status checks, comments, and disputed taskbar-file check; current Tauri security configuration; and indexed searches for selected Stripe/Supabase secret patterns. No repository object other than this Markdown log was changed.
+- Supabase: attempted Security Advisor and API log reads. Both were blocked by interactive-authentication requirements.
+- Stripe: attempted connected-account read. It was blocked by interactive-authentication requirements.
+
+**New findings:** None.
+
+**Changed findings:** VS-AUDIT-007 and VS-AUDIT-013 received current evidence. VS-AUDIT-005 and VS-AUDIT-009 received current GitHub evidence. Supabase- and Stripe-backed findings were explicitly left at their last successful validation timestamps.
+
+**Resolved findings:** None.
+
+**Observed healthy controls**
+
+- No application-code commit landed on `main` after the previous audit.
+- PR #31 remains draft and unmerged.
+- No workflow run or status exists for PR #31's exact head.
+- Current indexed repository searches found no literal selected secret prefixes or key names.
+- No open GitHub issue was identified.
+- No clear new VibeSpace support, billing, refund, login, security, payment, or bug email was identified.
+- No new Stripe payment, dispute, refund, webhook, payout, or charge alert email was identified.
+
+**Limitations and blind spots**
+
+- Supabase live state, logs, policies, functions, advisors, and payment runtime could not be refreshed. Critical/high Supabase findings remain based on 2026-08-02 21:00 UTC evidence.
+- Stripe account identity, objects, events, disputes, refunds, payments, products, prices, subscriptions, invoices, and webhooks could not be refreshed.
+- Direct GitHub secret-scanning alert enumeration was unavailable; current code search cannot clear a historical alert or repository history.
+- PR #31 changes 59 files. This run reviewed metadata, branch divergence, exact-head status, comments, and the disputed current-head path but did not dynamically execute the branch.
+- Gmail support routing cannot be proven until exact public aliases are confirmed and tested.
+- Log-retention windows and connector result limits constrain historical completeness.
+
+**Remediation performed:** **None.** The only write was updating this Markdown audit record.
 
 ### Run: 2026-08-04 05:00 UTC
 
