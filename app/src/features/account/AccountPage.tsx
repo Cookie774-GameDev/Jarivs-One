@@ -194,7 +194,14 @@ export function AccountPage() {
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
           data-warm-decoration="account-shared-scene"
-        />
+        >
+          <img
+            src="/assets/themes/warm/account-center/account-lake-panorama-v2-selected.webp"
+            alt=""
+            decoding="async"
+            draggable={false}
+          />
+        </div>
         {/* Hero */}
         <header
           className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/60 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"

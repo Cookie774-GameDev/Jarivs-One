@@ -576,20 +576,26 @@ describe('Warm theme presentation contract', () => {
   });
 
   it('keeps one stable approved scenic surface mounted across all five account tabs', () => {
-    const sceneAsset = resolve(warmAssetRoot, 'account-shared-waterfall-v1.webp');
+    const sceneAsset = resolve(
+      warmAssetRoot,
+      'account-center/account-lake-panorama-v2-selected.webp',
+    );
     expect(existsSync(sceneAsset)).toBe(true);
     const sceneBytes = readFileSync(sceneAsset);
-    expect(sceneBytes.byteLength).toBeLessThan(140_000);
+    expect(sceneBytes.byteLength).toBeLessThan(150_000);
     expect(createHash('sha256').update(sceneBytes).digest('hex')).toBe(
-      '1c507802c369e9d2134448c84c776a73fb77f65e193133c68525ce24cc80840d',
+      '4d894bf6aafb1874a92dc7629f22ed3301382272661b7392015aec5d92303066',
     );
 
     expect(accountPage).toContain('data-warm-surface="account-scene-shell"');
     expect(accountPage).toContain('data-warm-decoration="account-shared-scene"');
+    expect(accountPage).toContain(
+      '/assets/themes/warm/account-center/account-lake-panorama-v2-selected.webp',
+    );
     expect(accountPage).toContain('aria-hidden="true"');
     expect(accountPage).toContain('data-warm-account-tab={tab}');
     expect(css).toMatch(
-      /\[data-warm-decoration='account-shared-scene'\]\s*\{[\s\S]*?account-shared-waterfall-v1\.webp[\s\S]*?100%\s+auto\s+no-repeat/u,
+      /\[data-warm-decoration='account-shared-scene'\]\s*>\s*img\s*\{[\s\S]*?width:\s*100%[\s\S]*?height:\s*auto/u,
     );
     expect(css).not.toMatch(
       /\.mc7f-account-page\[data-warm-account-tab='pets'\]\s+\[data-sakura-surface='account-hero'\]\s*\{[\s\S]*?display:\s*none/u,
@@ -602,16 +608,16 @@ describe('Warm theme presentation contract', () => {
       /\[data-warm-surface='account-scene-shell'\]\s*\{[\s\S]*?width:\s*calc\(100%\s*-\s*56px\)[\s\S]*?max-width:\s*none[\s\S]*?isolation:\s*isolate/u,
     );
     expect(css).toMatch(
-      /\.mc7f-account-page\s+\[data-sakura-surface='account-hero'\]\s*\{[\s\S]*?min-height:\s*239px[\s\S]*?border:\s*0/u,
+      /\.mc7f-account-page\s+\[data-sakura-surface='account-hero'\]\s*\{[\s\S]*?min-height:\s*198px[\s\S]*?border:\s*0/u,
     );
     expect(css).toMatch(
       /\.mc7f-account-page\s+\[data-sakura-surface='account-tabs'\]\s*\{[\s\S]*?min-height:\s*54px/u,
     );
   });
 
-  it('carries opaque paper depth into account and settings cards', () => {
+  it('carries warm scenic-glass depth into account and settings cards', () => {
     expect(css).toMatch(
-      /\.mc7f-account-page\s+\.sakura-account-panel\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.96\)/u,
+      /\.mc7f-account-page\s+\.sakura-account-panel\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.76\)[\s\S]*?backdrop-filter:\s*blur\(10px\)/u,
     );
     expect(css).toMatch(
       /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?warm-shadow-soft/u,

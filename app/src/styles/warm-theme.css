@@ -1551,9 +1551,17 @@ html[data-theme='warm'] .mc7f-account-page [data-warm-surface='account-scene-she
 
 html[data-theme='warm'] .mc7f-account-page [data-warm-decoration='account-shared-scene'] {
   z-index: -2;
-  background:
-    linear-gradient(180deg, rgb(251 240 223 / 0.08) 0 58%, #fbf0df 92%),
-    url('/assets/themes/warm/account-shared-waterfall-v1.webp') center top / 100% auto no-repeat;
+  overflow: hidden;
+  background: #fbf0df;
+}
+
+html[data-theme='warm'] .mc7f-account-page [data-warm-decoration='account-shared-scene'] > img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 html[data-theme='warm'] .mc7f-account-page [data-warm-surface='account-scene-shell']::after {
@@ -1572,8 +1580,8 @@ html[data-theme='warm'] .mc7f-account-page [data-warm-surface='account-scene-she
 }
 
 html[data-theme='warm'] .mc7f-account-page [data-sakura-surface='account-hero'] {
-  min-height: 239px;
-  padding: 44px 46px;
+  min-height: 198px;
+  padding: 32px 40px;
   border: 0;
   border-radius: 0;
   background: transparent !important;
@@ -1582,13 +1590,17 @@ html[data-theme='warm'] .mc7f-account-page [data-sakura-surface='account-hero'] 
 }
 
 html[data-theme='warm'] .mc7f-account-page [data-sakura-surface='account-hero'] h1 {
-  font-size: clamp(42px, 3vw, 52px);
+  font-size: clamp(40px, 2.65vw, 46px);
   line-height: 1;
 }
 
 html[data-theme='warm'] .mc7f-account-page [data-sakura-surface='account-hero'] p {
   max-width: 520px;
-  font-size: 18px;
+  font-size: 16px;
+}
+
+html[data-theme='warm'] .mc7f-account-page [data-warm-surface='account-scene-shell'] > .mt-5 {
+  margin-top: 0;
 }
 
 html[data-theme='warm'] .mc7f-account-page [data-sakura-surface='account-tabs'] {
@@ -1600,8 +1612,9 @@ html[data-theme='warm'] .mc7f-account-page [data-sakura-surface='account-tabs'] 
 
 html[data-theme='warm'] .mc7f-account-page .sakura-account-panel {
   border-color: var(--warm-border);
-  background: rgb(255 249 239 / 0.96);
+  background: rgb(255 249 239 / 0.76);
   box-shadow: var(--warm-shadow-soft);
+  backdrop-filter: blur(10px);
 }
 
 html[data-theme='warm']
@@ -1610,7 +1623,7 @@ html[data-theme='warm']
   > .flex.flex-col.gap-4
   > div:first-child {
   border-color: var(--warm-border);
-  background: rgb(255 249 239 / 0.96) !important;
+  background: rgb(255 249 239 / 0.88) !important;
   box-shadow: var(--warm-shadow-soft);
 }
 
