@@ -449,14 +449,15 @@
 
   function buildPhone(phoneSection) {
     if (!phoneSection) return null;
+    phoneSection.id = 'phone';
     phoneSection.className = 'vs2-section vs2-phone-section';
     phoneSection.innerHTML = [
       '<div class="vs2-section-head vs2-centered">',
-        '<div class="vs2-kicker">VibeSpace in your pocket</div>',
-        '<h2>A modern phone demo. <em>Everything has a purpose.</em></h2>',
-        '<p class="vs2-lead">Open the apps, browse the VibeSpace repository, call a contact, or play a game. The same experience reflows for desktop, tablet, and mobile.</p>',
+        '<div class="vs2-kicker">Interactive</div>',
+        '<h2>Call, message, <em>and stay in the loop.</em></h2>',
+        '<p class="vs2-lead">A small live preview of VibeSpace on your phone. Start with Jarvis, then explore only what you need.</p>',
       '</div>',
-      '<div class="vs2-phone-layout">',
+      '<div class="vs2-phone-layout vs2-phone-layout--solo">',
         '<div class="vs2-phone-stage">',
           '<div class="vs2-phone-device" aria-label="Interactive VibeSpace phone">',
             '<div class="vs2-phone-speaker" aria-hidden="true"></div>',
@@ -468,18 +469,8 @@
               '</div>',
               '<div class="vs2-phone-viewport"></div>',
             '</div>',
-            '<button class="vs2-physical-home" type="button" aria-label="Go to phone home screen"><span></span></button>',
           '</div>',
         '</div>',
-        '<aside class="vs2-phone-guide" aria-live="polite">',
-          '<span class="vs2-phone-guide-label">Now showing</span>',
-          '<h3>Phone Home</h3>',
-          '<p>Choose an app. The physical Home button always returns here.</p>',
-          '<div class="vs2-phone-guide-features">',
-            '<span>Live time</span><span>Touch ready</span><span>Keyboard ready</span><span>Safe fallbacks</span>',
-          '</div>',
-          '<div class="vs2-phone-guide-tip"><strong>Try this</strong><p>Open Safari or Chrome, switch repository tabs, then open a real GitHub destination.</p></div>',
-        '</aside>',
       '</div>'
     ].join('');
 
@@ -494,6 +485,7 @@
     var photoCaptures = 0;
 
     function setGuide(appId) {
+      if (!guideTitle || !guideCopy) return;
       if (appId === 'home') {
         guideTitle.textContent = 'Phone Home';
         guideCopy.textContent = 'Choose an app. The physical Home button always returns here.';
@@ -1540,17 +1532,17 @@
 
     updateClock();
     var clockTimer = window.setInterval(updateClock, 1000);
-    physicalHome.addEventListener('click', showHome);
+    if (physicalHome) physicalHome.addEventListener('click', showHome);
     var unregisterVisibility = registerVisibility(function (hidden) {
       if (typeof appVisibility === 'function') appVisibility(hidden);
     });
     registerCleanup(function () {
       stopApp();
       window.clearInterval(clockTimer);
-      physicalHome.removeEventListener('click', showHome);
+      if (physicalHome) physicalHome.removeEventListener('click', showHome);
       unregisterVisibility();
     });
-    showHome();
+    openApp('calls');
 
     return {
       openApp: openApp,
@@ -1643,102 +1635,409 @@
 
   function buildAgentSection(section) {
     if (!section) return null;
-    section.className = 'vs2-section vs2-agent-section';
+    var stories = {
+      build: { label: 'Build', title: 'Turn an idea into a focused first pass.', prompt: '“Make the homepage feel like the actual app.”', people: [['J', 'Jarvis', 'turns the idea into a clear brief', 'copper'], ['C', 'Coder', 'works on the small, useful changes', 'cyan'], ['✓', 'You', 'see the result and choose the next move', 'sage']], result: 'A clean first pass with the changed files and the next choice waiting for you.' },
+      research: { label: 'Research', title: 'Get the useful answer before you commit.', prompt: '“What should we fix before we ship?”', people: [['J', 'Jarvis', 'collects the real question', 'copper'], ['R', 'Researcher', 'brings back the few sources that matter', 'plum'], ['✓', 'You', 'get a plain-language answer', 'sage']], result: 'A short answer, linked sources, and no wall of confusing agent jargon.' },
+      review: { label: 'Review', title: 'Give the last look to someone picky.', prompt: '“Check this before it goes live.”', people: [['J', 'Jarvis', 'keeps the scope small', 'copper'], ['C', 'Critic', 'checks the details that can bite later', 'plum'], ['✓', 'You', 'get the call: ready or fix this', 'sage']], result: 'A simple review: what passed, what needs attention, and why.' }
+    };
+    var active = 'build';
+
+    section.className = 'vs2-section vs2-team-section';
     section.innerHTML = [
-      '<div class="vs2-section-head">',
-        '<div class="vs2-kicker">Jarvis-directed agents</div>',
-        '<h2>Your team, <em>each with a clear assignment.</em></h2>',
-        '<p class="vs2-lead">Click an agent to inspect the task, Context Map sources, approved tools, and expected output. Jarvis coordinates the handoffs while every specialist stays scoped.</p>',
+      '<div class="vs2-section-head vs2-centered">',
+        '<div class="vs2-kicker">Your team</div>',
+        '<h2>Good help, <em>without the whole circus.</em></h2>',
+        '<p class="vs2-lead">Pick the kind of help you need. VibeSpace keeps the story small, visible, and easy to follow.</p>',
       '</div>',
-      '<div class="vs2-agent-workspace">',
-        '<div class="vs2-agent-cards" role="list" aria-label="Agent assignments"></div>',
-        '<article class="vs2-agent-detail" aria-live="polite">',
-          '<div class="vs2-agent-detail-head"><span class="vs2-agent-avatar"></span><div><small>Selected agent</small><h3></h3><p></p></div><span class="vs2-agent-detail-status"></span></div>',
-          '<div class="vs2-agent-task"><span>Current assignment</span><strong></strong></div>',
-          '<div class="vs2-agent-detail-grid">',
-            '<div><span>Context Map sources</span><ul data-agent-context></ul></div>',
-            '<div><span>Approved tools</span><ul data-agent-tools></ul></div>',
-          '</div>',
-          '<div class="vs2-agent-output"><span>Expected output</span><p></p></div>',
-          '<div class="vs2-agent-progress"><span></span><strong></strong></div>',
-        '</article>',
-      '</div>',
-      '<p class="vs2-agent-note">This view shows assignments, sources, tools, status, and outputs—not private model chain-of-thought.</p>'
+      '<div class="vs2-team-story">',
+        '<div class="vs2-team-picker" role="tablist" aria-label="Choose a team flow"></div>',
+        '<div class="vs2-team-stage" aria-live="polite"></div>',
+      '</div>'
     ].join('');
 
-    var cardsContainer = query('.vs2-agent-cards', section);
-    var detail = query('.vs2-agent-detail', section);
-    var currentAgent = null;
+    var picker = query('.vs2-team-picker', section);
+    var stage = query('.vs2-team-stage', section);
 
-    AGENTS.forEach(function (agent) {
-      var card = create('button', 'vs2-agent-card tone-' + agent.color);
-      card.type = 'button';
-      card.dataset.agent = agent.id;
-      card.setAttribute('role', 'listitem');
-      card.setAttribute('aria-pressed', 'false');
-      card.innerHTML = [
-        '<span class="vs2-agent-card-top"><span class="vs2-agent-mini-avatar">' + agent.name.charAt(0) + '</span><span class="vs2-agent-state"><i></i>' + agent.status + '</span></span>',
-        '<span class="vs2-agent-card-copy"><strong>' + agent.name + '</strong><small>' + agent.role + '</small></span>',
-        '<span class="vs2-agent-card-task">' + agent.task + '</span>',
-        '<span class="vs2-agent-card-meta"><span>' + agent.context.length + ' sources</span><span>' + agent.tools.length + ' tools</span></span>',
-        '<span class="vs2-agent-card-progress"><i style="width:' + agent.progress + '%"></i></span>'
-      ].join('');
-      card.addEventListener('click', function () { selectAgent(agent.id); });
-      if (finePointerQuery && finePointerQuery.matches && !reducedMotion()) {
-        card.addEventListener('pointermove', function (event) {
-          var rect = card.getBoundingClientRect();
-          var x = (event.clientX - rect.left) / rect.width - 0.5;
-          var y = (event.clientY - rect.top) / rect.height - 0.5;
-          card.style.setProperty('--tilt-x', (-y * 5).toFixed(2) + 'deg');
-          card.style.setProperty('--tilt-y', (x * 7).toFixed(2) + 'deg');
-          card.style.setProperty('--glow-x', ((x + 0.5) * 100).toFixed(1) + '%');
-          card.style.setProperty('--glow-y', ((y + 0.5) * 100).toFixed(1) + '%');
-        });
-        card.addEventListener('pointerleave', function () {
-          card.style.removeProperty('--tilt-x');
-          card.style.removeProperty('--tilt-y');
-          card.style.removeProperty('--glow-x');
-          card.style.removeProperty('--glow-y');
-        });
+    function render() {
+      var story = stories[active];
+      removeAllChildren(picker);
+      Object.keys(stories).forEach(function (key) {
+        var button = create('button', 'vs2-team-choice' + (key === active ? ' is-active' : ''), stories[key].label);
+        button.type = 'button';
+        button.setAttribute('role', 'tab');
+        button.setAttribute('aria-selected', key === active ? 'true' : 'false');
+        button.addEventListener('click', function () { active = key; render(); });
+        picker.appendChild(button);
+      });
+      stage.innerHTML = '<div class="vs2-team-request"><span>Your request</span><strong>' + story.prompt + '</strong></div><div class="vs2-team-copy"><span>How it moves</span><h3>' + story.title + '</h3><p>Three clear roles. One result you can actually use.</p></div><div class="vs2-team-people"></div><div class="vs2-team-result"><i>✓</i><div><span>What comes back</span><strong>' + story.result + '</strong></div></div>';
+      var people = query('.vs2-team-people', stage);
+      story.people.forEach(function (person, index) {
+        var item = create('div', 'vs2-team-person tone-' + person[3]);
+        item.style.setProperty('--team-delay', (index * 90) + 'ms');
+        item.innerHTML = '<i>' + person[0] + '</i><div><strong>' + person[1] + '</strong><small>' + person[2] + '</small></div>';
+        people.appendChild(item);
+      });
+    }
+
+    render();
+    return { select: function (key) { if (stories[key]) { active = key; render(); } }, selected: function () { return active; }, section: section };
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* Build Your Own AI / VibeModel Foundry                                  */
+  /* ---------------------------------------------------------------------- */
+
+  function buildFoundry(section) {
+    if (!section) return null;
+
+    var hardwareProfiles = [
+      {
+        id: 'everyday',
+        label: 'Everyday laptop',
+        specs: 'CPU or integrated graphics · 16 GB memory',
+        note: 'Prioritizes quick local runs and low memory use.',
+        models: [
+          { id: 'pocket-3b', name: 'Pocket 3B', type: 'Fast starter', memory: '≈ 4–6 GB', description: 'A lightweight base for focused tasks, fast replies, and easy local testing.' },
+          { id: 'builder-7b', name: 'Builder 7B', type: 'Balanced pick', memory: '≈ 8–12 GB', description: 'More room for coding, reasoning, and specialist behavior without a huge footprint.' }
+        ]
+      },
+      {
+        id: 'creator',
+        label: 'Creator desktop',
+        specs: 'Dedicated GPU · 32 GB memory',
+        note: 'Balances stronger reasoning with a practical local setup.',
+        models: [
+          { id: 'builder-7b', name: 'Builder 7B', type: 'Fast iteration', memory: '≈ 8–12 GB', description: 'A nimble base when you want to iterate on lessons and evaluations quickly.' },
+          { id: 'studio-14b', name: 'Studio 14B', type: 'Recommended', memory: '≈ 16–24 GB', description: 'A stronger all-round base for richer tone, coding help, and deeper specialties.' }
+        ]
+      },
+      {
+        id: 'power',
+        label: 'Power workstation',
+        specs: 'High-memory GPU · 64 GB+ memory',
+        note: 'Unlocks the strongest local bases and larger evaluation sets.',
+        models: [
+          { id: 'studio-14b', name: 'Studio 14B', type: 'Efficient strong', memory: '≈ 16–24 GB', description: 'A powerful, efficient base for everyday specialist work.' },
+          { id: 'frontier-32b', name: 'Frontier 32B', type: 'Best quality', memory: '≈ 36–48 GB', description: 'The quality-first choice for a serious specialist when your hardware can support it.' }
+        ]
       }
-      cardsContainer.appendChild(card);
+    ];
+
+    var lessonTypes = [
+      { id: 'video', label: 'Video', detail: 'MP4 and recorded walkthroughs', tone: 'plum' },
+      { id: 'audio', label: 'Audio', detail: 'MP3 notes and voice lessons', tone: 'cyan' },
+      { id: 'docs', label: 'Docs', detail: 'PDF, Markdown, TXT, and files', tone: 'copper' },
+      { id: 'sources', label: 'Sources', detail: 'Approved pages and references', tone: 'sage' }
+    ];
+
+    var state = {
+      hardware: 'everyday',
+      model: 'builder-7b',
+      name: 'VibeCoder',
+      description: 'A specialist that understands my build style.',
+      guidance: '',
+      lessons: ['docs'],
+      step: 0,
+      unlocked: 0,
+      training: false,
+      trainingIndex: 0,
+      complete: false
+    };
+    var timers = [];
+
+    section.id = 'foundry';
+    section.className = 'vs2-section vs2-foundry-section';
+    section.innerHTML = [
+      '<div class="vs2-section-head vs2-centered">',
+        '<div class="vs2-kicker">VibeModel Foundry · concept preview</div>',
+        '<h2>Build your own AI. <em>Not another agent.</em></h2>',
+        '<p class="vs2-lead">Choose an open-weight base model, teach it from the material you approve, train a focused adapter, compare it, and explicitly promote it. Your result lives in chat and the agent picker—not in the terminal.</p>',
+      '</div>',
+      '<div class="vs2-foundry-shell">',
+        '<div class="vs2-foundry-topline"><span><i></i> Local-model workflow preview</span><small>No training runs from this website. The interactive flow shows how Foundry will work inside VibeSpace.</small></div>',
+        '<div class="vs2-foundry-rail" role="tablist" aria-label="Build your AI steps"></div>',
+        '<div class="vs2-foundry-workspace">',
+          '<div class="vs2-foundry-stage" aria-live="polite"></div>',
+          '<aside class="vs2-foundry-summary">',
+            '<span class="vs2-foundry-summary-label">Your model</span>',
+            '<div class="vs2-foundry-orb" aria-hidden="true"><i></i><b>V</b></div>',
+            '<strong data-foundry-model-name>VibeCoder</strong>',
+            '<p data-foundry-model-desc>A specialist that understands my build style.</p>',
+            '<div class="vs2-foundry-summary-meta"><span data-foundry-base>Builder 7B</span><span data-foundry-lessons>1 lesson type</span></div>',
+            '<div class="vs2-foundry-status"><span>Pipeline</span><ol><li data-foundry-pipeline="0">Base selected</li><li data-foundry-pipeline="1">Identity set</li><li data-foundry-pipeline="2">Lessons approved</li><li data-foundry-pipeline="3">Training candidate</li><li data-foundry-pipeline="4">Ready to review</li></ol></div>',
+          '</aside>',
+        '</div>',
+      '</div>',
+      '<p class="vs2-foundry-footnote">Foundry is designed for narrow specialists—one clear job, transparent lessons, a frozen dataset, real evaluation evidence, and a promotion you approve.</p>'
+    ].join('');
+
+    var rail = query('.vs2-foundry-rail', section);
+    var stage = query('.vs2-foundry-stage', section);
+    var fieldName = query('[data-foundry-model-name]', section);
+    var fieldDescription = query('[data-foundry-model-desc]', section);
+    var fieldBase = query('[data-foundry-base]', section);
+    var fieldLessons = query('[data-foundry-lessons]', section);
+    var stepLabels = ['Base model', 'Identity', 'Lessons', 'Train', 'Review'];
+
+    function currentProfile() {
+      return hardwareProfiles.filter(function (profile) { return profile.id === state.hardware; })[0] || hardwareProfiles[0];
+    }
+
+    function currentModel() {
+      var profile = currentProfile();
+      return profile.models.filter(function (model) { return model.id === state.model; })[0] || profile.models[0];
+    }
+
+    function syncSummary() {
+      var model = currentModel();
+      fieldName.textContent = state.name.trim() || 'Untitled specialist';
+      fieldDescription.textContent = state.description.trim() || 'Give this specialist a purpose in the next step.';
+      fieldBase.textContent = model.name;
+      fieldLessons.textContent = state.lessons.length + ' lesson ' + (state.lessons.length === 1 ? 'type' : 'types');
+      queryAll('[data-foundry-pipeline]', section).forEach(function (item) {
+        var index = Number(item.getAttribute('data-foundry-pipeline'));
+        item.classList.toggle('is-complete', index < state.step || (state.complete && index <= 4));
+        item.classList.toggle('is-active', index === state.step && !state.complete);
+      });
+    }
+
+    function renderRail() {
+      removeAllChildren(rail);
+      stepLabels.forEach(function (label, index) {
+        var button = create('button', 'vs2-foundry-step' + (index === state.step ? ' is-active' : '') + (index < state.step || state.complete ? ' is-complete' : ''));
+        var enabled = index <= state.unlocked && !state.training;
+        button.type = 'button';
+        button.disabled = !enabled;
+        button.setAttribute('role', 'tab');
+        button.setAttribute('aria-selected', index === state.step ? 'true' : 'false');
+        button.innerHTML = '<b>' + (index + 1) + '</b><span>' + label + '</span>';
+        button.addEventListener('click', function () {
+          if (!button.disabled) {
+            state.step = index;
+            render();
+          }
+        });
+        rail.appendChild(button);
+      });
+    }
+
+    function nextButton(label, handler) {
+      var button = create('button', 'vs2-primary-button vs2-foundry-next', label);
+      button.type = 'button';
+      button.addEventListener('click', handler);
+      return button;
+    }
+
+    function renderBase() {
+      var profile = currentProfile();
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 1 · Base model</span><h3>Pick the foundation for your specialist.</h3><p>Foundry recommends local bases around the hardware you choose. Faster options need less memory; quality-first options need more.</p></div>',
+        '<div class="vs2-foundry-hardware"><div><strong>Hardware profile</strong><small>This website uses a sample profile. The app will read your local hardware before recommending models.</small></div><div class="vs2-foundry-profile-picker"></div></div>',
+        '<p class="vs2-foundry-recommendation"><span>Recommended for this profile</span>' + profile.note + '</p>',
+        '<div class="vs2-foundry-model-grid"></div>',
+        '<div class="vs2-foundry-stage-actions"></div>'
+      ].join('');
+
+      var profilePicker = query('.vs2-foundry-profile-picker', stage);
+      hardwareProfiles.forEach(function (item) {
+        var button = create('button', 'vs2-foundry-profile' + (item.id === state.hardware ? ' is-selected' : ''));
+        button.type = 'button';
+        button.setAttribute('aria-pressed', item.id === state.hardware ? 'true' : 'false');
+        button.innerHTML = '<strong>' + item.label + '</strong><small>' + item.specs + '</small>';
+        button.addEventListener('click', function () {
+          state.hardware = item.id;
+          state.model = currentProfile().models[0].id;
+          render();
+        });
+        profilePicker.appendChild(button);
+      });
+
+      var grid = query('.vs2-foundry-model-grid', stage);
+      profile.models.forEach(function (model) {
+        var card = create('button', 'vs2-foundry-model' + (model.id === state.model ? ' is-selected' : ''));
+        card.type = 'button';
+        card.setAttribute('aria-pressed', model.id === state.model ? 'true' : 'false');
+        card.innerHTML = '<span class="vs2-foundry-model-top"><small>' + model.type + '</small><i>' + model.memory + '</i></span><strong>' + model.name + '</strong><p>' + model.description + '</p><span class="vs2-foundry-model-check">Selected</span>';
+        card.addEventListener('click', function () {
+          state.model = model.id;
+          render();
+        });
+        grid.appendChild(card);
+      });
+
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Continue to identity', function () {
+        state.unlocked = Math.max(state.unlocked, 1);
+        state.step = 1;
+        render();
+      }));
+    }
+
+    function renderIdentity() {
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 2 · Identity</span><h3>Give your AI a clear job and voice.</h3><p>A focused purpose produces a better specialist than a giant everything-model. You can add optional guidance without turning it into an agent prompt.</p></div>',
+        '<div class="vs2-foundry-form">',
+          '<label>Model name<input data-foundry-input="name" maxlength="44" value=""></label>',
+          '<label>What should it be great at?<textarea data-foundry-input="description" rows="3" maxlength="180"></textarea></label>',
+          '<label class="vs2-foundry-optional">Optional behavior guidance<textarea data-foundry-input="guidance" rows="3" maxlength="280" placeholder="e.g. Prefer clear next steps and cite the source it learned from."></textarea><small>Optional. This is a behavior layer for the model—not an agent instruction stack.</small></label>',
+        '</div>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back">Back</button></div>'
+      ].join('');
+
+      var nameInput = query('[data-foundry-input="name"]', stage);
+      var descriptionInput = query('[data-foundry-input="description"]', stage);
+      var guidanceInput = query('[data-foundry-input="guidance"]', stage);
+      nameInput.value = state.name;
+      descriptionInput.value = state.description;
+      guidanceInput.value = state.guidance;
+
+      [[nameInput, 'name'], [descriptionInput, 'description'], [guidanceInput, 'guidance']].forEach(function (pair) {
+        pair[0].addEventListener('input', function () {
+          state[pair[1]] = pair[0].value;
+          syncSummary();
+        });
+      });
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { state.step = 0; render(); });
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Approve identity', function () {
+        state.unlocked = Math.max(state.unlocked, 2);
+        state.step = 2;
+        render();
+      }));
+    }
+
+    function renderLessons() {
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 3 · Approved lessons</span><h3>Teach it from what you choose.</h3><p>Add videos, files, examples, conversations, or sources. Foundry freezes the approved lesson set before training, so every candidate stays traceable.</p></div>',
+        '<div class="vs2-foundry-lesson-grid"></div>',
+        '<div class="vs2-foundry-approved"><span>Approved lesson set</span><div data-foundry-lesson-chips></div><small>Conversation lessons can be curated inside VibeSpace. Nothing is trained until you explicitly start a candidate.</small></div>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back">Back</button></div>'
+      ].join('');
+      var grid = query('.vs2-foundry-lesson-grid', stage);
+      lessonTypes.forEach(function (lesson) {
+        var selected = state.lessons.indexOf(lesson.id) !== -1;
+        var button = create('button', 'vs2-foundry-lesson tone-' + lesson.tone + (selected ? ' is-selected' : ''));
+        button.type = 'button';
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        button.innerHTML = '<i>' + lesson.label.charAt(0) + '</i><strong>' + lesson.label + '</strong><small>' + lesson.detail + '</small><b>' + (selected ? 'Approved' : 'Add') + '</b>';
+        button.addEventListener('click', function () {
+          var index = state.lessons.indexOf(lesson.id);
+          if (index === -1) state.lessons.push(lesson.id);
+          else if (state.lessons.length > 1) state.lessons.splice(index, 1);
+          renderLessons();
+          syncSummary();
+        });
+        grid.appendChild(button);
+      });
+      var chips = query('[data-foundry-lesson-chips]', stage);
+      state.lessons.forEach(function (id) {
+        var item = lessonTypes.filter(function (lesson) { return lesson.id === id; })[0];
+        chips.appendChild(create('span', '', item.label));
+      });
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { state.step = 1; render(); });
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Freeze lesson set', function () {
+        state.unlocked = Math.max(state.unlocked, 3);
+        state.step = 3;
+        render();
+      }));
+    }
+
+    function renderTrain() {
+      var stages = [
+        ['Freeze dataset', 'Your approved lessons are packaged with a source manifest.'],
+        ['Train adapter', 'A focused adapter is trained against the selected base model.'],
+        ['Run evaluation', 'Candidate behavior is measured against the original and current champion.']
+      ];
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 4 · Train a candidate</span><h3>Training happens in the background.</h3><p>You can close Foundry while the local worker prepares the candidate. VibeSpace will notify you when evaluation is ready.</p></div>',
+        '<div class="vs2-foundry-train-card"><div class="vs2-foundry-train-orb"><i></i><b>' + (state.training ? Math.round(((state.trainingIndex + .45) / 3) * 100) : (state.complete ? '100' : '—')) + '</b></div><div><span>' + (state.training ? 'Training candidate' : (state.complete ? 'Candidate prepared' : 'Ready when you are')) + '</span><strong>' + (state.training ? stages[state.trainingIndex][0] : (state.complete ? 'Evaluation package is ready.' : 'Train ' + (state.name.trim() || 'your specialist'))) + '</strong><p>' + (state.training ? stages[state.trainingIndex][1] : 'This interactive preview does not start a real local training job.') + '</p></div></div>',
+        '<ol class="vs2-foundry-train-steps"></ol>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back" ' + (state.training ? 'disabled' : '') + '>Back</button></div>'
+      ].join('');
+      var list = query('.vs2-foundry-train-steps', stage);
+      stages.forEach(function (item, index) {
+        var row = create('li', (state.training && index === state.trainingIndex ? 'is-active' : '') + ((state.complete || index < state.trainingIndex) ? ' is-complete' : ''));
+        row.innerHTML = '<i>' + (state.complete || index < state.trainingIndex ? '✓' : (index + 1)) + '</i><div><strong>' + item[0] + '</strong><small>' + item[1] + '</small></div>';
+        list.appendChild(row);
+      });
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { if (!state.training) { state.step = 2; render(); } });
+      if (state.complete) {
+        query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Review candidate', function () { state.step = 4; render(); }));
+      } else {
+        var button = nextButton(state.training ? 'Training in background…' : 'Start training preview', function () { startTraining(); });
+        button.disabled = state.training;
+        query('.vs2-foundry-stage-actions', stage).appendChild(button);
+      }
+    }
+
+    function startTraining() {
+      if (state.training) return;
+      state.training = true;
+      state.trainingIndex = 0;
+      render();
+      var run = Date.now();
+      [0, 1, 2].forEach(function (index) {
+        schedule(timers, function () {
+          if (!state.training || run !== state.trainingRun) return;
+          state.trainingIndex = index;
+          render();
+        }, 720 + index * 920);
+      });
+      state.trainingRun = run;
+      schedule(timers, function () {
+        if (run !== state.trainingRun) return;
+        state.training = false;
+        state.trainingIndex = 3;
+        state.complete = true;
+        state.unlocked = 4;
+        state.step = 4;
+        render();
+      }, reducedMotion() ? 10 : 3540);
+    }
+
+    function renderReview() {
+      var model = currentModel();
+      stage.innerHTML = [
+        '<div class="vs2-foundry-stage-heading"><span>Step 5 · Compare and promote</span><h3>Only promote what you trust.</h3><p>Compare the candidate with the original base and your current champion, inspect the lesson set and evaluation evidence, then approve the exact specialist you want to use.</p></div>',
+        '<div class="vs2-foundry-compare"><div><span>Original base</span><strong>' + model.name + '</strong><small>General capability · unchanged</small></div><div class="vs2-foundry-candidate"><span>Candidate</span><strong>' + (state.name.trim() || 'Untitled specialist') + '</strong><small>Focused lessons · ready for review</small></div><div><span>Promoted specialist</span><strong>Not chosen yet</strong><small>Requires your approval</small></div></div>',
+        '<div class="vs2-foundry-evidence"><div><strong>What Foundry keeps</strong><span>Base model, frozen lesson set, train configuration, evaluation results, and a rollback path.</span></div><div><strong>Where it appears</strong><span>Chat and the agent picker. Terminal access is intentionally not part of this model flow.</span></div></div>',
+        '<div class="vs2-foundry-launch" hidden aria-live="polite"><span>✓</span><div><strong>Preview promoted.</strong><p>' + (state.name.trim() || 'Your specialist') + ' would now be available in chat and the agent picker.</p></div></div>',
+        '<div class="vs2-foundry-stage-actions"><button type="button" class="vs2-foundry-back">Back</button></div>'
+      ].join('');
+      query('.vs2-foundry-back', stage).addEventListener('click', function () { state.step = 3; render(); });
+      query('.vs2-foundry-stage-actions', stage).appendChild(nextButton('Promote preview to chat', function () {
+        var launch = query('.vs2-foundry-launch', stage);
+        launch.hidden = false;
+        state.complete = true;
+        syncSummary();
+      }));
+    }
+
+    function render() {
+      renderRail();
+      if (state.step === 0) renderBase();
+      else if (state.step === 1) renderIdentity();
+      else if (state.step === 2) renderLessons();
+      else if (state.step === 3) renderTrain();
+      else renderReview();
+      syncSummary();
+    }
+
+    var unregisterVisibility = registerVisibility(function (hidden) {
+      if (hidden && state.training) {
+        clearTimers(timers);
+        state.training = false;
+        state.trainingIndex = 0;
+        render();
+      }
+    });
+    registerCleanup(function () {
+      clearTimers(timers);
+      unregisterVisibility();
     });
 
-    function fillList(list, items) {
-      removeAllChildren(list);
-      items.forEach(function (item) {
-        var li = create('li', '', item);
-        list.appendChild(li);
-      });
-    }
-
-    function selectAgent(id) {
-      var agent = AGENTS.filter(function (item) { return item.id === id; })[0] || AGENTS[0];
-      currentAgent = agent;
-      queryAll('.vs2-agent-card', section).forEach(function (card) {
-        var selected = card.dataset.agent === agent.id;
-        card.classList.toggle('is-selected', selected);
-        card.setAttribute('aria-pressed', selected ? 'true' : 'false');
-      });
-      var avatar = query('.vs2-agent-avatar', detail);
-      avatar.textContent = agent.name.charAt(0);
-      avatar.className = 'vs2-agent-avatar tone-' + agent.color;
-      query('h3', detail).textContent = agent.name;
-      query('.vs2-agent-detail-head p', detail).textContent = agent.role;
-      query('.vs2-agent-detail-status', detail).textContent = agent.status;
-      query('.vs2-agent-task strong', detail).textContent = agent.task;
-      fillList(query('[data-agent-context]', detail), agent.context);
-      fillList(query('[data-agent-tools]', detail), agent.tools);
-      query('.vs2-agent-output p', detail).textContent = agent.output;
-      query('.vs2-agent-progress span', detail).style.width = agent.progress + '%';
-      query('.vs2-agent-progress strong', detail).textContent = agent.progress + '%';
-    }
-
-    selectAgent('jarvis');
+    render();
     return {
-      select: selectAgent,
-      selected: function () { return currentAgent && currentAgent.id; },
-      section: section
+      section: section,
+      getState: function () { return { step: state.step, complete: state.complete, model: currentModel().id }; }
     };
   }
 
@@ -1890,29 +2189,64 @@
     });
   }
 
+  function enableScrollMotion() {
+    var targets = queryAll('main > section');
+    var stepSelector = '.sec-head, .vs2-section-head, .grid, .terminal-dashboard, .terminal-shell, .pricing-grid, .download-grid, .letter, .faq-list, .vs2-phone-layout, .vs2-team-story, .vs2-foundry-shell';
+    var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || !window.IntersectionObserver) {
+      targets.forEach(function (target) {
+        target.classList.add('vs2-scroll-visible');
+        queryAll(stepSelector, target).forEach(function (child) { child.classList.add('vs2-scroll-step'); });
+      });
+      return;
+    }
+
+    targets.forEach(function (target, targetIndex) {
+      target.classList.add('vs2-scroll-item');
+      queryAll(stepSelector, target).forEach(function (child, childIndex) {
+        child.classList.add('vs2-scroll-step');
+        child.style.setProperty('--vs2-motion-delay', Math.min(420, childIndex * 72 + (targetIndex % 2) * 28) + 'ms');
+        child.style.setProperty('--vs2-motion-x', childIndex % 2 ? '20px' : '-20px');
+      });
+    });
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('vs2-scroll-visible');
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: .1, rootMargin: '0px 0px -4% 0px' });
+    targets.forEach(function (target) { observer.observe(target); });
+    registerCleanup(function () { observer.disconnect(); });
+  }
+
   function initialise() {
     if (window.__VibeSpacePhase2Initialized) return;
 
     var legacyVoice = document.getElementById('voice') || query('.vs-system-section');
     var legacyCalling = document.getElementById('calling');
-    var phoneSection = document.getElementById('calling-demo');
+    var phoneSection = document.getElementById('calling-demo') || document.getElementById('phone');
     if (!phoneSection && legacyCalling && (query('#jarvisCallDemo', legacyCalling) || query('.jarvis-call-demo', legacyCalling))) {
       phoneSection = legacyCalling;
       legacyCalling = null;
     }
     var providerSection = document.getElementById('hive');
     var agentSection = document.getElementById('council');
-    var workbenchSection = document.getElementById('inspector');
+    var workbenchSection = document.getElementById('inspector') || document.getElementById('foundry');
 
     if (!legacyVoice && !phoneSection && !providerSection && !agentSection && !workbenchSection) return;
     window.__VibeSpacePhase2Initialized = true;
     document.documentElement.classList.add('vs2-ready');
 
-    var story = buildSystemStory(legacyVoice, legacyCalling, phoneSection);
+    if (legacyVoice && legacyVoice.parentNode) legacyVoice.parentNode.removeChild(legacyVoice);
+    if (legacyCalling && legacyCalling.parentNode) legacyCalling.parentNode.removeChild(legacyCalling);
+    var story = null;
     var phone = buildPhone(phoneSection);
-    var providers = buildProviderSection(providerSection);
+    if (providerSection && providerSection.parentNode) providerSection.parentNode.removeChild(providerSection);
+    var providers = null;
     var agents = buildAgentSection(agentSection);
-    var workbench = buildWorkbench(workbenchSection);
+    var foundry = buildFoundry(workbenchSection);
+    enableScrollMotion();
 
     document.addEventListener('visibilitychange', handleVisibility);
     registerCleanup(function () {
@@ -1920,12 +2254,12 @@
     });
 
     window.VibeSpacePhase2 = {
-      version: '2.0.0',
+      version: '2.2.0-workspace',
       story: story,
       phone: phone,
       providers: providers,
       agents: agents,
-      workbench: workbench,
+      foundry: foundry,
       voiceProfiles: VOICE_PROFILES,
       getRepoData: function (force) { return loadRepoData(!!force); },
       destroy: function () {
