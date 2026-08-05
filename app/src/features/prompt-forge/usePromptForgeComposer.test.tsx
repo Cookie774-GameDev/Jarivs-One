@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
+import { syntheticCredentialFixture } from '@/test/syntheticCredentialFixture';
 import type { PromptForgeExecutionResult } from './promptForgeExecutor';
 import type { PromptForgeModelOption } from './modelSelection';
 import {
@@ -629,7 +630,7 @@ describe('usePromptForgeComposer', () => {
 
   it('rejects secrets in drafts or regeneration instructions before persistence', async () => {
     const { jobs, repository } = memoryRepository();
-    const secret = 'ghp_SyntheticCredentialValue1234567890';
+    const secret = syntheticCredentialFixture('ghp_', 'SyntheticCredentialValue1234567890');
     const { result } = renderHook(() =>
       usePromptForgeComposer({
         accountId: 'account-1',

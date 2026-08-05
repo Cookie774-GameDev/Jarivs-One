@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { syntheticCredentialFixture } from '@/test/syntheticCredentialFixture';
 import type { LLMResponse } from '@/lib/ai/types';
 import type { RunAgentRequest } from '@/lib/ai/router';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
@@ -228,7 +229,7 @@ describe('Prompt Forge model execution', () => {
   it('rejects secrets in every provider-bound user field before invoking the model', async () => {
     const runModel = vi.fn(async () => response('must not run'));
     const executor = createPromptForgeExecutor({ runModel, now: () => 500 });
-    const secret = 'ghp_SyntheticCredentialValue1234567890';
+    const secret = syntheticCredentialFixture('ghp_', 'SyntheticCredentialValue1234567890');
 
     await expect(
       executor.execute({
