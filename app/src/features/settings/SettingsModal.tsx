@@ -401,7 +401,11 @@ export function SettingsModal({
           data-sakura-surface="settings-layout"
           data-warm-surface="settings-canvas"
         >
-          <div aria-hidden="true" data-warm-decoration="settings-scene-left">
+          <div
+            aria-hidden="true"
+            className="hidden [html[data-theme=warm]_&]:block"
+            data-warm-decoration="settings-scene-left"
+          >
             <img
               src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
               alt=""
@@ -409,7 +413,11 @@ export function SettingsModal({
               draggable={false}
             />
           </div>
-          <div aria-hidden="true" data-warm-decoration="settings-scene-right">
+          <div
+            aria-hidden="true"
+            className="hidden [html[data-theme=warm]_&]:block"
+            data-warm-decoration="settings-scene-right"
+          >
             <img
               src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
               alt=""
@@ -417,7 +425,11 @@ export function SettingsModal({
               draggable={false}
             />
           </div>
-          <div aria-hidden="true" data-warm-decoration="settings-wash" />
+          <div
+            aria-hidden="true"
+            className="hidden [html[data-theme=warm]_&]:block"
+            data-warm-decoration="settings-wash"
+          />
           <aside
             className="border-r border-border bg-panel flex flex-col min-h-0"
             data-sakura-surface="settings-navigation"
