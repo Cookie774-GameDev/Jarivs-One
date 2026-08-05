@@ -1397,12 +1397,43 @@ html[data-theme='warm']
   background-color: rgb(249 234 215 / 0.985) !important;
 }
 
+html[data-theme='warm']
+  [data-warm-surface='model-foundry-canvas']
+  [aria-label='Model Foundry workflow']
+  button {
+  min-height: 46px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] aside > section:nth-child(1) {
+  min-height: 242px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] aside > section:nth-child(2) {
+  min-height: 128px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] aside > section:nth-child(3) {
+  min-height: 150px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] aside > section:nth-child(4) {
+  min-height: 92px;
+}
+
 html[data-theme='warm'] [data-warm-region='model-foundry-primary'] {
   padding-top: 28px;
 }
 
 html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] {
   row-gap: 40px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] > :nth-child(2) {
+  margin-top: 44px !important;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] > :nth-child(3) {
+  margin-top: 25px !important;
 }
 
 html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] h1 {
@@ -1436,6 +1467,12 @@ html[data-theme='warm']
   > div:last-child
   > button {
   min-height: 182px;
+}
+
+@media (min-width: 1280px) {
+  html[data-theme='warm'] [data-warm-region='model-foundry-primary'] {
+    padding-right: 28px;
+  }
 }
 
 @media (max-width: 1200px) {
