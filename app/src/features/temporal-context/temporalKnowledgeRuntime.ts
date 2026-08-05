@@ -155,4 +155,3 @@ export async function loadRepositoryTemporalKnowledge(input: Readonly<{
     await openTemporalKnowledgeRepository(createDexieTemporalStorage(), input)
   ).snapshot();
 }
-

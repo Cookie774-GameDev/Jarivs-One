@@ -37,4 +37,3 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - name: Run pinned local-only Promptfoo fixtures
         run: npx --yes promptfoo@0.121.20 eval --config promptfooconfig.yaml --no-cache --output "$RUNNER_TEMP/promptfoo-results.json"
-

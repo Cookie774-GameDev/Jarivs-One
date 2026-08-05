@@ -192,4 +192,3 @@ skills, tools, agents, settings, native window controls, and console errors.
 
 Run scoped Prettier, `git diff --check`, focused tests, TypeScript, build, and
 an added-line secret scan. Record limitations honestly.
-

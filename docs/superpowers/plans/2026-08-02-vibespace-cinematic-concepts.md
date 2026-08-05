@@ -162,4 +162,3 @@ Verify desktop and narrow layouts, all concept switches, scroll-driven scene cha
 - [ ] **Step 4: Hand off the browser tab**
 
 Keep the comparison hub as a deliverable tab. Stop the local server only after the user has finished choosing a concept or explicitly asks to close it.
-

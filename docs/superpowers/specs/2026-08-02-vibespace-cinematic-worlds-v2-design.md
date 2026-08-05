@@ -1,7 +1,7 @@
 # VibeSpace Cinematic Worlds V2 Design
 
-**Status:** Approved creative direction; implementation specification pending user review  
-**Date:** 2026-08-02  
+**Status:** Approved creative direction; implementation specification pending user review
+**Date:** 2026-08-02
 **Task:** `VS-PR31-CINEMATIC-V2-20260802T163211Z-ROOT`
 
 ## Objective

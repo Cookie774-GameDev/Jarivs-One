@@ -14,4 +14,3 @@ Finish Prompt 25 while preserving the existing approval engine and Custom Tools 
 ## Boundaries
 
 No Custom Tools redesign, action-handler expansion, approval-engine rewrite, model-provider special casing, dependency, or external mutation.
-

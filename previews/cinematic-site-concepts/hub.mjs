@@ -29,4 +29,3 @@ buttons.forEach((button) => {
 
 const requested = window.location.hash.slice(1);
 selectConcept(CONCEPT_ORDER.includes(requested) ? requested : CONCEPT_ORDER[0], false);
-

@@ -1,10 +1,10 @@
 # Daily Dynamic Data Maintenance
 
-**Status:** Authoritative  
-**Track:** LAUNCH-CRITICAL  
-**Last process revision:** 2026-08-02  
-**Machine-readable registry:** [`dynamic-data-registry.json`](./dynamic-data-registry.json)  
-**In-app helpers:** `app/src/lib/dynamic-data/`  
+**Status:** Authoritative
+**Track:** LAUNCH-CRITICAL
+**Last process revision:** 2026-08-02
+**Machine-readable registry:** [`dynamic-data-registry.json`](./dynamic-data-registry.json)
+**In-app helpers:** `app/src/lib/dynamic-data/`
 **Daily check script:** `scripts/daily-dynamic-data-check.mjs`
 
 This document is the repository’s maintenance specification for product data that becomes stale quickly: pricing, model catalogs, availability, usage limits, benchmarks, and related “current” facts.

@@ -47,4 +47,3 @@
 
 - [ ] Run wake-word, VoiceService, turn, settings, hotkey, auth, and production-build checks.
 - [ ] Inspect the packaged runtime contract and record OS-policy/manual-hardware limitations honestly.
-

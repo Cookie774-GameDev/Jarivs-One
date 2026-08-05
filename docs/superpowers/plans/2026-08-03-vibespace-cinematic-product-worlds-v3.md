@@ -38,7 +38,7 @@ four route files, reduced-motion CSS, and interaction affordances.
 
 - [ ] **Step 2: Run the contract and verify RED**
 
-Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`  
+Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`
 Expected: FAIL because the V3 runtime and routes do not exist.
 
 - [ ] **Step 3: Copy selected authoritative Warm screenshots**
@@ -66,7 +66,7 @@ export const PRODUCT_BEATS = Object.freeze([
 
 - [ ] **Step 5: Run focused tests**
 
-Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`  
+Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`
 Expected: remaining route/runtime assertions fail, but content and asset assertions pass.
 
 ### Task 2: Build the shared cinematic runtime
@@ -164,7 +164,7 @@ bloom finale.
 
 - [ ] **Step 5: Run contracts**
 
-Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`  
+Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`
 Expected: all world route, content, pricing, asset, reduced-motion, and interaction
 contracts pass except gallery assertions.
 
@@ -196,7 +196,7 @@ motion, and no auto-navigation.
 
 - [ ] **Step 4: Run the complete contract**
 
-Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`  
+Run: `node --test previews/cinematic-site-concepts-v3/tests/cinematic-v3.test.mjs`
 Expected: PASS.
 
 ### Task 5: Browser QA and handoff

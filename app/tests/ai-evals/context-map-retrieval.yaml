@@ -17,4 +17,3 @@
       value: 'AST hash: sha256:'
     - type: not-contains
       value: 'C:\Users\'
-

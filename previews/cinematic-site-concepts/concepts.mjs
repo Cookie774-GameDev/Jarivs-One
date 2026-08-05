@@ -161,4 +161,3 @@ export const CONCEPTS = Object.freeze({
 export function getConcept(id) {
   return CONCEPTS[id] || CONCEPTS.aperture;
 }
-

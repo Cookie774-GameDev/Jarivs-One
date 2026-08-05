@@ -48,4 +48,3 @@ describe('repository temporal knowledge contract', () => {
     });
   });
 });
-

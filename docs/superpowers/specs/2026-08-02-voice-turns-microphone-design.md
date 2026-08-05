@@ -16,4 +16,3 @@ Finish Prompt 15 without changing the established Jarvis High, Deepgram, billing
 ## Boundaries
 
 No cloud transcription, dependency, wake-word redesign, voice-engine change, provider credential change, or unrelated Settings change.
-

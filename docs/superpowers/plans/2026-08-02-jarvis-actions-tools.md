@@ -35,4 +35,3 @@
 ### Task 3: Verification
 
 - [ ] Run focused TypeScript/tests, production build, formatting, diff hygiene, and live local navigation where the runtime permits.
-

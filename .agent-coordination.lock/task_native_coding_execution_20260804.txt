@@ -11,4 +11,3 @@ ownership_transfer=app/src/lib/jarvis/codingRunManifest.ts;app/src/lib/jarvis/co
 exclusions=all other files;all unrelated dirty hunks;all Git staging/commit/push/branch operations;all direct process execution;all external systems;Computer Control
 verification=add only focused deterministic tests required by changed behavior;do not run tests,typecheck,build,format,or review commands;self-review once and hand off
 status=ASSIGNED
-

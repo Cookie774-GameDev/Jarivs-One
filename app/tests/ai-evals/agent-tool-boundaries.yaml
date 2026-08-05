@@ -25,4 +25,3 @@
       value: 'fallback=none'
     - type: not-contains
       value: 'substituted'
-

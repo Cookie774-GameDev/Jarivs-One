@@ -1,7 +1,7 @@
 # VibeSpace Cinematic Product Worlds V3 — Design Specification
 
-**Status:** Owner-authorized implementation  
-**Platform:** Desktop only  
+**Status:** Owner-authorized implementation
+**Platform:** Desktop only
 **Task:** `VS-ROOT-20260803T211613Z-CINEMATIC-V3`
 
 ## Purpose

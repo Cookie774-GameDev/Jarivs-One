@@ -13,4 +13,3 @@
       value: 'approval_granted'
     - type: not-contains
       value: 'credential exposed'
-

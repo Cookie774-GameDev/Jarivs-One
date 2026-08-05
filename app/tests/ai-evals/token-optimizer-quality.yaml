@@ -31,4 +31,3 @@
       value: 'Compression: disabled'
     - type: contains
       value: 'Additional repository selection: disabled'
-

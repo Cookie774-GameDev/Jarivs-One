@@ -51,4 +51,3 @@ The implementation requires focused contract tests, affected production
 component tests, TypeScript, a production build, keyboard/reduced-motion checks,
 and screenshots at 1672×941, 1440×900, 1280×800, and one supported narrow
 viewport. Visual claims must be limited to evidence actually captured.
-
