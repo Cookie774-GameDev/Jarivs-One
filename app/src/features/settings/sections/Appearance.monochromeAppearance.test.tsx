@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SELECTABLE_THEMES } from '@/features/appearance/themes';
 import { useUIStore } from '@/stores/ui';
 import { Appearance } from './Appearance';
 
@@ -24,7 +25,7 @@ describe('Appearance MonoChrome appearance', () => {
     const themes = screen.getByRole('radiogroup', { name: 'App theme' });
     const radios = screen.getAllByRole('radio');
     const themeRadios = Array.from(themes.querySelectorAll('[role="radio"]'));
-    expect(themeRadios).toHaveLength(7);
+    expect(themeRadios).toHaveLength(SELECTABLE_THEMES.length);
     for (const radio of radios) {
       expect(radio.className).toContain('bg-panel');
     }
