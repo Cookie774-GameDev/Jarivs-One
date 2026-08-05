@@ -241,7 +241,9 @@ import {
   PERMISSION_MODE_OPTIONS,
 } from '@/features/jarvis-interaction/modes';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
+import type { JarvisInteractionMode } from '@/features/jarvis-interaction/types';
 import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
+import { shouldCancelForLiveModeRestriction } from './modeTransitionSafety';
 import {
   buildReasoningSlashPickerState,
   parseReasoningEffortArgument,
@@ -780,6 +782,31 @@ export function Composer({
     | null
   >(null);
   const promptForgeAutoUpgradeRef = useRef(false);
+
+  const applyInteractionMode = useCallback(
+    (nextMode: JarvisInteractionMode) => {
+      const previousMode = useJarvisInteractionStore.getState().modeForChat(chatId);
+      setInteractionMode(chatId, nextMode);
+      const cancellationKey = activeCancellationKeyRef.current;
+      if (
+        shouldCancelForLiveModeRestriction({
+          previousMode,
+          nextMode,
+          running: jarvisRunning,
+          cancellationKey,
+        })
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('jarvis:cancel', { detail: { messageId: cancellationKey } }),
+        );
+        toast.info(
+          'Current reply stopped',
+          `${nextMode === 'ask' ? 'Ask' : 'Plan'} Mode is active. The restricted turn was cancelled before more actions could run.`,
+        );
+      }
+    },
+    [chatId, jarvisRunning, setInteractionMode],
+  );
 
   useEffect(() => {
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1543,7 +1570,7 @@ export function Composer({
     if (canonical === 'permissions') {
       const nextMode = parsePermissionModeArg(option.id) ?? (option.id as 'ask' | 'plan' | 'agent');
       if (nextMode === 'ask' || nextMode === 'plan' || nextMode === 'agent') {
-        setInteractionMode(chatId, nextMode);
+        applyInteractionMode(nextMode);
         // Drop any stale permissions chip from older builds.
         setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
         // Quiet: mode chip already shows the active mode — no toast spam.
@@ -1721,7 +1748,7 @@ export function Composer({
     if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms' || cmd === 'access') {
       const parsed = rest ? parsePermissionModeArg(rest) : null;
       if (parsed) {
-        setInteractionMode(chatId, parsed);
+        applyInteractionMode(parsed);
         // Mode change only — do not attach /permissions as a confirmed chip.
         setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
         setText('');
@@ -1732,13 +1759,13 @@ export function Composer({
       return true;
     }
     if (cmd === 'ask') {
-      setInteractionMode(chatId, 'ask');
+      applyInteractionMode('ask');
       if (rest) return rest;
       setText('');
       return true;
     }
     if (cmd === 'plan') {
-      setInteractionMode(chatId, 'plan');
+      applyInteractionMode('plan');
       if (rest) return rest;
       setText('');
       return true;
@@ -1747,7 +1774,7 @@ export function Composer({
       return `/${cmd} ${rest}`;
     }
     if (cmd === 'multitask' || cmd === 'subagents') {
-      setInteractionMode(chatId, 'agent');
+      applyInteractionMode('agent');
       if (!rest) {
         await addSystem(
           `Use /${cmd} <task> to launch chat-native Jarvis ${cmd === 'subagents' ? 'subagents' : 'agent'}.`,
@@ -2641,7 +2668,7 @@ export function Composer({
       const nextMode = cycleInteractionMode(
         useJarvisInteractionStore.getState().modeForChat(chatId),
       );
-      setInteractionMode(chatId, nextMode);
+      applyInteractionMode(nextMode);
       // Mode chip updates in place — no toast for routine mode cycles.
       return;
     }
@@ -4215,13 +4242,13 @@ export function Composer({
                     mode={interactionMode}
                     compact={compact}
                     onSelectMode={(nextMode) => {
-                      setInteractionMode(chatId, nextMode);
+                      applyInteractionMode(nextMode);
                     }}
                     onCycle={() => {
                       const nextMode = cycleInteractionMode(
                         useJarvisInteractionStore.getState().modeForChat(chatId),
                       );
-                      setInteractionMode(chatId, nextMode);
+                      applyInteractionMode(nextMode);
                     }}
                   />
                   <PromptForgeControl
