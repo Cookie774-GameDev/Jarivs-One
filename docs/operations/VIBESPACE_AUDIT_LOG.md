@@ -6,42 +6,43 @@ This file is the append-only operational record for scheduled **read-only** audi
 
 ## Current status
 
-Last completed audit: **2026-08-05 13:00 UTC**
+Last completed audit: **2026-08-05 21:00 UTC**
 
 | Severity | Open findings |
 |---|---:|
 | Critical | 2 |
-| High | 6 |
-| Medium | 6 |
+| High | 7 |
+| Medium | 5 |
 | Low | 0 |
 | Informational | 3 |
-| Resolved | 1 |
+| Resolved | 2 |
 
 ### Immediate owner attention required
 
-1. **VS-AUDIT-012 — Critical:** A verified authenticated session could update any row in `profiles` without proving ownership at the last successful live Supabase check. Supabase could not be refreshed in this run.
-2. **VS-AUDIT-001 — Critical:** Broad verified-session RLS policies allowed cross-user reads at the last successful live Supabase check. Supabase could not be refreshed in this run.
-3. **VS-AUDIT-018 — High:** The first configured desktop-updater endpoint serves a stale, incomplete, unsigned `0.1.48` manifest while the application and signed release channel are at `1.5.0`. Tauri only falls through to a later endpoint after a non-2XX response, so the first endpoint's successful but invalid response is likely to prevent the valid signed release manifest from being checked.
-4. **VS-AUDIT-016 — High:** Supabase reported a critical `rls_disabled_in_public` exposure in a different project visible through the merged inbox. The affected project is not the VibeSpace target project, so direct VibeSpace impact is unconfirmed, but the owner should review it immediately.
+1. **VS-AUDIT-012 — Critical:** A verified authenticated session could update any row in `profiles` without proving ownership at the last successful live Supabase check. The new draft migration adds an owner-bound policy but does not drop the known broad verified-session policy, so it is not sufficient evidence of remediation.
+2. **VS-AUDIT-001 — Critical:** Broad verified-session RLS policies allowed cross-user reads at the last successful live Supabase check. The new draft migration addresses only owner policies on `profiles` and does not remove the known broad read policies.
+3. **VS-AUDIT-018 — High:** The first configured desktop-updater endpoint serves a stale, incomplete, unsigned `0.1.48` manifest while the application and signed release channel are at `1.5.0`.
+4. **VS-AUDIT-016 — High:** Supabase reported a critical `rls_disabled_in_public` exposure in a different project visible through the merged inbox. Direct VibeSpace impact remains unconfirmed.
 5. **VS-AUDIT-002 — High:** A permissive refund-request policy allowed insertion without binding the request to `auth.uid()` at the last successful live check.
 6. **VS-AUDIT-003 — High:** The connected Supabase project appeared to be AccessRevamp rather than the production VibeSpace backend.
-7. **VS-AUDIT-004 — High:** The connected Stripe account and Supabase payment catalog/runtime were mismatched at the last successful live check. A Stripe onboarding email for a different account strengthens the multiple-environment concern.
+7. **VS-AUDIT-004 — High:** The connected Stripe account and Supabase payment catalog/runtime were mismatched at the last successful live check.
 8. **VS-AUDIT-005 — High:** The public-repository Stripe-key-pattern push-protection bypass remains unverified and unresolved.
-9. **VS-AUDIT-017 — Medium:** The merged support infrastructure has an incomplete Google Workspace billing setup with an August 6, 2026 retention deadline. Direct VibeSpace relevance is unconfirmed, but support-mail continuity could be affected if the account is shared.
-10. **VS-AUDIT-013 — Medium:** Draft PR #31 still has no green validation for its exact head, is now ten commits behind `main`, and still does not contain the taskbar-usage files described by the bot report.
+9. **VS-AUDIT-013 — High:** Draft PR #31 expanded from 59 to 1,232 changed files and its exact current head fails frontend type checking; build, tests, and release-manifest validation were skipped. Do not merge or deploy this head.
+10. **VS-AUDIT-019 — Medium:** The exact-head CI installation reported seven dependency advisories, including two classified critical and four high. The workflow output did not identify the packages or reachable paths, so exploitability is not claimed, but the advisory set must be resolved or dispositioned before release.
 11. **VS-AUDIT-014 / VS-AUDIT-015 — Informational:** Google/Stripe and Vercel administrative sign-ins still require owner confirmation if they were not recognized.
 
 ### Changes since the previous run
 
-- **New finding: VS-AUDIT-018.** The primary updater endpoint configured in `app/src-tauri/tauri.conf.json` points to `releases/channel.json`, which currently advertises only Windows `0.1.48` and omits the required artifact signature. The app is version `1.5.0`, and the release workflow verifies a separate four-platform signed `latest.json` release asset but does not update or validate the primary channel file. Tauri documents that endpoint fallback occurs only after a non-2XX response and that the complete static manifest is validated before version comparison. A packaged-client check was not executed, so the conclusion is recorded as a strongly supported operational inference rather than a demonstrated client failure.
-- **No severity changes or resolutions.**
-- **VS-AUDIT-013 changed:** PR #31 remains open, unmerged, and draft at head `57ca83a89e4659e7464c1533398f9cd2143f7a28`. It remains 37 commits ahead but is now **ten commits behind** `main`; the additional divergence is the prior audit-log commit, not application code. GitHub exposed no workflow run or combined status for that exact head. The reported native taskbar files remain absent from the current PR comparison.
-- **VS-AUDIT-007 changed:** Gmail now reports **1,346 unread inbox messages**, **65 unread spam messages**, and **219 unread trash messages**. Review of messages received since the previous run found no clear VibeSpace support, billing, refund, login, payment, security, or bug report. The relevant spam/trash result was unrelated marketing mail.
-- **VS-AUDIT-005 / VS-AUDIT-009 received current GitHub evidence:** Current indexed searches returned no literal selected Stripe/Supabase/OpenAI secret patterns, `dangerouslySetInnerHTML`, `eval(`, or `innerHTML` match. The broad Tauri asset, native HTTP, process, updater, and window permissions remain unchanged. The application also registers custom file-read/write commands whose `root` parameter is optional; when omitted, the command implementation does not impose a project-root boundary. This expands the consequence of a bundled-renderer compromise but is not evidence that remote preview content has IPC access or that exploitation occurred.
+- **New finding: VS-AUDIT-019.** PR #31's exact-head CI ran `npm install` and reported seven advisories: two critical, four high, and one moderate. The workflow then failed during TypeScript checking. The available log did not enumerate advisory identifiers, affected packages, production reachability, or fixes, so this is recorded as an unresolved dependency-risk signal rather than a confirmed exploitable vulnerability.
+- **Severity change: VS-AUDIT-013 increased from Medium to High.** PR #31 moved from head `57ca83a89e4659e7464c1533398f9cd2143f7a28` with 59 changed files to `5e51f5c3acbfc1808a003ae13ba47627b856505a` with **83 commits, 1,232 changed files, 137,549 additions, and 7,310 deletions** relative to `main`. It is now 83 commits ahead and zero behind. Exact-head CI failed TypeScript checking with `TS6305` and `TS7006` in `src/viteFontAccess.test.ts`; frontend build, Vitest, and release-manifest validation were skipped. Rust `cargo check` succeeded and the exact-head deterministic AI-boundary evaluation succeeded. Earlier heads also generated frontend-CI and AI-evaluation failure notices.
+- **VS-AUDIT-012 / VS-AUDIT-001 changed:** The draft branch now contains migration `0037_profiles_display_name_security.sql`, which creates owner-bound profile `SELECT`/`UPDATE` policies and restricts authenticated updates to `display_name`. However, it drops only `own profile`, `profiles_owner_select`, and `profiles_owner_update`; it does not drop the live broad policies previously identified as `profiles_verified_session_update` and the broad verified-session read policy. Because permissive PostgreSQL policies combine with OR semantics, applying this migration unchanged would not, by itself, prove the live critical findings are fixed. The migration is unmerged and was not applied or tested against the connected project.
+- **Resolved finding: VS-AUDIT-017.** A newer Google Workspace notice for the same merged support tenant states that a paid subscription is scheduled to begin on September 1, 2026. That supersedes the earlier evidence that billing setup was incomplete by August 6. Direct VibeSpace dependency on this AccessRevamp-oriented tenant remains unconfirmed.
+- **VS-AUDIT-007 changed:** Gmail now reports **1,368 unread inbox messages**, **67 unread spam messages**, and **219 unread trash messages**. Review of recent inbox, spam, and trash items found no clear new VibeSpace customer support, billing, refund, payment, login, security, webhook, or bug report. Relevant spam matches were unrelated sales outreach.
+- PR #32, the free Cloudflare AI-news backend, was merged into PR #31's branch rather than `main`. The PR #31 body states that deployment was not executed. Read-only code review found that the public news endpoint can trigger feed ingestion whenever the database is empty without an explicit single-flight/rate guard and returns raw exception text in one 500 response path. The setup script also installs dependencies from a moving draft branch. These are pre-deployment hardening concerns included under VS-AUDIT-013, not evidence of a live incident.
+- PR #33 remains an open draft standalone motion-lab prototype; its exact head has a successful CI run and it does not claim runtime integration.
 - No application-code commit landed on `main` after the previous audit. The only newer default-branch commit was the prior audit-log update.
-- The frontend and Rust dependency manifests were re-read. No vulnerability conclusion was made because the connector does not expose dependency alerts and this run did not execute a package advisory scanner.
-- Supabase Security Advisor, logs, policies, functions, migrations, storage, realtime, SQL state, and performance could not be refreshed because the connector requested interactive user input in this non-interactive run.
-- Stripe account identity and payment, customer, subscription, invoice, refund, dispute, webhook, event, and account-health objects could not be refreshed for the same connector limitation. Supabase- and Stripe-backed findings retain their last successfully validated evidence timestamps and were not represented as newly confirmed.
+- Supabase Security Advisor and API logs again required interactive user input, so live policies, advisors, logs, functions, storage, realtime, migrations, and performance could not be refreshed.
+- Stripe account identity and health again required interactive user input, so payments, customers, subscriptions, invoices, refunds, disputes, events, and webhook state could not be refreshed.
 
 ---
 
@@ -50,28 +51,30 @@ Last completed audit: **2026-08-05 13:00 UTC**
 ### VS-AUDIT-012 — Verified sessions can update any customer profile
 
 - **Severity:** Critical
-- **Status:** Open; not revalidated in the 2026-08-05 13:00 UTC run because Supabase access required interactive input
-- **Source:** Supabase live RLS policies, profile schema, and row counts
+- **Status:** Open; not revalidated in the 2026-08-05 21:00 UTC run because Supabase access required interactive input
+- **Source:** Supabase live RLS policies, profile schema, row counts, and draft migration `0037_profiles_display_name_security.sql`
 - **First seen:** 2026-08-02 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
+- **Last supporting code evidence:** 2026-08-05 21:00 UTC
 - **Affected component:** Customer identity, contact, status, address, notes, marketing preference, and Stripe-customer linkage stored in `profiles`
 - **Immediate owner attention:** Yes
-- **Evidence summary:** The authenticated-role policy `profiles_verified_session_update` applied to `UPDATE` and used only `accessrevamp_session_is_verified()` in both `USING` and `WITH CHECK`. It did not compare the row to `auth.uid()` or another ownership mapping. The table contained four rows and included sensitive customer and operational fields. No exploit or cross-account write was attempted.
-- **Potential impact:** A verified customer may be able to modify another customer's profile and operational metadata or tamper with billing-customer linkage. A direct Stripe transaction effect was not demonstrated.
-- **Recommended remediation:** Replace the session-only policy with ownership-bound checks in both `USING` and `WITH CHECK`; restrict ordinary-user column updates; reserve status, notes, and Stripe linkage for trusted server roles; and add two-account negative tests.
+- **Evidence summary:** The live authenticated-role policy `profiles_verified_session_update` applied to `UPDATE` and used only `accessrevamp_session_is_verified()` in both `USING` and `WITH CHECK`. It did not compare the row to `auth.uid()` or another ownership mapping. The draft migration now creates an ownership-bound policy and narrows the authenticated column grant to `display_name`, but it does not drop `profiles_verified_session_update`. If the known broad policy remains, permissive-policy OR semantics could still permit cross-user display-name changes even after the draft migration. No exploit or cross-account write was attempted.
+- **Potential impact:** A verified customer may be able to modify another customer's profile. The draft grant would reduce the client-writable scope to `display_name` if applied successfully, but it is not deployed evidence and does not remove the broad policy. A direct Stripe transaction effect was not demonstrated.
+- **Recommended remediation:** Inventory and explicitly drop every existing broad profile policy by exact name before creating owner policies; restrict ordinary-user column updates; reserve operational and Stripe fields for trusted server roles; run migration tests against the actual current schema; and add two-account negative tests.
 
 ### VS-AUDIT-001 — Verified-session RLS policies allow cross-user reads
 
 - **Severity:** Critical
-- **Status:** Open; not revalidated in the 2026-08-05 13:00 UTC run because Supabase access required interactive input
-- **Source:** Supabase live database policies and grants
+- **Status:** Open; not revalidated in the 2026-08-05 21:00 UTC run because Supabase access required interactive input
+- **Source:** Supabase live database policies/grants and draft migrations
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
+- **Last supporting code evidence:** 2026-08-05 21:00 UTC
 - **Affected component:** Authorization boundary for customer profiles, projects, orders, entitlements, deliveries, design/workflow data, updates, and refund requests
 - **Immediate owner attention:** Yes
-- **Evidence summary:** Nine permissive authenticated-role `SELECT` policies on `customer_projects`, `entitlements`, `orders`, `profiles`, `project_deliveries`, `project_design_options`, `project_updates`, `project_workflows`, and `refund_requests` accepted only `accessrevamp_session_is_verified()` and did not require row ownership. The authenticated role retained `SELECT` grants.
+- **Evidence summary:** Nine permissive authenticated-role `SELECT` policies on `customer_projects`, `entitlements`, `orders`, `profiles`, `project_deliveries`, `project_design_options`, `project_updates`, `project_workflows`, and `refund_requests` accepted only `accessrevamp_session_is_verified()` and did not require row ownership. The new draft profile migration does not drop the known broad verified-session read policy, and the reviewed new hardening migrations do not replace the other eight broad policies.
 - **Potential impact:** A verified customer may be able to read another customer's identity, project scope, design/workflow information, and future order or entitlement metadata.
-- **Recommended remediation:** Replace every session-only policy with explicit ownership checks, review every policy referencing `accessrevamp_session_is_verified()`, and validate with two separate verified accounts.
+- **Recommended remediation:** Replace every session-only policy with explicit ownership checks, explicitly drop all old broad policies by exact name, review every policy referencing `accessrevamp_session_is_verified()`, and validate the complete migration chain with two separate verified accounts.
 
 ### VS-AUDIT-018 — Primary in-app updater endpoint is stale and invalid
 
@@ -102,7 +105,7 @@ Last completed audit: **2026-08-05 13:00 UTC**
 ### VS-AUDIT-002 — Refund-request insertion is not bound to the signed-in owner
 
 - **Severity:** High
-- **Status:** Open; not revalidated in the 2026-08-05 13:00 UTC run
+- **Status:** Open; not revalidated in the 2026-08-05 21:00 UTC run
 - **Source:** Supabase live RLS policies and grants
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -143,7 +146,7 @@ Last completed audit: **2026-08-05 13:00 UTC**
 
 - **Severity:** High
 - **Status:** Open pending validation and revocation decision
-- **Source:** GitHub secret-scanning notification and current repository searches
+- **Source:** GitHub secret-scanning notification and repository searches
 - **First seen:** 2026-08-01 20:01 UTC
 - **Last seen:** 2026-08-05 13:00 UTC
 - **Affected component:** Public source repository and credential hygiene
@@ -152,31 +155,31 @@ Last completed audit: **2026-08-05 13:00 UTC**
 - **Potential impact:** If the detected value was ever valid, it may remain publicly retrievable.
 - **Recommended remediation:** Review the secret-scanning alert directly, prove whether the value was synthetic, rotate/revoke if validity cannot be disproved, replace key-shaped fixtures, and close the alert only with documented evidence.
 
-### VS-AUDIT-017 — Google Workspace billing setup is incomplete for a merged support domain
+### VS-AUDIT-013 — Draft PR #31 fails exact-head validation after massive scope expansion
 
-- **Severity:** Medium
-- **Status:** Open / deadline pending
-- **Source:** Gmail Google Workspace mandatory service notice
-- **First seen:** 2026-08-04 20:47 UTC
-- **Last seen:** 2026-08-04 20:47 UTC
-- **Affected component:** Merged support-domain email and Google Workspace access; direct VibeSpace dependency is unconfirmed
-- **Immediate owner attention:** Yes, before August 6, 2026 if the tenant is required
-- **Evidence summary:** Google Workspace stated that billing setup for a Business Starter tenant was not completed and that a payment method must be added by August 6, 2026 to retain access. The tenant and support identity were AccessRevamp-oriented, not clearly VibeSpace-specific.
-- **Potential impact:** Loss or suspension of a support mailbox or related Workspace services if the tenant is still needed. No outage was observed in this run.
-- **Recommended remediation:** Confirm whether VibeSpace depends on the tenant or mailbox, complete billing directly in the Google Admin console if it is required, or formally decommission and reroute support traffic if it is not.
-
-### VS-AUDIT-013 — Draft PR #31 lacks green validation and contains a reporting/content mismatch
-
-- **Severity:** Medium
-- **Status:** Open / unmerged draft / exact current head unvalidated
-- **Source:** GitHub PR state, branch comparison, current-head file inventory, workflow lookup, status lookup, and PR comments
+- **Severity:** High
+- **Status:** Open / unmerged draft / exact current head failing CI
+- **Source:** GitHub PR metadata, branch comparison, changed-file inventory, exact-head workflow jobs/logs, recent PR activity, Gmail CI notices, and selected changed-file review
 - **First seen:** 2026-08-02 19:17 UTC
-- **Last seen:** 2026-08-05 13:00 UTC
-- **Affected component:** PR #31 merge readiness
-- **Immediate owner attention:** Yes, before review or merge
-- **Evidence summary:** PR #31 remains draft at `57ca83a89e4659e7464c1533398f9cd2143f7a28`, changes 59 files, is 37 commits ahead and ten behind `main`, and has no workflow run or combined status for the exact head. The additional behind commit since the previous run is the prior audit-log commit. The compare inventory still contains none of the named taskbar-usage implementation files, and the bot-reported implementation references a different commit rather than the current PR head.
-- **Potential impact:** Reviewers may believe missing or unvalidated functionality is present. Merging could ship regressions or omit a production-blocking feature.
-- **Recommended remediation:** Reconcile branch contents with reported implementation, sync with current `main`, and run all required frontend, Rust, release, browser, and native Windows tests on the exact final head before merging.
+- **Last seen:** 2026-08-05 21:04 UTC
+- **Affected component:** PR #31 merge readiness, application/runtime integrity, billing/auth/backend changes, and release assurance
+- **Immediate owner attention:** Yes; do not merge or deploy the current head
+- **Evidence summary:** PR #31 is an open draft at `5e51f5c3acbfc1808a003ae13ba47627b856505a`, 83 commits ahead and zero behind `main`, with 1,232 changed files, 137,549 additions, and 7,310 deletions. The exact-head CI failed in TypeScript checking: `src/viteFontAccess.test.ts` produced `TS6305` because a Vite declaration output had not been built and `TS7006` for an implicit `any`. Consequently the Vite build, Vitest suite, and release-manifest test were skipped. Rust `cargo check` succeeded and the deterministic AI-boundary workflow succeeded. The branch now spans native Tauri/Rust commands and capabilities, browser automation, terminals, model training, MCP/plugin handling, authentication, billing, Stripe/Supabase functions and migrations, voice/phone systems, AI-news deployment, and large UI/media additions. Earlier frontend-CI failures also occurred on predecessor heads. Review of the new free-news worker found a public empty-database ingestion trigger without an explicit single-flight/rate guard and one 500 path that returns raw exception text; deployment is stated as not executed.
+- **Potential impact:** Merging the current head would bypass core frontend build/test/release validation across a very large security- and billing-sensitive change set. Untested interactions may cause regressions, authorization failures, billing errors, resource exhaustion, or release breakage. No production deployment or exploit was established.
+- **Recommended remediation:** Freeze scope; fix the exact typecheck errors; obtain green frontend typecheck/build/unit/release-manifest, Rust, AI-boundary, backend function, migration, browser, packaged desktop, and native Windows results on one final SHA; run targeted security and billing tests; review every privileged capability and server endpoint; add a single-flight/rate guard and bounded public error responses to the news worker; require reviewer sign-off by subsystem; and do not merge until all release gates are green.
+
+### VS-AUDIT-019 — CI reports unresolved critical/high dependency advisories
+
+- **Severity:** Medium
+- **Status:** Open / affected packages and reachability not yet enumerated
+- **Source:** GitHub Actions exact-head frontend job log for PR #31
+- **First seen:** 2026-08-05 21:02 UTC
+- **Last seen:** 2026-08-05 21:02 UTC
+- **Affected component:** JavaScript dependency graph installed by the root workflow
+- **Immediate owner attention:** Yes, before merge or release
+- **Evidence summary:** `npm install` completed with 465 audited packages and reported seven advisories: two critical, four high, and one moderate. The available workflow output did not include package names, advisory identifiers, dependency paths, development/production scope, or fixed versions. This audit therefore does not claim that any advisory is exploitable in VibeSpace.
+- **Potential impact:** A vulnerable dependency may be present in the installed graph; actual impact depends on the affected package, reachability, and runtime use.
+- **Recommended remediation:** Run a committed-lockfile advisory report on the exact final SHA; capture package names, advisory IDs, dependency paths, production reachability, and fixed versions; update or replace affected dependencies; document justified non-reachable exceptions; and make unresolved critical/high production advisories release-blocking.
 
 ### VS-AUDIT-007 — VibeSpace support routing and triage cannot be reliably verified
 
@@ -184,10 +187,10 @@ Last completed audit: **2026-08-05 13:00 UTC**
 - **Status:** Open
 - **Source:** Gmail label counts and targeted inbox/spam/trash searches
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-05 13:00 UTC
+- **Last seen:** 2026-08-05 21:00 UTC
 - **Affected component:** Customer-support operations
 - **Immediate owner attention:** No, unless customers are already being directed to the current aliases
-- **Evidence summary:** The merged Gmail account contains 1,346 unread inbox messages, 65 unread spam messages, and 219 unread trash messages. Review of messages received since the previous run found no clear inbound VibeSpace operational request. The exact public support aliases and routing rules remain unverified.
+- **Evidence summary:** The merged Gmail account contains 1,368 unread inbox messages, 67 unread spam messages, and 219 unread trash messages. Review of messages since the previous run found no clear inbound VibeSpace operational request. The exact public support aliases and routing rules remain unverified.
 - **Potential impact:** Customer requests can be buried or missed, and no reliable support SLA can be established.
 - **Recommended remediation:** Confirm the public support address with a delivery test from an unrelated account and route it to a dedicated VibeSpace queue with ownership and response-state tracking.
 
@@ -207,15 +210,15 @@ Last completed audit: **2026-08-05 13:00 UTC**
 ### VS-AUDIT-009 — Desktop WebView and application-command authority remain broad
 
 - **Severity:** Medium
-- **Status:** Open / hardening review; configuration and command implementations re-read in this run
-- **Source:** `app/src-tauri/tauri.conf.json`, `app/src-tauri/capabilities/default.json`, `app/src-tauri/src/lib.rs`, `app/src-tauri/src/fsread.rs`, `app/src-tauri/src/preview.rs`, and official Tauri capability guidance
+- **Status:** Open / hardening review
+- **Source:** `app/src-tauri/tauri.conf.json`, capabilities, application commands, and official Tauri capability guidance
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last seen:** 2026-08-05 13:00 UTC
 - **Affected component:** Tauri asset protocol, native HTTP capability, process/updater capability, local custom-command IPC, and Content Security Policy
 - **Immediate owner attention:** No immediate exploit was demonstrated; harden before broader distribution
-- **Evidence summary:** The current configuration exposes `$APPDATA/**`, `$HOME/Downloads/**`, and `$RESOURCE/**` through the asset protocol; permits a broad set of external WebView and native HTTP origins; and grants the default capability `process:default`, `updater:default`, and multiple windows. The application registers custom local file-read/write/create commands. Their `root` argument is optional; when omitted, the implementation accepts any absolute path accessible to the current OS user, subject to size and OS permissions. Tauri documents that registered application commands are available to bundled app windows/webviews by default unless explicitly restricted with an application command manifest. The external preview surface does not declare remote capability URLs, and Tauri says remote sources cannot access APIs by default, so this audit did not establish that arbitrary preview content can invoke the file commands.
+- **Evidence summary:** The configuration exposes broad local asset roots, multiple external WebView/native HTTP origins, process/updater permissions, multiple windows, and custom local file commands. Their `root` argument can be omitted, allowing absolute paths accessible to the OS user. The external preview surface does not declare remote capability URLs, so this audit did not establish that arbitrary preview content can invoke the file commands. PR #31 materially expands native and browser capability-related code, but its exact frontend gate is failing and a complete privilege review was not feasible in this run.
 - **Potential impact:** Compromise of trusted bundled frontend code or a privileged local WebView could expose a broader local-file and system action surface than necessary. A remote-preview-to-IPC exploit was not demonstrated.
-- **Recommended remediation:** Define an explicit `AppManifest::commands` allowlist and per-window command permissions; separate privileged and unprivileged local windows; require a validated project root for every file operation; narrow roots, origins, window assignments, and plugin permissions to feature-specific requirements; avoid exposing the full Downloads directory; and add negative IPC/allowlist regression tests.
+- **Recommended remediation:** Define an explicit command allowlist and per-window permissions; separate privileged and unprivileged windows; require a validated project root for every file operation; narrow roots, origins, window assignments, and plugin permissions; and add negative IPC/allowlist regression tests.
 
 ### VS-AUDIT-011 — Email addresses are embedded in API URLs and retained in logs
 
@@ -270,6 +273,15 @@ Last completed audit: **2026-08-05 13:00 UTC**
 
 ## Resolved findings
 
+### VS-AUDIT-017 — Google Workspace billing setup was incomplete for a merged support domain
+
+- **Severity:** Medium
+- **Status:** Resolved 2026-08-05 20:47 UTC based on a superseding service notice
+- **First seen:** 2026-08-04 20:47 UTC
+- **Last seen open:** 2026-08-05 13:00 UTC
+- **Resolution evidence:** A newer Google Workspace notice for the same AccessRevamp-oriented tenant states that a paid subscription is scheduled to start on September 1, 2026. The prior finding specifically concerned incomplete billing setup and an August 6 retention deadline; the newer notice indicates a paid subscription is now scheduled.
+- **Residual limitation:** This audit did not access the Admin Console, verify the payment method, or prove that VibeSpace depends on the tenant. Subscription continuity still depends on successful billing at the scheduled start.
+
 ### VS-AUDIT-006 — `main` was failing CI
 
 - **Severity:** High
@@ -282,6 +294,43 @@ Last completed audit: **2026-08-05 13:00 UTC**
 ---
 
 ## Audit run history
+
+### Run: 2026-08-05 21:00 UTC
+
+**Checks completed**
+
+- Gmail: inbox/spam/trash unread counts; all recent messages over the audit interval plus margin; targeted VibeSpace/support/bug/security/billing/payment/refund/dispute/webhook/login/platform searches; direct reading of current and predecessor GitHub CI notices; direct reading of the Google Workspace billing notice; and explicit relevant spam/trash searches. No email, label, or inbox state was changed.
+- GitHub: repository metadata; default-branch commits; issues and pull requests updated since the previous run; PR #31, #32, and #33 metadata; PR #31 branch comparison and all changed filenames; exact-head workflow runs, jobs, and frontend logs; predecessor CI notices; selected new AI-news worker/setup files; selected Supabase migrations/configuration/Stripe-webhook code; and current audit-log state. No repository object other than this Markdown log was changed.
+- Supabase: attempted Security Advisor and API-log reads for project `vbkkimvedmklebghtkzs`. Both were blocked by interactive-authentication requirements; no live state was modified.
+- Stripe: attempted connected-account read. It was blocked by interactive-authentication requirements; no Stripe object was modified.
+
+**New findings:** VS-AUDIT-019.
+
+**Changed findings:** VS-AUDIT-001 and VS-AUDIT-012 received new draft-migration evidence; VS-AUDIT-007 received current Gmail evidence; VS-AUDIT-013 increased from Medium to High after the branch expanded to 1,232 files and exact-head CI failed.
+
+**Resolved findings:** VS-AUDIT-017, based on a superseding Workspace notice that a paid subscription is scheduled.
+
+**Observed healthy controls**
+
+- No application-code change landed on `main` after the previous run.
+- PR #31 remains draft and unmerged, is zero commits behind current `main`, and its Rust check and deterministic AI-boundary evaluation succeeded.
+- PR #33's exact head has a successful CI run and remains a draft standalone prototype.
+- The reviewed draft profile migration introduces owner-bound policies and a column-level profile update grant, although it does not yet remove the known broad policies.
+- The reviewed Stripe webhook draft includes raw-body signature verification design, body bounds, server-side price classification, idempotency handling, and bounded public error codes in the reviewed paths. This was code inspection only; deployment and live webhook behavior were not tested.
+- No clear new VibeSpace customer operational email was identified.
+
+**Limitations and blind spots**
+
+- Supabase live state, advisors, logs, policies, grants, functions, migrations, storage, realtime, SQL state, and performance could not be refreshed. Critical/high findings remain based on the last successful live validation at 2026-08-02 21:00 UTC.
+- Stripe account identity, account health, payments, customers, products, prices, subscriptions, invoices, refunds, disputes, events, and webhooks could not be refreshed.
+- PR #31 now changes 1,232 files. This run reviewed metadata, complete filename inventory, exact-head CI, and selected high-risk files but could not line-review or dynamically execute the entire branch.
+- The exact dependency packages and advisory identifiers were not present in the CI output; no exploitability conclusion was made.
+- Direct GitHub secret-scanning, Dependabot, code-scanning, branch-protection/ruleset, and discussion enumeration were not exposed by the connector.
+- The updater inference was not validated with a packaged desktop client.
+- Browserbase was unavailable because its connected quota was exhausted, and the local environment could not resolve public network names.
+- Gmail support routing cannot be proven until exact public aliases are confirmed and tested. Search semantics, merged-account volume, and connector result limits constrain completeness.
+
+**Remediation performed:** **None.** The only write was updating this Markdown audit record.
 
 ### Run: 2026-08-05 13:00 UTC
 
