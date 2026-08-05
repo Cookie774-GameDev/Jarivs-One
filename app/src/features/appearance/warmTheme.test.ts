@@ -676,6 +676,11 @@ describe('Warm theme presentation contract', () => {
       '/assets/themes/warm/settings/settings-landscape-v3-selected.webp',
     );
     expect(settingsModal).toContain('data-warm-settings-tab={tab}');
+    expect(settingsModal).toContain('onOpenAutoFocus={(event) =>');
+    expect(settingsModal).toContain('document.getElementById(`settings-tab-${tab}`)?.focus()');
+    expect(css).toMatch(
+      /:has\(\.mc7f-settings-modal\)\s+\[data-pet-overlay='true'\]\s*\{[\s\S]*?display:\s*none\s*!important/u,
+    );
     expect(css).toMatch(
       /\[data-warm-decoration='settings-scene'\]\s*>\s*img\s*\{[\s\S]*?width:\s*100%[\s\S]*?height:\s*auto/u,
     );

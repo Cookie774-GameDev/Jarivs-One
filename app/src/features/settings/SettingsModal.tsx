@@ -378,6 +378,10 @@ export function SettingsModal({
       }}
     >
       <DialogContent
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          document.getElementById(`settings-tab-${tab}`)?.focus();
+        }}
         overlayProps={{
           'data-monochrome-overlay': 'settings-modal',
           'data-sakura-overlay': 'settings-modal',

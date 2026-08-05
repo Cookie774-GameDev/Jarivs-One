@@ -1658,6 +1658,10 @@ html[data-theme='warm'] .mc7f-settings-modal {
     inset 0 1px 0 rgb(255 255 255 / 0.8);
 }
 
+html[data-theme='warm']:has(.mc7f-settings-modal) [data-pet-overlay='true'] {
+  display: none !important;
+}
+
 html[data-theme='warm'] .mc7f-settings-modal [data-warm-surface='settings-canvas'] {
   position: relative;
   isolation: isolate;
