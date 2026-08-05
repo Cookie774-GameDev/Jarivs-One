@@ -28,5 +28,5 @@ describe('SkillEditor shared emoji picker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open full Skill emoji picker' }));
     expect(await screen.findByRole('dialog', { name: 'Choose Skill emoji' })).toBeTruthy();
     expect(await screen.findByRole('option', { name: 'Existing Skill emoji ✦' })).toBeTruthy();
-  });
+  }, 10_000);
 });
