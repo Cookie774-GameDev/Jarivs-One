@@ -145,19 +145,17 @@ function Overview({
 }) {
   const completed = verifiedJobs(jobs);
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="max-w-2xl">
-          <p className="text-metadata font-semibold uppercase tracking-[0.18em] text-accent-copper">
-            Your private model workshop
-          </p>
-          <h1 className="mt-2 font-display text-hero text-foreground">Build Your Own AI</h1>
-          <p className="mt-2 max-w-xl text-body text-muted-foreground">
-            Add knowledge, prepare examples, train compatible models, and verify the result without
-            sending your source files away.
-          </p>
-        </div>
-        <Button variant="accent" size="lg" onClick={onCreate}>
+    <div className="space-y-5" data-warm-surface="model-foundry-overview">
+      <div className="max-w-2xl">
+        <p className="text-metadata font-semibold uppercase tracking-[0.18em] text-accent-copper">
+          Your private model workshop
+        </p>
+        <h1 className="mt-2 font-display text-hero text-foreground">Build Your Own AI</h1>
+        <p className="mt-2 max-w-xl text-body text-muted-foreground">
+          Add knowledge, prepare examples, train compatible models, and verify the result without
+          sending your source files away.
+        </p>
+        <Button className="mt-5" variant="accent" size="lg" onClick={onCreate}>
           <Sparkles className="h-4 w-4" />
           Create a local model
         </Button>
@@ -465,9 +463,17 @@ export function BuildYourOwnAIPage() {
       data-warm-surface="model-foundry-canvas"
     >
       <div
-        className="mx-auto grid min-h-full max-w-[1680px] gap-4 p-3 lg:grid-cols-[184px_minmax(0,1fr)] xl:grid-cols-[184px_minmax(0,1fr)_240px] xl:p-5"
+        className="mx-auto grid min-h-full max-w-[1680px] gap-4 p-3 lg:grid-cols-[235px_minmax(0,1fr)] xl:grid-cols-[235px_minmax(0,1fr)_280px] xl:gap-8 xl:p-[22px]"
         data-warm-surface="model-foundry-content"
       >
+        <div aria-hidden="true" data-warm-decoration="model-foundry-scene">
+          <img
+            src="/assets/themes/warm/model-foundry/model-foundry-landscape-v2.webp"
+            alt=""
+            decoding="async"
+            draggable={false}
+          />
+        </div>
         <nav
           aria-label="Model Foundry workflow"
           className="rounded-xl border border-border bg-panel p-2 lg:sticky lg:top-3 lg:h-fit"
@@ -507,7 +513,11 @@ export function BuildYourOwnAIPage() {
           </div>
         </nav>
 
-        <section className="min-w-0 py-1" aria-live="polite">
+        <section
+          className="min-w-0 py-1"
+          aria-live="polite"
+          data-warm-region="model-foundry-primary"
+        >
           {section === 'overview' ? (
             <Overview
               jobs={jobs}
@@ -538,14 +548,16 @@ export function BuildYourOwnAIPage() {
                     VRAM
                   </dt>
                   <dd className="mt-0.5">
-                    {hardware.vramGb ? `${hardware.vramGb} GB` : 'Unknown'}
+                    {hardware.vramGb ? `${hardware.vramGb.toFixed(1)} GB` : 'Unknown'}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-metadata uppercase tracking-wider text-muted-foreground">
                     RAM
                   </dt>
-                  <dd className="mt-0.5">{hardware.ramGb ? `${hardware.ramGb} GB` : 'Unknown'}</dd>
+                  <dd className="mt-0.5">
+                    {hardware.ramGb ? `${hardware.ramGb.toFixed(1)} GB` : 'Unknown'}
+                  </dd>
                 </div>
               </div>
               <div>
@@ -554,7 +566,9 @@ export function BuildYourOwnAIPage() {
                 </dt>
                 <dd className="mt-0.5 flex items-center gap-1.5">
                   <HardDrive className="h-3.5 w-3.5" />
-                  {hardware.freeStorageGb ? `${hardware.freeStorageGb} GB` : 'Measuring…'}
+                  {hardware.freeStorageGb
+                    ? `${hardware.freeStorageGb.toFixed(1)} GB`
+                    : 'Measuring…'}
                 </dd>
               </div>
             </dl>

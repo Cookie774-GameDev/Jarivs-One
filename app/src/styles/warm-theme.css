@@ -1307,7 +1307,7 @@ html[data-theme='warm'] [data-warm-surface='model-foundry-content'] {
   position: relative;
   z-index: 1;
   isolation: isolate;
-  overflow: hidden;
+  overflow: clip;
   min-height: calc(100% - var(--warm-foundry-inset));
   border: 1px solid rgb(151 91 51 / 0.18);
   border-radius: 24px 24px 0 0;
@@ -1319,18 +1319,51 @@ html[data-theme='warm'] [data-warm-surface='model-foundry-content'] {
 
 html[data-theme='warm'] [data-warm-surface='model-foundry-content']::before {
   position: absolute;
-  z-index: 0;
+  z-index: 1;
   inset: 0;
   pointer-events: none;
   content: '';
-  background: url('/assets/themes/warm/model-foundry/model-foundry-landscape-v2.webp') center
-    bottom / 100% 100% no-repeat;
-  opacity: 0.82;
+  background:
+    radial-gradient(ellipse 58% 50% at 53% 42%, rgb(252 241 224 / 0.92), transparent 76%),
+    linear-gradient(
+      90deg,
+      rgb(249 235 215 / 0.78) 0%,
+      transparent 26%,
+      transparent 76%,
+      rgb(249 232 207 / 0.08) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgb(251 239 221 / 0.42) 0%,
+      transparent 32%,
+      transparent 70%,
+      rgb(247 226 197 / 0.08) 100%
+    );
 }
 
-html[data-theme='warm'] [data-warm-surface='model-foundry-content'] > * {
+html[data-theme='warm'] [data-warm-decoration='model-foundry-scene'] {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+html[data-theme='warm'] [data-warm-decoration='model-foundry-scene'] > img {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: auto;
+  opacity: 0.88;
+}
+
+html[data-theme='warm']
+  [data-warm-surface='model-foundry-content']
+  > :not([data-warm-decoration='model-foundry-scene']) {
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 html[data-theme='warm']:has([data-warm-surface='model-foundry-canvas']) [data-pet-overlay='true'] {
@@ -1341,27 +1374,61 @@ html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] [class*='bg-c
 html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] [class*='bg-panel'],
 html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] [class*='bg-background/85'] {
   border-color: rgb(151 91 51 / 0.17) !important;
-  background-color: #fbefe1 !important;
+  background-color: rgb(251 239 225 / 0.97) !important;
   box-shadow:
-    0 6px 16px rgb(72 44 25 / 0.055),
-    inset 0 1px rgb(255 255 255 / 0.64);
+    0 5px 14px rgb(72 44 25 / 0.045),
+    inset 0 1px rgb(255 255 255 / 0.7);
   backdrop-filter: none;
 }
 
 html[data-theme='warm'] [data-warm-surface='model-foundry-canvas'] aside > section {
-  background-color: #fbefe1 !important;
+  background-color: rgb(251 239 225 / 0.98) !important;
 }
 
 html[data-theme='warm']
   [data-warm-surface='model-foundry-canvas']
   [aria-label='Local model blueprint'] {
-  background-color: #fbefe1 !important;
+  background-color: rgb(251 239 225 / 0.98) !important;
 }
 
 html[data-theme='warm']
   [data-warm-surface='model-foundry-canvas']
   [aria-label='Model Foundry workflow'] {
-  background-color: #f9ead7 !important;
+  background-color: rgb(249 234 215 / 0.985) !important;
+}
+
+html[data-theme='warm'] [data-warm-region='model-foundry-primary'] {
+  padding-top: 14px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] {
+  row-gap: 28px;
+}
+
+html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] h1 {
+  font-size: clamp(2.35rem, 2.75vw, 2.75rem);
+  line-height: 1.05;
+}
+
+html[data-theme='warm']
+  [data-warm-surface='model-foundry-overview']
+  [aria-label='Local model blueprint'] {
+  padding: 24px;
+}
+
+html[data-theme='warm']
+  [data-warm-surface='model-foundry-overview']
+  [aria-label='Local model blueprint']
+  > div:last-child
+  > div {
+  min-height: 146px;
+}
+
+html[data-theme='warm']
+  [data-warm-surface='model-foundry-overview']
+  [aria-labelledby='foundry-paths-heading']
+  article {
+  min-height: 182px;
 }
 
 @media (max-width: 1200px) {
@@ -1924,8 +1991,13 @@ html[data-theme='warm'] ::-webkit-scrollbar-thumb:hover {
     border-radius: 18px 18px 0 0;
   }
 
-  html[data-theme='warm'] [data-warm-surface='model-foundry-content']::before {
-    background-position: 68% bottom;
+  html[data-theme='warm'] [data-warm-decoration='model-foundry-scene'] > img {
+    left: 50%;
+    width: auto;
+    min-width: 100%;
+    max-width: none;
+    height: 100%;
+    transform: translateX(-56%);
   }
 }
 

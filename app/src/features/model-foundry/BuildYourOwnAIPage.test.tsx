@@ -50,6 +50,13 @@ describe('BuildYourOwnAIPage', () => {
     const page = screen.getByRole('main');
     expect(page.getAttribute('data-warm-surface')).toBe('model-foundry-canvas');
     expect(page.querySelector('[data-warm-surface="model-foundry-content"]')).toBeTruthy();
+    const scenicImage = page.querySelector<HTMLImageElement>(
+      '[data-warm-decoration="model-foundry-scene"] > img',
+    );
+    expect(scenicImage?.getAttribute('src')).toBe(
+      '/assets/themes/warm/model-foundry/model-foundry-landscape-v2.webp',
+    );
+    expect(scenicImage?.getAttribute('alt')).toBe('');
     expect(screen.getByRole('button', { name: 'Create a local model' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Set up local worker' })).toBeTruthy();
   });

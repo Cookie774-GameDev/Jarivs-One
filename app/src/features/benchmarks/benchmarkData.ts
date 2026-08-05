@@ -424,7 +424,11 @@ async function fetchLiveRows(now: number): Promise<BenchmarkRow[]> {
     if (!res.ok) throw new Error(`wulong: HTTP ${res.status}`);
     const data = (await res.json()) as unknown;
     const rows = normalizeWulong(data, now);
-    if (rows.length < 5) throw new Error(`wulong: only ${rows.length} models parsed`);
+    if (rows.length < REQUIRED_MODEL_COUNT) {
+      throw new Error(
+        `wulong: incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`,
+      );
+    }
     return rows;
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));

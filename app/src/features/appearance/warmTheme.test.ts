@@ -494,25 +494,27 @@ describe('Warm theme presentation contract', () => {
     expect(existsSync(landscape) ? readFileSync(landscape).byteLength : 0).toBeLessThan(100_000);
     expect(modelFoundryPage).toContain('data-warm-surface="model-foundry-canvas"');
     expect(modelFoundryPage).toContain('data-warm-surface="model-foundry-content"');
+    expect(modelFoundryPage).toContain('data-warm-decoration="model-foundry-scene"');
     expect(css).toMatch(
       /\[data-warm-surface='model-foundry-canvas'\]\s*\{[\s\S]*?--warm-foundry-inset:\s*12px[\s\S]*?position:\s*relative[\s\S]*?padding:\s*var\(--warm-foundry-inset\)\s+var\(--warm-foundry-inset\)\s+0[\s\S]*?background:\s*var\(--warm-shell-950\)/u,
     );
     expect(css).toMatch(
-      /\[data-warm-surface='model-foundry-content'\]\s*\{[\s\S]*?position:\s*relative[\s\S]*?isolation:\s*isolate[\s\S]*?overflow:\s*hidden[\s\S]*?border-radius:\s*24px\s+24px\s+0\s+0[\s\S]*?background:\s*#f8ead7[\s\S]*?box-shadow:/u,
+      /\[data-warm-surface='model-foundry-content'\]\s*\{[\s\S]*?position:\s*relative[\s\S]*?isolation:\s*isolate[\s\S]*?overflow:\s*clip[\s\S]*?border-radius:\s*24px\s+24px\s+0\s+0[\s\S]*?background:\s*#f8ead7[\s\S]*?box-shadow:/u,
     );
     expect(css).toMatch(
-      /\[data-warm-surface='model-foundry-content'\]::before\s*\{[\s\S]*?inset:\s*0[\s\S]*?model-foundry-landscape-v2\.webp[\s\S]*?center\s+bottom\s*\/\s*100%\s+100%\s+no-repeat/u,
+      /\[data-warm-decoration='model-foundry-scene'\]\s*>\s*img\s*\{[\s\S]*?width:\s*100%[\s\S]*?height:\s*auto/u,
     );
     const modelFoundryArtwork = css.match(
       /\[data-warm-surface='model-foundry-content'\]::before\s*\{([\s\S]*?)\n\}/u,
     )?.[1];
-    expect(modelFoundryArtwork).not.toContain('radial-gradient');
+    expect(modelFoundryArtwork).toContain('radial-gradient');
+    expect(modelFoundryArtwork).not.toContain('url(');
     expect(modelFoundryArtwork).not.toMatch(/\scover\s/u);
     expect(css).toMatch(
-      /\[data-warm-surface='model-foundry-content'\]\s*>\s*\*\s*\{[\s\S]*?position:\s*relative[\s\S]*?z-index:\s*1/u,
+      /\[data-warm-surface='model-foundry-content'\]\s*>\s*:not\(\[data-warm-decoration='model-foundry-scene'\]\)\s*\{[\s\S]*?position:\s*relative[\s\S]*?z-index:\s*2/u,
     );
     expect(css).toMatch(
-      /\[data-warm-surface='model-foundry-canvas'\]\s+\[class\*='bg-card'\][\s\S]*?background-color:\s*#fbefe1\s*!important[\s\S]*?backdrop-filter:\s*none/u,
+      /\[data-warm-surface='model-foundry-canvas'\]\s+\[class\*='bg-card'\][\s\S]*?background-color:\s*rgb\(251 239 225 \/ 0\.97\)\s*!important[\s\S]*?backdrop-filter:\s*none/u,
     );
     expect(css).toMatch(
       /\[data-monochrome-surface='app-shell'\]\[data-shell-route='model-foundry'\]\s*\{[\s\S]*?--warm-shell-950:\s*#24150d[\s\S]*?--warm-shell-850:\s*#382317/u,
