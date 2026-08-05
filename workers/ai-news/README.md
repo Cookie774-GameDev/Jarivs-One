@@ -1,154 +1,184 @@
-# VibeSpace Hourly AI News Worker
+# VibeSpace Free Hourly AI News
 
-Cloudflare backend for the VibeSpace news feed:
+A completely free, keyless Cloudflare backend for the VibeSpace News page.
 
-- **Cron Trigger** starts ingestion every hour at minute 7.
-- **Worker** fetches official RSS/Atom feeds plus optional X, Reddit, and YouTube sources.
-- **D1** stores normalized articles and ingestion history.
-- **Workers AI** optionally summarizes, categorizes, and scores a limited number of new items.
-- `GET /api/news` exposes the latest feed to VibeSpace.
-- `POST /admin/run` performs a protected manual ingestion run.
+## What it uses
 
-No API keys are committed and the desktop app is not modified by this package.
+- Cloudflare Worker on the Workers Free plan
+- Cloudflare Cron Trigger every hour at minute 7
+- Cloudflare D1 on the free allowance
+- Public RSS and Atom feeds only
+- No X API
+- No Reddit API
+- No YouTube API key
+- No paid AI model
+- No source API keys
 
-## Why minute 7?
+The Worker performs deterministic filtering, categories, company detection, model-name detection, scoring, and duplicate removal. It does not call an AI model.
 
-The trigger is `7 * * * *`, meaning seven minutes after every UTC hour. It still runs hourly while avoiding the busiest top-of-hour scheduling window.
+## Included feeds
 
-## 1. Install and authenticate
+- OpenAI News
+- Google AI Blog
+- Google DeepMind
+- Hugging Face Blog
+- NVIDIA Generative AI
+- Ollama GitHub releases
+- Hugging Face Transformers GitHub releases
+- A broad Google News RSS query covering OpenAI, Anthropic, Claude, Gemini, DeepSeek, Qwen, Mistral, and Grok
+
+Official company and project feeds are labeled `official`. The broad news feed is labeled `confirmed`, never `official`.
+
+## Deploy once
 
 ```bash
 cd workers/ai-news
 npm install
-npx wrangler login
+npm run setup:free
 ```
 
-## 2. Create D1
+Cloudflare may open a browser so you can sign in. Current Wrangler automatically creates the D1 resource because `wrangler.jsonc` contains a draft `DB` binding without an account-specific ID.
 
-```bash
-npx wrangler d1 create vibespace-news
+The setup command:
+
+1. Deploys the Worker and automatically provisions D1.
+2. Creates the database tables.
+3. Deploys the final Worker configuration.
+
+No billing upgrade or API keys are required.
+
+## Hourly schedule
+
+```text
+7 * * * *
 ```
 
-Copy `wrangler.jsonc.example` to `wrangler.jsonc`, then replace `REPLACE_WITH_D1_DATABASE_ID` with the ID returned by Cloudflare.
+The job runs seven minutes after every hour. The first request to `/api/news` also performs an immediate initial import when the database is empty, so you do not need to wait for the next Cron run.
 
-```bash
-npx wrangler d1 migrations apply vibespace-news --remote --config wrangler.jsonc
+## Read the output
+
+Cloudflare prints a URL after deployment similar to:
+
+```text
+https://vibespace-ai-news.YOUR-SUBDOMAIN.workers.dev
 ```
 
-## 3. Configure sources
+### JSON news feed
 
-Edit only the non-secret `vars` in `wrangler.jsonc`.
+```text
+GET https://vibespace-ai-news.YOUR-SUBDOMAIN.workers.dev/api/news
+```
 
-### Official RSS/Atom feeds
+Optional filters:
 
-`OFFICIAL_FEEDS` is a JSON array:
+```text
+/api/news?limit=50
+/api/news?verification=official
+/api/news?company=OpenAI
+/api/news?category=model-release
+/api/news?platform=release
+```
+
+`/api/news.json` returns the same output.
+
+Example response:
 
 ```json
-[
-  {
-    "name": "Company newsroom",
-    "url": "https://example.com/feed.xml",
-    "company": "Example AI",
-    "official": true
-  }
-]
+{
+  "generatedAt": "2026-08-05T15:40:00.000Z",
+  "count": 2,
+  "latestRun": {
+    "completed_at": "2026-08-05T15:39:58.000Z",
+    "status": "success",
+    "fetched_count": 24,
+    "stored_count": 4
+  },
+  "items": [
+    {
+      "id": 1,
+      "title": "Example model announcement",
+      "summary": "Short source-provided description.",
+      "url": "https://source.example/article",
+      "source": {
+        "platform": "official",
+        "name": "OpenAI News"
+      },
+      "company": "OpenAI",
+      "modelNames": ["GPT-5.6"],
+      "category": "model-release",
+      "verification": "official",
+      "importance": 95,
+      "publishedAt": "2026-08-05T14:00:00.000Z",
+      "collectedAt": "2026-08-05T15:39:58.000Z"
+    }
+  ]
+}
 ```
 
-### YouTube
+## Connect VibeSpace
 
-`YOUTUBE_CHANNELS` is a JSON array of official or trusted channel IDs:
+The desktop News page only needs to call the endpoint:
+
+```ts
+const response = await fetch(`${NEWS_API_URL}/api/news?limit=50`);
+if (!response.ok) throw new Error(`News API failed: ${response.status}`);
+const payload = await response.json();
+const stories = payload.items;
+```
+
+Store the deployed Worker origin as a normal application setting such as:
+
+```text
+VITE_NEWS_API_URL=https://vibespace-ai-news.YOUR-SUBDOMAIN.workers.dev
+```
+
+Do not hardcode a temporary preview URL.
+
+## Other endpoints
+
+- `GET /` — service information
+- `GET /health` — database count and last ingestion result
+- `GET /api/sources` — configured source list
+- `GET /api/news` — latest news data
+- `GET /api/news.json` — same JSON data
+
+## Add another free feed
+
+Set `EXTRA_FEEDS` as a JSON string in Cloudflare Worker variables. Each item supports:
 
 ```json
-[
-  {
-    "id": "UC_REPLACE_ME",
-    "name": "Example AI",
-    "company": "Example AI",
-    "official": true
-  }
-]
+{
+  "name": "Example official blog",
+  "url": "https://example.com/feed.xml",
+  "company": "Example AI",
+  "platform": "official",
+  "verification": "official"
+}
 ```
 
-### Reddit
+Only HTTPS RSS or Atom feeds should be added. A maximum of 12 feeds is processed per run to stay comfortably within Free-plan subrequest limits.
 
-`REDDIT_SUBREDDITS` is a comma-separated list. Reddit items always remain labeled `community`; AI cannot silently promote them to official news.
-
-### X
-
-`X_QUERY` controls recent search. Add official account handles to `X_OFFICIAL_USERNAMES` as a comma-separated list without `@`. Posts from all other accounts remain `unverified`.
-
-## 4. Add secrets
-
-Only add the services you plan to use:
-
-```bash
-npx wrangler secret put ADMIN_TOKEN
-npx wrangler secret put X_BEARER_TOKEN
-npx wrangler secret put REDDIT_CLIENT_ID
-npx wrangler secret put REDDIT_CLIENT_SECRET
-npx wrangler secret put REDDIT_USER_AGENT
-npx wrangler secret put YOUTUBE_API_KEY
-```
-
-For local development, copy `.dev.vars.example` to `.dev.vars`. Never commit `.dev.vars`.
-
-## 5. Test
+## Local test
 
 ```bash
 npm run typecheck
 npm run dev
 ```
 
-Trigger the scheduled handler locally:
+Apply the local schema:
 
 ```bash
-curl "http://localhost:8787/__scheduled?cron=7+*+*+*+*"
+npm run db:migrate:local
 ```
 
-Read the feed:
+Trigger the scheduled handler:
 
-```bash
-curl "http://localhost:8787/api/news?limit=25"
+```text
+http://localhost:8787/__scheduled?cron=7+*+*+*+*
 ```
 
-Run it manually:
+Then read:
 
-```bash
-curl -X POST \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
-  "http://localhost:8787/admin/run"
+```text
+http://localhost:8787/api/news
 ```
-
-## 6. Deploy
-
-```bash
-npm run deploy
-```
-
-After deployment, Cloudflare owns the hourly schedule. VibeSpace does not need to remain open.
-
-## API
-
-### `GET /health`
-
-Returns service status and the most recent ingestion run.
-
-### `GET /api/news`
-
-Query parameters:
-
-- `limit`: 1–100, default 30
-- `verification`: `official`, `confirmed`, `community`, or `unverified`
-- `company`: exact company name
-
-### `POST /admin/run`
-
-Starts a manual run. Requires `Authorization: Bearer <ADMIN_TOKEN>`.
-
-## Cost controls
-
-- AI is disabled by default.
-- When enabled, at most `AI_MAX_ITEMS_PER_RUN` items are sent to Workers AI.
-- `MAX_ITEMS_PER_RUN` is capped at 40 to protect D1 and Worker limits.
-- Existing URLs, external IDs, and deterministic content hashes are ignored.
-- AI output can never upgrade a rumor or community post to `official`.
