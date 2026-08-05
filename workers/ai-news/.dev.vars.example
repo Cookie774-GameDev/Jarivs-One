@@ -1,0 +1,8 @@
+# Use `npx wrangler secret put NAME` for deployed secrets.
+# Copy this file to `.dev.vars` only for local development.
+ADMIN_TOKEN=replace-with-a-long-random-token
+X_BEARER_TOKEN=
+REDDIT_CLIENT_ID=
+REDDIT_CLIENT_SECRET=
+REDDIT_USER_AGENT=VibeSpaceNews/0.1 by your-reddit-username
+YOUTUBE_API_KEY=
