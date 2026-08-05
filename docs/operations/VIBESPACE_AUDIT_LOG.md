@@ -6,12 +6,12 @@ This file is the append-only operational record for scheduled **read-only** audi
 
 ## Current status
 
-Last completed audit: **2026-08-05 05:00 UTC**
+Last completed audit: **2026-08-05 13:00 UTC**
 
 | Severity | Open findings |
 |---|---:|
 | Critical | 2 |
-| High | 5 |
+| High | 6 |
 | Medium | 6 |
 | Low | 0 |
 | Informational | 3 |
@@ -21,21 +21,23 @@ Last completed audit: **2026-08-05 05:00 UTC**
 
 1. **VS-AUDIT-012 — Critical:** A verified authenticated session could update any row in `profiles` without proving ownership at the last successful live Supabase check. Supabase could not be refreshed in this run.
 2. **VS-AUDIT-001 — Critical:** Broad verified-session RLS policies allowed cross-user reads at the last successful live Supabase check. Supabase could not be refreshed in this run.
-3. **VS-AUDIT-016 — High:** Supabase reported a critical `rls_disabled_in_public` exposure in a different project visible through the merged inbox. The affected project is not the VibeSpace target project, so direct VibeSpace impact is unconfirmed, but the owner should review it immediately.
-4. **VS-AUDIT-002 — High:** A permissive refund-request policy allowed insertion without binding the request to `auth.uid()` at the last successful live check.
-5. **VS-AUDIT-003 — High:** The connected Supabase project appeared to be AccessRevamp rather than the production VibeSpace backend.
-6. **VS-AUDIT-004 — High:** The connected Stripe account and Supabase payment catalog/runtime were mismatched at the last successful live check. A Stripe onboarding email for a different account strengthens the multiple-environment concern.
-7. **VS-AUDIT-005 — High:** The public-repository Stripe-key-pattern push-protection bypass remains unverified and unresolved.
-8. **VS-AUDIT-017 — Medium:** The merged support infrastructure has an incomplete Google Workspace billing setup with an August 6, 2026 retention deadline. Direct VibeSpace relevance is unconfirmed, but support-mail continuity could be affected if the account is shared.
-9. **VS-AUDIT-013 — Medium:** Draft PR #31 still has no green validation for its exact head, is now nine commits behind `main`, and still does not contain the taskbar-usage files described by the bot report.
-10. **VS-AUDIT-014 / VS-AUDIT-015 — Informational:** Google/Stripe and Vercel administrative sign-ins still require owner confirmation if they were not recognized.
+3. **VS-AUDIT-018 — High:** The first configured desktop-updater endpoint serves a stale, incomplete, unsigned `0.1.48` manifest while the application and signed release channel are at `1.5.0`. Tauri only falls through to a later endpoint after a non-2XX response, so the first endpoint's successful but invalid response is likely to prevent the valid signed release manifest from being checked.
+4. **VS-AUDIT-016 — High:** Supabase reported a critical `rls_disabled_in_public` exposure in a different project visible through the merged inbox. The affected project is not the VibeSpace target project, so direct VibeSpace impact is unconfirmed, but the owner should review it immediately.
+5. **VS-AUDIT-002 — High:** A permissive refund-request policy allowed insertion without binding the request to `auth.uid()` at the last successful live check.
+6. **VS-AUDIT-003 — High:** The connected Supabase project appeared to be AccessRevamp rather than the production VibeSpace backend.
+7. **VS-AUDIT-004 — High:** The connected Stripe account and Supabase payment catalog/runtime were mismatched at the last successful live check. A Stripe onboarding email for a different account strengthens the multiple-environment concern.
+8. **VS-AUDIT-005 — High:** The public-repository Stripe-key-pattern push-protection bypass remains unverified and unresolved.
+9. **VS-AUDIT-017 — Medium:** The merged support infrastructure has an incomplete Google Workspace billing setup with an August 6, 2026 retention deadline. Direct VibeSpace relevance is unconfirmed, but support-mail continuity could be affected if the account is shared.
+10. **VS-AUDIT-013 — Medium:** Draft PR #31 still has no green validation for its exact head, is now ten commits behind `main`, and still does not contain the taskbar-usage files described by the bot report.
+11. **VS-AUDIT-014 / VS-AUDIT-015 — Informational:** Google/Stripe and Vercel administrative sign-ins still require owner confirmation if they were not recognized.
 
 ### Changes since the previous run
 
-- **No new findings, severity changes, or resolutions.**
-- **VS-AUDIT-013 changed:** PR #31 remains open, unmerged, and draft at head `57ca83a89e4659e7464c1533398f9cd2143f7a28`. It remains 37 commits ahead but is now **nine commits behind** `main`; the additional divergence is the prior audit-log commit, not application code. GitHub exposed no workflow run or combined status for that exact head. The reported native taskbar files remain absent from the current PR comparison.
-- **VS-AUDIT-007 changed:** Gmail now reports **1,341 unread inbox messages**, **64 unread spam messages**, and **219 unread trash messages**. Review of messages received since the previous run found no clear VibeSpace support, billing, refund, login, payment, security, or bug report. Relevant spam/trash searches returned no matches.
-- **VS-AUDIT-005 / VS-AUDIT-009 received current GitHub evidence:** Current indexed searches returned no literal selected Stripe/Supabase secret patterns, `dangerouslySetInnerHTML`, explicit `Access-Control-Allow-Origin`, `eval(`, or `innerHTML` match. This does not clear repository history or substitute for native secret, dependency, or code-scanning alerts. The current Tauri security and capability files were re-read and remain broad but unchanged.
+- **New finding: VS-AUDIT-018.** The primary updater endpoint configured in `app/src-tauri/tauri.conf.json` points to `releases/channel.json`, which currently advertises only Windows `0.1.48` and omits the required artifact signature. The app is version `1.5.0`, and the release workflow verifies a separate four-platform signed `latest.json` release asset but does not update or validate the primary channel file. Tauri documents that endpoint fallback occurs only after a non-2XX response and that the complete static manifest is validated before version comparison. A packaged-client check was not executed, so the conclusion is recorded as a strongly supported operational inference rather than a demonstrated client failure.
+- **No severity changes or resolutions.**
+- **VS-AUDIT-013 changed:** PR #31 remains open, unmerged, and draft at head `57ca83a89e4659e7464c1533398f9cd2143f7a28`. It remains 37 commits ahead but is now **ten commits behind** `main`; the additional divergence is the prior audit-log commit, not application code. GitHub exposed no workflow run or combined status for that exact head. The reported native taskbar files remain absent from the current PR comparison.
+- **VS-AUDIT-007 changed:** Gmail now reports **1,346 unread inbox messages**, **65 unread spam messages**, and **219 unread trash messages**. Review of messages received since the previous run found no clear VibeSpace support, billing, refund, login, payment, security, or bug report. The relevant spam/trash result was unrelated marketing mail.
+- **VS-AUDIT-005 / VS-AUDIT-009 received current GitHub evidence:** Current indexed searches returned no literal selected Stripe/Supabase/OpenAI secret patterns, `dangerouslySetInnerHTML`, `eval(`, or `innerHTML` match. The broad Tauri asset, native HTTP, process, updater, and window permissions remain unchanged. The application also registers custom file-read/write commands whose `root` parameter is optional; when omitted, the command implementation does not impose a project-root boundary. This expands the consequence of a bundled-renderer compromise but is not evidence that remote preview content has IPC access or that exploitation occurred.
 - No application-code commit landed on `main` after the previous audit. The only newer default-branch commit was the prior audit-log update.
 - The frontend and Rust dependency manifests were re-read. No vulnerability conclusion was made because the connector does not expose dependency alerts and this run did not execute a package advisory scanner.
 - Supabase Security Advisor, logs, policies, functions, migrations, storage, realtime, SQL state, and performance could not be refreshed because the connector requested interactive user input in this non-interactive run.
@@ -48,7 +50,7 @@ Last completed audit: **2026-08-05 05:00 UTC**
 ### VS-AUDIT-012 — Verified sessions can update any customer profile
 
 - **Severity:** Critical
-- **Status:** Open; not revalidated in the 2026-08-05 05:00 UTC run because Supabase access required interactive input
+- **Status:** Open; not revalidated in the 2026-08-05 13:00 UTC run because Supabase access required interactive input
 - **Source:** Supabase live RLS policies, profile schema, and row counts
 - **First seen:** 2026-08-02 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -61,7 +63,7 @@ Last completed audit: **2026-08-05 05:00 UTC**
 ### VS-AUDIT-001 — Verified-session RLS policies allow cross-user reads
 
 - **Severity:** Critical
-- **Status:** Open; not revalidated in the 2026-08-05 05:00 UTC run because Supabase access required interactive input
+- **Status:** Open; not revalidated in the 2026-08-05 13:00 UTC run because Supabase access required interactive input
 - **Source:** Supabase live database policies and grants
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -70,6 +72,19 @@ Last completed audit: **2026-08-05 05:00 UTC**
 - **Evidence summary:** Nine permissive authenticated-role `SELECT` policies on `customer_projects`, `entitlements`, `orders`, `profiles`, `project_deliveries`, `project_design_options`, `project_updates`, `project_workflows`, and `refund_requests` accepted only `accessrevamp_session_is_verified()` and did not require row ownership. The authenticated role retained `SELECT` grants.
 - **Potential impact:** A verified customer may be able to read another customer's identity, project scope, design/workflow information, and future order or entitlement metadata.
 - **Recommended remediation:** Replace every session-only policy with explicit ownership checks, review every policy referencing `accessrevamp_session_is_verified()`, and validate with two separate verified accounts.
+
+### VS-AUDIT-018 — Primary in-app updater endpoint is stale and invalid
+
+- **Severity:** High
+- **Status:** Open / strongly supported configuration inference; packaged-client validation required
+- **Source:** `app/src-tauri/tauri.conf.json`, `releases/channel.json`, `.github/workflows/publish-v1-5-0.yml`, updater initialization in `app/src-tauri/src/lib.rs`, and official Tauri updater requirements
+- **First seen:** 2026-08-05 13:00 UTC
+- **Last seen:** 2026-08-05 13:00 UTC
+- **Affected component:** Desktop in-app updater, release delivery, and security/reliability patch distribution
+- **Immediate owner attention:** Yes
+- **Evidence summary:** The updater's first configured endpoint is the repository's raw `releases/channel.json`. That file currently reports version `0.1.48`, contains only `windows-x86_64`, and lacks the required artifact `signature`. The packaged application configuration is version `1.5.0`. The second endpoint points to the latest GitHub release's `latest.json`, and the v1.5.0 publication workflow verifies that separate release asset contains four signed platform entries. The workflow does not validate or replace `releases/channel.json`. Tauri documents that it advances to the next endpoint only after a non-2XX response and validates the complete static manifest before comparing versions. Because the first raw GitHub endpoint normally returns a successful response, its invalid manifest is likely to stop the check before the valid fallback is reached. No packaged application check was performed in this read-only run.
+- **Potential impact:** Existing desktop installations may fail to discover or install signed security and reliability updates. No signature bypass or arbitrary-code execution was established; Tauri signature verification remains configured and cannot be disabled.
+- **Recommended remediation:** Remove the legacy endpoint or atomically replace it with the same complete signed manifest used by the release; make the exact first configured endpoint part of the release gate; require all supported targets, URLs, and signatures; return a non-2XX/204 response when a channel is intentionally inactive; and add a packaged-app updater smoke test for every supported target before publishing.
 
 ### VS-AUDIT-016 — Supabase reported an RLS-disabled public table in a different project
 
@@ -87,7 +102,7 @@ Last completed audit: **2026-08-05 05:00 UTC**
 ### VS-AUDIT-002 — Refund-request insertion is not bound to the signed-in owner
 
 - **Severity:** High
-- **Status:** Open; not revalidated in the 2026-08-05 05:00 UTC run
+- **Status:** Open; not revalidated in the 2026-08-05 13:00 UTC run
 - **Source:** Supabase live RLS policies and grants
 - **First seen:** 2026-08-01 21:00 UTC
 - **Last successfully validated:** 2026-08-02 21:00 UTC
@@ -130,7 +145,7 @@ Last completed audit: **2026-08-05 05:00 UTC**
 - **Status:** Open pending validation and revocation decision
 - **Source:** GitHub secret-scanning notification and current repository searches
 - **First seen:** 2026-08-01 20:01 UTC
-- **Last seen:** 2026-08-05 05:00 UTC
+- **Last seen:** 2026-08-05 13:00 UTC
 - **Affected component:** Public source repository and credential hygiene
 - **Immediate owner attention:** Yes
 - **Evidence summary:** GitHub previously reported that push protection was bypassed for a detected Stripe API-key pattern in a test file. Current indexed searches found no literal selected live-key prefixes or key names, but that cannot prove the historical value was synthetic, removed from history, or revoked.
@@ -156,10 +171,10 @@ Last completed audit: **2026-08-05 05:00 UTC**
 - **Status:** Open / unmerged draft / exact current head unvalidated
 - **Source:** GitHub PR state, branch comparison, current-head file inventory, workflow lookup, status lookup, and PR comments
 - **First seen:** 2026-08-02 19:17 UTC
-- **Last seen:** 2026-08-05 05:00 UTC
+- **Last seen:** 2026-08-05 13:00 UTC
 - **Affected component:** PR #31 merge readiness
 - **Immediate owner attention:** Yes, before review or merge
-- **Evidence summary:** PR #31 remains draft at `57ca83a89e4659e7464c1533398f9cd2143f7a28`, changes 59 files, is 37 commits ahead and nine behind `main`, and has no workflow run or combined status for the exact head. The additional behind commit since the previous run is the prior audit-log commit. The compare inventory still contains none of the named taskbar-usage implementation files, and the bot-reported implementation references a different commit rather than the current PR head.
+- **Evidence summary:** PR #31 remains draft at `57ca83a89e4659e7464c1533398f9cd2143f7a28`, changes 59 files, is 37 commits ahead and ten behind `main`, and has no workflow run or combined status for the exact head. The additional behind commit since the previous run is the prior audit-log commit. The compare inventory still contains none of the named taskbar-usage implementation files, and the bot-reported implementation references a different commit rather than the current PR head.
 - **Potential impact:** Reviewers may believe missing or unvalidated functionality is present. Merging could ship regressions or omit a production-blocking feature.
 - **Recommended remediation:** Reconcile branch contents with reported implementation, sync with current `main`, and run all required frontend, Rust, release, browser, and native Windows tests on the exact final head before merging.
 
@@ -169,10 +184,10 @@ Last completed audit: **2026-08-05 05:00 UTC**
 - **Status:** Open
 - **Source:** Gmail label counts and targeted inbox/spam/trash searches
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-05 05:00 UTC
+- **Last seen:** 2026-08-05 13:00 UTC
 - **Affected component:** Customer-support operations
 - **Immediate owner attention:** No, unless customers are already being directed to the current aliases
-- **Evidence summary:** The merged Gmail account contains 1,341 unread inbox messages, 64 unread spam messages, and 219 unread trash messages. Review of messages received since the previous run found no clear inbound VibeSpace operational request. The exact public support aliases and routing rules remain unverified.
+- **Evidence summary:** The merged Gmail account contains 1,346 unread inbox messages, 65 unread spam messages, and 219 unread trash messages. Review of messages received since the previous run found no clear inbound VibeSpace operational request. The exact public support aliases and routing rules remain unverified.
 - **Potential impact:** Customer requests can be buried or missed, and no reliable support SLA can be established.
 - **Recommended remediation:** Confirm the public support address with a delivery test from an unrelated account and route it to a dedicated VibeSpace queue with ownership and response-state tracking.
 
@@ -189,18 +204,18 @@ Last completed audit: **2026-08-05 05:00 UTC**
 - **Potential impact:** Users can choose passwords known to be compromised.
 - **Recommended remediation:** Enable leaked-password protection, strengthen password requirements, and verify reset/change reauthentication behavior.
 
-### VS-AUDIT-009 — Desktop WebView file/network allowlists remain broad
+### VS-AUDIT-009 — Desktop WebView and application-command authority remain broad
 
 - **Severity:** Medium
-- **Status:** Open / hardening review; configuration re-read in this run
-- **Source:** `app/src-tauri/tauri.conf.json`, `app/src-tauri/capabilities/default.json`, and default-branch commit history
+- **Status:** Open / hardening review; configuration and command implementations re-read in this run
+- **Source:** `app/src-tauri/tauri.conf.json`, `app/src-tauri/capabilities/default.json`, `app/src-tauri/src/lib.rs`, `app/src-tauri/src/fsread.rs`, `app/src-tauri/src/preview.rs`, and official Tauri capability guidance
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-05 05:00 UTC
-- **Affected component:** Tauri asset protocol, native HTTP capability, process capability, and Content Security Policy
-- **Immediate owner attention:** No immediate exploit was demonstrated
-- **Evidence summary:** The current configuration exposes `$APPDATA/**`, `$HOME/Downloads/**`, and `$RESOURCE/**` through the asset protocol; permits a broad set of external WebView and native HTTP origins; and grants the main capability `process:default`. No application-code/configuration commit changed these files after the previous audit. This is a hardening observation, not evidence of exploitation.
-- **Potential impact:** A renderer compromise could have broader local-file visibility or external communication options than necessary.
-- **Recommended remediation:** Narrow roots, origins, window assignments, and plugin permissions to feature-specific requirements; avoid exposing the full Downloads directory; isolate privileged windows; and add allowlist regression tests.
+- **Last seen:** 2026-08-05 13:00 UTC
+- **Affected component:** Tauri asset protocol, native HTTP capability, process/updater capability, local custom-command IPC, and Content Security Policy
+- **Immediate owner attention:** No immediate exploit was demonstrated; harden before broader distribution
+- **Evidence summary:** The current configuration exposes `$APPDATA/**`, `$HOME/Downloads/**`, and `$RESOURCE/**` through the asset protocol; permits a broad set of external WebView and native HTTP origins; and grants the default capability `process:default`, `updater:default`, and multiple windows. The application registers custom local file-read/write/create commands. Their `root` argument is optional; when omitted, the implementation accepts any absolute path accessible to the current OS user, subject to size and OS permissions. Tauri documents that registered application commands are available to bundled app windows/webviews by default unless explicitly restricted with an application command manifest. The external preview surface does not declare remote capability URLs, and Tauri says remote sources cannot access APIs by default, so this audit did not establish that arbitrary preview content can invoke the file commands.
+- **Potential impact:** Compromise of trusted bundled frontend code or a privileged local WebView could expose a broader local-file and system action surface than necessary. A remote-preview-to-IPC exploit was not demonstrated.
+- **Recommended remediation:** Define an explicit `AppManifest::commands` allowlist and per-window command permissions; separate privileged and unprivileged local windows; require a validated project root for every file operation; narrow roots, origins, window assignments, and plugin permissions to feature-specific requirements; avoid exposing the full Downloads directory; and add negative IPC/allowlist regression tests.
 
 ### VS-AUDIT-011 — Email addresses are embedded in API URLs and retained in logs
 
@@ -267,6 +282,44 @@ Last completed audit: **2026-08-05 05:00 UTC**
 ---
 
 ## Audit run history
+
+### Run: 2026-08-05 13:00 UTC
+
+**Checks completed**
+
+- Gmail: inbox/spam/trash unread counts; recent VibeSpace-name search; targeted support/bug/security/billing/payment/refund/webhook/login terms; platform-sender search; and explicit relevant spam/trash search since the previous run. No email or inbox state was changed.
+- GitHub: repository metadata; latest default-branch commits; issue/PR activity since the previous run; PR #31 metadata, branch divergence, exact-head workflow/status checks, and comments; updater configuration, release channel, v1.5.0 publication gate, updater initialization, Tauri capability configuration, preview isolation, custom file-command implementation, and frontend/Rust dependency manifests; plus indexed searches for selected secret, injection, dynamic-code, and process-execution patterns. No repository object other than this Markdown log was changed.
+- Supabase: attempted Security Advisor read. It was blocked by interactive-authentication requirements; no live state was modified.
+- Stripe: attempted connected-account read. It was blocked by interactive-authentication requirements; no Stripe object was modified.
+
+**New findings:** VS-AUDIT-018.
+
+**Changed findings:** VS-AUDIT-005, VS-AUDIT-007, VS-AUDIT-009, and VS-AUDIT-013 received current evidence. Supabase- and Stripe-backed findings were explicitly left at their last successful validation timestamps.
+
+**Resolved findings:** None.
+
+**Observed healthy controls**
+
+- No application-code commit landed on `main` after the previous audit.
+- PR #31 remains draft and unmerged.
+- No workflow run or combined status exists for PR #31's exact head.
+- Current indexed repository searches returned no literal selected secret prefixes/key names or selected injection/dynamic-code patterns.
+- No issue or PR activity occurred after the previous run.
+- The external preview window has no configured remote capability URL, so remote preview pages are not granted Tauri API access by default.
+- No clear new VibeSpace customer support, billing, refund, login, payment, security, or bug email was identified.
+
+**Limitations and blind spots**
+
+- The updater failure inference was not validated by running a packaged desktop client against the configured endpoint chain.
+- Supabase live state, logs, policies, functions, advisors, migrations, storage, realtime, and payment runtime could not be refreshed. Critical/high target-project findings remain based on 2026-08-02 21:00 UTC evidence.
+- Stripe account identity, objects, events, disputes, refunds, payments, products, prices, subscriptions, invoices, webhooks, and account health could not be refreshed.
+- Direct GitHub secret-scanning alerts, dependency alerts, code-scanning alerts, branch protection/rulesets, and repository discussions were not exposed by the connector. Indexed search results cannot clear historical alerts or replace dedicated scanners.
+- PR #31 changes 59 files. This run reviewed metadata, branch divergence, changed-file inventory, exact-head status, and comments but did not dynamically execute the branch.
+- The codebase could not be cloned into the local audit environment because outbound network name resolution was unavailable, and Browserbase had exhausted its available browser minutes.
+- Gmail support routing cannot be proven until exact public aliases are confirmed and tested.
+- Log-retention windows, Gmail search semantics, and connector result limits constrain historical completeness.
+
+**Remediation performed:** **None.** The only write was updating this Markdown audit record.
 
 ### Run: 2026-08-05 05:00 UTC
 
