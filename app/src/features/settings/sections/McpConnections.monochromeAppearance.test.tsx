@@ -1,10 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  VibeSpaceGatewayConnection,
-  VibeSpaceMcpGateway,
-} from '@/lib/mcp/vibeSpaceGateway';
+import type { VibeSpaceGatewayConnection, VibeSpaceMcpGateway } from '@/lib/mcp/vibeSpaceGateway';
 import { McpConnections } from './McpConnections';
 
 function runtimeHarness(initial: readonly VibeSpaceGatewayConnection[] = []) {
@@ -67,7 +64,7 @@ describe('McpConnections MonoChrome appearance', () => {
     expect(card?.className).toContain('bg-panel/60');
     expect(card?.className).toContain('[html[data-theme=monochrome]_&]:bg-panel');
 
-    expect(screen.getByText('MCP Connections')).toBeTruthy();
+    expect(screen.getByText('VibeSpace MCP Gateway')).toBeTruthy();
     expect(screen.getByText(/credentialless Streamable HTTP/i)).toBeTruthy();
   });
 });

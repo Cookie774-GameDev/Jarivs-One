@@ -42,10 +42,10 @@ describe('SubscriptionCliBridge', () => {
     expect(onSignIn).toHaveBeenCalledOnce();
   });
 
-  it('titles the surface AI Connectors and omits embedded MCP setup', () => {
+  it('titles the surface AI Connectors and includes the shared MCP gateway', () => {
     render(<SubscriptionCliBridge autoDetect={false} records={{}} />);
     expect(screen.getByRole('heading', { name: 'AI Connectors' })).toBeTruthy();
-    expect(screen.queryByText(/MCP/i)).toBeNull();
+    expect(screen.getByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
   });
 
   it('shows bold product hierarchy with logos and clear status badges', () => {

@@ -24,6 +24,15 @@ const smokeGate = vi.hoisted(() => ({ enabled: false }));
 const whatsNew = vi.hoisted(() => ({ hasUpdate: false, currentVersion: 'test' }));
 
 vi.mock('@/stores/ui', () => ({
+  createDefaultDoneNotifications: () => ({
+    jarvis: false,
+    terminal: false,
+    tasks: false,
+    contextMaps: false,
+    skills: false,
+    connectors: false,
+    reminders: false,
+  }),
   useUIStore: (selector: (state: typeof ui) => unknown) => selector(ui),
 }));
 

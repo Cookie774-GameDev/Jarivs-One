@@ -36,7 +36,9 @@ import {
   createJarvisActionCatalog,
   DEFAULT_JARVIS_ACTION_REGISTRATIONS,
 } from '@/lib/jarvis/actions/catalog';
+import { canonicalizeBrowserJson } from '@/features/browser/browserActions';
 import { revokeBrowserGoalHostSession } from '@/features/browser/browserGoalIntegration';
+import { hashJarvisText } from '@/lib/jarvis/identity';
 
 describe('resolveAction', () => {
   it('finds built-in actions by id', () => {
@@ -352,6 +354,7 @@ describe('runAction', () => {
     )!;
     const beginExternalEffect = vi.fn();
     const dispatcher = createJarvisRegisteredBuiltinDispatcher();
+    const parameters = { url: 'https://example.test/next' };
 
     await expect(
       dispatcher({
@@ -363,8 +366,8 @@ describe('runAction', () => {
           tabId: 'tab-runner',
           frameId: null,
           target: { currentUrl: 'https://example.test/start' },
-          parameters: { url: 'https://example.test/next' },
-          parametersHash: 'reviewed-parameter-hash',
+          parameters,
+          parametersHash: await hashJarvisText(canonicalizeBrowserJson(parameters)),
           reviewedHash: 'reviewed-action-hash',
           expectedEffect: 'Navigate the active browser tab.',
           reviewedRisk: 'confirm',
@@ -392,7 +395,7 @@ describe('runAction', () => {
       kind: 'executor_returned',
       result: {
         ok: false,
-        error: 'A live scoped Vibe Browser host session is required.',
+        error: 'An explicit browser host source registration is required.',
       },
     });
     expect(beginExternalEffect).not.toHaveBeenCalled();

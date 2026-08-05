@@ -4,7 +4,7 @@ import { PetChatSurface } from './PetChatSurface';
 import { usePetPresentationStore } from './petPresentationStore';
 
 const updateChat = vi.fn(async (_id: unknown, _patch: unknown) => undefined);
-const createChat = vi.fn(async () => ({ id: 'chat-new', title: 'New chat' }));
+const createChat = vi.fn(async (_input: unknown) => ({ id: 'chat-new', title: 'New chat' }));
 const deleteChat = vi.fn(async (_id: unknown) => undefined);
 const setActiveChat = vi.fn();
 const uiState = vi.hoisted(() => ({
@@ -45,7 +45,7 @@ vi.mock('@/lib/db', () => ({
   chatRepo: {
     list: vi.fn(),
     update: (id: unknown, patch: unknown) => updateChat(id, patch),
-    create: () => createChat(),
+    create: (input: unknown) => createChat(input),
     delete: (id: unknown) => deleteChat(id),
   },
 }));
@@ -57,11 +57,13 @@ vi.mock('@/stores/auth', () => ({
 
 vi.mock('@/stores/ui', () => ({
   useUIStore: Object.assign(
-    (selector: (state: {
-      activeChatId: string | null;
-      setActiveChat: typeof setActiveChat;
-      theme: string;
-    }) => unknown) =>
+    (
+      selector: (state: {
+        activeChatId: string | null;
+        setActiveChat: typeof setActiveChat;
+        theme: string;
+      }) => unknown,
+    ) =>
       selector({
         activeChatId: uiState.activeChatId,
         setActiveChat,

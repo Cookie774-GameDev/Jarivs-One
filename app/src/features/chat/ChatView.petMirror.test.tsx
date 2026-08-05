@@ -16,6 +16,15 @@ vi.mock('./OrigamiChatDecor', () => ({ OrigamiChatDecor: () => null }));
 vi.mock('./chatLifecycle', () => ({ ensureActiveChat: vi.fn() }));
 
 vi.mock('@/stores/ui', () => ({
+  createDefaultDoneNotifications: () => ({
+    jarvis: false,
+    terminal: false,
+    tasks: false,
+    contextMaps: false,
+    skills: false,
+    connectors: false,
+    reminders: false,
+  }),
   useUIStore: (selector: (state: { activeChatId: string }) => unknown) =>
     selector({ activeChatId: 'chat-1' }),
 }));

@@ -2412,9 +2412,7 @@ export function Composer({
       // AI-router audit.)
       // New real user turns invalidate redo history for this chat.
       clearRedoStack(String(chatId));
-      let oversizedAttachment: Awaited<
-        ReturnType<typeof createOversizedMessageAttachment>
-      > = null;
+      let oversizedAttachment: Awaited<ReturnType<typeof createOversizedMessageAttachment>> = null;
       try {
         oversizedAttachment = await createOversizedMessageAttachment(sendText);
       } catch {
@@ -2592,7 +2590,10 @@ export function Composer({
     window.dispatchEvent(
       new CustomEvent('jarvis:cancel', { detail: { messageId: cancellationKey } }),
     );
-    toast.info('Stopping current reply', 'Your queued message will send as soon as cancellation completes.');
+    toast.info(
+      'Stopping current reply',
+      'Your queued message will send as soon as cancellation completes.',
+    );
   };
   interruptQueuedRef.current = interruptAndSendQueued;
 
@@ -3521,14 +3522,14 @@ export function Composer({
         return;
       }
       deepgramSessionRef.current = session;
-    } catch (error) {
+    } catch {
       if (generation !== transcribeGenRef.current) return;
       setSttListening(false);
       setSttInterim('');
       sttSnapshotRef.current = null;
       toast.error(
         'Deepgram dictation unavailable',
-        error instanceof Error ? error.message : 'Could not start Deepgram dictation.',
+        'Could not start Deepgram dictation. Check the connection and try again.',
       );
     }
   }

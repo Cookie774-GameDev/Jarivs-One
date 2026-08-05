@@ -278,7 +278,7 @@ describe('LocalModels local agent runtime settings', () => {
   it('blocks a download before connection when measured storage is insufficient', async () => {
     Object.defineProperty(window.navigator, 'storage', {
       configurable: true,
-      value: { estimate: vi.fn(async () => ({ quota: 4_000_000_000, usage: 1_000_000_000 })) },
+      value: { estimate: vi.fn(async () => ({ quota: 2_000_000_000, usage: 1_000_000_000 })) },
     });
     render(<LocalModels active={false} />);
 

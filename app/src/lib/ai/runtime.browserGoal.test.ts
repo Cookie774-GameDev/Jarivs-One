@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(new URL('./runtime.ts', import.meta.url), 'utf8');
+const source = readFileSync(resolve(__dirname, 'runtime.ts'), 'utf8');
 
 describe('AI runtime Browser Goal activation seam', () => {
   it('wraps the canonical builtin dispatcher with durable Browser Goal launch', () => {
