@@ -1398,11 +1398,11 @@ html[data-theme='warm']
 }
 
 html[data-theme='warm'] [data-warm-region='model-foundry-primary'] {
-  padding-top: 14px;
+  padding-top: 28px;
 }
 
 html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] {
-  row-gap: 28px;
+  row-gap: 40px;
 }
 
 html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] h1 {
@@ -1410,9 +1410,15 @@ html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] h1 {
   line-height: 1.05;
 }
 
+html[data-theme='warm'] [data-warm-surface='model-foundry-overview'] > div:first-child > button {
+  min-height: 46px;
+  padding-inline: 22px;
+}
+
 html[data-theme='warm']
   [data-warm-surface='model-foundry-overview']
   [aria-label='Local model blueprint'] {
+  min-height: 260px;
   padding: 24px;
 }
 
@@ -1427,7 +1433,8 @@ html[data-theme='warm']
 html[data-theme='warm']
   [data-warm-surface='model-foundry-overview']
   [aria-labelledby='foundry-paths-heading']
-  article {
+  > div:last-child
+  > button {
   min-height: 182px;
 }
 

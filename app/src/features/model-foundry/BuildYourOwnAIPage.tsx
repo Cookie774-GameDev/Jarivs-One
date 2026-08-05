@@ -183,27 +183,37 @@ function Overview({
               technical: 'RAG',
               description: 'Fastest path. Search private sources without changing model weights.',
               ready: true,
+              section: 'create' as const,
             },
             {
               title: 'Teach a specialty',
               technical: 'LoRA',
               description: 'Train a small adapter when a verified worker and compatible GPU fit.',
               ready: false,
+              section: 'train' as const,
             },
             {
               title: 'Train efficiently',
               technical: 'QLoRA',
               description: 'Use quantized training to lower memory needs on supported hardware.',
               ready: false,
+              section: 'train' as const,
             },
             {
               title: 'Train all weights',
               technical: 'Full weight',
               description: 'Available only for small models that safely fit the detected machine.',
               ready: false,
+              section: 'train' as const,
             },
           ].map((method) => (
-            <article key={method.technical} className="rounded-xl border border-border bg-card p-4">
+            <button
+              key={method.technical}
+              type="button"
+              className="rounded-xl border border-border bg-card p-4 text-left transition-[border-color,transform] hover:-translate-y-0.5 hover:border-accent-cyan/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan"
+              aria-label={`${method.technical}: ${method.title}`}
+              onClick={() => onOpenSection(method.section)}
+            >
               <div className="flex items-center justify-between gap-2">
                 <span className="rounded-full bg-muted px-2 py-1 font-mono text-metadata text-muted-foreground">
                   {method.technical}
@@ -224,7 +234,7 @@ function Overview({
               </div>
               <h3 className="mt-5 font-medium text-foreground">{method.title}</h3>
               <p className="mt-1 text-secondary text-muted-foreground">{method.description}</p>
-            </article>
+            </button>
           ))}
         </div>
       </section>
@@ -468,7 +478,7 @@ export function BuildYourOwnAIPage() {
       >
         <div aria-hidden="true" data-warm-decoration="model-foundry-scene">
           <img
-            src="/assets/themes/warm/model-foundry/model-foundry-landscape-v2.webp"
+            src="/assets/themes/warm/model-foundry/model-foundry-landscape-v3-selected.webp"
             alt=""
             decoding="async"
             draggable={false}

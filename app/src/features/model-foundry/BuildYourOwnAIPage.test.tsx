@@ -54,7 +54,7 @@ describe('BuildYourOwnAIPage', () => {
       '[data-warm-decoration="model-foundry-scene"] > img',
     );
     expect(scenicImage?.getAttribute('src')).toBe(
-      '/assets/themes/warm/model-foundry/model-foundry-landscape-v2.webp',
+      '/assets/themes/warm/model-foundry/model-foundry-landscape-v3-selected.webp',
     );
     expect(scenicImage?.getAttribute('alt')).toBe('');
     expect(screen.getByRole('button', { name: 'Create a local model' })).toBeTruthy();
@@ -97,6 +97,22 @@ describe('BuildYourOwnAIPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Prepare private training data' })).toBeTruthy();
     expect(screen.getByText(/images, video, audio, documents, code, and datasets/i)).toBeTruthy();
+  });
+
+  it('opens the real workflow section from each method card', async () => {
+    render(<BuildYourOwnAIPage />);
+
+    expect(
+      await screen.findByText(/verified local training worker has not been installed/i),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'RAG: Add knowledge' }));
+    expect(screen.getByRole('heading', { name: 'Start with a purpose' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'LoRA: Teach a specialty' }));
+    expect(
+      screen.getByRole('heading', { name: 'Use only what this computer can run' }),
+    ).toBeTruthy();
   });
 
   it('shows the truthful local training runtime state', async () => {

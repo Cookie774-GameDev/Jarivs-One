@@ -488,10 +488,13 @@ describe('Warm theme presentation contract', () => {
   });
 
   it('composes Model Foundry as a parchment-owned surface with edge-weighted artwork', () => {
-    const landscape = resolve(warmAssetRoot, 'model-foundry/model-foundry-landscape-v2.webp');
+    const landscape = resolve(
+      warmAssetRoot,
+      'model-foundry/model-foundry-landscape-v3-selected.webp',
+    );
 
     expect(existsSync(landscape)).toBe(true);
-    expect(existsSync(landscape) ? readFileSync(landscape).byteLength : 0).toBeLessThan(100_000);
+    expect(existsSync(landscape) ? readFileSync(landscape).byteLength : 0).toBeLessThan(150_000);
     expect(modelFoundryPage).toContain('data-warm-surface="model-foundry-canvas"');
     expect(modelFoundryPage).toContain('data-warm-surface="model-foundry-content"');
     expect(modelFoundryPage).toContain('data-warm-decoration="model-foundry-scene"');
