@@ -446,6 +446,148 @@ const NO_OUTPUT_SCHEMA: JsonSchema = {
   additionalProperties: true,
 };
 
+const BROWSER_APPROVAL_INPUT_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    schemaVersion: { type: 'number' },
+    reviewId: { type: 'string' },
+    origin: { type: 'string' },
+    tabId: { type: 'string' },
+    frameId: { type: 'string' },
+    target: { type: 'object', additionalProperties: true },
+    parameters: { type: 'object', additionalProperties: true },
+    parametersHash: { type: 'string' },
+    reviewedHash: { type: 'string' },
+    expectedEffect: { type: 'string' },
+    reviewedRisk: { type: 'string', enum: ['safe', 'confirm', 'dangerous'] },
+    capability: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', enum: ['browser.operator'] },
+        operation: { type: 'string' },
+      },
+      required: ['id', 'operation'],
+      additionalProperties: false,
+    },
+  },
+  required: [
+    'schemaVersion',
+    'reviewId',
+    'origin',
+    'tabId',
+    'target',
+    'parameters',
+    'parametersHash',
+    'reviewedHash',
+    'expectedEffect',
+    'reviewedRisk',
+    'capability',
+  ],
+  additionalProperties: false,
+};
+
+function validateCanonicalBrowserParameters(
+  input: Readonly<Record<string, unknown>>,
+  operation: 'browser.readPage' | 'browser.navigate' | 'browser.click' | 'browser.type',
+): Record<string, unknown> {
+  const record = plainRecord(input, `${operation} parameters`);
+  assertExactKeys(
+    record,
+    [
+      'schemaVersion',
+      'reviewId',
+      'origin',
+      'tabId',
+      'frameId',
+      'target',
+      'parameters',
+      'parametersHash',
+      'reviewedHash',
+      'expectedEffect',
+      'reviewedRisk',
+      'capability',
+    ],
+    `${operation} parameters`,
+  );
+  if (
+    record.schemaVersion !== 1 ||
+    !nonblank(record.reviewId, 'browser reviewId') ||
+    !nonblank(record.origin, 'browser origin') ||
+    !nonblank(record.tabId, 'browser tabId') ||
+    (record.frameId !== null &&
+      record.frameId !== undefined &&
+      !nonblank(record.frameId, 'browser frameId')) ||
+    !nonblank(record.parametersHash, 'browser parametersHash') ||
+    !nonblank(record.reviewedHash, 'browser reviewedHash') ||
+    !nonblank(record.expectedEffect, 'browser expectedEffect')
+  ) {
+    catalogError('browser approval binding is invalid');
+  }
+  const expectedRisk = operation === 'browser.readPage' ? 'safe' : 'confirm';
+  if (record.reviewedRisk !== expectedRisk) catalogError('browser reviewed risk is invalid');
+  const target = plainRecord(record.target, 'browser target');
+  const parameters = plainRecord(record.parameters, 'browser operation parameters');
+  const capability = plainRecord(record.capability, 'browser capability');
+  assertExactKeys(capability, ['id', 'operation'], 'browser capability');
+  if (capability.id !== 'browser.operator' || capability.operation !== operation) {
+    catalogError('browser capability binding is invalid');
+  }
+  const allowedParameterKeys =
+    operation === 'browser.readPage'
+      ? []
+      : operation === 'browser.navigate'
+        ? ['url']
+        : operation === 'browser.click'
+          ? ['x', 'y']
+          : ['text'];
+  assertExactKeys(parameters, allowedParameterKeys, 'browser operation parameters');
+  if (operation === 'browser.navigate') nonblank(parameters.url, 'browser URL');
+  if (operation === 'browser.click') {
+    if (
+      typeof parameters.x !== 'number' ||
+      !Number.isFinite(parameters.x) ||
+      typeof parameters.y !== 'number' ||
+      !Number.isFinite(parameters.y)
+    ) {
+      catalogError('browser coordinates are invalid');
+    }
+  }
+  if (operation === 'browser.type') nonblank(parameters.text, 'browser text');
+  return structuredClone({ ...record, target, parameters, capability });
+}
+
+function browserRegistration(
+  operation: 'browser.readPage' | 'browser.navigate' | 'browser.click' | 'browser.type',
+): JarvisRegisteredActionDefinition {
+  const readOnly = operation === 'browser.readPage';
+  return {
+    id: operation,
+    version: 1,
+    title: readOnly ? 'Read browser page' : `Browser ${operation.slice('browser.'.length)}`,
+    description: readOnly
+      ? 'Read a bounded observation from the active scoped Vibe Browser tab.'
+      : `Perform one reviewed ${operation.slice('browser.'.length)} operation in the active scoped Vibe Browser tab.`,
+    inputSchema: BROWSER_APPROVAL_INPUT_SCHEMA,
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['browser.operator'],
+    requiredEntitlements: [],
+    risk: readOnly ? 'read-only' : 'external-side-effect',
+    approval: readOnly ? 'never' : 'always',
+    expectedEffect: readOnly
+      ? 'Reads one bounded untrusted page observation without changing browser state.'
+      : 'Performs exactly one reviewed browser operation and records a post-action observation.',
+    exposeToAI: false,
+    executor: { kind: 'builtin', registryActionId: operation },
+    credentialBindings: [],
+    validateParameters: (input) => validateCanonicalBrowserParameters(input, operation),
+    deriveTarget: ({ params }) => ({
+      kind: 'external_resource',
+      service: 'vibe-browser',
+      resourceId: `${String(params.origin)}|${String(params.tabId)}`,
+    }),
+  };
+}
+
 const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
 const GMAIL_RESOURCE_ID = /^[A-Za-z0-9_-]{1,256}$/;
@@ -2095,6 +2237,10 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
   ...GOOGLE_DRIVE_ACTION_REGISTRATIONS,
   ...CANVA_ACTION_REGISTRATIONS,
   ...ZAPIER_ACTION_REGISTRATIONS,
+  browserRegistration('browser.readPage'),
+  browserRegistration('browser.navigate'),
+  browserRegistration('browser.click'),
+  browserRegistration('browser.type'),
   {
     id: 'chat.model.switch',
     version: 1,

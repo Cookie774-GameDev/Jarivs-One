@@ -31,6 +31,7 @@ from .bridge_endpoint import router as bridge_router
 from .config import get_settings
 from .livekit_handler import router as livekit_router
 from .outbound import router as outbound_router
+from .telnyx_gateway import router as telnyx_router
 from .twilio_handler import router as twilio_router
 
 logging.basicConfig(
@@ -65,6 +66,7 @@ app.include_router(twilio_router)
 app.include_router(livekit_router)
 app.include_router(outbound_router)
 app.include_router(bridge_router)
+app.include_router(telnyx_router)
 
 
 @app.get("/health")
@@ -75,6 +77,8 @@ async def health():
         "version": "0.1.0",
         "transports": {
             "twilio": s.has_twilio,
+            "telnyx": s.has_telnyx,
+            "call_anyone": s.has_call_anyone_pipeline,
             "livekit": s.has_livekit,
             "supabase": s.has_supabase,
         },
@@ -91,8 +95,12 @@ async def admin_metrics():
 async def startup():
     s = get_settings()
     log.info(
-        "phone-jarvis cloud starting | twilio=%s livekit=%s supabase=%s",
-        s.has_twilio, s.has_livekit, s.has_supabase,
+        "phone-jarvis cloud starting | twilio=%s telnyx=%s call_anyone=%s livekit=%s supabase=%s",
+        s.has_twilio,
+        s.has_telnyx,
+        s.has_call_anyone_pipeline,
+        s.has_livekit,
+        s.has_supabase,
     )
     # Daily prune of audit logs older than retention window
     asyncio.create_task(_audit_prune_loop())

@@ -100,6 +100,17 @@ export function localOllamaRequestPolicy(mode: LocalAgentMode): Readonly<{
     : Object.freeze({ think: false, numPredict: 512, requiresVerification: false });
 }
 
+export function localAgentSystemInstruction(mode: LocalAgentMode): string {
+  if (mode === 'deep') {
+    return [
+      'Deep mode uses a Planner → Executor → Verifier loop for difficult work.',
+      'Plan a small sequence, execute tools only through the existing approval and permission system, then verify every claimed result with verifiable evidence.',
+      'If execution or verification fails, report the failure instead of claiming completion.',
+    ].join(' ');
+  }
+  return 'Fast mode: Answer directly with minimal reasoning. Use tools only through the existing approval and permission system.';
+}
+
 function boundedCount(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.min(Math.floor(value), MAX_DISCLOSURE_CHARS);

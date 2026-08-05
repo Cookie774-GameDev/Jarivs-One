@@ -9,13 +9,13 @@ import {
   Maximize2,
   Minimize2,
   Rocket,
-  Sparkles,
   Phone,
   PhoneOff,
   Megaphone,
   MoreHorizontal,
   Newspaper,
   PanelRight,
+  BrainCircuit,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
@@ -36,6 +36,7 @@ import { planAllowsJarvisCall } from '@/lib/entitlements';
 import { useAppAdmin } from '@/lib/admin';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+import { ChatEngineMenu } from '@/features/browser-chat';
 
 /**
  * TopBar - 40px chrome at the very top of the app.
@@ -68,6 +69,7 @@ type Route =
   | 'kanban'
   | 'schedule'
   | 'agents'
+  | 'model-foundry'
   | 'agent-detail'
   | 'project-detail'
   | 'context'
@@ -85,6 +87,7 @@ const ROUTES: ReadonlyArray<Route> = [
   'kanban',
   'schedule',
   'agents',
+  'model-foundry',
   'context',
   'skills',
   'benchmarks',
@@ -101,6 +104,7 @@ const ROUTE_LABELS: Record<Route, string> = {
   kanban: 'Kanban',
   schedule: 'Schedule',
   agents: 'Agents',
+  'model-foundry': 'Build Your Own AI',
   'agent-detail': 'Agent',
   'project-detail': 'Project',
   context: 'Context',
@@ -136,7 +140,6 @@ export function TopBar() {
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   // V2 — launcher + fullscreen
   const setLauncherOpen = useUIStore((s) => s.setLauncherOpen);
-  const setAssistantOpen = useUIStore((s) => s.setAssistantOpen);
   const setWhatsNewOpen = useUIStore((s) => s.setWhatsNewOpen);
   const setNewsPanelOpen = useUIStore((s) => s.setNewsPanelOpen);
   const focusActive = useFullscreenStore((s) => s.focusActive);
@@ -149,6 +152,7 @@ export function TopBar() {
 
   // V3 — route store (defensive read; field may be absent pre-Slice 4).
   const route = useUIStore((s) => (s as unknown as RouteStoreShape).route ?? 'chat');
+  const theme = useUIStore((s) => s.theme);
   const setRouteRaw = useUIStore((s) => (s as unknown as RouteStoreShape).setRoute);
 
   const setRouteWarned = React.useRef(false);
@@ -179,6 +183,8 @@ export function TopBar() {
   // auth/workspaces stores expose them.
   const workspaceLabel = workspaceId ? 'Workspace' : 'Loading…';
   const projectLabel = projectId ? 'Project' : null;
+  const warmBenchmarks = route === 'benchmarks' && theme === 'warm';
+  const visibleWorkspaceLabel = warmBenchmarks ? 'VibeSpace' : workspaceLabel;
 
   const offChat = route !== 'chat';
   const [routeMenuOpen, setRouteMenuOpen] = React.useState(false);
@@ -208,6 +214,7 @@ export function TopBar() {
       aria-label="Application header"
       data-monochrome-surface="top-bar"
       data-sakura-shell-region="top-bar"
+      data-warm-shell-route={warmBenchmarks ? 'benchmarks' : undefined}
       data-tauri-drag-region
       className={cn(
         'sakura-shell-top-bar drag-region relative flex min-w-0 shrink-0 items-center gap-2 border-b bg-panel pr-2 text-secondary transition-[height,padding,colors] duration-150',
@@ -242,6 +249,7 @@ export function TopBar() {
           type="button"
           onClick={() => setVoiceModalOpen(true)}
           aria-label="Open Jarvis voice panel"
+          data-warm-brand-mark={warmBenchmarks ? 'true' : undefined}
           data-sik-evidence={kernelSmokeEnabled ? SIK_EVIDENCE.voiceOpen : undefined}
           className={cn(
             TOP_BAR_POINTER_TARGET_CLASS,
@@ -286,7 +294,7 @@ export function TopBar() {
             workspaceId ? 'text-foreground' : 'text-muted-foreground',
           )}
         >
-          {workspaceLabel}
+          {visibleWorkspaceLabel}
         </span>
         {projectLabel && (
           <>
@@ -363,6 +371,9 @@ export function TopBar() {
               are visible inline; everything else moves into the popover so
               the user keeps the maximum amount of vertical room for the
               workspace canvas (terminals especially). */}
+      <div className="no-drag flex items-center">
+        <ChatEngineMenu onNavigateChat={() => setRoute('chat')} />
+      </div>
       {compactChrome ? (
         <CompactRightCluster
           overflowOpen={overflowOpen}
@@ -371,7 +382,6 @@ export function TopBar() {
           toggleFocus={toggleFocus}
           voiceListening={composerSttListening}
           setLauncherOpen={setLauncherOpen}
-          setAssistantOpen={setAssistantOpen}
           openSchedule={() => setRoute('schedule')}
           setPaletteOpen={setPaletteOpen}
           toggleComposerStt={toggleComposerStt}
@@ -398,15 +408,16 @@ export function TopBar() {
             </Button>
           </Hint>
 
-          <Hint label="Jarvis Assistant" hotkey={HOTKEYS.ASSISTANT}>
+          <Hint label="Build Your Own AI">
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => setAssistantOpen(true)}
-              aria-label="Open Jarvis Assistant"
+              onClick={() => setRoute('model-foundry')}
+              aria-label="Open Build Your Own AI"
+              aria-pressed={route === 'model-foundry'}
               className={TOP_BAR_POINTER_TARGET_CLASS}
             >
-              <Sparkles className="h-4 w-4" />
+              <BrainCircuit className="h-4 w-4" />
             </Button>
           </Hint>
 
@@ -554,8 +565,8 @@ export function TopBar() {
           >
             <Avatar
               seed={displayName || workspaceId || 'jarvis'}
-              initials={(displayName || 'J').charAt(0)}
-              size={24}
+              initials={warmBenchmarks ? 'J' : (displayName || 'J').charAt(0)}
+              size={warmBenchmarks ? 36 : 24}
             />
           </button>
         </div>
@@ -568,7 +579,7 @@ export function TopBar() {
  * Compact right-cluster for the terminal route + Workspace Focus Mode.
  *
  * Renders inline: Fullscreen toggle, ⋯ overflow popover, Settings, small
- * avatar. Everything else (Quick launcher, Assistant, Schedule, Search,
+ * avatar. Everything else (Quick launcher, Schedule, Search,
  * Voice, Call, What's new) moves into the popover so the user keeps the
  * maximum amount of vertical room for terminals.
  *
@@ -582,7 +593,6 @@ interface CompactRightClusterProps {
   toggleFocus: () => void;
   voiceListening: boolean;
   setLauncherOpen: (v: boolean) => void;
-  setAssistantOpen: (v: boolean) => void;
   openSchedule: () => void;
   setPaletteOpen: (v: boolean) => void;
   toggleComposerStt: () => void;
@@ -599,6 +609,7 @@ interface CompactRightClusterProps {
 function CompactRightCluster(props: CompactRightClusterProps) {
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const toggleInspector = useUIStore((s) => s.toggleInspector);
+  const route = useUIStore((s) => (s as unknown as RouteStoreShape).route ?? 'chat');
   const {
     overflowOpen,
     setOverflowOpen,
@@ -606,7 +617,6 @@ function CompactRightCluster(props: CompactRightClusterProps) {
     toggleFocus,
     voiceListening,
     setLauncherOpen,
-    setAssistantOpen,
     openSchedule,
     setPaletteOpen,
     toggleComposerStt,
@@ -677,10 +687,10 @@ function CompactRightCluster(props: CompactRightClusterProps) {
               onClick={closeAfter(() => setLauncherOpen(true))}
             />
             <MenuRow
-              icon={<Sparkles className="h-3.5 w-3.5" />}
-              label="Assistant"
-              hotkey={HOTKEYS.ASSISTANT}
-              onClick={closeAfter(() => setAssistantOpen(true))}
+              icon={<BrainCircuit className="h-3.5 w-3.5" />}
+              label="Build Your Own AI"
+              onClick={closeAfter(() => setRoute('model-foundry'))}
+              accent={route === 'model-foundry'}
             />
             <MenuRow
               icon={<CalendarDays className="h-3.5 w-3.5" />}

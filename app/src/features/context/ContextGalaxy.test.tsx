@@ -67,6 +67,12 @@ describe('ContextGalaxy', () => {
     expect(rendered.container.querySelector('canvas')?.getAttribute('data-animation-enabled')).toBe(
       'false',
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Use 2D fallback' }));
+    expect(
+      rendered.container
+        .querySelector('[data-context-edge="root-notes"]')
+        ?.getAttribute('data-context-activity'),
+    ).toBe('true');
   });
 
   it('supports keyboard node selection and direct 2D fallback', () => {

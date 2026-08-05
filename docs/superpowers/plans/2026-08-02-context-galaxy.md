@@ -21,10 +21,12 @@
 ### Task 1: Deterministic galaxy domain
 
 **Files:**
+
 - Create: `app/src/features/context/contextGalaxyLayout.ts`
 - Test: `app/src/features/context/contextGalaxyLayout.test.ts`
 
 **Interfaces:**
+
 - Consumes: stable `{ id, parentId, depth, order, radius, groupId }` graph nodes and edges.
 - Produces: `buildGalaxyLayout`, `projectGalaxyPoint`, `selectGalaxyLod`, and camera reducers.
 
@@ -36,10 +38,12 @@
 ### Task 2: Reusable WebGL2 galaxy
 
 **Files:**
+
 - Create: `app/src/features/context/ContextGalaxy.tsx`
 - Test: `app/src/features/context/ContextGalaxy.test.tsx`
 
 **Interfaces:**
+
 - Consumes: layout nodes/edges, selected/highlighted IDs, real activity IDs, mode and selection callback.
 - Produces: full/compact interactive graph with HTML labels/details and accessible list fallback.
 
@@ -51,11 +55,13 @@
 ### Task 3: ContextPage replacement without data changes
 
 **Files:**
+
 - Modify: `app/src/features/context/ContextPage.tsx`
 - Modify: `app/src/features/context/jarvisGraphActivity.ts`
 - Test: existing ContextPage and graph-activity focused tests.
 
 **Interfaces:**
+
 - Consumes: existing tree/layout, selection, highlighted retrieval IDs and performance index.
 - Produces: `ContextGalaxy` inputs and a bounded current-map snapshot for the voice embed.
 
@@ -67,10 +73,12 @@
 ### Task 4: Compact galaxy under voice transcript
 
 **Files:**
+
 - Modify: `app/src/features/voice/VoiceModal.tsx`
 - Modify: `app/src/features/voice/VoiceModal.turn.test.tsx`
 
 **Interfaces:**
+
 - Consumes: the current scoped galaxy snapshot and VoiceModal session account/project identity.
 - Produces: compact live graph between transcript and Command Center or an accessible unavailable state.
 
@@ -82,6 +90,7 @@
 ### Task 5: Closure
 
 **Files:**
+
 - Review only the exact files listed above.
 
 - [ ] Run focused layout/component/activity/ContextPage/VoiceModal tests.

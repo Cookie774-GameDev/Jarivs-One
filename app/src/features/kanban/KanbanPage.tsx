@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check,
@@ -262,11 +262,20 @@ function ChecklistCard({
   const accentRing = accent === 'copper' ? 'ring-accent-copper/60' : 'ring-accent-sage/60';
   const accentText = accent === 'copper' ? 'text-accent-copper' : 'text-accent-sage';
   const accentBar = accent === 'copper' ? 'bg-accent-copper' : 'bg-accent-sage';
+  const inputRef = useRef<HTMLInputElement>(null);
+  const handleAddRequest = () => {
+    if (!draft.trim()) {
+      inputRef.current?.focus();
+      return;
+    }
+    onAdd();
+  };
 
   return (
     <section
       data-monochrome-surface="kanban-column"
       data-sakura-surface="kanban-column"
+      data-warm-state={items.length === 0 ? 'empty' : 'populated'}
       className="relative flex min-h-[360px] flex-col gap-3 overflow-hidden rounded-xl bg-paper-soft p-5 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
     >
       <div
@@ -303,12 +312,13 @@ function ChecklistCard({
 
       <div className="flex gap-1.5">
         <Input
+          ref={inputRef}
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              onAdd();
+              handleAddRequest();
             }
           }}
           aria-label={`New item for ${title}`}
@@ -319,9 +329,10 @@ function ChecklistCard({
           type="button"
           size="sm"
           variant="accent"
-          onClick={onAdd}
-          disabled={!draft.trim()}
+          onClick={handleAddRequest}
           aria-label={`Add item to ${title}`}
+          data-warm-action="kanban-add"
+          data-warm-accent={accent}
         >
           <Plus className="h-3.5 w-3.5" />
         </Button>
@@ -329,7 +340,10 @@ function ChecklistCard({
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         {items.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-mid/60 px-3 py-6 text-center text-secondary text-muted-foreground [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-solid">
+          <div
+            data-warm-surface="kanban-empty-copy"
+            className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-mid/60 px-3 py-6 text-center text-secondary text-muted-foreground [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-solid"
+          >
             {emptyHint}
           </div>
         ) : (

@@ -7,7 +7,12 @@ import { Appearance } from './Appearance';
 describe('Appearance theme selector', () => {
   afterEach(() => {
     cleanup();
-    useUIStore.setState({ theme: 'default' });
+    useUIStore.setState({
+      theme: 'default',
+      appBrightness: 100,
+      sakuraPetalsEnabled: true,
+      sakuraPetalSpeed: 'normal',
+    });
     useFullscreenStore.setState({
       focusActive: false,
       systemActive: false,
@@ -24,34 +29,63 @@ describe('Appearance theme selector', () => {
     });
   });
 
-  it('renders exactly five accessible theme choices and applies VibeSpace', () => {
+  it('renders exactly four release themes and applies Jarvis One', () => {
     useUIStore.setState({ theme: 'default' });
     render(<Appearance />);
 
     const themes = screen.getByRole('radiogroup', { name: 'App theme' });
-    expect(within(themes).getAllByRole('radio')).toHaveLength(5);
+    expect(within(themes).getAllByRole('radio')).toHaveLength(4);
     expect(
       within(themes)
         .getByRole('radio', { name: /Default/ })
         .getAttribute('aria-checked'),
     ).toBe('true');
 
-    fireEvent.click(screen.getByRole('radio', { name: /VibeSpace/ }));
-    expect(useUIStore.getState().theme).toBe('vibespace');
-    expect(document.documentElement.dataset.theme).toBe('vibespace');
+    fireEvent.click(screen.getByRole('radio', { name: /Jarvis One/ }));
+    expect(useUIStore.getState().theme).toBe('jarvis');
+    expect(document.documentElement.dataset.theme).toBe('jarvis');
   });
 
-  it('offers Sakura as the cel-painted fifth choice and applies it', () => {
+  it('keeps VibeSpace, Sakura, and Origami out of the current release selector', () => {
     render(<Appearance />);
 
-    const sakura = screen.getByRole('radio', { name: /Sakura/ });
-    expect(sakura.textContent).toContain('Cel-painted dusk workspace.');
-    expect(sakura.querySelector('svg')?.getAttribute('class')).toMatch(/\blucide\b/);
+    expect(screen.queryByRole('radio', { name: /^VibeSpace/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^Sakura/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^Origami/ })).toBeNull();
+    expect(screen.getByRole('radio', { name: /^Warm/ })).toBeTruthy();
+  });
 
-    fireEvent.click(sakura);
-    expect(useUIStore.getState().theme).toBe('sakura');
-    expect(document.documentElement.dataset.theme).toBe('sakura');
-    expect(document.documentElement.dataset.themePreference).toBe('sakura');
+  it('offers Warm as an espresso-and-ivory choice and applies it immediately', () => {
+    render(<Appearance />);
+
+    const warm = screen.getByRole('radio', { name: /^Warm/ });
+    expect(warm.textContent).toContain('Espresso and ivory paper workspace.');
+    expect(warm.querySelector('svg')?.getAttribute('class')).toMatch(/\blucide\b/);
+
+    fireEvent.click(warm);
+    expect(useUIStore.getState().theme).toBe('warm');
+    expect(document.documentElement.dataset.theme).toBe('warm');
+    expect(document.documentElement.dataset.themePreference).toBe('warm');
+  });
+
+  it('shows persisted Sakura-only petal controls with accessible state', () => {
+    useUIStore.setState({ theme: 'sakura' });
+    render(<Appearance />);
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Falling petals' }));
+    expect(useUIStore.getState().sakuraPetalsEnabled).toBe(false);
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Fast' }));
+    expect(useUIStore.getState().sakuraPetalSpeed).toBe('fast');
+    expect(screen.getByRole('radiogroup', { name: 'Petal speed' })).toBeTruthy();
+  });
+
+  it('does not add Sakura effect controls to another theme', () => {
+    useUIStore.setState({ theme: 'monochrome' });
+    render(<Appearance />);
+
+    expect(screen.queryByRole('switch', { name: 'Falling petals' })).toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: 'Petal speed' })).toBeNull();
   });
 
   it('offers MonoChrome as the terminal-inspired fourth choice without surfacing Light', () => {
@@ -64,6 +98,19 @@ describe('Appearance theme selector', () => {
     fireEvent.click(monochrome);
     expect(useUIStore.getState().theme).toBe('monochrome');
     expect(document.documentElement.dataset.theme).toBe('monochrome');
+  });
+
+  it('changes and resets VibeSpace app brightness from 0 through 200 percent', () => {
+    render(<Appearance />);
+    const slider = screen.getByRole('slider', { name: 'App brightness' });
+
+    fireEvent.change(slider, { target: { value: '175' } });
+    expect(useUIStore.getState().appBrightness).toBe(175);
+    expect(screen.getByText('175%')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset app brightness' }));
+    expect(useUIStore.getState().appBrightness).toBe(100);
+    expect(screen.getByText('100%')).toBeTruthy();
   });
 
   it('exposes independent system fullscreen behavior and safe restoration preferences', () => {

@@ -73,6 +73,7 @@ import {
 import type { ActionDef, ActionResult } from './types';
 import type { CustomToolStep } from '@/features/tools/toolStore';
 import { getExplicitTerminalBlock } from '@/lib/ai/context';
+import { formatUserTime } from '@/lib/timeFormat';
 import { PRESET_ACTIONS } from './registryPresets';
 import { APP_CONTROL_ACTIONS } from './registryAppControl';
 import { FILE_ACTIONS } from './registryFiles';
@@ -1262,13 +1263,10 @@ const CLOCK_ACTIONS: ActionDef[] = [
         label: typeof params.label === 'string' ? params.label : undefined,
         sound: readClockSound(params.sound),
       });
-      return ok(
-        `Alarm set for ${new Date(entry.dueAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`,
-        {
-          id: entry.id,
-          dueAt: entry.dueAt,
-        },
-      );
+      return ok(`Alarm set for ${formatUserTime(entry.dueAt)}.`, {
+        id: entry.id,
+        dueAt: entry.dueAt,
+      });
     },
   },
   {

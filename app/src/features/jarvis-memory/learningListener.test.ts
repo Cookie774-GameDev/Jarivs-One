@@ -209,7 +209,7 @@ describe('Jarvis learning event listener', () => {
       load: async () => null,
     });
 
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 20; index += 1) {
       window.dispatchEvent(
         new CustomEvent('jarvis:send', {
           detail: {
@@ -221,7 +221,7 @@ describe('Jarvis learning event listener', () => {
     }
 
     await vi.waitFor(() => {
-      expect(useJarvisLearningStore.getState().currentProfile().lastEvaluationCount).toBe(10);
+      expect(useJarvisLearningStore.getState().currentProfile().lastEvaluationCount).toBe(20);
     });
     expect(
       useJarvisLearningStore

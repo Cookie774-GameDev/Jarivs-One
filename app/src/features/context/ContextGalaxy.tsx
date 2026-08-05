@@ -179,8 +179,17 @@ function drawWebGlGalaxy(input: {
     const from = projected.get(edge.from);
     const to = projected.get(edge.to);
     if (!from?.visible || !to?.visible) continue;
+    const active = input.activityIds.has(edge.from) || input.activityIds.has(edge.to);
+    const edgeColor = active
+      ? [0.35, 0.9, 1, 0.62 + input.pulse * 0.3]
+      : [0.37, 0.18, 0.32, 1];
     for (const point of [from, to]) {
-      edgeData.push((point.x / width) * 2 - 1, 1 - (point.y / height) * 2, 1, 0.37, 0.18, 0.32, 1);
+      edgeData.push(
+        (point.x / width) * 2 - 1,
+        1 - (point.y / height) * 2,
+        active ? 1.5 : 1,
+        ...edgeColor,
+      );
     }
   }
   const draw = (data: number[], primitive: number) => {
@@ -544,15 +553,20 @@ export function ContextGalaxy({
           {lod.edges.map((edge) => {
             const from = galaxy.byId.get(edge.from);
             const to = galaxy.byId.get(edge.to);
+            const active = activityIds.has(edge.from) || activityIds.has(edge.to);
             return from && to ? (
               <line
                 key={edge.id}
+                data-context-edge={edge.id}
+                data-context-activity={String(active)}
                 x1={from.x}
                 y1={from.z}
                 x2={to.x}
                 y2={to.z}
-                stroke="hsl(var(--border))"
-                strokeWidth="2"
+                stroke={active ? 'hsl(var(--accent-copper))' : 'hsl(var(--border))'}
+                strokeWidth={active ? 3 : 2}
+                strokeDasharray={active ? '8 7' : undefined}
+                className={cn(active && !reducedMotion && 'animate-pulse')}
               />
             ) : null;
           })}

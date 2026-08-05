@@ -46,10 +46,12 @@ pub const DENIED_EFFECT_MANIFEST_HASH: &str =
 
 const ORDINARY_APP_IDENTIFIER: &str = "ai.jarvis.desktop";
 const MONOCHROME_APP_IDENTIFIER_PREFIX: &str = "ai.vibespace.monochrome.test";
-const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 4] = [
+const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 6] = [
+    "cold-start-intro",
     "default",
     "pet-mini-panel",
     "pet-overlay",
+    "taskbar-usage",
     "workbench-window",
 ];
 static DENIED_EFFECT_REGISTRY_STATE: OnceLock<DeniedEffectRegistry> = OnceLock::new();
@@ -671,9 +673,11 @@ mod tests {
 
     fn ordinary_capabilities() -> Vec<CapabilityEntry> {
         capability_references(&[
+            "cold-start-intro",
             "default",
             "pet-mini-panel",
             "pet-overlay",
+            "taskbar-usage",
             "workbench-window",
         ])
     }
@@ -972,7 +976,9 @@ mod tests {
             "workbench-window",
             "default",
             "pet-overlay",
+            "taskbar-usage",
             "pet-mini-panel",
+            "cold-start-intro",
         ]);
 
         let context = resolve_startup_context(None, None, "ai.jarvis.desktop", &capabilities)

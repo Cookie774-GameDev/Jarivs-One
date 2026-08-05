@@ -504,6 +504,7 @@ describe('startRuntimeListener agent routing', () => {
           text: 'Describe this image.',
           modelSelectionOverride: originalSelection,
           automaticModelRoutingEligible: true,
+          reasoningPreference: { mode: 'token-final-boss', effortOverride: null },
           imageAttachments: [
             {
               id: 'image-auto-route',
@@ -523,6 +524,7 @@ describe('startRuntimeListener agent routing', () => {
           model: { provider: 'google', model: 'gemini-2.5-flash' },
         }),
         connectionId: 'google-gemini-api',
+        provider_options: { thinking_level: 'high' },
       }),
     );
     expect(info).toHaveBeenCalledWith(
@@ -638,6 +640,7 @@ describe('startRuntimeListener agent routing', () => {
   });
 
   it('does not auto-route an explicit Hive slash turn', async () => {
+    vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     const jarvis = agent('agent_jarvis_hive_route', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_hive_route' as ChatId;
     const originalSelection = selectionFromOption('xai', 'grok-2-1212');
@@ -1256,19 +1259,19 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
-  it('revises AllAboutMe.md after every 10 user messages without blocking the reply', async () => {
+  it('revises AllAboutMe.md after every 20 user messages without blocking the reply', async () => {
     useAllAboutMeStore.setState({
       markdown: '# AllAboutMe.md\n\nStable profile.',
       source: 'quiz',
       updatedAt: Date.now(),
-      totalUserMessages: 9,
+      totalUserMessages: 19,
       lastUpdatedAtMessageCount: 0,
       learningEnabled: true,
     });
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_all_about_me_learning' as ChatId;
     const placeholderId = 'msg_all_about_me_learning_assistant' as MessageId;
-    const history: Message[] = Array.from({ length: 10 }, (_, index) => ({
+    const history: Message[] = Array.from({ length: 20 }, (_, index) => ({
       id: `msg_all_about_me_learning_user_${index}` as MessageId,
       chat_id: chatId,
       role: 'user',
@@ -1276,7 +1279,7 @@ describe('startRuntimeListener agent routing', () => {
         {
           kind: 'text',
           text:
-            index === 9 ? 'Please keep it short and launch-ready.' : `prior user message ${index}`,
+            index === 19 ? 'Please keep it short and launch-ready.' : `prior user message ${index}`,
         },
       ],
       created_at: index + 1,
@@ -1317,14 +1320,13 @@ describe('startRuntimeListener agent routing', () => {
         detail: {
           chatId,
           text: 'Please keep it short and launch-ready.',
-          forceAllAboutMeUpdate: true,
         },
       }),
     );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
     expect(useAllAboutMeStore.getState().markdown).toContain('Learned Patterns');
-    expect(useAllAboutMeStore.getState().lastUpdatedAtMessageCount).toBe(10);
+    expect(useAllAboutMeStore.getState().lastUpdatedAtMessageCount).toBe(20);
 
     stop();
   });
@@ -1838,6 +1840,7 @@ describe('startRuntimeListener agent routing', () => {
   });
 
   it('fails legacy /Hive quality closed instead of reopening a provider-side stack path', async () => {
+    vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     useAuthStore.setState({
       apiKeys: {
         openrouter: 'openrouter-test',
@@ -3145,6 +3148,7 @@ describe('startRuntimeListener agent routing', () => {
   }, 15_000);
 
   it('runs Hive only through persisted kernel workers and one protected hive-final turn', async () => {
+    vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     useAuthStore.setState({
       apiKeys: {
         google: 'google-test',
@@ -3251,6 +3255,7 @@ describe('startRuntimeListener agent routing', () => {
   }, 15_000);
 
   it('does not start canonical Hive workers when cancellation wins during plan binding', async () => {
+    vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     useAuthStore.setState({
       apiKeys: {
         google: 'google-test',
@@ -3362,6 +3367,7 @@ describe('startRuntimeListener agent routing', () => {
   }, 15_000);
 
   it('bridges message cancellation to the canonical Hive parent and active child owner', async () => {
+    vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     useAuthStore.setState({
       apiKeys: {
         google: 'google-test',

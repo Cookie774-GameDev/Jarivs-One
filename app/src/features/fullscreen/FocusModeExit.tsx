@@ -12,14 +12,14 @@ export function FocusModeExit() {
     <Button
       type="button"
       variant="secondary"
-      size="sm"
+      size="icon"
       aria-label="Exit Focus Mode"
+      title="Exit Focus Mode"
       data-focus-mode-exit="true"
       onClick={() => setFocusActive(false)}
-      className="fixed right-3 top-3 z-[70] gap-1.5 border border-border/80 bg-panel/95 shadow-lg backdrop-blur-sm"
+      className="fixed right-3 top-3 z-[70] h-9 w-9 border border-border/80 bg-panel/95 shadow-lg backdrop-blur-sm"
     >
-      <Minimize2 aria-hidden="true" className="h-3.5 w-3.5" />
-      <span>Exit Focus Mode</span>
+      <Minimize2 aria-hidden="true" className="h-4 w-4" />
     </Button>
   );
 }

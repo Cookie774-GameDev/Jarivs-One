@@ -78,8 +78,8 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
     capability(
       'default.json',
       'default',
-      ['main', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
-      '8247E7FCCE49ADD5774DB00BB44E64BAFEBEB3CB043B6952831809AFA9C03DFA',
+      ['main', 'cold-start-intro', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
+      '9221EB6B94821DC0C26821BDF512979961C8241755AF9C1AAAED3CBEFBC3F07C',
     ),
     capability(
       'pet-mini-panel.json',
@@ -94,6 +94,12 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
       'E46798752A90E976F01000D48AE6570FC4B2CF9CC5FB6BF5E3C6E3580662D0AC',
     ),
     capability(
+      'taskbar-usage.json',
+      'taskbar-usage',
+      ['taskbar-usage'],
+      'BFDCDEECC5777125C1288149CF89390BF90D056496F6A5E87F35B278A94AA6B3',
+    ),
+    capability(
       'workbench.json',
       'workbench-window',
       ['workbench-*'],
@@ -101,6 +107,7 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
     ),
   ]),
   surfaces: Object.freeze([
+    surface('cold-start-intro', 'declared', 'app/src-tauri/tauri.conf.json', ['default']),
     surface('dictation', 'declared', 'app/src-tauri/tauri.conf.json', ['default']),
     surface('main', 'declared', 'app/src-tauri/tauri.conf.json', ['default']),
     surface('pet-mini-panel', 'dynamic-rust', 'app/src-tauri/src/pets.rs', [
@@ -109,6 +116,9 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
     ]),
     surface('pet-overlay', 'dynamic-rust', 'app/src-tauri/src/pets.rs', ['default', 'pet-overlay']),
     surface('preview-surface', 'dynamic-rust', 'app/src-tauri/src/preview.rs', ['default']),
+    surface('taskbar-usage', 'dynamic-webview', 'app/src/features/taskbar-usage/taskbarUsageNativeWindow.ts', [
+      'taskbar-usage',
+    ]),
     surface('workbench-main', 'dynamic-webview', 'app/src/features/workbench/window.ts', [
       'workbench-window',
     ]),

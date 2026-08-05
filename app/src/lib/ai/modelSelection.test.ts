@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import {
   applyChatModelSelectionToAgent,
@@ -185,7 +185,7 @@ describe('modelSelection', () => {
     ).toEqual({ mode: 'hive', hiveId: 'balanced' });
   });
 
-  it('only activates Hive when explicitly selected', () => {
+  it('only activates Hive when explicitly selected and the product is enabled', () => {
     expect(
       resolveActiveStackPreset(EMPTY_CHAT_MODEL_SELECTION, {
         matched: false,
@@ -194,12 +194,21 @@ describe('modelSelection', () => {
         taskType: undefined,
       }),
     ).toBe('off');
+    // Default product gate forces multi-model stacks off.
+    expect(
+      resolveActiveStackPreset(
+        { mode: 'hive', hiveId: 'balanced' },
+        { matched: false, text: 'hi', preset: undefined, taskType: undefined },
+      ),
+    ).toBe('off');
+    vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     expect(
       resolveActiveStackPreset(
         { mode: 'hive', hiveId: 'balanced' },
         { matched: false, text: 'hi', preset: undefined, taskType: undefined },
       ),
     ).toBe('balanced');
+    vi.unstubAllEnvs();
   });
 
   it('accepts the attested custom smoke Hive only while the native binding is active', () => {
@@ -221,7 +230,8 @@ describe('modelSelection', () => {
       defaultLocalModel: '',
     };
 
-    expect(resolveActiveStackPreset(selection, command)).toBe('balanced');
+    // Product gate: custom Hive is off unless kernel smoke binding is live.
+    expect(resolveActiveStackPreset(selection, command)).toBe('off');
     expect(validateSendModelAccess('hi', selection, ctx, steps).ok).toBe(false);
 
     activateKernelSmokeBinding({

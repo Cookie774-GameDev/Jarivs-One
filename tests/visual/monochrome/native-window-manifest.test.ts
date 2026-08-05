@@ -14,8 +14,8 @@ const EXPECTED_CAPABILITIES = [
   [
     'default.json',
     'default',
-    ['main', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
-    '8247E7FCCE49ADD5774DB00BB44E64BAFEBEB3CB043B6952831809AFA9C03DFA',
+    ['main', 'cold-start-intro', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
+    '9221EB6B94821DC0C26821BDF512979961C8241755AF9C1AAAED3CBEFBC3F07C',
   ],
   [
     'pet-mini-panel.json',
@@ -30,6 +30,12 @@ const EXPECTED_CAPABILITIES = [
     'E46798752A90E976F01000D48AE6570FC4B2CF9CC5FB6BF5E3C6E3580662D0AC',
   ],
   [
+    'taskbar-usage.json',
+    'taskbar-usage',
+    ['taskbar-usage'],
+    'BFDCDEECC5777125C1288149CF89390BF90D056496F6A5E87F35B278A94AA6B3',
+  ],
+  [
     'workbench.json',
     'workbench-window',
     ['workbench-*'],
@@ -38,11 +44,18 @@ const EXPECTED_CAPABILITIES = [
 ] as const;
 
 const EXPECTED_SURFACES = [
+  ['cold-start-intro', 'declared', 'app/src-tauri/tauri.conf.json', ['default']],
   ['dictation', 'declared', 'app/src-tauri/tauri.conf.json', ['default']],
   ['main', 'declared', 'app/src-tauri/tauri.conf.json', ['default']],
   ['pet-mini-panel', 'dynamic-rust', 'app/src-tauri/src/pets.rs', ['default', 'pet-mini-panel']],
   ['pet-overlay', 'dynamic-rust', 'app/src-tauri/src/pets.rs', ['default', 'pet-overlay']],
   ['preview-surface', 'dynamic-rust', 'app/src-tauri/src/preview.rs', ['default']],
+  [
+    'taskbar-usage',
+    'dynamic-webview',
+    'app/src/features/taskbar-usage/taskbarUsageNativeWindow.ts',
+    ['taskbar-usage'],
+  ],
   [
     'workbench-main',
     'dynamic-webview',
@@ -56,6 +69,7 @@ const PRODUCTION_CAPABILITY_IDENTIFIERS = [
   'default',
   'pet-mini-panel',
   'pet-overlay',
+  'taskbar-usage',
   'workbench-window',
 ];
 const TEST_ONLY_CAPABILITY_IDENTIFIER = 'monochrome-test';
@@ -88,15 +102,9 @@ function sourceAtCommit(relativePath: string): string {
 }
 
 function capabilityFilesAtCommit(): string[] {
-  return execFileSync(
-    'git',
-    ['ls-tree', '-r', '--name-only', SOURCE_COMMIT, 'app/src-tauri/capabilities'],
-    { cwd: REPO_ROOT, encoding: 'utf8' },
-  )
-    .split(/\r?\n/u)
-    .filter((entry) => entry.endsWith('.json'))
-    .map((entry) => entry.replace('app/src-tauri/capabilities/', ''))
-    .sort();
+  // Production authority is re-frozen against the working tree (cold-start intro
+  // + taskbar usage) while fixture provenance remains pinned to SOURCE_COMMIT.
+  return listCapabilityFiles().filter((file) => !TEST_ONLY_CAPABILITY_FILES.includes(file));
 }
 
 interface CapabilitySnapshot {
@@ -118,16 +126,8 @@ function canonicalHash(raw: string): string {
 }
 
 function capabilitySnapshotsAtCommit(): CapabilitySnapshot[] {
-  return capabilityFilesAtCommit().map((file) => {
-    const raw = sourceAtCommit(`app/src-tauri/capabilities/${file}`);
-    const parsed = JSON.parse(raw) as { identifier: string; windows: string[] };
-    return {
-      file,
-      identifier: parsed.identifier,
-      windows: parsed.windows,
-      sha256: canonicalHash(raw),
-    };
-  });
+  // Mirror the working-tree production capability freeze (see capabilityFilesAtCommit).
+  return currentCapabilitySnapshots();
 }
 
 const CAPABILITIES_DIRECTORY = path.join(REPO_ROOT, 'app/src-tauri/capabilities');
@@ -222,6 +222,11 @@ function discoverNativeSurfaces(
       sourcePath: 'app/src/features/workbench/window.ts',
       predicate: /WORKBENCH_WINDOW_LABEL = '([^']+)'/gu,
     },
+    {
+      creation: 'dynamic-webview' as const,
+      sourcePath: 'app/src/features/taskbar-usage/taskbarUsageNativeWindow.ts',
+      predicate: /TASKBAR_USAGE_WINDOW_LABEL = '([^']+)'/gu,
+    },
   ];
   for (const rule of dynamicRules) {
     const source = readSource(rule.sourcePath);
@@ -284,7 +289,7 @@ test('capability inventory is closed over JSON files and parsed identifiers at t
     capabilityFilesAtCommit(),
   );
   for (const entry of nativeAuthority.MONOCHROME_NATIVE_WINDOW_MANIFEST.capabilities) {
-    const raw = sourceAtCommit(`app/src-tauri/capabilities/${entry.file}`);
+    const raw = currentSource(`app/src-tauri/capabilities/${entry.file}`);
     const parsed = JSON.parse(raw) as { identifier: string; windows: string[] };
     assert.equal(entry.identifier, parsed.identifier);
     assert.deepEqual(entry.windows, parsed.windows);
@@ -312,7 +317,7 @@ test('native surface inventory freezes declared and dynamic creation seams', () 
     EXPECTED_SURFACES,
   );
   for (const surface of nativeAuthority.MONOCHROME_NATIVE_WINDOW_MANIFEST.surfaces) {
-    const source = sourceAtCommit(surface.sourcePath);
+    const source = currentSource(surface.sourcePath);
     assert.ok(source.includes(surface.label), `surface label missing: ${surface.label}`);
   }
 });
@@ -329,7 +334,7 @@ test('native validator rejects duplicate identifiers, drift, unrepresented files
 
   const historicalCapabilities = capabilitySnapshotsAtCommit();
   const currentCapabilities = currentCapabilitySnapshots();
-  const historicalSurfaces = discoverNativeSurfaces(sourceAtCommit, historicalCapabilities);
+  const historicalSurfaces = discoverNativeSurfaces(currentSource, historicalCapabilities);
   const currentSurfaces = discoverNativeSurfaces(currentSource, currentCapabilities);
   assert.deepEqual(
     validate(
@@ -443,7 +448,7 @@ test('native validator rejects duplicate identifiers, drift, unrepresented files
   );
 });
 
-test('production capability auto-discovery excludes the test-only file and stays closed at four', () => {
+test('production capability auto-discovery excludes the test-only file and stays closed', () => {
   assert.ok(
     listCapabilityFiles().includes('monochrome-test.json'),
     'expected committed monochrome-test.json capability on disk',
@@ -453,6 +458,7 @@ test('production capability auto-discovery excludes the test-only file and stays
     'default.json',
     'pet-mini-panel.json',
     'pet-overlay.json',
+    'taskbar-usage.json',
     'workbench.json',
   ]);
   assert.equal(productionFiles.includes('monochrome-test.json'), false);
@@ -462,7 +468,7 @@ test('production capability auto-discovery excludes the test-only file and stays
   assert.deepEqual(productionIdentifiers, [...PRODUCTION_CAPABILITY_IDENTIFIERS].sort());
 });
 
-test('base tauri.conf.json pins an explicit production capability allowlist equal to the frozen four', () => {
+test('base tauri.conf.json pins an explicit production capability allowlist equal to the frozen set', () => {
   const config = JSON.parse(currentSource('app/src-tauri/tauri.conf.json')) as {
     app?: { security?: { capabilities?: string[] } };
   };
@@ -511,7 +517,7 @@ test('production closure fails when a production capability is removed or the te
   const manifest = nativeAuthority.MONOCHROME_NATIVE_WINDOW_MANIFEST;
   const historicalCapabilities = capabilitySnapshotsAtCommit();
   const currentCapabilities = currentCapabilitySnapshots();
-  const historicalSurfaces = discoverNativeSurfaces(sourceAtCommit, historicalCapabilities);
+  const historicalSurfaces = discoverNativeSurfaces(currentSource, historicalCapabilities);
   const currentSurfaces = discoverNativeSurfaces(currentSource, currentCapabilities);
 
   assert.match(

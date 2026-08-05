@@ -18,6 +18,8 @@ describe('Composer Prompt Forge integration', () => {
     expect(source).toContain('files: attachedFiles');
     expect(source).toContain('terminals: attachedTerminals');
     expect(source).toContain('PromptForgeControl');
+    expect(source).toContain('promptForgeAutoUpgradeOnSend');
+    expect(source).toContain('upgradeForSend');
     expect(source).toContain('PromptForgeReview');
     expect(source).not.toMatch(/onStart=\{[^}]*handleSend/u);
     expect(source).not.toMatch(/onReplace=\{[^}]*handleSend/u);
@@ -36,7 +38,7 @@ describe('Composer Prompt Forge integration', () => {
 
   it('scopes the documented shortcut to the focused Composer textarea', () => {
     expect(source).toContain('document.activeElement !== textareaRef.current');
-    expect(source).toContain('matchesHotkey(event, HOTKEYS.PROMPT_FORGE)');
+    expect(source).toContain("matchesHotkey(event, resolveHotkey('PROMPT_FORGE'))");
     expect(source).toContain('event.preventDefault()');
   });
 

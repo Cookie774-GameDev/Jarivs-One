@@ -99,6 +99,21 @@ describe('TopBar voice smoke evidence', () => {
     expect(opener.getAttribute('data-sik-evidence')).toBeNull();
   });
 
+  it('does not expose the obsolete Jarvis Assistant header launcher', () => {
+    renderTopBar(false);
+
+    expect(screen.queryByRole('button', { name: 'Open Jarvis Assistant' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Assistant/i })).toBeNull();
+  });
+
+  it('exposes one top-right Chat Modes entry with the shared pointer target', () => {
+    renderTopBar(false);
+
+    const control = screen.getByRole('button', { name: /chat modes/i });
+    expect(control.className).toContain('min-h-6');
+    expect(control.className).toContain('min-w-6');
+  });
+
   it('places the unique voice.open selector on the genuine opener', async () => {
     renderTopBar(true);
 

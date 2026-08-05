@@ -16,7 +16,7 @@ import { createNativeFullscreenAdapter, type NativeFullscreenAdapter } from './n
 
 const FULLSCREEN_STORAGE_KEY = 'vibespace-fullscreen-preferences-v1';
 const NATIVE_FULLSCREEN_ERROR =
-  'VibeSpace could not change system fullscreen. Try again or use the native window controls.';
+  'VibeSpace could not change fullscreen. Try again or use the window controls.';
 
 export interface FullscreenState {
   focusActive: boolean;

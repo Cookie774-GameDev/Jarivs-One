@@ -105,6 +105,7 @@ vi.mock('./voiceRouter', () => routerMocks);
 import { VoiceModal } from './VoiceModal';
 import { messageRepo } from '@/lib/db';
 import { useVoiceStore } from './store';
+import { VoiceService } from './VoiceService';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 import { JarvisCommandCenterProvider } from '@/features/jarvis-command-center/JarvisCommandCenter';
@@ -971,6 +972,22 @@ describe('VoiceModal hands-free turn-taking', () => {
     window.removeEventListener('jarvis:send', send as EventListener);
   });
 
+  it('disables the listening timeout while send-it mode is active', async () => {
+    render(<VoiceModal />);
+
+    await waitFor(() => expect(VoiceService.setInactivityTimeoutMs).toHaveBeenCalledWith(null));
+  });
+
+  it('uses the one configured duration for hands-free pause mode', async () => {
+    useAuthStore.setState({
+      voiceEndTrigger: 'silence',
+      voiceSilenceDelayMs: 60_000,
+    });
+    render(<VoiceModal />);
+
+    await waitFor(() => expect(VoiceService.setInactivityTimeoutMs).toHaveBeenCalledWith(60_000));
+  });
+
   it('sends exactly once when the commit phrase is spoken', async () => {
     const send = vi.fn();
     window.addEventListener('jarvis:send', send as EventListener);
@@ -984,9 +1001,14 @@ describe('VoiceModal hands-free turn-taking', () => {
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
     expect(messageRepo.create).toHaveBeenCalledTimes(1);
-    const event = send.mock.calls[0]?.[0] as CustomEvent<{ text: string; speakReply: boolean }>;
+    const event = send.mock.calls[0]?.[0] as CustomEvent<{
+      text: string;
+      speakReply: boolean;
+      autoApproveActions: boolean;
+    }>;
     expect(event.detail.text).toBe('help me plan');
     expect(event.detail.speakReply).toBe(true);
+    expect(event.detail.autoApproveActions).toBe(true);
 
     window.removeEventListener('jarvis:send', send as EventListener);
   });

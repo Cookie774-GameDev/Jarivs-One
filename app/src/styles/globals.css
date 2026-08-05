@@ -237,6 +237,36 @@ html[data-theme='sakura'] [data-sakura-shell-region='navigation'] .mb-1.text-acc
   }
 
   /*
+   * App brightness is painted as two static, pointer-inert overlays instead
+   * of a filter on #root. A root filter forces Chromium/WebView to composite
+   * every animated descendant into one full-window GPU texture, which can
+   * stall or blank the renderer even when brightness is the default 100%.
+   */
+  #root::before,
+  #root::after {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    pointer-events: none;
+    content: none;
+  }
+
+  #root::before {
+    background: #000;
+    opacity: var(--vibespace-app-dim-opacity, 0);
+  }
+
+  #root::after {
+    background: #fff;
+    opacity: var(--vibespace-app-boost-opacity, 0);
+  }
+
+  html[data-app-brightness-mode='dim'] #root::before,
+  html[data-app-brightness-mode='boost'] #root::after {
+    content: '';
+  }
+
+  /*
    * Pet overlay window only — fully transparent shell.
    * Scoped so the main VibeSpace theme (bg-background on body) is untouched.
    * Without this, the pet-overlay WebView paints an opaque rectangle behind

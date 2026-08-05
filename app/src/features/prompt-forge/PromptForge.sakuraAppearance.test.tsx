@@ -33,6 +33,8 @@ describe('Prompt Forge Sakura appearance', () => {
           onAllowPublicResearchChange={vi.fn()}
           publicResearchAvailable
           offlineMode={false}
+          autoUpgradeOnSend={false}
+          onAutoUpgradeOnSendChange={vi.fn()}
           onStart={onStart}
           onCancel={vi.fn()}
         />

@@ -21,6 +21,7 @@ vi.mock('./hooks', () => ({ useChatMessages: () => hookState.messages }));
 vi.mock('./MessageBubble', () => ({ MessageBubble: () => <div>message</div> }));
 vi.mock('./activity', () => ({
   ChatActivityTimeline: () => <div data-testid="legacy-timeline">Legacy timeline</div>,
+  useUnifiedChatActivity: () => [],
 }));
 vi.mock('@/features/jarvis-interaction/AgentActivityCard', () => ({
   ChatAgentActivityPanel: () => <div data-testid="agent-panel">Agent panel</div>,
@@ -134,7 +135,7 @@ describe('ChatThread Command Center routing', () => {
   });
   afterEach(() => useJarvisTaskRunStore.getState().clearForTests());
 
-  it('uses the Command Center for a canonical run without duplicate legacy lifecycle surfaces', async () => {
+  it('keeps canonical execution without mounting Command Center or working media in chat', async () => {
     useJarvisTaskRunStore.getState().replaceCanonicalForAccount(
       'scope-1',
       [
@@ -156,13 +157,16 @@ describe('ChatThread Command Center routing', () => {
       {},
     );
 
+    const currentBinding = binding();
     render(
-      <JarvisCommandCenterProvider value={binding()}>
+      <JarvisCommandCenterProvider value={currentBinding}>
         <ChatThread chatId="chat-1" />
       </JarvisCommandCenterProvider>,
     );
 
-    expect(await screen.findByText('Command Center')).not.toBeNull();
+    await vi.waitFor(() => expect(currentBinding.dataPort.getRunsForChat).toHaveBeenCalled());
+    expect(screen.queryByText('Command Center')).toBeNull();
+    expect(document.querySelector('[data-chat-working]')).toBeNull();
     expect(screen.queryByTestId('legacy-timeline')).toBeNull();
     expect(screen.queryByTestId('legacy-progress')).toBeNull();
     expect(screen.getByTestId('agent-panel')).not.toBeNull();
@@ -198,7 +202,11 @@ describe('ChatThread Command Center routing', () => {
       </JarvisCommandCenterProvider>,
     );
 
-    expect(await screen.findByText('Command Center')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(screen.getByRole('log').getAttribute('data-sik-assistant-count')).toBe('1');
+    });
+    expect(screen.queryByText('Command Center')).toBeNull();
+    expect(document.querySelector('[data-chat-working]')).toBeNull();
     const shell = screen.getByRole('log');
     expect(shell.getAttribute('data-sik-assistant-count')).toBe('1');
     expect(shell.outerHTML).not.toContain('message-user');
@@ -228,9 +236,10 @@ describe('ChatThread Command Center routing', () => {
       </JarvisCommandCenterProvider>,
     );
 
-    expect(screen.getByTestId('legacy-timeline')).not.toBeNull();
+    expect(screen.queryByTestId('legacy-timeline')).toBeNull();
     expect(screen.getByTestId('legacy-progress')).not.toBeNull();
     expect(screen.queryByText('Command Center')).toBeNull();
+    expect(document.querySelector('[data-chat-working]')).toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-assistant-count')).toBeNull();
     expect(document.querySelector('[data-sik-evidence="chat.runtime-ready"]')).toBeNull();
@@ -243,7 +252,10 @@ describe('ChatThread Command Center routing', () => {
       </JarvisCommandCenterProvider>,
     );
 
-    expect(await screen.findByText('Command Center')).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
+    });
+    expect(screen.queryByText('Command Center')).toBeNull();
     expect(screen.queryByTestId('legacy-timeline')).toBeNull();
     expect(screen.queryByTestId('legacy-progress')).toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
@@ -276,7 +288,8 @@ describe('ChatThread Command Center routing', () => {
         <ChatThread chatId="chat-1" />
       </JarvisCommandCenterProvider>,
     );
-    expect(await screen.findByText('Command Center')).not.toBeNull();
+    await vi.waitFor(() => expect(firstBinding.dataPort.getRunsForChat).toHaveBeenCalled());
+    expect(screen.queryByText('Command Center')).toBeNull();
 
     view.rerender(
       <JarvisCommandCenterProvider value={replacementBinding}>

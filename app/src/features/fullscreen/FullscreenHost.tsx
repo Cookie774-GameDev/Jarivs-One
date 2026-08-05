@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { getAppVersion } from '@/lib/tauri';
-import { HOTKEYS, useHotkey } from '@/lib/hotkeys';
+import { useBoundHotkey } from '@/lib/hotkeys';
 import { createNativeFullscreenAdapter, type NativeFullscreenAdapter } from './nativeFullscreen';
 import { configureFullscreenAdapter, useFullscreenStore } from './fullscreenStore';
 
@@ -36,9 +36,9 @@ export function FullscreenHost({
     void useFullscreenStore.getState().exitMostRecentLayer();
   }, []);
 
-  useHotkey(HOTKEYS.TOGGLE_FULLSCREEN, toggleFocus, { whenInputs: true });
-  useHotkey(HOTKEYS.TOGGLE_SYSTEM_FULLSCREEN, toggleSystem);
-  useHotkey(HOTKEYS.ESCAPE, exitMostRecent, {
+  useBoundHotkey('TOGGLE_FULLSCREEN', toggleFocus, { whenInputs: true });
+  useBoundHotkey('TOGGLE_SYSTEM_FULLSCREEN', toggleSystem);
+  useBoundHotkey('ESCAPE', exitMostRecent, {
     whenInputs: true,
     disabled: activeLayerCount === 0,
   });

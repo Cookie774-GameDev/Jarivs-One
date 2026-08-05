@@ -147,7 +147,7 @@ describe('fullscreen store', () => {
     await expect(useFullscreenStore.getState().requestSystemActive(false)).resolves.toBe(true);
     expect(useFullscreenStore.getState().systemActive).toBe(true);
     expect(useFullscreenStore.getState().error).toBe(
-      'VibeSpace could not change system fullscreen. Try again or use the native window controls.',
+      'VibeSpace could not change fullscreen. Try again or use the window controls.',
     );
   });
 

@@ -24,7 +24,6 @@ import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { jarvisProviderAttemptEvidenceRevalidator, runAgent } from './router';
 import type { LLMContentPart, LLMMessage } from './types';
 import { llmContentToText } from './types';
-import { applyPersona } from '@/features/agents/personas';
 import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } from '@/lib/actions';
 import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
 import { buildAgentTerminalContext } from '@/features/terminals/agentContext';
@@ -67,6 +66,7 @@ import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
 import { buildUserIdentityContextBlock } from './userIdentity';
 import { composeSkillAddenda, resolveSkills } from '@/lib/agents/skills';
+import { applyAgentRuntimeConfig } from '@/lib/agents/applyAgentConfig';
 import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
 import { classifyStackTask, parseStackSlashCommand } from './stacks/classifier';
 import { stepsForPreset } from './stacks/presets';
@@ -79,12 +79,14 @@ import type { StackStepSpec } from './stacks/types';
 import { PROVIDER_CONNECTIONS } from './adapters/catalog';
 import {
   applyChatModelSelectionToAgent,
+  gateChatModelSelection,
   modelSelectionContextFromAuth,
   resolveActiveStackPreset,
   selectionFromOption,
   validateSendModelAccess,
   type ChatModelSelection,
 } from './modelSelection';
+import { isHiveProductEnabled } from '@/lib/features/hiveProductGate';
 import { buildJarvisModelSwitchCandidates } from '@/lib/actions/registryModelSelection';
 import {
   estimateAutomaticRoutingContextTokens,
@@ -124,6 +126,10 @@ import {
   localKnowledgeChunkSourceMetadata,
   retrieveApprovedLocalKnowledge,
 } from '@/features/context/retrieval';
+import {
+  formatRepositoryRetrievalItem,
+  retrieveLiveRepositoryContext,
+} from '@/features/context/repositoryRetrievalRuntime';
 import { modelSupportsVision, type ChatImageAttachment } from './vision';
 import {
   ALL_ABOUT_ME_FILE_LOCATION,
@@ -144,6 +150,12 @@ import type {
   JarvisStructuredContext,
 } from '@/features/jarvis-interaction/types';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
+import { readChatReasoningPreference } from '@/features/chat/reasoningSlashStore';
+import {
+  createOversizedMessageAttachment,
+  oversizedMessageSummary,
+} from '@/features/chat/oversizedMessageAttachment';
+import { resolveReasoningPolicy, type ReasoningPreference } from './reasoningControls';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
 import {
@@ -154,6 +166,7 @@ import {
 import {
   buildJarvisRuntimeContextCandidates,
   type JarvisRuntimeContextBlock,
+  type JarvisRuntimeContextBlockKey,
 } from '@/lib/jarvis/runtimeContextCandidates';
 import { buildRoutedMcpTaskContext } from '@/lib/mcp/taskContext';
 import { getJarvisConnectivityInventoryBlock } from '@/lib/jarvis/connectivityInventory';
@@ -206,6 +219,22 @@ import {
   pushStreamingPreviewChunk,
 } from '@/lib/jarvis/response/streamingPreviewGate';
 import { clearPreview, setPreview } from '@/features/chat/streamingPreviewStore';
+import {
+  optimizeChatMessages,
+  optimizationModePolicy,
+  reasoningPreferenceForOptimization,
+  reconcileTokenUsage,
+  tokenOptimizationReceiptToTelemetry,
+  tokenUsageReceiptToTelemetry,
+  type ContextBudgetKind,
+  type IntelligenceTelemetryEnvelope,
+  type ReconciledTokenUsage,
+  type TokenOptimizationReceipt,
+  type TokenOptimizationMode,
+} from '@/features/token-optimizer';
+import { getModelOptions } from './models';
+import { localIntelligenceTelemetryRuntime } from './intelligenceTelemetryRuntime';
+import { browserGoalLaunchRuntime } from '@/features/browser/browserGoalLaunchRuntime';
 
 /** @internal Re-reads canonical provider results without exposing the result store. */
 export interface CanonicalProviderArtifactEvidenceReadPort {
@@ -903,7 +932,14 @@ export async function installJarvisKernelRuntimeHost(
       if (disposed) throw new Error('jarvis_kernel_host_disposed');
       const terminal = await terminalActionDispatcher(dispatchInput);
       if (terminal) return terminal;
-      const builtin = await builtinActionDispatcher(dispatchInput);
+      const run = await journal.getRun(
+        dispatchInput.context.accountId,
+        dispatchInput.context.runId,
+      );
+      const builtin = await browserGoalLaunchRuntime.executeRegisteredAction(
+        { ...dispatchInput, run },
+        () => builtinActionDispatcher(dispatchInput),
+      );
       if (builtin) return builtin;
       return {
         kind: 'executor_returned',
@@ -1240,11 +1276,133 @@ export interface SendDetail {
    * to capture the exact picker selection at dispatch.
    */
   modelSelectionOverride?: ChatModelSelection;
+  /** Captured per-chat reasoning controls for this exact send. */
+  reasoningPreference?: ReasoningPreference;
+  /** Captured Token Optimize mode. Off preserves the legacy request path exactly. */
+  tokenOptimizationMode?: TokenOptimizationMode;
+  /** User-configured output ceiling, applied only when Token Optimize is enabled. */
+  tokenOptimizationOutputLimit?: number;
+  /** Whether to render the optimization receipt inline; telemetry remains local either way. */
+  showTokenOptimizationReport?: boolean;
+  /** Captured repository compression preference for compatible context providers. */
+  allowStructuralCodeCompression?: boolean;
   /**
    * True only for an interactive composer send whose captured picker selection
    * remains eligible for the user's enabled automatic-routing policy.
    */
   automaticModelRoutingEligible?: boolean;
+}
+
+export function resolveOptimizedOutputLimit(
+  mode: TokenOptimizationMode,
+  requestedLimit: number | undefined,
+): number | undefined {
+  const ceiling = optimizationModePolicy(mode).outputTokenCeiling;
+  if (ceiling === null) return requestedLimit;
+  return requestedLimit === undefined ? ceiling : Math.min(requestedLimit, ceiling);
+}
+
+const PROTECTED_TOKEN_OPTIMIZATION_CONTEXT = new Set<JarvisRuntimeContextBlockKey>([
+  'default_write_folder',
+  'mcp_tool_schemas',
+  'selected_skills',
+  'intent_policy',
+  'interaction_mode',
+  'structured_context',
+  'explicit_context',
+  'explicit_files',
+  'explicit_terminal',
+  'coordination',
+  'terminal_operating',
+  'connected_files',
+  'completion_instruction',
+]);
+
+function isProtectedTokenOptimizationContext(key: JarvisRuntimeContextBlockKey): boolean {
+  return PROTECTED_TOKEN_OPTIMIZATION_CONTEXT.has(key);
+}
+
+function tokenOptimizationContextKind(key: JarvisRuntimeContextBlockKey): ContextBudgetKind {
+  if (key === 'mcp_tool_schemas') return 'tool_schema';
+  if (key === 'structured_context') return 'structured_tool_data';
+  if (key === 'explicit_context') return 'pinned_context_node';
+  if (key === 'explicit_files' || key === 'explicit_terminal' || key === 'connected_files') {
+    return 'explicit_attachment';
+  }
+  if (key === 'project' || key === 'repository_context' || key === 'local_knowledge') {
+    return 'repository_file';
+  }
+  if (key === 'project_tree' || key === 'resolved_context') return 'context_map_node';
+  if (key === 'user_identity' || key === 'all_about_me') return 'memory';
+  if (key === 'terminal_transcript' || key === 'mentioned_agents') {
+    return 'conversation_history';
+  }
+  if (
+    key === 'intent_policy' ||
+    key === 'interaction_mode' ||
+    key === 'coordination' ||
+    key === 'terminal_operating' ||
+    key === 'completion_instruction'
+  ) {
+    return 'approval_requirement';
+  }
+  return 'documentation';
+}
+
+function tokenOptimizationContextRelevance(
+  score: number | undefined,
+  index: number,
+  count: number,
+): number {
+  if (typeof score === 'number' && Number.isFinite(score) && score >= 0) {
+    return Math.min(1, score <= 1 ? score : score / (score + 1));
+  }
+  return count <= 1 ? 1 : Math.max(0.1, 1 - index / count);
+}
+
+async function recordTokenOptimizationTelemetry(input: {
+  receipt: TokenOptimizationReceipt;
+  usage: ReconciledTokenUsage | null;
+  accountId: string;
+  projectId?: string | null;
+  requestId: string;
+}): Promise<void> {
+  try {
+    const [accountScopeHash, projectScopeHash] = await Promise.all([
+      hashJarvisText(`account:${input.accountId}`),
+      hashJarvisText(`project:${input.projectId ?? 'none'}`),
+    ]);
+    const base = {
+      requestId: input.requestId,
+      attemptNumber: 1,
+      accountScopeHash,
+      projectScopeHash,
+      observedAt: Date.now(),
+    } satisfies Omit<IntelligenceTelemetryEnvelope, 'eventId'>;
+    localIntelligenceTelemetryRuntime.emit(
+      tokenOptimizationReceiptToTelemetry(input.receipt, {
+        ...base,
+        eventId: `intel_opt_${crypto.randomUUID()}`,
+      }),
+    );
+    if (input.usage) {
+      localIntelligenceTelemetryRuntime.emit(
+        tokenUsageReceiptToTelemetry(input.usage, {
+          ...base,
+          eventId: `intel_usage_${crypto.randomUUID()}`,
+        }),
+      );
+    }
+  } catch {
+    // Local diagnostics are observational. A malformed or unavailable
+    // telemetry sink must never fail the provider response or expose scope IDs.
+    devConsole.log({
+      channel: 'ai',
+      level: 'warn',
+      message: 'Local intelligence telemetry failed safely',
+      detail: { errorCategory: 'local_intelligence_telemetry_unavailable' },
+    });
+  }
 }
 
 /** The shape of the `jarvis:cancel` event detail. */
@@ -1345,7 +1503,9 @@ const JARVIS_CHAT_ACTION_OVERLAY = [
   '- For "open N terminals", use `terminal.bulkOpen` with `{"count":N}`. If they say "with opencode", add `"command":"opencode"`.',
   '- Never ask for passwords, API keys, tokens, recovery codes, credit cards, or credentials. Direct users to the trusted settings or provider connection UI instead.',
   '- Use any provided terminal coordination summary as read-only awareness of active agents, locks, and recent work.',
-  '- /agents references the Agents page/editor. /terminals references the terminal surface. /hive references Hive Balanced.',
+  isHiveProductEnabled()
+    ? '- /agents references the Agents page/editor. /terminals references the terminal surface. /hive references Hive Balanced.'
+    : '- /agents references the Agents page/editor. /terminals references the terminal surface.',
 ].join('\n');
 
 const CHAT_RESPONSE_STYLE_OVERLAY = [
@@ -1568,7 +1728,7 @@ function recentUserMessageTexts(history: Message[]): string[] {
     .filter((message) => message.role === 'user')
     .map(messageText)
     .filter(Boolean)
-    .slice(-12);
+    .slice(-20);
 }
 
 function allAboutMeCuratorAgent(base: Agent): Agent {
@@ -1614,7 +1774,7 @@ async function maybeUpdateAllAboutMeFromChat(
       title: 'Jarvis is learning from this chat',
       subtitle: 'AllAboutMe.md update in progress',
       detail:
-        'Jarvis found 10 qualifying user messages and is updating the private AllAboutMe.md profile.',
+        'Jarvis found 20 qualifying user messages and is updating the private AllAboutMe.md profile.',
       agentSlug: 'jarvis',
       ts: Date.now(),
     });
@@ -2667,16 +2827,20 @@ export function startRuntimeListener(
       authState.chatModelSelection.providerId === persistedConnection?.providerId
         ? authState.chatModelSelection.modelId
         : undefined);
-    let chatModelSelection =
+    let chatModelSelection = gateChatModelSelection(
       detail.modelSelectionOverride ??
-      (persistedConnection && storedModelId
-        ? selectionFromOption(
-            persistedConnection.providerId as import('@/types').ProviderId,
-            storedModelId,
-            persistedConnection,
-          )
-        : authState.chatModelSelection);
-    const stackSlash = parseStackSlashCommand(text);
+        (persistedConnection && storedModelId
+          ? selectionFromOption(
+              persistedConnection.providerId as import('@/types').ProviderId,
+              storedModelId,
+              persistedConnection,
+            )
+          : authState.chatModelSelection),
+    );
+    // Ignore /hive|/stack slash overrides while the product is gated off.
+    const stackSlash = isHiveProductEnabled()
+      ? parseStackSlashCommand(text)
+      : { matched: false as const, text };
     const automaticRoutingAllowed =
       isProtectedJarvis &&
       authState.automaticModelRoutingEnabled &&
@@ -2692,11 +2856,22 @@ export function startRuntimeListener(
       },
       tools: (detail.pluginIds?.length ?? 0) > 0,
     };
+    if (
+      chatModelSelection.mode === 'single' &&
+      (chatModelSelection.providerId === 'ollama' || chatModelSelection.providerId === 'local')
+    ) {
+      try {
+        const { bootstrapOllamaConnection } = await import('./ollamaBootstrap');
+        await bootstrapOllamaConnection({ waitTimeoutMs: 8_000 });
+      } catch {
+        // Provider still reports a clear local-model error if Ollama is down.
+      }
+    }
     if (!automaticRoutingAllowed) {
       const sendValidation = validateSendModelAccess(
         text,
         chatModelSelection,
-        modelCtx,
+        modelSelectionContextFromAuth(useAuthStore.getState()),
         authState.stackCustomSteps,
         modelSendRequirements,
       );
@@ -2714,12 +2889,14 @@ export function startRuntimeListener(
     // Hive multi-model stacks are chat-only by design (Settings → Hive says
     // "Chat only"): voice turns always take the single-model path so spoken
     // replies stay fast and are never billed through a multi-step pipeline.
+    // When the product is gated, resolveActiveStackPreset forces 'off'.
     const stackPreset =
       detail.speakReply === true ? 'off' : resolveActiveStackPreset(chatModelSelection, stackSlash);
     const stackText = stackSlash.matched ? stackSlash.text : text;
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
 
     const projectId = chatRecord?.project_id ?? authState.projectId;
+    const tokenOptimizationMode = detail.tokenOptimizationMode ?? 'off';
     let resolvedRequestContext: Awaited<ReturnType<typeof resolveJarvisContext>>;
     try {
       rememberConversationDestination(chatId, text);
@@ -2804,14 +2981,17 @@ export function startRuntimeListener(
     }
     void maybeRenameChat(chatId as ChatId, text);
 
-    // Apply the active persona preset to Jarvis only. Other agents pass through.
-    // Same gate is reused for the action-catalogue addendum so we don't
-    // inflate prompts for sub-agents (Builder/Scout/Reviewer) that don't
-    // need to propose user-approved actions.
-    let runnable = applyChatResponseStyleOverlay(agent);
+    // Apply configured persona + skills so agent settings are enforced, not
+    // decorative. Protected Jarvis still prefers the account voice preset.
+    // Action-catalogue overlays stay Jarvis-only so swarm workers stay lean.
+    let runnable = applyChatResponseStyleOverlay(
+      applyAgentRuntimeConfig(agent, {
+        forcePersona: isProtectedJarvis
+          ? useAuthStore.getState().personaPreset
+          : (agent.persona ?? null),
+      }),
+    );
     if (isProtectedJarvis) {
-      const preset = useAuthStore.getState().personaPreset;
-      runnable = applyPersona(runnable, preset);
       runnable = applyAvailableActions(runnable);
       runnable = applyJarvisChatActionOverlay(runnable);
     }
@@ -2848,6 +3028,7 @@ export function startRuntimeListener(
     // path, and a missing file shouldn't kill a chat turn.
     let projectContext = '';
     let projectContextTree = '';
+    let repositoryContext: JarvisRuntimeContextBlock[] = [];
     let localKnowledgeContext: JarvisRuntimeContextBlock[] = [];
     let connectedFilesContext = '';
     let mentionedAgentContext = '';
@@ -2885,6 +3066,54 @@ export function startRuntimeListener(
         message: 'project Context tree fetch failed',
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
+    }
+    if (
+      tokenOptimizationMode !== 'off' &&
+      typeof projectId === 'string' &&
+      projectId.trim().length > 0
+    ) {
+      try {
+        const identity = resolveAccountIdentity(authState);
+        if (identity) {
+          const repositoryResult = await retrieveLiveRepositoryContext({
+            accountId: identity.accountId,
+            projectId,
+            taskText: text,
+            tokenBudget:
+              tokenOptimizationMode === 'saver'
+                ? 3_000
+                : tokenOptimizationMode === 'normal'
+                  ? 6_000
+                  : 12_000,
+            explicitEntityIds: (detail.contextNodes ?? []).map(({ nodeId }) => nodeId),
+          });
+          const observedAt = Date.now();
+          repositoryContext = await Promise.all(
+            repositoryResult.items.map(async (item, index) => ({
+              key: 'repository_context' as const,
+              text: formatRepositoryRetrievalItem(item),
+              source: {
+                id: `jrepo_${(
+                  await hashJarvisText(`${item.path}\u0000${item.evidence.contentHash}`)
+                ).slice(0, 16)}`,
+                label: item.path,
+                uri: item.path,
+                observedAt,
+                contentHash: item.evidence.contentHash.replace(/^sha256:/u, ''),
+              },
+              score: Math.max(0.1, 1 - index / Math.max(1, repositoryResult.items.length)),
+            })),
+          );
+        }
+      } catch (err) {
+        repositoryContext = [];
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Bounded repository Context retrieval failed safely',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
     }
     try {
       const attachedContext = detail.contextNodes ?? [];
@@ -3067,6 +3296,8 @@ export function startRuntimeListener(
       });
     }
     try {
+      // Turn-level /skills picks only. Agent-configured skills are already
+      // applied to the runnable system prompt + tools via applyAgentRuntimeConfig.
       selectedSkillsContext = getSelectedSkillsBlock(detail.skillIds);
     } catch (err) {
       devConsole.log({
@@ -3081,6 +3312,7 @@ export function startRuntimeListener(
       [
         { key: 'project', text: projectContext },
         { key: 'project_tree', text: projectContextTree },
+        ...repositoryContext,
         ...localKnowledgeContext,
         { key: 'user_identity', text: userIdentityContext },
         { key: 'default_write_folder', text: defaultWriteFolderContext },
@@ -3192,9 +3424,29 @@ export function startRuntimeListener(
       dispatchKernelSmokeRuntimeStage('validated');
       useAllAboutMeStore.getState().recordUserMessage();
     }
+    const baseReasoningPreference =
+      detail.reasoningPreference ?? readChatReasoningPreference(String(chatId));
+    const effectiveReasoningPreference = reasoningPreferenceForOptimization(
+      tokenOptimizationMode,
+      baseReasoningPreference,
+    );
+    const reasoningPolicy =
+      stackStepsEarly.length === 0 && chatModelSelection.mode === 'single'
+        ? resolveReasoningPolicy({
+            selection: {
+              providerId: chatModelSelection.providerId,
+              modelId: chatModelSelection.modelId,
+              ...(chatModelSelection.connectionId
+                ? { connectionId: chatModelSelection.connectionId }
+                : {}),
+            },
+            preference: effectiveReasoningPreference,
+          })
+        : null;
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
+    const coreSystemPrompt = runnable.system_prompt ?? '';
     const contextBlocks = runtimeContextBlocks.map((block) => block.text);
     if (contextBlocks.length > 0) {
       runnable = {
@@ -3707,6 +3959,54 @@ export function startRuntimeListener(
           ? stackStepsEarly.every((step) => modelSupportsVision(step.provider, step.model))
           : modelSupportsVision(runnable.model.provider, runnable.model.model);
       const llmMessages = toLLMMessages(history, placeholder.id, includeImages);
+      let requestMessages = llmMessages;
+      let tokenOptimizationReceipt: TokenOptimizationReceipt | null = null;
+      const userOptimizationOutputLimit =
+        tokenOptimizationMode !== 'off' &&
+        Number.isSafeInteger(detail.tokenOptimizationOutputLimit) &&
+        detail.tokenOptimizationOutputLimit! > 0
+          ? detail.tokenOptimizationOutputLimit
+          : undefined;
+      const requestedOutputLimit =
+        userOptimizationOutputLimit === undefined
+          ? reasoningPolicy?.maxOutputTokens
+          : reasoningPolicy?.maxOutputTokens === undefined
+            ? userOptimizationOutputLimit
+            : Math.min(userOptimizationOutputLimit, reasoningPolicy.maxOutputTokens);
+      let optimizedOutputTokenLimit = resolveOptimizedOutputLimit(
+        tokenOptimizationMode,
+        requestedOutputLimit,
+      );
+      if (tokenOptimizationMode !== 'off') {
+        const modelContextLimit = getModelOptions(runnable.model.provider).find(
+          ({ id }) => id === runnable.model.model,
+        )?.contextWindowTokens;
+        const optimized = await optimizeChatMessages({
+          mode: tokenOptimizationMode,
+          providerId: runnable.model.provider,
+          modelId: runnable.model.model,
+          ...(modelContextLimit === undefined ? {} : { modelContextLimit }),
+          ...(optimizedOutputTokenLimit === undefined
+            ? {}
+            : { requestedOutputTokens: optimizedOutputTokenLimit }),
+          ...(coreSystemPrompt ? { systemPrompt: coreSystemPrompt } : {}),
+          contextSegments: runtimeContextBlocks.map((block, index) => ({
+            id: `${block.key}-${index + 1}`,
+            kind: tokenOptimizationContextKind(block.key),
+            text: block.text,
+            relevance: tokenOptimizationContextRelevance(block.score, index, runtimeContextBlocks.length),
+            protected: isProtectedTokenOptimizationContext(block.key),
+            reason: `Runtime context: ${block.key}`,
+          })),
+          messages: llmMessages,
+          signal: controller.signal,
+        });
+        controller.signal.throwIfAborted();
+        requestMessages = optimized.messages;
+        runnable = { ...runnable, system_prompt: optimized.systemPrompt };
+        optimizedOutputTokenLimit = optimized.outputTokenLimit;
+        tokenOptimizationReceipt = optimized.receipt;
+      }
 
       if (isProtectedJarvis && activeKernelMode === 'shadow') {
         const shadowTurn = await createRuntimeShadowTurn({
@@ -3769,8 +4069,10 @@ export function startRuntimeListener(
           agent: agent.slug,
           provider: runnable.model.provider,
           model: runnable.model.model,
-          messageCount: llmMessages.length,
+          messageCount: requestMessages.length,
           systemPromptChars: runnable.system_prompt?.length ?? 0,
+          tokenOptimizationMode,
+          tokenOptimizationSaved: tokenOptimizationReceipt?.estimatedTokensSaved ?? 0,
           placeholderId: placeholder.id,
         },
       });
@@ -3783,9 +4085,12 @@ export function startRuntimeListener(
         );
       }
       controller.signal.throwIfAborted();
+      let responseCompositionVisible = false;
       const response = await runAgent({
         agent: runnable,
-        messages: llmMessages,
+        messages: requestMessages,
+        max_output_tokens: optimizedOutputTokenLimit,
+        provider_options: reasoningPolicy?.providerOptions,
         connectionId:
           chatModelSelection.mode === 'single'
             ? (chatModelSelection.connectionId ??
@@ -3805,6 +4110,16 @@ export function startRuntimeListener(
         onChunk: (chunk) => {
           if (controller.signal.aborted) return;
           if (chunk.delta && chunk.delta.length > 0) {
+            if (!responseCompositionVisible) {
+              responseCompositionVisible = true;
+              useAgentStore.getState().setVerb(agent.id, 'preparing response');
+              useChatActivityStore.getState().update(chatId, agentActivityId, {
+                status: 'running',
+                title: `@${agent.slug} is preparing the final response`,
+                subtitle: `${runnable.model.provider}/${runnable.model.model}`,
+                ts: Date.now(),
+              });
+            }
             acc += chunk.delta;
             scheduleFlush();
             scheduleSpeechDelta();
@@ -3834,10 +4149,85 @@ export function startRuntimeListener(
             retrievedResponseContext,
           )
         : null;
+      const reconciledTokenUsage = tokenOptimizationReceipt
+        ? reconcileTokenUsage(
+            {
+              providerId: tokenOptimizationReceipt.providerId,
+              modelId: tokenOptimizationReceipt.modelId,
+              requestId: String(placeholder.id),
+              attemptNumber: 1,
+              estimatedInputTokens: tokenOptimizationReceipt.estimatedInputTokensAfter,
+              estimatedOutputTokens: tokenOptimizationReceipt.outputTokenLimit,
+              tokenizerSource: tokenOptimizationReceipt.tokenizerSource,
+            },
+            {
+              providerId: response.provider,
+              modelId: response.model,
+              requestId: String(placeholder.id),
+              attemptNumber: 1,
+              inputTokens: response.usage.input_tokens,
+              outputTokens: response.usage.output_tokens,
+            },
+          )
+        : null;
+      const telemetryIdentity = resolveAccountIdentity(authState);
+      if (tokenOptimizationReceipt && telemetryIdentity) {
+        await recordTokenOptimizationTelemetry({
+          receipt: tokenOptimizationReceipt,
+          usage: reconciledTokenUsage,
+          accountId: telemetryIdentity.accountId,
+          projectId: projectId ? String(projectId) : null,
+          requestId: String(placeholder.id),
+        });
+      }
+      controller.signal.throwIfAborted();
+      const responseTextParts = textToParts(finalText, text, interactionMode);
+      let oversizedResponseAttachment: Awaited<
+        ReturnType<typeof createOversizedMessageAttachment>
+      > = null;
+      if (responseTextParts.every((part) => part.kind === 'text')) {
+        try {
+          oversizedResponseAttachment = await createOversizedMessageAttachment(finalText);
+        } catch (attachmentError) {
+          devConsole.log({
+            channel: 'ai',
+            level: 'warn',
+            message: 'Long response could not be moved to a temporary attachment',
+            detail: {
+              error:
+                attachmentError instanceof Error
+                  ? attachmentError.message
+                  : String(attachmentError),
+            },
+          });
+        }
+      }
+      const displayResponseParts: Part[] = oversizedResponseAttachment
+        ? [
+            { kind: 'text', text: oversizedMessageSummary(oversizedResponseAttachment) },
+            {
+              kind: 'file_ref',
+              ref: {
+                kind: 'file',
+                id: oversizedResponseAttachment.path,
+                excerpt: 'Temporary long-response attachment · expires after 24 hours',
+              },
+            },
+          ]
+        : responseTextParts;
       const finalParts: Part[] = [
-        ...textToParts(finalText, text, interactionMode),
+        ...displayResponseParts,
         ...(responseInspector
           ? ([{ kind: 'context_inspector', inspector: responseInspector }] as const)
+          : []),
+        ...(tokenOptimizationReceipt && detail.showTokenOptimizationReport !== false
+          ? ([
+              {
+                kind: 'token_optimization_receipt',
+                receipt: tokenOptimizationReceipt,
+                ...(reconciledTokenUsage ? { usage: reconciledTokenUsage } : {}),
+              },
+            ] as const)
           : []),
       ];
       await bindings.updateMessage(placeholder.id, {

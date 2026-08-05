@@ -428,7 +428,11 @@ export function VoiceModal() {
     listeningArmedRef.current = true;
     const auth = useAuthStore.getState();
     VoiceService.setInactivityTimeoutMs(
-      resolveVoiceListenTimeoutMs(auth.voiceAutoListenOnOpen, auth.voiceListenTimeoutMs),
+      resolveVoiceListenTimeoutMs(
+        auth.voiceAutoListenOnOpen,
+        auth.voiceEndTrigger,
+        auth.voiceSilenceDelayMs,
+      ),
     );
     const started = VoiceService.startListening();
     useUIStore.getState().setVoiceListening(started);

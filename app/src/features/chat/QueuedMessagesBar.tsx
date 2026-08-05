@@ -32,8 +32,10 @@ export function QueuedMessagesBar({
       aria-label="Queued messages"
       className="mb-1.5 min-w-0 max-w-full rounded-lg border border-accent-copper/20 bg-background/70 px-1.5 py-1 shadow-[0_8px_20px_rgba(0,0,0,0.18)]"
     >
-      <div className="mb-0.5 flex items-center justify-between px-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-        <span>Queued</span>
+      <div className="mb-0.5 flex items-center justify-between gap-2 px-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+        <span className="min-w-0 truncate normal-case tracking-normal">
+          Messages submit after the next tool call · Esc interrupts and sends now
+        </span>
         <span>{messages.length} queued</span>
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">

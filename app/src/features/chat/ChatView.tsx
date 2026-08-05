@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { TooltipProvider } from '@/components/ui';
-import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/ui';
 import { ChatThread } from './ChatThread';
 import { Composer } from './Composer';
@@ -8,9 +7,12 @@ import { EmptyChat } from './EmptyChat';
 import { ensureActiveChat } from './chatLifecycle';
 import { cn } from '@/lib/utils';
 import { getChatDragKind, getChatDropPayload, type ChatDropKind } from './dropPayload';
-import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import { OrigamiChatDecor } from './OrigamiChatDecor';
 import { MONOCHROME_CHAT_FIXTURE } from './monochromeFixture';
+import { TokenBossCinematic } from './token-boss/TokenBossCinematic';
+import { WarmChatWelcome } from './WarmChatWelcome';
+import { BrowserGoalStatus } from '@/features/browser/BrowserGoalStatus';
+import { BrowserChatHub, useBrowserChatStore } from '@/features/browser-chat';
 import './sakura-chat.css';
 
 /**
@@ -25,14 +27,17 @@ export function ChatView() {
       ? MONOCHROME_CHAT_FIXTURE
       : undefined;
   const activeChatId = visualChatFixture?.activeConversationId ?? storedActiveChatId;
+  const engine = useBrowserChatStore(
+    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
+  );
+  const theme = useUIStore((s) => s.theme);
+  const canShowWarmWelcome = theme === 'warm' && Boolean(activeChatId);
   const [dropKind, setDropKind] = useState<ChatDropKind | null>(null);
   const [ensuringChat, setEnsuringChat] = useState(false);
   const [ensureFailed, setEnsureFailed] = useState(false);
-  const isOnPet = usePetPresentationStore((s) => s.isChatOnPet(activeChatId));
-  const moveChat = usePetPresentationStore((s) => s.moveChat);
 
   useEffect(() => {
-    if (activeChatId || isVisualEmptyChat) return;
+    if (engine === 'browser' || activeChatId || isVisualEmptyChat) return;
     let cancelled = false;
     setEnsuringChat(true);
     setEnsureFailed(false);
@@ -49,7 +54,15 @@ export function ChatView() {
     return () => {
       cancelled = true;
     };
-  }, [activeChatId, isVisualEmptyChat]);
+  }, [activeChatId, engine, isVisualEmptyChat]);
+
+  if (engine === 'browser') {
+    return (
+      <TooltipProvider delayDuration={400}>
+        <BrowserChatHub chatId={activeChatId} />
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider delayDuration={400}>
@@ -101,6 +114,7 @@ export function ChatView() {
         )}
       >
         <OrigamiChatDecor />
+        {canShowWarmWelcome ? <WarmChatWelcome chatId={String(activeChatId)} /> : null}
         {dropKind && (
           <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none">
             Drop{' '}
@@ -116,24 +130,10 @@ export function ChatView() {
           <EmptyChat />
         ) : activeChatId ? (
           <>
-            {isOnPet && (
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5 [[data-theme=monochrome]_&]:bg-panel">
-                <span className="text-metadata text-muted-foreground">
-                  This chat is open in the Pet panel (same thread — not copied).
-                </span>
-                <Button size="sm" variant="outline" onClick={() => moveChat(activeChatId, 'main')}>
-                  Bring back here
-                </Button>
-              </div>
-            )}
             <ChatThread chatId={activeChatId} fixtureMessages={visualChatFixture?.messages} />
-            {isOnPet ? (
-              <div className="border-t border-border px-4 py-3 text-secondary text-muted-foreground text-sm">
-                Type in the Pet panel for this thread. Streaming already started here keeps running.
-              </div>
-            ) : (
-              <Composer chatId={activeChatId} />
-            )}
+            <BrowserGoalStatus chatId={String(activeChatId)} />
+            <Composer chatId={activeChatId} />
+            <TokenBossCinematic chatId={String(activeChatId)} />
           </>
         ) : ensuringChat ? (
           <div className="flex flex-1 items-center justify-center text-secondary text-muted-foreground">

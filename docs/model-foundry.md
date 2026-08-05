@@ -1,0 +1,103 @@
+# Model Foundry
+
+Model Foundry is VibeSpace's local **Build Your Own AI** workflow. It creates a
+versioned, integrity-checked local knowledge artifact and combines that
+artifact with an installed Ollama base model at inference time. It does not
+mislabel a system prompt as trained weights.
+
+## Dedicated Local Studio
+
+The top-bar brain control opens the dedicated Model Foundry studio. Its
+Overview, Create, Data Studio, Train, Evaluate, and My Models workspaces share
+one local job library. The responsive page reports measured CPU, GPU, RAM,
+VRAM, and free storage and explains the source → prepare → train → verify
+pipeline before any local work starts.
+
+The studio never offers a cloud-GPU route. Source media stays on the user's
+computer and original files are never modified. Image, video, audio, PDF,
+DOCX, code, text, and structured-data preparation plans are bounded and
+capability checked. A missing extractor or training backend is reported as an
+unavailable local capability rather than silently uploading, converting, or
+simulating work.
+
+## Supported build path
+
+The current production path is local retrieval knowledge:
+
+1. The user selects local text, Markdown, source-code, JSON/JSONL, or CSV files.
+2. The native runtime validates file type, regular-file status, and the 64 MB
+   per-file limit.
+3. Text is cleaned, deduplicated, chunked, and hashed locally.
+4. The artifact is written atomically, reopened, schema-validated, and checked
+   chunk-by-chunk before it becomes selectable.
+5. At chat time, the native runtime retrieves a bounded set of relevant chunks.
+   Retrieved text is marked as untrusted data and sent only to the selected
+   local Ollama base model.
+
+LoRA, QLoRA, and full fine-tuning remain visibly unavailable until a complete
+verified isolated training runtime is present. VibeSpace now ships an embedded,
+hash-attested, local-only worker boundary and an explicit **Set up local
+worker** action. Setup installs only that audited worker source into private
+app data; it does not silently install Python, download packages, or contact a
+cloud service. The worker probes `torch`, `transformers`, `datasets`,
+`accelerate`, `peft`, and `trl` and advertises no training method unless the
+probe is local-only, protocol-compatible, and ready.
+
+The embedded worker is intentionally probe-only in this build. A signed,
+version-pinned training runtime plus model-specific trainers and artifact
+verification still must be shipped before weight training can be enabled. The
+UI and native knowledge command therefore continue to fail closed for
+LoRA/QLoRA/full-weight requests; no fake training or progress is shown.
+
+Hardware-aware plans keep LoRA, QLoRA, and full-weight requirements distinct,
+check VRAM/RAM/free storage conservatively, and never downgrade the selected
+method to RAG or another training mode.
+
+## Verified base-model catalog
+
+The exact Ollama runtime tags are:
+
+- `qwen2.5:1.5b-instruct-q4_K_M`
+- `qwen2.5:7b-instruct-q4_K_M`
+- `llama3.1:8b-instruct-q4_K_M`
+
+`Q4_K_M` is identified in the UI as a 4-bit inference quantization. It is not
+described as QLoRA training.
+
+The catalog metadata was verified against the official Ollama model pages on
+2026-08-02:
+
+- <https://ollama.com/library/qwen2.5/tags>
+- <https://ollama.com/library/llama3.1:8b-instruct-q4_K_M>
+
+Model Foundry checks for the exact installed tag. A user-approved download uses
+the shared Ollama lifecycle and progress flow; installation of Ollama itself
+continues to require the explicit consent screen in Settings → Local Models.
+
+## Persistence and recovery
+
+Jobs and private retry records are stored below the app-data
+`model-foundry/jobs` directory. The UI polls only while the hub is open.
+Unexpectedly interrupted jobs are marked failed on the next startup and can be
+retried as a new version. Active jobs support cancellation. Verified artifacts
+support activation, rename, duplicate, export, retrain, and confirmed deletion.
+The job records the measured artifact size, sends a local completion
+notification after verification, and presents the newly completed artifact in
+the Model Foundry reveal state when the hub is next opened.
+
+Exports occur only after the user chooses a local destination. Model Foundry
+does not upload source files or artifacts and has no cloud fallback.
+
+## Security boundaries
+
+- Artifact identifiers are path-safe and never accepted as arbitrary paths.
+- Source files are canonicalized and size/type checked.
+- Artifact JSON, schema, base-model allowlist, chunk content hashes, and final
+  file SHA-256 are verified before activation.
+- Retrieval queries and returned context are bounded.
+- Retrieved context is explicitly treated as untrusted data, not instructions.
+- Model Foundry cannot replace a protected Jarvis provider binding.
+- Deletion is limited to terminal jobs inside the private Model Foundry root.
+- The local training worker must match the source hash embedded in the desktop
+  binary and attest to the current protocol and local-only operation.
+- Browser preview cannot install or claim a native training worker.

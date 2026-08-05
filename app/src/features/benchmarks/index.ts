@@ -1,5 +1,6 @@
 /**
  * Public surface for the benchmarks feature.
+ * Internal refresh scheduler helpers stay module-private (not shipped to end users).
  */
 export { BenchmarksPage } from './BenchmarksPage';
 export { BarChart } from './BarChart';

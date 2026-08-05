@@ -11,6 +11,7 @@ import { Inspector } from './Inspector';
 import { TabStrip } from './TabStrip';
 import { CouncilActivityStrip } from './ActivityStrip';
 import { isWorkbenchDetachedSearch } from '@/features/workbench/window';
+import { NightlySecondBrainHost } from '@/features/context/NightlySecondBrainHost';
 import './sakura-shell.css';
 
 interface AppShellProps {
@@ -71,10 +72,12 @@ export function AppShell({ children }: AppShellProps) {
                 : 'relative isolate flex h-full w-full flex-col overflow-hidden bg-background text-foreground'
             }
             data-monochrome-surface="app-shell"
+            data-shell-route={route}
             data-sakura-shell={sakuraActive ? 'true' : undefined}
             data-workbench-fullscreen="true"
             data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
           >
+            <NightlySecondBrainHost />
             {sakuraActive && <SakuraBackdrop route={route} />}
             <div
               className={
@@ -109,10 +112,12 @@ export function AppShell({ children }: AppShellProps) {
               : 'relative isolate flex h-full w-full flex-col overflow-hidden bg-background text-foreground'
           }
           data-monochrome-surface="app-shell"
+          data-shell-route={route}
           data-sakura-shell={sakuraActive ? 'true' : undefined}
           data-focus-mode={focusActive ? 'true' : undefined}
           data-focus-mode-route={focusActive ? route : undefined}
         >
+          <NightlySecondBrainHost />
           {sakuraActive && <SakuraBackdrop route={route} />}
           <div
             className={

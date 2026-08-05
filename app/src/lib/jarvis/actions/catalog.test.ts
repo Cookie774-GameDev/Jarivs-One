@@ -109,12 +109,86 @@ describe('Jarvis action catalog', () => {
         risk: 'external-side-effect',
         approval: 'always',
       },
+      { id: 'browser.readPage', risk: 'read-only', approval: 'never' },
+      { id: 'browser.navigate', risk: 'external-side-effect', approval: 'always' },
+      { id: 'browser.click', risk: 'external-side-effect', approval: 'always' },
+      { id: 'browser.type', risk: 'external-side-effect', approval: 'always' },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
       { id: 'task.cancel', risk: 'destructive', approval: 'always' },
     ]);
+  });
+
+  it('publishes only fixed browser operations behind canonical review bindings', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    expect(
+      ['browser.readPage', 'browser.navigate', 'browser.click', 'browser.type'].map((id) => {
+        const action = catalog.resolve(id)!;
+        return {
+          id,
+          capability: action.requiredCapabilities[0],
+          approval: action.approval,
+          exposed: action.exposeToAI,
+          executor: action.executor,
+        };
+      }),
+    ).toEqual([
+      {
+        id: 'browser.readPage',
+        capability: 'browser.operator',
+        approval: 'never',
+        exposed: false,
+        executor: { kind: 'builtin', registryActionId: 'browser.readPage' },
+      },
+      {
+        id: 'browser.navigate',
+        capability: 'browser.operator',
+        approval: 'always',
+        exposed: false,
+        executor: { kind: 'builtin', registryActionId: 'browser.navigate' },
+      },
+      {
+        id: 'browser.click',
+        capability: 'browser.operator',
+        approval: 'always',
+        exposed: false,
+        executor: { kind: 'builtin', registryActionId: 'browser.click' },
+      },
+      {
+        id: 'browser.type',
+        capability: 'browser.operator',
+        approval: 'always',
+        exposed: false,
+        executor: { kind: 'builtin', registryActionId: 'browser.type' },
+      },
+    ]);
+    expect(catalog.resolve('browser.evaluate')).toBeUndefined();
+    expect(catalog.resolve('browser.runJs')).toBeUndefined();
+
+    const navigate = catalog.resolve('browser.navigate')!;
+    const canonical = {
+      schemaVersion: 1,
+      reviewId: 'review-1',
+      origin: 'https://example.test',
+      tabId: 'tab-1',
+      frameId: null,
+      target: { currentUrl: 'https://example.test/start' },
+      parameters: { url: 'https://example.test/next' },
+      parametersHash: 'parameter-hash',
+      reviewedHash: 'reviewed-hash',
+      expectedEffect: 'Navigate the active browser tab.',
+      reviewedRisk: 'confirm',
+      capability: { id: 'browser.operator', operation: 'browser.navigate' },
+    };
+    expect(navigate.validateParameters(canonical)).toEqual(canonical);
+    expect(() =>
+      navigate.validateParameters({
+        ...canonical,
+        parameters: { url: 'https://example.test/next', expression: 'document.cookie' },
+      }),
+    ).toThrow(/unknown fields/i);
   });
 
   it('publishes one closed always-confirmed MCP invocation registration', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LOCAL_AGENT_PREFERENCES_EVENT,
   LocalCloudEscalationRequiredError,
+  localAgentSystemInstruction,
   localOllamaRequestPolicy,
   planLocalCloudEscalation,
   readLocalAgentPreferences,
@@ -59,6 +60,14 @@ describe('local agent runtime preferences', () => {
       numPredict: 2_048,
       requiresVerification: true,
     });
+  });
+
+  it('adds the Planner → Executor → Verifier contract only to Deep work', () => {
+    expect(localAgentSystemInstruction('fast')).toContain('Answer directly');
+    expect(localAgentSystemInstruction('fast')).not.toContain('Planner → Executor → Verifier');
+    expect(localAgentSystemInstruction('deep')).toContain('Planner → Executor → Verifier');
+    expect(localAgentSystemInstruction('deep')).toContain('existing approval');
+    expect(localAgentSystemInstruction('deep')).toContain('verifiable evidence');
   });
 });
 

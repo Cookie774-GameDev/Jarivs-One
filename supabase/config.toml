@@ -398,6 +398,9 @@ deno_version = 2
 [functions.stripe-webhook]
 verify_jwt = false
 
+[functions.telnyx-call-webhook]
+verify_jwt = false
+
 [functions.call-status]
 verify_jwt = false
 
@@ -423,6 +426,9 @@ verify_jwt = true
 [functions.create-checkout-session]
 verify_jwt = true
 
+[functions.telemetry-consent]
+verify_jwt = true
+
 [functions.create-customer-portal]
 verify_jwt = true
 
@@ -436,6 +442,9 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.call-start]
+verify_jwt = true
+
+[functions.third-party-call]
 verify_jwt = true
 
 [functions.sms-send]

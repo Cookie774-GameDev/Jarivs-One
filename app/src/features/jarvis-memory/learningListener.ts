@@ -247,7 +247,7 @@ export function startJarvisLearningListener(
           text: messageText,
           chatId,
         },
-      ].slice(-10);
+      ].slice(-20);
       recentByAccount.set(currentAccount, recent);
       if (!result.evaluateNow) return;
 
