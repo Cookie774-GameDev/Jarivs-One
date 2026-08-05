@@ -401,7 +401,15 @@ export function SettingsModal({
           data-sakura-surface="settings-layout"
           data-warm-surface="settings-canvas"
         >
-          <div aria-hidden="true" data-warm-decoration="settings-scene">
+          <div aria-hidden="true" data-warm-decoration="settings-scene-left">
+            <img
+              src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
+              alt=""
+              decoding="async"
+              draggable={false}
+            />
+          </div>
+          <div aria-hidden="true" data-warm-decoration="settings-scene-right">
             <img
               src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
               alt=""
