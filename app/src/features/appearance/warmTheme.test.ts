@@ -20,6 +20,7 @@ const modelFoundryPage = readFileSync(
 );
 const accountPage = readFileSync(resolve(__dirname, '../account/AccountPage.tsx'), 'utf8');
 const launcherDialog = readFileSync(resolve(__dirname, '../launcher/LauncherDialog.tsx'), 'utf8');
+const settingsModal = readFileSync(resolve(__dirname, '../settings/SettingsModal.tsx'), 'utf8');
 const warmAssetRoot = resolve(__dirname, '../../../public/assets/themes/warm');
 const warmReferenceAssetRoot = resolve(warmAssetRoot, 'reference');
 const warmHistoryAssetRoot = resolve(warmAssetRoot, 'history');
@@ -295,7 +296,7 @@ describe('Warm theme presentation contract', () => {
       /\[data-monochrome-route='kanban'\]\s*\{[\s\S]*?background:\s*var\(--warm-canvas\)/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s*\{[\s\S]*?background:\s*var\(--warm-canvas-mid\)/u,
+      /\.mc7f-settings-modal\s+\[data-warm-surface='settings-canvas'\]\s*\{[\s\S]*?background:\s*#f9edd9/u,
     );
     expect(css).toMatch(
       /\.bg-accent-gradient\s*\{[\s\S]*?background:\s*var\(--warm-terracotta\)\s*!important/u,
@@ -620,7 +621,7 @@ describe('Warm theme presentation contract', () => {
       /\.mc7f-account-page\s+\.sakura-account-panel\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.76\)[\s\S]*?backdrop-filter:\s*blur\(10px\)/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?warm-shadow-soft/u,
+      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.9\)[\s\S]*?backdrop-filter:\s*blur\(7px\)/u,
     );
   });
 
@@ -660,12 +661,35 @@ describe('Warm theme presentation contract', () => {
     expect(asset[25]).toBe(6);
   });
 
-  it('keeps every Warm Settings navigation label readable on the canonical dark rail', () => {
+  it('composes every Warm Settings page on one stable illustrated parchment shell', () => {
+    const sceneAsset = resolve(warmAssetRoot, 'settings/settings-landscape-v3-selected.webp');
+    expect(existsSync(sceneAsset)).toBe(true);
+    const sceneBytes = readFileSync(sceneAsset);
+    expect(sceneBytes.byteLength).toBeLessThan(125_000);
+    expect(createHash('sha256').update(sceneBytes).digest('hex')).toBe(
+      '6eede03748e23bcbd57ff84be5a60fd8eb956b1cb1e60040a697ae15b4342f88',
+    );
+    expect(settingsModal).toContain('data-warm-surface="settings-canvas"');
+    expect(settingsModal).toContain('data-warm-decoration="settings-scene"');
+    expect(settingsModal).toContain('data-warm-decoration="settings-wash"');
+    expect(settingsModal).toContain(
+      '/assets/themes/warm/settings/settings-landscape-v3-selected.webp',
+    );
+    expect(settingsModal).toContain('data-warm-settings-tab={tab}');
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-navigation'\]\s+nav\s+button\s*\{[\s\S]*?color:\s*var\(--warm-shell-muted\)\s*!important/u,
+      /\[data-warm-decoration='settings-scene'\]\s*>\s*img\s*\{[\s\S]*?width:\s*100%[\s\S]*?height:\s*auto/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-navigation'\]\s+nav\s+button:hover\s*\{[\s\S]*?color:\s*var\(--warm-shell-text\)\s*!important/u,
+      /\[data-warm-surface='settings-canvas'\]\s*\{[\s\S]*?grid-template-columns:\s*250px\s+minmax\(0,\s*1fr\)[\s\S]*?background:\s*#f9edd9/u,
+    );
+    expect(css).toMatch(
+      /\[data-warm-decoration='settings-wash'\]\s*\{[\s\S]*?radial-gradient[\s\S]*?linear-gradient/u,
+    );
+    expect(css).toMatch(
+      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-navigation'\]\s+nav\s+button\s*\{[\s\S]*?color:\s*var\(--warm-text-muted\)\s*!important/u,
+    );
+    expect(css).toMatch(
+      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-navigation'\]\s+nav\s+button:hover\s*\{[\s\S]*?color:\s*var\(--warm-text-strong\)\s*!important/u,
     );
   });
 

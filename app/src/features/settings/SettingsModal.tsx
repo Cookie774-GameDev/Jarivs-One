@@ -395,7 +395,17 @@ export function SettingsModal({
         <div
           className="flex-1 min-h-0 grid grid-cols-[220px_1fr] grid-rows-[1fr]"
           data-sakura-surface="settings-layout"
+          data-warm-surface="settings-canvas"
         >
+          <div aria-hidden="true" data-warm-decoration="settings-scene">
+            <img
+              src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
+              alt=""
+              decoding="async"
+              draggable={false}
+            />
+          </div>
+          <div aria-hidden="true" data-warm-decoration="settings-wash" />
           <aside
             className="border-r border-border bg-panel flex flex-col min-h-0"
             data-sakura-surface="settings-navigation"
@@ -454,6 +464,7 @@ export function SettingsModal({
             className="overflow-y-auto px-6 py-6 min-h-0"
             role="tablist"
             data-sakura-surface="settings-content"
+            data-warm-settings-tab={tab}
           >
             <SettingsTabPanels tab={tab} visited={visitedTabs} hiveEnabled={hiveEnabled} />
           </main>
