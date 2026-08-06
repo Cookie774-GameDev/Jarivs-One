@@ -131,11 +131,17 @@ Required remaining evidence:
 - Current JWT gates, service-role separation, Access version authority, shared
   credits, reward policy, and account-isolation checks are documented.
 - A fail-closed capacity harness and operator report are committed.
+- Supabase CLI 2.111.0 exposed and a focused 1/1 contract corrected two broken
+  local auth-template paths. The configuration now validates against the
+  committed templates.
 
 The connected cloud project observed during this goal presented AccessRevamp
 identity/schema evidence, not proven VibeSpace production identity. It was not
-mutated. The local machine has Docker but no Supabase CLI or configured
-capacity URL/key, so no real capacity numbers are claimed.
+mutated. The isolated local stack then remained blocked by a Docker Desktop
+overlayfs/containerd input/output error and HTTP 500 container API after the
+system drive had reached 2.26 GB free. One bounded restart did not recover the
+backend. No migrations or capacity stages ran, so no real capacity numbers are
+claimed.
 
 Status: **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**
 
@@ -234,6 +240,8 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 - Browser/Vite behavior does not prove every installed Tauri/native flow.
 - Deep-worktree Windows default-feature builds require a short
   `CARGO_TARGET_DIR` to avoid the reproduced MSBuild generated-path failure.
+- Local Supabase execution requires Docker Desktop recovery from the recorded
+  containerd input/output and API failure.
 - Framework/browser-owned development diagnostics occur before some
   application redaction boundaries.
 - Native STT/model and signed release behavior cannot be simulated as proof.

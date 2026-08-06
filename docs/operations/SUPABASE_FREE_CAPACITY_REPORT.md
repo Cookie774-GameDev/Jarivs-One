@@ -15,11 +15,23 @@ non-production Supabase project. It does not authorize production load testing.
 |  5,000 | Not executed     | Not measured   | Not measured | Not measured | Not collected    |
 | 10,000 | Not executed     | Not measured   | Not measured | Not measured | Not collected    |
 
-No capacity result is claimed. On 2026-08-05, the worktree had Docker
-available, but no Supabase CLI, `SUPABASE_CAPACITY_URL`, or
-`SUPABASE_CAPACITY_ANON_KEY`. The connected cloud project identity was also not
-proven to be an isolated VibeSpace test target. Running load against that
-ambiguous target would be unsafe.
+No capacity result is claimed. On 2026-08-05, Supabase CLI 2.111.0 was run
+against the committed local `VibeSpace` project only. A focused RED/GREEN
+contract corrected the two active auth-template paths from nonexistent
+repository-root files to the committed files under `supabase/templates`.
+Configuration validation then succeeded.
+
+The isolated stack still could not start. Docker Desktop exhausted the nearly
+full system drive while extracting the local PostgreSQL image, returned an
+overlayfs/containerd input/output error, and subsequently returned HTTP 500
+from its container API. Removing the disposable verification target raised
+free space from 2.26 GB to 6.59 GB, but the Docker backend remained stuck while
+stopping after one bounded restart. No migration, request stage, connected
+cloud call, or external mutation occurred.
+
+The connected cloud project identity was also not proven to be an isolated
+VibeSpace test target. Running load against that ambiguous target would be
+unsafe.
 
 The implemented probe:
 
@@ -115,6 +127,11 @@ Free availability and limits are platform constraints, not a VibeSpace SLA.
 ## Verification and rollback
 
 - Node contract tests: 8/8 passed.
+- Local auth-template config contract: 1/1 passed.
+- Supabase CLI 2.111.0 validates the corrected configuration and reaches local
+  container inspection.
+- Local stack execution remains **BLOCKED — TECHNICAL** by the Docker Desktop
+  containerd/API failure described above.
 - CLI dry run: emitted the four exact stages with
   `BLOCKED_TECHNICAL_NOT_EXECUTED` and no credential material.
 - No external request or cloud mutation was performed.

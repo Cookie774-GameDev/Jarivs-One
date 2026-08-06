@@ -246,11 +246,11 @@ otp_expiry = 3600
 # Uncomment to customize email template
 [auth.email.template.confirmation]
 subject = "Your VibeSpace verification code"
-content_path = "./templates/confirmation.html"
+content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.magic_link]
 subject = "Your VibeSpace sign-in code"
-content_path = "./templates/magic_link.html"
+content_path = "./supabase/templates/magic_link.html"
 
 # [auth.email.template.invite]
 # subject = "You have been invited"
