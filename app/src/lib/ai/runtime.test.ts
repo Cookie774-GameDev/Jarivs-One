@@ -499,6 +499,8 @@ describe('startRuntimeListener agent routing', () => {
     expect(request.agent.system_prompt).toContain('Reread the original user request');
     expect(request.agent.system_prompt).toContain('files.read');
     expect(request.agent.system_prompt).toContain('Do not broadly claim that you cannot code');
+    expect(request.agent.system_prompt).toContain('Scale response depth to the task');
+    expect(request.agent.system_prompt).toContain('calm, precise, capable');
   });
 
   it('auto-routes a protected Jarvis image turn through an active catalog connection without changing the picker', async () => {
@@ -1169,7 +1171,7 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
-  it('keeps the Jarvis chat overlay terse and context-referential', async () => {
+  it('keeps Jarvis concise for simple chat without truncating complex work', async () => {
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_terse_jarvis' as ChatId;
     const placeholderId = 'msg_terse_jarvis_assistant' as MessageId;
@@ -1204,7 +1206,9 @@ describe('startRuntimeListener agent routing', () => {
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
-    expect(prompt).toContain('Answer in 1-3 short sentences');
+    expect(prompt).toContain('Scale response depth to the task');
+    expect(prompt).toContain('use 1-3 short sentences for simple questions');
+    expect(prompt).toContain('complex coding, research, or multi-step work');
     expect(prompt).toContain(
       'Name the relevant file, agent, terminal, context map, or page when it matters',
     );

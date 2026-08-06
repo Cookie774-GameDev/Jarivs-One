@@ -465,12 +465,20 @@ function DiffView({ block }: { block: Extract<TranscriptBlock, { kind: 'diff' }>
   );
 }
 
-function CommandView({ block }: { block: Extract<TranscriptBlock, { kind: 'command' }> }) {
+function CommandView({
+  block,
+  motionActive,
+}: {
+  block: Extract<TranscriptBlock, { kind: 'command' }>;
+  motionActive: boolean;
+}) {
   return (
     <article className="agentic-command" aria-label={`Command ${block.command}`}>
       <div className="agentic-block-head">
         <span>
-          {!block.output && !block.error ? <AgentMotionIndicator motion="cursor-forge" /> : null}
+          {motionActive && !block.output && !block.error ? (
+            <AgentMotionIndicator motion="cursor-forge" />
+          ) : null}
           <TerminalSquare aria-hidden="true" />
           <strong>{block.tool}</strong>
           {block.cwd ? <small>{block.cwd}</small> : null}
@@ -585,7 +593,7 @@ function BlockView({
     );
   }
   if (block.kind === 'diff') return <DiffView block={block} />;
-  if (block.kind === 'command') return <CommandView block={block} />;
+  if (block.kind === 'command') return <CommandView block={block} motionActive={motionActive} />;
   if (block.kind === 'tool') return <ToolView block={block} />;
   return (
     <div className="agentic-legacy" data-agentic-fallback="structured-message">

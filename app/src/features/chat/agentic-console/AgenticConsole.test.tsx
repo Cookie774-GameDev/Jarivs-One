@@ -95,7 +95,7 @@ describe('AgenticConsole', () => {
     );
   });
 
-  it('maps live work to the approved motion-lab indicators', () => {
+  it('uses the same active Jarvis motion throughout live work', () => {
     const activity: ChatActivityEvent[] = [
       {
         id: 'context',
@@ -158,14 +158,11 @@ describe('AgenticConsole', () => {
       sessionEvidence: { status: 'running', currentOperation: 'Working' },
     });
 
-    expect(rendered.container.querySelector('[data-agent-motion="twin-loop"]')).toBeTruthy();
+    const motions = rendered.container.querySelectorAll('[data-agent-motion]');
+    expect(motions.length).toBeGreaterThan(0);
     expect(
-      rendered.container.querySelector('[data-agent-motion="breathing-brackets"]'),
-    ).toBeTruthy();
-    expect(rendered.container.querySelector('[data-agent-motion="nine-dot-fold"]')).toBeTruthy();
-    expect(rendered.container.querySelector('[data-agent-motion="stack-shift"]')).toBeTruthy();
-    expect(rendered.container.querySelector('[data-agent-motion="code-shimmer"]')).toBeTruthy();
-    expect(rendered.container.querySelector('[data-agent-motion="glyph-current"]')).toBeTruthy();
+      [...motions].every((motion) => motion.getAttribute('data-agent-motion') === 'cursor-forge'),
+    ).toBe(true);
   });
 
   it('stops reasoning motion after the Jarvis run completes', () => {
@@ -174,6 +171,12 @@ describe('AgenticConsole', () => {
       messages: [
         message('assistant-reasoning', 'assistant', 10, [
           { kind: 'reasoning', text: 'Checked the implementation and its focused test.' },
+          {
+            kind: 'tool_call',
+            call_id: 'completed-command',
+            tool: 'terminal.exec',
+            args: { command: 'npm test' },
+          },
           { kind: 'text', text: 'The verified change is complete.' },
         ]),
       ],

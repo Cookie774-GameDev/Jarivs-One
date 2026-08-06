@@ -23,35 +23,6 @@ const LIVE_STATUSES = new Set<ChatActivityStatus>(['pending', 'running']);
 
 export function resolveAgentMotion(evidence: AgentMotionEvidence): AgentMotionKind | null {
   if (evidence.status && !LIVE_STATUSES.has(evidence.status)) return null;
-  const text = `${evidence.title ?? ''} ${evidence.detail ?? ''} ${evidence.filePath ?? ''}`.toLowerCase();
-
-  if (/allaboutme|all about me|learning from this chat/.test(text)) {
-    return 'breathing-brackets';
-  }
-  if (/context map|context md|keeping context|memory update|second brain/.test(text)) {
-    return 'twin-loop';
-  }
-  if (
-    evidence.activityKind === 'subagent' ||
-    /subagents?|delegat|coordinat|handoff|spawn(?:ing|ed)? agent/.test(text)
-  ) {
-    return 'nine-dot-fold';
-  }
-  if (/final response|final answer|preparing (?:the )?(?:reply|response)|summari[sz]|audit/.test(text)) {
-    return 'glyph-current';
-  }
-  if (
-    evidence.activityKind === 'diff' ||
-    /writing|wrote|editing|edited|patch|apply changes|implement|code change/.test(text)
-  ) {
-    return 'code-shimmer';
-  }
-  if (
-    evidence.activityKind === 'file' ||
-    /reading|inspect|index|search(?:ing)? (?:the )?(?:workspace|files?)|discover(?:ing)? files?/.test(text)
-  ) {
-    return 'stack-shift';
-  }
   return 'cursor-forge';
 }
 
