@@ -127,7 +127,7 @@ Free availability and limits are platform constraints, not a VibeSpace SLA.
 ## Verification and rollback
 
 - Node contract tests: 8/8 passed.
-- Local auth-template config contract: 1/1 passed.
+- Local template and email-test config contract: 2/2 passed.
 - Supabase CLI 2.111.0 validates the corrected configuration and reaches local
   container inspection.
 - Local stack execution remains **BLOCKED — TECHNICAL** by the Docker Desktop

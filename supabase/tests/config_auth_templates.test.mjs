@@ -29,3 +29,10 @@ test('active Supabase auth template paths resolve to committed local templates',
     );
   }
 });
+
+test('local email testing uses the current Supabase config section', () => {
+  const config = readFileSync(configPath, 'utf8');
+
+  assert.match(config, /^\[local_smtp\]$/mu);
+  assert.doesNotMatch(config, /^\[inbucket\]$/mu);
+});

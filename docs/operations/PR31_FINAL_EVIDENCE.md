@@ -131,9 +131,10 @@ Required remaining evidence:
 - Current JWT gates, service-role separation, Access version authority, shared
   credits, reward policy, and account-isolation checks are documented.
 - A fail-closed capacity harness and operator report are committed.
-- Supabase CLI 2.111.0 exposed and a focused 1/1 contract corrected two broken
-  local auth-template paths. The configuration now validates against the
-  committed templates.
+- Supabase CLI 2.111.0 exposed and a focused 2/2 contract corrected two broken
+  local auth-template paths plus the deprecated `[inbucket]` section. The
+  configuration now uses committed templates and current `[local_smtp]`
+  authority.
 
 The connected cloud project observed during this goal presented AccessRevamp
 identity/schema evidence, not proven VibeSpace production identity. It was not
