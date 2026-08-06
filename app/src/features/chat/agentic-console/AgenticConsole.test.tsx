@@ -168,6 +168,33 @@ describe('AgenticConsole', () => {
     expect(rendered.container.querySelector('[data-agent-motion="glyph-current"]')).toBeTruthy();
   });
 
+  it('stops reasoning motion after the Jarvis run completes', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('assistant-reasoning', 'assistant', 10, [
+          { kind: 'reasoning', text: 'Checked the implementation and its focused test.' },
+          { kind: 'text', text: 'The verified change is complete.' },
+        ]),
+      ],
+      activity: [
+        {
+          id: 'agent-done',
+          chatId: 'chat-console',
+          kind: 'agent',
+          status: 'done',
+          title: '@jarvis finished',
+          ts: 20,
+          endedAt: 20,
+        },
+      ],
+      sessionEvidence: { status: 'done', currentOperation: 'Complete' },
+    });
+
+    expect(screen.getByText('Reasoning')).toBeTruthy();
+    expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
+  });
+
   it('changes only the scoped console profile and exposes classic view', () => {
     const globalTheme = document.documentElement.dataset.theme;
     renderConsole({

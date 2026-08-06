@@ -346,6 +346,22 @@ export function tokenBossProviderForMode<T extends { mode: string }>(
   return context ? resolveTokenBossProvider(context) : null;
 }
 
+const TOKEN_OPTIMIZATION_MODE_FOR_REASONING: Readonly<
+  Record<ReasoningMode, 'saver' | 'normal' | 'final_boss'>
+> = {
+  'token-saver': 'saver',
+  normal: 'normal',
+  'token-final-boss': 'final_boss',
+};
+
+export function applyChatReasoningMode(chatId: string, mode: ReasoningMode): void {
+  writeChatReasoningMode(chatId, mode);
+  browserTokenOptimizationPreferences.setChatOverride(
+    chatId,
+    TOKEN_OPTIMIZATION_MODE_FOR_REASONING[mode],
+  );
+}
+
 export function mergeActiveCanvasSourcesForPromptForge(
   sources: readonly PromptForgeSourceCandidate[],
   accountId: string,
@@ -1547,7 +1563,7 @@ export function Composer({
     if (canonical === 'mode') {
       const mode = parseReasoningModeArgument(option.id);
       if (mode) {
-        writeChatReasoningMode(String(chatId), mode);
+        applyChatReasoningMode(String(chatId), mode);
         setReasoningPreference(readChatReasoningPreference(String(chatId)));
         if (mode === 'token-final-boss') activateTokenBoss(mode);
       }
@@ -1737,7 +1753,7 @@ export function Composer({
       if (rest) {
         const mode = parseReasoningModeArgument(rest);
         if (mode) {
-          writeChatReasoningMode(String(chatId), mode);
+          applyChatReasoningMode(String(chatId), mode);
           setReasoningPreference(readChatReasoningPreference(String(chatId)));
           setText('');
           if (mode === 'token-final-boss') activateTokenBoss(mode);

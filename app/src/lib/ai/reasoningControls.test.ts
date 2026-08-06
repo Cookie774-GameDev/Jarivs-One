@@ -67,6 +67,7 @@ describe('reasoning controls', () => {
       resolvedEffort: 'low',
       providerOptions: { thinking_level: 'low' },
       maxOutputTokens: undefined,
+      executionInstructions: expect.stringContaining('Normal'),
     });
   });
 
@@ -105,6 +106,33 @@ describe('reasoning controls', () => {
       providerOptions: { reasoning_effort: 'xhigh' },
       maxOutputTokens: undefined,
     });
+  });
+
+  it('binds each mode to a real execution contract and gives Final Boss a bounded verification loop', () => {
+    const selected = selection('openai', 'gpt-5.6-sol', 'openai-codex');
+    const saver = resolveReasoningPolicy({
+      selection: selected,
+      preference: { mode: 'token-saver', effortOverride: null },
+    });
+    const normal = resolveReasoningPolicy({
+      selection: selected,
+      preference: { mode: 'normal', effortOverride: null },
+    });
+    const finalBoss = resolveReasoningPolicy({
+      selection: selected,
+      preference: { mode: 'token-final-boss', effortOverride: null },
+    });
+
+    expect(saver.executionInstructions).toContain('Token Saver');
+    expect(saver.executionInstructions).toContain('mandatory security');
+    expect(normal.executionInstructions).toContain('Normal');
+    expect(normal.executionInstructions).toContain('focused verification');
+    expect(finalBoss.executionInstructions).toContain('Token Final Boss');
+    expect(finalBoss.executionInstructions).toContain('Reread the original user request');
+    expect(finalBoss.executionInstructions).toContain('critique');
+    expect(finalBoss.executionInstructions).toContain('Re-run the affected verification');
+    expect(finalBoss.executionInstructions).toContain('Do not expose private chain-of-thought');
+    expect(finalBoss.selection).toEqual(selected);
   });
 
   it('normalizes malformed persisted preferences to Normal without an override', () => {

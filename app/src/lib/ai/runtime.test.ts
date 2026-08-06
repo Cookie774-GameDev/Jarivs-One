@@ -457,6 +457,50 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
+  it('sends Jarvis coding capability and Final Boss verification instructions to the selected provider', async () => {
+    const jarvis = agent('agent_jarvis_final_boss', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_final_boss' as ChatId;
+
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_final_boss' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Fix the code and verify it.',
+          interactionMode: 'agent',
+          reasoningPreference: { mode: 'token-final-boss', effortOverride: null },
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const request = mocks.runAgent.mock.calls[0]![0];
+    expect(request.agent.model).toEqual({
+      provider: 'groq',
+      model: 'llama-3.3-70b-versatile',
+    });
+    expect(request.provider_options).toEqual({});
+    expect(request.agent.system_prompt).toContain('Token Final Boss');
+    expect(request.agent.system_prompt).toContain('Reread the original user request');
+    expect(request.agent.system_prompt).toContain('files.read');
+    expect(request.agent.system_prompt).toContain('Do not broadly claim that you cannot code');
+  });
+
   it('auto-routes a protected Jarvis image turn through an active catalog connection without changing the picker', async () => {
     const jarvis = agent('agent_jarvis_auto_route', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_auto_route' as ChatId;

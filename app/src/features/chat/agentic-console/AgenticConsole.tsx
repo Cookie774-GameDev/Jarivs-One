@@ -529,11 +529,13 @@ function BlockView({
   finalAnswerId,
   compact,
   creatorDraftKind,
+  motionActive,
 }: {
   block: TranscriptBlock;
   finalAnswerId?: string;
   compact?: boolean;
   creatorDraftKind?: JarvisCreatorKind;
+  motionActive: boolean;
 }) {
   if (block.kind === 'prompt') return <PromptBand block={block} />;
   if (block.kind === 'answer') {
@@ -555,7 +557,7 @@ function BlockView({
     return (
       <details className="agentic-reasoning">
         <summary>
-          <AgentMotionIndicator motion="cursor-forge" />
+          {motionActive ? <AgentMotionIndicator motion="cursor-forge" /> : null}
           <Gauge aria-hidden="true" />
           Reasoning
         </summary>
@@ -619,6 +621,11 @@ export function AgenticConsole({
     () => summarizeAgenticSession(messages, activity, sessionEvidence),
     [messages, activity, sessionEvidence],
   );
+  const motionActive =
+    summary.status === 'queued' ||
+    summary.status === 'planning' ||
+    summary.status === 'running' ||
+    summary.status === 'recovering';
   const windowed = React.useMemo(
     () => windowTranscriptBlocks(blocks, mountedCount),
     [blocks, mountedCount],
@@ -639,7 +646,8 @@ export function AgenticConsole({
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 't') return;
+      if (!event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 't')
+        return;
       const target = event.target;
       if (
         (target instanceof Element &&
@@ -763,6 +771,7 @@ export function AgenticConsole({
             finalAnswerId={finalAnswerId}
             compact={compact}
             creatorDraftKind={creatorDraftKind}
+            motionActive={motionActive}
           />
         ))}
       </div>

@@ -1497,6 +1497,8 @@ const JARVIS_CHAT_ACTION_OVERLAY = [
   '',
   'Rules:',
   '- If the user asks you to change the app, navigate, open terminals, run commands, create schedules, or spawn subagents, say the result briefly and emit a fenced `action` block when an action exists.',
+  '- You can inspect and change code through the listed `files.read`, `files.write`, `files.edit`, and terminal actions. Do not broadly claim that you cannot code, read files, edit files, run tests, or use terminals when those actions are present.',
+  '- For coding work, inspect the relevant file first, propose only the required approval-gated mutations, then verify the result with an appropriate focused command and report the exact files and evidence. Never claim an action ran before its approved result exists.',
   '- Never answer app-control requests with JavaScript, shell snippets, pseudocode, or instructions for the user to run manually.',
   '- Never emit raw `{action}` macros. Use fenced JSON action blocks only.',
   '- Mutating app actions do not run until the user clicks Approve, so never claim they already happened.',
@@ -3446,6 +3448,14 @@ export function startRuntimeListener(
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
+    if (reasoningPolicy?.executionInstructions) {
+      runnable = {
+        ...runnable,
+        system_prompt: [runnable.system_prompt, reasoningPolicy.executionInstructions]
+          .filter(Boolean)
+          .join('\n\n'),
+      };
+    }
     const coreSystemPrompt = runnable.system_prompt ?? '';
     const contextBlocks = runtimeContextBlocks.map((block) => block.text);
     if (contextBlocks.length > 0) {
@@ -3994,7 +4004,11 @@ export function startRuntimeListener(
             id: `${block.key}-${index + 1}`,
             kind: tokenOptimizationContextKind(block.key),
             text: block.text,
-            relevance: tokenOptimizationContextRelevance(block.score, index, runtimeContextBlocks.length),
+            relevance: tokenOptimizationContextRelevance(
+              block.score,
+              index,
+              runtimeContextBlocks.length,
+            ),
             protected: isProtectedTokenOptimizationContext(block.key),
             reason: `Runtime context: ${block.key}`,
           })),

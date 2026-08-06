@@ -182,6 +182,24 @@ describe('AgentActivityCard', () => {
     expect(useUIStore.getState().route).toBe('chat');
   });
 
+  it('keeps files read, files changed, and line evidence collapsed by default', () => {
+    useJarvisInteractionStore.setState({
+      agentsByChat: {
+        chat_parent: [agentPart.agent],
+      },
+    });
+
+    render(<ChatAgentActivityPanel chatId="chat_parent" />);
+
+    const disclosure = screen.getByText('Files and changes').closest('details');
+    expect(disclosure).toBeTruthy();
+    expect(disclosure?.open).toBe(false);
+    expect(disclosure?.textContent).toContain('Composer.tsx');
+    expect(disclosure?.textContent).toContain('runtime.ts');
+    expect(disclosure?.textContent).toContain('+12');
+    expect(disclosure?.textContent).toContain('-3');
+  });
+
   it('dedupes duplicate agents by id in the connected panel', () => {
     const secondPart: Extract<Part, { kind: 'agent_card' }> = {
       ...agentPart,

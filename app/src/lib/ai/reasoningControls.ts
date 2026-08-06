@@ -25,6 +25,7 @@ export interface ResolvedReasoningPolicy {
   resolvedEffort: ReasoningEffort | null;
   providerOptions: Record<string, unknown>;
   maxOutputTokens: number | undefined;
+  executionInstructions: string;
 }
 
 const EFFORTS: readonly ReasoningEffort[] = ['minimal', 'low', 'medium', 'high', 'ultra'];
@@ -33,6 +34,33 @@ const NO_REASONING: ReasoningCapabilities = {
   supportedEfforts: [],
   providerOptionKey: null,
   wireEffort: (effort) => effort,
+};
+
+const EXECUTION_INSTRUCTIONS: Readonly<Record<ReasoningMode, string>> = {
+  'token-saver': [
+    '## Reasoning mode: Token Saver',
+    'Keep the selected model. Use the smallest relevant context set, remove duplicate context, and answer concisely.',
+    'Use low native reasoning when supported, but never skip mandatory security, approval, correctness, or user acceptance checks.',
+    'Do not compress instructions, attachments, patches, schemas, permission decisions, or evidence needed to avoid a false claim.',
+  ].join('\n'),
+  normal: [
+    '## Reasoning mode: Normal',
+    'Keep the selected model. Use moderate relevant context, the provider default reasoning level, and normal answer detail.',
+    'Perform focused verification when the task changes state or makes a correctness claim. Avoid duplicate searches and repeated unchanged checks.',
+  ].join('\n'),
+  'token-final-boss': [
+    '## Reasoning mode: Token Final Boss',
+    'Keep the exact selected model and use its highest verified native reasoning level.',
+    'For difficult work, privately run this bounded loop before completing:',
+    '1. Reread the original user request and identify its concrete acceptance criteria, constraints, and protected boundaries.',
+    '2. Inspect the most relevant current evidence, then form a concise implementation or answer plan.',
+    '3. Execute through only the available tools and approval-gated actions; inspect every material result instead of assuming success.',
+    '4. Verify the changed behavior or factual answer with focused evidence, then critique it against the original request and likely failure paths.',
+    '5. Correct material gaps and Re-run the affected verification once; reread the original user request before the final answer.',
+    'Stop when the acceptance criteria are proven, evidence is sufficient, required checks pass, or further work would repeat unchanged evidence.',
+    'Do not expose private chain-of-thought. Report only the concise result, useful rationale, actions awaiting approval, and verifiable evidence.',
+    'Never weaken security, approvals, account isolation, or truthful completion standards to finish faster.',
+  ].join('\n'),
 };
 
 export function normalizeReasoningPreference(value: unknown): ReasoningPreference {
@@ -160,5 +188,6 @@ export function resolveReasoningPolicy({
     resolvedEffort,
     providerOptions,
     maxOutputTokens: preference.mode === 'token-saver' ? 2048 : undefined,
+    executionInstructions: EXECUTION_INSTRUCTIONS[preference.mode],
   };
 }
