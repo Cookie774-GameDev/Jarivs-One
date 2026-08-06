@@ -2189,6 +2189,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Exclusions: every unrelated product/native/backend/cloud path, `install/install.ps1`, dependencies, processes, subagents, and unrelated dirty work.
 - Status: `LOCALLY_COMPLETE_RELEASED`. The focused Warm gate passes 3 files and 29 tests; all eight frontend shards, exact formatting, TypeScript, and the production build pass. Both selected WebP assets were hash-, size-, dimension-, and visually verified.
 
+## 2026-08-05 - PR31 final visual-authority synchronization
+
+- Controller: `/root`
+- Task: `VS-ROOT-20260805T191000Z-VISUAL-AUTHORITY-SYNC`
+- Starting HEAD: `f842393`
+- Owned paths: bounded MonoChrome native/schema/migration contracts, the MC9 baseline manifest/test, generated Sakura route/window manifests, and coordination records.
+- Scope: reconcile the seven stale final-gate assertions with current committed production capability, theme, and route authority; preserve every runtime/UI behavior and strict partition/least-privilege invariant.
+- Exclusions: product code, visual images/tolerances, `install/install.ps1`, external systems, dependencies, processes, subagents, and unrelated work. The MC9 manifest/test extension may only preserve the already-captured `settings--account.png` as immutable historical evidence after its current route-authority removal.
+- Status: `LOCALLY_COMPLETE_RELEASED`. The 111-image MC9 corpus remains complete; native authority is pinned to the exact introducing commit and current six-capability production closure while excluding the least-privilege test capability; all seven selectable themes are documented; and regenerated Sakura route/window manifests match current authority. Fresh MonoChrome verification passes 39/39, Sakura partition verification passes 3/3, and the combined release/security/visual gate passes 107/107. Formatting, diff hygiene, and added-line secret scanning are clean.
+
 ## 2026-07-19 - Task 20A accepted, Sol high override restored, and Task 20B exact lock acquired
 
 | Field                              | Coordination record                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

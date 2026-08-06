@@ -1,5 +1,4 @@
-// @ts-expect-error TS5097 -- Direct Node test execution requires the explicit .ts extension.
-import { MONOCHROME_SOURCE_COMMIT } from './fixture-manifest.ts';
+export const MONOCHROME_NATIVE_SOURCE_COMMIT = '7a1f535522b4c666cf9e697f872d56127fd0f87d';
 
 export type MonochromeNativeSurfaceCreation = 'declared' | 'dynamic-rust' | 'dynamic-webview';
 
@@ -59,7 +58,7 @@ const surface = (
 
 export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest = Object.freeze({
   schemaVersion: 1,
-  sourceCommit: MONOCHROME_SOURCE_COMMIT,
+  sourceCommit: MONOCHROME_NATIVE_SOURCE_COMMIT,
   captureMode: 'retroactive-source-freeze',
   hashMode: 'sha256-canonical-lf-bytes',
   ownedPaths: Object.freeze([
@@ -76,10 +75,16 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
   validatorCommand: 'node --test tests/visual/monochrome/native-window-manifest.test.ts',
   capabilities: Object.freeze([
     capability(
+      'cold-start-intro.json',
+      'cold-start-intro',
+      ['cold-start-intro'],
+      'F001AC42A3A01888CC83B86AEC9817E994AE25F5B5A5F30A1B5DB92A0A9E3648',
+    ),
+    capability(
       'default.json',
       'default',
-      ['main', 'cold-start-intro', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
-      '9221EB6B94821DC0C26821BDF512979961C8241755AF9C1AAAED3CBEFBC3F07C',
+      ['main', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
+      '436AF8A746E4157E0BFC84FDB1E7144A3BC6022D98F99DE9BBA1D437B7D19C83',
     ),
     capability(
       'pet-mini-panel.json',
@@ -103,11 +108,11 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
       'workbench.json',
       'workbench-window',
       ['workbench-*'],
-      'B5FBAAB55EFC551568004A0A98A9F4DA33AC55887B97CE8F11EE3F4B7BA5A64C',
+      '8719416D697B0ADC8D3C1540CF22655F1C0EEBCCDE400F6DC4408CA86AAA2559',
     ),
   ]),
   surfaces: Object.freeze([
-    surface('cold-start-intro', 'declared', 'app/src-tauri/tauri.conf.json', ['default']),
+    surface('cold-start-intro', 'declared', 'app/src-tauri/tauri.conf.json', ['cold-start-intro']),
     surface('dictation', 'declared', 'app/src-tauri/tauri.conf.json', ['default']),
     surface('main', 'declared', 'app/src-tauri/tauri.conf.json', ['default']),
     surface('pet-mini-panel', 'dynamic-rust', 'app/src-tauri/src/pets.rs', [
@@ -116,9 +121,12 @@ export const MONOCHROME_NATIVE_WINDOW_MANIFEST: MonochromeNativeWindowManifest =
     ]),
     surface('pet-overlay', 'dynamic-rust', 'app/src-tauri/src/pets.rs', ['default', 'pet-overlay']),
     surface('preview-surface', 'dynamic-rust', 'app/src-tauri/src/preview.rs', ['default']),
-    surface('taskbar-usage', 'dynamic-webview', 'app/src/features/taskbar-usage/taskbarUsageNativeWindow.ts', [
+    surface(
       'taskbar-usage',
-    ]),
+      'dynamic-webview',
+      'app/src/features/taskbar-usage/taskbarUsageNativeWindow.ts',
+      ['taskbar-usage'],
+    ),
     surface('workbench-main', 'dynamic-webview', 'app/src/features/workbench/window.ts', [
       'workbench-window',
     ]),
@@ -154,7 +162,7 @@ export function validateMonochromeNativeWindowManifest(
 ): string[] {
   const errors: string[] = [];
   if (manifest.schemaVersion !== 1) errors.push('unsupported schema version');
-  if (manifest.sourceCommit !== MONOCHROME_SOURCE_COMMIT) {
+  if (manifest.sourceCommit !== MONOCHROME_NATIVE_SOURCE_COMMIT) {
     errors.push('source commit provenance drift');
   }
   if (manifest.hashMode !== 'sha256-canonical-lf-bytes') {

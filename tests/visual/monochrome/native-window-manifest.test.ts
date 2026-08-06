@@ -7,15 +7,21 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import * as nativeAuthority from './native-window-manifest.ts';
 
-const SOURCE_COMMIT = '7eb708e184ee4f054a49d3e70d73e80fd4eb97ae';
+const SOURCE_COMMIT = nativeAuthority.MONOCHROME_NATIVE_SOURCE_COMMIT;
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 const EXPECTED_CAPABILITIES = [
   [
+    'cold-start-intro.json',
+    'cold-start-intro',
+    ['cold-start-intro'],
+    'F001AC42A3A01888CC83B86AEC9817E994AE25F5B5A5F30A1B5DB92A0A9E3648',
+  ],
+  [
     'default.json',
     'default',
-    ['main', 'cold-start-intro', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
-    '9221EB6B94821DC0C26821BDF512979961C8241755AF9C1AAAED3CBEFBC3F07C',
+    ['main', 'dictation', 'pet-overlay', 'pet-mini-panel', 'preview-surface'],
+    '436AF8A746E4157E0BFC84FDB1E7144A3BC6022D98F99DE9BBA1D437B7D19C83',
   ],
   [
     'pet-mini-panel.json',
@@ -39,12 +45,12 @@ const EXPECTED_CAPABILITIES = [
     'workbench.json',
     'workbench-window',
     ['workbench-*'],
-    'B5FBAAB55EFC551568004A0A98A9F4DA33AC55887B97CE8F11EE3F4B7BA5A64C',
+    '8719416D697B0ADC8D3C1540CF22655F1C0EEBCCDE400F6DC4408CA86AAA2559',
   ],
 ] as const;
 
 const EXPECTED_SURFACES = [
-  ['cold-start-intro', 'declared', 'app/src-tauri/tauri.conf.json', ['default']],
+  ['cold-start-intro', 'declared', 'app/src-tauri/tauri.conf.json', ['cold-start-intro']],
   ['dictation', 'declared', 'app/src-tauri/tauri.conf.json', ['default']],
   ['main', 'declared', 'app/src-tauri/tauri.conf.json', ['default']],
   ['pet-mini-panel', 'dynamic-rust', 'app/src-tauri/src/pets.rs', ['default', 'pet-mini-panel']],
@@ -66,6 +72,7 @@ const EXPECTED_SURFACES = [
 
 const TEST_ONLY_CAPABILITY_FILES = ['monochrome-test.json'];
 const PRODUCTION_CAPABILITY_IDENTIFIERS = [
+  'cold-start-intro',
   'default',
   'pet-mini-panel',
   'pet-overlay',
@@ -102,9 +109,16 @@ function sourceAtCommit(relativePath: string): string {
 }
 
 function capabilityFilesAtCommit(): string[] {
-  // Production authority is re-frozen against the working tree (cold-start intro
-  // + taskbar usage) while fixture provenance remains pinned to SOURCE_COMMIT.
-  return listCapabilityFiles().filter((file) => !TEST_ONLY_CAPABILITY_FILES.includes(file));
+  return execFileSync(
+    'git',
+    ['ls-tree', '-r', '--name-only', SOURCE_COMMIT, 'app/src-tauri/capabilities'],
+    { cwd: REPO_ROOT, encoding: 'utf8' },
+  )
+    .split(/\r?\n/u)
+    .filter((sourcePath) => sourcePath.endsWith('.json'))
+    .map((sourcePath) => path.basename(sourcePath))
+    .filter((file) => !TEST_ONLY_CAPABILITY_FILES.includes(file))
+    .sort();
 }
 
 interface CapabilitySnapshot {
@@ -126,8 +140,16 @@ function canonicalHash(raw: string): string {
 }
 
 function capabilitySnapshotsAtCommit(): CapabilitySnapshot[] {
-  // Mirror the working-tree production capability freeze (see capabilityFilesAtCommit).
-  return currentCapabilitySnapshots();
+  return capabilityFilesAtCommit().map((file) => {
+    const raw = sourceAtCommit(`app/src-tauri/capabilities/${file}`);
+    const parsed = JSON.parse(raw) as { identifier: string; windows: string[] };
+    return {
+      file,
+      identifier: parsed.identifier,
+      windows: parsed.windows,
+      sha256: canonicalHash(raw),
+    };
+  });
 }
 
 const CAPABILITIES_DIRECTORY = path.join(REPO_ROOT, 'app/src-tauri/capabilities');
@@ -334,7 +356,7 @@ test('native validator rejects duplicate identifiers, drift, unrepresented files
 
   const historicalCapabilities = capabilitySnapshotsAtCommit();
   const currentCapabilities = currentCapabilitySnapshots();
-  const historicalSurfaces = discoverNativeSurfaces(currentSource, historicalCapabilities);
+  const historicalSurfaces = discoverNativeSurfaces(sourceAtCommit, historicalCapabilities);
   const currentSurfaces = discoverNativeSurfaces(currentSource, currentCapabilities);
   assert.deepEqual(
     validate(
@@ -455,6 +477,7 @@ test('production capability auto-discovery excludes the test-only file and stays
   );
   const productionFiles = currentCapabilitySnapshots().map((entry) => entry.file);
   assert.deepEqual(productionFiles, [
+    'cold-start-intro.json',
     'default.json',
     'pet-mini-panel.json',
     'pet-overlay.json',
@@ -517,7 +540,7 @@ test('production closure fails when a production capability is removed or the te
   const manifest = nativeAuthority.MONOCHROME_NATIVE_WINDOW_MANIFEST;
   const historicalCapabilities = capabilitySnapshotsAtCommit();
   const currentCapabilities = currentCapabilitySnapshots();
-  const historicalSurfaces = discoverNativeSurfaces(currentSource, historicalCapabilities);
+  const historicalSurfaces = discoverNativeSurfaces(sourceAtCommit, historicalCapabilities);
   const currentSurfaces = discoverNativeSurfaces(currentSource, currentCapabilities);
 
   assert.match(
