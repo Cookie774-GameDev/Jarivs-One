@@ -178,12 +178,18 @@ Status: **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**
   non-production confirmation.
 - The frozen Tauri command authority now matches all 141 registered commands.
 
-The monolithic repository scanner did not finish within its two-minute bound
-on the 1,302-path PR. Slice-level scans, a committed-range high-confidence
-added-line scan, and the raw oversized-blob scan provide current evidence; an
-organization-approved repository/history scanner remains required for release.
+The earlier monolithic added-line scanner did not finish within its two-minute
+bound on the 1,302-path PR. A dedicated Gitleaks 8.30.1 redacted history scan
+subsequently inspected 1,212 commits and 83.47 MiB. Its initial 30 findings
+were individually reviewed as synthetic test fixtures, sanitizer/detector
+patterns, signature-format test data, or literal pattern matchers. The
+repository now carries only exact full-fingerprint ignores for those reviewed
+false positives—no path-, rule-, or repository-wide suppression. The final
+redacted history scan completed in 42 seconds with zero findings. No secret
+value was printed, no history was rewritten, and no credential-rotation or
+external alert-dismissal claim is made.
 
-Status: **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**
+Status: **VERIFIED LOCALLY**
 
 ## 9. Signing, installer, and updater
 
@@ -206,8 +212,6 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 - Keep the PR draft.
 - Integrate only independently owned UI/theme work after its owner releases
   paths and supplies focused evidence.
-- Run the final organization-approved secret/history scan when such a scanner
-  is installed.
 - Run local Supabase capacity evidence when an isolated local stack is
   available.
 
