@@ -311,8 +311,15 @@ supabase functions deploy create-checkout-session --project-ref <test-project-re
 supabase functions deploy create-customer-portal --project-ref <test-project-ref>
 ```
 
-The effective deployment/config contract for all five is `verify_jwt = true`; an absent
-function-specific override retains the authenticated default. Checkout and portal call
+The effective deployment/config contract for all five is `verify_jwt = true`; the lease
+boundary is pinned explicitly in `supabase/config.toml`:
+
+```toml
+[functions.access-lease]
+verify_jwt = true
+```
+
+An absent function-specific override retains the authenticated default. Checkout and portal call
 `auth.getUser(jwt)` server-side, accept `POST` only, ignore the request body for billing authority,
 and return only validated Stripe-hosted HTTPS URLs. `access-lease` also validates the user token
 server-side and reads the authoritative access snapshot; it never accepts client entitlement state.
