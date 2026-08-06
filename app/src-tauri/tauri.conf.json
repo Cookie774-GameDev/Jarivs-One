@@ -75,7 +75,6 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/releases/channel.json",
         "https://github.com/Cookie774-GameDev/VibeSpace/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNCQzUwMUIxQjU5NkRBRDMKUldUVDJwYTFzUUhGTzl1YmF1ZjFIQUhEdkNIcXJENGN6MHNONEdMK3crUDZxUGJwSUYvUFVXcHkK",
