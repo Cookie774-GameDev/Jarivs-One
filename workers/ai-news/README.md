@@ -53,7 +53,7 @@ No billing upgrade or API keys are required.
 7 * * * *
 ```
 
-The job runs seven minutes after every hour. The first request to `/api/news` also performs an immediate initial import when the database is empty, so you do not need to wait for the next Cron run.
+The job runs seven minutes after every hour. Public news endpoints are read-only and never trigger upstream ingestion. After a fresh deployment, invoke the supported scheduled-handler test route once or wait for the next Cron run before expecting the first stories.
 
 ## Read the output
 

@@ -156,20 +156,15 @@ export default {
       }
 
       if (url.pathname === "/api/news" || url.pathname === "/api/news.json") {
-        if ((await countNews(env)) === 0) {
-          await runIngestion(env);
-        }
-        return getNews(url, env, headers);
+        return await getNews(url, env, headers);
       }
 
       return json({ error: "Not found" }, 404, headers);
     } catch (error) {
-      console.error("Request failed", error);
-      return json(
-        { error: "News service failed", detail: error instanceof Error ? error.message : String(error) },
-        500,
-        headers,
-      );
+      console.error("Request failed", {
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
+      return json({ error: "News service failed" }, 500, headers);
     }
   },
 
