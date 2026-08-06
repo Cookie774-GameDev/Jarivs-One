@@ -4,6 +4,24 @@
 
 begin;
 
+-- Reproduce the upgrade hazard: permissive policies combine with OR semantics,
+-- so a migration that only adds owner policies would leave these broad legacy
+-- paths active. Re-run 0037 and prove it replaces rather than augments them.
+create policy profile_legacy_broad_select_fixture
+  on public.profiles
+  for select
+  to authenticated
+  using (true);
+
+create policy profile_legacy_broad_update_fixture
+  on public.profiles
+  for update
+  to authenticated
+  using (true)
+  with check (true);
+
+\ir ../migrations/0037_profiles_display_name_security.sql
+
 do $$
 declare
   uid_a uuid := gen_random_uuid();

@@ -11,6 +11,22 @@ async function migrationSql() {
   return readFile(migrationUrl, 'utf8');
 }
 
+test('profile migration replaces every pre-existing policy before creating owner policies', async () => {
+  const sql = await migrationSql();
+  const policyReset = sql.match(
+    /do\s+\$\$[\s\S]*?from\s+pg_policies[\s\S]*?schemaname\s*=\s*'public'[\s\S]*?tablename\s*=\s*'profiles'[\s\S]*?drop policy[\s\S]*?end\s+\$\$/iu,
+  );
+
+  assert.ok(
+    policyReset,
+    'migration must enumerate and remove the complete existing profile policy set',
+  );
+  assert.ok(
+    sql.indexOf(policyReset[0]) < sql.indexOf('create policy profiles_owner_select'),
+    'policy replacement must finish before canonical owner policies are created',
+  );
+});
+
 test('profile migration exposes only owner-scoped select and update policies', async () => {
   const sql = await migrationSql();
 

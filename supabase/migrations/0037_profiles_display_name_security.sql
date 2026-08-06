@@ -11,9 +11,27 @@ set statement_timeout = '30s';
 
 alter table public.profiles enable row level security;
 
-drop policy if exists "own profile" on public.profiles;
-drop policy if exists profiles_owner_select on public.profiles;
-drop policy if exists profiles_owner_update on public.profiles;
+-- Permissive PostgreSQL policies combine with OR semantics. Replacing only
+-- known policy names can leave an older or environment-specific broad policy
+-- active beside the owner policies below, so reset this table's complete
+-- policy set before installing the canonical least-privilege pair.
+do $$
+declare
+  v_policy record;
+begin
+  for v_policy in
+    select policyname
+      from pg_policies
+     where schemaname = 'public'
+       and tablename = 'profiles'
+  loop
+    execute format(
+      'drop policy if exists %I on public.profiles',
+      v_policy.policyname
+    );
+  end loop;
+end
+$$;
 
 create policy profiles_owner_select
   on public.profiles
