@@ -79,6 +79,9 @@ describe('BenchmarksPage Warm Schema B', () => {
     expect(route?.querySelector('[data-warm-surface="benchmarks-chart"]')).not.toBeNull();
     const scenicPlate = route?.querySelectorAll('[data-warm-decoration="benchmarks-scene"] > img');
     expect(scenicPlate).toHaveLength(1);
+    expect(route?.querySelector('[data-warm-decoration="benchmarks-scene"]')?.className).toContain(
+      'hidden',
+    );
     expect(scenicPlate?.[0]?.getAttribute('src')).toBe(
       '/assets/themes/warm/benchmarks/continuation-v2/benchmark-scroll-composite-v2.webp',
     );

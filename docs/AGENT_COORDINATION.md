@@ -2179,6 +2179,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Verification: focused test, shard 7/8, TypeScript, formatting, diff hygiene, and added-line secret scan.
 - Status: `LOCALLY_COMPLETE_RELEASED`. Focused verification passes 1/1, shard 7/8 passes 122 files and 1,241 tests, and TypeScript passes; every behavior assertion remains unchanged.
 
+## 2026-08-05 - PR31 Warm V2 handoff integration
+
+- Controller: `/root`
+- Task: `VS-ROOT-20260805T185700Z-WARM-HANDOFF-INTEGRATION`
+- Starting HEAD: `0340b72`
+- Owned paths: the released eight-file Warm account/settings/benchmarks handoff plus coordination records.
+- Scope: independently verify exact changes, asset integrity, theme isolation, focused behavior, TypeScript, and production build before an exact-manifest commit.
+- Exclusions: every unrelated product/native/backend/cloud path, `install/install.ps1`, dependencies, processes, subagents, and unrelated dirty work.
+- Status: `LOCALLY_COMPLETE_RELEASED`. The focused Warm gate passes 3 files and 29 tests; all eight frontend shards, exact formatting, TypeScript, and the production build pass. Both selected WebP assets were hash-, size-, dimension-, and visually verified.
+
 ## 2026-07-19 - Task 20A accepted, Sol high override restored, and Task 20B exact lock acquired
 
 | Field                              | Coordination record                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |

@@ -579,24 +579,25 @@ describe('Warm theme presentation contract', () => {
   it('keeps one stable approved scenic surface mounted across all five account tabs', () => {
     const sceneAsset = resolve(
       warmAssetRoot,
-      'account-center/account-lake-panorama-v2-selected.webp',
+      'account-center/account-lake-panorama-v3-extended-selected.webp',
     );
     expect(existsSync(sceneAsset)).toBe(true);
     const sceneBytes = readFileSync(sceneAsset);
-    expect(sceneBytes.byteLength).toBeLessThan(150_000);
+    expect(sceneBytes.byteLength).toBeLessThan(125_000);
     expect(createHash('sha256').update(sceneBytes).digest('hex')).toBe(
-      '4d894bf6aafb1874a92dc7629f22ed3301382272661b7392015aec5d92303066',
+      '9bb27b8905f2903113f19f3db9b55a6fc0f31135d0b9fb7f5bc40369831feaa6',
     );
 
     expect(accountPage).toContain('data-warm-surface="account-scene-shell"');
     expect(accountPage).toContain('data-warm-decoration="account-shared-scene"');
+    expect(accountPage).toContain('className="pointer-events-none absolute inset-0 hidden');
     expect(accountPage).toContain(
-      '/assets/themes/warm/account-center/account-lake-panorama-v2-selected.webp',
+      '/assets/themes/warm/account-center/account-lake-panorama-v3-extended-selected.webp',
     );
     expect(accountPage).toContain('aria-hidden="true"');
     expect(accountPage).toContain('data-warm-account-tab={tab}');
     expect(css).toMatch(
-      /\[data-warm-decoration='account-shared-scene'\]\s*>\s*img\s*\{[\s\S]*?width:\s*100%[\s\S]*?height:\s*auto/u,
+      /\[data-warm-decoration='account-shared-scene'\]\s*>\s*img\s*\{[\s\S]*?width:\s*100%[\s\S]*?height:\s*100%[\s\S]*?object-fit:\s*cover[\s\S]*?object-position:\s*top center/u,
     );
     expect(css).not.toMatch(
       /\.mc7f-account-page\[data-warm-account-tab='pets'\]\s+\[data-sakura-surface='account-hero'\]\s*\{[\s\S]*?display:\s*none/u,
@@ -613,6 +614,21 @@ describe('Warm theme presentation contract', () => {
     );
     expect(css).toMatch(
       /\.mc7f-account-page\s+\[data-sakura-surface='account-tabs'\]\s*\{[\s\S]*?min-height:\s*54px/u,
+    );
+  });
+
+  it('keeps the Warm benchmark data compact and left-weighted so the right landscape stays visible', () => {
+    expect(css).toMatch(
+      /\[data-warm-surface='benchmarks-filters'\]\s*\{[\s\S]*?width:\s*min\(72%,\s*1040px\)/u,
+    );
+    expect(css).toMatch(
+      /\[data-warm-surface='benchmarks-chart'\]\s*\{[\s\S]*?width:\s*min\(72%,\s*1040px\)/u,
+    );
+    expect(css).toMatch(
+      /\[data-monochrome-surface='benchmarks-table'\]\s*\{[\s\S]*?width:\s*min\(72%,\s*1040px\)/u,
+    );
+    expect(css).toMatch(
+      /\[data-monochrome-surface='benchmarks-table'\][\s\S]*?:is\(th,\s*td\)\s*\{[\s\S]*?padding:\s*8px 12px/u,
     );
   });
 
@@ -662,19 +678,19 @@ describe('Warm theme presentation contract', () => {
   });
 
   it('composes every Warm Settings page on one stable illustrated parchment shell', () => {
-    const sceneAsset = resolve(warmAssetRoot, 'settings/settings-landscape-v3-selected.webp');
+    const sceneAsset = resolve(warmAssetRoot, 'settings/settings-landscape-v4-selected.webp');
     expect(existsSync(sceneAsset)).toBe(true);
     const sceneBytes = readFileSync(sceneAsset);
     expect(sceneBytes.byteLength).toBeLessThan(125_000);
     expect(createHash('sha256').update(sceneBytes).digest('hex')).toBe(
-      '6eede03748e23bcbd57ff84be5a60fd8eb956b1cb1e60040a697ae15b4342f88',
+      '1356231d64d39b2933979dcf7a2c71332667de510ac77959166c73e8d08a3c8e',
     );
     expect(settingsModal).toContain('data-warm-surface="settings-canvas"');
     expect(settingsModal).toContain('data-warm-decoration="settings-scene-left"');
     expect(settingsModal).toContain('data-warm-decoration="settings-scene-right"');
     expect(settingsModal).toContain('data-warm-decoration="settings-wash"');
     expect(settingsModal).toContain(
-      '/assets/themes/warm/settings/settings-landscape-v3-selected.webp',
+      '/assets/themes/warm/settings/settings-landscape-v4-selected.webp',
     );
     expect(settingsModal).toContain('data-warm-settings-tab={tab}');
     expect(settingsModal).toContain('onOpenAutoFocus={(event) =>');

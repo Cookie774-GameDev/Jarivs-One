@@ -407,7 +407,7 @@ export function SettingsModal({
             data-warm-decoration="settings-scene-left"
           >
             <img
-              src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
+              src="/assets/themes/warm/settings/settings-landscape-v4-selected.webp"
               alt=""
               decoding="async"
               draggable={false}
@@ -419,7 +419,7 @@ export function SettingsModal({
             data-warm-decoration="settings-scene-right"
           >
             <img
-              src="/assets/themes/warm/settings/settings-landscape-v3-selected.webp"
+              src="/assets/themes/warm/settings/settings-landscape-v4-selected.webp"
               alt=""
               decoding="async"
               draggable={false}

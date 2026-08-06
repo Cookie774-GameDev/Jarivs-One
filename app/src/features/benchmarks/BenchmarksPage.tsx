@@ -286,7 +286,11 @@ export function BenchmarksPage() {
       data-warm-page="benchmarks"
       className="bg-paper-soft min-h-full w-full [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.cozy-card]:rounded-sm [html[data-theme=monochrome]_&_.cozy-card]:border [html[data-theme=monochrome]_&_.cozy-card]:border-border-mid [html[data-theme=monochrome]_&_.cozy-card]:bg-panel [html[data-theme=monochrome]_&_.cozy-card]:shadow-none"
     >
-      <div aria-hidden="true" data-warm-decoration="benchmarks-scene">
+      <div
+        aria-hidden="true"
+        className="hidden [html[data-theme=warm]_&]:block"
+        data-warm-decoration="benchmarks-scene"
+      >
         <img
           alt=""
           decoding="async"

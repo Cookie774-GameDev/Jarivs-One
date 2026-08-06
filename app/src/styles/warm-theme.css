@@ -1217,7 +1217,7 @@ html[data-theme='warm'] [data-warm-surface='benchmarks-header'] button {
 }
 
 html[data-theme='warm'] [data-warm-surface='benchmarks-warning'] {
-  width: min(86%, 1140px);
+  width: min(72%, 1040px);
   min-height: 47px;
   align-items: center;
   border: 1px solid rgb(210 137 79 / 0.25);
@@ -1229,7 +1229,7 @@ html[data-theme='warm'] [data-warm-surface='benchmarks-warning'] {
 
 html[data-theme='warm'] [data-warm-surface='benchmarks-filters'] {
   box-sizing: border-box;
-  width: min(78%, 1060px);
+  width: min(72%, 1040px);
   min-height: 74px;
   padding: 10px 12px;
   border: 1px solid rgb(173 116 72 / 0.15);
@@ -1247,8 +1247,8 @@ html[data-theme='warm'] [data-warm-surface='benchmarks-filters'] select {
 
 html[data-theme='warm'] [data-warm-surface='benchmarks-chart'] {
   box-sizing: border-box;
-  width: min(78%, 1030px);
-  min-height: 440px;
+  width: min(72%, 1040px);
+  min-height: 420px;
   padding: 18px 20px 16px !important;
   border: 1px solid rgb(162 104 63 / 0.2);
   border-radius: 21px;
@@ -1272,14 +1272,28 @@ html[data-theme='warm'] [data-warm-surface='benchmarks-chart'] svg text {
 }
 
 html[data-theme='warm'] [data-warm-page='benchmarks'] [data-monochrome-surface='benchmarks-table'] {
-  width: min(78%, 1030px);
-  margin-top: 16px;
+  width: min(72%, 1040px);
+  margin-top: 10px;
   border-color: rgb(162 104 63 / 0.2) !important;
   background: rgb(252 241 228 / 0.94) !important;
   box-shadow:
     0 15px 34px rgb(67 39 20 / 0.08),
     inset 0 1px rgb(255 255 255 / 0.62) !important;
   backdrop-filter: blur(3px);
+}
+
+html[data-theme='warm']
+  [data-warm-page='benchmarks']
+  [data-monochrome-surface='benchmarks-table']
+  table {
+  font-size: 12.5px;
+}
+
+html[data-theme='warm']
+  [data-warm-page='benchmarks']
+  [data-monochrome-surface='benchmarks-table']
+  :is(th, td) {
+  padding: 8px 12px;
 }
 
 /*
@@ -1561,7 +1575,9 @@ html[data-theme='warm'] .mc7f-account-page [data-warm-decoration='account-shared
   left: 0;
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
 }
 
 html[data-theme='warm'] .mc7f-account-page [data-warm-surface='account-scene-shell']::after {

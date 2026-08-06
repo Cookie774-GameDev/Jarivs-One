@@ -192,11 +192,11 @@ export function AccountPage() {
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
+          className="pointer-events-none absolute inset-0 hidden [html[data-theme=warm]_&]:block"
           data-warm-decoration="account-shared-scene"
         >
           <img
-            src="/assets/themes/warm/account-center/account-lake-panorama-v2-selected.webp"
+            src="/assets/themes/warm/account-center/account-lake-panorama-v3-extended-selected.webp"
             alt=""
             decoding="async"
             draggable={false}
