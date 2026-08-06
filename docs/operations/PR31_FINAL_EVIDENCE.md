@@ -72,6 +72,10 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
   zero results, six missing metrics, and no credential material.
 - Native command authority: focused 1/1; full no-default-features library suite
   238 passed, 8 intentional helper/benchmark ignores, zero failures.
+- Windows default-feature native gate: Kitware CMake 4.4.1 plus the short
+  isolated `C:\Users\viper\.cargo-target\pr31-default` target; `cargo check`
+  passed and `cargo test --lib` passed 238 tests with 8 intentional ignores
+  and zero failures.
 - Release, updater, added-line scanner, and capacity contracts: 92/92.
 - Prompt compiler: 200 measured iterations, p50 2.168 ms, p95 3.045 ms,
   maximum 4.095 ms against the 25 ms p95 budget.
@@ -87,13 +91,13 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 
 ## 4. Native environments
 
-| Environment                          | Evidence                                                          | Status                              |
-| ------------------------------------ | ----------------------------------------------------------------- | ----------------------------------- |
-| GitHub Linux runner                  | Exact-head Rust `cargo check`                                     | **VERIFIED**                        |
-| Windows local, voice disabled        | Cargo check plus 238-test library suite                           | **VERIFIED**                        |
-| Windows local, default voice feature | `espeak-rs-sys` requires CMake, which is absent from this machine | **BLOCKED — TECHNICAL**             |
-| Signed Windows release environment   | No new signed PR31 release was produced                           | **BLOCKED — OWNER ACTION REQUIRED** |
-| macOS/Linux packaged applications    | Not exercised and not claimed                                     | **NOT STARTED**                     |
+| Environment                          | Evidence                                                                                                                                                                           | Status                              |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| GitHub Linux runner                  | Exact-head Rust `cargo check`                                                                                                                                                      | **VERIFIED**                        |
+| Windows local, voice disabled        | Cargo check plus 238-test library suite                                                                                                                                            | **VERIFIED**                        |
+| Windows local, default voice feature | CMake 4.4.1; default-feature `cargo check`; default-feature library suite 238 passed, 8 intentional ignores. A short isolated target avoids the reproduced deep-path MSBuild error | **VERIFIED**                        |
+| Signed Windows release environment   | No new signed PR31 release was produced                                                                                                                                            | **BLOCKED — OWNER ACTION REQUIRED** |
+| macOS/Linux packaged applications    | Not exercised and not claimed                                                                                                                                                      | **NOT STARTED**                     |
 
 ## 5. Stripe evidence
 
@@ -228,7 +232,8 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 - A passing isolated load test would not establish a production SLA.
 - Provider availability, latency, quotas, and model behavior remain external.
 - Browser/Vite behavior does not prove every installed Tauri/native flow.
-- Default-feature local Rust compilation requires CMake for `espeak-rs-sys`.
+- Deep-worktree Windows default-feature builds require a short
+  `CARGO_TARGET_DIR` to avoid the reproduced MSBuild generated-path failure.
 - Framework/browser-owned development diagnostics occur before some
   application redaction boundaries.
 - Native STT/model and signed release behavior cannot be simulated as proof.
