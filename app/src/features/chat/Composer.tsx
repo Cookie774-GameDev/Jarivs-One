@@ -165,6 +165,7 @@ import {
 import { ConnectionInfoPopover } from './ConnectionInfoPopover';
 import { browserTokenOptimizationPreferences } from '@/features/token-optimizer';
 import { InputToken, TokenList } from './InputToken';
+import { FileAttachmentPreview } from './FileAttachmentPreview';
 import {
   extractInlineUtilitySlashCommands,
   getInlineSlashContext,
@@ -704,6 +705,7 @@ export function Composer({
   const [attachedTerminals, setAttachedTerminals] = useState<TerminalRef[]>([]);
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
   const [attachedContexts, setAttachedContexts] = useState<ContextChatAttachment[]>([]);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
@@ -3394,13 +3396,36 @@ export function Composer({
 
   useEffect(() => {
     const onInsertText = (e: Event) => {
-      const detail = (e as CustomEvent<{ text: string; chatId?: string }>).detail;
+      const detail = (e as CustomEvent<{ text: string; chatId?: string; skillId?: string }>).detail;
       if (detail?.chatId && String(detail.chatId) !== String(chatId)) return;
       if (detail?.text) {
         setText((cur) => {
           const separator = cur.length === 0 || /\s$/.test(cur) ? '' : ' ';
           return cur + separator + detail.text;
         });
+        if (detail.skillId) {
+          const skill = getAllCatalogSkills().find((entry) => entry.id === detail.skillId);
+          setConfirmedCommands((current) => {
+            if (
+              current.some(
+                (command) => command.cmd === 'skills' && command.value === detail.skillId,
+              )
+            ) {
+              return current;
+            }
+            const withoutOverflow = current
+              .filter((command) => command.cmd !== 'skills')
+              .concat(current.filter((command) => command.cmd === 'skills').slice(-5));
+            return [
+              ...withoutOverflow,
+              {
+                cmd: 'skills',
+                value: detail.skillId,
+                label: `/skills: ${skill?.name ?? detail.skillId}`,
+              },
+            ];
+          });
+        }
         requestAnimationFrame(() => textareaRef.current?.focus());
       }
     };
@@ -4102,11 +4127,22 @@ export function Composer({
                       type="file"
                       label={path.split(/[/\\]/).pop() ?? path}
                       sublabel={path.includes('/') || path.includes('\\') ? '...' : undefined}
-                      onRemove={() => setAttachedFiles((cur) => cur.filter((p) => p !== path))}
+                      onActivate={() => setPreviewFilePath(path)}
+                      onRemove={() => {
+                        setAttachedFiles((cur) => cur.filter((p) => p !== path));
+                        setPreviewFilePath((current) => (current === path ? null : current));
+                      }}
                     />
                   ))}
                 </div>
               )}
+              {previewFilePath ? (
+                <FileAttachmentPreview
+                  path={previewFilePath}
+                  projectRoot={getStoredProjectRoot(projectId)}
+                  onClose={() => setPreviewFilePath(null)}
+                />
+              ) : null}
               {attachedImages.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pb-1">
                   {attachedImages.map((image) => (

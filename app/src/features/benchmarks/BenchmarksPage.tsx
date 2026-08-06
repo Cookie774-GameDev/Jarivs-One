@@ -246,9 +246,9 @@ export function BenchmarksPage() {
     () =>
       warmActive
         ? (fromSnapshot && providerFilter === PROVIDER_FILTER_ALL && !openOnly
-            ? filtered
+            ? filtered.slice(0, TOP_N_FOR_CHART)
             : topForChart
-          ).slice(0, 10)
+          ).slice(0, 12)
         : topForChart,
     [filtered, fromSnapshot, openOnly, providerFilter, topForChart, warmActive],
   );

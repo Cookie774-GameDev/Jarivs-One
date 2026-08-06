@@ -104,9 +104,8 @@ describe('BenchmarksPage Warm Schema B', () => {
     }
 
     const chart = within(route!).getByRole('img');
-    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 10 models by arena score');
-    expect(within(chart).getByText('Schema Model 10')).toBeTruthy();
-    expect(within(chart).queryByText('Schema Model 11')).toBeNull();
+    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 12 models by arena score');
+    expect(within(chart).getByText('Schema Model 12')).toBeTruthy();
 
     const table = route!.querySelector('[data-monochrome-surface="benchmarks-table"]');
     expect(table).not.toBeNull();

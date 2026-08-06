@@ -14,6 +14,7 @@ import { WarmChatWelcome } from './WarmChatWelcome';
 import { BrowserGoalStatus } from '@/features/browser/BrowserGoalStatus';
 import { BrowserChatHub, useBrowserChatStore } from '@/features/browser-chat';
 import './sakura-chat.css';
+import './chat-welcome.css';
 
 /**
  * Top-level chat surface. Move chats into the Pet panel via right-click on a tab
@@ -30,8 +31,7 @@ export function ChatView() {
   const engine = useBrowserChatStore(
     (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
   );
-  const theme = useUIStore((s) => s.theme);
-  const canShowWarmWelcome = theme === 'warm' && Boolean(activeChatId);
+  const canShowChatWelcome = Boolean(activeChatId);
   const [dropKind, setDropKind] = useState<ChatDropKind | null>(null);
   const [ensuringChat, setEnsuringChat] = useState(false);
   const [ensureFailed, setEnsureFailed] = useState(false);
@@ -114,7 +114,7 @@ export function ChatView() {
         )}
       >
         <OrigamiChatDecor />
-        {canShowWarmWelcome ? <WarmChatWelcome chatId={String(activeChatId)} /> : null}
+        {canShowChatWelcome ? <WarmChatWelcome chatId={String(activeChatId)} /> : null}
         {dropKind && (
           <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none">
             Drop{' '}

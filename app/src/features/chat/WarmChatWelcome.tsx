@@ -1,4 +1,5 @@
 import { Code2, ListTodo, Search, Sparkles } from 'lucide-react';
+import { useUIStore } from '@/stores/ui';
 import { useChatMessages } from './hooks';
 
 const QUICK_PROMPTS = [
@@ -6,21 +7,25 @@ const QUICK_PROMPTS = [
     title: 'Ask Jarvis anything',
     description: 'General knowledge, help, ideas',
     icon: Sparkles,
+    skillId: 'analyze',
   },
   {
     title: 'Plan a project',
     description: 'Break tasks into steps',
     icon: ListTodo,
+    skillId: 'analyze',
   },
   {
     title: 'Review my code',
     description: 'Find issues and improve',
     icon: Code2,
+    skillId: 'build',
   },
   {
     title: 'Research a topic',
     description: 'Deep dive and summarize',
     icon: Search,
+    skillId: 'research',
   },
 ] as const;
 
@@ -33,10 +38,11 @@ export function WarmChatWelcome({
   compact?: boolean;
 }) {
   const messages = useChatMessages(chatId);
-  const insertPrompt = (text: string) => {
+  const theme = useUIStore((state) => state.theme);
+  const insertPrompt = (text: string, skillId: string) => {
     window.dispatchEvent(
       new CustomEvent('jarvis:composer:insert-text', {
-        detail: { chatId, text },
+        detail: { chatId, text, skillId },
       }),
     );
   };
@@ -48,6 +54,7 @@ export function WarmChatWelcome({
       className={compact ? 'warm-chat-welcome warm-chat-welcome--compact' : 'warm-chat-welcome'}
       aria-labelledby="warm-chat-welcome-title"
       data-pet-chat-welcome={compact ? 'true' : undefined}
+      data-chat-welcome-theme={theme}
     >
       <div className="warm-chat-welcome__content">
         <img
@@ -61,12 +68,12 @@ export function WarmChatWelcome({
         <h1 id="warm-chat-welcome-title">Start a conversation</h1>
         <p>Ask anything, explore ideas, or delegate to an agent.</p>
         <div className="warm-chat-welcome__prompts" aria-label="Conversation starters">
-          {QUICK_PROMPTS.map(({ title, description, icon: Icon }) => (
+          {QUICK_PROMPTS.map(({ title, description, icon: Icon, skillId }) => (
             <button
               key={title}
               type="button"
               data-warm-quick-prompt={title}
-              onClick={() => insertPrompt(title)}
+              onClick={() => insertPrompt(title, skillId)}
             >
               <Icon aria-hidden="true" />
               <span>

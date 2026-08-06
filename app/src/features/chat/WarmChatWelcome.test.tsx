@@ -47,8 +47,39 @@ describe('WarmChatWelcome', () => {
     fireEvent.click(screen.getByRole('button', { name: /plan a project/i }));
 
     expect(listener).toHaveBeenCalledTimes(1);
-    const event = listener.mock.calls[0][0] as CustomEvent<{ chatId: string; text: string }>;
-    expect(event.detail).toEqual({ chatId: 'chat-42', text: 'Plan a project' });
+    const event = listener.mock.calls[0][0] as CustomEvent<{
+      chatId: string;
+      text: string;
+      skillId: string;
+    }>;
+    expect(event.detail).toEqual({
+      chatId: 'chat-42',
+      text: 'Plan a project',
+      skillId: 'analyze',
+    });
+    window.removeEventListener('jarvis:composer:insert-text', listener);
+  });
+
+  it('attaches the matching real catalog skill for every quick action', () => {
+    const listener = vi.fn();
+    window.addEventListener('jarvis:composer:insert-text', listener);
+    render(<WarmChatWelcome chatId="chat-skills" />);
+
+    const expected = new Map([
+      ['Ask Jarvis anything', 'analyze'],
+      ['Plan a project', 'analyze'],
+      ['Review my code', 'build'],
+      ['Research a topic', 'research'],
+    ]);
+    for (const [label] of expected) {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(label, 'i') }));
+    }
+
+    expect(listener).toHaveBeenCalledTimes(4);
+    listener.mock.calls.forEach(([rawEvent], index) => {
+      const event = rawEvent as CustomEvent<{ skillId: string }>;
+      expect(event.detail.skillId).toBe([...expected.values()][index]);
+    });
     window.removeEventListener('jarvis:composer:insert-text', listener);
   });
 

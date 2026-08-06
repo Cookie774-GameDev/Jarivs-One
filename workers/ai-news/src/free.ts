@@ -248,6 +248,7 @@ async function getNews(url: URL, env: Env, headers: Headers): Promise<Response> 
 
   return json(
     {
+      freeOnly: true,
       generatedAt: new Date().toISOString(),
       count: items.length,
       latestRun,

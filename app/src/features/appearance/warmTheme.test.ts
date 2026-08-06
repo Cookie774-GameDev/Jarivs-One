@@ -110,7 +110,7 @@ describe('Warm theme presentation contract', () => {
 
     expect(css).toContain('--warm-sidebar-w: 240px');
     expect(css).toContain('--warm-top-h: 40px');
-    expect(css).toContain('--warm-tabs-h: 50px');
+    expect(css).toContain('--warm-tabs-h: 32px');
     expect(css).toMatch(
       /\[data-nav-pane='true'\]\[data-nav-state='expanded'\]\s*\{[\s\S]*?width:\s*var\(--warm-sidebar-w\)\s*!important/u,
     );
@@ -171,7 +171,7 @@ describe('Warm theme presentation contract', () => {
     }
     expect(css).toContain('--warm-sidebar-w: 240px');
     expect(css).toContain('--warm-top-h: 40px');
-    expect(css).toContain('--warm-tabs-h: 50px');
+    expect(css).toContain('--warm-tabs-h: 32px');
     expect(css).toContain('--warm-dark: #2e2720');
     expect(css).toContain('--warm-cream: #f7ecde');
     expect(css).toContain('--warm-accent: #d66f49');
@@ -348,10 +348,12 @@ describe('Warm theme presentation contract', () => {
     expect(css).toMatch(
       /\[data-warm-surface='kanban-empty-copy'\]\s*\{[\s\S]*?justify-content:\s*flex-end[\s\S]*?padding:\s*0\s+16px\s+38px[\s\S]*?max-width:\s*390px/u,
     );
+    expect(css).toMatch(/\[data-monochrome-route='kanban'\]::before\s*\{[\s\S]*?content:\s*none/u);
+    expect(css).not.toContain('final-redo/kanban-scene-v1.webp');
   });
 
   it('matches the approved Warm empty-chat welcome without the superseded session panel', () => {
-    expect(chatView).toContain("theme === 'warm' && Boolean(activeChatId)");
+    expect(chatView).toContain('Boolean(activeChatId)');
     expect(chatView).toContain('<WarmChatWelcome chatId={String(activeChatId)} />');
     expect(chatView).not.toContain('useChatMessages');
     expect(warmChatWelcome).toContain('Start a conversation');
@@ -359,6 +361,9 @@ describe('Warm theme presentation contract', () => {
     expect(warmChatWelcome).toContain('/assets/themes/warm/reference/chat-notebook.png');
     expect(warmChatWelcome.match(/\btitle:\s*'/gu)).toHaveLength(4);
     expect(warmChatWelcome).toContain("new CustomEvent('jarvis:composer:insert-text'");
+    expect(warmChatWelcome).toContain("skillId: 'analyze'");
+    expect(warmChatWelcome).toContain("skillId: 'build'");
+    expect(warmChatWelcome).toContain("skillId: 'research'");
     expect(css).toMatch(
       /\[data-vibespace-page='chat'\]:has\(\.warm-chat-welcome\)\s+\[data-testid='jarvis-session-panel'\][\s\S]*?display:\s*none/u,
     );
@@ -415,6 +420,25 @@ describe('Warm theme presentation contract', () => {
     expect(css).toMatch(
       /\[data-monochrome-surface='schedule-editor'\]\s+\.text-accent-cyan\s*\{[\s\S]*?color:\s*var\(--warm-terracotta\)\s*!important/u,
     );
+    expect(css).toContain('--warm-schedule-paper: rgb(255 247 236 / 0.55)');
+    expect(css).toContain('--warm-schedule-paper-strong: rgb(255 248 238 / 0.62)');
+  });
+
+  it('keeps shared Warm chrome at canonical Default geometry without route-specific replacements', () => {
+    expect(css).not.toContain("[data-warm-shell-route='benchmarks']");
+    expect(css).not.toContain("[data-warm-brand-mark='true']");
+    expect(css).toContain('--warm-top-h: 40px');
+    expect(css).toContain('--warm-sidebar-w: 240px');
+    expect(css).toContain('--warm-tabs-h: 32px');
+  });
+
+  it('uses translucent blurred paper consistently throughout Warm Settings', () => {
+    expect(css).toMatch(
+      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*rgb\(255 249 239 \/ 0\.72\)[\s\S]*?backdrop-filter:\s*blur\(12px\)/u,
+    );
+    expect(css).toMatch(
+      /\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?background-color:\s*rgb\(255 249 239 \/ 0\.68\)[\s\S]*?backdrop-filter:\s*blur\(12px\)/u,
+    );
   });
 
   it('composes the Context empty state from lightweight artwork without replacing real controls', () => {
@@ -446,10 +470,9 @@ describe('Warm theme presentation contract', () => {
     );
   });
 
-  it('uses the final-redo landscape plates as quiet embedded surfaces on the six locked pages', () => {
+  it('uses quiet embedded landscape plates while leaving Kanban scenery-free', () => {
     const plates = {
       files: 'final-redo/files-scene-v1.webp',
-      kanban: 'final-redo/kanban-scene-v1.webp',
       schedule: 'schedule/schedule-shell-scene-v2.webp',
       skills: 'final-redo/skills-scene-v1.webp',
       benchmarks: 'benchmarks/continuation-v2/benchmark-scroll-composite-v2.webp',
@@ -470,9 +493,7 @@ describe('Warm theme presentation contract', () => {
     expect(css).toMatch(
       /\[data-monochrome-route='files'\]::before\s*\{[\s\S]*?files-scene-v1\.webp/u,
     );
-    expect(css).toMatch(
-      /\[data-monochrome-route='kanban'\]::before\s*\{[\s\S]*?kanban-scene-v1\.webp/u,
-    );
+    expect(css).not.toContain('/assets/themes/warm/final-redo/kanban-scene-v1.webp');
     expect(css).toMatch(
       /\[data-monochrome-route='schedule'\]::before\s*\{[\s\S]*?schedule-shell-scene-v2\.webp/u,
     );
@@ -637,7 +658,7 @@ describe('Warm theme presentation contract', () => {
       /\.mc7f-account-page\s+\.sakura-account-panel\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.76\)[\s\S]*?backdrop-filter:\s*blur\(10px\)/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.94\)[\s\S]*?backdrop-filter:\s*blur\(9px\)/u,
+      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.68\)[\s\S]*?backdrop-filter:\s*blur\(12px\)/u,
     );
   });
 
