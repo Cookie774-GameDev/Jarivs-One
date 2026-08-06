@@ -2209,6 +2209,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Exclusions: every production path, visual baselines/tolerances, `install/install.ps1`, external systems, dependencies, processes, subagents, and unrelated work.
 - Status: `LOCALLY_COMPLETE_RELEASED`. The evidence now binds exact full-bleed geometry, the owner-authorized 1600x1000 index scene extract and canonical SHA-256, twelve deterministic petals with bounded density profiles, and current raw-spring locations. Product Sakura verification passes 5 files / 22 tests and all eight script contracts pass 50/50 while local-only, CSP, bounded-size, reduced-motion, no-timer/random/fetch, and complete motion-closure assertions remain strict.
 
+## 2026-08-05 - PR31 Jarvis learning write threshold
+
+- Controller: `/root`
+- Task: `VS-ROOT-20260805T200500Z-LEARNING-WRITE-THRESHOLD`
+- Starting HEAD: `b8aada6`
+- Owned paths: Jarvis learning listener plus its focused listener/file tests and coordination records.
+- Scope: keep automatic learning memory-only through nineteen qualifying user messages, write `learning.md` once when message twenty triggers evaluation, preserve explicit/manual persistence, and prove private Markdown remains under the existing VibeSpace Tauri app-data/account-isolation root.
+- Exclusions: changed inference semantics, evidence/AllAboutMe behavior, unrelated product/native/backend/cloud paths, `install/install.ps1`, dependencies, processes, subagents, and unrelated work.
+- Status: `LOCALLY_COMPLETE_RELEASED`. RED proved counter-only writes occurred after nineteen messages and during a one-message account switch. Automatic message/inference mutations now bypass generic profile persistence; messages 1–19 remain memory-only, message 20 performs one evaluated durable write, and pre-threshold account switches create no file. Explicit/manual persistence remains intact. The path contract proves `learning.md` stays inside the Tauri VibeSpace app-data root under a SHA-256-isolated account directory. Focused verification passes 3 files / 30 tests.
+
 ## 2026-07-19 - Task 20A accepted, Sol high override restored, and Task 20B exact lock acquired
 
 | Field                              | Coordination record                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
