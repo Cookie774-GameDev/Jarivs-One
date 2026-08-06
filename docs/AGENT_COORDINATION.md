@@ -2199,6 +2199,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Exclusions: product code, visual images/tolerances, `install/install.ps1`, external systems, dependencies, processes, subagents, and unrelated work. The MC9 manifest/test extension may only preserve the already-captured `settings--account.png` as immutable historical evidence after its current route-authority removal.
 - Status: `LOCALLY_COMPLETE_RELEASED`. The 111-image MC9 corpus remains complete; native authority is pinned to the exact introducing commit and current six-capability production closure while excluding the least-privilege test capability; all seven selectable themes are documented; and regenerated Sakura route/window manifests match current authority. Fresh MonoChrome verification passes 39/39, Sakura partition verification passes 3/3, and the combined release/security/visual gate passes 107/107. Formatting, diff hygiene, and added-line secret scanning are clean.
 
+## 2026-08-05 - PR31 Sakura evidence reconciliation
+
+- Controller: `/root`
+- Task: `VS-ROOT-20260805T194800Z-SAKURA-EVIDENCE-RECONCILIATION`
+- Starting HEAD: `28b6755`
+- Owned paths: bounded Sakura scene/reference/motion evidence tests and manifests plus coordination records.
+- Scope: update six stale evidence assertions to the already committed, focused-test-proven full-bleed shell, approved 1600x1000 scene, bounded twelve-row petal authority, and current exact raw-spring locations while retaining strict safety and closure checks.
+- Exclusions: every production path, visual baselines/tolerances, `install/install.ps1`, external systems, dependencies, processes, subagents, and unrelated work.
+- Status: `LOCALLY_COMPLETE_RELEASED`. The evidence now binds exact full-bleed geometry, the owner-authorized 1600x1000 index scene extract and canonical SHA-256, twelve deterministic petals with bounded density profiles, and current raw-spring locations. Product Sakura verification passes 5 files / 22 tests and all eight script contracts pass 50/50 while local-only, CSP, bounded-size, reduced-motion, no-timer/random/fetch, and complete motion-closure assertions remain strict.
+
 ## 2026-07-19 - Task 20A accepted, Sol high override restored, and Task 20B exact lock acquired
 
 | Field                              | Coordination record                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
