@@ -6,7 +6,7 @@ This file is the operational record for recurring **read-only** audits of VibeSp
 
 ## Current status
 
-Last completed audit: **2026-08-07 05:06 UTC**
+Last completed audit: **2026-08-07 13:04 UTC**
 
 | Severity | Open findings |
 |---|---:|
@@ -27,31 +27,32 @@ Last completed audit: **2026-08-07 05:06 UTC**
 6. **VS-AUDIT-003 — High:** The connected Supabase project appeared AccessRevamp-oriented rather than clearly being the authoritative VibeSpace backend.
 7. **VS-AUDIT-004 — High:** The connected Stripe account and Supabase payment catalog/runtime were mismatched at the last successful live check.
 8. **VS-AUDIT-005 — High:** A historical GitHub push-protection bypass for a Stripe-key pattern remains unverified and unresolved.
-9. **VS-AUDIT-013 — High:** PR #31 remains an extremely large, security-sensitive draft; its current exact head has no workflow run or combined status returned by the connector and must not be merged or deployed yet.
-10. **VS-AUDIT-021 — Medium:** The current `main` commit has a failed frontend CI run: Vitest failed and release-manifest validation was skipped. Immediate attention is required before merge or release.
-11. **VS-AUDIT-017 — Medium:** Google Workspace for the merged AccessRevamp-oriented support domain is now suspended for incomplete billing setup. VibeSpace dependency is unconfirmed; owner attention is required if VibeSpace support or operations depend on that tenant.
+9. **VS-AUDIT-013 — High:** PR #31 remains an extremely large, security-sensitive draft. Its current exact head now has successful GitHub Actions CI and AI-boundary workflows, correcting the previous no-exact-head-CI observation, but packaged native, live-migration, end-to-end billing, adversarial authorization, deployment, and rollback validation are still missing.
+10. **VS-AUDIT-021 — Medium:** The latest observed default-branch validation run on an audit-log-only `main` commit failed Vitest and skipped release-manifest validation. The current `main` head is also audit-log-only and has no workflow run returned by the connector; owner attention is required before merge/release decisions that depend on a green default-branch gate.
+11. **VS-AUDIT-017 — Medium:** Google Workspace for the merged AccessRevamp-oriented support domain is suspended for incomplete billing setup. VibeSpace dependency is unconfirmed; owner attention is required if VibeSpace support or operations depend on that tenant.
 12. **VS-AUDIT-014 / VS-AUDIT-015 — Informational:** Google/Stripe and Vercel administrative sign-ins still require owner confirmation if they were not recognized.
 
 ## Current run summary
 
 ### Checks completed
 
-- **GitHub:** fetched this audit file before writing; reviewed the default branch, recent commits, issues and pull requests updated since the previous interval, PR #31 metadata and direct branch comparison, the PR's current exact-head workflow/status state, PR conversation data available through the connector, the current `main` workflow failure, updater configuration/manifest, Supabase auth configuration, selected high-risk CORS/rendering patterns, and selected literal Stripe/Supabase secret patterns.
-- **Gmail:** reviewed current inbox/spam/trash counts and searched the audit interval plus a margin for VibeSpace support, bug, crash, security, billing, payment, refund, dispute, invoice, subscription, webhook, deployment, Supabase, Stripe, GitHub, Vercel, and account-access signals. Relevant spam/trash searches were included. A new Google Workspace suspension notice was reviewed as untrusted evidence. No message, label, or inbox state was changed.
-- **Supabase:** attempted a live Security Advisor read for project `vbkkimvedmklebghtkzs`; the connector required interactive authentication, so live advisors, policies, logs, database state, migrations, storage/realtime state, and Edge Functions could not be refreshed.
-- **Stripe:** the connected Stripe surface exposed in this runtime consisted of write-capable operations rather than read-only account/payment/dispute/webhook health reads. Under the audit's read-only constraint, none of those operations were invoked.
+- **GitHub:** fetched this audit file before writing and re-fetched it immediately before the update; reviewed the default branch and recent commits, issues and pull requests updated since the prior interval, PR #31 metadata and direct branch comparison, exact-head GitHub Actions workflows/jobs, combined-status endpoint, the outstanding default-branch CI failure, updater configuration/manifest, Supabase auth configuration, selected Tauri/deployment configuration, and selected literal secret patterns. No application-code commit reached `main`; the current `main` head before this audit write (`c28686f5f83a4eeb22eb0103f553f8ca289e6dea`) changed only this audit log.
+- **Gmail:** searched the audit interval plus a margin for VibeSpace/Jarvis support, bug, crash, security, billing, payment, refund, dispute, invoice, subscription, webhook, Stripe, Supabase, GitHub, Vercel, and account-access signals. Relevant spam and trash searches were included. No clear new VibeSpace customer support, payment, refund, dispute, webhook, login, security, or bug report was identified. No message, label, or inbox state was changed.
+- **Supabase:** attempted live Security Advisor, Performance Advisor, and Auth-log reads for project `vbkkimvedmklebghtkzs`; each required interactive authentication. No write-capable Supabase operation was invoked.
+- **Stripe:** attempted the read-only account-information endpoint and a read-only dispute-list search; each required interactive authentication. No write-capable Stripe operation was invoked.
 
 ### New findings
 
-- **VS-AUDIT-021 — Medium:** GitHub Actions run `31104440221` for the current `main` commit `c253f0ca0c6d09dea9e915b1f5a36b85768e256a` failed its frontend job. Checkout, Node setup, dependency installation, TypeScript checking, and the Vite build succeeded; Vitest failed; release-manifest validation was skipped as a consequence. Rust `cargo check` succeeded. The commit changed only this audit Markdown file, so the evidence does **not** establish an application-code regression. No later successful run for this exact `main` commit could be confirmed through the connector.
+- **None.** No evidence justified opening a new finding this run.
 
 ### Changed findings
 
-- **VS-AUDIT-013:** PR #31 moved to exact head `9c319686ab6e8e869a1e49aff83be4d3a1941f8d`, remains open and draft, and current GitHub PR metadata still reports **1,305 changed files**, **144,203 additions**, and **7,863 deletions**. A fresh direct comparison reports **130 commits ahead and two behind `main`**. The connector returned **no workflow runs and no combined status entries for the current exact head**, so the prior green exact-head evidence applies only to an older PR head and is superseded for release-readiness purposes. The High finding remains open.
-- **VS-AUDIT-018:** Revalidated on `main`: Tauri remains version `1.5.0`; the first configured updater endpoint remains `releases/channel.json`; that manifest still advertises `0.1.48`, only Windows x64, and no artifact signature. No shipped fix was found.
+- **VS-AUDIT-013:** Corrected and improved exact-head CI evidence. PR #31 is currently an open draft at exact head `bff28481e0dca86ed408a2147b0e000b635f4251`. GitHub reports **1,305 changed files**, **144,203 additions**, and **7,863 deletions**; direct comparison reports **130 commits ahead and two behind `main`**. Contrary to the previous run's connector observation, fresh exact-head reads returned successful `AI boundary evaluations` run `31072805166` and successful `CI` run `31072805177`. The CI jobs show frontend typecheck, Vite build, Vitest, release-manifest validation, and Rust `cargo check` all succeeded; deterministic AI-boundary evaluation also succeeded. The direct combined-status endpoint returned an empty status list, so no additional non-Actions status conclusion is asserted. High severity remains because the branch is exceptionally large and security-sensitive and still lacks packaged/native/live-environment validation.
+- **VS-AUDIT-018:** Revalidated on `main`: Tauri remains version `1.5.0`; the first configured updater endpoint remains `releases/channel.json`; that manifest still advertises `0.1.48`, only Windows x64, and an empty artifact signature. No shipped fix was found.
 - **VS-AUDIT-020:** Revalidated repository configuration: `minimum_password_length = 6`, no password composition requirement, and `secure_password_change = false` remain present. Hosted applicability is still unverified.
-- **VS-AUDIT-007:** Gmail now reports **1,394 unread inbox messages**, **71 unread spam messages**, and **219 unread trash messages**. No clear new VibeSpace customer support, payment, refund, dispute, webhook, login, security, or bug report was identified.
-- **VS-AUDIT-017:** Reopened. A later Google notice states that the Google Workspace Business Starter subscription for the merged AccessRevamp-oriented support domain is now **suspended** because billing setup was incomplete, superseding the prior notice that a paid subscription would begin September 1. The notice warns that access/data may be lost if billing is not restored within its stated grace period. Direct VibeSpace dependency remains unconfirmed.
+- **VS-AUDIT-021:** Clarified default-branch state. The previously recorded failing run `31104440221` still shows successful install/typecheck/build and Rust checks but failed Vitest and skipped release-manifest validation. The current pre-audit-write `main` head is a later audit-log-only commit and has no workflow run returned. No application-code regression is established, and the exact failing Vitest assertion was not recovered through the available reads.
+- **VS-AUDIT-005:** Selected current-source searches again found no literal `sk_live_`, `whsec_`, `SUPABASE_SERVICE_ROLE_KEY`, or `BEGIN PRIVATE KEY` result. This narrows current indexed-source exposure only and does not clear repository history or the historical push-protection event.
+- **VS-AUDIT-007:** Targeted Gmail searches found no clear new VibeSpace operational request. Gmail label metadata returned an internally inconsistent INBOX unread count greater than the INBOX total, so no reliable INBOX unread figure is reported this run. Spam and trash label totals/unread counts were 71 and 219 respectively; relevant searches in both produced no actionable VibeSpace signal.
 
 ### Resolved findings
 
@@ -59,12 +60,12 @@ Last completed audit: **2026-08-07 05:06 UTC**
 
 ### Connector failures and blind spots
 
-- Supabase live policies, grants, schema state, advisors, SQL/migrations, API/auth/Postgres/Edge Function/storage/realtime logs, database performance, and deployed functions could not be refreshed because interactive authentication was required. Critical and High Supabase-backed findings retain their latest successful live validation timestamp of **2026-08-02 21:00 UTC**.
-- Stripe account identity, account health, payments, customers, products, prices, subscriptions, invoices, refunds, disputes, events, suspicious-activity signals, and webhook health could not be refreshed because the currently exposed Stripe connector functions were write-capable and were not invoked under the read-only constraint.
-- The GitHub connector exposed the failed CI step state for run `31104440221` but did not provide the failing Vitest assertion/log content in the successful reads available this run. A later successful rerun for the same `main` SHA could not be confirmed.
-- GitHub direct secret-scanning alert inventory, Dependabot alerts, branch-protection/ruleset details, repository security settings, and all discussion surfaces were not fully exposed by the available connector. Selected literal searches found no `sk_live_` or `whsec_` results; `SUPABASE_SERVICE_ROLE_KEY` searches returned references rather than an established secret value. This does not clear repository history or the historical push-protection event.
-- PR #31 is too large for a complete line-by-line or dynamic review in one run. The absence of exact-head CI plus the branch's scope means packaged desktop, native Windows, migration-against-live-schema, end-to-end billing, browser, deployment, rollback, and adversarial authorization validation remain necessary.
-- Gmail merged-account volume, search semantics, connector result limits, and unverified support aliases constrain completeness. The Workspace suspension concerns an AccessRevamp-oriented domain; no evidence established that VibeSpace depends on it.
+- Supabase live policies, grants, schema state, security/performance advisors, SQL/migrations, API/Auth/Postgres/Edge Function/storage/realtime logs, database performance, and deployed functions could not be refreshed because interactive authentication was required. Critical and High Supabase-backed findings retain their latest successful live validation timestamp of **2026-08-02 21:00 UTC**.
+- Stripe account identity/health, payments, customers, products/prices, subscriptions, invoices, refunds, disputes, events, suspicious-activity signals, and webhook health could not be refreshed because read-only Stripe calls required interactive authentication.
+- GitHub direct secret-scanning alert inventory, Dependabot alerts, branch-protection/ruleset details, repository security settings, and Discussions were not fully exposed by the available connector. Selected literal searches do not substitute for history scanning or dependency/security-alert inventory.
+- The GitHub connector exposed workflow/job step results but the exact Vitest assertion for run `31104440221` was not recovered in a usable read this run. The current `main` head contains only an audit-log change and has no returned workflow run.
+- PR #31 is too large for a complete line-by-line or dynamic review in one run. Successful exact-head CI materially improves confidence, but packaged Windows/macOS/Linux execution, native capability behavior, migrations against the live schema, end-to-end billing, browser/deployment behavior, rollback, and adversarial authorization tests remain unverified.
+- Gmail merged-account volume, search semantics, result limits, and unverified support aliases constrain completeness. Current label metadata also returned an impossible INBOX unread/total relationship, so targeted searches were used instead of relying on that count.
 
 **Remediation performed:** **None.** The only write was updating this Markdown audit record.
 
@@ -102,9 +103,9 @@ Last completed audit: **2026-08-07 05:06 UTC**
 
 - **Severity:** High
 - **Source:** `app/src-tauri/tauri.conf.json`, `releases/channel.json`, release workflow, updater initialization, and Tauri updater behavior
-- **Evidence summary:** On `main`, the first updater endpoint serves version `0.1.48`, only a Windows entry, and no artifact signature, while the application is configured as `1.5.0`. A successful response containing an invalid manifest is likely to stop the check before a valid fallback. Draft branch changes previously appeared to address this, but no packaged-client validation was performed and no fix is shipped.
+- **Evidence summary:** On `main`, the first updater endpoint serves version `0.1.48`, only a Windows entry, and an empty artifact signature, while the application is configured as `1.5.0`. A successful response containing an invalid manifest is likely to stop the check before a valid fallback. Draft branch changes previously appeared to address this, but no packaged-client validation was performed and no fix is shipped.
 - **First seen:** 2026-08-05 13:00 UTC
-- **Last seen:** 2026-08-07 05:06 UTC
+- **Last seen:** 2026-08-07 13:04 UTC
 - **Status:** Open; strongly supported configuration inference, draft fix unmerged
 - **Affected component:** Desktop update discovery and security/reliability patch delivery
 - **Recommended remediation:** Remove or atomically replace the legacy endpoint; validate the exact first configured manifest in the release gate; require all supported targets/URLs/signatures; add packaged updater smoke tests before publication.
@@ -164,9 +165,9 @@ Last completed audit: **2026-08-07 05:06 UTC**
 
 - **Severity:** High
 - **Source:** GitHub secret-scanning notification and repository searches
-- **Evidence summary:** GitHub previously reported a push-protection bypass for a Stripe API-key pattern in a public test file. Current selected literal searches did not find obvious live-key or webhook-secret prefixes, but that does not prove the historical value was synthetic, removed from history, or revoked.
+- **Evidence summary:** GitHub previously reported a push-protection bypass for a Stripe API-key pattern in a public test file. Current selected literal searches did not find `sk_live_`, `whsec_`, `SUPABASE_SERVICE_ROLE_KEY`, or `BEGIN PRIVATE KEY` results, but that does not prove the historical value was synthetic, removed from history, or revoked.
 - **First seen:** 2026-08-01 20:01 UTC
-- **Last reviewed:** 2026-08-07 05:06 UTC
+- **Last reviewed:** 2026-08-07 13:04 UTC
 - **Status:** Open pending direct alert validation and revocation decision
 - **Affected component:** Public repository history and credential hygiene
 - **Recommended remediation:** Review the alert directly; prove the value synthetic or rotate/revoke it; replace key-shaped fixtures; inspect history and forks/caches; close the alert only with documented evidence.
@@ -175,32 +176,32 @@ Last completed audit: **2026-08-07 05:06 UTC**
 ### VS-AUDIT-013 — Draft PR #31 remains unsafe to merge or deploy
 
 - **Severity:** High
-- **Source:** GitHub PR metadata, direct branch comparison, exact-head workflow/status reads, comments, changed-file inventory, and selected code review
-- **Evidence summary:** PR #31 is an open draft at `9c319686ab6e8e869a1e49aff83be4d3a1941f8d`. Current GitHub metadata reports 1,305 changed files, 144,203 additions, and 7,863 deletions; a direct comparison reports 130 commits ahead and two behind `main`. Previous PR heads had green CI, but for the **current exact head** the connector returned no workflow runs and no combined status entries. The branch spans authentication, billing, Stripe/Supabase functions and migrations, Tauri/native capabilities, browser/terminal automation, AI/model/training, voice/phone, MCP/plugin handling, news ingestion, and extensive UI/media. There is still no packaged desktop, native Windows, live migration, end-to-end billing, deployment, authorization-adversarial, rollback, or complete subsystem review evidence.
+- **Source:** GitHub PR metadata, direct branch comparison, exact-head workflow/job reads, comments, changed-file inventory, and selected code review
+- **Evidence summary:** PR #31 is an open draft at `bff28481e0dca86ed408a2147b0e000b635f4251`. Current GitHub metadata reports 1,305 changed files, 144,203 additions, and 7,863 deletions; a direct comparison reports 130 commits ahead and two behind `main`. Fresh exact-head reads returned successful `AI boundary evaluations` and `CI` GitHub Actions workflows. The CI jobs show frontend typecheck, Vite build, Vitest, release-manifest validation, and Rust `cargo check` all succeeded; deterministic AI-boundary evaluation also succeeded. A direct combined-status read returned no additional status entries. The branch still spans authentication, billing, Stripe/Supabase functions and migrations, Tauri/native capabilities, browser/terminal automation, AI/model/training, voice/phone, MCP/plugin handling, news ingestion, and extensive UI/media. There is still no packaged desktop, native Windows, live migration, end-to-end billing, deployment, authorization-adversarial, rollback, or complete subsystem review evidence.
 - **First seen:** 2026-08-02 19:17 UTC
-- **Last seen:** 2026-08-07 05:06 UTC
-- **Status:** Open; unmerged draft; current exact head lacks returned CI/status evidence
+- **Last seen:** 2026-08-07 13:04 UTC
+- **Status:** Open; unmerged draft; exact-head GitHub Actions are green, but runtime/live-environment validation gaps remain
 - **Affected component:** Merge/release readiness and application/runtime/security/billing integrity
 - **Recommended remediation:** Freeze scope; synchronize with `main`; split or review by subsystem; require independent security/billing/native reviews; run migrations against a production-like schema; execute two-account authorization tests, Stripe test-mode flows, packaged Windows/macOS/Linux tests, browser/deployment tests, rollback tests, and final gates on one immutable SHA.
-- **Immediate owner attention:** Yes; do not merge or deploy yet
+- **Immediate owner attention:** Yes; do not merge or deploy until the remaining validation gaps are closed
 
-### VS-AUDIT-021 — Current `main` frontend CI fails at Vitest
+### VS-AUDIT-021 — Default-branch frontend CI remains red or unverified after Vitest failure
 
 - **Severity:** Medium
-- **Source:** GitHub Actions run `31104440221`, job `92625845088`, current `main` commit `c253f0ca0c6d09dea9e915b1f5a36b85768e256a`
-- **Evidence summary:** The frontend job completed checkout, Node setup, dependency installation, TypeScript checking, and Vite build successfully, then failed at `Test (vitest)`. `Test release manifest` was skipped. The Rust job in the same run passed `cargo check`. The `main` commit changed only the operational audit Markdown file, so this does not establish an application-code regression. The connector did not expose the exact failing Vitest assertion in the successful reads available this run, and no later successful run for the same SHA was confirmed.
+- **Source:** GitHub Actions run `31104440221`, job `92625845088`, prior `main` commit `c253f0ca0c6d09dea9e915b1f5a36b85768e256a`, and current pre-audit-write `main` head `c28686f5f83a4eeb22eb0103f553f8ca289e6dea`
+- **Evidence summary:** Run `31104440221` completed checkout, Node setup, dependency installation, TypeScript checking, and Vite build successfully, then failed at `Test (vitest)`; `Test release manifest` was skipped. Rust `cargo check` passed. That commit changed only the operational audit Markdown file, so the failure does not establish an application-code regression. The current pre-audit-write `main` head is a later audit-log-only commit and has no workflow run returned by the connector. The exact failing Vitest assertion was not recovered in a usable read this run.
 - **First seen:** 2026-08-07 05:06 UTC
-- **Last seen:** 2026-08-07 05:06 UTC
+- **Last seen:** 2026-08-07 13:04 UTC
 - **Status:** Open; default-branch quality/release gate is red or otherwise unverified
 - **Affected component:** Default-branch frontend CI, automated test assurance, and release-manifest gate
-- **Recommended remediation:** Identify and reproduce the failing Vitest case; determine whether the failure is deterministic, environment-related, or flaky; rerun on the exact `main` SHA; require Vitest and release-manifest validation to complete successfully before any merge or release decision.
+- **Recommended remediation:** Identify and reproduce the failing Vitest case; determine whether the failure is deterministic, environment-related, or flaky; rerun on an immutable current `main` SHA; require Vitest and release-manifest validation to complete successfully before any merge or release decision.
 - **Immediate owner attention:** Yes, before merge or release
 
 ### VS-AUDIT-017 — Google Workspace subscription for merged support domain is suspended
 
 - **Severity:** Medium
 - **Source:** Gmail Google Payments/Workspace billing notification
-- **Evidence summary:** A new Google notice states that the Google Workspace Business Starter subscription associated with the merged AccessRevamp-oriented support domain has been suspended because billing setup was not completed. This supersedes the earlier notice that a paid subscription would begin September 1. The notice states that access may already be lost and warns of cancellation/data loss if billing is not restored within the stated grace period. No evidence established that VibeSpace currently depends on this Workspace tenant.
+- **Evidence summary:** A Google notice states that the Google Workspace Business Starter subscription associated with the merged AccessRevamp-oriented support domain has been suspended because billing setup was not completed. This supersedes the earlier notice that a paid subscription would begin September 1. The notice states that access may already be lost and warns of cancellation/data loss if billing is not restored within the stated grace period. No evidence established that VibeSpace currently depends on this Workspace tenant.
 - **First seen:** 2026-08-04 20:47 UTC
 - **Reopened:** 2026-08-07 02:51 UTC
 - **Last seen:** 2026-08-07 02:51 UTC
@@ -215,7 +216,7 @@ Last completed audit: **2026-08-07 05:06 UTC**
 - **Source:** Repository `supabase/config.toml` on `main`
 - **Evidence summary:** The configuration sets `minimum_password_length = 6`, leaves `password_requirements` empty, and sets `secure_password_change = false`. Email confirmation and refresh-token rotation are enabled, and manual account linking is disabled. The audit could not verify whether the hosted target project uses these exact settings, so this is a deployment-configuration risk rather than a claim about live accounts.
 - **First seen:** 2026-08-06 05:15 UTC
-- **Last seen:** 2026-08-07 05:06 UTC
+- **Last seen:** 2026-08-07 13:04 UTC
 - **Status:** Open; hosted applicability unverified
 - **Affected component:** Supabase Auth password policy and account-change protection
 - **Recommended remediation:** Adopt a stronger passphrase-aligned minimum, enable recent reauthentication for password changes, configure leaked-password protection, deploy through controlled configuration, and verify hosted settings and reset/change flows.
@@ -224,10 +225,10 @@ Last completed audit: **2026-08-07 05:06 UTC**
 ### VS-AUDIT-007 — VibeSpace support routing and triage cannot be reliably verified
 
 - **Severity:** Medium
-- **Source:** Gmail label counts and targeted inbox/spam/trash searches
-- **Evidence summary:** The merged inbox currently has 1,394 unread inbox messages, 71 unread spam messages, and 219 unread trash messages. No clear new VibeSpace operational request was found, but exact public support aliases, routing rules, and queue ownership remain unverified.
+- **Source:** Gmail label metadata and targeted inbox/spam/trash searches
+- **Evidence summary:** Targeted searches found no clear new VibeSpace operational request. Current Gmail label metadata returned an impossible INBOX unread count greater than the INBOX total, so the audit does not report that unread figure as reliable. Spam and trash labels each reported 71 and 219 messages/unread respectively, and relevant searches there found no actionable VibeSpace signal. Exact public support aliases, routing rules, and queue ownership remain unverified.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-07 05:06 UTC
+- **Last seen:** 2026-08-07 13:04 UTC
 - **Status:** Open
 - **Affected component:** Customer-support operations
 - **Recommended remediation:** Confirm the public support address with a controlled external delivery test and route it to a dedicated VibeSpace queue with ownership, response state, and SLA tracking.
@@ -315,7 +316,7 @@ Last completed audit: **2026-08-07 05:06 UTC**
 - **First seen:** 2026-08-05 21:02 UTC
 - **Resolved:** 2026-08-06 05:10 UTC
 - **Resolution evidence:** The then-current PR #31 exact-head frontend job completed dependency review and `npm audit` successfully before lint, TypeScript, build, Vitest, and release-manifest validation also passed.
-- **Residual limitation:** This resolves the prior branch-head advisory signal only. It is not a guarantee against future, transitive, non-JavaScript, runtime, or newly disclosed dependency risks. The current PR head has no workflow/status evidence returned by the connector.
+- **Residual limitation:** This resolves the prior branch-head advisory signal only. It is not a guarantee against future, transitive, non-JavaScript, runtime, or newly disclosed dependency risks. The current PR head also has successful GitHub Actions CI, but dependency/security alerts outside those checks remain a connector blind spot.
 
 ### VS-AUDIT-006 — `main` was failing CI
 
@@ -343,6 +344,7 @@ Last completed audit: **2026-08-07 05:06 UTC**
 | 2026-08-05 21:00 | VS-AUDIT-013 raised to High after PR #31 expanded massively and failed exact-head frontend validation; VS-AUDIT-019 opened for dependency advisories; VS-AUDIT-017 resolved by a superseding billing notice. |
 | 2026-08-06 05:15 | PR #31 exact-head CI/CodeQL became green but branch remained extremely large and High risk; draft authorization migrations improved; VS-AUDIT-019 resolved; VS-AUDIT-020 opened for weak auth defaults. Supabase and Stripe remained blocked by interactive authentication. |
 | 2026-08-06 13:00 | No new findings or resolutions. PR #31 head and successful exact-head workflows were unchanged; refreshed metadata reported 1,305 files, 144,203 additions, 7,863 deletions, and a direct comparison of 130 ahead/one behind. No application-code commit reached `main`. Gmail counts changed to 1,379/70/219. Supabase and Stripe remained unavailable for live refresh. |
-| 2026-08-07 05:06 | VS-AUDIT-021 opened after current `main` CI failed at Vitest and skipped release-manifest validation; Rust passed and the commit changed only the audit log, so no application regression was claimed. PR #31 moved to `9c319686ab6e8e869a1e49aff83be4d3a1941f8d`, 130 ahead/two behind, with no exact-head workflows or combined statuses returned. VS-AUDIT-017 reopened after Google reported the merged AccessRevamp-oriented Workspace subscription suspended for incomplete billing setup; VibeSpace dependency remains unconfirmed. Gmail counts changed to 1,394/71/219. Supabase required interactive authentication, and no Stripe write-capable action was invoked. |
+| 2026-08-07 05:06 | VS-AUDIT-021 opened after a `main` CI run failed at Vitest and skipped release-manifest validation; Rust passed and the commit changed only the audit log, so no application regression was claimed. PR #31 was observed at `9c319686ab6e8e869a1e49aff83be4d3a1941f8d`, 130 ahead/two behind, with no exact-head workflows or combined statuses returned in that run. VS-AUDIT-017 reopened after Google reported the merged AccessRevamp-oriented Workspace subscription suspended for incomplete billing setup; VibeSpace dependency remains unconfirmed. Gmail counts changed to 1,394/71/219. Supabase required interactive authentication, and no Stripe write-capable action was invoked. |
+| 2026-08-07 13:04 | No new findings or resolutions. PR #31 is currently at `bff28481e0dca86ed408a2147b0e000b635f4251`, still 1,305 files / 144,203 additions / 7,863 deletions and 130 ahead/two behind. Fresh exact-head reads corrected the prior no-CI observation: GitHub Actions CI and AI-boundary workflows are successful, including typecheck, build, Vitest, release-manifest validation, Rust `cargo check`, and deterministic AI-boundary checks. High release-readiness risk remains because packaged native/live migration/billing/authorization/deployment/rollback validation is still missing. The stale updater and weak repo auth defaults were revalidated unchanged. Gmail targeted inbox/spam/trash searches found no new actionable VibeSpace signal, while INBOX label metadata was internally inconsistent. Supabase and Stripe read-only refreshes were attempted but blocked by interactive authentication. |
 
 Every run was read-only except for maintaining this file. No application, repository, database, Supabase, Stripe, or Gmail remediation has been performed by the audit automation.
