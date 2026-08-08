@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createPromptForgeJob, transitionPromptForgeJob } from './contracts';
 import { PromptForgeReview, buildPromptForgeDiff } from './PromptForgeReview';
@@ -85,6 +85,7 @@ describe('Prompt Forge review', () => {
         onCopy={vi.fn()}
         onRegenerate={vi.fn()}
         onRegenerateWithInstructions={vi.fn()}
+        onSendUpgraded={vi.fn(async () => true)}
         onUndo={vi.fn()}
         canUndo={false}
         onClose={vi.fn()}
@@ -110,7 +111,7 @@ describe('Prompt Forge review', () => {
     expect(screen.getByText('Matches the visual request.')).toBeTruthy();
   });
 
-  it('keeps replacement, insertion, copy, edit, exclusion, regeneration, undo, and close explicit', () => {
+  it('keeps replacement, insertion, copy, edit, exclusion, regeneration, sending, undo, and close explicit', async () => {
     const handlers = {
       onUpgradedDraftChange: vi.fn(),
       onExcludeSource: vi.fn(),
@@ -119,6 +120,7 @@ describe('Prompt Forge review', () => {
       onCopy: vi.fn(),
       onRegenerate: vi.fn(),
       onRegenerateWithInstructions: vi.fn(),
+      onSendUpgraded: vi.fn(async () => true),
       onUndo: vi.fn(),
       onClose: vi.fn(),
       onReturnFocus: vi.fn(),
@@ -163,8 +165,12 @@ describe('Prompt Forge review', () => {
     expect(handlers.onRegenerateWithInstructions).toHaveBeenCalledWith('Keep it shorter.');
     expect(handlers.onReturnFocus).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel and keep original' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send upgraded prompt' }));
+    await waitFor(() => expect(handlers.onSendUpgraded).toHaveBeenCalledOnce());
     expect(handlers.onClose).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel and keep original' }));
+    expect(handlers.onClose).toHaveBeenCalledTimes(2);
   });
 
   it('builds a readable replacement diff while preserving common context', () => {
@@ -173,5 +179,39 @@ describe('Prompt Forge review', () => {
       { kind: 'added', text: 'polished ' },
       { kind: 'same', text: 'runner game.' },
     ]);
+  });
+
+  it('keeps the reviewed draft open when approved dispatch fails', async () => {
+    const onClose = vi.fn();
+    render(
+      <PromptForgeReview
+        open
+        job={readyJob()}
+        upgradedDraft="Build a polished, accessible endless runner game."
+        onUpgradedDraftChange={vi.fn()}
+        excludedSourceIds={[]}
+        onExcludeSource={vi.fn()}
+        onReplace={vi.fn()}
+        onInsertBelow={vi.fn()}
+        onCopy={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRegenerateWithInstructions={vi.fn()}
+        onSendUpgraded={vi.fn(async () => false)}
+        onUndo={vi.fn()}
+        canUndo={false}
+        onClose={onClose}
+        onReturnFocus={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send upgraded prompt' }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Send upgraded prompt' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue(/polished, accessible/)).toBeTruthy();
   });
 });

@@ -835,7 +835,14 @@ export function Composer({
    * handleSend can await upgrades without reordering the huge send path.
    */
   const promptForgeUpgradeForSendRef = useRef<
-    | ((draft: string) => Promise<Readonly<{ text: string; upgraded: boolean; reason?: string }>>)
+    | ((draft: string) => Promise<
+        Readonly<{
+          text: string;
+          upgraded: boolean;
+          requiresReview?: boolean;
+          reason?: string;
+        }>
+      >)
     | null
   >(null);
   const promptForgeAutoUpgradeRef = useRef(false);
@@ -2237,7 +2244,11 @@ export function Composer({
 
   const handleSend = async (
     overrideText?: string,
-    options: { bypassQueue?: boolean; flushMode?: QueueFlushMode } = {},
+    options: {
+      bypassQueue?: boolean;
+      flushMode?: QueueFlushMode;
+      promptForgeApproved?: boolean;
+    } = {},
   ): Promise<boolean> => {
     const draftText = overrideText ?? text;
     const trimmed = draftText.trim();
@@ -2255,7 +2266,7 @@ export function Composer({
       sending
     )
       return false;
-    if (jarvisRunning && !options.bypassQueue && !overrideText) {
+    if (jarvisRunning && !options.bypassQueue && (!overrideText || options.promptForgeApproved)) {
       // Send button defaults to after-run; Enter passes after-tool explicitly.
       enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run');
       return true;
@@ -2292,11 +2303,13 @@ export function Composer({
     if (
       promptForgeAutoUpgradeRef.current &&
       !overrideText &&
+      !options.promptForgeApproved &&
       rawSendText.trim().length > 0 &&
       promptForgeUpgradeForSendRef.current
     ) {
       try {
         const upgraded = await promptForgeUpgradeForSendRef.current(rawSendText);
+        if (upgraded.requiresReview) return true;
         if (upgraded.upgraded && upgraded.text.trim()) {
           rawSendText = upgraded.text.trim();
         } else if (
@@ -2649,7 +2662,7 @@ export function Composer({
         }),
       );
       voiceReplyRequestedRef.current = false;
-      if (!overrideText) setText('');
+      if (!overrideText || options.promptForgeApproved) setText('');
       setAttachedFiles([]);
       setAttachedImages([]);
       setAttachedTerminals([]);
@@ -4793,6 +4806,11 @@ export function Composer({
           }}
           onRegenerate={() => void promptForge.regenerate()}
           onRegenerateWithInstructions={(instructions) => void promptForge.regenerate(instructions)}
+          onSendUpgraded={() =>
+            handleSend(promptForge.upgradedDraft, {
+              promptForgeApproved: true,
+            })
+          }
           onReturnFocus={returnPromptForgeFocus}
           onUndo={promptForge.undo}
           canUndo={promptForge.canUndo}

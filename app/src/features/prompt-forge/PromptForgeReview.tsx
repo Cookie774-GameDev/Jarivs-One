@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, RefreshCw, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { Check, Copy, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { formatUserDateTime } from '@/lib/timeFormat';
@@ -59,6 +59,7 @@ export interface PromptForgeReviewProps {
   onCopy: () => void;
   onRegenerate: () => void;
   onRegenerateWithInstructions: (instructions: string) => void;
+  onSendUpgraded: () => Promise<boolean>;
   onUndo: () => void;
   canUndo: boolean;
   onClose: () => void;
@@ -86,6 +87,7 @@ export function PromptForgeReview({
   onCopy,
   onRegenerate,
   onRegenerateWithInstructions,
+  onSendUpgraded,
   onUndo,
   canUndo,
   onClose,
@@ -94,6 +96,7 @@ export function PromptForgeReview({
   const [tab, setTab] = useState<ReviewTab>('upgraded');
   const [showInstructions, setShowInstructions] = useState(false);
   const [instructions, setInstructions] = useState('');
+  const [sendingUpgraded, setSendingUpgraded] = useState(false);
   const excluded = useMemo(() => new Set(excludedSourceIds), [excludedSourceIds]);
   const diff = useMemo(
     () => buildPromptForgeDiff(job.originalDraft, upgradedDraft),
@@ -105,6 +108,7 @@ export function PromptForgeReview({
     setTab('upgraded');
     setShowInstructions(false);
     setInstructions('');
+    setSendingUpgraded(false);
   }, [job.id, open]);
 
   return (
@@ -422,6 +426,30 @@ export function PromptForgeReview({
             aria-label="Replace original"
           >
             Replace original
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            disabled={!upgradedDraft.trim() || sendingUpgraded}
+            aria-label="Send upgraded prompt"
+            onClick={() => {
+              if (sendingUpgraded) return;
+              setSendingUpgraded(true);
+              void onSendUpgraded()
+                .then((sent) => {
+                  if (sent) onClose();
+                })
+                .catch(() => {
+                  // The Composer owns the actionable failure toast. Keep this
+                  // review open so the upgraded and original drafts remain
+                  // available for retry or manual copy.
+                })
+                .finally(() => setSendingUpgraded(false));
+            }}
+          >
+            {sendingUpgraded ? <RefreshCw className="animate-spin" /> : <Send />}
+            {sendingUpgraded ? 'Sending' : 'Send upgraded'}
           </Button>
         </footer>
       </DialogContent>

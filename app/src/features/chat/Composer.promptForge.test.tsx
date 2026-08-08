@@ -21,8 +21,10 @@ describe('Composer Prompt Forge integration', () => {
     expect(source).toContain('promptForgeAutoUpgradeOnSend');
     expect(source).toContain('upgradeForSend');
     expect(source).toMatch(
-      /const upgraded = await promptForgeUpgradeForSendRef\.current\(rawSendText\);[\s\S]*rawSendText = upgraded\.text\.trim\(\);/u,
+      /const upgraded = await promptForgeUpgradeForSendRef\.current\(rawSendText\);[\s\S]*if \(upgraded\.requiresReview\) return true;/u,
     );
+    expect(source).toContain('promptForgeApproved');
+    expect(source).toContain('onSendUpgraded');
     expect(source).toMatch(
       /const sendText = \[[\s\S]*markdownInstruction \|\| rawSendText,[\s\S]*\]\s*\.filter\(Boolean\)/u,
     );

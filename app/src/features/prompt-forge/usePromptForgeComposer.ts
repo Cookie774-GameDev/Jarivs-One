@@ -624,13 +624,20 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
   );
 
   /**
-   * Upgrade a draft for Send without opening the review dialog.
-   * Always returns text to send: upgraded on success, original on failure/cancel.
+   * Upgrade a draft for Send and require visible approval before dispatch.
+   * Always returns the original text on failure/cancel so the caller can fail open.
    */
   const upgradeForSend = useCallback(
     async (
       draft: string,
-    ): Promise<Readonly<{ text: string; upgraded: boolean; reason?: string }>> => {
+    ): Promise<
+      Readonly<{
+        text: string;
+        upgraded: boolean;
+        requiresReview?: boolean;
+        reason?: string;
+      }>
+    > => {
       const original = draft;
       if (!original.trim()) return { text: original, upgraded: false, reason: 'empty' };
       if (currentModelDisabledReason !== null) {
@@ -640,9 +647,13 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
           reason: currentModelDisabledReason,
         };
       }
-      const completed = await start(undefined, original, { openReview: false });
+      const completed = await start(undefined, original, { openReview: true });
       if (completed?.status === 'ready' && completed.generatedDraft?.trim()) {
-        return { text: completed.generatedDraft.trim(), upgraded: true };
+        return {
+          text: completed.generatedDraft.trim(),
+          upgraded: true,
+          requiresReview: true,
+        };
       }
       if (completed?.status === 'cancelled') {
         return { text: original, upgraded: false, reason: 'cancelled' };

@@ -201,9 +201,10 @@ describe('usePromptForgeComposer', () => {
       ).resolves.toEqual({
         text: execution.upgradedPrompt,
         upgraded: true,
+        requiresReview: true,
       });
     });
-    expect(successful.result.current.reviewOpen).toBe(false);
+    expect(successful.result.current.reviewOpen).toBe(true);
     expect(successful.result.current.status).toBe('ready');
     expect(successful.result.current.isRunning).toBe(false);
     expect(setDraft).not.toHaveBeenCalled();
