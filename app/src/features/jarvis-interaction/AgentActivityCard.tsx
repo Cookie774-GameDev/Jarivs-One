@@ -168,11 +168,22 @@ export function ChatAgentActivityPanel({
       )}
       aria-label="Multitask activity"
       data-chat-agent-panel="connected"
+      data-compact={compact ? 'true' : 'false'}
     >
       <div className="overflow-hidden rounded-[17px]">
-        <div className="flex items-center gap-2.5 border-b border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-black/25 to-orange-500/5 px-3 py-2">
+        <div
+          className={cn(
+            'flex items-center border-b border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-black/25 to-orange-500/5',
+            compact ? 'gap-1.5 px-2 py-1.5' : 'gap-2.5 px-3 py-2',
+          )}
+        >
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <GitFork className="h-4 w-4 shrink-0 text-orange-300 drop-shadow-[0_0_8px_rgba(251,146,60,0.85)]" />
+            <GitFork
+              className={cn(
+                'shrink-0 text-orange-300 drop-shadow-[0_0_8px_rgba(251,146,60,0.85)]',
+                compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+              )}
+            />
             <span className="shrink-0 text-ui-strong font-semibold text-orange-300">{title}</span>
             <span className="truncate text-metadata text-orange-100/70">{HEADER_STATUS}</span>
           </div>
@@ -183,7 +194,10 @@ export function ChatAgentActivityPanel({
             onClick={() => setExpanded((value) => !value)}
             aria-label={expanded ? 'Collapse multitask activity' : 'Expand multitask activity'}
             aria-expanded={expanded}
-            className="border border-orange-400/15 bg-black/25 text-orange-100 hover:bg-orange-500/10 hover:text-orange-200"
+            className={cn(
+              'border border-orange-400/15 bg-black/25 text-orange-100 hover:bg-orange-500/10 hover:text-orange-200',
+              compact && 'h-6 gap-1 px-1.5 text-[10px]',
+            )}
           >
             <ChevronDown
               className={cn(
@@ -203,13 +217,24 @@ export function ChatAgentActivityPanel({
               setDismissedAt(iso);
             }}
             aria-label="Dismiss multitask activity"
-            className="h-7 w-7 rounded-full border border-orange-400/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
+            className={cn(
+              'rounded-full border border-orange-400/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20',
+              compact ? 'h-6 w-6' : 'h-7 w-7',
+            )}
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
         {expanded ? (
-          <div className={cn(compact && 'text-[12px]')}>
+          <div
+            className={cn(
+              compact &&
+                'max-h-[min(46vh,22rem)] overflow-y-auto overscroll-contain text-[12px] [scrollbar-gutter:stable]',
+            )}
+            data-testid="chat-agent-activity-scroll"
+            tabIndex={compact ? 0 : undefined}
+            aria-label={compact ? 'Live agent work' : undefined}
+          >
             {showGroupHeaders && agentRows.length > 0 && (
               <div className="border-b border-orange-500/10 bg-black/20 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-orange-300/70">
                 Agents ({agentRows.length})
@@ -217,7 +242,12 @@ export function ChatAgentActivityPanel({
             )}
             <div className="divide-y divide-orange-500/10">
               {agentRows.map((agent, index) => (
-                <AgentActivityRow key={String(agent.agentId)} agent={agent} index={index + 1} />
+                <AgentActivityRow
+                  key={String(agent.agentId)}
+                  agent={agent}
+                  index={index + 1}
+                  compact={compact}
+                />
               ))}
             </div>
             {showGroupHeaders && subagentRows.length > 0 && (
@@ -231,6 +261,7 @@ export function ChatAgentActivityPanel({
                   key={String(agent.agentId)}
                   agent={agent}
                   index={agentRows.length + index + 1}
+                  compact={compact}
                 />
               ))}
             </div>
@@ -249,7 +280,15 @@ export function ChatAgentActivityPanel({
   );
 }
 
-function AgentActivityRow({ agent, index }: { agent: JarvisChatAgent; index: number }) {
+function AgentActivityRow({
+  agent,
+  index,
+  compact = false,
+}: {
+  agent: JarvisChatAgent;
+  index: number;
+  compact?: boolean;
+}) {
   const filesRead = agent.filesRead ?? [];
   const filesEditing = agent.filesEditing ?? agent.lockedFiles;
   const openChildChat = () => {
@@ -258,9 +297,28 @@ function AgentActivityRow({ agent, index }: { agent: JarvisChatAgent; index: num
   const diff = agent.diffSummary;
 
   return (
-    <article className="bg-gradient-to-r from-orange-950/25 via-black/20 to-transparent px-3 py-2">
-      <div className="grid grid-cols-[34px_minmax(0,1fr)_auto_auto] items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-500/20 bg-orange-500/10 text-sm font-semibold text-orange-300 shadow-[inset_0_0_14px_rgba(251,146,60,0.12)]">
+    <article
+      className={cn(
+        'bg-gradient-to-r from-orange-950/25 via-black/20 to-transparent',
+        compact ? 'px-2 py-1.5' : 'px-3 py-2',
+      )}
+      data-testid="chat-agent-activity-row"
+      data-compact={compact ? 'true' : 'false'}
+    >
+      <div
+        className={cn(
+          'grid min-w-0 items-center',
+          compact
+            ? 'grid-cols-[26px_minmax(0,1fr)_auto] gap-1.5'
+            : 'grid-cols-[34px_minmax(0,1fr)_auto] gap-2',
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-center justify-center rounded-lg border border-orange-500/20 bg-orange-500/10 font-semibold text-orange-300 shadow-[inset_0_0_14px_rgba(251,146,60,0.12)]',
+            compact ? 'h-6 w-6 text-[11px]' : 'h-8 w-8 text-sm',
+          )}
+        >
           {index}
         </div>
         <div className="min-w-0">
@@ -294,10 +352,13 @@ function AgentActivityRow({ agent, index }: { agent: JarvisChatAgent; index: num
           variant="ghost"
           onClick={openChildChat}
           aria-label={`Open chat for ${agent.name}`}
-          className="shrink-0 gap-1 border border-orange-400/15 bg-black/20 px-2 text-[11px] text-orange-200/80 hover:bg-orange-500/10 hover:text-orange-100"
+          className={cn(
+            'shrink-0 gap-1 border border-orange-400/15 bg-black/20 text-orange-200/80 hover:bg-orange-500/10 hover:text-orange-100',
+            compact ? 'h-6 w-6 px-0' : 'px-2 text-[11px]',
+          )}
         >
           <ExternalLink className="h-3.5 w-3.5" />
-          Open chat
+          <span className={compact ? 'sr-only' : undefined}>Open chat</span>
         </Button>
       </div>
     </article>

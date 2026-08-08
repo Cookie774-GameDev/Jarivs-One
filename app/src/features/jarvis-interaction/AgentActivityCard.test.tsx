@@ -102,6 +102,34 @@ describe('AgentActivityCard', () => {
     expect(screen.queryByTestId('agent-waveform')).toBeNull();
   });
 
+  it('keeps every live-agent row reachable and compact controls scaled in the Pet panel', () => {
+    useJarvisInteractionStore.setState({
+      agentsByChat: {
+        chat_parent: Array.from({ length: 8 }, (_, index) => ({
+          ...agentPart.agent,
+          agentId: `ja_compact_${index}`,
+          childChatId: `chat_child_${index}`,
+          name: `Worker ${index + 1}`,
+          createdAt: `2026-06-24T12:00:${String(index).padStart(2, '0')}.000Z`,
+        })),
+      },
+    });
+
+    render(<ChatAgentActivityPanel chatId="chat_parent" compact />);
+
+    const panel = screen.getByLabelText('Multitask activity');
+    const rows = screen.getAllByTestId('chat-agent-activity-row');
+    const scroller = screen.getByTestId('chat-agent-activity-scroll');
+
+    expect(panel.getAttribute('data-compact')).toBe('true');
+    expect(scroller.className).toContain('overflow-y-auto');
+    expect(scroller.getAttribute('tabindex')).toBe('0');
+    expect(scroller.getAttribute('aria-label')).toBe('Live agent work');
+    expect(rows).toHaveLength(8);
+    expect(rows.every((row) => row.getAttribute('data-compact') === 'true')).toBe(true);
+    expect(screen.getAllByRole('button', { name: /Open chat for/i })).toHaveLength(8);
+  });
+
   it('collapses, expands, dismisses, and opens a child chat', () => {
     useJarvisInteractionStore.setState({
       agentsByChat: {
