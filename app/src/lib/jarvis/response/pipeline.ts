@@ -64,6 +64,8 @@ const CURRENT_MODEL_QUERY_PATTERNS = Object.freeze([
   /^what(?:'s|\s+is)\s+(?:the\s+)?(?:current|active|selected)\s+model$/i,
   /^what\s+model\s+am\s+i\s+using$/i,
 ]);
+const EMPTY_PROVIDER_RESPONSE_TEMPLATE =
+  'I received an empty model reply instead of a usable answer. Please retry the request.';
 
 function isCurrentModelStatusQuestion(userText: string): boolean {
   const normalized = userText
@@ -326,6 +328,18 @@ function validatedParts(
       });
       return { converted: parsed.hasActionBlocks, parts: converted };
     });
+    // The canonical kernel intentionally executes at most one approval-bound
+    // action per response. Small local models sometimes emit a create action
+    // followed by a read/verify action; passing both would reject the entire
+    // otherwise valid response. Preserve the first executable step and require
+    // subsequent effects to occur in a later, independently verified turn.
+    let keptAction = false;
+    parts = parts.filter((part) => {
+      if (part.kind !== 'action_proposal') return true;
+      if (keptAction) return false;
+      keptAction = true;
+      return true;
+    });
     if (parts.every((part) => part.kind === 'text')) {
       const fallbackProposals = inferFallbackActionProposals(request.userText, displayText);
       if (fallbackProposals.length > 0) {
@@ -429,6 +443,7 @@ export async function processJarvisResponse(
     return deepFreezeJarvisCopy(envelope);
   }
   const tokenized = tokenizeJarvisResponse(snapshot.raw.text);
+  const emptyProviderReply = snapshot.raw.text.trim().length === 0;
   const mode = classifyJarvisResponseMode(snapshot.request, facts);
   const sensitiveTopic =
     mode === 'sensitive'
@@ -526,6 +541,8 @@ export async function processJarvisResponse(
     finalProse = buildJarvisSensitiveFallback(sensitiveTopic);
   } else if (hasQuarantine) {
     finalProse = withMissingPlaceholders(QUARANTINED_RESPONSE_TEMPLATE, validPlaceholders);
+  } else if (emptyProviderReply) {
+    finalProse = EMPTY_PROVIDER_RESPONSE_TEMPLATE;
   } else if (needsDeterministicFallback) {
     const deterministic = deterministicFallback(
       finalProse,
@@ -591,6 +608,7 @@ export async function processJarvisResponse(
       fallbackUsed:
         Boolean(sensitiveTopic) ||
         hasQuarantine ||
+        emptyProviderReply ||
         needsDeterministicFallback ||
         outputReferencePolicy.violationCodes.length > 0,
     },

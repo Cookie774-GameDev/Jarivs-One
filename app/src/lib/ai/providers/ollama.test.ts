@@ -450,6 +450,44 @@ describe('ollama provider utilities', () => {
     ).resolves.toBe('Delivered through IPC.');
   });
 
+  it('allows a cold local model more than 45 seconds to return its first authoritative result', async () => {
+    vi.useFakeTimers();
+    try {
+      const listen =
+        async <T>(_event: string, _handler: (event: { payload: T }) => void): Promise<() => void> =>
+        () =>
+          undefined;
+      const invoke = async <T>(): Promise<T> =>
+        new Promise<T>((resolve) => {
+          window.setTimeout(
+            () =>
+              resolve({
+                text: 'Cold model completed.',
+                inputTokens: 4,
+                outputTokens: 5,
+              } as T),
+            55_000,
+          );
+        });
+
+      const response = runReliableNativeOllamaChat(invoke, listen, {
+        requestId: 'cold-model',
+        model: 'llama3.2:latest',
+        messages: [{ role: 'user', content: 'Explain this project.' }],
+        options: { num_ctx: 4096 },
+        think: false,
+        baseUrl: 'http://127.0.0.1:11434',
+        maxAttempts: 1,
+      });
+      const expectation = expect(response).resolves.toBe('Cold model completed.');
+
+      await vi.advanceTimersByTimeAsync(55_000);
+      await expectation;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries one transient native transport failure only before output starts', async () => {
     let handler:
       | ((event: { payload: { delta: string; done: boolean; error?: string | null } }) => void)
@@ -640,7 +678,7 @@ describe('ollama provider utilities', () => {
     });
 
     expect(body.options.num_predict).toBe(8_192);
-    expect(body.options.num_ctx).toBe(16_384);
+    expect(body.options.num_ctx).toBe(32_768);
   });
 
   it('honors distinct explicit token-mode budgets without changing the local default mode', () => {
@@ -679,6 +717,7 @@ describe('ollama provider utilities', () => {
     expect(finalBoss.options.num_predict).toBe(8_192);
     expect(saver.options.num_ctx).toBeLessThan(normal.options.num_ctx);
     expect(normal.options.num_ctx).toBeLessThan(finalBoss.options.num_ctx);
+    expect(finalBoss.options.num_ctx).toBe(32_768);
   });
 
   it('sends the exact protected system prompt and observes body bytes before text', async () => {

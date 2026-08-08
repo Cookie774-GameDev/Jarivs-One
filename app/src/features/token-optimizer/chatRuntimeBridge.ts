@@ -83,13 +83,18 @@ function groupConversation(messages: readonly LLMMessage[]): readonly Conversati
   return Object.freeze(
     groups.map((group, index) => {
       const position = groups.length <= 1 ? 1 : index / (groups.length - 1);
+      const isImmediateConversation =
+        latestUserGroup >= 0 && index >= Math.max(0, latestUserGroup - 1);
       return Object.freeze({
         id: `conversation-${String(index + 1).padStart(3, '0')}`,
         messages: Object.freeze([...group]),
         tokenText: group
           .map((message) => `[${message.role}]\n${llmContentToText(message.content)}`)
           .join('\n\n'),
-        protected: index === latestUserGroup || group.some(containsImage),
+        // The active user turn and the immediately preceding exchange form
+        // the minimum coherent conversational unit. Older turns remain
+        // relevance-ranked and compressible.
+        protected: isImmediateConversation || group.some(containsImage),
         relevance: Math.min(1, 0.2 + position * 0.8),
       });
     }),

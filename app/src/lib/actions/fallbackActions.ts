@@ -93,6 +93,10 @@ function extractSingleTerminalRunRequest(text: string): { command: string } | nu
       text.trim(),
     );
   const command = match?.[1]
+    ?.replace(
+      /^(?:this\s+)?exact\s+(?:powershell|shell|terminal)?\s*command\s*:\s*/i,
+      '',
+    )
     ?.replace(/\b(?:please|okay|ok)\b[.!?\s]*$/i, '')
     .replace(/[.!?]+$/u, '')
     .trim();
@@ -341,6 +345,18 @@ export function inferFallbackActionProposals(
     return proposals;
   }
 
+  const singleTerminalRun = extractSingleTerminalRunRequest(userText);
+  if (singleTerminalRun) {
+    proposals.push(
+      proposal(
+        'terminal.run',
+        singleTerminalRun,
+        `Open one terminal pane and run ${singleTerminalRun.command} after user approval.`,
+      ),
+    );
+    return proposals;
+  }
+
   const bulkOpen = extractBulkOpenTerminalRequest(user);
   if (bulkOpen) {
     proposals.push(
@@ -350,18 +366,6 @@ export function inferFallbackActionProposals(
           ? { count: bulkOpen.count, command: bulkOpen.command }
           : { count: bulkOpen.count },
         `Open ${bulkOpen.count} terminal pane${bulkOpen.count === 1 ? '' : 's'}${bulkOpen.command ? ` with ${bulkOpen.command}` : ''} after user approval.`,
-      ),
-    );
-    return proposals;
-  }
-
-  const singleTerminalRun = extractSingleTerminalRunRequest(userText);
-  if (singleTerminalRun) {
-    proposals.push(
-      proposal(
-        'terminal.run',
-        singleTerminalRun,
-        `Open one terminal pane and run ${singleTerminalRun.command} after user approval.`,
       ),
     );
     return proposals;
@@ -425,15 +429,30 @@ export function inferFallbackActionProposals(
 
 export function extractFileReadRequest(userText: string): { path: string } | null {
   const raw = userText.trim();
-  if (!/\b(read|inspect|open|show|load|check)\b/i.test(raw)) return null;
-  if (!/\b(file|path|contents?|directly)\b/i.test(raw) && !/\.[a-z0-9]{1,12}\b/i.test(raw)) {
-    return null;
-  }
   const pathMatch =
     raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
     raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
-  const path = pathMatch?.[1]?.replace(/[.,;:]+$/, '').trim();
+  const intentText = pathMatch ? raw.replace(pathMatch[0], ' ') : raw;
+  if (!/\b(read|inspect|open|show|load|check)\b/i.test(intentText)) return null;
+  if (
+    !/\b(file|path|contents?|directly)\b/i.test(intentText) &&
+    !/\.[a-z0-9]{1,12}\b/i.test(raw)
+  ) {
+    return null;
+  }
+  let path = pathMatch?.[1]?.replace(/[.,;:]+$/, '').trim();
   if (!path || path.length > 32_768) return null;
+  const pathLeaf = path.split(/[\\/]/).at(-1) ?? '';
+  if (!/\.[a-z0-9]{1,12}$/i.test(pathLeaf)) {
+    const directoryPath = path;
+    const requestedFilename = [...raw.matchAll(/\b([A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,12})\b/g)]
+      .map((match) => match[1])
+      .find((filename) => filename && !directoryPath.includes(filename));
+    if (requestedFilename) {
+      path = `${directoryPath.replace(/[\\/]+$/u, '')}${directoryPath.includes('\\') ? '\\' : '/'}${requestedFilename}`;
+    }
+  }
+  if (path.length > 32_768) return null;
   return { path };
 }
 
@@ -451,6 +470,13 @@ export function extractFileWriteRequest(
   const raw = userText.trim();
   if (!raw) return null;
   const lower = raw.toLowerCase();
+  if (
+    /\b(?:ledger|status summary|qualification report)\b/i.test(raw) &&
+    /\b(?:pass|fail|present|absent)\b/i.test(raw) &&
+    !/(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s"'“”]+/u.test(raw)
+  ) {
+    return null;
+  }
 
   // Must look like a create/write intent
   if (!/\b(make|create|write|save|generate|draft)\b/.test(lower)) return null;

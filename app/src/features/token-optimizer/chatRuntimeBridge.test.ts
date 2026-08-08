@@ -100,4 +100,45 @@ describe('chat token optimization runtime tokenizers', () => {
     expect(result.receipt).toHaveProperty('estimatedInputTokensBefore');
     expect(result.receipt).not.toHaveProperty('actualInputTokens');
   });
+
+  it('preserves the immediately previous exchange when protected context fills the budget', async () => {
+    const runtime = createChatTokenOptimizationRuntime({
+      loadOpenAiO200k: async () => ({
+        encode: (text: string) =>
+          text.trim() ? text.trim().split(/\s+/u).map((_word, index) => index) : [],
+      }),
+    });
+    const protectedContext = Array.from({ length: 70 }, (_, index) => `rule-${index}`).join(' ');
+
+    const result = await runtime.optimizeMessages({
+      mode: 'normal',
+      providerId: 'openai',
+      modelId: 'gpt-5',
+      modelContextLimit: 100,
+      requestedOutputTokens: 20,
+      contextSegments: [
+        {
+          id: 'authority',
+          kind: 'system_instruction',
+          text: protectedContext,
+          relevance: 1,
+          protected: true,
+          reason: 'Protected authority',
+        },
+      ],
+      messages: [
+        { role: 'user', content: 'old unrelated question' },
+        { role: 'assistant', content: 'old unrelated answer' },
+        { role: 'user', content: 'remember exact codeword NEBULA COPPER 817 now' },
+        { role: 'assistant', content: 'saved exact codeword NEBULA COPPER 817' },
+        { role: 'user', content: 'what was the immediately previous codeword' },
+      ],
+    });
+
+    expect(result.messages).toEqual([
+      { role: 'user', content: 'remember exact codeword NEBULA COPPER 817 now' },
+      { role: 'assistant', content: 'saved exact codeword NEBULA COPPER 817' },
+      { role: 'user', content: 'what was the immediately previous codeword' },
+    ]);
+  });
 });

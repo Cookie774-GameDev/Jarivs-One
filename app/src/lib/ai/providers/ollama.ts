@@ -153,7 +153,11 @@ export async function runLegacyNativeOllamaChat(
             'Ollama did not begin responding in time. The model may be too large for the available RAM/VRAM or still warming up.',
           ),
         ),
-      args.firstResponseTimeoutMs ?? 45_000,
+      // Cold local models can spend close to a minute loading and ingesting
+      // the protected project context before the authoritative IPC result is
+      // available. Keep this below the bounded overall deadline while avoiding
+      // a false transport failure during a healthy cold start.
+      args.firstResponseTimeoutMs ?? 120_000,
     );
     overallTimeout = window.setTimeout(
       () => finish(new Error('Ollama response timed out.')),
@@ -283,7 +287,10 @@ export async function runReliableNativeOllamaChat(
 
 const OLLAMA_CHAT_KEEP_ALIVE = '15m';
 const OLLAMA_CHAT_NUM_CTX = 4096;
-const OLLAMA_CHAT_MAX_NUM_CTX = 16_384;
+// Match the token optimizer's conservative fallback context window. Final
+// Boss can reserve 8K output tokens and still retain its broader protected
+// evidence instead of silently forcing Ollama back into a truncated 16K turn.
+const OLLAMA_CHAT_MAX_NUM_CTX = 32_768;
 const OLLAMA_CHAT_MAX_NUM_PREDICT = 8_192;
 const OLLAMA_CHAT_REPEAT_PENALTY = 1.18;
 const OLLAMA_CHAT_TOP_P = 0.9;
