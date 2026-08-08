@@ -28,6 +28,12 @@ struct TrainingWorkerProbe {
     protocol: u8,
     local_only: bool,
     ready: bool,
+    #[serde(default)]
+    methods: Vec<String>,
+    #[serde(default)]
+    modalities: Vec<String>,
+    #[serde(default)]
+    precisions: Vec<String>,
     reason: Option<String>,
 }
 
@@ -71,6 +77,21 @@ fn validated_probe(bytes: &[u8]) -> Result<TrainingWorkerProbe, String> {
     }
     if !probe.local_only {
         return Err("Training worker did not attest to local-only execution.".into());
+    }
+    if probe
+        .methods
+        .iter()
+        .any(|value| !matches!(value.as_str(), "lora" | "qlora" | "full"))
+        || probe
+            .modalities
+            .iter()
+            .any(|value| !matches!(value.as_str(), "text" | "image" | "video" | "audio"))
+        || probe
+            .precisions
+            .iter()
+            .any(|value| !matches!(value.as_str(), "fp32" | "fp16" | "bf16" | "int8" | "int4"))
+    {
+        return Err("Training worker advertised an unsupported capability.".into());
     }
     Ok(probe)
 }
@@ -156,13 +177,10 @@ fn inspect_worker(root: &Path) -> TrainingWorkerStatus {
             protocol: WORKER_PROTOCOL,
             source_sha256: expected,
             python: Some(python),
-            methods: Vec::new(),
-            modalities: Vec::new(),
-            precisions: Vec::new(),
-            reason: Some(
-                "The local training libraries are present, but this build does not include a verified weight-training engine."
-                    .into(),
-            ),
+            methods: probe.methods,
+            modalities: probe.modalities,
+            precisions: probe.precisions,
+            reason: probe.reason,
         },
         Ok(probe) => TrainingWorkerStatus {
             installed: true,
@@ -250,22 +268,25 @@ mod tests {
 
     #[test]
     fn accepts_only_local_ready_matching_protocol_probe() {
-        assert!(validated_probe(
-            br#"{"protocol":1,"localOnly":true,"ready":true,"packages":{"torch":"2"},"reason":null}"#
+        let probe = validated_probe(
+            br#"{"protocol":1,"localOnly":true,"ready":true,"packages":{"torch":"2"},"methods":["lora","full"],"modalities":["text"],"precisions":["fp32","bf16"],"reason":null}"#
         )
-        .is_ok());
+        .expect("matching local probe should validate");
+        assert_eq!(probe.methods, vec!["lora", "full"]);
+        assert_eq!(probe.modalities, vec!["text"]);
+        assert_eq!(probe.precisions, vec!["fp32", "bf16"]);
         assert!(validated_probe(
-            br#"{"protocol":2,"localOnly":true,"ready":true,"packages":{},"reason":null}"#
+            br#"{"protocol":2,"localOnly":true,"ready":true,"packages":{},"methods":[],"modalities":[],"precisions":[],"reason":null}"#
         )
         .is_err());
         assert!(validated_probe(
-            br#"{"protocol":1,"localOnly":false,"ready":true,"packages":{},"reason":null}"#
+            br#"{"protocol":1,"localOnly":false,"ready":true,"packages":{},"methods":[],"modalities":[],"precisions":[],"reason":null}"#
         )
         .is_err());
     }
 
     #[test]
-    fn probe_only_worker_never_advertises_weight_training() {
+    fn worker_probe_advertises_only_closed_supported_capability_values() {
         let root =
             std::env::temp_dir().join(format!("vibespace-foundry-training-{}", nanoid::nanoid!()));
         fs::create_dir_all(&root).unwrap();
@@ -274,10 +295,125 @@ mod tests {
         let status = inspect_worker(&root);
         assert!(status.installed);
         assert!(status.attested);
-        assert!(status.methods.is_empty());
-        assert!(status.modalities.is_empty());
-        assert!(status.precisions.is_empty());
-        assert!(status.reason.is_some());
+        assert!(status
+            .methods
+            .iter()
+            .all(|value| matches!(value.as_str(), "lora" | "qlora" | "full")));
+        assert!(status
+            .modalities
+            .iter()
+            .all(|value| matches!(value.as_str(), "text" | "image" | "video" | "audio")));
+        assert!(status
+            .precisions
+            .iter()
+            .all(|value| matches!(value.as_str(), "fp32" | "fp16" | "bf16" | "int8" | "int4")));
+        if status.methods.is_empty() {
+            assert!(status.reason.is_some());
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn worker_validates_a_bounded_local_text_training_request_without_loading_a_model() {
+        let Some(python) = locate_python() else {
+            return;
+        };
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-validate-{}", nanoid::nanoid!()));
+        let model = root.join("model");
+        let output = root.join("output");
+        fs::create_dir_all(&model).unwrap();
+        fs::write(worker_path(&root), WORKER_SOURCE.as_bytes()).unwrap();
+        fs::write(model.join("config.json"), br#"{"model_type":"qwen2"}"#).unwrap();
+        let dataset = root.join("examples.jsonl");
+        fs::write(
+            &dataset,
+            b"{\"prompt\":\"Say hello\",\"response\":\"Hello.\"}\n",
+        )
+        .unwrap();
+        let request_path = root.join("request.json");
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&serde_json::json!({
+                "protocol": WORKER_PROTOCOL,
+                "localOnly": true,
+                "method": "lora",
+                "baseModelPath": model,
+                "datasetPath": dataset,
+                "outputDir": output,
+                "epochs": 1,
+                "maxSteps": 2
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let result = Command::new(python)
+            .arg(worker_path(&root))
+            .arg("validate")
+            .arg(&request_path)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let value: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(value["valid"], true);
+        assert_eq!(value["examples"], 1);
+        assert_eq!(value["method"], "lora");
+        assert_eq!(value["localOnly"], true);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn worker_training_failure_is_structured_and_never_falls_back_to_cloud() {
+        let Some(python) = locate_python() else {
+            return;
+        };
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-train-{}", nanoid::nanoid!()));
+        let model = root.join("model");
+        let output = root.join("output");
+        fs::create_dir_all(&model).unwrap();
+        fs::write(worker_path(&root), WORKER_SOURCE.as_bytes()).unwrap();
+        fs::write(model.join("config.json"), br#"{"model_type":"qwen2"}"#).unwrap();
+        let dataset = root.join("examples.jsonl");
+        fs::write(&dataset, b"{\"text\":\"A local training example.\"}\n").unwrap();
+        let request_path = root.join("request.json");
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&serde_json::json!({
+                "protocol": WORKER_PROTOCOL,
+                "localOnly": true,
+                "method": "lora",
+                "baseModelPath": model,
+                "datasetPath": dataset,
+                "outputDir": output,
+                "epochs": 1,
+                "maxSteps": 1
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let result = Command::new(python)
+            .arg(worker_path(&root))
+            .arg("train")
+            .arg(&request_path)
+            .output()
+            .unwrap();
+        assert!(!result.status.success());
+        let value: serde_json::Value = serde_json::from_slice(&result.stderr).unwrap();
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["localOnly"], true);
+        assert!(value["error"]
+            .as_str()
+            .is_some_and(|error| !error.is_empty()));
+        assert!(!output.exists());
 
         let _ = fs::remove_dir_all(root);
     }

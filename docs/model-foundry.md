@@ -34,20 +34,33 @@ The current production path is local retrieval knowledge:
    Retrieved text is marked as untrusted data and sent only to the selected
    local Ollama base model.
 
-LoRA, QLoRA, and full fine-tuning remain visibly unavailable until a complete
-verified isolated training runtime is present. VibeSpace now ships an embedded,
+LoRA, QLoRA, and full fine-tuning remain visibly unavailable until the complete
+verified runtime and model lifecycle is present. VibeSpace ships an embedded,
 hash-attested, local-only worker boundary and an explicit **Set up local
 worker** action. Setup installs only that audited worker source into private
 app data; it does not silently install Python, download packages, or contact a
-cloud service. The worker probes `torch`, `transformers`, `datasets`,
-`accelerate`, `peft`, and `trl` and advertises no training method unless the
-probe is local-only, protocol-compatible, and ready.
+cloud service.
 
-The embedded worker is intentionally probe-only in this build. A signed,
-version-pinned training runtime plus model-specific trainers and artifact
-verification still must be shipped before weight training can be enabled. The
-UI and native knowledge command therefore continue to fail closed for
-LoRA/QLoRA/full-weight requests; no fake training or progress is shown.
+The worker now has three closed commands:
+
+- `probe` reports only locally importable training libraries and capabilities;
+- `validate` checks a bounded absolute-path JSON request and validates every
+  JSONL example without loading a model;
+- `train` performs offline Transformers full-weight, LoRA, or CUDA QLoRA
+  training against a prepared local Transformers directory, disables Hub
+  access and telemetry, rejects remote code, and writes to a new output
+  directory.
+
+The worker advertises `full` only when PyTorch, Transformers, Datasets, and
+Accelerate are importable, `lora` only when PEFT is also importable, and
+`qlora` only when PEFT, BitsAndBytes, and a CUDA device are all available.
+Installed libraries alone never cause the app to claim that a model is ready.
+
+The app-level manifest download/import, persisted child-process lifecycle,
+cancel/checkpoint/restart bridge, and final chat-runtime activation are not yet
+connected to this worker entrypoint. The UI and native job command therefore
+continue to fail closed for LoRA/QLoRA/full-weight requests; no fake training
+or progress is shown.
 
 Hardware-aware plans keep LoRA, QLoRA, and full-weight requirements distinct,
 check VRAM/RAM/free storage conservatively, and never downgrade the selected
