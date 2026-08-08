@@ -13,19 +13,19 @@ publication, or unmeasured capacity.
 - Current `main` merge base:
   `b8d2a04c930bd984cae3d8f00942581b9e0b9aeb`.
 - Ending verified implementation head:
-  `cd6996b71e658011563862cbc0d898f48d7203d1`.
+  `fc623ceba971c564c062e8c0c5fdb0b8bc0502c0`.
 - Branch: `agent/pr30-fixes-and-updates`.
 - Pull request: #31, open and draft.
 - The evidence-report commit is documentation-only and follows the verified
   implementation head above.
 
 At the ending implementation head, the exact committed path manifest contains
-1,302 rows: 858 additions, 443 modifications, and one deletion. It is
+1,359 rows: 895 additions, 463 modifications, and one deletion. It is
 reproducible without relying on this prose:
 
 ```powershell
-$base = git merge-base origin/main cd6996b71e658011563862cbc0d898f48d7203d1
-git diff --name-status "$base..cd6996b71e658011563862cbc0d898f48d7203d1"
+$base = git merge-base origin/main fc623ceba971c564c062e8c0c5fdb0b8bc0502c0
+git diff --name-status "$base..fc623ceba971c564c062e8c0c5fdb0b8bc0502c0"
 ```
 
 The compact slice-to-path ledger is
@@ -35,26 +35,29 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 
 ## 2. Root causes and corrections
 
-| Area                     | Root cause                                                                                                                       | Correction                                                                                                                                                    | Status                                           |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Baseline frontend        | Consolidated work carried stale test contracts and one raw Deepgram startup error                                                | Reconciled contracts and routed the error through the bounded safe-error path                                                                                 | **VERIFIED**                                     |
-| Jarvis response quality  | Mode-to-provider reasoning and response evidence needed direct end-to-end proof                                                  | Bound optimization modes to provider requests, retained approval-gated coding tools, bounded the Final Boss loop, unified motion, and collapsed file evidence | **VERIFIED**                                     |
-| Restrictive live modes   | Separate selection routes could reduce authority without cancelling the exact active message                                     | Centralized the transition boundary and exact-message cancellation                                                                                            | **VERIFIED**                                     |
-| Crash details            | Raw error fields could reach UI, clipboard, logs, or persisted DevConsole records                                                | Bounded and redacted error name, message, stack, component stack, uncaught errors, and rejected promises                                                      | **VERIFIED**                                     |
-| Dependencies             | Exact audit reported two critical, four high, and one moderate advisory                                                          | Applied compatible tooling/transitive upgrades and retained narrow filesystem authority                                                                       | **VERIFIED**                                     |
-| Updater                  | A legacy raw-repository endpoint preceded the official signed release manifest                                                   | Removed the stale channel; packaged updates use the signed GitHub Releases manifest only                                                                      | **VERIFIED**                                     |
-| Profile RLS              | Unknown permissive policies could remain and combine with owner policies through PostgreSQL `OR` semantics                       | Migration 0037 now replaces the complete profile policy set before installing the canonical owner-only pair                                                   | **VERIFIED**                                     |
-| AI News                  | Empty public reads launched upstream ingestion and async failures escaped the route boundary                                     | Kept public reads side-effect free, retained scheduled ingestion, awaited reads, and bounded failures                                                         | **VERIFIED**                                     |
-| Supabase operations      | The runbook stopped at migration 0011 and described obsolete catalog/configuration behavior                                      | Aligned it with all 39 migrations through 0040, 27 functions, five plans, JWT gates, and server-only secrets                                                  | **VERIFIED**                                     |
-| Supabase capacity        | No safe 500/2,000/5,000/10,000-user harness or honest unmeasured-state report existed                                            | Added a fail-closed local/isolated-staging probe, exact measurements, stop rules, and explicit operator metrics                                               | **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED** |
-| Native command authority | The Tauri handler registered 141 commands while the frozen test listed 139 and omitted two committed bounded attachment commands | Reconciled ordered and normalized hashes without changing production registration                                                                             | **VERIFIED**                                     |
+| Area                     | Root cause                                                                                                                                                            | Correction                                                                                                                                                                                                      | Status                                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Baseline frontend        | Consolidated work carried stale test contracts and one raw Deepgram startup error                                                                                     | Reconciled contracts and routed the error through the bounded safe-error path                                                                                                                                   | **VERIFIED**                                         |
+| Jarvis response quality  | Mode-to-provider reasoning and response evidence needed direct end-to-end proof                                                                                       | Bound optimization modes to provider requests, retained approval-gated coding tools, bounded the Final Boss loop, unified motion, and collapsed file evidence                                                   | **VERIFIED**                                         |
+| Restrictive live modes   | Separate selection routes could reduce authority without cancelling the exact active message                                                                          | Centralized the transition boundary and exact-message cancellation                                                                                                                                              | **VERIFIED**                                         |
+| Crash details            | Raw error fields could reach UI, clipboard, logs, or persisted DevConsole records                                                                                     | Bounded and redacted error name, message, stack, component stack, uncaught errors, and rejected promises                                                                                                        | **VERIFIED**                                         |
+| Dependencies             | Exact audit reported two critical, four high, and one moderate advisory                                                                                               | Applied compatible tooling/transitive upgrades and retained narrow filesystem authority                                                                                                                         | **VERIFIED**                                         |
+| Updater                  | A legacy raw-repository endpoint preceded the official signed release manifest                                                                                        | Removed the stale channel; packaged updates use the signed GitHub Releases manifest only                                                                                                                        | **VERIFIED**                                         |
+| Profile RLS              | Unknown permissive policies could remain and combine with owner policies through PostgreSQL `OR` semantics                                                            | Migration 0037 now replaces the complete profile policy set before installing the canonical owner-only pair                                                                                                     | **VERIFIED**                                         |
+| AI News                  | Empty public reads launched upstream ingestion and async failures escaped the route boundary                                                                          | Kept public reads side-effect free, retained scheduled ingestion, awaited reads, and bounded failures                                                                                                           | **VERIFIED**                                         |
+| Supabase operations      | The runbook stopped at migration 0011 and described obsolete catalog/configuration behavior                                                                           | Aligned it with all 39 migrations through 0040, 27 functions, five plans, JWT gates, and server-only secrets                                                                                                    | **VERIFIED**                                         |
+| Supabase capacity        | No safe 500/2,000/5,000/10,000-user harness or honest unmeasured-state report existed                                                                                 | Added a fail-closed local/isolated-staging probe, exact measurements, stop rules, and explicit operator metrics                                                                                                 | **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**     |
+| Native command authority | The Tauri handler registered 141 commands while the frozen test listed 139 and omitted two committed bounded attachment commands                                      | Reconciled ordered and normalized hashes without changing production registration                                                                                                                               | **VERIFIED**                                         |
+| Local chat qualification | Live llama3.2 testing exposed capped modes, fabricated tool completion, false leak quarantine, stale multitask status, and native Browser Chat host lifecycle defects | Preserved provider-specific budgets, emitted canonical approval-gated actions, made leak checks intent-sensitive, synchronized live child status, and stabilized the isolated provider host                     | **VERIFIED LOCALLY**                                 |
+| MCP gateway              | The release report lacked direct proof for the existing permissioned MCP discovery and invocation boundary                                                            | Verified endpoint authorization, schema discovery, account-scoped routing, explicit mutation approval, cancellation, backpressure, credential rejection, and safe result normalization                          | **VERIFIED LOCALLY**                                 |
+| Build Your Own AI        | Local RAG is implemented, but the installed Python worker is probe-only and advertises no weight-training or media capability                                         | Verified the dedicated page, hardware-aware planning, local-only attestation, tamper rejection, RAG lifecycle, retrieval, and artifact integrity; retained explicit unavailable states for unsupported training | **PARTIAL — WEIGHT TRAINING ENGINE NOT IMPLEMENTED** |
 
 ## 3. Tests and results
 
 ### Clean committed-head automation
 
-- Exact-head AI boundary workflow `31069049413`: **VERIFIED**.
-- Exact-head CI workflow `31069049377`:
+- Exact-head AI boundary workflow `31249314292`: **VERIFIED**.
+- Exact-head CI workflow `31249314300`:
   - Linux Rust `cargo check`: **VERIFIED**.
   - frontend TypeScript: **VERIFIED**.
   - production Vite build: **VERIFIED**.
@@ -68,6 +71,11 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 ### Focused local evidence
 
 - Jarvis response quality: 6 files, 125/125 tests.
+- Live local/chat qualification: 245/245 focused tests plus live
+  `llama3.2:latest` terminal, exact file create/read, HTML artifact, two agent,
+  two skill, three-mode identical-prompt, and corrected multitask-child
+  evidence. The published PR head includes commits `5e239d0`, `2d5c1ab`, and
+  `e60724d`.
 - Supabase capacity probe: 8/8 Node tests; dry run reported all exact stages,
   zero results, six missing metrics, and no credential material.
 - Native command authority: focused 1/1; full no-default-features library suite
@@ -76,6 +84,15 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
   isolated `C:\Users\viper\.cargo-target\pr31-default` target; `cargo check`
   passed and `cargo test --lib` passed 238 tests with 8 intentional ignores
   and zero failures.
+- MCP gateway: 19 files and 158/158 tests covering discovery, exact-endpoint
+  authorization, account-scoped routing, explicit mutation approval,
+  cancellation, backpressure, credential rejection, connection supervision,
+  and safe result normalization.
+- Build Your Own AI: 9 frontend files and 39/39 tests plus 7/7 native tests.
+  This proves the page, capability planning, local RAG lifecycle, retrieval,
+  worker attestation, tamper rejection, and artifact hashing. It also directly
+  proves the bundled worker is probe-only; no LoRA, QLoRA, full-weight, or
+  media-training completion is claimed.
 - Release, updater, added-line scanner, and capacity contracts: 92/92.
 - Prompt compiler: 200 measured iterations, p50 2.168 ms, p95 3.045 ms,
   maximum 4.095 ms against the 25 ms p95 budget.
@@ -256,6 +273,10 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 Each accepted closure slice is a separate commit and can be reverted without
 rewriting history. Recent rollback points are:
 
+- `fc623ce` — capability-snapshot authority test reconciliation;
+- `e60724d` — live multitask status reconciliation;
+- `2d5c1ab` — truthful local chat tool execution;
+- `5e239d0` — isolated Browser Chat native host stabilization;
 - `cd6996b` — native command-authority test reconciliation;
 - `f0c086f` — Supabase capacity harness and report;
 - `13d7950` — Supabase operator runbook;
