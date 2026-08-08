@@ -13,19 +13,19 @@ publication, or unmeasured capacity.
 - Current `main` merge base:
   `b8d2a04c930bd984cae3d8f00942581b9e0b9aeb`.
 - Ending verified implementation head:
-  `519c12666c14d1997b41b72fc30cf10f1c878899`.
+  `423d13c58afdbca1791aeb30844b502a3206cc02`.
 - Branch: `agent/pr30-fixes-and-updates`.
 - Pull request: #31, open and draft.
 - The evidence-report commit is documentation-only and follows the verified
   implementation head above.
 
 At the ending implementation head, the exact committed path manifest contains
-1,402 rows: 932 additions, 469 modifications, and one deletion. It is
+1,408 rows: 936 additions, 471 modifications, and one deletion. It is
 reproducible without relying on this prose:
 
 ```powershell
-$base = git merge-base origin/main 519c12666c14d1997b41b72fc30cf10f1c878899
-git diff --name-status "$base..519c12666c14d1997b41b72fc30cf10f1c878899"
+$base = git merge-base origin/main 423d13c58afdbca1791aeb30844b502a3206cc02
+git diff --name-status "$base..423d13c58afdbca1791aeb30844b502a3206cc02"
 ```
 
 The compact slice-to-path ledger is
@@ -47,16 +47,23 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 | AI News                  | Empty public reads launched upstream ingestion and async failures escaped the route boundary                                                                          | Kept public reads side-effect free, retained scheduled ingestion, awaited reads, and bounded failures                                                                                                                        | **VERIFIED**                                     |
 | Supabase operations      | The runbook stopped at migration 0011 and described obsolete catalog/configuration behavior                                                                           | Aligned it with all 39 migrations through 0040, 27 functions, five plans, JWT gates, and server-only secrets                                                                                                                 | **VERIFIED**                                     |
 | Supabase capacity        | No safe 500/2,000/5,000/10,000-user harness or honest unmeasured-state report existed                                                                                 | Added a fail-closed local/isolated-staging probe, exact measurements, stop rules, and explicit operator metrics                                                                                                              | **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED** |
-| Native command authority | Earlier attachment reconciliation left stale count wording; later Browser Chat and Model Foundry chat registration changed the bounded command surface                | Reconciled the exact ordered 153-command manifest and both hashes with the reviewed local-only Model Foundry prepare/chat/cancel registrations                                                                               | **IMPLEMENTED — CI RECHECK PENDING**             |
+| Native command authority | Earlier attachment reconciliation left stale count wording; later Browser Chat and Model Foundry chat registration changed the bounded command surface                | Reconciled the exact ordered 153-command manifest and both hashes with the reviewed local-only Model Foundry prepare/chat/cancel registrations                                                                               | **VERIFIED**                                     |
 | Local chat qualification | Live llama3.2 testing exposed capped modes, fabricated tool completion, false leak quarantine, stale multitask status, and native Browser Chat host lifecycle defects | Preserved provider-specific budgets, emitted canonical approval-gated actions, made leak checks intent-sensitive, synchronized live child status, and stabilized the isolated provider host                                  | **VERIFIED LOCALLY**                             |
 | MCP gateway              | The release report lacked direct proof for the existing permissioned MCP discovery and invocation boundary                                                            | Verified endpoint authorization, schema discovery, account-scoped routing, explicit mutation approval, cancellation, backpressure, credential rejection, and safe result normalization                                       | **VERIFIED LOCALLY**                             |
-| Build Your Own AI        | Local RAG and verified training existed, but selectable LoRA/QLoRA/full artifacts were sent through the knowledge-only retrieval command                              | Added artifact-type preparation, per-run manifest/base-checkpoint verification, offline Transformers/PEFT inference, bounded timeout/cancellation, zero-cost accounting, and method-aware model labels; RAG remains separate | **IMPLEMENTED — CI/ENVIRONMENT GATES REMAIN**    |
+| Build Your Own AI        | Local RAG and verified training existed, but selectable LoRA/QLoRA/full artifacts were sent through the knowledge-only retrieval command                              | Added artifact-type preparation, per-run manifest/base-checkpoint verification, offline Transformers/PEFT inference, bounded timeout/cancellation, zero-cost accounting, and method-aware model labels; RAG remains separate | **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED** |
 | Ollama startup lifecycle | AuthGate's mount-time discovery had no unmount cancellation, and the retry delay accessed `window` after Linux Vitest tore down the browser environment               | Bound discovery to the effect lifetime and made retry delays runtime-neutral, abort-settled, and listener-clean                                                                                                              | **VERIFIED LOCALLY**                             |
 
 ## 3. Tests and results
 
 ### Clean committed-head automation
 
+- Exact-head AI boundary workflow `31282606141` at `423d13c`: **VERIFIED**.
+- Exact-head CI workflow `31282606152` at `423d13c`:
+  - Linux Rust `cargo check`: **VERIFIED**.
+  - frontend TypeScript: **VERIFIED**.
+  - production Vite build: **VERIFIED**.
+  - full Vitest: **VERIFIED**.
+  - release-manifest gate: **VERIFIED**.
 - Exact-head AI boundary workflow `31274015512` at `519c126`: **VERIFIED**.
 - Exact-head CI workflow `31274015527` at `519c126`:
   - Linux Rust `cargo check`: **VERIFIED**.
@@ -88,8 +95,8 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
   RED/GREEN passes 33/33 focused routing/domain tests, TypeScript passes, the
   embedded worker passes Python syntax validation, and rustfmt passes.
 - The local Windows native compile could not execute a generated
-  `tauri-plugin-fs` build script because Application Control returned OS error 4551. Exact-head Linux CI is required before this slice can be labeled
-  native-verified; no success is inferred from the blocked gate.
+  `tauri-plugin-fs` build script because Application Control returned OS error 4551. Exact-head Linux CI `31282606152` compiled the current native surface
+  successfully; no Windows execution success is inferred from that Linux gate.
 - Prior clean-head workflow `31068591933` on `f0c086f`: TypeScript, production
   build, full Vitest, release manifest, and Rust `cargo check` all
   **VERIFIED**.
@@ -230,7 +237,7 @@ Status: **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**
 - The Supabase load harness rejects ambiguous/production targets, URL
   credentials, sensitive query parameters, and execution without explicit
   non-production confirmation.
-- The frozen Tauri command authority now matches all 141 registered commands.
+- The frozen Tauri command authority now matches all 153 registered commands.
 
 The earlier monolithic added-line scanner did not finish within its two-minute
 bound on the 1,302-path PR. A dedicated Gitleaks 8.30.1 redacted history scan
@@ -264,8 +271,6 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 ### Can be completed by the agent now
 
 - Keep the PR draft.
-- Integrate only independently owned UI/theme work after its owner releases
-  paths and supplies focused evidence.
 - Run local Supabase capacity evidence when an isolated local stack is
   available.
 
@@ -291,8 +296,6 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 - A new signed/AV-scanned Windows PR31 artifact is absent.
 - The protected installer deletion is unresolved.
 - The two-device Windows performance and soak matrix is incomplete.
-- Concurrent uncommitted UI/theme work in the shared worktree is not part of
-  the committed PR head and cannot be accepted without its owner handoff.
 
 ## 11. Known limitations
 
