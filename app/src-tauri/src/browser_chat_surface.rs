@@ -130,6 +130,10 @@ fn hide_other_providers(app: &AppHandle, selected: Option<&str>) {
     }
 }
 
+fn should_activate_provider(is_visible: bool) -> bool {
+    !is_visible
+}
+
 fn open_provider(
     app: AppHandle,
     caller: WebviewWindow,
@@ -140,12 +144,17 @@ fn open_provider(
 
     if let Some(existing) = app.get_window(provider.label) {
         apply_bounds(&existing, &caller, &bounds)?;
-        existing
-            .show()
-            .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
-        existing
-            .set_focus()
-            .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
+        let is_visible = existing
+            .is_visible()
+            .map_err(|error| format!("browser_chat_visibility_failed:{error}"))?;
+        if should_activate_provider(is_visible) {
+            existing
+                .show()
+                .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
+            existing
+                .set_focus()
+                .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
+        }
         return Ok(());
     }
 
@@ -292,5 +301,11 @@ mod tests {
             height: 600.0,
         })
         .is_err());
+    }
+
+    #[test]
+    fn visible_provider_does_not_need_reactivation_for_geometry_updates() {
+        assert!(!should_activate_provider(true));
+        assert!(should_activate_provider(false));
     }
 }

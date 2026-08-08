@@ -55,6 +55,46 @@ describe('BrowserProviderSurface', () => {
     expect(unsubscribeHostGeometry).toHaveBeenCalledOnce();
   });
 
+  it('coalesces geometry bursts while one native surface update is in flight', async () => {
+    let hostGeometryListener: (() => void) | undefined;
+    let releaseFirstOpen: (() => void) | undefined;
+    const firstOpen = new Promise<void>((resolve) => {
+      releaseFirstOpen = resolve;
+    });
+    const runtime = {
+      openManaged: vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await firstOpen;
+          return { kind: 'managed' as const, providerId: 'chatgpt' as const };
+        })
+        .mockResolvedValue({
+          kind: 'managed' as const,
+          providerId: 'chatgpt' as const,
+        }),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      subscribeHostGeometry: vi.fn(async (listener: () => void) => {
+        hostGeometryListener = listener;
+        return () => undefined;
+      }),
+    };
+
+    render(<BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />);
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+
+    hostGeometryListener?.();
+    hostGeometryListener?.();
+    hostGeometryListener?.();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(runtime.openManaged).toHaveBeenCalledOnce();
+
+    releaseFirstOpen?.();
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.openManaged).toHaveBeenCalledTimes(2);
+  });
+
   it('shows a truthful fallback action when managed opening fails', async () => {
     const runtime = {
       openManaged: vi.fn(async () => {

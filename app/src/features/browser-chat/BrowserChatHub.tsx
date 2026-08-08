@@ -306,7 +306,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
             onClick={() => void browserChatSurface.openSystemBrowser(provider)}
           >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            System browser
+            {provider.id === 'chatgpt' ? 'Sign in or sign up' : 'System browser'}
           </Button>
         </div>
       </header>
@@ -367,7 +367,8 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
             </div>
             <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
               <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-copper" />
-              Sign-in belongs to {provider.label}; VibeSpace never receives it.
+              Google and other external sign-in opens in your OS default browser. Its cookies are
+              never copied into VibeSpace.
             </div>
           </div>
         </aside>
@@ -399,6 +400,10 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
                 The provider page has no direct device authority. The official VibeSpace MCP app can
                 use only the project you approve below.
+              </dd>
+              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                It is not auto-connected by page login. Approve a project, configure the public
+                VibeSpace MCP endpoint, then enable VibeSpace in ChatGPT Settings → Apps.
               </dd>
               <dd className="mt-2 space-y-1">
                 {enabledConnections.length ? (

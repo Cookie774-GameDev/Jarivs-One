@@ -43,6 +43,8 @@ describe('BrowserChatHub', () => {
     expect(screen.getByRole('tab', { name: /Gemini/i })).toBeTruthy();
     expect(screen.getByText(/page status/i)).toBeTruthy();
     expect(screen.getByText(/tool bridge/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /sign in or sign up/i })).toBeTruthy();
+    expect(screen.getByText(/not auto-connected/i)).toBeTruthy();
     expect(screen.getByText(/provider subscription and limits still apply/i)).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
   });

@@ -29,12 +29,50 @@ export function BrowserProviderSurface({
     let disposed = false;
     let frame = 0;
     let unsubscribeHostGeometry: (() => void) | undefined;
+    let updateInFlight = false;
+    let queuedBounds: ProviderSurfaceBounds | null = null;
+    let lastResizeBounds: ProviderSurfaceBounds | null = null;
 
-    const synchronize = () => {
-      setProviderRuntime(provider.id, {
-        pageStatus: 'opening',
-        toolBridgeStatus: provider.toolBridgeStatus,
-      });
+    const openLatestBounds = async (initialBounds: ProviderSurfaceBounds) => {
+      if (updateInFlight) {
+        queuedBounds = initialBounds;
+        return;
+      }
+      updateInFlight = true;
+      let nextBounds: ProviderSurfaceBounds | null = initialBounds;
+      try {
+        while (nextBounds && !disposed) {
+          const bounds = nextBounds;
+          queuedBounds = null;
+          try {
+            const result = await runtime.openManaged(provider, bounds);
+            if (!disposed) {
+              setError(null);
+              setProviderRuntime(provider.id, {
+                pageStatus: result.kind === 'managed' ? 'ready' : 'system_browser',
+                toolBridgeStatus: provider.toolBridgeStatus,
+              });
+            }
+          } catch (cause) {
+            if (!disposed) {
+              const message =
+                cause instanceof Error ? cause.message : 'Managed provider surface failed.';
+              setError(message);
+              setProviderRuntime(provider.id, {
+                pageStatus: 'error',
+                toolBridgeStatus: provider.toolBridgeStatus,
+                error: message,
+              });
+            }
+          }
+          nextBounds = queuedBounds;
+        }
+      } finally {
+        updateInFlight = false;
+      }
+    };
+
+    const synchronize = (force = false) => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         if (disposed) return;
@@ -46,50 +84,46 @@ export function BrowserProviderSurface({
           width: rect.width,
           height: rect.height,
         };
-        void runtime
-          .openManaged(provider, bounds)
-          .then((result) => {
-            if (!disposed) {
-              setError(null);
-              setProviderRuntime(provider.id, {
-                pageStatus: result.kind === 'managed' ? 'ready' : 'system_browser',
-                toolBridgeStatus: provider.toolBridgeStatus,
-              });
-            }
-          })
-          .catch((cause) => {
-            if (!disposed) {
-              const message =
-                cause instanceof Error ? cause.message : 'Managed provider surface failed.';
-              setError(message);
-              setProviderRuntime(provider.id, {
-                pageStatus: 'error',
-                toolBridgeStatus: provider.toolBridgeStatus,
-                error: message,
-              });
-            }
-          });
+        if (
+          !force &&
+          lastResizeBounds &&
+          lastResizeBounds.x === bounds.x &&
+          lastResizeBounds.y === bounds.y &&
+          lastResizeBounds.width === bounds.width &&
+          lastResizeBounds.height === bounds.height
+        ) {
+          return;
+        }
+        lastResizeBounds = bounds;
+        setProviderRuntime(provider.id, {
+          pageStatus: 'opening',
+          toolBridgeStatus: provider.toolBridgeStatus,
+        });
+        void openLatestBounds(bounds);
       });
     };
 
     synchronize();
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => synchronize());
+    const handleWindowResize = () => synchronize();
     observer?.observe(host);
-    window.addEventListener('resize', synchronize);
-    void runtime.subscribeHostGeometry?.(synchronize).then((unsubscribe) => {
-      if (disposed) {
-        unsubscribe();
-      } else {
-        unsubscribeHostGeometry = unsubscribe;
-      }
-    });
+    window.addEventListener('resize', handleWindowResize);
+    void runtime
+      .subscribeHostGeometry?.(() => synchronize(true))
+      .then((unsubscribe) => {
+        if (disposed) {
+          unsubscribe();
+        } else {
+          unsubscribeHostGeometry = unsubscribe;
+        }
+      });
 
     return () => {
       disposed = true;
       window.cancelAnimationFrame(frame);
       observer?.disconnect();
-      window.removeEventListener('resize', synchronize);
+      window.removeEventListener('resize', handleWindowResize);
       unsubscribeHostGeometry?.();
       void runtime.hideAll();
     };
