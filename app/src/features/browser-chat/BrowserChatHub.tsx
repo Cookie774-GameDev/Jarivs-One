@@ -40,6 +40,11 @@ import { BROWSER_CHAT_PROVIDERS, browserChatProvider } from './providerRegistry'
 import { browserChatSurface } from './providerSurface';
 import { buildBrowserAgentPrompt } from './browserAgentPrompt';
 import {
+  CHATGPT_PLUGINS_URL,
+  McpConnectionPreflightError,
+  preflightVibeSpaceMcp,
+} from './mcpConnection';
+import {
   browserChatWorkspaceGrantStore,
   grantBrowserChatWorkspace,
   revokeBrowserChatWorkspace,
@@ -50,6 +55,8 @@ function statusLabel(value: string): string {
 }
 
 const stagedFilesByChat = new Map<string, File[]>();
+
+type McpSetupState = 'idle' | 'checking' | 'opening' | 'waiting' | 'error';
 
 function usageText(value: number | null, limit: number | null, unit: string | null): string {
   if (value === null || limit === null || !unit) {
@@ -133,6 +140,9 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
       snapshot.displayName.toLowerCase() === 'openai',
   );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const connectionAbortRef = React.useRef<AbortController | null>(null);
+  const [mcpSetupState, setMcpSetupState] = React.useState<McpSetupState>('idle');
+  const [mcpSetupError, setMcpSetupError] = React.useState('');
   const [stagedFiles, setStagedFiles] = React.useState<File[]>(() =>
     chatId ? (stagedFilesByChat.get(chatId) ?? []) : [],
   );
@@ -176,6 +186,13 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   React.useEffect(() => {
     setStagedFiles(chatId ? (stagedFilesByChat.get(chatId) ?? []) : []);
   }, [chatId]);
+
+  React.useEffect(
+    () => () => {
+      connectionAbortRef.current?.abort();
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (
@@ -261,20 +278,78 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
       );
       return;
     }
+    connectionAbortRef.current?.abort();
+    const controller = new AbortController();
+    connectionAbortRef.current = controller;
+    setMcpSetupError('');
+    setMcpSetupState('checking');
+    try {
+      const preflight = await preflightVibeSpaceMcp(mcpUrl, {
+        signal: controller.signal,
+      });
+      let endpointCopied = true;
+      try {
+        await navigator.clipboard.writeText(preflight.mcpUrl);
+      } catch {
+        endpointCopied = false;
+      }
+      if (controller.signal.aborted) return;
+      setMcpSetupState('opening');
+      try {
+        await browserChatSurface.openChatGptPlugins();
+      } catch {
+        throw new McpConnectionPreflightError(
+          'ChatGPT Plugins could not be opened. Use the visible endpoint to continue.',
+        );
+      }
+      if (controller.signal.aborted) return;
+      setMcpSetupState('waiting');
+      toast.success(
+        'VibeSpace MCP setup opened',
+        endpointCopied
+          ? 'The endpoint is copied. Add VibeSpace MCP and complete the one-time OAuth approval.'
+          : 'Clipboard access was unavailable. Copy the visible endpoint, then complete the one-time OAuth approval.',
+      );
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      const message =
+        cause instanceof McpConnectionPreflightError
+          ? cause.message
+          : 'The VibeSpace MCP connection check failed.';
+      setMcpSetupError(message);
+      setMcpSetupState('error');
+      toast.error('Could not start VibeSpace MCP setup', message);
+    } finally {
+      if (connectionAbortRef.current === controller) {
+        connectionAbortRef.current = null;
+      }
+    }
+  };
+
+  const copyMcpEndpoint = async () => {
+    if (!mcpUrl) return;
     try {
       await navigator.clipboard.writeText(mcpUrl);
-      await browserChatSurface.openSystemBrowser(provider);
-      toast.success(
-        'VibeSpace MCP endpoint copied',
-        'In ChatGPT Settings → Apps, add VibeSpace MCP and complete the one-time OAuth approval.',
-      );
+      toast.success('VibeSpace MCP endpoint copied', 'Paste it into ChatGPT Plugins.');
     } catch {
       toast.error(
-        'Could not start VibeSpace MCP setup',
-        'Copying the endpoint or opening ChatGPT was unavailable.',
+        'Could not copy the MCP endpoint',
+        'Select the visible endpoint and copy it manually.',
       );
     }
   };
+
+  const mcpStatusLabel =
+    relayStatus === 'connected'
+      ? 'Desktop connected'
+      : mcpSetupState === 'checking'
+        ? 'Checking secure connection'
+        : mcpSetupState === 'opening'
+          ? 'Opening ChatGPT Plugins'
+          : mcpSetupState === 'waiting'
+            ? 'Waiting for owner approval'
+            : 'Setup required';
+  const mcpSetupBusy = mcpSetupState === 'checking' || mcpSetupState === 'opening';
 
   return (
     <section
@@ -440,9 +515,33 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                 <span className="flex items-center justify-between gap-2">
                   <strong className="text-[11px] text-foreground">VibeSpace MCP</strong>
                   <Badge variant={relayStatus === 'connected' ? 'success' : 'secondary'}>
-                    {relayStatus === 'connected' ? 'Desktop connected' : 'Setup required'}
+                    {mcpStatusLabel}
                   </Badge>
                 </span>
+                {mcpUrl ? (
+                  <span className="mt-2 flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-background/55 p-1">
+                    <code
+                      className="min-w-0 flex-1 select-all truncate px-1 text-[9px] text-foreground"
+                      title={mcpUrl}
+                    >
+                      {mcpUrl}
+                    </code>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label="Copy MCP endpoint"
+                      onClick={() => void copyMcpEndpoint()}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </span>
+                ) : null}
+                <ol className="mt-2 grid gap-1 text-[9px] leading-4 text-muted-foreground">
+                  <li>1. Enable Developer mode.</li>
+                  <li>2. Add VibeSpace MCP.</li>
+                  <li>3. Approve access.</li>
+                </ol>
                 <span className="mt-2 grid gap-1 text-[9px] leading-4 text-muted-foreground">
                   <span className="flex justify-between gap-2">
                     <span>File reads</span>
@@ -470,12 +569,27 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                   size="sm"
                   variant="outline"
                   className="mt-2 w-full"
-                  disabled={!mcpUrl}
+                  disabled={!mcpUrl || mcpSetupBusy}
                   onClick={() => void connectVibeSpaceMcp()}
                 >
                   <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  Connect VibeSpace MCP
+                  {mcpSetupState === 'checking'
+                    ? 'Checking VibeSpace MCP'
+                    : mcpSetupState === 'opening'
+                      ? 'Opening ChatGPT Plugins'
+                      : mcpSetupState === 'error'
+                        ? 'Retry VibeSpace MCP'
+                        : 'Connect VibeSpace MCP'}
                 </Button>
+                {mcpSetupError ? (
+                  <span role="alert" className="mt-1 block text-[9px] leading-4 text-destructive">
+                    <span className="block">{mcpSetupError}</span>
+                    <span className="block text-muted-foreground">
+                      Open manually:{' '}
+                      <code className="select-all text-foreground">{CHATGPT_PLUGINS_URL}</code>
+                    </span>
+                  </span>
+                ) : null}
                 <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">
                   ChatGPT requires one-time OAuth approval. Later desktop relay reconnects are
                   automatic while this session grant is active.

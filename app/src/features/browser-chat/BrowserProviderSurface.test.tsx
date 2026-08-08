@@ -34,6 +34,7 @@ describe('BrowserProviderSurface', () => {
       })),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
       subscribeHostGeometry: vi.fn(async (listener: () => void) => {
         hostGeometryListener = listener;
         return unsubscribeHostGeometry;
@@ -74,6 +75,7 @@ describe('BrowserProviderSurface', () => {
         }),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
       subscribeHostGeometry: vi.fn(async (listener: () => void) => {
         hostGeometryListener = listener;
         return () => undefined;
@@ -102,6 +104,7 @@ describe('BrowserProviderSurface', () => {
       }),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
     };
     render(<BrowserProviderSurface provider={browserChatProvider('claude')} runtime={runtime} />);
 

@@ -17,6 +17,35 @@ vi.mock('./BrowserProviderSurface', () => ({
   ),
 }));
 
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function mockSuccessfulMcpDiscovery() {
+  return vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    .mockResolvedValueOnce(
+      jsonResponse({
+        resource: 'https://vibespace-mcp.fly.dev/mcp',
+        authorization_servers: ['https://auth.example/auth/v1'],
+        scopes_supported: ['email', 'profile'],
+        bearer_methods_supported: ['header'],
+        resource_name: 'VibeSpace MCP',
+      }),
+    )
+    .mockResolvedValueOnce(
+      jsonResponse({
+        issuer: 'https://auth.example/auth/v1',
+        authorization_endpoint: 'https://auth.example/auth/v1/authorize',
+        token_endpoint: 'https://auth.example/auth/v1/token',
+      }),
+    );
+}
+
 describe('BrowserChatHub', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -101,7 +130,8 @@ describe('BrowserChatHub', () => {
       configurable: true,
       value: { writeText },
     });
-    vi.spyOn(browserChatSurface, 'openSystemBrowser').mockResolvedValue();
+    const fetcher = mockSuccessfulMcpDiscovery();
+    const openPlugins = vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockResolvedValue();
 
     render(<BrowserChatHub chatId="chat-1" />);
 
@@ -111,10 +141,75 @@ describe('BrowserChatHub', () => {
     expect(screen.getByText(/playwright browser/i)).toBeTruthy();
     expect(screen.getByText(/installed mcp tools/i)).toBeTruthy();
     expect(screen.getAllByText(/approval required/i).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();
+    expect(screen.getByText(/enable developer mode/i)).toBeTruthy();
+    expect(screen.getByText(/add vibespace mcp/i)).toBeTruthy();
+    expect(screen.getByText(/approve access/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
+    await waitFor(() => expect(openPlugins).toHaveBeenCalledOnce());
+
+    expect(fetcher.mock.calls.map(([request]) => request.toString())).toEqual([
+      'https://vibespace-mcp.fly.dev/health',
+      'https://vibespace-mcp.fly.dev/.well-known/oauth-protected-resource',
+      'https://auth.example/.well-known/oauth-authorization-server/auth/v1',
+    ]);
     expect(writeText).toHaveBeenCalledWith('https://vibespace-mcp.fly.dev/mcp');
-    await waitFor(() => expect(browserChatSurface.openSystemBrowser).toHaveBeenCalled());
+    expect(screen.getByText(/waiting for owner approval/i)).toBeTruthy();
     expect(screen.getByText(/one-time oauth approval/i)).toBeTruthy();
+  });
+
+  it('does not copy or navigate when MCP discovery fails', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 503 }));
+    const openPlugins = vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockResolvedValue();
+
+    render(<BrowserChatHub chatId="chat-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
+
+    expect(await screen.findByText(/health check failed/i)).toBeTruthy();
+    expect(writeText).not.toHaveBeenCalled();
+    expect(openPlugins).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /retry vibespace mcp/i })).toBeTruthy();
+  });
+
+  it('continues the safe browser handoff when clipboard access is denied', async () => {
+    const writeText = vi.fn().mockRejectedValue(new DOMException('Denied', 'NotAllowedError'));
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    mockSuccessfulMcpDiscovery();
+    const openPlugins = vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockResolvedValue();
+
+    render(<BrowserChatHub chatId="chat-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
+
+    await waitFor(() => expect(openPlugins).toHaveBeenCalledOnce());
+    expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /copy mcp endpoint/i })).toBeTruthy();
+    expect(screen.getByText(/waiting for owner approval/i)).toBeTruthy();
+  });
+
+  it('retains both setup URLs when the system browser cannot open', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+    mockSuccessfulMcpDiscovery();
+    vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockRejectedValue(
+      new Error('OS browser unavailable'),
+    );
+
+    render(<BrowserChatHub chatId="chat-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
+
+    expect(await screen.findByText(/chatgpt plugins could not be opened/i)).toBeTruthy();
+    expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();
+    expect(screen.getByText('https://chatgpt.com/plugins')).toBeTruthy();
   });
 });

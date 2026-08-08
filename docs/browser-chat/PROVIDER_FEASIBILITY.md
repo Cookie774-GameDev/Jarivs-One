@@ -45,3 +45,18 @@ ChatGPT still requires the standards-mandated one-time owner OAuth decision.
 VibeSpace cannot silently install an app into a user's ChatGPT account or
 bypass that consent. After consent, the desktop relay obtains a fresh one-use
 ticket automatically whenever it connects or reconnects.
+
+The Browser Chat **Connect VibeSpace MCP** action automates every safe step
+before that decision. On demand, it verifies `/health`, the protected-resource
+document, and the advertised authorization-server document; copies the
+canonical HTTPS `/mcp` endpoint; and opens exactly
+`https://chatgpt.com/plugins` through the operating system's default browser.
+It does not open the provider page when discovery fails. Clipboard failure
+does not block navigation because both setup URLs remain visible for manual
+copying.
+
+ChatGPT account-owner actions remain explicit: enable Developer mode, add the
+private VibeSpace MCP connection, and approve OAuth access. Opening the Plugins
+page is reported as **Waiting for owner approval**, never as an installed
+plugin. The existing authenticated desktop relay remains the connection
+authority and automatically resumes after a valid account grant is available.
