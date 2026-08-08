@@ -455,6 +455,7 @@ export function BuildYourOwnAIHub({
     command:
       | 'model_foundry_cancel_job'
       | 'model_foundry_retry_job'
+      | 'model_foundry_resume_job'
       | 'model_foundry_retrain_artifact'
       | 'model_foundry_delete_job'
       | 'model_foundry_rename_artifact'
@@ -986,6 +987,16 @@ export function BuildYourOwnAIHub({
                           onClick={() => void runJobAction('model_foundry_retry_job', job)}
                         >
                           Retry
+                        </Button>
+                      )}
+                      {job.status === 'failed' && job.resumeAvailable && (
+                        <Button
+                          type="button"
+                          variant="accent"
+                          disabled={busyJobId === job.id}
+                          onClick={() => void runJobAction('model_foundry_resume_job', job)}
+                        >
+                          Resume from checkpoint
                         </Button>
                       )}
                       {['completed', 'failed', 'cancelled'].includes(job.status) &&

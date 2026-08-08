@@ -87,6 +87,8 @@ pub struct FoundryJob {
     source_count: usize,
     #[serde(default = "default_version")]
     version: u32,
+    #[serde(default)]
+    resume_available: bool,
     error: Option<String>,
     created_at: String,
     updated_at: String,
@@ -497,6 +499,7 @@ fn process_weight(
     dataset: PathBuf,
     job_dir: PathBuf,
     mut job: FoundryJob,
+    resume_checkpoint: Option<PathBuf>,
 ) {
     let _active_guard = ActiveJobGuard(job.id.clone());
     let job_path = job_dir.join("job.json");
@@ -526,6 +529,7 @@ fn process_weight(
         &job_dir,
         1,
         1_000,
+        resume_checkpoint.as_deref(),
     ) {
         Ok(result) if !cancellation_path.exists() => {
             job.status = "completed".into();
@@ -535,6 +539,7 @@ fn process_weight(
             job.artifact_sha256 = Some(result.evidence.sha256);
             job.storage_bytes = result.evidence.storage_bytes;
             job.source_count = 1;
+            job.resume_available = false;
             job.error = None;
         }
         Ok(_) => {
@@ -549,7 +554,15 @@ fn process_weight(
         Err(error) => {
             job.status = "failed".into();
             job.error = Some(error);
-            let _ = fs::remove_dir_all(job_dir.join("weight-artifact"));
+            job.resume_available = crate::model_foundry_training::latest_training_checkpoint(
+                &job_dir.join("weight-artifact"),
+            )
+            .ok()
+            .flatten()
+            .is_some();
+            if !job.resume_available {
+                let _ = fs::remove_dir_all(job_dir.join("weight-artifact"));
+            }
         }
     }
     job.updated_at = now();
@@ -610,6 +623,7 @@ pub fn model_foundry_start_training(
         storage_bytes: 0,
         source_count: 0,
         version: request.version.unwrap_or(1).max(1),
+        resume_available: false,
         error: None,
         created_at: timestamp.clone(),
         updated_at: timestamp,
@@ -632,7 +646,7 @@ pub fn model_foundry_start_training(
                 .into_iter()
                 .next()
                 .expect("weight source validation requires exactly one path");
-            process_weight(app, request, dataset, job_dir, worker_job);
+            process_weight(app, request, dataset, job_dir, worker_job, None);
         }
     });
     Ok(job)
@@ -668,10 +682,21 @@ pub fn model_foundry_list_jobs(app: tauri::AppHandle) -> Result<Vec<FoundryJob>,
                     )
                 {
                     job.status = "failed".into();
-                    job.error = Some(
+                    let job_dir = path.parent().unwrap_or_else(|| Path::new(""));
+                    job.resume_available = job.method != "knowledge"
+                        && crate::model_foundry_training::latest_training_checkpoint(
+                            &job_dir.join("weight-artifact"),
+                        )
+                        .ok()
+                        .flatten()
+                        .is_some();
+                    job.error = Some(if job.resume_available {
+                        "The previous local process was interrupted. A verified checkpoint is ready to resume."
+                            .into()
+                    } else {
                         "The previous local process was interrupted. Retry to start a fresh verified run."
-                            .into(),
-                    );
+                            .into()
+                    });
                     job.updated_at = now();
                     let _ = write_job(&path, &job);
                 }
@@ -791,6 +816,76 @@ pub fn model_foundry_retry_job(
     job_id: String,
 ) -> Result<FoundryJob, String> {
     restart_job(app, job_id, false)
+}
+
+#[tauri::command]
+pub fn model_foundry_resume_job(
+    app: tauri::AppHandle,
+    job_id: String,
+) -> Result<FoundryJob, String> {
+    let job_id = validated_job_id(job_id.trim())?;
+    let job_dir = foundry_root(&app)?.join("jobs").join(job_id);
+    let job_path = job_dir.join("job.json");
+    let mut job: FoundryJob = serde_json::from_slice(
+        &fs::read(&job_path).map_err(|_| "Model Foundry job was not found.".to_string())?,
+    )
+    .map_err(|error| format!("Model Foundry job metadata is invalid: {error}"))?;
+    if job.status != "failed" || job.method == "knowledge" {
+        return Err("Only an interrupted local weight-training job can resume.".into());
+    }
+    let checkpoint = crate::model_foundry_training::latest_training_checkpoint(
+        &job_dir.join("weight-artifact"),
+    )?
+    .ok_or_else(|| "No verified local training checkpoint is available to resume.".to_string())?;
+    let request: StartRequest = serde_json::from_slice(
+        &fs::read(job_dir.join("request.json"))
+            .map_err(|_| "The private resume record is unavailable.".to_string())?,
+    )
+    .map_err(|error| format!("The private resume record is invalid: {error}"))?;
+    if !request.local_only
+        || parsed_method(&request.method)? != FoundryMethod::Weight
+        || request.method != job.method
+        || request.base_model_id != job.base_model_id
+        || !allowed_model_for_method(&request.base_model_id, FoundryMethod::Weight)
+    {
+        return Err("The private resume record does not match this verified local job.".into());
+    }
+    let sources = validated_sources(&request.source_paths)?;
+    if sources.len() != 1
+        || sources[0]
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_none_or(|value| !value.eq_ignore_ascii_case("jsonl"))
+    {
+        return Err("The private resume dataset is unavailable or invalid.".into());
+    }
+    let mut active = active_jobs()
+        .lock()
+        .map_err(|_| "Model Foundry active-job registry is unavailable.".to_string())?;
+    if !active.insert(job.id.clone()) {
+        return Err("This Model Foundry training job is already active.".into());
+    }
+    drop(active);
+    let _ = fs::remove_file(job_dir.join("cancel.requested"));
+    job.status = "queued".into();
+    job.resume_available = false;
+    job.error = None;
+    job.updated_at = now();
+    if let Err(error) = write_job(&job_path, &job) {
+        if let Ok(mut active) = active_jobs().lock() {
+            active.remove(&job.id);
+        }
+        return Err(error);
+    }
+    let worker_job = job.clone();
+    let dataset = sources
+        .into_iter()
+        .next()
+        .expect("resume validation requires exactly one dataset");
+    std::thread::spawn(move || {
+        process_weight(app, request, dataset, job_dir, worker_job, Some(checkpoint))
+    });
+    Ok(job)
 }
 
 #[tauri::command]
@@ -914,6 +1009,7 @@ pub fn model_foundry_duplicate_artifact(
         storage_bytes: bytes.len() as u64,
         source_count: artifact.source_count,
         version: 1,
+        resume_available: false,
         error: None,
         created_at: timestamp.clone(),
         updated_at: timestamp,

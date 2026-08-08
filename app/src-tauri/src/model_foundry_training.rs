@@ -441,6 +441,8 @@ struct TrainingRunRequest {
     base_model_path: String,
     dataset_path: String,
     output_dir: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resume_from_checkpoint: Option<String>,
     epochs: u8,
     max_steps: u32,
 }
@@ -1259,6 +1261,52 @@ fn write_bounded_log(path: &Path, bytes: &[u8]) {
     let _ = fs::write(path, &bytes[..bytes.len().min(MAX_WORKER_LOG_BYTES)]);
 }
 
+pub(crate) fn latest_training_checkpoint(output: &Path) -> Result<Option<PathBuf>, String> {
+    if !output.exists() {
+        return Ok(None);
+    }
+    let metadata = fs::symlink_metadata(output)
+        .map_err(|error| format!("Could not inspect training checkpoint storage: {error}"))?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("Training checkpoint storage is not a safe directory.".into());
+    }
+    let mut latest: Option<(u64, PathBuf)> = None;
+    for entry in fs::read_dir(output)
+        .map_err(|error| format!("Could not inspect training checkpoints: {error}"))?
+    {
+        let entry =
+            entry.map_err(|error| format!("Could not inspect training checkpoint: {error}"))?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(step) = name
+            .strip_prefix("checkpoint-")
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        let path = entry.path();
+        let checkpoint_metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("Could not inspect training checkpoint: {error}"))?;
+        if !checkpoint_metadata.is_dir() || checkpoint_metadata.file_type().is_symlink() {
+            continue;
+        }
+        let state = path.join("trainer_state.json");
+        let state_metadata = match fs::symlink_metadata(&state) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if !state_metadata.is_file() || state_metadata.file_type().is_symlink() {
+            continue;
+        }
+        if latest.as_ref().is_none_or(|(current, _)| step > *current) {
+            latest = Some((step, path));
+        }
+    }
+    Ok(latest.map(|(_, path)| path))
+}
+
 pub(crate) fn run_training_worker(
     app: &tauri::AppHandle,
     job_id: &str,
@@ -1268,6 +1316,7 @@ pub(crate) fn run_training_worker(
     job_dir: &Path,
     epochs: u8,
     max_steps: u32,
+    resume_checkpoint: Option<&Path>,
 ) -> Result<TrainingRunResult, String> {
     let job_id = safe_job_id(job_id)?;
     if !matches!(method, "lora" | "qlora" | "full") {
@@ -1315,9 +1364,21 @@ pub(crate) fn run_training_worker(
     fs::create_dir_all(job_dir)
         .map_err(|error| format!("Could not prepare the private training job: {error}"))?;
     let output = job_dir.join("weight-artifact");
-    if output.exists() {
-        return Err("This Model Foundry version already has a training artifact.".into());
-    }
+    let verified_resume = match resume_checkpoint {
+        Some(checkpoint) => {
+            let latest = latest_training_checkpoint(&output)?.ok_or_else(|| {
+                "No verified local training checkpoint is available to resume.".to_string()
+            })?;
+            if checkpoint != latest {
+                return Err("The requested training checkpoint is stale or unsafe.".into());
+            }
+            Some(latest)
+        }
+        None if output.exists() => {
+            return Err("This Model Foundry version already has a training artifact.".into());
+        }
+        None => None,
+    };
     let request_path = job_dir.join("worker-request.json");
     let request = TrainingRunRequest {
         protocol: WORKER_PROTOCOL,
@@ -1326,6 +1387,9 @@ pub(crate) fn run_training_worker(
         base_model_path: model.to_string_lossy().into_owned(),
         dataset_path: dataset.to_string_lossy().into_owned(),
         output_dir: output.to_string_lossy().into_owned(),
+        resume_from_checkpoint: verified_resume
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned()),
         epochs,
         max_steps,
     };
@@ -1585,6 +1649,93 @@ mod tests {
         assert_eq!(value["method"], "lora");
         assert_eq!(value["localOnly"], true);
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn worker_accepts_only_an_in_output_trainer_checkpoint_for_resume() {
+        let Some(python) = locate_python() else {
+            return;
+        };
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-resume-{}", nanoid::nanoid!()));
+        let model = root.join("model");
+        let output = root.join("output");
+        let checkpoint = output.join("checkpoint-20");
+        fs::create_dir_all(&model).unwrap();
+        fs::create_dir_all(&checkpoint).unwrap();
+        fs::write(worker_path(&root), WORKER_SOURCE.as_bytes()).unwrap();
+        fs::write(model.join("config.json"), br#"{"model_type":"qwen2"}"#).unwrap();
+        fs::write(checkpoint.join("trainer_state.json"), b"{}").unwrap();
+        let dataset = root.join("examples.jsonl");
+        fs::write(&dataset, b"{\"text\":\"A local training example.\"}\n").unwrap();
+        let request_path = root.join("request.json");
+        let request = serde_json::json!({
+            "protocol": WORKER_PROTOCOL,
+            "localOnly": true,
+            "method": "lora",
+            "baseModelPath": model,
+            "datasetPath": dataset,
+            "outputDir": output,
+            "resumeFromCheckpoint": checkpoint,
+            "epochs": 1,
+            "maxSteps": 20
+        });
+        fs::write(&request_path, serde_json::to_vec(&request).unwrap()).unwrap();
+
+        let valid = Command::new(&python)
+            .arg(worker_path(&root))
+            .arg("validate")
+            .arg(&request_path)
+            .output()
+            .unwrap();
+        assert!(
+            valid.status.success(),
+            "{}",
+            String::from_utf8_lossy(&valid.stderr)
+        );
+
+        let outside = root.join("checkpoint-99");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("trainer_state.json"), b"{}").unwrap();
+        let mut unsafe_request = request;
+        unsafe_request["resumeFromCheckpoint"] = outside.to_string_lossy().into_owned().into();
+        fs::write(&request_path, serde_json::to_vec(&unsafe_request).unwrap()).unwrap();
+        let rejected = Command::new(python)
+            .arg(worker_path(&root))
+            .arg("validate")
+            .arg(&request_path)
+            .output()
+            .unwrap();
+        assert!(!rejected.status.success());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn selects_latest_complete_direct_checkpoint() {
+        let root = std::env::temp_dir().join(format!(
+            "vibespace-foundry-checkpoints-{}",
+            nanoid::nanoid!()
+        ));
+        fs::create_dir_all(root.join("checkpoint-2")).unwrap();
+        fs::create_dir_all(root.join("checkpoint-10")).unwrap();
+        fs::create_dir_all(root.join("checkpoint-20")).unwrap();
+        fs::create_dir_all(root.join("nested").join("checkpoint-99")).unwrap();
+        fs::write(root.join("checkpoint-2").join("trainer_state.json"), b"{}").unwrap();
+        fs::write(root.join("checkpoint-10").join("trainer_state.json"), b"{}").unwrap();
+        fs::write(
+            root.join("nested")
+                .join("checkpoint-99")
+                .join("trainer_state.json"),
+            b"{}",
+        )
+        .unwrap();
+
+        assert_eq!(
+            latest_training_checkpoint(&root).unwrap(),
+            Some(root.join("checkpoint-10"))
+        );
         let _ = fs::remove_dir_all(root);
     }
 

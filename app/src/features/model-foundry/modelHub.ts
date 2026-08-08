@@ -197,6 +197,7 @@ export interface FoundryJob {
   storageBytes?: number;
   sourceCount?: number;
   version?: number;
+  resumeAvailable?: boolean;
   error?: string;
   createdAt: string;
   updatedAt: string;

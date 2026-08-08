@@ -29,6 +29,7 @@ ALLOWED_REQUEST_KEYS = frozenset(
         "baseModelPath",
         "datasetPath",
         "outputDir",
+        "resumeFromCheckpoint",
         "epochs",
         "maxSteps",
     )
@@ -125,6 +126,23 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
     model = _absolute_path(payload.get("baseModelPath"), "baseModelPath")
     dataset = _absolute_path(payload.get("datasetPath"), "datasetPath")
     output = _absolute_path(payload.get("outputDir"), "outputDir")
+    resume_checkpoint_value = payload.get("resumeFromCheckpoint")
+    resume_checkpoint: Path | None = None
+    if resume_checkpoint_value is not None:
+        resume_checkpoint = _absolute_path(
+            resume_checkpoint_value, "resumeFromCheckpoint"
+        )
+        checkpoint_suffix = resume_checkpoint.name.removeprefix("checkpoint-")
+        if (
+            resume_checkpoint.parent != output
+            or not resume_checkpoint.name.startswith("checkpoint-")
+            or not checkpoint_suffix.isdigit()
+            or not resume_checkpoint.is_dir()
+            or not (resume_checkpoint / "trainer_state.json").is_file()
+        ):
+            _fail(
+                "Resume checkpoint must be a verified Trainer checkpoint inside the output directory."
+            )
     if not model.is_dir() or not (model / "config.json").is_file():
         _fail("Base model must be a local Transformers directory with config.json.")
     if not dataset.is_file() or dataset.suffix.lower() != ".jsonl":
@@ -174,6 +192,9 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         "baseModelPath": str(model),
         "datasetPath": str(dataset),
         "outputDir": str(output),
+        "resumeFromCheckpoint": (
+            str(resume_checkpoint) if resume_checkpoint is not None else None
+        ),
         "epochs": epochs,
         "maxSteps": max_steps,
     }
@@ -221,8 +242,11 @@ def train(request_path: str) -> int:
     method = str(request["method"])
     model_path = str(request["baseModelPath"])
     output_dir = Path(str(request["outputDir"]))
-    if output_dir.exists():
+    resume_checkpoint = request.get("resumeFromCheckpoint")
+    if output_dir.exists() and not resume_checkpoint:
         _fail("Output directory already exists; choose a new version directory.")
+    if resume_checkpoint and not output_dir.is_dir():
+        _fail("Resume output directory is unavailable.")
 
     model_kwargs: dict[str, Any] = {
         "local_files_only": True,
@@ -301,7 +325,7 @@ def train(request_path: str) -> int:
         remove_columns=dataset.column_names,
         desc="Tokenizing local training examples",
     )
-    output_dir.mkdir(parents=True, exist_ok=False)
+    output_dir.mkdir(parents=True, exist_ok=bool(resume_checkpoint))
     use_bf16 = bool(
         torch.cuda.is_available()
         and hasattr(torch.cuda, "is_bf16_supported")
@@ -330,7 +354,7 @@ def train(request_path: str) -> int:
         train_dataset=tokenized,
         data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
     )
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_checkpoint or None)
     trainer.save_model(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
     (output_dir / "vibespace-training.json").write_text(

@@ -616,6 +616,7 @@ fn run_ordinary(
             model_foundry::model_foundry_detect_hardware,
             model_foundry::model_foundry_cancel_job,
             model_foundry::model_foundry_retry_job,
+            model_foundry::model_foundry_resume_job,
             model_foundry::model_foundry_retrain_artifact,
             model_foundry::model_foundry_delete_job,
             model_foundry::model_foundry_rename_artifact,
@@ -826,6 +827,7 @@ model_foundry::model_foundry_retrieve
 model_foundry::model_foundry_detect_hardware
 model_foundry::model_foundry_cancel_job
 model_foundry::model_foundry_retry_job
+model_foundry::model_foundry_resume_job
 model_foundry::model_foundry_retrain_artifact
 model_foundry::model_foundry_delete_job
 model_foundry::model_foundry_rename_artifact

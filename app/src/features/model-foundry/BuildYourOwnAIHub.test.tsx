@@ -1,8 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BuildYourOwnAIHub } from './BuildYourOwnAIHub';
 import { saveJobs, TRAINABLE_MODELS } from './modelHub';
 import type { VerifiedTrainingModel } from './trainingRuntime';
+
+const tauriInvoke = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: tauriInvoke }));
 
 const verifiedModel: VerifiedTrainingModel = {
   id: 'smollm2-135m-instruct',
@@ -29,6 +32,11 @@ const verifiedModel: VerifiedTrainingModel = {
 };
 
 describe('BuildYourOwnAIHub', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    tauriInvoke.mockReset();
+  });
+
   it('disables training methods without an installed verified worker', async () => {
     render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
 
@@ -118,5 +126,54 @@ describe('BuildYourOwnAIHub', () => {
     expect(screen.getByText(/HuggingFaceTB\/SmolLM2-135M-Instruct/)).toBeTruthy();
     expect(screen.getByText(/LORA · QLORA · FULL/)).toBeTruthy();
     expect(screen.queryByText(/Q4_K_M \(4-bit inference\)/)).toBeNull();
+  });
+
+  it('resumes an interrupted weight job only when native checkpoint evidence exists', async () => {
+    const interrupted = {
+      id: 'job_resume123',
+      name: 'Local adapter',
+      baseModelId: 'smollm2-135m-instruct',
+      method: 'lora' as const,
+      status: 'failed' as const,
+      progress: 35,
+      resumeAvailable: true,
+      error: 'The previous local process was interrupted.',
+      createdAt: '1',
+      updatedAt: '2',
+    };
+    saveJobs(window.localStorage, [interrupted]);
+    tauriInvoke.mockImplementation(async (command: string) => {
+      if (command === 'model_foundry_detect_hardware') {
+        return {
+          cpu: 'Test CPU',
+          gpu: 'Test GPU',
+          ramGb: 32,
+          vramGb: 12,
+          freeStorageGb: 100,
+          os: 'Test OS',
+          accelerators: ['CUDA'],
+        };
+      }
+      if (command === 'model_foundry_list_jobs') return [interrupted];
+      if (command === 'model_foundry_resume_job') {
+        return {
+          ...interrupted,
+          status: 'queued',
+          resumeAvailable: false,
+          error: undefined,
+        };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'View model library' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume from checkpoint' }));
+
+    await waitFor(() =>
+      expect(tauriInvoke).toHaveBeenCalledWith('model_foundry_resume_job', {
+        jobId: 'job_resume123',
+      }),
+    );
   });
 });

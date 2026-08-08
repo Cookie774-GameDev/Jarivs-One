@@ -50,7 +50,7 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 | Native command authority | The Tauri handler registered 141 commands while the frozen test listed 139 and omitted two committed bounded attachment commands                                      | Reconciled ordered and normalized hashes without changing production registration                                                                                                                               | **VERIFIED**                                         |
 | Local chat qualification | Live llama3.2 testing exposed capped modes, fabricated tool completion, false leak quarantine, stale multitask status, and native Browser Chat host lifecycle defects | Preserved provider-specific budgets, emitted canonical approval-gated actions, made leak checks intent-sensitive, synchronized live child status, and stabilized the isolated provider host                     | **VERIFIED LOCALLY**                                 |
 | MCP gateway              | The release report lacked direct proof for the existing permissioned MCP discovery and invocation boundary                                                            | Verified endpoint authorization, schema discovery, account-scoped routing, explicit mutation approval, cancellation, backpressure, credential rejection, and safe result normalization                          | **VERIFIED LOCALLY**                                 |
-| Build Your Own AI        | Local RAG is implemented, but the installed Python worker is probe-only and advertises no weight-training or media capability                                         | Verified the dedicated page, hardware-aware planning, local-only attestation, tamper rejection, RAG lifecycle, retrieval, and artifact integrity; retained explicit unavailable states for unsupported training | **PARTIAL — WEIGHT TRAINING ENGINE NOT IMPLEMENTED** |
+| Build Your Own AI        | Local RAG existed without a complete recoverable weight-training lifecycle                                                                                            | Added a verified local-only LoRA/QLoRA/full worker, pinned trainable-model lifecycle, artifact integrity checks, and safe resume from the latest direct Trainer checkpoint; media extraction remains unavailable | **IMPLEMENTED — ENVIRONMENT GATES REMAIN**           |
 
 ## 3. Tests and results
 
@@ -63,6 +63,17 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
   - production Vite build: **VERIFIED**.
   - full Vitest: **VERIFIED**.
   - release-manifest gate: **VERIFIED**.
+
+### Model Foundry checkpoint recovery
+
+- Native Model Foundry and worker tests: **22/22 passed**.
+- The embedded worker accepts only a direct `checkpoint-N` directory beneath
+  its job-owned output with a regular `trainer_state.json`.
+- Interrupted weight jobs preserve valid checkpoints, expose an explicit
+  resume action, reuse the same bounded local job, and still verify the final
+  artifact before activation.
+- Real GPU training remains environment-dependent; no cloud fallback or
+  simulated completion is used.
 - Prior clean-head workflow `31068591933` on `f0c086f`: TypeScript, production
   build, full Vitest, release manifest, and Rust `cargo check` all
   **VERIFIED**.
