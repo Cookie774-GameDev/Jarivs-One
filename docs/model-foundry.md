@@ -56,11 +56,17 @@ Accelerate are importable, `lora` only when PEFT is also importable, and
 `qlora` only when PEFT, BitsAndBytes, and a CUDA device are all available.
 Installed libraries alone never cause the app to claim that a model is ready.
 
-The app-level manifest download/import, persisted child-process lifecycle,
-cancel/checkpoint/restart bridge, and final chat-runtime activation are not yet
-connected to this worker entrypoint. The UI and native job command therefore
-continue to fail closed for LoRA/QLoRA/full-weight requests; no fake training
-or progress is shown.
+The native job command now launches the worker as a separate bounded child
+process, persists a closed request in the private job directory, drains capped
+stdout/stderr logs, supports cancellation by exact job ID, and hashes every
+regular artifact file into a versioned manifest before activation. Symlinks,
+unexpected filesystem entries, post-training tampering, unknown methods,
+unregistered model IDs, and non-JSONL weight-training datasets fail closed.
+
+The manifest-driven trainable-base-model download/import, pinned Python
+environment installation, checkpoint resume, and final chat-runtime activation
+are not yet connected. Until those gates are present, the UI continues to keep
+LoRA/QLoRA/full-weight unavailable; no fake training or progress is shown.
 
 Hardware-aware plans keep LoRA, QLoRA, and full-weight requirements distinct,
 check VRAM/RAM/free storage conservatively, and never downgrade the selected

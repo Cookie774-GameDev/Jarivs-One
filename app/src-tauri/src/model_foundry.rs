@@ -15,6 +15,20 @@ const ALLOWED_MODELS: &[&str] = &[
 ];
 static ACTIVE_JOBS: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FoundryMethod {
+    Knowledge,
+    Weight,
+}
+
+fn parsed_method(value: &str) -> Result<FoundryMethod, String> {
+    match value {
+        "knowledge" => Ok(FoundryMethod::Knowledge),
+        "lora" | "qlora" | "full" => Ok(FoundryMethod::Weight),
+        _ => Err("Unsupported Model Foundry build method.".into()),
+    }
+}
+
 fn active_jobs() -> &'static Mutex<BTreeSet<String>> {
     ACTIVE_JOBS.get_or_init(|| Mutex::new(BTreeSet::new()))
 }
@@ -468,6 +482,82 @@ fn process_knowledge(
     }
 }
 
+fn process_weight(
+    app: tauri::AppHandle,
+    request: StartRequest,
+    dataset: PathBuf,
+    job_dir: PathBuf,
+    mut job: FoundryJob,
+) {
+    let _active_guard = ActiveJobGuard(job.id.clone());
+    let job_path = job_dir.join("job.json");
+    let cancellation_path = job_dir.join("cancel.requested");
+    let finish = |job: &FoundryJob| {
+        let _ = write_job(&job_path, job);
+        let _ = app.emit("model-foundry:job-updated", job);
+    };
+    job.status = "training".into();
+    job.progress = 35;
+    job.updated_at = now();
+    finish(&job);
+    if cancellation_path.exists() {
+        job.status = "cancelled".into();
+        job.error = Some("Cancelled before local weight training.".into());
+        job.updated_at = now();
+        finish(&job);
+        return;
+    }
+
+    match crate::model_foundry_training::run_training_worker(
+        &app,
+        &job.id,
+        &request.base_model_id,
+        &request.method,
+        &dataset,
+        &job_dir,
+        1,
+        1_000,
+    ) {
+        Ok(result) if !cancellation_path.exists() => {
+            job.status = "completed".into();
+            job.progress = 100;
+            job.artifact_path = Some(result.artifact_path.to_string_lossy().into_owned());
+            job.artifact_verified = true;
+            job.artifact_sha256 = Some(result.evidence.sha256);
+            job.storage_bytes = result.evidence.storage_bytes;
+            job.source_count = 1;
+            job.error = None;
+        }
+        Ok(_) => {
+            job.status = "cancelled".into();
+            job.error = Some("Cancelled before the trained artifact was activated.".into());
+        }
+        Err(_error) if cancellation_path.exists() => {
+            job.status = "cancelled".into();
+            job.error = Some("Local weight training was cancelled.".into());
+            let _ = fs::remove_dir_all(job_dir.join("weight-artifact"));
+        }
+        Err(error) => {
+            job.status = "failed".into();
+            job.error = Some(error);
+            let _ = fs::remove_dir_all(job_dir.join("weight-artifact"));
+        }
+    }
+    job.updated_at = now();
+    finish(&job);
+    if job.status == "completed" && job.artifact_verified {
+        let _ = app
+            .notification()
+            .builder()
+            .title("Your VibeSpace model is ready")
+            .body(format!(
+                "{} finished local weight training and passed artifact verification.",
+                job.name
+            ))
+            .show();
+    }
+}
+
 #[tauri::command]
 pub fn model_foundry_start_training(
     app: tauri::AppHandle,
@@ -482,13 +572,17 @@ pub fn model_foundry_start_training(
     if !ALLOWED_MODELS.contains(&request.base_model_id.as_str()) {
         return Err("The selected base model is not in the verified local catalog.".into());
     }
-    if request.method != "knowledge" {
-        return Err(
-            "LoRA/QLoRA was not started because the verified isolated training worker is not installed."
-                .into(),
-        );
-    }
+    let method = parsed_method(&request.method)?;
     let sources = validated_sources(&request.source_paths)?;
+    if method == FoundryMethod::Weight
+        && (sources.len() != 1
+            || sources[0]
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_none_or(|value| !value.eq_ignore_ascii_case("jsonl")))
+    {
+        return Err("Weight training requires exactly one validated local JSONL dataset.".into());
+    }
     let id = format!("job_{}", nanoid::nanoid!(14));
     let job_dir = foundry_root(&app)?.join("jobs").join(&id);
     fs::create_dir_all(&job_dir)
@@ -522,7 +616,16 @@ pub fn model_foundry_start_training(
         .lock()
         .map_err(|_| "Model Foundry active-job registry is unavailable.".to_string())?
         .insert(job.id.clone());
-    std::thread::spawn(move || process_knowledge(app, request, sources, job_dir, worker_job));
+    std::thread::spawn(move || match method {
+        FoundryMethod::Knowledge => process_knowledge(app, request, sources, job_dir, worker_job),
+        FoundryMethod::Weight => {
+            let dataset = sources
+                .into_iter()
+                .next()
+                .expect("weight source validation requires exactly one path");
+            process_weight(app, request, dataset, job_dir, worker_job);
+        }
+    });
     Ok(job)
 }
 
@@ -639,6 +742,7 @@ pub fn model_foundry_cancel_job(
     }
     fs::write(job_dir.join("cancel.requested"), b"cancel")
         .map_err(|error| format!("Could not persist cancellation: {error}"))?;
+    let _ = crate::model_foundry_training::cancel_training_worker(job_id);
     job.status = "cancelled".into();
     job.error = Some("Cancellation requested by the user.".into());
     job.updated_at = now();
@@ -856,6 +960,18 @@ pub fn model_foundry_export_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_only_the_distinct_supported_build_methods() {
+        assert_eq!(
+            parsed_method("knowledge").unwrap(),
+            FoundryMethod::Knowledge
+        );
+        assert_eq!(parsed_method("lora").unwrap(), FoundryMethod::Weight);
+        assert_eq!(parsed_method("qlora").unwrap(), FoundryMethod::Weight);
+        assert_eq!(parsed_method("full").unwrap(), FoundryMethod::Weight);
+        assert!(parsed_method("rag-as-training").is_err());
+    }
 
     #[test]
     fn deduplicates_local_source_chunks() {
