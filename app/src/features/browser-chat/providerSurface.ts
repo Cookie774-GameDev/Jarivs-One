@@ -7,6 +7,7 @@ import {
   type BrowserChatProviderDefinition,
   type BrowserChatProviderId,
 } from './providerRegistry';
+import { CHATGPT_PLUGINS_URL } from './mcpConnection';
 
 export interface ProviderSurfaceBounds {
   readonly x: number;
@@ -44,6 +45,7 @@ export interface ProviderSurfaceController {
     | { kind: 'system_browser'; providerId: BrowserChatProviderId }
   >;
   openSystemBrowser(provider: BrowserChatProviderDefinition): Promise<void>;
+  openChatGptPlugins(): Promise<void>;
   hideAll(): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
 }
@@ -180,6 +182,10 @@ export function createProviderSurfaceController(
       await platform.openExternal(provider.homeUrl);
     },
 
+    async openChatGptPlugins() {
+      await platform.openExternal(CHATGPT_PLUGINS_URL);
+    },
+
     async hideAll() {
       await hideExcept();
     },
@@ -249,6 +255,9 @@ export const browserChatSurface: ProviderSurfaceController = {
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);
+  },
+  async openChatGptPlugins() {
+    return (await controller()).openChatGptPlugins();
   },
   async hideAll() {
     return (await controller()).hideAll();
