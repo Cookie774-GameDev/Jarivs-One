@@ -26,6 +26,7 @@ import { taskbarUsageStore } from '@/features/taskbar-usage/taskbarUsageStore';
 import { agentRepo, db, projectRepo } from '@/lib/db';
 import { getStoredProjectRoot, basename } from '@/features/files/projectFiles';
 import {
+  resolveBrowserChatCloudUrl,
   resolveBrowserChatMcpUrl,
   setBridgeWorkspaceGrant,
   useBrowserChatRelay,
@@ -82,8 +83,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
       : null;
   const relayStatus = useBrowserChatRelay(Boolean(activeWorkspaceGrant));
   const mcpUrl = resolveBrowserChatMcpUrl(
-    (import.meta.env as Record<string, string | undefined>).VITE_VIBESPACE_MCP_URL ??
-      (import.meta.env as Record<string, string | undefined>).VITE_PHONE_JARVIS_CLOUD_URL,
+    resolveBrowserChatCloudUrl(import.meta.env as Record<string, string | undefined>),
   );
   const bridgeStatus =
     relayStatus === 'connected' || relayStatus === 'connecting' || relayStatus === 'reconnecting'

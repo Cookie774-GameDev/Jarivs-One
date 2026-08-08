@@ -7,6 +7,8 @@ import {
   type BridgeStatus,
 } from './BridgeClient';
 
+export const DEFAULT_VIBESPACE_MCP_URL = 'https://vibespace-mcp.combatonline02.workers.dev';
+
 export function resolveBrowserChatRelayUrl(cloudUrl: string | undefined): string | null {
   const value = cloudUrl?.trim().replace(/\/+$/u, '');
   if (!value || !/^https?:\/\//u.test(value)) return null;
@@ -31,7 +33,11 @@ export function resolveBrowserChatMcpUrl(cloudUrl: string | undefined): string |
 export function resolveBrowserChatCloudUrl(
   environment: Record<string, string | undefined>,
 ): string | undefined {
-  return environment.VITE_VIBESPACE_MCP_URL ?? environment.VITE_PHONE_JARVIS_CLOUD_URL;
+  return (
+    environment.VITE_VIBESPACE_MCP_URL ??
+    environment.VITE_PHONE_JARVIS_CLOUD_URL ??
+    DEFAULT_VIBESPACE_MCP_URL
+  );
 }
 
 export async function requestBrowserChatRelayTicket(
@@ -80,7 +86,9 @@ export function useBrowserChatRelay(enabled: boolean): BridgeStatus | 'disabled'
     const environment = import.meta.env as Record<string, string | undefined>;
     const cloudUrl = resolveBrowserChatCloudUrl(environment);
     const url = resolveBrowserChatRelayUrl(cloudUrl);
-    const usesTicketGateway = Boolean(environment.VITE_VIBESPACE_MCP_URL);
+    const usesTicketGateway =
+      Boolean(environment.VITE_VIBESPACE_MCP_URL) ||
+      (!environment.VITE_PHONE_JARVIS_CLOUD_URL && cloudUrl === DEFAULT_VIBESPACE_MCP_URL);
     if (!enabled || !url || !isSupabaseConfigured()) {
       resetBrowserChatBridgeClient();
       setStatus('disabled');

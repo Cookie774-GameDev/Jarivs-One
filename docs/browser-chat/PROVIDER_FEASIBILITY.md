@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-08-08
 
-| Provider | Provider page                | Managed desktop surface                                                       | System-browser fallback         | Local tool/MCP bridge                                                                                                                   |
-| -------- | ---------------------------- | ----------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| ChatGPT  | `https://chatgpt.com/`       | Implemented with Windows WebView2; physical sign-in remains account-dependent | Windows default-browser handler | Official read-only Streamable-HTTP MCP implemented locally; deployment, Supabase OAuth enablement, and owner connection remain external |
-| Claude   | `https://claude.ai/`         | Implemented; physical sign-in validation remains environment-dependent        | Implemented                     | Not configured; never inferred from page load                                                                                           |
-| Gemini   | `https://gemini.google.com/` | Implemented; physical sign-in validation remains environment-dependent        | Implemented                     | Provider-unsupported in this surface                                                                                                    |
+| Provider | Provider page                | Managed desktop surface                                                       | System-browser fallback         | Local tool/MCP bridge                                                                                                        |
+| -------- | ---------------------------- | ----------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT  | `https://chatgpt.com/`       | Implemented with Windows WebView2; physical sign-in remains account-dependent | Windows default-browser handler | `VibeSpace MCP` is deployed with Supabase OAuth 2.1; one owner connection and a live signed-in read remain account-dependent |
+| Claude   | `https://claude.ai/`         | Implemented; physical sign-in validation remains environment-dependent        | Implemented                     | Not configured; never inferred from page load                                                                                |
+| Gemini   | `https://gemini.google.com/` | Implemented; physical sign-in validation remains environment-dependent        | Implemented                     | Provider-unsupported in this surface                                                                                         |
 
 ## Acceptance boundary
 
@@ -27,6 +27,21 @@ VibeSpace user subject and OAuth client ID, plus a live outbound desktop relay
 for the same account. The first release exposes only capability discovery,
 one opaque session workspace, bounded directory listing, and bounded text
 reads. Absolute roots, credential files, detected secret content, write
-operations, and terminal access are blocked. Read/write bridges remain future
-work requiring explicit approvals, change previews, recovery, and separate
-verification.
+operations, and terminal access are blocked. Writes and other mutation
+bridges remain unavailable until their explicit approval, change-preview, and
+recovery protocol is implemented. A browser login or MCP connection never
+grants silent local mutation authority.
+
+## Live VibeSpace MCP boundary
+
+`https://vibespace-mcp.combatonline02.workers.dev/mcp` is deployed on the
+verified VibeSpace Cloudflare account. The live boundary reports branded
+protected-resource metadata, rejects anonymous MCP and relay requests with
+HTTP 401, rejects an unapproved web origin with HTTP 403, and exposes the
+Supabase authorization server with PKCE and dynamic registration. The consent
+UI is live at `https://vibespaceos.com/oauth/consent/`.
+
+ChatGPT still requires the standards-mandated one-time owner OAuth decision.
+VibeSpace cannot silently install an app into a user's ChatGPT account or
+bypass that consent. After consent, the desktop relay obtains a fresh one-use
+ticket automatically whenever it connects or reconnects.

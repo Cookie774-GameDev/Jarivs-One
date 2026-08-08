@@ -37,6 +37,7 @@ describe('Browser Chat relay lifecycle', () => {
         VITE_PHONE_JARVIS_CLOUD_URL: 'https://phone.vibespace.test',
       }),
     ).toBe('https://mcp.vibespace.test');
+    expect(resolveBrowserChatCloudUrl({})).toBe('https://vibespace-mcp.combatonline02.workers.dev');
   });
 
   it('exchanges the signed-in VibeSpace token for a same-origin one-time relay URL', async () => {

@@ -200,7 +200,7 @@ workers.dev subdomain `combatonline02`, and Supabase project
 `tipeobvisjqvpbzcpckh`. Explicitly exclude the existing `accessrevamp` Worker
 and Supabase project `vbkkimvedmklebghtkzs`.
 
-- [ ] **Step 2: Deploy the exact tested Worker**
+- [x] **Step 2: Deploy the exact tested Worker**
 
 Create only `vibespace-mcp`, bind its `UserRelay` Durable Object, store a
 generated `RELAY_TICKET_KEY` as an encrypted Worker secret, and enable the
@@ -212,6 +212,11 @@ Verify `/health`, OAuth metadata, unauthenticated denial, MCP initialize/tool
 discovery, one approved read, and one denied mutation. Record exact statuses
 without storing tokens or user content.
 
+Live health, metadata, origin denial, anonymous MCP denial, relay denial, and
+OAuth discovery/DCR are verified. An account-authorized read remains gated on
+the owner's one-time ChatGPT OAuth connection and an active desktop workspace
+grant.
+
 - [ ] **Step 4: Register and test ChatGPT app**
 
 Enable Supabase OAuth 2.1 with dynamic registration only after the consent UI
@@ -219,6 +224,10 @@ is live. Create/connect `VibeSpace MCP` with the official logo, approve OAuth on
 verify catalog visibility plus desktop reconnect. If owner authentication or
 account eligibility blocks registration, record the exact external gate while
 preserving the fully tested deployed endpoint.
+
+Supabase OAuth, PKCE discovery, dynamic registration, and the live consent
+page are enabled. The remaining account-dependent step is the owner's
+one-time connection in ChatGPT.
 
 - [ ] **Step 5: Update evidence and publish the focused commit**
 
