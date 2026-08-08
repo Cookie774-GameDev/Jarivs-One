@@ -5,7 +5,7 @@
 //! and "Not Responding" states show the generic document icon.
 
 use super::TAURI_APP_IDENTIFIER;
-use tauri::WebviewWindow;
+use tauri::Window;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::{
@@ -74,7 +74,7 @@ fn set_hwnd_icon(hwnd: HWND, icon_type: usize, width: i32, height: i32) {
 }
 
 /// Pin both ICON_SMALL (title bar) and ICON_BIG (taskbar) from the embedded `.exe` ICO.
-pub fn apply_hwnd_icons(window: &WebviewWindow) {
+pub fn apply_hwnd_icons(window: &Window) {
     let Ok(hwnd) = window.hwnd() else {
         return;
     };

@@ -144,7 +144,7 @@ struct MainWindowPresentation {
 }
 
 fn capture_main_window_presentation<R: Runtime>(
-    window: &tauri::WebviewWindow<R>,
+    window: &tauri::Window<R>,
 ) -> MainWindowPresentation {
     MainWindowPresentation {
         position: window.outer_position().ok(),
@@ -157,7 +157,7 @@ fn capture_main_window_presentation<R: Runtime>(
 }
 
 fn restore_main_window_presentation<R: Runtime>(
-    window: &tauri::WebviewWindow<R>,
+    window: &tauri::Window<R>,
     presentation: MainWindowPresentation,
 ) {
     if let Some(size) = presentation.size {
@@ -191,7 +191,7 @@ fn recreate_main_webview<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), St
         .find(|window| window.label == "main")
         .cloned()
         .ok_or_else(|| "main window configuration is missing".to_string())?;
-    let existing = app.get_webview_window("main");
+    let existing = app.get_window("main");
     let presentation = existing.as_ref().map(capture_main_window_presentation);
     let app_for_rebuild = app.clone();
     let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
@@ -208,7 +208,10 @@ fn recreate_main_webview<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), St
                 .build()
                 .map_err(|error| format!("failed to recreate main WebView: {error}"))?;
             if let Some(presentation) = presentation {
-                restore_main_window_presentation(&rebuilt, presentation);
+                let rebuilt_host = app_for_rebuild
+                    .get_window(rebuilt.label())
+                    .ok_or_else(|| "rebuilt main host window is unavailable".to_string())?;
+                restore_main_window_presentation(&rebuilt_host, presentation);
             }
             Ok(())
         })();
@@ -293,7 +296,7 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
         .spawn(move || loop {
             std::thread::sleep(WATCHDOG_INTERVAL);
 
-            let main_window = app_handle.get_webview_window("main");
+            let main_window = app_handle.get_window("main");
             let visible = main_window
                 .as_ref()
                 .and_then(|window| window.is_visible().ok())
@@ -345,8 +348,8 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
                         "[renderer-watchdog] main renderer unresponsive for {}s; reloading WebView",
                         age.as_secs()
                     );
-                    if let Some(main_window) = main_window {
-                        if let Err(err) = main_window.reload() {
+                    if let Some(main_webview) = app_handle.get_webview("main") {
+                        if let Err(err) = main_webview.reload() {
                             eprintln!("[renderer-watchdog] WebView reload failed: {err}");
                         }
                     } else if let Err(err) = recreate_main_webview(&app_handle) {

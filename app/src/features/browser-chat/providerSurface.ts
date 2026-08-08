@@ -32,6 +32,7 @@ export interface ProviderSurfacePlatform {
     options: WebviewOptions,
   ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
   openExternal(url: string): Promise<void>;
+  subscribeHostGeometry?(listener: () => void): Promise<() => void>;
 }
 
 export interface ProviderSurfaceController {
@@ -44,6 +45,54 @@ export interface ProviderSurfaceController {
   >;
   openSystemBrowser(provider: BrowserChatProviderDefinition): Promise<void>;
   hideAll(): Promise<void>;
+  subscribeHostGeometry?(listener: () => void): Promise<() => void>;
+}
+
+export type NativeBrowserChatInvoke = (
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<unknown>;
+
+export function createNativeManagedProviderSurface(
+  label: string,
+  invoke: NativeBrowserChatInvoke,
+): ManagedProviderSurface {
+  const provider = BROWSER_CHAT_PROVIDERS.find((candidate) => candidate.windowLabel === label);
+  if (!provider) {
+    throw new Error('Unsupported Browser Chat provider window label.');
+  }
+  let bounds: ProviderSurfaceBounds = {
+    x: Number.NaN,
+    y: Number.NaN,
+    width: Number.NaN,
+    height: Number.NaN,
+  };
+
+  return {
+    label,
+    async show() {
+      assertBounds(bounds);
+      await invoke('browser_chat_surface_open', {
+        providerId: provider.id,
+        bounds,
+      });
+    },
+    async hide() {
+      await invoke('browser_chat_surface_hide', {
+        providerId: provider.id,
+      });
+    },
+    async setFocus() {
+      // The guarded native open command focuses the provider after applying
+      // its final bounds, avoiding the broken JavaScript window dispatcher.
+    },
+    async setPosition(position) {
+      bounds = { ...bounds, ...position };
+    },
+    async setSize(size) {
+      bounds = { ...bounds, ...size };
+    },
+  };
 }
 
 function assertBounds(bounds: ProviderSurfaceBounds): void {
@@ -62,6 +111,7 @@ function assertBounds(bounds: ProviderSurfaceBounds): void {
 export function createProviderSurfaceController(
   platform: ProviderSurfacePlatform,
 ): ProviderSurfaceController {
+  const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
   const hideExcept = async (selected?: BrowserChatProviderId) => {
     await Promise.all(
       BROWSER_CHAT_PROVIDERS.filter((provider) => provider.id !== selected).map(
@@ -93,15 +143,28 @@ export function createProviderSurfaceController(
       };
       let surface = await platform.getSurface(provider.windowLabel);
       if (!surface) {
-        surface = await platform.createSurface(provider.windowLabel, {
-          url: provider.homeUrl,
-          dataDirectory: provider.profileKey,
-          x: relative.x,
-          y: relative.y,
-          width: relative.width,
-          height: relative.height,
-          focus: false,
-        });
+        let pending = pendingCreations.get(provider.windowLabel);
+        if (!pending) {
+          pending = Promise.resolve(
+            platform.createSurface(provider.windowLabel, {
+              url: provider.homeUrl,
+              dataDirectory: provider.profileKey,
+              x: relative.x,
+              y: relative.y,
+              width: relative.width,
+              height: relative.height,
+              focus: false,
+            }),
+          );
+          pendingCreations.set(provider.windowLabel, pending);
+        }
+        try {
+          surface = await pending;
+        } finally {
+          if (pendingCreations.get(provider.windowLabel) === pending) {
+            pendingCreations.delete(provider.windowLabel);
+          }
+        }
       }
       await surface.setPosition({ x: relative.x, y: relative.y });
       await surface.setSize({ width: relative.width, height: relative.height });
@@ -120,6 +183,10 @@ export function createProviderSurfaceController(
     async hideAll() {
       await hideExcept();
     },
+
+    async subscribeHostGeometry(listener) {
+      return platform.subscribeHostGeometry?.(listener) ?? (() => undefined);
+    },
   };
 }
 
@@ -137,38 +204,35 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
     };
   }
 
-  const [{ Webview }, { LogicalPosition, LogicalSize }, { getCurrentWindow }] = await Promise.all([
-    import('@tauri-apps/api/webview'),
-    import('@tauri-apps/api/dpi'),
+  const [{ invoke }, { getCurrentWindow }] = await Promise.all([
+    import('@tauri-apps/api/core'),
     import('@tauri-apps/api/window'),
   ]);
-
-  const wrap = (webview: InstanceType<typeof Webview>): ManagedProviderSurface => ({
-    label: webview.label,
-    show: () => webview.show(),
-    hide: () => webview.hide(),
-    setFocus: () => webview.setFocus(),
-    setPosition: ({ x, y }) => webview.setPosition(new LogicalPosition(x, y)),
-    setSize: ({ width, height }) => webview.setSize(new LogicalSize(width, height)),
-  });
+  const currentWindow = getCurrentWindow();
+  const nativeInvoke: NativeBrowserChatInvoke = (command, args) => invoke(command, args);
 
   return {
     desktop: true,
     async getSurface(label) {
-      const webview = await Webview.getByLabel(label);
-      return webview ? wrap(webview) : null;
+      return createNativeManagedProviderSurface(label, nativeInvoke);
     },
     async createSurface(label, options) {
-      const webview = new Webview(getCurrentWindow(), label, options);
-      await new Promise<void>((resolve, reject) => {
-        void webview.once('tauri://created', () => resolve());
-        void webview.once('tauri://error', (event) =>
-          reject(new Error(`Could not create Browser Chat surface: ${String(event.payload)}`)),
-        );
-      });
-      return wrap(webview);
+      const surface = createNativeManagedProviderSurface(label, nativeInvoke);
+      await surface.setPosition({ x: options.x, y: options.y });
+      await surface.setSize({ width: options.width, height: options.height });
+      return surface;
     },
     openExternal,
+    async subscribeHostGeometry(listener) {
+      const [unlistenMoved, unlistenScale] = await Promise.all([
+        currentWindow.onMoved(listener),
+        currentWindow.onScaleChanged(listener),
+      ]);
+      return () => {
+        unlistenMoved();
+        unlistenScale();
+      };
+    },
   };
 }
 
@@ -188,5 +252,8 @@ export const browserChatSurface: ProviderSurfaceController = {
   },
   async hideAll() {
     return (await controller()).hideAll();
+  },
+  async subscribeHostGeometry(listener) {
+    return (await controller()).subscribeHostGeometry?.(listener) ?? (() => undefined);
   },
 };

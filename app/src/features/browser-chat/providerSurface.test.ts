@@ -3,6 +3,7 @@ import type { WebviewOptions } from '@tauri-apps/api/webview';
 
 import { browserChatProvider } from './providerRegistry';
 import {
+  createNativeManagedProviderSurface,
   createProviderSurfaceController,
   type ManagedProviderSurface,
   type ProviderSurfacePlatform,
@@ -42,6 +43,24 @@ function platform(desktop = true) {
 }
 
 describe('Browser Chat managed provider surface', () => {
+  it('routes native provider geometry through the guarded Browser Chat command', async () => {
+    const invoke = vi.fn(async () => undefined);
+    const surface = createNativeManagedProviderSurface('browser-chat-chatgpt', invoke);
+
+    await surface.setPosition({ x: 120, y: 90 });
+    await surface.setSize({ width: 880, height: 620 });
+    await surface.show();
+
+    expect(invoke).toHaveBeenCalledWith('browser_chat_surface_open', {
+      providerId: 'chatgpt',
+      bounds: { x: 120, y: 90, width: 880, height: 620 },
+    });
+    await surface.hide();
+    expect(invoke).toHaveBeenLastCalledWith('browser_chat_surface_hide', {
+      providerId: 'chatgpt',
+    });
+  });
+
   it('creates a child surface with registry-owned HTTPS and main-relative bounds', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);
@@ -92,6 +111,26 @@ describe('Browser Chat managed provider surface', () => {
     expect(chatgpt.hide).toHaveBeenCalledOnce();
     expect(claude.show).toHaveBeenCalledOnce();
     expect(claude.setFocus).toHaveBeenCalledOnce();
+  });
+
+  it('coalesces concurrent opens so only one child surface is created per provider', async () => {
+    const fake = platform();
+    const originalCreate = fake.implementation.createSurface;
+    fake.implementation.createSurface = async (label, options) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return originalCreate(label, options);
+    };
+    const controller = createProviderSurfaceController(fake.implementation);
+    const bounds = { x: 20, y: 30, width: 800, height: 600 };
+
+    const [first, second] = await Promise.all([
+      controller.openManaged(browserChatProvider('chatgpt'), bounds),
+      controller.openManaged(browserChatProvider('chatgpt'), bounds),
+    ]);
+
+    expect(first).toEqual({ kind: 'managed', providerId: 'chatgpt' });
+    expect(second).toEqual(first);
+    expect(fake.created).toHaveLength(1);
   });
 
   it('uses a truthful system-browser fallback outside the desktop shell', async () => {

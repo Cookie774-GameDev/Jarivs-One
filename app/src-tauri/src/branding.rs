@@ -11,7 +11,7 @@ mod branding_windows;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, Window};
 
 static DEFERRED_REFRESH_GENERATION: AtomicU64 = AtomicU64::new(0);
 
@@ -46,7 +46,7 @@ pub fn init_platform_branding() {
     branding_windows::init_process_branding();
 }
 
-fn apply_window_icon_sync(window: &WebviewWindow) {
+fn apply_window_icon_sync(window: &Window) {
     if should_apply_tauri_window_icon() {
         if let Err(err) = window.set_icon(load_window_icon()) {
             eprintln!("[branding] failed to set window icon: {err}");
@@ -65,7 +65,7 @@ fn refresh_tray_icon(app: &AppHandle) {
 }
 
 fn apply_app_branding_sync(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         apply_window_icon_sync(&window);
     }
     refresh_tray_icon(app);
@@ -80,7 +80,7 @@ fn run_branding_on_main_thread(app: &AppHandle) {
 }
 
 /// Apply the embedded icon to a single window (no-op on failure).
-pub fn apply_window_icon(window: &WebviewWindow) {
+pub fn apply_window_icon(window: &Window) {
     let app = window.app_handle();
     run_branding_on_main_thread(&app);
     schedule_deferred_icon_refresh(&app);

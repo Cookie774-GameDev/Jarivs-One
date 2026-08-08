@@ -25,6 +25,8 @@ describe('BrowserProviderSurface', () => {
   });
 
   it('opens the selected managed provider and hides all surfaces on unmount', async () => {
+    let hostGeometryListener: (() => void) | undefined;
+    const unsubscribeHostGeometry = vi.fn();
     const runtime = {
       openManaged: vi.fn(async () => ({
         kind: 'managed' as const,
@@ -32,6 +34,10 @@ describe('BrowserProviderSurface', () => {
       })),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      subscribeHostGeometry: vi.fn(async (listener: () => void) => {
+        hostGeometryListener = listener;
+        return unsubscribeHostGeometry;
+      }),
     };
     const rendered = render(
       <BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />,
@@ -39,9 +45,14 @@ describe('BrowserProviderSurface', () => {
 
     expect(screen.getByLabelText('ChatGPT provider surface')).toBeTruthy();
     await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+    await waitFor(() => expect(runtime.subscribeHostGeometry).toHaveBeenCalledOnce());
+
+    hostGeometryListener?.();
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledTimes(2));
 
     rendered.unmount();
     await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledOnce());
+    expect(unsubscribeHostGeometry).toHaveBeenCalledOnce();
   });
 
   it('shows a truthful fallback action when managed opening fails', async () => {

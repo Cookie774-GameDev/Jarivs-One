@@ -28,6 +28,7 @@ export function BrowserProviderSurface({
     if (!host) return;
     let disposed = false;
     let frame = 0;
+    let unsubscribeHostGeometry: (() => void) | undefined;
 
     const synchronize = () => {
       setProviderRuntime(provider.id, {
@@ -76,12 +77,20 @@ export function BrowserProviderSurface({
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => synchronize());
     observer?.observe(host);
     window.addEventListener('resize', synchronize);
+    void runtime.subscribeHostGeometry?.(synchronize).then((unsubscribe) => {
+      if (disposed) {
+        unsubscribe();
+      } else {
+        unsubscribeHostGeometry = unsubscribe;
+      }
+    });
 
     return () => {
       disposed = true;
       window.cancelAnimationFrame(frame);
       observer?.disconnect();
       window.removeEventListener('resize', synchronize);
+      unsubscribeHostGeometry?.();
       void runtime.hideAll();
     };
   }, [provider, runtime, setProviderRuntime]);

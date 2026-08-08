@@ -45,6 +45,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 mod agent_coordination;
 mod branding;
+mod browser_chat_surface;
 mod browser_process;
 mod chat_temp_attachments;
 mod cli_bridge;
@@ -132,7 +133,7 @@ fn global_dictation_shortcut_config() -> GlobalDictationShortcutConfig {
 fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
     println!("[lifecycle] showing main window ({reason})");
     branding::apply_app_branding(app);
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_window("main") {
         if let Err(err) = window.show() {
             eprintln!("[lifecycle] failed to show main window ({reason}): {err}");
         }
@@ -142,7 +143,9 @@ fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
         if let Err(err) = window.set_focus() {
             eprintln!("[lifecycle] failed to focus main window ({reason}): {err}");
         }
-        // WebView2 often swaps HWND during show ΓÇö re-apply after the surface is back.
+        // WebView2 can swap HWND while the host is shown. Re-apply the
+        // existing icon through the host Window so multi-webview Browser Chat
+        // layouts keep the same taskbar identity.
         branding::apply_window_icon(&window);
         if let Err(err) = window.emit("jarvis:reopen", ReopenPayload { reason }) {
             eprintln!("[lifecycle] failed to emit reopen event ({reason}): {err}");
@@ -152,8 +155,8 @@ fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
     }
 }
 
-fn should_force_intro_handoff(main_visible: bool, intro_visible: bool) -> bool {
-    !main_visible && intro_visible
+fn should_force_intro_handoff(main_visible: bool, _intro_visible: bool) -> bool {
+    !main_visible
 }
 
 fn should_fall_open_after_guard_spawn(spawn_succeeded: bool) -> bool {
@@ -168,7 +171,7 @@ fn schedule_cold_start_intro_fail_open(app: &tauri::AppHandle) {
         .spawn(move || {
             std::thread::sleep(NATIVE_INTRO_DEADLINE);
             let main_visible = app_handle
-                .get_webview_window("main")
+                .get_window("main")
                 .and_then(|window| window.is_visible().ok())
                 .unwrap_or(false);
             let intro = app_handle.get_webview_window("cold-start-intro");
@@ -203,7 +206,7 @@ fn schedule_cold_start_intro_fail_open(app: &tauri::AppHandle) {
 /// path because they reuse the existing process (single-instance).
 fn start_cold_start_intro(app: &tauri::AppHandle) {
     // Keep main hidden while the intro owns the screen.
-    if let Some(main) = app.get_webview_window("main") {
+    if let Some(main) = app.get_window("main") {
         let _ = main.hide();
     }
 
@@ -264,12 +267,12 @@ fn dictation_route(main_window_focused: bool) -> DictationRoute {
 
 fn handle_global_dictation_shortcut(app: &tauri::AppHandle) {
     let main_focused = app
-        .get_webview_window("main")
+        .get_window("main")
         .and_then(|window| window.is_focused().ok())
         .unwrap_or(false);
     match dictation_route(main_focused) {
         DictationRoute::InApp => {
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_window("main") {
                 // The frontend routes this to composer STT for the focused
                 // in-app input - same pipeline, no separate overlay UI.
                 let _ = window.emit("jarvis:global-dictation-in-app", ());
@@ -516,6 +519,9 @@ fn run_ordinary(
             greet,
             app_version,
             refresh_app_branding,
+            browser_chat_surface::browser_chat_surface_open,
+            browser_chat_surface::browser_chat_surface_hide,
+            browser_chat_surface::browser_chat_surface_hide_all,
             chat_temp_attachments::chat_temp_attachment_create,
             chat_temp_attachments::chat_temp_attachment_cleanup,
             runtime_profile_query,
@@ -707,10 +713,10 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     #[test]
-    fn cold_start_intro_fail_open_only_reveals_a_hidden_main_behind_a_visible_intro() {
+    fn cold_start_intro_fail_open_reveals_any_hidden_main_at_the_native_deadline() {
         assert!(should_force_intro_handoff(false, true));
         assert!(!should_force_intro_handoff(true, true));
-        assert!(!should_force_intro_handoff(false, false));
+        assert!(should_force_intro_handoff(false, false));
     }
 
     #[test]
