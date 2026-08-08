@@ -19,6 +19,8 @@ const MAX_OUTPUT_TOKENS = 16_384;
 const PROMPT_FORGE_SYSTEM_PROMPT = [
   'You are VibeSpace Prompt Forge — a shared prompt upgrade engine for Chat and Terminal.',
   'Transform the user draft into one clearer, context-grounded prompt the user can send next.',
+  'The upgraded prompt must instruct the downstream agent to perform the requested task now.',
+  'Never ask the downstream agent to rewrite, improve, or explain the prompt; it must act on the original user intent.',
   'Return only the upgraded prompt. Never send it, execute it, call tools, or claim that work was performed.',
   '',
   'Structure the upgraded prompt with these sections when relevant (omit empty ones):',
@@ -134,6 +136,7 @@ function buildUpgradeMessage(input: PromptForgeExecutionInput): string {
     '',
     '# Required result',
     'Return one upgraded prompt only.',
+    'Make the result an executable instruction that tells the downstream agent to perform the original task now, not to produce another rewritten prompt.',
     'Include objective, hard constraints, relevant context with source labels, success criteria, autonomy/approval boundaries, and verification requirements when they apply.',
     'Preserve the original intent and every protected element. Use source facts only when the evidence supports them. Cite source labels/paths inline where facts come from the pack.',
   ].join('\n');

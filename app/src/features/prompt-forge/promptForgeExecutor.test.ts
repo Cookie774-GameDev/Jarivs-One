@@ -137,11 +137,20 @@ describe('Prompt Forge model execution', () => {
       },
     });
     expect(received?.agent.system_prompt).toMatch(/untrusted source data/i);
+    expect(received?.agent.system_prompt).toMatch(
+      /instruct the downstream agent to perform the requested task now/i,
+    );
+    expect(received?.agent.system_prompt).toMatch(
+      /never ask the downstream agent to rewrite, improve, or explain the prompt/i,
+    );
     expect(received?.messages).toHaveLength(1);
     expect(received?.messages[0]?.content).toContain(job.originalDraft);
     expect(received?.messages[0]?.content).toContain('Additional regeneration instructions');
     expect(received?.messages[0]?.content).toContain(job.regenerationInstructions);
     expect(received?.messages[0]?.content).toContain(sourcePack.markdown);
+    expect(received?.messages[0]?.content).toMatch(
+      /make the result an executable instruction that tells the downstream agent to perform the original task/i,
+    );
     expect(received?.onChunk).toEqual(expect.any(Function));
   });
 
