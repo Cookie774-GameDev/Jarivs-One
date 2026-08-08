@@ -162,7 +162,10 @@ html[data-theme='monochrome'] .kbd {
 }
 
 html[data-theme='monochrome']
-  button:not(.rounded-full):not([data-monochrome-control-size='preserve']),
+  button:not(.rounded-full):not([data-monochrome-control-size='preserve']) {
+  min-height: 28px;
+}
+
 html[data-theme='monochrome']
   input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not(
     [data-monochrome-control-size='preserve']
