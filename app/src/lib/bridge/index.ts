@@ -24,4 +24,10 @@ export {
 } from './BridgeClient';
 
 export { useBridgeLifecycle } from './useBridgeLifecycle';
-export { useBrowserChatRelay } from './useBrowserChatRelay';
+export {
+  requestBrowserChatRelayTicket,
+  resolveBrowserChatCloudUrl,
+  resolveBrowserChatMcpUrl,
+  resolveBrowserChatRelayUrl,
+  useBrowserChatRelay,
+} from './useBrowserChatRelay';

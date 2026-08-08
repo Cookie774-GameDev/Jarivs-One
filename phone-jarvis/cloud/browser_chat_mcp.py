@@ -96,10 +96,21 @@ class WorkspaceSummary(BaseModel):
     read_only: bool = True
 
 
+class ToolCapability(BaseModel):
+    id: str
+    label: str
+    category: str
+    classification: str
+    available: bool
+    approval_required: bool
+    unavailable_reason: str | None = None
+
+
 class CapabilityResult(BaseModel):
     connected: bool
     workspace: WorkspaceSummary | None = None
     tools: list[str] = Field(default_factory=list)
+    catalog: list[ToolCapability] = Field(default_factory=list)
     writes_enabled: bool = False
     terminal_enabled: bool = False
 
@@ -163,10 +174,76 @@ class BrowserChatMcpService:
     def __init__(self, registry: RegistryLike) -> None:
         self._registry = registry
 
+    @staticmethod
+    def _catalog(session: BridgeSession | None) -> list[ToolCapability]:
+        advertised = session.tool_names if session else frozenset()
+        disconnected = None if session else "The VibeSpace desktop relay is offline."
+
+        def read_capability(
+            identifier: str, label: str, relay_tool: str
+        ) -> ToolCapability:
+            available = relay_tool in advertised
+            return ToolCapability(
+                id=identifier,
+                label=label,
+                category="files",
+                classification="read",
+                available=available,
+                approval_required=False,
+                unavailable_reason=(
+                    None
+                    if available
+                    else disconnected
+                    or "This tool is not available in the active workspace grant."
+                ),
+            )
+
+        mutation_reason = "Requires an approved VibeSpace mutation session."
+        return [
+            read_capability("files.list", "List project files", "fs.list"),
+            read_capability("files.read", "Read a project file", "fs.read"),
+            ToolCapability(
+                id="files.write",
+                label="Write a project file",
+                category="files",
+                classification="write",
+                available=False,
+                approval_required=True,
+                unavailable_reason=mutation_reason,
+            ),
+            ToolCapability(
+                id="browser.playwright",
+                label="Control an approved browser session",
+                category="browser",
+                classification="browser_mutation",
+                available=False,
+                approval_required=True,
+                unavailable_reason=mutation_reason,
+            ),
+            ToolCapability(
+                id="terminal.run",
+                label="Run an approved terminal command",
+                category="terminal",
+                classification="command",
+                available=False,
+                approval_required=True,
+                unavailable_reason=mutation_reason,
+            ),
+            ToolCapability(
+                id="mcp.invoke",
+                label="Use an approved VibeSpace MCP tool",
+                category="mcp",
+                classification="external_mutation",
+                available=False,
+                approval_required=True,
+                unavailable_reason=mutation_reason,
+            ),
+        ]
+
     def capabilities(self, user_id: str) -> CapabilityResult:
         session = self._registry.get_session(user_id)
         if not session:
-            return CapabilityResult(connected=False)
+            return CapabilityResult(connected=False, catalog=self._catalog(None))
         workspace = WorkspaceSummary(
             id=session.workspace_grant_id,
             display_name=session.workspace_display_name,
@@ -180,6 +257,7 @@ class BrowserChatMcpService:
                 "vibespace.list_directory",
                 "vibespace.read_file",
             ],
+            catalog=self._catalog(session),
         )
 
     def list_workspaces(self, user_id: str) -> WorkspaceListResult:
@@ -266,10 +344,12 @@ def create_browser_chat_mcp_server(
     public_url = config.MCP_PUBLIC_URL.rstrip("/")
     public_host = urlsplit(public_url).netloc
     mcp = FastMCP(
-        "VibeSpace",
+        "VibeSpace MCP",
         instructions=(
-            "Read only from the VibeSpace project the user explicitly approved "
-            "for this desktop session. Never infer write or terminal access."
+            "Use the available VibeSpace tools from the capability catalog. "
+            "Read only from the project the user explicitly approved for this "
+            "desktop session. Never infer write, terminal, browser, or downstream "
+            "MCP authority when the catalog reports it unavailable."
         ),
         token_verifier=token_verifier or SupabaseOAuthTokenVerifier(),
         auth=AuthSettings(

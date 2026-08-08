@@ -15,9 +15,9 @@ not turn a provider page into an unrestricted local execution surface.
 ```text
 ChatGPT
   -> HTTPS Streamable HTTP MCP + OAuth
-  -> VibeSpace MCP cloud gateway
-  -> authenticated account-scoped relay registry
-  -> outbound encrypted desktop relay
+  -> Cloudflare VibeSpace MCP Worker
+  -> account-scoped SQLite Durable Object
+  -> hibernatable outbound desktop WebSocket
   -> project grant + approval broker
   -> available local VibeSpace tool or MCP connector
 ```
@@ -57,12 +57,19 @@ receipt. The verified VibeSpace Supabase target is
 
 ## Deployment and connection
 
-The public service is deployed as a Python package with its module-qualified
-ASGI entrypoint. Its public HTTPS endpoint ends in `/mcp`. ChatGPT registration
-uses the name **VibeSpace MCP** and an existing official VibeSpace icon asset.
-ChatGPT requires the owner to approve the app's OAuth connection once. After
-that, the desktop relay may reconnect automatically whenever Browser Chat is
-opened and a workspace grant is active.
+The public service is deployed to Cloudflare Workers Free with one
+SQLite-backed Durable Object per Supabase account. WebSocket Hibernation keeps
+an idle signed-in relay from consuming continuous CPU. The public HTTPS
+endpoint is
+`https://vibespace-mcp.combatonline02.workers.dev/mcp`. Supabase OAuth 2.1
+provides PKCE, dynamic client registration, account identity, consent, refresh
+rotation, and ES256-verifiable access tokens. ChatGPT requires the user to
+approve the app's OAuth connection once; this consent cannot be bypassed.
+
+The desktop never places its Supabase access token in a WebSocket URL. It
+exchanges that token over HTTPS for a signed, one-use, 60-second relay ticket.
+After the one-time ChatGPT consent, the desktop relay reconnects automatically
+whenever Browser Chat has an active workspace grant.
 
 ## Failure behavior
 
@@ -76,9 +83,10 @@ opened and a workspace grant is active.
 
 ## Verification
 
-Focused tests cover branding, capability discovery, unavailable tools, scope
-isolation, path containment, approval enforcement, replay and size bounds,
-OAuth denial, package import, and Browser Chat connection state. Deployment
-verification covers HTTPS health, OAuth metadata, unauthenticated denial, MCP
-initialization, tool discovery, a read-only call, and a denied mutation.
-
+Focused tests cover branding, capability discovery, unavailable tools,
+account-scoped Durable Object routing, hibernatable WebSockets, one-use relay
+tickets, scope isolation, path containment, approval enforcement, replay and
+size bounds, OAuth denial, MCP protocol negotiation, and Browser Chat
+connection state. Deployment verification covers HTTPS health, OAuth metadata,
+unauthenticated denial, MCP initialization, tool discovery, a read-only call,
+and a denied mutation.

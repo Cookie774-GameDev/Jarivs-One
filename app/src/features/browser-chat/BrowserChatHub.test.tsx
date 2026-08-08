@@ -1,9 +1,10 @@
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { browserChatStore } from './browserChatStore';
 import { BrowserChatHub } from './BrowserChatHub';
+import { browserChatSurface } from './providerSurface';
 import { useAuthStore } from '@/stores/auth';
 import { getBridgeWorkspaceGrant, setBridgeWorkspaceGrant } from '@/lib/bridge';
 import { projectStorageKey, ROOT_PREFIX } from '@/features/files/projectFiles';
@@ -18,6 +19,8 @@ vi.mock('./BrowserProviderSurface', () => ({
 
 describe('BrowserChatHub', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubEnv('VITE_PHONE_JARVIS_CLOUD_URL', 'https://vibespace-mcp.fly.dev');
     localStorage.clear();
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
@@ -90,5 +93,28 @@ describe('BrowserChatHub', () => {
     fireEvent.click(screen.getByRole('button', { name: /revoke project access/i }));
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     expect(getBridgeWorkspaceGrant()).toBeUndefined();
+  });
+
+  it('presents one branded VibeSpace MCP connection with honest approval boundaries', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    vi.spyOn(browserChatSurface, 'openSystemBrowser').mockResolvedValue();
+
+    render(<BrowserChatHub chatId="chat-1" />);
+
+    expect(screen.getByText('VibeSpace MCP')).toBeTruthy();
+    expect(screen.getByText(/file reads/i)).toBeTruthy();
+    expect(screen.getByText(/file writes/i)).toBeTruthy();
+    expect(screen.getByText(/playwright browser/i)).toBeTruthy();
+    expect(screen.getByText(/installed mcp tools/i)).toBeTruthy();
+    expect(screen.getAllByText(/approval required/i).length).toBeGreaterThanOrEqual(3);
+
+    fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
+    expect(writeText).toHaveBeenCalledWith('https://vibespace-mcp.fly.dev/mcp');
+    await waitFor(() => expect(browserChatSurface.openSystemBrowser).toHaveBeenCalled());
+    expect(screen.getByText(/one-time oauth approval/i)).toBeTruthy();
   });
 });

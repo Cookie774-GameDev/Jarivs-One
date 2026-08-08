@@ -96,6 +96,8 @@ export interface BridgeFrame {
 export interface BridgeClientOptions {
   /** Cloud bridge URL, e.g. wss://phone-jarvis-cloud.fly.dev/bridge */
   url: string;
+  /** Optional authenticated one-time URL resolver for hosted relay gateways. */
+  resolveUrl?: (jwt: string) => Promise<string>;
   /** Supabase JWT — sent in the register frame */
   jwt: string;
   /** Explicit session-only read grant. Its local root is never transmitted. */
@@ -470,7 +472,13 @@ export class BridgeClient {
     this.setStatus(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
 
     try {
-      const ws = new WebSocket(this.opts.url);
+      const resolvedUrl = this.opts.resolveUrl
+        ? await this.opts.resolveUrl(this.opts.jwt)
+        : this.opts.url;
+      if (!/^wss?:\/\//u.test(resolvedUrl)) {
+        throw new Error('The bridge URL is invalid.');
+      }
+      const ws = new WebSocket(resolvedUrl);
       this.ws = ws;
 
       const registerPromise = new Promise<void>((resolve, reject) => {

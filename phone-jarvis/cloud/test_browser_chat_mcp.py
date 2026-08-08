@@ -16,7 +16,6 @@ from .browser_chat_mcp import (
 )
 from .config import Settings
 
-
 class FakeVerifier:
     def __init__(self, claims: dict[str, Any]) -> None:
         self.claims = claims
@@ -108,6 +107,37 @@ def test_service_lists_only_the_bound_opaque_workspace_and_read_tools() -> None:
     assert "C:\\" not in capability.model_dump_json()
 
 
+def test_service_publishes_a_classified_vibespace_tool_catalog() -> None:
+    service = BrowserChatMcpService(FakeRegistry(active_session()))
+    capability = service.capabilities("user-1")
+
+    catalog = {tool.id: tool for tool in capability.catalog}
+    assert catalog["files.list"].model_dump() == {
+        "id": "files.list",
+        "label": "List project files",
+        "category": "files",
+        "classification": "read",
+        "available": True,
+        "approval_required": False,
+        "unavailable_reason": None,
+    }
+    assert catalog["files.read"].available is True
+    assert catalog["files.write"].model_dump() == {
+        "id": "files.write",
+        "label": "Write a project file",
+        "category": "files",
+        "classification": "write",
+        "available": False,
+        "approval_required": True,
+        "unavailable_reason": "Requires an approved VibeSpace mutation session.",
+    }
+    assert catalog["browser.playwright"].classification == "browser_mutation"
+    assert catalog["browser.playwright"].available is False
+    assert catalog["terminal.run"].classification == "command"
+    assert catalog["terminal.run"].approval_required is True
+    assert all(tool.id.startswith(("files.", "browser.", "terminal.", "mcp.")) for tool in capability.catalog)
+
+
 def test_service_dispatches_relative_reads_and_rejects_wrong_workspace() -> None:
     async def scenario() -> None:
         registry = FakeRegistry(active_session())
@@ -146,6 +176,7 @@ def test_server_advertises_exactly_four_read_only_tools() -> None:
             ),
         )
         tools = await server.list_tools()
+        assert server.name == "VibeSpace MCP"
         assert [tool.name for tool in tools] == [
             "vibespace.get_capabilities",
             "vibespace.list_workspaces",
@@ -202,7 +233,7 @@ def test_streamable_http_initializes_and_publishes_oauth_resource_metadata() -> 
             },
         )
         assert response.status_code == 200
-        assert response.json()["result"]["serverInfo"]["name"] == "VibeSpace"
+        assert response.json()["result"]["serverInfo"]["name"] == "VibeSpace MCP"
 
         tool_call = client.post(
             "/mcp",
@@ -231,7 +262,7 @@ def test_streamable_http_initializes_and_publishes_oauth_resource_metadata() -> 
             "content": "hello",
         }
 
-        metadata = client.get("/.well-known/oauth-protected-resource")
+        metadata = client.get("/.well-known/oauth-protected-resource/mcp")
         assert metadata.status_code == 200
         assert metadata.json() == {
             "resource": "https://cloud.vibespace.test/mcp",

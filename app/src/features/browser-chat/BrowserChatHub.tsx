@@ -25,7 +25,11 @@ import { selectPluginConnectionsForAccount, usePluginStore } from '@/features/pl
 import { taskbarUsageStore } from '@/features/taskbar-usage/taskbarUsageStore';
 import { agentRepo, db, projectRepo } from '@/lib/db';
 import { getStoredProjectRoot, basename } from '@/features/files/projectFiles';
-import { setBridgeWorkspaceGrant, useBrowserChatRelay } from '@/lib/bridge';
+import {
+  resolveBrowserChatMcpUrl,
+  setBridgeWorkspaceGrant,
+  useBrowserChatRelay,
+} from '@/lib/bridge';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -77,6 +81,10 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
       ? workspaceGrant
       : null;
   const relayStatus = useBrowserChatRelay(Boolean(activeWorkspaceGrant));
+  const mcpUrl = resolveBrowserChatMcpUrl(
+    (import.meta.env as Record<string, string | undefined>).VITE_VIBESPACE_MCP_URL ??
+      (import.meta.env as Record<string, string | undefined>).VITE_PHONE_JARVIS_CLOUD_URL,
+  );
   const bridgeStatus =
     relayStatus === 'connected' || relayStatus === 'connecting' || relayStatus === 'reconnecting'
       ? relayStatus
@@ -245,6 +253,29 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     toast.success('Project access revoked', 'The local relay no longer exposes project tools.');
   };
 
+  const connectVibeSpaceMcp = async () => {
+    if (!mcpUrl) {
+      toast.error(
+        'VibeSpace MCP is not configured',
+        'This build does not have a verified public VibeSpace MCP endpoint.',
+      );
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(mcpUrl);
+      await browserChatSurface.openSystemBrowser(provider);
+      toast.success(
+        'VibeSpace MCP endpoint copied',
+        'In ChatGPT Settings → Apps, add VibeSpace MCP and complete the one-time OAuth approval.',
+      );
+    } catch {
+      toast.error(
+        'Could not start VibeSpace MCP setup',
+        'Copying the endpoint or opening ChatGPT was unavailable.',
+      );
+    }
+  };
+
   return (
     <section
       aria-label="Browser Chat hub"
@@ -403,7 +434,52 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
               </dd>
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
                 It is not auto-connected by page login. Approve a project, configure the public
-                VibeSpace MCP endpoint, then enable VibeSpace in ChatGPT Settings → Apps.
+                VibeSpace MCP endpoint, then enable VibeSpace MCP in ChatGPT Settings → Apps.
+              </dd>
+              <dd className="mt-2 rounded-md border border-border/70 bg-muted/25 p-2">
+                <span className="flex items-center justify-between gap-2">
+                  <strong className="text-[11px] text-foreground">VibeSpace MCP</strong>
+                  <Badge variant={relayStatus === 'connected' ? 'success' : 'secondary'}>
+                    {relayStatus === 'connected' ? 'Desktop connected' : 'Setup required'}
+                  </Badge>
+                </span>
+                <span className="mt-2 grid gap-1 text-[9px] leading-4 text-muted-foreground">
+                  <span className="flex justify-between gap-2">
+                    <span>File reads</span>
+                    <span>{activeWorkspaceGrant ? 'Available' : 'Project grant required'}</span>
+                  </span>
+                  <span className="flex justify-between gap-2">
+                    <span>File writes</span>
+                    <span>Approval required</span>
+                  </span>
+                  <span className="flex justify-between gap-2">
+                    <span>Playwright browser</span>
+                    <span>Approval required</span>
+                  </span>
+                  <span className="flex justify-between gap-2">
+                    <span>Terminal commands</span>
+                    <span>Approval required</span>
+                  </span>
+                  <span className="flex justify-between gap-2">
+                    <span>Installed MCP tools</span>
+                    <span>Approval required</span>
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 w-full"
+                  disabled={!mcpUrl}
+                  onClick={() => void connectVibeSpaceMcp()}
+                >
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                  Connect VibeSpace MCP
+                </Button>
+                <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">
+                  ChatGPT requires one-time OAuth approval. Later desktop relay reconnects are
+                  automatic while this session grant is active.
+                </span>
               </dd>
               <dd className="mt-2 space-y-1">
                 {enabledConnections.length ? (
