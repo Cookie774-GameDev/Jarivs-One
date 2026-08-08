@@ -13,19 +13,19 @@ publication, or unmeasured capacity.
 - Current `main` merge base:
   `b8d2a04c930bd984cae3d8f00942581b9e0b9aeb`.
 - Ending verified implementation head:
-  `fc623ceba971c564c062e8c0c5fdb0b8bc0502c0`.
+  `ee1d30a2a86c86f2e52d83f2a408b646a3cb1050`.
 - Branch: `agent/pr30-fixes-and-updates`.
 - Pull request: #31, open and draft.
 - The evidence-report commit is documentation-only and follows the verified
   implementation head above.
 
 At the ending implementation head, the exact committed path manifest contains
-1,359 rows: 895 additions, 463 modifications, and one deletion. It is
+1,400 rows: 932 additions, 467 modifications, and one deletion. It is
 reproducible without relying on this prose:
 
 ```powershell
-$base = git merge-base origin/main fc623ceba971c564c062e8c0c5fdb0b8bc0502c0
-git diff --name-status "$base..fc623ceba971c564c062e8c0c5fdb0b8bc0502c0"
+$base = git merge-base origin/main ee1d30a2a86c86f2e52d83f2a408b646a3cb1050
+git diff --name-status "$base..ee1d30a2a86c86f2e52d83f2a408b646a3cb1050"
 ```
 
 The compact slice-to-path ledger is
@@ -35,22 +35,22 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 
 ## 2. Root causes and corrections
 
-| Area                     | Root cause                                                                                                                                                            | Correction                                                                                                                                                                                                      | Status                                               |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Baseline frontend        | Consolidated work carried stale test contracts and one raw Deepgram startup error                                                                                     | Reconciled contracts and routed the error through the bounded safe-error path                                                                                                                                   | **VERIFIED**                                         |
-| Jarvis response quality  | Mode-to-provider reasoning and response evidence needed direct end-to-end proof                                                                                       | Bound optimization modes to provider requests, retained approval-gated coding tools, bounded the Final Boss loop, unified motion, and collapsed file evidence                                                   | **VERIFIED**                                         |
-| Restrictive live modes   | Separate selection routes could reduce authority without cancelling the exact active message                                                                          | Centralized the transition boundary and exact-message cancellation                                                                                                                                              | **VERIFIED**                                         |
-| Crash details            | Raw error fields could reach UI, clipboard, logs, or persisted DevConsole records                                                                                     | Bounded and redacted error name, message, stack, component stack, uncaught errors, and rejected promises                                                                                                        | **VERIFIED**                                         |
-| Dependencies             | Exact audit reported two critical, four high, and one moderate advisory                                                                                               | Applied compatible tooling/transitive upgrades and retained narrow filesystem authority                                                                                                                         | **VERIFIED**                                         |
-| Updater                  | A legacy raw-repository endpoint preceded the official signed release manifest                                                                                        | Removed the stale channel; packaged updates use the signed GitHub Releases manifest only                                                                                                                        | **VERIFIED**                                         |
-| Profile RLS              | Unknown permissive policies could remain and combine with owner policies through PostgreSQL `OR` semantics                                                            | Migration 0037 now replaces the complete profile policy set before installing the canonical owner-only pair                                                                                                     | **VERIFIED**                                         |
-| AI News                  | Empty public reads launched upstream ingestion and async failures escaped the route boundary                                                                          | Kept public reads side-effect free, retained scheduled ingestion, awaited reads, and bounded failures                                                                                                           | **VERIFIED**                                         |
-| Supabase operations      | The runbook stopped at migration 0011 and described obsolete catalog/configuration behavior                                                                           | Aligned it with all 39 migrations through 0040, 27 functions, five plans, JWT gates, and server-only secrets                                                                                                    | **VERIFIED**                                         |
-| Supabase capacity        | No safe 500/2,000/5,000/10,000-user harness or honest unmeasured-state report existed                                                                                 | Added a fail-closed local/isolated-staging probe, exact measurements, stop rules, and explicit operator metrics                                                                                                 | **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**     |
-| Native command authority | The Tauri handler registered 141 commands while the frozen test listed 139 and omitted two committed bounded attachment commands                                      | Reconciled ordered and normalized hashes without changing production registration                                                                                                                               | **VERIFIED**                                         |
-| Local chat qualification | Live llama3.2 testing exposed capped modes, fabricated tool completion, false leak quarantine, stale multitask status, and native Browser Chat host lifecycle defects | Preserved provider-specific budgets, emitted canonical approval-gated actions, made leak checks intent-sensitive, synchronized live child status, and stabilized the isolated provider host                     | **VERIFIED LOCALLY**                                 |
-| MCP gateway              | The release report lacked direct proof for the existing permissioned MCP discovery and invocation boundary                                                            | Verified endpoint authorization, schema discovery, account-scoped routing, explicit mutation approval, cancellation, backpressure, credential rejection, and safe result normalization                          | **VERIFIED LOCALLY**                                 |
-| Build Your Own AI        | Local RAG existed without a complete recoverable weight-training lifecycle                                                                                            | Added a verified local-only LoRA/QLoRA/full worker, pinned trainable-model lifecycle, artifact integrity checks, and safe resume from the latest direct Trainer checkpoint; media extraction remains unavailable | **IMPLEMENTED — ENVIRONMENT GATES REMAIN**           |
+| Area                     | Root cause                                                                                                                                                                   | Correction                                                                                                                                                                                                       | Status                                           |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Baseline frontend        | Consolidated work carried stale test contracts and one raw Deepgram startup error                                                                                            | Reconciled contracts and routed the error through the bounded safe-error path                                                                                                                                    | **VERIFIED**                                     |
+| Jarvis response quality  | Mode-to-provider reasoning and response evidence needed direct end-to-end proof                                                                                              | Bound optimization modes to provider requests, retained approval-gated coding tools, bounded the Final Boss loop, unified motion, and collapsed file evidence                                                    | **VERIFIED**                                     |
+| Restrictive live modes   | Separate selection routes could reduce authority without cancelling the exact active message                                                                                 | Centralized the transition boundary and exact-message cancellation                                                                                                                                               | **VERIFIED**                                     |
+| Crash details            | Raw error fields could reach UI, clipboard, logs, or persisted DevConsole records                                                                                            | Bounded and redacted error name, message, stack, component stack, uncaught errors, and rejected promises                                                                                                         | **VERIFIED**                                     |
+| Dependencies             | Exact audit reported two critical, four high, and one moderate advisory                                                                                                      | Applied compatible tooling/transitive upgrades and retained narrow filesystem authority                                                                                                                          | **VERIFIED**                                     |
+| Updater                  | A legacy raw-repository endpoint preceded the official signed release manifest                                                                                               | Removed the stale channel; packaged updates use the signed GitHub Releases manifest only                                                                                                                         | **VERIFIED**                                     |
+| Profile RLS              | Unknown permissive policies could remain and combine with owner policies through PostgreSQL `OR` semantics                                                                   | Migration 0037 now replaces the complete profile policy set before installing the canonical owner-only pair                                                                                                      | **VERIFIED**                                     |
+| AI News                  | Empty public reads launched upstream ingestion and async failures escaped the route boundary                                                                                 | Kept public reads side-effect free, retained scheduled ingestion, awaited reads, and bounded failures                                                                                                            | **VERIFIED**                                     |
+| Supabase operations      | The runbook stopped at migration 0011 and described obsolete catalog/configuration behavior                                                                                  | Aligned it with all 39 migrations through 0040, 27 functions, five plans, JWT gates, and server-only secrets                                                                                                     | **VERIFIED**                                     |
+| Supabase capacity        | No safe 500/2,000/5,000/10,000-user harness or honest unmeasured-state report existed                                                                                        | Added a fail-closed local/isolated-staging probe, exact measurements, stop rules, and explicit operator metrics                                                                                                  | **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED** |
+| Native command authority | Earlier attachment reconciliation left stale count wording, and later Browser Chat registration added three bounded commands without refreshing the literal frozen authority | Reconciled the exact ordered 150-command manifest and both hashes without changing production registration                                                                                                       | **VERIFIED**                                     |
+| Local chat qualification | Live llama3.2 testing exposed capped modes, fabricated tool completion, false leak quarantine, stale multitask status, and native Browser Chat host lifecycle defects        | Preserved provider-specific budgets, emitted canonical approval-gated actions, made leak checks intent-sensitive, synchronized live child status, and stabilized the isolated provider host                      | **VERIFIED LOCALLY**                             |
+| MCP gateway              | The release report lacked direct proof for the existing permissioned MCP discovery and invocation boundary                                                                   | Verified endpoint authorization, schema discovery, account-scoped routing, explicit mutation approval, cancellation, backpressure, credential rejection, and safe result normalization                           | **VERIFIED LOCALLY**                             |
+| Build Your Own AI        | Local RAG existed without a complete recoverable weight-training lifecycle                                                                                                   | Added a verified local-only LoRA/QLoRA/full worker, pinned trainable-model lifecycle, artifact integrity checks, and safe resume from the latest direct Trainer checkpoint; media extraction remains unavailable | **IMPLEMENTED — ENVIRONMENT GATES REMAIN**       |
 
 ## 3. Tests and results
 
@@ -90,11 +90,19 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 - Supabase capacity probe: 8/8 Node tests; dry run reported all exact stages,
   zero results, six missing metrics, and no credential material.
 - Native command authority: focused 1/1; full no-default-features library suite
-  238 passed, 8 intentional helper/benchmark ignores, zero failures.
+  previously passed, and the exact-head default-feature library suite now
+  passes 256 tests with 8 intentional helper/benchmark ignores and zero
+  failures.
 - Windows default-feature native gate: Kitware CMake 4.4.1 plus the short
   isolated `C:\Users\viper\.cargo-target\pr31-default` target; `cargo check`
-  passed and `cargo test --lib` passed 238 tests with 8 intentional ignores
+  passed and `cargo test --lib` passed 256 tests with 8 intentional ignores
   and zero failures.
+- Exact-head local frontend gate: TypeScript, complete Vitest, production Vite
+  build, and all 44 release-manifest tests passed at `ee1d30a`.
+- VibeSpace MCP live gate: Cloudflare Worker health/config/OAuth metadata
+  return 200; hostile origin returns 403; anonymous MCP and relay requests
+  return 401; the active deployment is 100% version
+  `6d3f3290-de2e-48a5-aefb-ea9c45d6cf50`.
 - MCP gateway: 19 files and 158/158 tests covering discovery, exact-endpoint
   authorization, account-scoped routing, explicit mutation approval,
   cancellation, backpressure, credential rejection, connection supervision,
@@ -119,13 +127,13 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 
 ## 4. Native environments
 
-| Environment                          | Evidence                                                                                                                                                                           | Status                              |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| GitHub Linux runner                  | Exact-head Rust `cargo check`                                                                                                                                                      | **VERIFIED**                        |
-| Windows local, voice disabled        | Cargo check plus 238-test library suite                                                                                                                                            | **VERIFIED**                        |
-| Windows local, default voice feature | CMake 4.4.1; default-feature `cargo check`; default-feature library suite 238 passed, 8 intentional ignores. A short isolated target avoids the reproduced deep-path MSBuild error | **VERIFIED**                        |
-| Signed Windows release environment   | No new signed PR31 release was produced                                                                                                                                            | **BLOCKED — OWNER ACTION REQUIRED** |
-| macOS/Linux packaged applications    | Not exercised and not claimed                                                                                                                                                      | **NOT STARTED**                     |
+| Environment                          | Evidence                                                                                                                                                                                      | Status                              |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| GitHub Linux runner                  | Exact-head Rust `cargo check`                                                                                                                                                                 | **VERIFIED**                        |
+| Windows local, voice disabled        | Prior no-default-feature Cargo check and library evidence                                                                                                                                     | **VERIFIED**                        |
+| Windows local, default voice feature | CMake 4.4.1; exact-head default-feature `cargo check`; default-feature library suite 256 passed, 8 intentional ignores. A short isolated target avoids the reproduced deep-path MSBuild error | **VERIFIED**                        |
+| Signed Windows release environment   | No new signed PR31 release was produced                                                                                                                                                       | **BLOCKED — OWNER ACTION REQUIRED** |
+| macOS/Linux packaged applications    | Not exercised and not claimed                                                                                                                                                                 | **NOT STARTED**                     |
 
 ## 5. Stripe evidence
 
@@ -245,6 +253,8 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 
 ### Requires owner login or approval
 
+- Complete the one-time ChatGPT **VibeSpace MCP** OAuth approval after every
+  other locally actionable task; silent connector installation is unsupported.
 - Connect and identify the authoritative VibeSpace Supabase project.
 - Connect and identify the authoritative VibeSpace Stripe account.
 - Authorize isolated test-mode migrations, Edge Function deployment, Stripe
@@ -285,6 +295,7 @@ Each accepted closure slice is a separate commit and can be reverted without
 rewriting history. Recent rollback points are:
 
 - `fc623ce` — capability-snapshot authority test reconciliation;
+- `ee1d30a` — Browser Chat native command-authority reconciliation;
 - `e60724d` — live multitask status reconciliation;
 - `2d5c1ab` — truthful local chat tool execution;
 - `5e239d0` — isolated Browser Chat native host stabilization;
