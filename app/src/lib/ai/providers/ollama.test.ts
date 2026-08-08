@@ -27,6 +27,7 @@ describe('ollama provider utilities', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     _resetNativeFetchForTests(null);
@@ -81,6 +82,19 @@ describe('ollama provider utilities', () => {
 
     await expect(isOllamaReachable(undefined, { attempts: 2 })).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('settles a retry delay immediately when its caller aborts', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const controller = new AbortController();
+    const result = isOllamaReachable(controller.signal, { attempts: 2 });
+
+    await vi.waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
+    controller.abort();
+
+    await expect(result).resolves.toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('streams pull progress and reports percent complete', async () => {

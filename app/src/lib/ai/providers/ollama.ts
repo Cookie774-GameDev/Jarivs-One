@@ -703,8 +703,16 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
       resolve();
       return;
     }
-    const timer = window.setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => window.clearTimeout(timer), { once: true });
+    const finish = () => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      finish();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
