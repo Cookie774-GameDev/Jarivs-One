@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .audit import get_audit_logger
 from .bridge_endpoint import router as bridge_router
+from .browser_chat_bridge_endpoint import router as browser_chat_bridge_router
 from .config import get_settings
 from .livekit_handler import router as livekit_router
 from .outbound import router as outbound_router
@@ -66,6 +67,7 @@ app.include_router(twilio_router)
 app.include_router(livekit_router)
 app.include_router(outbound_router)
 app.include_router(bridge_router)
+app.include_router(browser_chat_bridge_router)
 app.include_router(telnyx_router)
 
 
@@ -81,6 +83,7 @@ async def health():
             "call_anyone": s.has_call_anyone_pipeline,
             "livekit": s.has_livekit,
             "supabase": s.has_supabase,
+            "browser_chat_mcp": s.has_browser_chat_mcp,
         },
     }
 
@@ -121,3 +124,10 @@ async def _audit_prune_loop():
 @app.on_event("shutdown")
 async def shutdown():
     log.info("phone-jarvis cloud shutting down")
+
+
+_settings = get_settings()
+if _settings.has_browser_chat_mcp:
+    from .browser_chat_mcp import create_browser_chat_mcp_app
+
+    app.mount("/", create_browser_chat_mcp_app(_settings))

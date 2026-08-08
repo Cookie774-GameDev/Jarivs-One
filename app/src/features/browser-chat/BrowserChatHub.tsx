@@ -7,6 +7,7 @@ import {
   Download,
   ExternalLink,
   FileUp,
+  FolderKey,
   Globe2,
   KeyRound,
   LockKeyhole,
@@ -23,6 +24,8 @@ import { formatContextTreeForPrompt, loadSelectedContextMap } from '@/features/c
 import { selectPluginConnectionsForAccount, usePluginStore } from '@/features/plugins/store';
 import { taskbarUsageStore } from '@/features/taskbar-usage/taskbarUsageStore';
 import { agentRepo, db, projectRepo } from '@/lib/db';
+import { getStoredProjectRoot, basename } from '@/features/files/projectFiles';
+import { setBridgeWorkspaceGrant, useBrowserChatRelay } from '@/lib/bridge';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -31,6 +34,11 @@ import { useBrowserChatStore } from './browserChatStore';
 import { BROWSER_CHAT_PROVIDERS, browserChatProvider } from './providerRegistry';
 import { browserChatSurface } from './providerSurface';
 import { buildBrowserAgentPrompt } from './browserAgentPrompt';
+import {
+  browserChatWorkspaceGrantStore,
+  grantBrowserChatWorkspace,
+  revokeBrowserChatWorkspace,
+} from './workspaceGrant';
 
 function statusLabel(value: string): string {
   return value.replaceAll('_', ' ');
@@ -54,10 +62,25 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   const runtime = useBrowserChatStore((state) => state.providerRuntime[providerId]);
   const provider = browserChatProvider(providerId);
   const pageStatus = runtime?.pageStatus ?? provider.pageStatus;
-  const bridgeStatus = runtime?.toolBridgeStatus ?? provider.toolBridgeStatus;
+  const providerBridgeStatus = runtime?.toolBridgeStatus ?? provider.toolBridgeStatus;
   const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
   const accountId = useAuthStore((state) => state.cloudSession?.user_id ?? state.localUserId ?? '');
+  const workspaceGrant = React.useSyncExternalStore(
+    browserChatWorkspaceGrantStore.subscribe,
+    browserChatWorkspaceGrantStore.getSnapshot,
+    () => null,
+  );
+  const projectRoot = getStoredProjectRoot(projectId);
+  const activeWorkspaceGrant =
+    workspaceGrant?.accountId === accountId && workspaceGrant.projectId === projectId
+      ? workspaceGrant
+      : null;
+  const relayStatus = useBrowserChatRelay(Boolean(activeWorkspaceGrant));
+  const bridgeStatus =
+    relayStatus === 'connected' || relayStatus === 'connecting' || relayStatus === 'reconnecting'
+      ? relayStatus
+      : providerBridgeStatus;
   const setActiveChat = useUIStore((state) => state.setActiveChat);
   const chatPreferences = useBrowserChatStore((state) => state.chatPreferences);
   const browserChatIds = React.useMemo(
@@ -117,8 +140,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     () => loadSelectedContextMap(projectId),
     [contextRevision, projectId],
   );
-  const selectedAgent =
-    agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
   const agentPrompt = React.useMemo(
     () =>
       selectedAgent
@@ -147,6 +169,16 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     setStagedFiles(chatId ? (stagedFilesByChat.get(chatId) ?? []) : []);
   }, [chatId]);
 
+  React.useEffect(() => {
+    if (
+      workspaceGrant &&
+      (workspaceGrant.accountId !== accountId || workspaceGrant.projectId !== projectId)
+    ) {
+      revokeBrowserChatWorkspace();
+      setBridgeWorkspaceGrant();
+    }
+  }, [accountId, projectId, workspaceGrant]);
+
   const stageFiles = (files: FileList | null) => {
     if (!chatId || !files) return;
     const next = [
@@ -173,6 +205,44 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     if (!nextId) return;
     setEngine('browser', nextId);
     setProvider('chatgpt', nextId);
+  };
+
+  const approveProjectRead = () => {
+    if (!accountId || !projectId || !projectRoot) {
+      toast.error(
+        'Project access is unavailable',
+        'Select a signed-in account and a project folder before enabling the local relay.',
+      );
+      return;
+    }
+    try {
+      const grant = grantBrowserChatWorkspace({
+        accountId,
+        projectId,
+        root: projectRoot,
+        displayName: basename(projectRoot),
+      });
+      setBridgeWorkspaceGrant({
+        id: grant.id,
+        root: grant.canonicalRoot,
+        displayName: grant.displayName,
+      });
+      toast.success(
+        'Read-only project approved',
+        'The local relay can read this project for this app session. Writes and terminal access remain blocked.',
+      );
+    } catch (cause) {
+      toast.error(
+        'Project access was denied',
+        cause instanceof Error ? cause.message : 'This project cannot be granted.',
+      );
+    }
+  };
+
+  const revokeProjectRead = () => {
+    revokeBrowserChatWorkspace();
+    setBridgeWorkspaceGrant();
+    toast.success('Project access revoked', 'The local relay no longer exposes project tools.');
   };
 
   return (
@@ -327,7 +397,8 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
               </dt>
               <dd className="mt-1 capitalize text-muted-foreground">{statusLabel(bridgeStatus)}</dd>
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                VibeSpace connections stay approval-gated and are not injected into ChatGPT web.
+                The provider page has no direct device authority. The official VibeSpace MCP app can
+                use only the project you approve below.
               </dd>
               <dd className="mt-2 space-y-1">
                 {enabledConnections.length ? (
@@ -357,6 +428,46 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                     No enabled VibeSpace MCP or app connections.
                   </span>
                 )}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-background/55 p-2.5">
+              <dt className="flex items-center gap-2 font-medium text-foreground">
+                <FolderKey className="h-3.5 w-3.5 text-accent-copper" />
+                Local project grant
+              </dt>
+              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                {activeWorkspaceGrant
+                  ? `Local relay armed · ${activeWorkspaceGrant.displayName} · read-only`
+                  : projectRoot
+                    ? `${basename(projectRoot)} is available but not exposed.`
+                    : 'Choose a project folder in Files before enabling local reads.'}
+              </dd>
+              <dd className="mt-2">
+                {activeWorkspaceGrant ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={revokeProjectRead}
+                  >
+                    Revoke project access
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={!projectRoot || !accountId || !projectId}
+                    onClick={approveProjectRead}
+                  >
+                    Approve current project read-only
+                  </Button>
+                )}
+              </dd>
+              <dd className="mt-2 text-[9px] leading-4 text-muted-foreground">
+                Session-only. Absolute paths are never sent to ChatGPT or stored by the relay.
               </dd>
             </div>
             <div className="rounded-lg border border-border bg-background/55 p-2.5">
@@ -393,7 +504,10 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                         ),
                       )
                       .catch(() =>
-                        toast.error('Could not copy agent prompt', 'Clipboard access is unavailable.'),
+                        toast.error(
+                          'Could not copy agent prompt',
+                          'Clipboard access is unavailable.',
+                        ),
                       );
                   }}
                 >

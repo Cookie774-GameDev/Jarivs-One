@@ -149,6 +149,15 @@ describe('Browser Chat managed provider surface', () => {
     expect(fake.opened).toEqual(['https://gemini.google.com/']);
   });
 
+  it('delegates ChatGPT sign-in to the OS default browser without a Chrome-specific launcher', async () => {
+    const fake = platform();
+    const controller = createProviderSurfaceController(fake.implementation);
+
+    await controller.openSystemBrowser(browserChatProvider('chatgpt'));
+
+    expect(fake.opened).toEqual(['https://chatgpt.com/']);
+  });
+
   it('rejects zero-sized or non-finite overlay bounds', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);

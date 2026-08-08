@@ -62,6 +62,7 @@ Set as Fly.io secrets via `fly secrets set KEY=value`:
 | `CARTESIA_API_KEY`                  | play.cartesia.ai                      | Path A premium TTS              |
 | `GROQ_API_KEY`                      | console.groq.com (free)               | Path C default LLM/STT          |
 | `BRIDGE_TOKEN_PEPPER`               | random 64-char hex (you generate)     | bridge auth                     |
+| `MCP_PUBLIC_URL`                    | public HTTPS URL ending in `/mcp`     | official ChatGPT MCP resource   |
 
 Per-user keys (Groq, Anthropic, etc.) are stored encrypted in Supabase
 `phone_settings.byok_provider_keys` and looked up at call start.
@@ -71,6 +72,22 @@ listed in `.env.example`. They drive measured-cost-to-credit settlement and
 must match the operator's current contracts.
 `CALL_ANYONE_MAX_CREDITS_PER_MINUTE` is the conservative server-side
 reservation ceiling; the desktop cannot supply or override it.
+
+## Browser Chat MCP
+
+Browser Chat uses two independent connections:
+
+- The desktop opens outbound `WSS /browser-chat/bridge` only after the user
+  approves the current project for this app session.
+- ChatGPT connects to public `POST /mcp` through the official Streamable-HTTP
+  MCP protocol and signs in through the project's Supabase OAuth 2.1 server.
+
+Enable Supabase Auth's OAuth 2.1 server, configure its consent page, migrate to
+asymmetric JWT signing, and set `MCP_PUBLIC_URL` to the deployed HTTPS
+endpoint. The MCP server accepts only OAuth tokens containing both `sub` and
+`client_id`; it exposes directory listing and bounded text reads only. It
+never exposes writes, shell access, absolute local paths, browser cookies, or
+the embedded provider webview.
 
 ## Phased deploy
 

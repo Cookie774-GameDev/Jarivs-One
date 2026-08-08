@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { browserChatStore } from './browserChatStore';
 import { BrowserChatHub } from './BrowserChatHub';
+import { useAuthStore } from '@/stores/auth';
+import { getBridgeWorkspaceGrant, setBridgeWorkspaceGrant } from '@/lib/bridge';
+import { projectStorageKey, ROOT_PREFIX } from '@/features/files/projectFiles';
+import type { ProjectId } from '@/types/common';
+import { browserChatWorkspaceGrantStore, revokeBrowserChatWorkspace } from './workspaceGrant';
 
 vi.mock('./BrowserProviderSurface', () => ({
   BrowserProviderSurface: ({ provider }: { provider: { label: string } }) => (
@@ -13,6 +18,13 @@ vi.mock('./BrowserProviderSurface', () => ({
 
 describe('BrowserChatHub', () => {
   beforeEach(() => {
+    localStorage.clear();
+    revokeBrowserChatWorkspace();
+    setBridgeWorkspaceGrant();
+    useAuthStore.setState({
+      projectId: 'project-1' as ProjectId,
+      localUserId: 'account-1',
+    });
     browserChatStore.setState({
       engine: 'browser',
       providerId: 'chatgpt',
@@ -47,5 +59,34 @@ describe('BrowserChatHub', () => {
     expect(screen.getByLabelText('ChatGPT provider surface')).toBeTruthy();
     expect(document.body.textContent).toMatch(/does not.*read provider messages/i);
     expect(document.body.textContent).not.toMatch(/sync remote history/i);
+  });
+
+  it('requires an explicit read-only project grant before arming the local relay', () => {
+    localStorage.setItem(
+      projectStorageKey(ROOT_PREFIX, 'project-1'),
+      'C:\\Users\\viper\\Projects\\Safe',
+    );
+    render(<BrowserChatHub chatId="chat-1" />);
+
+    expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /approve current project read-only/i }));
+
+    expect(browserChatWorkspaceGrantStore.getSnapshot()).toMatchObject({
+      accountId: 'account-1',
+      projectId: 'project-1',
+      canonicalRoot: 'C:\\Users\\viper\\Projects\\Safe',
+      readAllowed: true,
+      modifyAllowed: false,
+      terminalAllowed: false,
+    });
+    expect(getBridgeWorkspaceGrant()).toMatchObject({
+      root: 'C:\\Users\\viper\\Projects\\Safe',
+      displayName: 'Safe',
+    });
+    expect(screen.getByText(/local relay armed/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /revoke project access/i }));
+    expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
+    expect(getBridgeWorkspaceGrant()).toBeUndefined();
   });
 });

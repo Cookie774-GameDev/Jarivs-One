@@ -54,6 +54,7 @@ class Settings(BaseSettings):
 
     # --- Bridge auth ---
     BRIDGE_TOKEN_PEPPER: str = Field(default="dev_pepper_replace_in_production")
+    MCP_PUBLIC_URL: str = Field(default="")
 
     # --- Behavior ---
     AUDIT_RETENTION_DAYS: int = Field(default=30)
@@ -105,6 +106,14 @@ class Settings(BaseSettings):
     @property
     def has_supabase(self) -> bool:
         return bool(self.SUPABASE_URL and self.SUPABASE_SERVICE_ROLE_KEY)
+
+    @property
+    def has_browser_chat_mcp(self) -> bool:
+        return bool(
+            self.SUPABASE_URL.startswith("https://")
+            and self.MCP_PUBLIC_URL.startswith("https://")
+            and self.MCP_PUBLIC_URL.rstrip("/").endswith("/mcp")
+        )
 
 
 @lru_cache

@@ -10,11 +10,18 @@
 
 export {
   BridgeClient,
+  getBrowserChatBridgeClient,
   getBridgeClient,
+  getBridgeWorkspaceGrant,
   resetBridgeClient,
+  resetBrowserChatBridgeClient,
+  setBridgeWorkspaceGrant,
   type BridgeStatus,
   type BridgeFrame,
   type BridgeClientOptions,
+  type BridgeWorkspaceGrant,
+  type BridgeWorkspaceGrantMetadata,
 } from './BridgeClient';
 
 export { useBridgeLifecycle } from './useBridgeLifecycle';
+export { useBrowserChatRelay } from './useBrowserChatRelay';
