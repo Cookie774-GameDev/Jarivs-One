@@ -11,6 +11,7 @@ import {
   planLocalTrainingMethod,
   isModelInstalled,
   TRAINABLE_MODELS,
+  type TrainingMethod,
 } from './modelHub';
 
 const workstation = {
@@ -45,8 +46,16 @@ describe('model foundry domain', () => {
         method: 'full',
         hardware: workstation,
         sources: [source],
+        worker: {
+          installed: true,
+          attested: true,
+          version: '1',
+          methods: ['full'],
+          modalities: ['text'],
+          precisions: ['bf16'],
+        },
       }),
-    ).toContain('Full fine-tuning');
+    ).toContain('does not support');
     expect(
       mayStartTraining({
         name: 'Specialist',
@@ -65,14 +74,53 @@ describe('model foundry domain', () => {
     });
     expect(modelFoundryMethodAvailability('lora')).toEqual({
       available: false,
-      reason:
-        'LoRA requires a verified isolated training worker that is not installed in this build.',
+      reason: 'The verified local training worker is not installed.',
     });
+    expect(
+      modelFoundryMethodAvailability('lora', {
+        installed: true,
+        attested: true,
+        version: '1',
+        methods: ['lora'],
+        modalities: ['text'],
+        precisions: ['bf16'],
+      }),
+    ).toEqual({ available: true, reason: null });
     expect(TRAINABLE_MODELS.every((model) => model.methods.includes('knowledge'))).toBe(true);
     expect(TRAINABLE_MODELS.some((model) => model.methods.includes('lora'))).toBe(false);
     expect(
       TRAINABLE_MODELS.every((model) => model.quantization === 'Q4_K_M (4-bit inference)'),
     ).toBe(true);
+  });
+
+  it('validates weight training against the selected verified model and worker', () => {
+    const model = {
+      ...TRAINABLE_MODELS[0],
+      id: 'smollm2-135m-instruct',
+      methods: ['lora', 'qlora', 'full'] as TrainingMethod[],
+      quantization: 'BF16 safetensors',
+      downloadGb: 0.26,
+      ramGb: 4,
+      vramGb: 2,
+    };
+    const worker = {
+      installed: true,
+      attested: true,
+      version: '1',
+      methods: ['lora', 'qlora', 'full'] as const,
+      modalities: ['text'] as const,
+      precisions: ['bf16'] as const,
+    };
+    expect(
+      mayStartTraining({
+        name: 'Specialist',
+        model,
+        method: 'lora',
+        hardware: workstation,
+        sources: [classifySource('examples.jsonl', 'lora', false)],
+        worker,
+      }),
+    ).toBeNull();
   });
 
   it('plans attested local LoRA and QLoRA without silently changing the selected method', () => {

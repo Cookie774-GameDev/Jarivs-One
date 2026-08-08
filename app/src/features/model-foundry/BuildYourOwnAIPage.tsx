@@ -662,7 +662,11 @@ export function BuildYourOwnAIPage() {
         </aside>
       </div>
 
-      <BuildYourOwnAIHub open={builderOpen} onOpenChange={setBuilderOpen} />
+      <BuildYourOwnAIHub
+        open={builderOpen}
+        onOpenChange={setBuilderOpen}
+        trainingWorker={trainingWorker}
+      />
     </main>
   );
 }

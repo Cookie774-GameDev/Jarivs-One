@@ -16,18 +16,32 @@ import {
   mayStartTraining,
   modelFoundryMethodAvailability,
   newlyCompletedJobId,
+  planLocalTrainingMethod,
   saveJobs,
   TRAINABLE_MODELS,
   type ClassifiedSource,
   type FoundryJob,
   type HardwareProfile,
   type TrainingMethod,
+  type TrainingWorkerCapability,
 } from './modelHub';
+import {
+  cancelVerifiedTrainingModelDownload,
+  downloadVerifiedTrainingModel,
+  listVerifiedTrainingModels,
+  repairVerifiedTrainingModel,
+  removeVerifiedTrainingModel,
+  verifiedTrainingModelToTrainableModel,
+  type LocalTrainingWorkerStatus,
+  type VerifiedTrainingModel,
+} from './trainingRuntime';
 
 interface Props {
   open: boolean;
   onOpenChange(open: boolean): void;
   onActivateArtifact?(job: FoundryJob): void;
+  trainingWorker?: LocalTrainingWorkerStatus | null;
+  verifiedTrainingModels?: readonly VerifiedTrainingModel[];
 }
 
 const steps = ['Purpose', 'Base model', 'Identity', 'Sources', 'Review', 'Train'] as const;
@@ -65,7 +79,13 @@ export async function detectHardware(): Promise<HardwareProfile> {
   };
 }
 
-export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Props) {
+export function BuildYourOwnAIHub({
+  open,
+  onOpenChange,
+  onActivateArtifact,
+  trainingWorker = null,
+  verifiedTrainingModels,
+}: Props) {
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState<TrainingMethod>('knowledge');
   const [purpose, setPurpose] = React.useState('');
@@ -89,6 +109,10 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
   const [ollamaReady, setOllamaReady] = React.useState(false);
   const [downloadProgress, setDownloadProgress] = React.useState<number | null>(null);
   const downloadAbortRef = React.useRef<AbortController | null>(null);
+  const [trainingCatalog, setTrainingCatalog] = React.useState<VerifiedTrainingModel[]>(
+    () => verifiedTrainingModels?.slice() ?? [],
+  );
+  const [confirmRemoveModelId, setConfirmRemoveModelId] = React.useState<string | null>(null);
   const [busyJobId, setBusyJobId] = React.useState<string | null>(null);
   const [confirmDeleteJobId, setConfirmDeleteJobId] = React.useState<string | null>(null);
   const [renameJobId, setRenameJobId] = React.useState<string | null>(null);
@@ -98,6 +122,19 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
   React.useEffect(() => {
     if (!open) return;
     void detectHardware().then(setHardware);
+    if (verifiedTrainingModels) {
+      setTrainingCatalog(verifiedTrainingModels.slice());
+    } else {
+      void listVerifiedTrainingModels()
+        .then(setTrainingCatalog)
+        .catch((caught: unknown) => {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : 'Could not inspect the verified training model catalog.',
+          );
+        });
+    }
     let cancelled = false;
     void import('@/lib/ai/ollamaBootstrap')
       .then(({ bootstrapOllamaConnection }) => bootstrapOllamaConnection({ force: true }))
@@ -152,19 +189,79 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
     };
   }, [open]);
 
+  const trainingWorkerCapability = React.useMemo<TrainingWorkerCapability | null>(
+    () =>
+      trainingWorker
+        ? {
+            installed: trainingWorker.installed,
+            attested: trainingWorker.attested,
+            version: String(trainingWorker.protocol),
+            methods: trainingWorker.methods,
+            modalities: trainingWorker.modalities,
+            precisions: trainingWorker.precisions,
+          }
+        : null,
+    [trainingWorker],
+  );
+  const availableModels = React.useMemo(
+    () =>
+      method === 'knowledge'
+        ? TRAINABLE_MODELS
+        : trainingCatalog.map(verifiedTrainingModelToTrainableModel),
+    [method, trainingCatalog],
+  );
+  React.useEffect(() => {
+    if (availableModels.length > 0 && !availableModels.some((model) => model.id === modelId)) {
+      setModelId(availableModels[0].id);
+    }
+  }, [availableModels, modelId]);
   const selectedModel =
-    TRAINABLE_MODELS.find((model) => model.id === modelId) ?? TRAINABLE_MODELS[0];
-  const assessed = compatibleModels(hardware);
+    availableModels.find((model) => model.id === modelId) ??
+    availableModels[0] ??
+    TRAINABLE_MODELS[0];
+  const selectedVerifiedModel =
+    method === 'knowledge'
+      ? null
+      : (trainingCatalog.find((model) => model.id === selectedModel.id) ?? null);
+  const assessed = React.useMemo(() => {
+    const base = compatibleModels(hardware, availableModels);
+    if (method === 'knowledge') return base;
+    const planned = base.map((item) => {
+      const plan = planLocalTrainingMethod({
+        method,
+        parametersB: item.model.parametersB,
+        hardware,
+        worker: trainingWorkerCapability,
+      });
+      return {
+        ...item,
+        compatible: item.compatible && plan.available,
+        recommended: false,
+        warning: plan.available ? item.warning : plan.reason,
+      };
+    });
+    const best = [...planned]
+      .filter((item) => item.compatible)
+      .sort((left, right) => right.model.parametersB - left.model.parametersB)[0];
+    if (best) best.recommended = true;
+    return planned;
+  }, [availableModels, hardware, method, trainingWorkerCapability]);
   const validationError = mayStartTraining({
     name,
     model: selectedModel,
     method,
     hardware,
     sources,
+    worker: trainingWorkerCapability,
   });
-  const selectedModelInstalled = isModelInstalled(selectedModel.id, installedModels);
+  const selectedModelInstalled =
+    method === 'knowledge'
+      ? isModelInstalled(selectedModel.id, installedModels)
+      : selectedVerifiedModel?.status === 'ready';
   const startError =
-    validationError ??
+    (method !== 'knowledge' && !selectedVerifiedModel
+      ? 'The verified trainable model catalog is unavailable.'
+      : validationError) ??
     (!selectedModelInstalled
       ? `Download and verify ${selectedModel.label} before local processing.`
       : null);
@@ -236,6 +333,40 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
   const downloadSelectedModel = async () => {
     setError('');
     setDownloadProgress(0);
+    if (method !== 'knowledge') {
+      if (!selectedVerifiedModel) {
+        setDownloadProgress(null);
+        setError('The selected model has no verified training manifest.');
+        return;
+      }
+      let unlisten: (() => void) | null = null;
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen<{
+          modelId: string;
+          percent: number;
+          phase: string;
+        }>('model-foundry:training-model-download', ({ payload }) => {
+          if (payload.modelId === selectedVerifiedModel.id) {
+            setDownloadProgress(Math.max(0, Math.min(100, Math.round(payload.percent))));
+          }
+        });
+        const updated =
+          selectedVerifiedModel.status === 'repair-required'
+            ? await repairVerifiedTrainingModel(selectedVerifiedModel.id)
+            : await downloadVerifiedTrainingModel(selectedVerifiedModel.id);
+        setTrainingCatalog((current) =>
+          current.map((model) => (model.id === updated.id ? updated : model)),
+        );
+        setDownloadProgress(null);
+      } catch (caught) {
+        setDownloadProgress(null);
+        setError(caught instanceof Error ? caught.message : String(caught));
+      } finally {
+        unlisten?.();
+      }
+      return;
+    }
     const controller = new AbortController();
     downloadAbortRef.current = controller;
     try {
@@ -271,6 +402,52 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
       }
     } finally {
       downloadAbortRef.current = null;
+    }
+  };
+
+  const cancelSelectedModelDownload = async () => {
+    if (downloadAbortRef.current) {
+      downloadAbortRef.current.abort();
+      return;
+    }
+    try {
+      await cancelVerifiedTrainingModelDownload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  };
+
+  const repairSelectedTrainingModel = async () => {
+    if (!selectedVerifiedModel) return;
+    setError('');
+    setDownloadProgress(0);
+    try {
+      const updated = await repairVerifiedTrainingModel(selectedVerifiedModel.id);
+      setTrainingCatalog((current) =>
+        current.map((model) => (model.id === updated.id ? updated : model)),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setDownloadProgress(null);
+    }
+  };
+
+  const removeSelectedTrainingModel = async () => {
+    if (!selectedVerifiedModel) return;
+    if (confirmRemoveModelId !== selectedVerifiedModel.id) {
+      setConfirmRemoveModelId(selectedVerifiedModel.id);
+      return;
+    }
+    setError('');
+    try {
+      const updated = await removeVerifiedTrainingModel(selectedVerifiedModel.id);
+      setTrainingCatalog((current) =>
+        current.map((model) => (model.id === updated.id ? updated : model)),
+      );
+      setConfirmRemoveModelId(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
     }
   };
 
@@ -418,7 +595,7 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
                     ],
                   ] as const
                 ).map(([id, title, copy]) => {
-                  const availability = modelFoundryMethodAvailability(id);
+                  const availability = modelFoundryMethodAvailability(id, trainingWorkerCapability);
                   return (
                     <button
                       key={id}
@@ -466,85 +643,117 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
                 </span>
               </div>
               <div className="grid gap-3">
-                {assessed.map(({ model, compatible, recommended, warning }) => (
-                  <button
-                    key={model.id}
-                    type="button"
-                    disabled={!compatible}
-                    onClick={() => setModelId(model.id)}
-                    className={cn(
-                      'rounded-lg border p-4 text-left disabled:opacity-55',
-                      modelId === model.id
-                        ? 'border-accent-cyan bg-accent-cyan/10'
-                        : 'border-border',
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <strong>{model.label}</strong>
-                      {recommended && (
-                        <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-metadata text-emerald-300">
-                          Best for your PC
-                        </span>
+                {assessed.map(({ model, compatible, recommended, warning }) => {
+                  const verified = trainingCatalog.find((entry) => entry.id === model.id);
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      disabled={!compatible}
+                      onClick={() => setModelId(model.id)}
+                      className={cn(
+                        'rounded-lg border p-4 text-left disabled:opacity-55',
+                        modelId === model.id
+                          ? 'border-accent-cyan bg-accent-cyan/10'
+                          : 'border-border',
                       )}
-                      <span className="rounded bg-muted px-2 py-0.5 text-metadata">
-                        {model.speed}
-                      </span>
-                      <span className="rounded bg-muted px-2 py-0.5 text-metadata">
-                        {model.quality} quality
-                      </span>
-                    </div>
-                    <p className="mt-2 text-secondary text-muted-foreground">
-                      {model.parametersB}B parameters · ~{model.downloadGb} GB download ·{' '}
-                      {model.ramGb} GB RAM / {model.vramGb} GB VRAM · {model.quantization} · fully
-                      local
-                    </p>
-                    <p className="mt-1 text-secondary text-muted-foreground">
-                      Supported build path:{' '}
-                      {model.methods.includes('knowledge') ? 'Knowledge/RAG' : 'None'}
-                      {' · '}
-                      {recommended
-                        ? 'Recommended for your hardware'
-                        : compatible
-                          ? 'Compatible with measured hardware'
-                          : 'Not compatible with measured hardware'}
-                    </p>
-                    <p className="mt-2 text-secondary">
-                      {isModelInstalled(model.id, installedModels)
-                        ? 'Installed and verified in Ollama'
-                        : 'Not installed'}
-                    </p>
-                    {warning && <p className="mt-2 text-secondary text-amber-300">{warning}</p>}
-                  </button>
-                ))}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong>{model.label}</strong>
+                        {recommended && (
+                          <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-metadata text-emerald-300">
+                            Best for your PC
+                          </span>
+                        )}
+                        <span className="rounded bg-muted px-2 py-0.5 text-metadata">
+                          {model.speed}
+                        </span>
+                        <span className="rounded bg-muted px-2 py-0.5 text-metadata">
+                          {model.quality} quality
+                        </span>
+                      </div>
+                      <p className="mt-2 text-secondary text-muted-foreground">
+                        {model.parametersB}B parameters · ~{model.downloadGb} GB download ·{' '}
+                        {model.ramGb} GB RAM / {model.vramGb} GB VRAM · {model.quantization} · fully
+                        local
+                      </p>
+                      <p className="mt-1 text-secondary text-muted-foreground">
+                        Supported build path:{' '}
+                        {model.methods.includes('knowledge')
+                          ? 'Knowledge/RAG'
+                          : model.methods.map((value) => value.toUpperCase()).join(' · ')}
+                        {' · '}
+                        {recommended
+                          ? 'Recommended for your hardware'
+                          : compatible
+                            ? 'Compatible with measured hardware'
+                            : 'Not compatible with measured hardware'}
+                      </p>
+                      {verified ? (
+                        <>
+                          <p className="mt-2 text-secondary">
+                            {verified.status === 'ready'
+                              ? 'Installed and manifest verified'
+                              : verified.status === 'repair-required'
+                                ? 'Installed files require repair'
+                                : 'Not installed'}
+                          </p>
+                          <p className="mt-1 break-all font-mono text-metadata text-muted-foreground">
+                            {verified.sourceId} · revision {verified.revision.slice(0, 12)} ·{' '}
+                            {verified.contextTokens.toLocaleString()} context · Apache-2.0 ·{' '}
+                            {verified.licenseUrl}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-secondary">
+                          {isModelInstalled(model.id, installedModels)
+                            ? 'Installed and verified in Ollama'
+                            : 'Not installed'}
+                        </p>
+                      )}
+                      {warning && <p className="mt-2 text-secondary text-amber-300">{warning}</p>}
+                    </button>
+                  );
+                })}
               </div>
               {!selectedModelInstalled && (
                 <div className="rounded-lg border border-accent-cyan/30 bg-accent-cyan/5 p-4">
                   <p className="text-secondary text-muted-foreground">
-                    {ollamaReady
-                      ? 'Download from the verified Ollama catalog before building this local artifact.'
-                      : 'Ollama is unavailable. Installation requires the consent flow in Settings → Local Models.'}
+                    {method === 'knowledge'
+                      ? ollamaReady
+                        ? 'Download from the verified Ollama catalog before building this local artifact.'
+                        : 'Ollama is unavailable. Installation requires the consent flow in Settings → Local Models.'
+                      : selectedVerifiedModel?.status === 'repair-required'
+                        ? 'The installed checkpoint failed its manifest status check. Repair downloads and verifies only the pinned official files.'
+                        : 'Download the revision-pinned checkpoint from its verified official source. Every file is size- and SHA-256-verified before activation.'}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant="accent"
-                      disabled={!ollamaReady || downloadProgress !== null}
+                      disabled={
+                        (method === 'knowledge' && !ollamaReady) ||
+                        !selectedModel ||
+                        downloadProgress !== null
+                      }
                       onClick={() => void downloadSelectedModel()}
                     >
                       {downloadProgress === null
-                        ? `Download ${selectedModel.label}`
+                        ? selectedVerifiedModel?.status === 'repair-required'
+                          ? `Repair ${selectedModel.label}`
+                          : `Download ${selectedModel.label}`
                         : `Downloading ${downloadProgress}%`}
                     </Button>
                     {downloadProgress !== null && (
                       <Button
                         type="button"
                         variant="ghost"
-                        onClick={() => downloadAbortRef.current?.abort()}
+                        onClick={() => void cancelSelectedModelDownload()}
                       >
                         Cancel download
                       </Button>
                     )}
-                    {!ollamaReady && (
+                    {method === 'knowledge' && !ollamaReady && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -558,6 +767,50 @@ export function BuildYourOwnAIHub({ open, onOpenChange, onActivateArtifact }: Pr
                         }}
                       >
                         Open Local Models setup
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {method !== 'knowledge' && selectedVerifiedModel?.status === 'ready' && (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+                  <p className="text-secondary text-muted-foreground">
+                    Ready · {formatFoundryStorageBytes(selectedVerifiedModel.installedBytes)} ·
+                    pinned revision {selectedVerifiedModel.revision.slice(0, 12)}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={downloadProgress !== null}
+                      onClick={() => void repairSelectedTrainingModel()}
+                    >
+                      Verify and repair
+                    </Button>
+                    {confirmRemoveModelId === selectedVerifiedModel.id ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => void removeSelectedTrainingModel()}
+                        >
+                          Confirm remove local checkpoint
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setConfirmRemoveModelId(null)}
+                        >
+                          Keep model
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => void removeSelectedTrainingModel()}
+                      >
+                        Remove…
                       </Button>
                     )}
                   </div>

@@ -1,5 +1,10 @@
 import { isTauri } from '@/lib/utils';
-import type { TrainingMethod, TrainingModality, TrainingPrecision } from './modelHub';
+import type {
+  TrainableModel,
+  TrainingMethod,
+  TrainingModality,
+  TrainingPrecision,
+} from './modelHub';
 
 type WeightTrainingMethod = Exclude<TrainingMethod, 'knowledge'>;
 
@@ -45,10 +50,35 @@ export interface VerifiedTrainingModel {
   speed: 'fast' | 'medium' | 'slow';
   quality: 'efficient' | 'balanced' | 'high';
   cpuPractical: boolean;
+  installed: boolean;
+  verified: boolean;
+  installedBytes: number;
+  status: 'not-installed' | 'repair-required' | 'ready';
   localOnly: true;
 }
 
-export type TrainingRuntimeInvoke = (command: string) => Promise<unknown>;
+export function verifiedTrainingModelToTrainableModel(
+  model: VerifiedTrainingModel,
+): TrainableModel {
+  return {
+    id: model.id,
+    label: model.label,
+    parametersB: model.parametersB,
+    downloadGb: Number((model.downloadBytes / 1024 ** 3).toFixed(2)),
+    ramGb: model.expectedRamGb,
+    vramGb: model.expectedVramGb,
+    quantization: model.precision,
+    methods: ['lora', 'qlora', 'full'],
+    local: true,
+    quality: model.quality,
+    speed: model.speed,
+  };
+}
+
+export type TrainingRuntimeInvoke = (
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<unknown>;
 
 interface TrainingRuntimeOptions {
   native?: boolean;
@@ -129,63 +159,121 @@ export async function listVerifiedTrainingModels(
   if (!Array.isArray(response)) {
     throw new Error('Verified training model catalog returned an invalid response.');
   }
-  return response.map((entry) => {
-    if (
-      typeof entry !== 'object' ||
-      entry === null ||
-      !('id' in entry) ||
-      typeof entry.id !== 'string' ||
-      !('label' in entry) ||
-      typeof entry.label !== 'string' ||
-      !('sourceId' in entry) ||
-      typeof entry.sourceId !== 'string' ||
-      !('revision' in entry) ||
-      typeof entry.revision !== 'string' ||
-      !('license' in entry) ||
-      entry.license !== 'apache-2.0' ||
-      !('licenseUrl' in entry) ||
-      typeof entry.licenseUrl !== 'string' ||
-      !('gated' in entry) ||
-      entry.gated !== false ||
-      !('parametersB' in entry) ||
-      typeof entry.parametersB !== 'number' ||
-      !('downloadBytes' in entry) ||
-      typeof entry.downloadBytes !== 'number' ||
-      !('expectedRamGb' in entry) ||
-      typeof entry.expectedRamGb !== 'number' ||
-      !('expectedVramGb' in entry) ||
-      typeof entry.expectedVramGb !== 'number' ||
-      !('contextTokens' in entry) ||
-      typeof entry.contextTokens !== 'number' ||
-      !('precision' in entry) ||
-      typeof entry.precision !== 'string' ||
-      !('speed' in entry) ||
-      !['fast', 'medium', 'slow'].includes(String(entry.speed)) ||
-      !('quality' in entry) ||
-      !['efficient', 'balanced', 'high'].includes(String(entry.quality)) ||
-      !('cpuPractical' in entry) ||
-      typeof entry.cpuPractical !== 'boolean'
-    ) {
-      throw new Error('Verified training model catalog contains an invalid entry.');
-    }
-    return {
-      id: entry.id,
-      label: entry.label,
-      sourceId: entry.sourceId,
-      revision: entry.revision,
-      license: entry.license,
-      licenseUrl: entry.licenseUrl,
-      gated: false,
-      parametersB: entry.parametersB,
-      downloadBytes: entry.downloadBytes,
-      expectedRamGb: entry.expectedRamGb,
-      expectedVramGb: entry.expectedVramGb,
-      contextTokens: entry.contextTokens,
-      precision: entry.precision,
-      speed: String(entry.speed) as VerifiedTrainingModel['speed'],
-      quality: String(entry.quality) as VerifiedTrainingModel['quality'],
-      cpuPractical: entry.cpuPractical,
-      localOnly: true,
-    };
-  });
+  return response.map(normalizeVerifiedTrainingModel);
+}
+
+function normalizeVerifiedTrainingModel(entry: unknown): VerifiedTrainingModel {
+  if (
+    typeof entry !== 'object' ||
+    entry === null ||
+    !('id' in entry) ||
+    typeof entry.id !== 'string' ||
+    !('label' in entry) ||
+    typeof entry.label !== 'string' ||
+    !('sourceId' in entry) ||
+    typeof entry.sourceId !== 'string' ||
+    !('revision' in entry) ||
+    typeof entry.revision !== 'string' ||
+    !('license' in entry) ||
+    entry.license !== 'apache-2.0' ||
+    !('licenseUrl' in entry) ||
+    typeof entry.licenseUrl !== 'string' ||
+    !('gated' in entry) ||
+    entry.gated !== false ||
+    !('parametersB' in entry) ||
+    typeof entry.parametersB !== 'number' ||
+    !('downloadBytes' in entry) ||
+    typeof entry.downloadBytes !== 'number' ||
+    !('expectedRamGb' in entry) ||
+    typeof entry.expectedRamGb !== 'number' ||
+    !('expectedVramGb' in entry) ||
+    typeof entry.expectedVramGb !== 'number' ||
+    !('contextTokens' in entry) ||
+    typeof entry.contextTokens !== 'number' ||
+    !('precision' in entry) ||
+    typeof entry.precision !== 'string' ||
+    !('speed' in entry) ||
+    !['fast', 'medium', 'slow'].includes(String(entry.speed)) ||
+    !('quality' in entry) ||
+    !['efficient', 'balanced', 'high'].includes(String(entry.quality)) ||
+    !('cpuPractical' in entry) ||
+    typeof entry.cpuPractical !== 'boolean' ||
+    !('installed' in entry) ||
+    typeof entry.installed !== 'boolean' ||
+    !('verified' in entry) ||
+    typeof entry.verified !== 'boolean' ||
+    !('installedBytes' in entry) ||
+    typeof entry.installedBytes !== 'number' ||
+    !('status' in entry) ||
+    !['not-installed', 'repair-required', 'ready'].includes(String(entry.status))
+  ) {
+    throw new Error('Verified training model catalog contains an invalid entry.');
+  }
+  return {
+    id: entry.id,
+    label: entry.label,
+    sourceId: entry.sourceId,
+    revision: entry.revision,
+    license: entry.license,
+    licenseUrl: entry.licenseUrl,
+    gated: false,
+    parametersB: entry.parametersB,
+    downloadBytes: entry.downloadBytes,
+    expectedRamGb: entry.expectedRamGb,
+    expectedVramGb: entry.expectedVramGb,
+    contextTokens: entry.contextTokens,
+    precision: entry.precision,
+    speed: String(entry.speed) as VerifiedTrainingModel['speed'],
+    quality: String(entry.quality) as VerifiedTrainingModel['quality'],
+    cpuPractical: entry.cpuPractical,
+    installed: entry.installed,
+    verified: entry.verified,
+    installedBytes: entry.installedBytes,
+    status: String(entry.status) as VerifiedTrainingModel['status'],
+    localOnly: true,
+  };
+}
+
+async function runTrainingModelCommand(
+  command:
+    | 'model_foundry_download_training_model'
+    | 'model_foundry_repair_training_model'
+    | 'model_foundry_remove_training_model',
+  modelId: string,
+  options: TrainingRuntimeOptions,
+): Promise<VerifiedTrainingModel> {
+  if (!(options.native ?? isTauri)) {
+    throw new Error('Training model installation is available only in the VibeSpace desktop app.');
+  }
+  const invoke = await nativeInvoke(options);
+  return normalizeVerifiedTrainingModel(await invoke(command, { modelId }));
+}
+
+export async function downloadVerifiedTrainingModel(
+  modelId: string,
+  options: TrainingRuntimeOptions = {},
+): Promise<VerifiedTrainingModel> {
+  return runTrainingModelCommand('model_foundry_download_training_model', modelId, options);
+}
+
+export async function repairVerifiedTrainingModel(
+  modelId: string,
+  options: TrainingRuntimeOptions = {},
+): Promise<VerifiedTrainingModel> {
+  return runTrainingModelCommand('model_foundry_repair_training_model', modelId, options);
+}
+
+export async function removeVerifiedTrainingModel(
+  modelId: string,
+  options: TrainingRuntimeOptions = {},
+): Promise<VerifiedTrainingModel> {
+  return runTrainingModelCommand('model_foundry_remove_training_model', modelId, options);
+}
+
+export async function cancelVerifiedTrainingModelDownload(
+  options: TrainingRuntimeOptions = {},
+): Promise<boolean> {
+  if (!(options.native ?? isTauri)) return false;
+  const invoke = await nativeInvoke(options);
+  return (await invoke('model_foundry_cancel_training_model_download')) === true;
 }

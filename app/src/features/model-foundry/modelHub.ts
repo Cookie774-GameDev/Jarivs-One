@@ -141,18 +141,30 @@ export interface TrainableModel {
   speed: 'fast' | 'medium' | 'slow';
 }
 
-const METHOD_UNAVAILABLE: Readonly<Partial<Record<TrainingMethod, string>>> = Object.freeze({
-  lora: 'LoRA requires a verified isolated training worker that is not installed in this build.',
-  qlora: 'QLoRA requires a verified isolated training worker that is not installed in this build.',
-  full: 'Full fine-tuning requires a verified isolated training worker and compatible hardware.',
-});
-
-export function modelFoundryMethodAvailability(method: TrainingMethod): {
+export function modelFoundryMethodAvailability(
+  method: TrainingMethod,
+  worker: TrainingWorkerCapability | null = null,
+): {
   available: boolean;
   reason: string | null;
 } {
-  const reason = METHOD_UNAVAILABLE[method] ?? null;
-  return { available: reason === null, reason };
+  if (method === 'knowledge') return { available: true, reason: null };
+  if (!worker?.installed) {
+    return { available: false, reason: 'The verified local training worker is not installed.' };
+  }
+  if (!worker.attested) {
+    return {
+      available: false,
+      reason: 'The installed local training worker is not verified or attested.',
+    };
+  }
+  if (!worker.methods.includes(method)) {
+    return {
+      available: false,
+      reason: `The verified worker does not support ${method.toUpperCase()} training.`,
+    };
+  }
+  return { available: true, reason: null };
 }
 
 export interface ClassifiedSource {
@@ -232,13 +244,16 @@ export const TRAINABLE_MODELS: readonly TrainableModel[] = [
   },
 ] as const;
 
-export function compatibleModels(profile: HardwareProfile): Array<{
+export function compatibleModels(
+  profile: HardwareProfile,
+  models: readonly TrainableModel[] = TRAINABLE_MODELS,
+): Array<{
   model: TrainableModel;
   compatible: boolean;
   recommended: boolean;
   warning: string | null;
 }> {
-  const assessed = TRAINABLE_MODELS.map((model) => {
+  const assessed = models.map((model) => {
     const storageOk = profile.freeStorageGb >= model.downloadGb * 2.2;
     const memoryOk = profile.vramGb >= model.vramGb || profile.ramGb >= model.ramGb;
     const compatible = storageOk && memoryOk;
@@ -368,13 +383,23 @@ export function mayStartTraining(input: {
   method: TrainingMethod;
   hardware: HardwareProfile;
   sources: ClassifiedSource[];
+  worker?: TrainingWorkerCapability | null;
 }): string | null {
   if (!input.name.trim()) return 'Name the model before training.';
-  const methodAvailability = modelFoundryMethodAvailability(input.method);
+  const methodAvailability = modelFoundryMethodAvailability(input.method, input.worker ?? null);
   if (!methodAvailability.available) return methodAvailability.reason;
   if (!input.model.methods.includes(input.method))
     return 'The selected base model does not support this training method.';
-  const compatibility = compatibleModels(input.hardware).find(
+  if (input.method !== 'knowledge') {
+    const plan = planLocalTrainingMethod({
+      method: input.method,
+      parametersB: input.model.parametersB,
+      hardware: input.hardware,
+      worker: input.worker ?? null,
+    });
+    if (!plan.available) return plan.reason;
+  }
+  const compatibility = compatibleModels(input.hardware, [input.model]).find(
     (item) => item.model.id === input.model.id,
   );
   if (!compatibility?.compatible)

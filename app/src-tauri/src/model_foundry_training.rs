@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::io::{BufReader, Read};
+use std::fs::{self, OpenOptions};
+use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 const WORKER_PROTOCOL: u8 = 1;
 const WORKER_SOURCE: &str = include_str!("../workers/model_foundry/worker.py");
@@ -17,8 +18,14 @@ const MAX_ARTIFACT_FILES: usize = 4_096;
 const MAX_ARTIFACT_DEPTH: usize = 8;
 const MAX_ARTIFACT_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_WORKER_LOG_BYTES: usize = 256 * 1024;
+const TRAINING_MODEL_MARKER: &str = ".vibespace-model.json";
+const MAX_TRAINING_MODEL_MARKER_BYTES: u64 = 4 * 1024;
+const DOWNLOAD_BUFFER_BYTES: usize = 1024 * 1024;
 static ACTIVE_TRAINING: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
+static ACTIVE_MODEL_DOWNLOAD: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+static MODEL_STORAGE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static MODEL_DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 struct TrainingRegistryGuard(String);
 
@@ -26,6 +33,16 @@ impl Drop for TrainingRegistryGuard {
     fn drop(&mut self) {
         if let Ok(mut active) = ACTIVE_TRAINING.lock() {
             active.remove(&self.0);
+        }
+    }
+}
+
+struct ModelDownloadGuard;
+
+impl Drop for ModelDownloadGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE_MODEL_DOWNLOAD.lock() {
+            *active = None;
         }
     }
 }
@@ -60,6 +77,37 @@ pub(crate) struct TrainingCatalogModel {
     pub(crate) files: Vec<TrainingCatalogFile>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainingCatalogEntry {
+    #[serde(flatten)]
+    model: TrainingCatalogModel,
+    installed: bool,
+    verified: bool,
+    installed_bytes: u64,
+    status: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrainingModelMarker {
+    schema_version: u8,
+    id: String,
+    revision: String,
+    manifest_sha256: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrainingModelDownloadProgress {
+    model_id: String,
+    file: String,
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    percent: u8,
+    phase: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TrainingCatalogManifest {
@@ -71,6 +119,14 @@ struct TrainingCatalogManifest {
 
 fn valid_hex(value: &str, length: usize) -> bool {
     value.len() == length && value.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+fn safe_catalog_component(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
 }
 
 pub(crate) fn training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
@@ -92,11 +148,15 @@ pub(crate) fn training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
                 .ok_or_else(|| "Training model download size overflowed.".to_string())
         })?;
         let mut paths = BTreeSet::new();
-        if model.id.trim().is_empty()
+        let source_parts = model.source_id.split('/').collect::<Vec<_>>();
+        if !safe_catalog_component(&model.id)
             || model.label.trim().is_empty()
             || !ids.insert(model.id.clone())
             || !sources.insert((model.source_id.clone(), model.revision.clone()))
-            || model.source_id.split('/').count() != 2
+            || source_parts.len() != 2
+            || !source_parts
+                .iter()
+                .all(|component| safe_catalog_component(component))
             || !valid_hex(&model.revision, 40)
             || model.license != "apache-2.0"
             || model.license_url != "https://www.apache.org/licenses/LICENSE-2.0"
@@ -116,6 +176,7 @@ pub(crate) fn training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
                     && !file.path.is_empty()
                     && !file.path.contains("..")
                     && !file.path.contains(['/', '\\'])
+                    && safe_catalog_component(&file.path)
                     && paths.insert(file.path.clone())
             })
             || !paths.contains("config.json")
@@ -125,6 +186,189 @@ pub(crate) fn training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
         }
     }
     Ok(manifest.models)
+}
+
+fn training_model_download_url(
+    model: &TrainingCatalogModel,
+    file: &TrainingCatalogFile,
+) -> Result<url::Url, String> {
+    if !safe_catalog_component(&model.id)
+        || !valid_hex(&model.revision, 40)
+        || !safe_catalog_component(&file.path)
+    {
+        return Err("Verified training model download metadata is unsafe.".into());
+    }
+    let source_parts = model.source_id.split('/').collect::<Vec<_>>();
+    if source_parts.len() != 2
+        || !source_parts
+            .iter()
+            .all(|component| safe_catalog_component(component))
+    {
+        return Err("Verified training model source is unsafe.".into());
+    }
+    let url = url::Url::parse(&format!(
+        "https://huggingface.co/{}/resolve/{}/{}",
+        model.source_id, model.revision, file.path
+    ))
+    .map_err(|_| "Verified training model URL is invalid.".to_string())?;
+    if url.scheme() != "https" || url.host_str() != Some("huggingface.co") {
+        return Err("Verified training model URL is not trusted.".into());
+    }
+    Ok(url)
+}
+
+fn trusted_training_download_host(host: Option<&str>) -> bool {
+    host.is_some_and(|host| {
+        host == "huggingface.co"
+            || host.ends_with(".huggingface.co")
+            || host == "hf.co"
+            || host.ends_with(".hf.co")
+    })
+}
+
+fn training_model_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= 8 {
+            return attempt.error("Training model download exceeded the redirect limit.");
+        }
+        let target = attempt.url();
+        if target.scheme() == "https" && trusted_training_download_host(target.host_str()) {
+            attempt.follow()
+        } else {
+            attempt.error("Training model download redirect left the trusted source.")
+        }
+    })
+}
+
+fn training_model_manifest_sha256(model: &TrainingCatalogModel) -> Result<String, String> {
+    serde_json::to_vec(model)
+        .map(|bytes| source_sha256(&bytes))
+        .map_err(|error| format!("Could not encode training model manifest: {error}"))
+}
+
+fn write_training_model_marker(
+    directory: &Path,
+    model: &TrainingCatalogModel,
+) -> Result<(), String> {
+    let marker = TrainingModelMarker {
+        schema_version: 1,
+        id: model.id.clone(),
+        revision: model.revision.clone(),
+        manifest_sha256: training_model_manifest_sha256(model)?,
+    };
+    let bytes = serde_json::to_vec_pretty(&marker)
+        .map_err(|error| format!("Could not encode training model marker: {error}"))?;
+    let marker_path = directory.join(TRAINING_MODEL_MARKER);
+    let temporary = directory.join(format!("{TRAINING_MODEL_MARKER}.tmp"));
+    if temporary.exists() {
+        fs::remove_file(&temporary)
+            .map_err(|error| format!("Could not clear stale training model marker: {error}"))?;
+    }
+    fs::write(&temporary, bytes)
+        .map_err(|error| format!("Could not persist training model marker: {error}"))?;
+    if marker_path.exists() {
+        fs::remove_file(&marker_path)
+            .map_err(|error| format!("Could not replace training model marker: {error}"))?;
+    }
+    fs::rename(&temporary, &marker_path)
+        .map_err(|error| format!("Could not activate training model marker: {error}"))
+}
+
+fn verify_training_model_directory(
+    model_root: &Path,
+    model: &TrainingCatalogModel,
+) -> Result<u64, String> {
+    if !model_root.is_dir() {
+        return Err("The verified trainable base model is not installed.".into());
+    }
+    let entries = fs::read_dir(&model_root)
+        .map_err(|error| format!("Could not inspect trainable base model: {error}"))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("Could not inspect trainable base model: {error}"))?;
+    if entries.iter().any(|entry| {
+        entry.file_name().to_str().is_none_or(|name| {
+            name != TRAINING_MODEL_MARKER && !model.files.iter().any(|file| file.path == name)
+        })
+    }) {
+        return Err("Trainable base model contains unexpected or missing files.".into());
+    }
+    let mut total = 0_u64;
+    for expected in &model.files {
+        let path = model_root.join(&expected.path);
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|_| format!("Trainable base model file is missing: {}", expected.path))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Trainable base model contains an unsafe filesystem entry.".into());
+        }
+        let (bytes, sha256) = artifact_file_sha256(&path)?;
+        if bytes != expected.bytes || sha256 != expected.sha256 {
+            return Err(format!(
+                "Trainable base model file failed integrity verification: {}",
+                expected.path
+            ));
+        }
+        total = total
+            .checked_add(bytes)
+            .ok_or_else(|| "Trainable base model size overflowed.".to_string())?;
+    }
+    if total != model.download_bytes {
+        return Err("Trainable base model size does not match its verified manifest.".into());
+    }
+    Ok(total)
+}
+
+fn verify_training_model_files(root: &Path, model: &TrainingCatalogModel) -> Result<u64, String> {
+    verify_training_model_directory(&root.join("base-models").join(&model.id), model)
+}
+
+fn training_model_status(root: &Path, model: TrainingCatalogModel) -> TrainingCatalogEntry {
+    let directory = root.join("base-models").join(&model.id);
+    if !directory.is_dir() {
+        return TrainingCatalogEntry {
+            model,
+            installed: false,
+            verified: false,
+            installed_bytes: 0,
+            status: "not-installed".into(),
+        };
+    }
+    let expected_fingerprint = training_model_manifest_sha256(&model).ok();
+    let marker_path = directory.join(TRAINING_MODEL_MARKER);
+    let marker = fs::symlink_metadata(&marker_path)
+        .ok()
+        .filter(|metadata| {
+            metadata.is_file()
+                && !metadata.file_type().is_symlink()
+                && metadata.len() <= MAX_TRAINING_MODEL_MARKER_BYTES
+        })
+        .and_then(|_| fs::read(marker_path).ok())
+        .and_then(|bytes| serde_json::from_slice::<TrainingModelMarker>(&bytes).ok());
+    let verified = marker.is_some_and(|marker| {
+        marker.schema_version == 1
+            && marker.id == model.id
+            && marker.revision == model.revision
+            && Some(marker.manifest_sha256) == expected_fingerprint
+            && model.files.iter().all(|file| {
+                fs::symlink_metadata(directory.join(&file.path))
+                    .map(|metadata| {
+                        metadata.is_file()
+                            && !metadata.file_type().is_symlink()
+                            && metadata.len() == file.bytes
+                    })
+                    .unwrap_or(false)
+            })
+    });
+    TrainingCatalogEntry {
+        installed_bytes: if verified { model.download_bytes } else { 0 },
+        model,
+        installed: true,
+        verified,
+        status: if verified {
+            "ready".into()
+        } else {
+            "repair-required".into()
+        },
+    }
 }
 
 pub(crate) fn training_model_id_allowed(base_model_id: &str) -> bool {
@@ -567,6 +811,318 @@ fn inspect_worker(root: &Path) -> TrainingWorkerStatus {
     }
 }
 
+fn catalog_model(base_model_id: &str) -> Result<TrainingCatalogModel, String> {
+    training_catalog()?
+        .into_iter()
+        .find(|model| model.id == base_model_id)
+        .ok_or_else(|| "The selected model has no verified local training manifest.".to_string())
+}
+
+fn emit_model_download_progress(
+    app: &tauri::AppHandle,
+    model: &TrainingCatalogModel,
+    file: &TrainingCatalogFile,
+    downloaded_bytes: u64,
+    phase: &str,
+) {
+    let percent = if model.download_bytes == 0 {
+        0
+    } else {
+        ((downloaded_bytes.saturating_mul(100) / model.download_bytes).min(100)) as u8
+    };
+    let _ = app.emit(
+        "model-foundry:training-model-download",
+        TrainingModelDownloadProgress {
+            model_id: model.id.clone(),
+            file: file.path.clone(),
+            downloaded_bytes,
+            total_bytes: model.download_bytes,
+            percent,
+            phase: phase.into(),
+        },
+    );
+}
+
+fn download_training_model_file(
+    app: &tauri::AppHandle,
+    client: &reqwest::blocking::Client,
+    model: &TrainingCatalogModel,
+    file: &TrainingCatalogFile,
+    staging: &Path,
+    completed_before: u64,
+) -> Result<(), String> {
+    let destination = staging.join(&file.path);
+    if destination.is_file() {
+        let (bytes, sha256) = artifact_file_sha256(&destination)?;
+        if bytes == file.bytes && sha256 == file.sha256 {
+            emit_model_download_progress(
+                app,
+                model,
+                file,
+                completed_before.saturating_add(bytes),
+                "downloading",
+            );
+            return Ok(());
+        }
+        fs::remove_file(&destination)
+            .map_err(|error| format!("Could not replace corrupt model file: {error}"))?;
+    }
+
+    let partial = staging.join(format!("{}.part", file.path));
+    let mut existing = fs::metadata(&partial).map(|value| value.len()).unwrap_or(0);
+    if existing == file.bytes {
+        let (_, sha256) = artifact_file_sha256(&partial)?;
+        if sha256 == file.sha256 {
+            fs::rename(&partial, &destination)
+                .map_err(|error| format!("Could not activate verified model file: {error}"))?;
+            return Ok(());
+        }
+        fs::remove_file(&partial)
+            .map_err(|error| format!("Could not reset corrupt model download: {error}"))?;
+        existing = 0;
+    } else if existing > file.bytes {
+        fs::remove_file(&partial)
+            .map_err(|error| format!("Could not reset oversized model download: {error}"))?;
+        existing = 0;
+    }
+
+    let url = training_model_download_url(model, file)?;
+    let mut request = client.get(url);
+    if existing > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
+    }
+    let mut response = request
+        .send()
+        .map_err(|error| format!("Could not download {}: {error}", file.path))?;
+    let append = existing > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Training model download failed with HTTP {} for {}.",
+            response.status(),
+            file.path
+        ));
+    }
+    if existing > 0 && !append {
+        existing = 0;
+    }
+    let mut output = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(&partial)
+        .map_err(|error| format!("Could not prepare model download: {error}"))?;
+    let mut downloaded = existing;
+    let mut buffer = vec![0_u8; DOWNLOAD_BUFFER_BYTES];
+    loop {
+        if MODEL_DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+            return Err("Training model download cancelled.".into());
+        }
+        let count = response
+            .read(&mut buffer)
+            .map_err(|error| format!("Training model download was interrupted: {error}"))?;
+        if count == 0 {
+            break;
+        }
+        downloaded = downloaded
+            .checked_add(count as u64)
+            .ok_or_else(|| "Training model download size overflowed.".to_string())?;
+        if downloaded > file.bytes {
+            return Err("Training model download exceeded its verified size.".into());
+        }
+        output
+            .write_all(&buffer[..count])
+            .map_err(|error| format!("Could not persist model download: {error}"))?;
+        emit_model_download_progress(
+            app,
+            model,
+            file,
+            completed_before.saturating_add(downloaded),
+            "downloading",
+        );
+    }
+    output
+        .sync_all()
+        .map_err(|error| format!("Could not flush model download: {error}"))?;
+    if downloaded != file.bytes {
+        return Err("Training model download ended before the verified size was reached.".into());
+    }
+    let (_, sha256) = artifact_file_sha256(&partial)?;
+    if sha256 != file.sha256 {
+        let _ = fs::remove_file(&partial);
+        return Err(format!(
+            "Training model file failed checksum verification: {}",
+            file.path
+        ));
+    }
+    fs::rename(&partial, &destination)
+        .map_err(|error| format!("Could not activate verified model file: {error}"))
+}
+
+fn activate_training_model(
+    staging: &Path,
+    destination: &Path,
+    replace: bool,
+) -> Result<(), String> {
+    if !destination.exists() {
+        return fs::rename(staging, destination)
+            .map_err(|error| format!("Could not activate verified training model: {error}"));
+    }
+    if !replace {
+        return Err("The installed training model requires repair before replacement.".into());
+    }
+    let backup = destination.with_extension("repair-backup");
+    if backup.exists() {
+        fs::remove_dir_all(&backup)
+            .map_err(|error| format!("Could not clear stale model repair backup: {error}"))?;
+    }
+    fs::rename(destination, &backup)
+        .map_err(|error| format!("Could not prepare training model repair: {error}"))?;
+    if let Err(error) = fs::rename(staging, destination) {
+        let _ = fs::rename(&backup, destination);
+        return Err(format!(
+            "Could not activate repaired training model: {error}"
+        ));
+    }
+    fs::remove_dir_all(backup)
+        .map_err(|error| format!("Could not remove replaced training model: {error}"))
+}
+
+fn remove_owned_training_directory(path: &Path) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("Could not inspect training model storage: {error}")),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("Training model storage contains an unsafe filesystem entry.".into());
+    }
+    fs::remove_dir_all(path)
+        .map_err(|error| format!("Could not remove training model storage: {error}"))
+}
+
+fn remove_training_model_directory(
+    root: &Path,
+    model: &TrainingCatalogModel,
+) -> Result<(), String> {
+    if !safe_catalog_component(&model.id) {
+        return Err("The selected training model identifier is unsafe.".into());
+    }
+    let base_models = root.join("base-models");
+    let destination = base_models.join(&model.id);
+    let removing = base_models.join(format!(".{}.removing", model.id));
+    if removing.exists() {
+        return Err("A previous training model removal requires recovery.".into());
+    }
+    if destination.exists() {
+        let metadata = fs::symlink_metadata(&destination)
+            .map_err(|error| format!("Could not inspect training model storage: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err("Training model storage contains an unsafe filesystem entry.".into());
+        }
+        fs::rename(&destination, &removing).map_err(|error| {
+            format!("Could not isolate the training model for removal: {error}")
+        })?;
+        if let Err(error) = remove_owned_training_directory(&removing) {
+            let _ = fs::rename(&removing, &destination);
+            return Err(error);
+        }
+    }
+    remove_owned_training_directory(&base_models.join(format!(".{}.download", model.id)))?;
+    remove_owned_training_directory(&base_models.join(format!("{}.repair-backup", model.id)))?;
+    Ok(())
+}
+
+fn install_training_model(
+    app: &tauri::AppHandle,
+    base_model_id: &str,
+    replace: bool,
+) -> Result<TrainingCatalogEntry, String> {
+    let model = catalog_model(base_model_id)?;
+    {
+        let mut active = ACTIVE_MODEL_DOWNLOAD
+            .lock()
+            .map_err(|_| "Training model download registry is unavailable.".to_string())?;
+        if active.is_some() {
+            return Err("Another verified training model download is already active.".into());
+        }
+        *active = Some(model.id.clone());
+    }
+    let _guard = ModelDownloadGuard;
+    MODEL_DOWNLOAD_CANCELLED.store(false, Ordering::Relaxed);
+
+    let root = training_root(app)?;
+    let base_models = root.join("base-models");
+    fs::create_dir_all(&base_models)
+        .map_err(|error| format!("Could not prepare training model storage: {error}"))?;
+    let destination = base_models.join(&model.id);
+    if verify_training_model_directory(&destination, &model).is_ok() {
+        write_training_model_marker(&destination, &model)?;
+        return Ok(training_model_status(&root, model));
+    }
+    if destination.exists() && !replace {
+        return Err("The installed training model is incomplete or corrupt. Choose Repair.".into());
+    }
+    let staging = base_models.join(format!(".{}.download", model.id));
+    fs::create_dir_all(&staging)
+        .map_err(|error| format!("Could not prepare resumable model download: {error}"))?;
+    let partial_bytes = fs::read_dir(&staging)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .sum::<u64>();
+    let remaining = model.download_bytes.saturating_sub(partial_bytes);
+    let available = fs4::available_space(&base_models)
+        .map_err(|error| format!("Could not inspect training model storage: {error}"))?;
+    if available < remaining.saturating_add(512 * 1024 * 1024) {
+        return Err(format!(
+            "Not enough free storage for {}. Keep at least {} bytes available.",
+            model.label,
+            remaining.saturating_add(512 * 1024 * 1024)
+        ));
+    }
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(6 * 60 * 60))
+        .redirect(training_model_redirect_policy())
+        .user_agent("VibeSpace/1.5 ModelFoundry")
+        .build()
+        .map_err(|error| format!("Could not prepare training model download: {error}"))?;
+    let mut completed = 0_u64;
+    for file in &model.files {
+        download_training_model_file(app, &client, &model, file, &staging, completed)?;
+        completed = completed.saturating_add(file.bytes);
+    }
+    verify_training_model_directory(&staging, &model)?;
+    write_training_model_marker(&staging, &model)?;
+    let _storage_guard = MODEL_STORAGE_LOCK
+        .lock()
+        .map_err(|_| "Training model storage lock is unavailable.".to_string())?;
+    if !ACTIVE_TRAINING
+        .lock()
+        .map_err(|_| "Model Foundry training registry is unavailable.".to_string())?
+        .is_empty()
+    {
+        return Err("Stop active local training before activating a base model update.".into());
+    }
+    activate_training_model(&staging, &destination, replace)?;
+    emit_model_download_progress(
+        app,
+        &model,
+        model
+            .files
+            .last()
+            .ok_or_else(|| "Training model manifest has no files.".to_string())?,
+        model.download_bytes,
+        "ready",
+    );
+    Ok(training_model_status(&root, model))
+}
+
 #[tauri::command]
 pub fn model_foundry_training_worker_status(
     app: tauri::AppHandle,
@@ -575,8 +1131,76 @@ pub fn model_foundry_training_worker_status(
 }
 
 #[tauri::command]
-pub fn model_foundry_training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
-    training_catalog()
+pub fn model_foundry_training_catalog(
+    app: tauri::AppHandle,
+) -> Result<Vec<TrainingCatalogEntry>, String> {
+    let root = training_root(&app)?;
+    training_catalog().map(|models| {
+        models
+            .into_iter()
+            .map(|model| training_model_status(&root, model))
+            .collect()
+    })
+}
+
+#[tauri::command]
+pub async fn model_foundry_download_training_model(
+    app: tauri::AppHandle,
+    model_id: String,
+) -> Result<TrainingCatalogEntry, String> {
+    tauri::async_runtime::spawn_blocking(move || install_training_model(&app, &model_id, false))
+        .await
+        .map_err(|error| format!("Training model download worker failed: {error}"))?
+}
+
+#[tauri::command]
+pub async fn model_foundry_repair_training_model(
+    app: tauri::AppHandle,
+    model_id: String,
+) -> Result<TrainingCatalogEntry, String> {
+    tauri::async_runtime::spawn_blocking(move || install_training_model(&app, &model_id, true))
+        .await
+        .map_err(|error| format!("Training model repair worker failed: {error}"))?
+}
+
+#[tauri::command]
+pub fn model_foundry_cancel_training_model_download() -> Result<bool, String> {
+    let active = ACTIVE_MODEL_DOWNLOAD
+        .lock()
+        .map_err(|_| "Training model download registry is unavailable.".to_string())?
+        .is_some();
+    if active {
+        MODEL_DOWNLOAD_CANCELLED.store(true, Ordering::Relaxed);
+    }
+    Ok(active)
+}
+
+#[tauri::command]
+pub fn model_foundry_remove_training_model(
+    app: tauri::AppHandle,
+    model_id: String,
+) -> Result<TrainingCatalogEntry, String> {
+    let model = catalog_model(&model_id)?;
+    let _storage_guard = MODEL_STORAGE_LOCK
+        .lock()
+        .map_err(|_| "Training model storage lock is unavailable.".to_string())?;
+    if ACTIVE_MODEL_DOWNLOAD
+        .lock()
+        .map_err(|_| "Training model download registry is unavailable.".to_string())?
+        .is_some()
+    {
+        return Err("Cancel the active training model download before removing a model.".into());
+    }
+    if !ACTIVE_TRAINING
+        .lock()
+        .map_err(|_| "Model Foundry training registry is unavailable.".to_string())?
+        .is_empty()
+    {
+        return Err("Stop active local training before removing a base model.".into());
+    }
+    let root = training_root(&app)?;
+    remove_training_model_directory(&root, &model)?;
+    Ok(training_model_status(&root, model))
 }
 
 #[tauri::command]
@@ -653,6 +1277,9 @@ pub(crate) fn run_training_worker(
         return Err("Model Foundry training limits are invalid.".into());
     }
     let root = training_root(app)?;
+    let storage_guard = MODEL_STORAGE_LOCK
+        .lock()
+        .map_err(|_| "Training model storage lock is unavailable.".to_string())?;
     let status = inspect_worker(&root);
     if !status.installed || !status.attested || !status.methods.iter().any(|value| value == method)
     {
@@ -665,6 +1292,8 @@ pub(crate) fn run_training_worker(
         .python
         .ok_or_else(|| "Python 3 is required for local training.".to_string())?;
     let worker = worker_path(&root);
+    let model_manifest = catalog_model(base_model_id)?;
+    verify_training_model_files(&root, &model_manifest)?;
     let model = training_model_path(&root, base_model_id)?;
     let model = model
         .canonicalize()
@@ -741,6 +1370,7 @@ pub(crate) fn run_training_worker(
             return Err("This Model Foundry training job is already active.".into());
         }
     }
+    drop(storage_guard);
     let _registry_guard = TrainingRegistryGuard(job_id.to_string());
     let exit = loop {
         let result = child
@@ -799,6 +1429,39 @@ pub(crate) fn cancel_training_worker(job_id: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture_training_model() -> TrainingCatalogModel {
+        TrainingCatalogModel {
+            id: "fixture-model".into(),
+            label: "Fixture model".into(),
+            source_id: "Fixture/Model".into(),
+            revision: "1".repeat(40),
+            license: "apache-2.0".into(),
+            license_url: "https://www.apache.org/licenses/LICENSE-2.0".into(),
+            gated: false,
+            parameters_b: 0.1,
+            download_bytes: 13,
+            expected_ram_gb: 1,
+            expected_vram_gb: 1,
+            context_tokens: 1024,
+            precision: "BF16 safetensors".into(),
+            speed: "fast".into(),
+            quality: "efficient".into(),
+            cpu_practical: true,
+            files: vec![
+                TrainingCatalogFile {
+                    path: "config.json".into(),
+                    bytes: 6,
+                    sha256: source_sha256(b"config"),
+                },
+                TrainingCatalogFile {
+                    path: "model.safetensors".into(),
+                    bytes: 7,
+                    sha256: source_sha256(b"weights"),
+                },
+            ],
+        }
+    }
 
     #[test]
     fn embedded_worker_is_local_only_and_hash_attestable() {
@@ -1055,5 +1718,111 @@ mod tests {
                     && !file.path.contains(['/', '\\'])
             }));
         }
+    }
+
+    #[test]
+    fn training_download_urls_are_revision_pinned_and_host_locked() {
+        let model = training_catalog().unwrap().remove(0);
+        let file = model
+            .files
+            .iter()
+            .find(|file| file.path == "config.json")
+            .unwrap();
+        assert_eq!(
+            training_model_download_url(&model, file).unwrap().as_str(),
+            format!(
+                "https://huggingface.co/{}/resolve/{}/config.json",
+                model.source_id, model.revision
+            )
+        );
+    }
+
+    #[test]
+    fn training_download_redirects_cannot_leave_the_trusted_host() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 1024];
+            let _ = socket.read(&mut request);
+            socket
+                .write_all(
+                    b"HTTP/1.1 302 Found\r\nLocation: https://example.com/model.safetensors\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+        let client = reqwest::blocking::Client::builder()
+            .redirect(training_model_redirect_policy())
+            .build()
+            .unwrap();
+        let error = client
+            .get(format!("http://{address}/model.safetensors"))
+            .send()
+            .unwrap_err();
+        server.join().unwrap();
+        assert!(error.is_redirect());
+    }
+
+    #[test]
+    fn installed_training_model_verification_detects_tampering() {
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-install-{}", nanoid::nanoid!()));
+        let model_root = root.join("base-models").join("fixture-model");
+        fs::create_dir_all(&model_root).unwrap();
+        fs::write(model_root.join("config.json"), b"config").unwrap();
+        fs::write(model_root.join("model.safetensors"), b"weights").unwrap();
+        let model = fixture_training_model();
+
+        assert_eq!(verify_training_model_files(&root, &model).unwrap(), 13);
+        fs::write(model_root.join("model.safetensors"), b"tampered").unwrap();
+        assert!(verify_training_model_files(&root, &model).is_err());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn verified_training_model_marker_makes_catalog_status_ready() {
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-marker-{}", nanoid::nanoid!()));
+        let model_root = root.join("base-models").join("fixture-model");
+        fs::create_dir_all(&model_root).unwrap();
+        fs::write(model_root.join("config.json"), b"config").unwrap();
+        fs::write(model_root.join("model.safetensors"), b"weights").unwrap();
+        let model = fixture_training_model();
+
+        assert_eq!(
+            training_model_status(&root, model.clone()).status,
+            "repair-required"
+        );
+        write_training_model_marker(&model_root, &model).unwrap();
+        let status = training_model_status(&root, model);
+        assert!(status.installed);
+        assert!(status.verified);
+        assert_eq!(status.installed_bytes, 13);
+        assert_eq!(status.status, "ready");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn training_model_removal_is_bounded_and_idempotent() {
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-remove-{}", nanoid::nanoid!()));
+        let model = fixture_training_model();
+        let model_root = root.join("base-models").join(&model.id);
+        fs::create_dir_all(&model_root).unwrap();
+        fs::write(model_root.join("config.json"), b"config").unwrap();
+        fs::write(model_root.join("model.safetensors"), b"weights").unwrap();
+        write_training_model_marker(&model_root, &model).unwrap();
+        let unrelated = root.join("base-models").join("keep-me");
+        fs::create_dir_all(&unrelated).unwrap();
+        fs::write(unrelated.join("sentinel.txt"), b"safe").unwrap();
+
+        remove_training_model_directory(&root, &model).unwrap();
+        assert!(!model_root.exists());
+        assert_eq!(fs::read(unrelated.join("sentinel.txt")).unwrap(), b"safe");
+        remove_training_model_directory(&root, &model).unwrap();
+
+        let _ = fs::remove_dir_all(root);
     }
 }

@@ -623,6 +623,10 @@ fn run_ordinary(
             model_foundry::model_foundry_export_artifact,
             model_foundry_training::model_foundry_training_worker_status,
             model_foundry_training::model_foundry_training_catalog,
+            model_foundry_training::model_foundry_download_training_model,
+            model_foundry_training::model_foundry_repair_training_model,
+            model_foundry_training::model_foundry_cancel_training_model_download,
+            model_foundry_training::model_foundry_remove_training_model,
             model_foundry_training::model_foundry_install_training_worker,
             jarvis_voice::jarvis_voice_model_path,
             jarvis_voice::jarvis_voice_check_installed,
@@ -829,6 +833,10 @@ model_foundry::model_foundry_duplicate_artifact
 model_foundry::model_foundry_export_artifact
 model_foundry_training::model_foundry_training_worker_status
 model_foundry_training::model_foundry_training_catalog
+model_foundry_training::model_foundry_download_training_model
+model_foundry_training::model_foundry_repair_training_model
+model_foundry_training::model_foundry_cancel_training_model_download
+model_foundry_training::model_foundry_remove_training_model
 model_foundry_training::model_foundry_install_training_worker
 jarvis_voice::jarvis_voice_model_path
 jarvis_voice::jarvis_voice_check_installed

@@ -34,12 +34,12 @@ The current production path is local retrieval knowledge:
    Retrieved text is marked as untrusted data and sent only to the selected
    local Ollama base model.
 
-LoRA, QLoRA, and full fine-tuning remain visibly unavailable until the complete
-verified runtime and model lifecycle is present. VibeSpace ships an embedded,
-hash-attested, local-only worker boundary and an explicit **Set up local
-worker** action. Setup installs only that audited worker source into private
-app data; it does not silently install Python, download packages, or contact a
-cloud service.
+LoRA, QLoRA, and full fine-tuning become selectable only when the installed
+hash-attested local worker explicitly reports that method and the measured
+hardware fits it. VibeSpace ships an embedded, local-only worker boundary and
+an explicit **Set up local worker** action. Setup installs only that audited
+worker source into private app data; it does not silently install Python,
+download packages, or contact a cloud service.
 
 The worker now has three closed commands:
 
@@ -63,10 +63,19 @@ regular artifact file into a versioned manifest before activation. Symlinks,
 unexpected filesystem entries, post-training tampering, unknown methods,
 unregistered model IDs, and non-JSONL weight-training datasets fail closed.
 
-The manifest-driven trainable-base-model download/import, pinned Python
-environment installation, checkpoint resume, and final chat-runtime activation
-are not yet connected. Until those gates are present, the UI continues to keep
-LoRA/QLoRA/full-weight unavailable; no fake training or progress is shown.
+The manifest-driven trainable-base-model lifecycle is connected to the desktop
+wizard. Downloads use revision-pinned official Hugging Face URLs, resume
+partial files, report measured progress, verify every expected byte count and
+SHA-256, and activate the complete directory atomically. Cancellation preserves
+resumable partial data; repair uses rollback-safe replacement; removal is
+confirmed, path-bounded, and denied while a download or training process is
+active. The catalog status is marker-backed for inexpensive display, and the
+full hashes are checked again before every training run.
+
+Pinned Python-environment installation, training-checkpoint resume, and final
+weight-artifact chat-runtime activation are not yet connected. The UI therefore
+enables only capabilities the attested worker can execute and never invents
+training or progress for the remaining gates.
 
 Hardware-aware plans keep LoRA, QLoRA, and full-weight requirements distinct,
 check VRAM/RAM/free storage conservatively, and never downgrade the selected
@@ -114,6 +123,12 @@ revisions, licenses, weight sizes, and weight hashes were revalidated against
 the official Hugging Face API on 2026-08-08. An unknown, gated, unpinned,
 path-bearing, duplicate, or hash-incomplete entry fails the entire catalog
 closed.
+
+The wizard shows the exact source, pinned revision, Apache-2.0 license URL,
+download size, RAM/VRAM guidance, context limit, speed class, quality class,
+CPU practicality, and current install/repair state. Trainable checkpoints are
+kept separate from the Ollama inference catalog and never presented as
+quantized Ollama tags.
 
 ## Persistence and recovery
 
