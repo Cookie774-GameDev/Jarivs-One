@@ -13,19 +13,19 @@ publication, or unmeasured capacity.
 - Current `main` merge base:
   `b8d2a04c930bd984cae3d8f00942581b9e0b9aeb`.
 - Ending verified implementation head:
-  `ee1d30a2a86c86f2e52d83f2a408b646a3cb1050`.
+  `519c12666c14d1997b41b72fc30cf10f1c878899`.
 - Branch: `agent/pr30-fixes-and-updates`.
 - Pull request: #31, open and draft.
 - The evidence-report commit is documentation-only and follows the verified
   implementation head above.
 
 At the ending implementation head, the exact committed path manifest contains
-1,400 rows: 932 additions, 467 modifications, and one deletion. It is
+1,402 rows: 932 additions, 469 modifications, and one deletion. It is
 reproducible without relying on this prose:
 
 ```powershell
-$base = git merge-base origin/main ee1d30a2a86c86f2e52d83f2a408b646a3cb1050
-git diff --name-status "$base..ee1d30a2a86c86f2e52d83f2a408b646a3cb1050"
+$base = git merge-base origin/main 519c12666c14d1997b41b72fc30cf10f1c878899
+git diff --name-status "$base..519c12666c14d1997b41b72fc30cf10f1c878899"
 ```
 
 The compact slice-to-path ledger is
@@ -51,11 +51,19 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
 | Local chat qualification | Live llama3.2 testing exposed capped modes, fabricated tool completion, false leak quarantine, stale multitask status, and native Browser Chat host lifecycle defects        | Preserved provider-specific budgets, emitted canonical approval-gated actions, made leak checks intent-sensitive, synchronized live child status, and stabilized the isolated provider host                      | **VERIFIED LOCALLY**                             |
 | MCP gateway              | The release report lacked direct proof for the existing permissioned MCP discovery and invocation boundary                                                                   | Verified endpoint authorization, schema discovery, account-scoped routing, explicit mutation approval, cancellation, backpressure, credential rejection, and safe result normalization                           | **VERIFIED LOCALLY**                             |
 | Build Your Own AI        | Local RAG existed without a complete recoverable weight-training lifecycle                                                                                                   | Added a verified local-only LoRA/QLoRA/full worker, pinned trainable-model lifecycle, artifact integrity checks, and safe resume from the latest direct Trainer checkpoint; media extraction remains unavailable | **IMPLEMENTED — ENVIRONMENT GATES REMAIN**       |
+| Ollama startup lifecycle | AuthGate's mount-time discovery had no unmount cancellation, and the retry delay accessed `window` after Linux Vitest tore down the browser environment                      | Bound discovery to the effect lifetime and made retry delays runtime-neutral, abort-settled, and listener-clean                                                                                                  | **VERIFIED LOCALLY**                             |
 
 ## 3. Tests and results
 
 ### Clean committed-head automation
 
+- Exact-head AI boundary workflow `31274015512` at `519c126`: **VERIFIED**.
+- Exact-head CI workflow `31274015527` at `519c126`:
+  - Linux Rust `cargo check`: **VERIFIED**.
+  - frontend TypeScript: **VERIFIED**.
+  - production Vite build: **VERIFIED**.
+  - full Vitest, including account-identity teardown: **VERIFIED**.
+  - release-manifest gate: **VERIFIED**.
 - Exact-head AI boundary workflow `31249314292`: **VERIFIED**.
 - Exact-head CI workflow `31249314300`:
   - Linux Rust `cargo check`: **VERIFIED**.
@@ -98,7 +106,9 @@ and `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
   passed and `cargo test --lib` passed 256 tests with 8 intentional ignores
   and zero failures.
 - Exact-head local frontend gate: TypeScript, complete Vitest, production Vite
-  build, and all 44 release-manifest tests passed at `ee1d30a`.
+  build, and all 44 release-manifest tests passed; the focused Ollama lifecycle
+  correction then passed 33/33 focused tests and the complete Vitest gate at
+  `519c126`.
 - VibeSpace MCP live gate: Cloudflare Worker health/config/OAuth metadata
   return 200; hostile origin returns 403; anonymous MCP and relay requests
   return 401; the active deployment is 100% version
@@ -296,6 +306,7 @@ rewriting history. Recent rollback points are:
 
 - `fc623ce` — capability-snapshot authority test reconciliation;
 - `ee1d30a` — Browser Chat native command-authority reconciliation;
+- `519c126` — cancel-safe Ollama bootstrap lifecycle;
 - `e60724d` — live multitask status reconciliation;
 - `2d5c1ab` — truthful local chat tool execution;
 - `5e239d0` — isolated Browser Chat native host stabilization;
