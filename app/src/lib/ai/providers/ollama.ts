@@ -26,12 +26,13 @@
  * rejects path traversal, shell metacharacters, and other injection
  * vectors before any network call is made.
  */
-import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
+import type { LLMContentPart, LLMMessage, LLMProvider, LLMRequest, LLMResponse } from '../types';
 import { estimateCost, estimateInputTokens, llmContentToText, observeResponseBody } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 import { nativeFetch } from '@/lib/nativeFetch';
 import { isTauri } from '@/lib/utils';
+import { ollamaModelSupportsVision } from '../vision';
 import {
   localAgentSystemInstruction,
   localOllamaRequestPolicy,
@@ -325,26 +326,133 @@ export function buildOllamaSystemPrompt(agentPrompt: string | undefined): string
   return base ? `${OLLAMA_JARVIS_STYLE_PROMPT}\n\n${base}` : OLLAMA_JARVIS_STYLE_PROMPT;
 }
 
+export type OllamaNativeChatMessage = {
+  role: string;
+  content: string;
+  /** Raw base64 images without data: prefix — Ollama /api/chat schema. */
+  images?: string[];
+};
+
+export type OllamaOpenAiChatMessage = {
+  role: string;
+  content:
+    | string
+    | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+};
+
+function stripDataUrlBase64(data: string): string {
+  const trimmed = data.trim();
+  const comma = trimmed.indexOf(',');
+  if (trimmed.startsWith('data:') && comma !== -1) return trimmed.slice(comma + 1);
+  return trimmed;
+}
+
+function collectImageParts(
+  content: LLMMessage['content'],
+): Extract<LLMContentPart, { type: 'image' }>[] {
+  if (typeof content === 'string') return [];
+  return content.filter(
+    (part): part is Extract<LLMContentPart, { type: 'image' }> =>
+      part.type === 'image' && part.mimeType.startsWith('image/'),
+  );
+}
+
+/**
+ * Pure Ollama /api/chat message builder.
+ * Vision models get real base64 `images[]`; text-only models never claim sight.
+ */
+export function toOllamaNativeMessages(
+  messages: readonly LLMMessage[],
+  options: { vision: boolean },
+): OllamaNativeChatMessage[] {
+  return messages.map((message) => {
+    if (!options.vision) {
+      return {
+        role: message.role,
+        content: llmContentToText(message.content),
+      };
+    }
+    const images = collectImageParts(message.content)
+      .map((part) => stripDataUrlBase64(part.data))
+      .filter(Boolean);
+    const text = llmContentToText(
+      typeof message.content === 'string'
+        ? message.content
+        : message.content.filter((part) => part.type === 'text'),
+    );
+    if (images.length === 0) {
+      return { role: message.role, content: text || llmContentToText(message.content) };
+    }
+    return {
+      role: message.role,
+      content: text.trim() || 'Describe the attached image(s).',
+      images,
+    };
+  });
+}
+
+/** OpenAI-compatible multimodal shape for Ollama's `/v1/chat/completions`. */
+export function toOllamaOpenAiMessages(
+  messages: readonly LLMMessage[],
+  options: { vision: boolean },
+): OllamaOpenAiChatMessage[] {
+  return messages.map((message) => {
+    if (!options.vision || typeof message.content === 'string') {
+      return {
+        role: message.role,
+        content:
+          typeof message.content === 'string' ? message.content : llmContentToText(message.content),
+      };
+    }
+    const images = collectImageParts(message.content);
+    if (images.length === 0) {
+      return { role: message.role, content: llmContentToText(message.content) };
+    }
+    const parts: Array<
+      { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
+    > = [];
+    for (const part of message.content) {
+      if (part.type === 'text' && part.text.trim()) {
+        parts.push({ type: 'text', text: part.text });
+      } else if (part.type === 'image') {
+        const data = stripDataUrlBase64(part.data);
+        parts.push({
+          type: 'image_url',
+          image_url: { url: `data:${part.mimeType};base64,${data}` },
+        });
+      }
+    }
+    if (!parts.some((part) => part.type === 'text')) {
+      parts.unshift({ type: 'text', text: 'Describe the attached image(s).' });
+    }
+    return { role: message.role, content: parts };
+  });
+}
+
 export function buildOllamaRequestBody(
   req: LLMRequest,
   model = req.agent.model.model || OLLAMA_DEFAULT_MODEL,
 ) {
   const mode = readLocalAgentPreferences().mode;
   const policy = localOllamaRequestPolicy(mode);
+  const vision = ollamaModelSupportsVision(model);
   const baseSystemPrompt = req.systemPrompt ?? buildOllamaSystemPrompt(req.agent.system_prompt);
   const systemPrompt =
     req.systemPrompt === undefined
       ? `${baseSystemPrompt}\n\n${localAgentSystemInstruction(mode)}`
       : baseSystemPrompt;
+  const history = compactOllamaMessages(req.messages);
   return {
     model,
     messages: [
       { role: 'system' as const, content: systemPrompt },
-      ...compactOllamaMessages(req.messages).map((message) => ({
-        role: message.role,
-        content: llmContentToText(message.content),
-      })),
-    ],
+      ...toOllamaNativeMessages(history, { vision }),
+    ] as OllamaNativeChatMessage[],
+    openAiMessages: [
+      { role: 'system' as const, content: systemPrompt },
+      ...toOllamaOpenAiMessages(history, { vision }),
+    ] as OllamaOpenAiChatMessage[],
+    vision,
     stream: true,
     think: policy.think,
     keep_alive: OLLAMA_CHAT_KEEP_ALIVE,
@@ -1408,12 +1516,22 @@ export const ollamaProvider: LLMProvider = {
       };
     }
 
+    // Browser / OpenAI-compatible path: multimodal uses content parts, not
+    // Ollama's native `images[]` field alone.
+    const openAiBody = {
+      model: body.model,
+      messages: body.openAiMessages,
+      stream: true,
+      temperature: body.options.temperature,
+      max_tokens: body.options.num_predict,
+    };
+
     let res: Response;
     try {
       res = await nativeFetch(`${base}/v1/chat/completions`, {
         method: 'POST',
         headers: ollamaHeaders({ 'content-type': 'application/json' }),
-        body: JSON.stringify(body),
+        body: JSON.stringify(openAiBody),
         signal: req.signal,
         timeoutMs: 120_000,
       });

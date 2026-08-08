@@ -12,6 +12,7 @@ import {
   runLegacyNativeOllamaChat,
   runNativeOllamaChat,
   runReliableNativeOllamaChat,
+  toOllamaNativeMessages,
   verifyOllamaModelChat,
 } from './ollama';
 
@@ -232,14 +233,10 @@ describe('ollama provider utilities', () => {
       }
       if (url.includes('/v1/chat/completions')) {
         const body = JSON.parse(String(init?.body));
-        expect(body.keep_alive).toBe('15m');
-        expect(body.think).toBe(false);
-        expect(body.options).toMatchObject({
-          num_ctx: 4096,
-          num_predict: 512,
-          repeat_penalty: 1.18,
-          top_p: 0.9,
-        });
+        // Browser path uses OpenAI-compatible body (native path keeps Ollama options).
+        expect(body.max_tokens).toBe(512);
+        expect(typeof body.temperature).toBe('number');
+        expect(Array.isArray(body.messages)).toBe(true);
         return Promise.resolve(
           sseResponse([
             { choices: [{ delta: { content: 'Done.' } }] },
@@ -270,6 +267,69 @@ describe('ollama provider utilities', () => {
     });
 
     expect(response.text).toBe('Done.');
+  });
+
+  it('sends real image bytes on vision models and never reduces them to [Image:] text', () => {
+    writeLocalAgentPreferences({ mode: 'fast', cloudEscalationEnabled: false });
+    const multimodal = [
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'text' as const, text: 'What is this?' },
+          {
+            type: 'image' as const,
+            data: 'aW1hZ2UtYnl0ZXM=',
+            mimeType: 'image/png',
+            name: 'shot.png',
+          },
+        ],
+      },
+    ];
+    const native = toOllamaNativeMessages(multimodal, { vision: true });
+    expect(native[0]?.images).toEqual(['aW1hZ2UtYnl0ZXM=']);
+    expect(native[0]?.content).toBe('What is this?');
+    expect(JSON.stringify(native)).not.toMatch(/\[Image:/);
+
+    const body = buildOllamaRequestBody(
+      {
+        agent: {
+          id: 'agent_jarvis' as any,
+          slug: 'jarvis',
+          name: 'Jarvis',
+          description: '',
+          system_prompt: 'You are Jarvis.',
+          model: { provider: 'ollama', model: 'llava:latest' },
+          tools_allowed: [],
+          memory_scope: 'workspace',
+          capabilities: [],
+          created_at: 1,
+          updated_at: 1,
+        },
+        messages: multimodal,
+      },
+      'llava:latest',
+    );
+    const user = body.messages.find((message) => message.role === 'user');
+    expect(user?.images).toEqual(['aW1hZ2UtYnl0ZXM=']);
+    expect(JSON.stringify(body.messages)).not.toMatch(/\[Image:/);
+    expect(body.vision).toBe(true);
+  });
+
+  it('keeps text-only local models honest by not shipping images[]', () => {
+    const native = toOllamaNativeMessages(
+      [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Hi' },
+            { type: 'image', data: 'abc', mimeType: 'image/png', name: 'x.png' },
+          ],
+        },
+      ],
+      { vision: false },
+    );
+    expect(native[0]?.images).toBeUndefined();
+    expect(native[0]?.content).toContain('[Image:');
   });
 
   it('returns native Ollama text through reliable Tauri IPC instead of event-only delivery', async () => {
@@ -364,10 +424,10 @@ describe('ollama provider utilities', () => {
   });
 
   it('uses the authoritative IPC result when WebView stream events are missed', async () => {
-    const listen = async <T>(
-      _event: string,
-      _handler: (event: { payload: T }) => void,
-    ): Promise<() => void> => () => undefined;
+    const listen =
+      async <T>(_event: string, _handler: (event: { payload: T }) => void): Promise<() => void> =>
+      () =>
+        undefined;
     const invoke = async <T>(): Promise<T> =>
       ({
         text: 'Delivered through IPC.',

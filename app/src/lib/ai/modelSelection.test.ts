@@ -12,6 +12,7 @@ import {
   validateChatModelSelection,
   validateSendModelAccess,
 } from './modelSelection';
+import { syncDiscoveredOllamaModels } from './models';
 import type { Agent } from '@/types';
 import type { ProviderCapabilities } from './adapters/types';
 import {
@@ -316,7 +317,8 @@ describe('modelSelection', () => {
     }
   });
 
-  it('blocks local image attachments until local multimodal payloads are implemented', () => {
+  it('allows local image attachments for vision-capable Ollama models', () => {
+    syncDiscoveredOllamaModels(['llama3.2-vision']);
     const ctx = {
       apiKeys: {},
       offlineMode: true,
@@ -327,6 +329,24 @@ describe('modelSelection', () => {
     const send = validateSendModelAccess('describe this', selection, ctx, [], {
       attachments: { hasImages: true },
     });
+    expect(send.ok).toBe(true);
+  });
+
+  it('blocks local image attachments for text-only Ollama models', () => {
+    syncDiscoveredOllamaModels(['llama3.2:1b']);
+    const ctx = {
+      apiKeys: {},
+      offlineMode: true,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2:1b',
+    };
+    const selection = selectionFromOption('ollama', 'llama3.2:1b');
+    const send = validateSendModelAccess('describe this', selection, ctx, [], {
+      attachments: { hasImages: true },
+    });
     expect(send.ok).toBe(false);
+    if (!send.ok) {
+      expect(send.message).toMatch(/local model cannot process images|vision-capable/i);
+    }
   });
 });

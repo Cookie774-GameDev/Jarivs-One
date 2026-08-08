@@ -194,6 +194,8 @@ describe('provider capability catalog', () => {
     }
     expect(getProviderConnectionDescriptor('ollama-local').capabilities).toEqual({
       ...native,
+      images: true,
+      files: true,
       localOnly: true,
     });
     expect(() => getProviderConnectionDescriptor('missing')).toThrowError(
