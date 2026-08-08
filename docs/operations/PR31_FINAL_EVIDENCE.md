@@ -197,13 +197,24 @@ Required remaining evidence:
   configuration now uses committed templates and current `[local_smtp]`
   authority.
 
-The connected cloud project observed during this goal presented AccessRevamp
-identity/schema evidence, not proven VibeSpace production identity. It was not
-mutated. The isolated local stack then remained blocked by a Docker Desktop
-overlayfs/containerd input/output error and HTTP 500 container API after the
-system drive had reached 2.26 GB free. One bounded restart did not recover the
-backend. No migrations or capacity stages ran, so no real capacity numbers are
-claimed.
+Read-only authenticated revalidation on 2026-08-08 separated the visible
+projects without linking or mutation:
+
+- `tipeobvisjqvpbzcpckh` is the repository-pinned VibeSpace issuer and exposes
+  16 active VibeSpace functions spanning model manifests, checkout/portal,
+  Stripe webhook, voice, messages, calls, SMS, promotion, and stack completion.
+- `vbkkimvedmklebghtkzs` exposes only
+  `accessrevamp-runtime-health` and remains explicitly excluded.
+- `rfyotrplgfsabjgkqofw` is inactive and exposes no functions.
+
+This proves the VibeSpace Supabase project identity used by the committed MCP
+and backend integration, but does not prove that it is an isolated test target,
+that all 39 migrations and 27 local function directories are deployed there,
+or that its Stripe secrets/catalog reconcile to the intended VibeSpace Stripe
+account. The project has no preview branches. The isolated local stack remains
+blocked because Docker Desktop's Linux engine is unavailable. No project was
+linked; no branch, migration, function, secret, data, or configuration was
+created or changed, and no real capacity numbers are claimed.
 
 Status: **IMPLEMENTED — EXTERNAL VERIFICATION REQUIRED**
 
@@ -278,10 +289,10 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 
 - Complete the one-time ChatGPT **VibeSpace MCP** OAuth approval after every
   other locally actionable task; silent connector installation is unsupported.
-- Connect and identify the authoritative VibeSpace Supabase project.
 - Connect and identify the authoritative VibeSpace Stripe account.
-- Authorize isolated test-mode migrations, Edge Function deployment, Stripe
-  products/prices, webhooks, and lifecycle tests.
+- Supply or authorize an isolated VibeSpace Supabase test target (the verified
+  project has no preview branch), then authorize test-mode migrations, Edge
+  Function deployment, Stripe products/prices, webhooks, and lifecycle tests.
 - Supply provider/OAuth/GitHub App/Telnyx configuration where those live
   integrations are required.
 - Supply a Windows code-signing certificate and approved signing environment.
@@ -291,7 +302,8 @@ Status: **BLOCKED — OWNER ACTION REQUIRED**
 
 ### Remains release-blocking
 
-- VibeSpace Supabase and Stripe production/test identity is unproven.
+- VibeSpace Stripe account identity and an isolated Supabase test target remain
+  unproven.
 - Real Supabase capacity and operator metrics are not measured.
 - A new signed/AV-scanned Windows PR31 artifact is absent.
 - The protected installer deletion is unresolved.
