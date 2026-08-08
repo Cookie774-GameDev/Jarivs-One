@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, vi } from 'vitest';
+import type { Agent } from '@/types/agent';
 import { useAuthStore } from '@/stores/auth';
 import { _resetNativeFetchForTests } from '@/lib/nativeFetch';
 import { writeLocalAgentPreferences } from '../localAgentRuntime';
@@ -619,7 +620,7 @@ describe('ollama provider utilities', () => {
     expect(body.options.num_predict).toBe(2_048);
   });
 
-  it('never lets a caller exceed the selected mode output cap', () => {
+  it('never lets an explicit per-turn budget exceed the bounded Ollama output cap', () => {
     const body = buildOllamaRequestBody({
       agent: {
         id: 'agent_jarvis' as any,
@@ -638,7 +639,46 @@ describe('ollama provider utilities', () => {
       max_output_tokens: 50_000,
     });
 
-    expect(body.options.num_predict).toBe(512);
+    expect(body.options.num_predict).toBe(8_192);
+    expect(body.options.num_ctx).toBe(16_384);
+  });
+
+  it('honors distinct explicit token-mode budgets without changing the local default mode', () => {
+    const agent = {
+      id: 'agent_jarvis' as any,
+      slug: 'jarvis',
+      name: 'Jarvis',
+      description: '',
+      system_prompt: '',
+      model: { provider: 'ollama', model: 'llama3.2:latest' },
+      tools_allowed: [],
+      memory_scope: 'workspace' as const,
+      capabilities: [],
+      created_at: 1,
+      updated_at: 1,
+    } satisfies Agent;
+
+    const saver = buildOllamaRequestBody({
+      agent,
+      messages: [{ role: 'user', content: 'Answer concisely.' }],
+      max_output_tokens: 512,
+    });
+    const normal = buildOllamaRequestBody({
+      agent,
+      messages: [{ role: 'user', content: 'Answer normally.' }],
+      max_output_tokens: 2_000,
+    });
+    const finalBoss = buildOllamaRequestBody({
+      agent,
+      messages: [{ role: 'user', content: 'Plan, execute, and verify.' }],
+      max_output_tokens: 8_192,
+    });
+
+    expect(saver.options.num_predict).toBe(512);
+    expect(normal.options.num_predict).toBe(2_000);
+    expect(finalBoss.options.num_predict).toBe(8_192);
+    expect(saver.options.num_ctx).toBeLessThan(normal.options.num_ctx);
+    expect(normal.options.num_ctx).toBeLessThan(finalBoss.options.num_ctx);
   });
 
   it('sends the exact protected system prompt and observes body bytes before text', async () => {

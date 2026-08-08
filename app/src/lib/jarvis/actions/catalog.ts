@@ -1732,6 +1732,41 @@ function validateMcpInvokeParameters(
   return validated;
 }
 
+function validateProjectFileParameters(
+  input: Readonly<Record<string, unknown>>,
+  operation: 'read' | 'create' | 'edit',
+): Readonly<Record<string, unknown>> {
+  const label = `files.${operation} parameters`;
+  const record = plainRecord(input, label);
+  const allowed =
+    operation === 'create'
+      ? ['path', 'content', 'root', 'attachToChat']
+      : operation === 'edit'
+        ? ['path', 'content', 'root']
+        : ['path', 'root'];
+  assertExactKeys(record, allowed, label);
+  const path = nonblank(record.path, `${label}.path`);
+  if (path.length > 32_768) catalogError(`${label}.path is too long`);
+  const validated: Record<string, unknown> = { path };
+  if (record.root !== undefined) {
+    const root = nonblank(record.root, `${label}.root`);
+    if (root.length > 32_768) catalogError(`${label}.root is too long`);
+    validated.root = root;
+  }
+  if (operation !== 'read') {
+    if (typeof record.content !== 'string') catalogError(`${label}.content must be a string`);
+    if (record.content.length > 1_048_576) catalogError(`${label}.content is too large`);
+    validated.content = record.content;
+  }
+  if (operation === 'create' && record.attachToChat !== undefined) {
+    if (typeof record.attachToChat !== 'boolean') {
+      catalogError(`${label}.attachToChat must be boolean`);
+    }
+    validated.attachToChat = record.attachToChat;
+  }
+  return validated;
+}
+
 export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
   readonly JarvisRegisteredActionDefinition[]
 >([
@@ -1757,6 +1792,96 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
     credentialBindings: [],
     validateParameters: (input: Readonly<Record<string, unknown>>) => ({ ...input }),
     deriveTarget: () => ({ kind: 'app_resource', namespace: 'files', resourceId: 'search-index' }),
+  },
+  {
+    id: 'files.read',
+    version: 1,
+    title: 'Read project file',
+    description: 'Read one bounded text-file sample inside an allowed project root.',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string' }, root: { type: 'string' } },
+      required: ['path'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['files.read'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'always',
+    expectedEffect: 'Reads one user-approved bounded text-file sample.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'files.read' },
+    credentialBindings: [],
+    validateParameters: (input) => validateProjectFileParameters(input, 'read'),
+    deriveTarget: ({ params }) => ({
+      kind: 'app_resource',
+      namespace: 'files',
+      resourceId: String(params.path),
+    }),
+  },
+  {
+    id: 'files.create',
+    version: 1,
+    title: 'Create project file',
+    description: 'Create one text file without overwriting inside an allowed project root.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        content: { type: 'string' },
+        root: { type: 'string' },
+        attachToChat: { type: 'boolean' },
+      },
+      required: ['path', 'content'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['files.write'],
+    requiredEntitlements: [],
+    risk: 'safe-write',
+    approval: 'always',
+    expectedEffect: 'Creates one user-approved text file without overwriting.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'files.create' },
+    credentialBindings: [],
+    validateParameters: (input) => validateProjectFileParameters(input, 'create'),
+    deriveTarget: ({ params }) => ({
+      kind: 'app_resource',
+      namespace: 'files',
+      resourceId: String(params.path),
+    }),
+  },
+  {
+    id: 'files.edit',
+    version: 1,
+    title: 'Replace project file',
+    description: 'Replace one existing text file inside an allowed project root.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        content: { type: 'string' },
+        root: { type: 'string' },
+      },
+      required: ['path', 'content'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['files.write'],
+    requiredEntitlements: [],
+    risk: 'safe-write',
+    approval: 'always',
+    expectedEffect: 'Replaces one existing user-approved text file.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'files.edit' },
+    credentialBindings: [],
+    validateParameters: (input) => validateProjectFileParameters(input, 'edit'),
+    deriveTarget: ({ params }) => ({
+      kind: 'app_resource',
+      namespace: 'files',
+      resourceId: String(params.path),
+    }),
   },
   {
     id: 'github.identity',
@@ -2332,6 +2457,40 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
         resourceId: `${validated.serverId}.${validated.toolName}`,
       };
     },
+  },
+  {
+    id: 'creator.start',
+    version: 1,
+    title: 'Open Make with Jarvis',
+    description: 'Open the bounded agent or skill creator; saving remains an explicit user action.',
+    inputSchema: {
+      type: 'object',
+      properties: { kind: { type: 'string', enum: ['agent', 'skill'] } },
+      required: ['kind'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['creator.open'],
+    requiredEntitlements: [],
+    risk: 'safe-write',
+    approval: 'always',
+    expectedEffect: 'Opens the selected creator without saving or running generated content.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'creator.start' },
+    credentialBindings: [],
+    validateParameters: (input) => {
+      const record = plainRecord(input, 'creator.start parameters');
+      assertExactKeys(record, ['kind'], 'creator.start parameters');
+      if (record.kind !== 'agent' && record.kind !== 'skill') {
+        catalogError('creator.start parameters.kind is invalid');
+      }
+      return { kind: record.kind };
+    },
+    deriveTarget: ({ params }) => ({
+      kind: 'app_resource',
+      namespace: 'creator',
+      resourceId: String(params.kind),
+    }),
   },
   {
     id: 'terminal.create',

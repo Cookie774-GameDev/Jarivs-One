@@ -6,11 +6,16 @@ import type {
 import { validateJarvisResponseEnvelope } from '@/lib/jarvis/contracts';
 import type { Part } from '@/types';
 import { parseActionBlocks } from '@/lib/actions';
+import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisQuestionBlocks } from '@/features/jarvis-interaction/questionParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
-import { lintJarvisProse, type JarvisLintViolation } from './linter';
+import {
+  containsProtectedInformationDisclosure,
+  lintJarvisProse,
+  type JarvisLintViolation,
+} from './linter';
 import {
   classifyJarvisResponseMode,
   hasProviderOnlyTerminalState,
@@ -81,14 +86,7 @@ function sanitizeProse(prose: string): {
   violations: readonly JarvisLintViolation[];
 } {
   const placeholders = prose.match(/\uE000JARVIS_REGION_\d+\uE001/g) ?? [];
-  if (
-    /\b(system prompt|hidden (?:prompt|instructions?)|developer message|chain of thought)\b/i.test(
-      prose,
-    ) ||
-    /\b(?:send|share|provide|reveal|enter)\b[\s\S]{0,80}\b(?:password|api key|token|credential|secret)\b/i.test(
-      prose,
-    )
-  ) {
+  if (containsProtectedInformationDisclosure(prose)) {
     return {
       prose: [QUARANTINED_RESPONSE_TEMPLATE, ...placeholders].join('\n\n'),
       violations: [
@@ -244,7 +242,7 @@ function convertTextParts(
 
 function validatedParts(
   displayText: string,
-  request: Readonly<Pick<JarvisRequestEnvelope, 'requestId' | 'outputContract'>>,
+  request: Readonly<Pick<JarvisRequestEnvelope, 'requestId' | 'userText' | 'outputContract'>>,
 ): Part[] {
   let parts = textParts(displayText);
   let actionIndex = 0;
@@ -328,6 +326,31 @@ function validatedParts(
       });
       return { converted: parsed.hasActionBlocks, parts: converted };
     });
+    if (parts.every((part) => part.kind === 'text')) {
+      const fallbackProposals = inferFallbackActionProposals(request.userText, displayText);
+      if (fallbackProposals.length > 0) {
+        const actionLabel = fallbackProposals
+          .map(({ action_id, rationale }) => rationale?.trim() || action_id)
+          .join(' ');
+        return [
+          {
+            kind: 'text',
+            text: formatJarvisVerifiedNarration({
+              kind: 'approval_required',
+              actionLabel,
+            }).text,
+          },
+          ...fallbackProposals.map<Part>((proposal) => ({
+            kind: 'action_proposal',
+            call_id: proposal.call_id,
+            action_id: proposal.action_id,
+            params: proposal.params,
+            rationale: proposal.rationale,
+            status: 'pending',
+          })),
+        ];
+      }
+    }
   }
   const nonEmptyParts = parts.length > 0 ? parts : textParts(displayText);
   return nonEmptyParts.map((part) => withoutUndefined(part) as Part);

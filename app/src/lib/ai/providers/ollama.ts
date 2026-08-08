@@ -283,6 +283,8 @@ export async function runReliableNativeOllamaChat(
 
 const OLLAMA_CHAT_KEEP_ALIVE = '15m';
 const OLLAMA_CHAT_NUM_CTX = 4096;
+const OLLAMA_CHAT_MAX_NUM_CTX = 16_384;
+const OLLAMA_CHAT_MAX_NUM_PREDICT = 8_192;
 const OLLAMA_CHAT_REPEAT_PENALTY = 1.18;
 const OLLAMA_CHAT_TOP_P = 0.9;
 const OLLAMA_CHAT_DEFAULT_TEMPERATURE = 0.45;
@@ -295,10 +297,16 @@ function ollamaChatTemperature(req: LLMRequest): number {
 
 function ollamaChatOptions(req: LLMRequest, mode: LocalAgentMode): Record<string, number> {
   const policy = localOllamaRequestPolicy(mode);
+  const numPredict =
+    req.max_output_tokens === undefined
+      ? policy.numPredict
+      : Math.min(req.max_output_tokens, OLLAMA_CHAT_MAX_NUM_PREDICT);
+  const numCtx =
+    numPredict <= 512 ? OLLAMA_CHAT_NUM_CTX : numPredict <= 2_048 ? 8_192 : OLLAMA_CHAT_MAX_NUM_CTX;
   return {
     temperature: ollamaChatTemperature(req),
-    num_ctx: OLLAMA_CHAT_NUM_CTX,
-    num_predict: Math.min(req.max_output_tokens ?? policy.numPredict, policy.numPredict),
+    num_ctx: numCtx,
+    num_predict: numPredict,
     repeat_penalty: OLLAMA_CHAT_REPEAT_PENALTY,
     top_p: OLLAMA_CHAT_TOP_P,
   };

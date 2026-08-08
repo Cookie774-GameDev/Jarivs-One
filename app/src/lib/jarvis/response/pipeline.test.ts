@@ -560,6 +560,46 @@ describe('processJarvisResponse', () => {
     expect(result.enforcement.fallbackUsed).toBe(true);
   });
 
+  it('does not quarantine a harmless conceptual mention of protected prompt terminology', async () => {
+    const repair = { repair: vi.fn(async (input) => input.prose) };
+    const result = await processJarvisResponse(
+      raw(
+        'The system prompt is not part of the sync protocol. The protocol uses version vectors and authenticated encryption.',
+      ),
+      request(),
+      repair,
+    );
+
+    expect(result.displayText).toContain('system prompt is not part of the sync protocol');
+    expect(result.displayText).not.toMatch(/invalid model reply|retry/i);
+    expect(result.enforcement.violations).not.toContain('protected_information_leak');
+  });
+
+  it('replaces simulated terminal prose with a real approval-gated action proposal', async () => {
+    const result = await processJarvisResponse(
+      raw("I'll simulate the output of Get-Location: PS C:\\Users\\viper\\Downloads"),
+      request({ userText: 'Open a terminal and run Get-Location.' }),
+      { repair: vi.fn(async (input) => input.prose) },
+    );
+
+    expect(result.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'action_proposal',
+          action_id: 'terminal.run',
+          params: { command: 'Get-Location' },
+          status: 'pending',
+        }),
+      ]),
+    );
+    expect(
+      result.parts
+        .filter((part) => part.kind === 'text')
+        .map((part) => part.text)
+        .join(' '),
+    ).not.toMatch(/simulate|PS C:\\Users\\viper\\Downloads/i);
+  });
+
   it('keeps malformed action bytes non-executable and exposes only safe violation codes', async () => {
     const malformed = '```action\n{"id":\n```';
     const result = await processJarvisResponse(raw(malformed), request(), { repair: vi.fn() });

@@ -60,6 +60,9 @@ describe('Jarvis action catalog', () => {
       })),
     ).toEqual([
       { id: 'file.search', risk: 'read-only', approval: 'never' },
+      { id: 'files.read', risk: 'read-only', approval: 'always' },
+      { id: 'files.create', risk: 'safe-write', approval: 'always' },
+      { id: 'files.edit', risk: 'safe-write', approval: 'always' },
       { id: 'github.identity', risk: 'read-only', approval: 'never' },
       { id: 'github.repository.read', risk: 'read-only', approval: 'never' },
       { id: 'github.issue.read', risk: 'read-only', approval: 'never' },
@@ -115,10 +118,70 @@ describe('Jarvis action catalog', () => {
       { id: 'browser.type', risk: 'external-side-effect', approval: 'always' },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
+      { id: 'creator.start', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
       { id: 'task.cancel', risk: 'destructive', approval: 'always' },
     ]);
+  });
+
+  it('registers bounded project-file actions behind explicit approval', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const read = catalog.resolve('files.read');
+    const create = catalog.resolve('files.create');
+    const edit = catalog.resolve('files.edit');
+
+    expect(read).toMatchObject({
+      requiredCapabilities: ['files.read'],
+      risk: 'read-only',
+      approval: 'always',
+      executor: { kind: 'builtin', registryActionId: 'files.read' },
+    });
+    expect(create).toMatchObject({
+      requiredCapabilities: ['files.write'],
+      risk: 'safe-write',
+      approval: 'always',
+      executor: { kind: 'builtin', registryActionId: 'files.create' },
+    });
+    expect(edit).toMatchObject({
+      requiredCapabilities: ['files.write'],
+      risk: 'safe-write',
+      approval: 'always',
+      executor: { kind: 'builtin', registryActionId: 'files.edit' },
+    });
+    expect(read?.validateParameters({ path: 'C:\\safe\\input.txt' })).toEqual({
+      path: 'C:\\safe\\input.txt',
+    });
+    expect(
+      create?.validateParameters({
+        path: 'C:\\safe\\output.txt',
+        content: 'hello',
+        attachToChat: true,
+      }),
+    ).toEqual({
+      path: 'C:\\safe\\output.txt',
+      content: 'hello',
+      attachToChat: true,
+    });
+    expect(() => read?.validateParameters({ path: 'C:\\safe\\input.txt', secret: 'x' })).toThrow(
+      /unknown fields/i,
+    );
+  });
+
+  it('registers the bounded agent and skill creator launcher behind approval', () => {
+    const creator = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'creator.start',
+    );
+
+    expect(creator).toMatchObject({
+      requiredCapabilities: ['creator.open'],
+      risk: 'safe-write',
+      approval: 'always',
+      executor: { kind: 'builtin', registryActionId: 'creator.start' },
+    });
+    expect(creator?.validateParameters({ kind: 'agent' })).toEqual({ kind: 'agent' });
+    expect(creator?.validateParameters({ kind: 'skill' })).toEqual({ kind: 'skill' });
+    expect(() => creator?.validateParameters({ kind: 'terminal' })).toThrow(/kind/i);
   });
 
   it('publishes only fixed browser operations behind canonical review bindings', () => {

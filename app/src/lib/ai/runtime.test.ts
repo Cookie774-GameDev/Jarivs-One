@@ -1887,6 +1887,83 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
+  it('recovers an approval proposal when a tiny local model emits malformed action JSON', async () => {
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_malformed_action_fallback' as ChatId;
+    const placeholderId = 'msg_malformed_action_fallback_assistant' as MessageId;
+    const updateMessage = vi.fn(async () => undefined);
+    const userMessage: Message = {
+      id: 'msg_malformed_action_fallback_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [
+        {
+          kind: 'text',
+          text: 'Write a note to "C:\\Users\\viper\\Downloads\\jarvis-note.txt" that says verified.',
+        },
+      ],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.runAgent.mockResolvedValueOnce({
+      text: [
+        'Done.',
+        '```action',
+        "{ id: 'files.write', params: { path: 'C:\\\\Users\\\\viper\\\\Downloads\\\\jarvis-note.txt' } }",
+        '```',
+      ].join('\n'),
+      usage: { input_tokens: 1, output_tokens: 12, cost_usd: 0 },
+      provider: 'ollama',
+      model: 'llama3.2:latest',
+    });
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Write a note to "C:\\Users\\viper\\Downloads\\jarvis-note.txt" that says verified.',
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(updateMessage).toHaveBeenCalled());
+    const updateCalls = updateMessage.mock.calls as unknown as Array<
+      [MessageId, { parts: Part[] }]
+    >;
+    const finalWrite = updateCalls[updateCalls.length - 1]?.[1];
+    if (!finalWrite) throw new Error('expected a final assistant message write');
+    expect(finalWrite.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'action_proposal',
+          action_id: 'files.create',
+          params: expect.objectContaining({
+            path: 'C:\\Users\\viper\\Downloads\\jarvis-note.txt',
+          }),
+          status: 'pending',
+        }),
+      ]),
+    );
+
+    stop();
+  });
+
   it('fails legacy /Hive quality closed instead of reopening a provider-side stack path', async () => {
     vi.stubEnv('VITE_HIVE_ENABLED', 'true');
     useAuthStore.setState({

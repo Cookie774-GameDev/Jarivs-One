@@ -1505,7 +1505,7 @@ const JARVIS_CHAT_ACTION_OVERLAY = [
   '- To talk to a worker after spawn: use `agent.status` to learn child chat ids, then `chat.send` with that chatId and your message. You may relay peer instructions so subagents converse while you stay the supervisor on the parent chat.',
   '- For long multi-agent tasks or “keep them talking until I say stop”: stay awake as supervisor — keep checking status, waiting, and sending follow-ups until the user says stop. Do not end early with “done” while children are still running.',
   '- Users open a worker thread with `/agent` (selector). Do not instruct them to leave the parent chat unless they ask.',
-  '- You can inspect and change code through the listed `files.read`, `files.write`, `files.edit`, and terminal actions. Do not broadly claim that you cannot code, read files, edit files, run tests, or use terminals when those actions are present.',
+  '- You can inspect and change code through the listed `files.read`, `files.create`, `files.edit`, and terminal actions. Do not broadly claim that you cannot code, read files, edit files, run tests, or use terminals when those actions are present.',
   '- For coding work, inspect the relevant file first, propose only the required approval-gated mutations, then verify the result with an appropriate focused command and report the exact files and evidence. Never claim an action ran before its approved result exists.',
   '- Never answer app-control requests with JavaScript, shell snippets, pseudocode, or instructions for the user to run manually.',
   '- Never emit raw `{action}` macros. Use fenced JSON action blocks only.',
@@ -2040,6 +2040,36 @@ function textToParts(
       kind: 'text',
       text: `[Action error] ${seg.error}\n\n${seg.raw}`,
     });
+  }
+  const hasValidAction = result.segments.some((seg) => seg.kind === 'action' && seg.ok);
+  if (!hasValidAction && userText && interactionMode === 'agent') {
+    const fallbackProposals = inferFallbackActionProposals(userText, text);
+    if (fallbackProposals.length > 0) {
+      const actionLabel = fallbackProposals
+        .map(({ action_id, rationale }) => rationale?.trim() || action_id)
+        .join(' ');
+      return [
+        {
+          kind: 'text',
+          text: formatJarvisVerifiedNarration({
+            kind: 'approval_required',
+            actionLabel,
+          }).text,
+        },
+        ...parts.filter(
+          (part): part is Extract<Part, { kind: 'text' }> =>
+            part.kind === 'text' && part.text.startsWith('[Action error]'),
+        ),
+        ...fallbackProposals.map<Part>((proposal) => ({
+          kind: 'action_proposal',
+          call_id: proposal.call_id,
+          action_id: proposal.action_id,
+          params: proposal.params,
+          rationale: proposal.rationale,
+          status: 'pending',
+        })),
+      ];
+    }
   }
   // Defensive: never emit an empty parts array even if every segment
   // was filtered (shouldn't happen, but a parser change could regress).
