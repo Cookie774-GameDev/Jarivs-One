@@ -46,6 +46,8 @@ import {
   type ConsoleProfile,
 } from './preferences';
 import { AgentMotionIndicator, resolveAgentMotion } from './AgentMotionIndicator';
+import { SubagentsHeaderButton } from './SubagentsMiniPanel';
+import { buildChatSessionExport, downloadChatSessionExport } from './sessionExport';
 import './agentic-console.css';
 
 export interface AgenticConsoleProps {
@@ -137,6 +139,7 @@ function statusLabel(status: AgenticSessionSummary['status']): string {
 }
 
 function SessionHeader({
+  chatId,
   summary,
   preferences,
   onPreferences,
@@ -146,6 +149,7 @@ function SessionHeader({
   onCopySummary,
   onExport,
 }: {
+  chatId: string;
   summary: AgenticSessionSummary;
   preferences: ConsolePreferences;
   onPreferences: (patch: Partial<ConsolePreferences>) => void;
@@ -168,7 +172,11 @@ function SessionHeader({
     }
   };
   return (
-    <header className="agentic-session" aria-label="Agentic session summary">
+    <header
+      className="agentic-session"
+      aria-label="Agentic session summary"
+      data-testid="jarvis-session-panel"
+    >
       <div className="agentic-session__identity">
         <span className={cn('agentic-status-dot', `is-${summary.status}`)} aria-hidden="true" />
         <div className="agentic-session__title">
@@ -176,28 +184,31 @@ function SessionHeader({
           <span title={summary.currentOperation}>{summary.currentOperation}</span>
         </div>
       </div>
-      <button
-        type="button"
-        className="agentic-session__metrics"
-        aria-label="Open session details"
-        aria-expanded={open}
-        onClick={() => setOpen(true)}
-      >
-        <span>
-          <FileCode2 aria-hidden="true" />
-          {summary.fileCount} {summary.fileCount === 1 ? 'file' : 'files'}
-        </span>
-        <span className="is-add">+{summary.addedLines}</span>
-        <span className="is-remove">-{summary.removedLines}</span>
-        <span>{formatMetric(summary.tokenCount, ' tokens')}</span>
-        <span title="Elapsed time">
-          <Clock3 aria-hidden="true" />
-          {formatDuration(summary.durationMs)}
-        </span>
-        <span className="agentic-session__model" title={summary.model}>
-          {summary.model}
-        </span>
-      </button>
+      <div className="agentic-session__metrics-row">
+        <button
+          type="button"
+          className="agentic-session__metrics"
+          aria-label="Open session details"
+          aria-expanded={open}
+          onClick={() => setOpen(true)}
+        >
+          <span>
+            <FileCode2 aria-hidden="true" />
+            {summary.fileCount} {summary.fileCount === 1 ? 'file' : 'files'}
+          </span>
+          <span className="is-add">+{summary.addedLines}</span>
+          <span className="is-remove">-{summary.removedLines}</span>
+          <span>{formatMetric(summary.tokenCount, ' tokens')}</span>
+          <span title="Elapsed time">
+            <Clock3 aria-hidden="true" />
+            {formatDuration(summary.durationMs)}
+          </span>
+          <span className="agentic-session__model" title={summary.model}>
+            {summary.model}
+          </span>
+        </button>
+        <SubagentsHeaderButton chatId={chatId} />
+      </div>
       <div className="agentic-session__actions">
         {actions?.continue ? (
           <Button
@@ -698,23 +709,15 @@ export function AgenticConsole({
       }
       return block;
     });
-    const payload = JSON.stringify(
-      {
-        version: 1,
+    // Per-chat lightweight log: full messages for this chatId + projection blocks.
+    downloadChatSessionExport(
+      buildChatSessionExport({
         chatId,
-        exportedAt: new Date().toISOString(),
+        messages,
         summary,
         blocks: exportBlocks,
-      },
-      null,
-      2,
+      }),
     );
-    const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `vibespace-session-${chatId.replace(/[^a-z0-9_-]/gi, '_')}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   };
 
   if (preferences.view === 'classic') {
@@ -733,10 +736,11 @@ export function AgenticConsole({
     );
   }
 
-  // The active app theme owns a genuinely empty chat. Mount the console only
-  // when canonical conversation/work evidence exists so an idle header or
-  // placeholder can never become a second empty-state panel.
-  if (blocks.length === 0 && !sessionEvidence) return null;
+  // Empty idle chats: do not double empty-state. Once there are messages,
+  // activity, or run evidence, always mount the session mini command center.
+  const hasTranscriptWork =
+    messages.length > 0 || activity.length > 0 || Boolean(sessionEvidence) || blocks.length > 0;
+  if (!hasTranscriptWork) return null;
 
   return (
     <section
@@ -751,6 +755,7 @@ export function AgenticConsole({
       className={cn('agentic-console', compact && 'is-compact')}
     >
       <SessionHeader
+        chatId={chatId}
         summary={summary}
         preferences={preferences}
         onPreferences={updatePreferences}
@@ -760,29 +765,31 @@ export function AgenticConsole({
         onCopySummary={() => copyText(summaryText)}
         onExport={exportSession}
       />
-      <div className="agentic-transcript" aria-label="Agentic transcript">
-        {windowed.remaining > 0 ? (
-          <button
-            type="button"
-            className="agentic-history"
-            aria-label={`Load ${loadCount} older events`}
-            onClick={() => setMountedCount((count) => count + TRANSCRIPT_PAGE_SIZE)}
-          >
-            <MoreHorizontal aria-hidden="true" />
-            Load {loadCount} older events
-          </button>
-        ) : null}
-        {windowed.visible.map((block) => (
-          <BlockView
-            key={block.id}
-            block={block}
-            finalAnswerId={finalAnswerId}
-            compact={compact}
-            creatorDraftKind={creatorDraftKind}
-            motionActive={motionActive}
-          />
-        ))}
-      </div>
+      {blocks.length > 0 ? (
+        <div className="agentic-transcript" aria-label="Agentic transcript">
+          {windowed.remaining > 0 ? (
+            <button
+              type="button"
+              className="agentic-history"
+              aria-label={`Load ${loadCount} older events`}
+              onClick={() => setMountedCount((count) => count + TRANSCRIPT_PAGE_SIZE)}
+            >
+              <MoreHorizontal aria-hidden="true" />
+              Load {loadCount} older events
+            </button>
+          ) : null}
+          {windowed.visible.map((block) => (
+            <BlockView
+              key={block.id}
+              block={block}
+              finalAnswerId={finalAnswerId}
+              compact={compact}
+              creatorDraftKind={creatorDraftKind}
+              motionActive={motionActive}
+            />
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

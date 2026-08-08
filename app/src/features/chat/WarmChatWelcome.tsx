@@ -29,6 +29,25 @@ const QUICK_PROMPTS = [
   },
 ] as const;
 
+const WELCOME_ART = {
+  default: {
+    alt: 'Open notebook, coffee, and desk tools',
+    src: '/assets/themes/default/chat-welcome.webp',
+  },
+  jarvis: {
+    alt: 'Jarvis listening notebook, cup, and pen',
+    src: '/assets/themes/jarvis/chat-welcome.webp',
+  },
+  monochrome: {
+    alt: 'Monochrome paper organizer, cup, and pencil',
+    src: '/assets/themes/monochrome/chat-welcome.webp',
+  },
+  warm: {
+    alt: 'Notebook, coffee, and writing tools',
+    src: '/assets/themes/warm/reference/chat-notebook.png',
+  },
+} as const;
+
 export function WarmChatWelcome({
   chatId,
   /** Dense layout for pet mini-panel (same 4 starters + art, panel-scaled). */
@@ -39,6 +58,7 @@ export function WarmChatWelcome({
 }) {
   const messages = useChatMessages(chatId);
   const theme = useUIStore((state) => state.theme);
+  const welcomeArt = WELCOME_ART[theme as keyof typeof WELCOME_ART] ?? WELCOME_ART.default;
   const insertPrompt = (text: string, skillId: string) => {
     window.dispatchEvent(
       new CustomEvent('jarvis:composer:insert-text', {
@@ -58,12 +78,12 @@ export function WarmChatWelcome({
     >
       <div className="warm-chat-welcome__content">
         <img
-          alt="Notebook, coffee, and writing tools"
+          alt={welcomeArt.alt}
           className="warm-chat-welcome__art"
           draggable={false}
-          height="2048"
-          src="/assets/themes/warm/reference/chat-notebook.png"
-          width="2048"
+          height="512"
+          src={welcomeArt.src}
+          width="512"
         />
         <h1 id="warm-chat-welcome-title">Start a conversation</h1>
         <p>Ask anything, explore ideas, or delegate to an agent.</p>

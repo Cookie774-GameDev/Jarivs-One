@@ -70,6 +70,13 @@ describe('orderSlashCommandsForDisplay', () => {
     });
   });
 
+  it('registers /output for chat media inventory', () => {
+    expect(findSlashCommandDef('output')).toMatchObject({
+      cmd: 'output',
+      category: 'chat',
+    });
+  });
+
   it('marks /file as a project-file attach picker command', () => {
     expect(findSlashCommandDef('file')?.hasOptions).toBe(true);
     expect(isChatAttachSlashCmd('file')).toBe(true);

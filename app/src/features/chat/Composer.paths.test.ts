@@ -60,11 +60,12 @@ describe('composer queued-run notice', () => {
     });
   });
 
-  it('keeps the standard queue notice for ordinary follow-up messages', () => {
-    expect(getQueuedMessageNotice('Summarize the result next.')).toEqual({
+  it('keeps mode-specific queue notices for ordinary follow-up messages', () => {
+    expect(getQueuedMessageNotice('Summarize the result next.', 'after-run')).toEqual({
       title: 'Message queued',
-      body: 'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
+      body: 'It will send when this reply fully finishes (Tab). Esc sends now · Esc×3 cancels the run.',
     });
+    expect(getQueuedMessageNotice('Nudge after tool.', 'after-tool').body).toMatch(/tool/i);
   });
 });
 

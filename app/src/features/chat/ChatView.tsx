@@ -6,11 +6,17 @@ import { Composer } from './Composer';
 import { EmptyChat } from './EmptyChat';
 import { ensureActiveChat } from './chatLifecycle';
 import { cn } from '@/lib/utils';
-import { getChatDragKind, getChatDropPayload, type ChatDropKind } from './dropPayload';
+import {
+  dispatchMediaAttach,
+  getChatDragKind,
+  getChatDropPayload,
+  type ChatDropKind,
+} from './dropPayload';
 import { OrigamiChatDecor } from './OrigamiChatDecor';
 import { MONOCHROME_CHAT_FIXTURE } from './monochromeFixture';
 import { TokenBossCinematic } from './token-boss/TokenBossCinematic';
 import { WarmChatWelcome } from './WarmChatWelcome';
+import { ChatOutputPanel } from './ChatOutputPanel';
 import { BrowserGoalStatus } from '@/features/browser/BrowserGoalStatus';
 import { BrowserChatHub, useBrowserChatStore } from '@/features/browser-chat';
 import './sakura-chat.css';
@@ -35,6 +41,18 @@ export function ChatView() {
   const [dropKind, setDropKind] = useState<ChatDropKind | null>(null);
   const [ensuringChat, setEnsuringChat] = useState(false);
   const [ensureFailed, setEnsureFailed] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(false);
+
+  useEffect(() => {
+    const onOutput = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId?: string }>).detail;
+      if (!activeChatId) return;
+      if (detail?.chatId && String(detail.chatId) !== String(activeChatId)) return;
+      setOutputOpen(true);
+    };
+    window.addEventListener('jarvis:chat:output', onOutput as EventListener);
+    return () => window.removeEventListener('jarvis:chat:output', onOutput as EventListener);
+  }, [activeChatId]);
 
   useEffect(() => {
     if (engine === 'browser' || activeChatId || isVisualEmptyChat) return;
@@ -76,12 +94,23 @@ export function ChatView() {
           if (!activeChatId) return;
           const nextKind = getChatDragKind(e.dataTransfer.types);
           if (!nextKind) return;
+          // Required for OS Files drops — without preventDefault the browser
+          // rejects the drop and Composer never receives the FileList.
           e.preventDefault();
+          e.dataTransfer.dropEffect = nextKind === 'os-files' ? 'copy' : 'link';
           setDropKind(nextKind);
         }}
         onDragLeave={() => setDropKind(null)}
         onDrop={(e) => {
           if (!activeChatId) return;
+          const osFiles = e.dataTransfer.files;
+          if (osFiles && osFiles.length > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            setDropKind(null);
+            dispatchMediaAttach(String(activeChatId), osFiles);
+            return;
+          }
           const payload = getChatDropPayload(e.dataTransfer);
           if (!payload) return;
           e.preventDefault();
@@ -122,7 +151,9 @@ export function ChatView() {
               ? 'Context'
               : dropKind === 'terminal'
                 ? 'terminal'
-                : 'file path'}{' '}
+                : dropKind === 'os-files'
+                  ? 'photos, videos, or files'
+                  : 'file path'}{' '}
             here to power up this chat
           </div>
         )}
@@ -134,6 +165,11 @@ export function ChatView() {
             <BrowserGoalStatus chatId={String(activeChatId)} />
             <Composer chatId={activeChatId} />
             <TokenBossCinematic chatId={String(activeChatId)} />
+            <ChatOutputPanel
+              chatId={String(activeChatId)}
+              open={outputOpen}
+              onClose={() => setOutputOpen(false)}
+            />
           </>
         ) : ensuringChat ? (
           <div className="flex flex-1 items-center justify-center text-secondary text-muted-foreground">

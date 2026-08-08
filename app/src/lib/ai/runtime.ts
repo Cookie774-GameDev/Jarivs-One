@@ -1499,6 +1499,12 @@ const JARVIS_CHAT_ACTION_OVERLAY = [
   '',
   'Rules:',
   '- If the user asks you to change the app, navigate, open terminals, run commands, create schedules, or spawn subagents, say the result briefly and emit a fenced `action` block when an action exists.',
+  '- Never claim you spawned subagents unless you emitted an approval-gated action block. Do not role-play fake multi-agent work in plain text.',
+  '- To spawn one chat-native worker: emit `agent.run` with `{"task":"..."}` (user must Approve). The parent chat stays focused; workers run in background threads.',
+  '- To spawn several: emit `agent.run_many` with `{"tasksJson":"[{\\"task\\":\\"...\\"},{\\"task\\":\\"...\\"}]"}`. Prefer fire-and-watch plus `agent.status` / `agent.wait` / `chat.send` for long multi-agent conversations instead of only one blocking batch when the user wants continuous orchestration.',
+  '- To talk to a worker after spawn: use `agent.status` to learn child chat ids, then `chat.send` with that chatId and your message. You may relay peer instructions so subagents converse while you stay the supervisor on the parent chat.',
+  '- For long multi-agent tasks or “keep them talking until I say stop”: stay awake as supervisor — keep checking status, waiting, and sending follow-ups until the user says stop. Do not end early with “done” while children are still running.',
+  '- Users open a worker thread with `/agent` (selector). Do not instruct them to leave the parent chat unless they ask.',
   '- You can inspect and change code through the listed `files.read`, `files.write`, `files.edit`, and terminal actions. Do not broadly claim that you cannot code, read files, edit files, run tests, or use terminals when those actions are present.',
   '- For coding work, inspect the relevant file first, propose only the required approval-gated mutations, then verify the result with an appropriate focused command and report the exact files and evidence. Never claim an action ran before its approved result exists.',
   '- Never answer app-control requests with JavaScript, shell snippets, pseudocode, or instructions for the user to run manually.',
@@ -1508,8 +1514,8 @@ const JARVIS_CHAT_ACTION_OVERLAY = [
   '- Never ask for passwords, API keys, tokens, recovery codes, credit cards, or credentials. Direct users to the trusted settings or provider connection UI instead.',
   '- Use any provided terminal coordination summary as read-only awareness of active agents, locks, and recent work.',
   isHiveProductEnabled()
-    ? '- /agents references the Agents page/editor. /terminals references the terminal surface. /hive references Hive Balanced.'
-    : '- /agents references the Agents page/editor. /terminals references the terminal surface.',
+    ? '- /agents references the Agents page/editor. /agent opens a live subagent thread selector. /terminals references the terminal surface. /hive references Hive Balanced.'
+    : '- /agents references the Agents page/editor. /agent opens a live subagent thread selector. /terminals references the terminal surface.',
 ].join('\n');
 
 const CHAT_RESPONSE_STYLE_OVERLAY = [
@@ -1547,6 +1553,8 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode, needsVisiblePlan
   return [
     '## Jarvis interaction mode: Agent',
     'You may help do the work, but risky writes, deletes, commands, project-structure changes, or agent launches must be gated by permission cards or existing approval actions.',
+    'When the user wants subagents: emit real `agent.run` / `agent.run_many` actions (Approve required). Stay on the parent chat as supervisor; do not pretend agents exist without cards.',
+    'For long orchestrated work, keep coordinating with `agent.status`, `agent.wait`, and `chat.send` until the user stops you. Prefer staying awake over declaring premature completion.',
   ].join('\n');
 }
 
@@ -1664,6 +1672,8 @@ function updateStructuredAgentStatus(
   useJarvisInteractionStore.getState().updateAgent(payload.parentChatId, payload.agentId, {
     status,
     currentStep,
+    // Short handoff line for parent supervisor / agent.run_many collection.
+    summary: currentStep.slice(0, 280),
     updatedAt: new Date().toISOString(),
   });
 }
@@ -1879,9 +1889,12 @@ function actionPartToLlmText(part: Extract<Part, { kind: 'action_proposal' }>): 
 function imagePartToLlm(part: Extract<Part, { kind: 'image' }>): LLMContentPart | null {
   const match = part.url.match(/^data:([^;,]+);base64,(.+)$/);
   if (!match?.[1] || !match?.[2]) return null;
+  const mimeType = match[1];
+  // Only real image/* payloads go to vision models — never video/* bytes.
+  if (!mimeType.startsWith('image/')) return null;
   return {
     type: 'image',
-    mimeType: match[1],
+    mimeType,
     data: match[2],
     name: part.alt,
   };

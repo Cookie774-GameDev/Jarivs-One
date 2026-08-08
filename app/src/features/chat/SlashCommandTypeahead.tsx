@@ -1,10 +1,4 @@
-import {
-  useRef,
-  useEffect,
-  forwardRef,
-  useImperativeHandle,
-  type CSSProperties,
-} from 'react';
+import { useRef, useEffect, forwardRef, useImperativeHandle, type CSSProperties } from 'react';
 import { useLivePanelUiScale } from '@/lib/ui/panelScale';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -63,7 +57,7 @@ export const SLASH_CMD_ALIASES: Record<string, string> = {
   terminal: 'terminals',
   contextmap: 'context',
   contexts: 'context',
-  agent: 'multitask',
+  // /agent opens the live subagent selector — not multitask spawn.
   multitaksk: 'multitask',
   multiatask: 'multitask',
   mulititask: 'multitask',
@@ -159,8 +153,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     argPlaceholder: '<goal>',
   },
   {
+    cmd: 'agent',
+    description: 'Open a live multitask/subagent thread for this chat',
+    icon: Bot,
+    category: 'chat',
+    hasOptions: true,
+  },
+  {
     cmd: 'multitask',
-    aliases: ['agent'],
     description: 'Agent Mode task — launch a chat-native Jarvis agent',
     icon: Bot,
     category: 'chat',
@@ -277,6 +277,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     aliases: ['clearfile', 'clear-files', 'cearfile'],
     description: 'Clear all attached files & images from this message',
     icon: FileText,
+    category: 'chat',
+  },
+  {
+    cmd: 'output',
+    description: 'Show this chat’s media inputs and outputs',
+    icon: ClipboardList,
     category: 'chat',
   },
 
@@ -461,7 +467,9 @@ export const SlashCommandTypeahead = forwardRef<
           : undefined
       }
     >
-      <div className={cn('border-b border-border bg-panel/90', compact ? 'px-2 py-1' : 'px-3 py-2')}>
+      <div
+        className={cn('border-b border-border bg-panel/90', compact ? 'px-2 py-1' : 'px-3 py-2')}
+      >
         <div className="flex items-center gap-1.5">
           <Zap className={cn(compact ? 'h-2.5 w-2.5' : 'h-3 w-3', 'text-accent-copper')} />
           <span className={cn('text-muted-foreground', compact ? 'text-[9px]' : 'text-[10px]')}>
@@ -472,7 +480,10 @@ export const SlashCommandTypeahead = forwardRef<
 
       <div
         ref={listRef}
-        className={cn('overflow-y-auto scrollbar-hidden', compact ? 'py-0.5' : 'max-h-[200px] py-0.5')}
+        className={cn(
+          'overflow-y-auto scrollbar-hidden',
+          compact ? 'py-0.5' : 'max-h-[200px] py-0.5',
+        )}
         style={compact ? { maxHeight: `${compactMaxH}px` } : undefined}
       >
         {commands.length === 0 ? (

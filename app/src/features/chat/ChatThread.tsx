@@ -367,9 +367,8 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
           <AgenticConsoleErrorBoundary
             fallback={
               <>
-                {!hasCanonicalRun ? (
-                  <ChatActivityTimeline chatId={chatId} compact={compact} />
-                ) : null}
+                {/* Fallback only: single classic mini command center if agentic projection fails. */}
+                <ChatActivityTimeline chatId={chatId} compact={compact} />
                 {messages.length === 0 ? (
                   <ThreadHint />
                 ) : (
@@ -387,6 +386,7 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
               </>
             }
           >
+            {/* Single top mini command center lives inside AgenticConsole SessionHeader. */}
             <AgenticConsole
               chatId={String(chatId)}
               messages={messages}
@@ -399,8 +399,8 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
           </AgenticConsoleErrorBoundary>
         ) : (
           <>
-            {/* Classic fallback remains complete and uses the same canonical stores. */}
-            {!hasCanonicalRun ? <ChatActivityTimeline chatId={chatId} compact={compact} /> : null}
+            {/* Classic path: one Jarvis session mini command center. */}
+            <ChatActivityTimeline chatId={chatId} compact={compact} />
             {messages.length === 0 ? (
               <ThreadHint />
             ) : (

@@ -97,6 +97,7 @@ export function InputToken({
       animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
       exit={{ opacity: 0, scale: 0.85, y: -6, filter: 'blur(1px)' }}
       transition={tokenTransition}
+      data-slash-active-glow={isCommand ? 'true' : undefined}
       className={cn(
         'relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
         'bg-gradient-to-r border',

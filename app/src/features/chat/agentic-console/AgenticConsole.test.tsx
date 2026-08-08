@@ -266,6 +266,43 @@ describe('AgenticConsole', () => {
     expect(screen.getByRole('button', { name: 'Export session' })).toBeTruthy();
   });
 
+  it('mounts exactly one mini command center with metrics and session actions on normal agentic chat', () => {
+    const messages = [
+      message('user', 'user', 10, [
+        { kind: 'text', text: 'Stay on this chat and finish the task.' },
+      ]),
+      message(
+        'assistant',
+        'assistant',
+        20,
+        [{ kind: 'text', text: 'Working through the steps now.' }],
+        {
+          input_tokens: 40,
+          output_tokens: 12,
+          model: 'local-model',
+        },
+      ),
+    ];
+
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages,
+      activity: [],
+    });
+
+    const panels = rendered.container.querySelectorAll('[data-testid="jarvis-session-panel"]');
+    expect(panels).toHaveLength(1);
+    expect(screen.getByLabelText('Session status')).toBeTruthy();
+    expect(screen.getByLabelText('Open session details')).toBeTruthy();
+    expect(screen.getByText(/tokens/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat console settings' }));
+    expect(screen.getByRole('button', { name: 'Expand all transcript details' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Collapse all transcript details' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy session summary' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export session' })).toBeTruthy();
+  });
+
   it('toggles transcript details with Ctrl+T while the console is active', () => {
     renderConsole({
       chatId: 'chat-console',

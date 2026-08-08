@@ -7,8 +7,11 @@ export interface ChatActivityPreferenceStorage {
 
 export function createChatActivityPreferences(storage: ChatActivityPreferenceStorage) {
   const listeners = new Set<() => void>();
+  // Default ON so the top mini command center is present during normal chatting.
+  // Explicit opt-out stores '0'; missing key means visible.
+  const stored = storage.getItem(CHAT_ACTIVITY_PANEL_KEY);
   let snapshot = Object.freeze({
-    showSessionPanel: storage.getItem(CHAT_ACTIVITY_PANEL_KEY) === '1',
+    showSessionPanel: stored === null ? true : stored === '1',
   });
   return Object.freeze({
     getSnapshot: () => snapshot,

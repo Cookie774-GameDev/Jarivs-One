@@ -82,11 +82,18 @@ function isPreferences(value: unknown): value is ConsolePreferences {
   );
 }
 
+function retireClassicView(preferences: ConsolePreferences): ConsolePreferences {
+  return preferences.view === 'classic' ? { ...preferences, view: 'agentic' } : preferences;
+}
+
 export function loadConsolePreferences(): ConsolePreferences {
   if (typeof localStorage === 'undefined') return DEFAULT_CONSOLE_PREFERENCES;
   try {
     const value = JSON.parse(localStorage.getItem(CONSOLE_PREFERENCE_KEY) ?? 'null');
-    snapshot = isPreferences(value) ? value : DEFAULT_CONSOLE_PREFERENCES;
+    snapshot = retireClassicView(isPreferences(value) ? value : DEFAULT_CONSOLE_PREFERENCES);
+    if (isPreferences(value) && value.view === 'classic') {
+      localStorage.setItem(CONSOLE_PREFERENCE_KEY, JSON.stringify(snapshot));
+    }
   } catch {
     snapshot = DEFAULT_CONSOLE_PREFERENCES;
   }
@@ -95,7 +102,7 @@ export function loadConsolePreferences(): ConsolePreferences {
 }
 
 export function saveConsolePreferences(next: ConsolePreferences): void {
-  snapshot = isPreferences(next) ? next : DEFAULT_CONSOLE_PREFERENCES;
+  snapshot = retireClassicView(isPreferences(next) ? next : DEFAULT_CONSOLE_PREFERENCES);
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(CONSOLE_PREFERENCE_KEY, JSON.stringify(snapshot));

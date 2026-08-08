@@ -2,11 +2,11 @@
 import { Bot, ChevronDown, ExternalLink, GitFork, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useUIStore } from '@/stores/ui';
 import type { Part } from '@/types/chat';
 import type { ChatId } from '@/types/common';
 import { useJarvisInteractionStore } from './sessionStore';
 import type { JarvisAgentStatus, JarvisChatAgent } from './types';
+import { openNativeChildChat } from './openNativeChildChat';
 
 type AgentPart = Extract<Part, { kind: 'agent_card' }>;
 const EMPTY_AGENTS: NonNullable<
@@ -44,7 +44,7 @@ const HEADER_STATUS = 'Live agent work for this chat';
 export function AgentActivityCard({ part }: AgentActivityCardProps) {
   const agent = part.agent;
   const openChildChat = () => {
-    useUIStore.setState({ activeChatId: String(agent.childChatId), route: 'chat' });
+    openNativeChildChat(agent.childChatId);
   };
   return (
     <article
@@ -247,7 +247,7 @@ function AgentActivityRow({ agent, index }: { agent: JarvisChatAgent; index: num
   const filesRead = agent.filesRead ?? [];
   const filesEditing = agent.filesEditing ?? agent.lockedFiles;
   const openChildChat = () => {
-    useUIStore.setState({ activeChatId: String(agent.childChatId), route: 'chat' });
+    openNativeChildChat(agent.childChatId);
   };
   const diff = agent.diffSummary;
 

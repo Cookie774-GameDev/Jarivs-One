@@ -181,15 +181,24 @@ html[data-theme='origami'] [data-agentic-console] {
   z-index: 8;
   min-height: 58px;
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) auto auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, auto) auto;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 9px 14px;
   border: 1px solid var(--console-line);
   border-radius: 9px;
   background: color-mix(in srgb, var(--console-panel) 94%, transparent);
   backdrop-filter: blur(14px);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--console-ink) 7%, transparent);
+}
+
+.agentic-session__metrics-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .agentic-session__identity,
@@ -804,4 +813,115 @@ html[data-theme='origami'] [data-agentic-console] {
 
 html[data-agentic-console-caret='block'] [data-tour='chat-composer'] textarea {
   caret-shape: block;
+}
+
+/* Subagents header control + mini panel (confined to agentic console). */
+.agentic-session__metrics-row {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.agentic-session__subagents-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--console-accent) 35%, var(--console-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--console-accent) 12%, var(--console-panel));
+  color: var(--console-ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+
+.agentic-session__subagents-btn svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--console-accent);
+}
+
+.agentic-session__subagents-btn:hover {
+  background: color-mix(in srgb, var(--console-accent) 20%, var(--console-panel));
+}
+
+.agentic-subagents-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 40;
+  width: min(22rem, 86vw);
+  max-height: min(20rem, 50vh);
+  overflow: auto;
+  border: 1px solid var(--console-line);
+  border-radius: 0.75rem;
+  background: var(--console-panel);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.28);
+  padding: 0.45rem;
+}
+
+.agentic-subagents-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.15rem 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--console-line);
+  margin-bottom: 0.35rem;
+  font-size: 12px;
+}
+
+.agentic-subagents-panel__empty {
+  margin: 0;
+  padding: 0.65rem 0.35rem;
+  font-size: 12px;
+  color: var(--console-muted);
+}
+
+.agentic-subagents-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.agentic-subagents-panel__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--console-accent) 18%, var(--console-line));
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--console-raised) 70%, transparent);
+  padding: 0.4rem 0.45rem;
+}
+
+.agentic-subagents-panel__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--console-accent) 30%, var(--console-line));
+  color: var(--console-accent);
+  background: var(--console-accent-soft);
+  flex-shrink: 0;
+}
+
+.agentic-subagents-panel__badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--console-accent) 28%, var(--console-line));
+  padding: 0.05rem 0.35rem;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--console-accent);
 }

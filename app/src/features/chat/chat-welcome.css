@@ -3,6 +3,12 @@ html:not([data-theme='warm']) [data-vibespace-page='chat'] > :not(.warm-chat-wel
   z-index: 2;
 }
 
+/* Composer (media strip, drop zone, input) must paint above empty-chat welcome. */
+html:not([data-theme='warm']) [data-vibespace-page='chat'] [data-surface='chat-composer'] {
+  position: relative;
+  z-index: 5;
+}
+
 html:not([data-theme='warm'])
   [data-vibespace-page='chat']:has(.warm-chat-welcome)
   [data-testid='jarvis-session-panel'],
@@ -24,26 +30,48 @@ html:not([data-theme='warm']) .warm-chat-welcome {
 }
 
 html:not([data-theme='warm']) .warm-chat-welcome__content {
-  width: min(100%, 980px);
+  width: min(100%, 960px);
+  min-width: 0;
   color: var(--foreground);
   text-align: center;
 }
 
 html:not([data-theme='warm']) .warm-chat-welcome__art {
   display: block;
-  width: clamp(112px, 11vw, 164px);
-  height: clamp(96px, 10vw, 146px);
+  width: clamp(128px, 12vw, 176px);
+  height: clamp(112px, 11vw, 156px);
   margin: 0 auto 8px;
-  object-fit: contain;
-  filter: saturate(0.72);
+  object-fit: cover;
+  border-radius: 0;
+  -webkit-mask-image: radial-gradient(
+    ellipse 74% 72% at center,
+    #000 34%,
+    rgb(0 0 0 / 0.88) 52%,
+    rgb(0 0 0 / 0.36) 72%,
+    transparent 88%
+  );
+  mask-image: radial-gradient(
+    ellipse 74% 72% at center,
+    #000 34%,
+    rgb(0 0 0 / 0.88) 52%,
+    rgb(0 0 0 / 0.36) 72%,
+    transparent 88%
+  );
 }
 
-html[data-theme='monochrome'] .warm-chat-welcome__art {
-  filter: grayscale(1) contrast(1.1);
+html:not([data-theme='warm']) [data-chat-welcome-theme='default'] .warm-chat-welcome__art {
+  opacity: 0.78;
+  filter: saturate(0.76) contrast(0.92) brightness(0.9);
 }
 
-html[data-theme='jarvis'] .warm-chat-welcome__art {
-  filter: hue-rotate(155deg) saturate(0.8) contrast(1.05);
+html:not([data-theme='warm']) [data-chat-welcome-theme='jarvis'] .warm-chat-welcome__art {
+  opacity: 0.82;
+  filter: saturate(0.82) contrast(0.94) brightness(0.88);
+}
+
+html:not([data-theme='warm']) [data-chat-welcome-theme='monochrome'] .warm-chat-welcome__art {
+  opacity: 0.72;
+  filter: grayscale(1) contrast(0.9) brightness(0.92);
 }
 
 html:not([data-theme='warm']) .warm-chat-welcome h1 {
@@ -62,6 +90,8 @@ html:not([data-theme='warm']) .warm-chat-welcome__content > p {
 html:not([data-theme='warm']) .warm-chat-welcome__prompts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
   gap: 10px;
   pointer-events: auto;
 }
@@ -70,6 +100,7 @@ html:not([data-theme='warm']) [data-warm-quick-prompt] {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
+  min-width: 0;
   min-height: 72px;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -122,9 +153,19 @@ html:not([data-theme='warm']) [data-warm-quick-prompt]:focus-visible {
   outline-offset: 2px;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1040px) {
   html:not([data-theme='warm']) .warm-chat-welcome__prompts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  html:not([data-theme='warm']) .warm-chat-welcome {
+    inset-inline: 14px;
+  }
+
+  html:not([data-theme='warm']) .warm-chat-welcome__prompts {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

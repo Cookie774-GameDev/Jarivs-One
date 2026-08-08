@@ -1,17 +1,26 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WarmChatWelcome } from './WarmChatWelcome';
 
 const hookState = vi.hoisted(() => ({ messages: [] as Array<{ id: string }> }));
+const uiState = vi.hoisted(() => ({ theme: 'warm' }));
+const welcomeCss = readFileSync(resolve(__dirname, 'chat-welcome.css'), 'utf8');
 
 vi.mock('./hooks', () => ({
   useChatMessages: () => hookState.messages,
+}));
+
+vi.mock('@/stores/ui', () => ({
+  useUIStore: (selector: (state: { theme: string }) => unknown) => selector(uiState),
 }));
 
 describe('WarmChatWelcome', () => {
   afterEach(() => {
     cleanup();
     hookState.messages = [];
+    uiState.theme = 'warm';
   });
 
   it('renders the approved empty-chat copy and four keyboard-accessible prompt choices', () => {
@@ -97,5 +106,30 @@ describe('WarmChatWelcome', () => {
     expect(section?.className).toContain('warm-chat-welcome--compact');
     expect(screen.getAllByRole('button')).toHaveLength(4);
     expect(screen.getByRole('img', { name: 'Notebook, coffee, and writing tools' })).not.toBeNull();
+  });
+
+  it.each([
+    ['default', '/assets/themes/default/chat-welcome.webp', /open notebook/i],
+    ['monochrome', '/assets/themes/monochrome/chat-welcome.webp', /monochrome paper/i],
+    ['jarvis', '/assets/themes/jarvis/chat-welcome.webp', /jarvis listening notebook/i],
+  ])('uses dedicated %s welcome artwork', (theme, expectedSrc, expectedAlt) => {
+    uiState.theme = theme;
+    render(<WarmChatWelcome chatId={`chat-${theme}`} />);
+
+    expect(screen.getByRole('img', { name: expectedAlt }).getAttribute('src')).toBe(expectedSrc);
+  });
+
+  it('blends every non-Warm illustration into its own theme surface', () => {
+    for (const theme of ['default', 'jarvis', 'monochrome']) {
+      expect(welcomeCss).toMatch(
+        new RegExp(`\\[data-chat-welcome-theme='${theme}'\\]\\s+\\.warm-chat-welcome__art`, 'u'),
+      );
+    }
+    expect(welcomeCss).toMatch(
+      /\.warm-chat-welcome__art\s*\{[\s\S]*?mask-image:\s*radial-gradient\([\s\S]*?transparent\s+88%\s*\)/u,
+    );
+    expect(welcomeCss).toMatch(
+      /\[data-chat-welcome-theme='monochrome'\]\s+\.warm-chat-welcome__art\s*\{[\s\S]*?grayscale\(1\)/u,
+    );
   });
 });

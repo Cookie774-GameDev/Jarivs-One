@@ -38,7 +38,7 @@ describe('agentic console preferences', () => {
     expect(loadConsolePreferences()).toEqual(DEFAULT_CONSOLE_PREFERENCES);
   });
 
-  it('round-trips only valid versioned presentation settings', () => {
+  it('migrates the retired classic view to the current agentic surface', () => {
     saveConsolePreferences({
       version: 1,
       view: 'classic',
@@ -49,10 +49,15 @@ describe('agentic console preferences', () => {
 
     expect(loadConsolePreferences()).toEqual({
       version: 1,
-      view: 'classic',
+      view: 'agentic',
       profile: 'oled-void',
       density: 'compact',
       caret: 'block',
+    });
+    expect(
+      JSON.parse(localStorage.getItem('vibespace.agentic-console.preferences') ?? '{}'),
+    ).toMatchObject({
+      view: 'agentic',
     });
   });
 });

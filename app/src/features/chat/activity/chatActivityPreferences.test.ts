@@ -4,11 +4,13 @@ import { CHAT_ACTIVITY_PANEL_KEY, createChatActivityPreferences } from './chatAc
 describe('chat activity preferences', () => {
   beforeEach(() => localStorage.clear());
 
-  it('keeps the classic Jarvis session panel hidden by default and persists an explicit opt-in', () => {
+  it('shows the Jarvis session mini command center by default and persists opt-out', () => {
     const preferences = createChatActivityPreferences(localStorage);
-    expect(preferences.getSnapshot().showSessionPanel).toBe(false);
-    preferences.setShowSessionPanel(true);
     expect(preferences.getSnapshot().showSessionPanel).toBe(true);
+    preferences.setShowSessionPanel(false);
+    expect(preferences.getSnapshot().showSessionPanel).toBe(false);
+    expect(localStorage.getItem(CHAT_ACTIVITY_PANEL_KEY)).toBe('0');
+    preferences.setShowSessionPanel(true);
     expect(localStorage.getItem(CHAT_ACTIVITY_PANEL_KEY)).toBe('1');
   });
 });

@@ -165,7 +165,7 @@ import {
 import { ConnectionInfoPopover } from './ConnectionInfoPopover';
 import { browserTokenOptimizationPreferences } from '@/features/token-optimizer';
 import { InputToken, TokenList } from './InputToken';
-import { FileAttachmentPreview } from './FileAttachmentPreview';
+
 import {
   extractInlineUtilitySlashCommands,
   getInlineSlashContext,
@@ -184,7 +184,19 @@ import {
   UNDO_BLOCKED_RUNNING_TEXT,
   UNDO_STATUS_TEXT,
 } from './chatUndoRedo';
-import { getChatDragKind, getChatDropPayload } from './dropPayload';
+import {
+  MEDIA_ATTACH_EVENT,
+  getChatDragKind,
+  getChatDropPayload,
+  hasOsFileDrag,
+  type MediaAttachDetail,
+} from './dropPayload';
+import { ComposerMediaStrip } from './ComposerMediaStrip';
+import {
+  MediaPreviewPanel,
+  mediaTargetFromAttachment,
+  type MediaPreviewTarget,
+} from './MediaPreviewPanel';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import {
   MARKDOWN_DOCUMENT_OPTIONS,
@@ -193,13 +205,23 @@ import {
 } from './markdownCommand';
 import {
   cleanupExpiredOversizedMessageAttachments,
+  createChatTextFileAttachment,
   createOversizedMessageAttachment,
   oversizedMessageSummary,
 } from './oversizedMessageAttachment';
 import {
+  MAX_IMAGES_PER_BATCH,
+  MAX_VIDEOS_PER_BATCH,
+  appendComposerMedia,
+  appendComposerMediaResult,
+  classifyBrowserFilesForAttach,
   imageAttachmentFromBrowserFile,
   imageAttachmentFromPath,
+  readBrowserFileAsText,
   splitImageFiles,
+  splitVideoFiles,
+  videoAttachmentFromBrowserFile,
+  visionAttachmentsForSend,
 } from './imageAttachments';
 import { getSkillPickerOptions, getAllCatalogSkills } from '@/features/skills/skillCatalog';
 import { isSupportedImagePath, type ChatImageAttachment } from '@/lib/ai/vision';
@@ -266,7 +288,21 @@ import {
   shouldAutoSendQueuedOnRunStatus,
   takeNextQueuedMessage,
   type QueuedChatMessage,
+  type QueueFlushMode,
 } from './QueuedMessagesBar';
+import {
+  createQueuedMessage,
+  describeQueueToast,
+  shouldFlushOnToolTerminal,
+} from './composerQueuePolicy';
+import {
+  CANCELLED_BY_USER_TOAST,
+  createEscapeCancelState,
+  recordEscapePress,
+  type EscapeCancelState,
+} from './composerEscapeCancel';
+import { agentSelectorOptions } from './listLiveChatAgents';
+import { openNativeChildChat } from '@/features/jarvis-interaction/openNativeChildChat';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
 import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
@@ -563,17 +599,17 @@ export function extractAbsoluteFilePaths(text: string): string[] {
   return Array.from(new Set(text.match(WINDOWS_FILE_PATH_RE) ?? [])).slice(0, 8);
 }
 
-export function getQueuedMessageNotice(draft: string): Readonly<{ title: string; body: string }> {
+export function getQueuedMessageNotice(
+  draft: string,
+  flushMode: QueueFlushMode = 'after-run',
+): Readonly<{ title: string; body: string }> {
   if (parseJarvisModelSwitchIntent(draft)) {
     return {
       title: 'Model switch queued',
       body: 'The current reply keeps its captured model. Leave this queued to review and apply on the next turn, or stop the current reply and resend to restart sooner.',
     };
   }
-  return {
-    title: 'Message queued',
-    body: 'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
-  };
+  return describeQueueToast(flushMode);
 }
 
 /**
@@ -716,12 +752,13 @@ export function Composer({
   const [sending, setSending] = useState(false);
   const [jarvisRunning, setJarvisRunning] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
+  const escapeCancelRef = useRef<EscapeCancelState>(createEscapeCancelState());
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [attachedImages, setAttachedImages] = useState<ChatImageAttachment[]>([]);
   const [attachedTerminals, setAttachedTerminals] = useState<TerminalRef[]>([]);
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
   const [attachedContexts, setAttachedContexts] = useState<ContextChatAttachment[]>([]);
-  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewTarget | null>(null);
   const [dragOver, setDragOver] = useState(false);
   // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
@@ -788,6 +825,8 @@ export function Composer({
   const activeCancellationKeyRef = useRef<string | null>(null);
   const queuedDispatchInFlightRef = useRef<string | null>(null);
   const queuedInterruptInFlightRef = useRef<string | null>(null);
+  /** When true, a user Esc×3 cancel must not auto-drain the queue. */
+  const suppressQueueFlushOnUserCancelRef = useRef(false);
   const interruptQueuedRef = useRef<(id: string) => void>(() => {});
   /** Latest auto-flush implementation (set after handleSend exists). */
   const flushNextQueuedRef = useRef<() => void>(() => {});
@@ -839,6 +878,11 @@ export function Composer({
       setJarvisRunning(false);
       activeCancellationKeyRef.current = null;
       queuedInterruptInFlightRef.current = null;
+      // Esc×3 cancel: keep the queue for resume/resend (do not auto-drain).
+      if (status === 'cancelled' && suppressQueueFlushOnUserCancelRef.current) {
+        suppressQueueFlushOnUserCancelRef.current = false;
+        return;
+      }
       // When the previous full reply finishes (or fails/cancels), send the next
       // queued message automatically — FIFO order.
       if (!shouldAutoSendQueuedOnRunStatus(status)) return;
@@ -855,40 +899,34 @@ export function Composer({
     };
   }, [chatId]);
 
+  // After-tool: flush when a tool finishes (not when a new tool starts).
   useEffect(
     () =>
       useChatActivityStore.subscribe((state, previous) => {
         if (!jarvisRunning || queuedInterruptInFlightRef.current) return;
         const queued = queuedMessagesRef.current[0];
-        if (!queued) return;
+        if (!queued || queued.flushMode !== 'after-tool') return;
         const current = state.eventsByChat[String(chatId)] ?? [];
         const before = previous.eventsByChat[String(chatId)] ?? [];
-        const beforeIds = new Set(before.map((event) => event.id));
-        const nextToolCall = current.find(
-          (event) =>
-            !beforeIds.has(event.id) &&
-            event.kind === 'tool' &&
-            (event.status === 'pending' || event.status === 'running') &&
-            event.ts >= queued.createdAt,
-        );
-        if (nextToolCall) interruptQueuedRef.current(queued.id);
+        const beforeById = new Map(before.map((event) => [event.id, event]));
+        const toolFinished = current.find((event) => {
+          if (event.kind !== 'tool' || event.ts < queued.createdAt) return false;
+          if (!shouldFlushOnToolTerminal(queued, event.status)) return false;
+          const prev = beforeById.get(event.id);
+          // New terminal event, or status transitioned into terminal.
+          return !prev || prev.status !== event.status;
+        });
+        if (toolFinished) interruptQueuedRef.current(queued.id);
       }),
     [chatId, jarvisRunning],
   );
 
-  const enqueueCurrentMessage = (draft: string) => {
-    const trimmedDraft = draft.trim();
-    if (!trimmedDraft) return;
-    setQueuedMessages((current) => [
-      ...current,
-      {
-        id: `queued_${Date.now().toString(36)}_${current.length}`,
-        text: trimmedDraft,
-        createdAt: Date.now(),
-      },
-    ]);
+  const enqueueCurrentMessage = (draft: string, flushMode: QueueFlushMode = 'after-run') => {
+    const item = createQueuedMessage(draft, flushMode);
+    if (!item) return;
+    setQueuedMessages((current) => [...current, item]);
     setText('');
-    const notice = getQueuedMessageNotice(trimmedDraft);
+    const notice = getQueuedMessageNotice(item.text, flushMode);
     toast.info(notice.title, notice.body);
   };
 
@@ -1027,6 +1065,16 @@ export function Composer({
     if (!optionPickerCtx) return [];
     const cmd = optionPickerCtx.cmd.cmd;
     if (isGlobalThemePickerCommand(cmd) || cmd === 'theme') return [];
+
+    if (normalizeSlashCmd(cmd) === 'agent') {
+      const live = useJarvisInteractionStore.getState().agentsByChat[String(chatId)] ?? [];
+      return agentSelectorOptions(live).map((row) => ({
+        id: row.childChatId,
+        label: row.label,
+        description: row.description,
+        metadata: row.id,
+      }));
+    }
 
     if (normalizeSlashCmd(cmd) === 'terminals') {
       const sessions = Object.values(terminalSessions)
@@ -1463,6 +1511,7 @@ export function Composer({
       cmd.hasOptions &&
       (isChatAttachSlashCmd(cmd.cmd) ||
         normalizeSlashCmd(cmd.cmd) === 'permissions' ||
+        normalizeSlashCmd(cmd.cmd) === 'agent' ||
         cmd.cmd === 'effort' ||
         cmd.cmd === 'mode' ||
         canonicalCmd === 'md' ||
@@ -1533,6 +1582,16 @@ export function Composer({
     if (!optionPickerCtx) return;
     const cmd = optionPickerCtx.cmd;
     const canonical = normalizeSlashCmd(cmd.cmd);
+
+    // /agent: open the selected live subagent/multitask child thread (native).
+    if (canonical === 'agent') {
+      openNativeChildChat(option.id);
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      setText('');
+      toast.info('Opened agent thread', `${option.label} — parent chat stays in your tabs.`);
+      return;
+    }
 
     if (cmd.cmd === 'allaboutme' && option.id === 'retake') {
       setOptionPickerCtx(null);
@@ -1612,9 +1671,7 @@ export function Composer({
         );
       } else {
         const image = canvasSnapshotToImageAttachment(snapshot);
-        setAttachedImages((current) =>
-          current.some(({ id }) => id === image.id) ? current : [...current, image].slice(0, 6),
-        );
+        setAttachedImages((current) => appendComposerMedia(current, [image]));
       }
       setOptionPickerCtx(null);
       setSelectedOptionId('');
@@ -1628,9 +1685,7 @@ export function Composer({
       if (isSupportedImagePath(path)) {
         void imageAttachmentFromPath(path)
           .then((image) => {
-            setAttachedImages((cur) =>
-              cur.some((item) => item.sourcePath === path) ? cur : [...cur, image].slice(0, 6),
-            );
+            setAttachedImages((cur) => appendComposerMedia(cur, [image]));
           })
           .catch((err) => {
             toast.error(
@@ -1639,7 +1694,7 @@ export function Composer({
             );
           });
       } else {
-        setAttachedFiles((cur) => (cur.includes(path) ? cur : [...cur, path]).slice(0, 8));
+        setAttachedFiles((cur) => [...cur, path].slice(0, 24));
       }
       setConfirmedCommands((cur) => [
         ...cur.filter((c) => !(c.cmd === 'file' && c.value === path)),
@@ -1791,11 +1846,26 @@ export function Composer({
     if (cmd === 'schedule' && rest) {
       return `/${cmd} ${rest}`;
     }
+    // /agent — live subagent selector (does not spawn; use /multitask or /subagents).
+    if (cmd === 'agent') {
+      const live = useJarvisInteractionStore.getState().agentsByChat[String(chatId)] ?? [];
+      const options = agentSelectorOptions(live);
+      if (options.length === 0) {
+        await addSystem(
+          'No live subagents for this chat. Spawn with /multitask <task> or /subagents <task>, then use /agent to open a thread.',
+        );
+        setText('');
+        return true;
+      }
+      openAttachPicker('agent');
+      setText('');
+      return true;
+    }
     if (cmd === 'multitask' || cmd === 'subagents') {
       applyInteractionMode('agent');
       if (!rest) {
         await addSystem(
-          `Use /${cmd} <task> to launch chat-native Jarvis ${cmd === 'subagents' ? 'subagents' : 'agent'}.`,
+          `Use /${cmd} <task> to launch chat-native Jarvis ${cmd === 'subagents' ? 'subagents' : 'agent'}. Open a spawned thread with /agent.`,
         );
         return true;
       }
@@ -1810,6 +1880,10 @@ export function Composer({
         commandName: cmd,
         repos: { chatRepo, messageRepo },
       });
+      toast.info(
+        cmd === 'subagents' ? 'Subagents spawned' : 'Agent spawned',
+        'Stay on this chat. Open a worker thread with /agent.',
+      );
       setText('');
       return true;
     }
@@ -2031,6 +2105,15 @@ export function Composer({
       toast.info('Attachments cleared', 'All files and images removed from this message.');
       return true;
     }
+    if (cmd === 'output') {
+      setText('');
+      window.dispatchEvent(
+        new CustomEvent('jarvis:chat:output', {
+          detail: { chatId: String(chatId) },
+        }),
+      );
+      return true;
+    }
     if (cmd === 'undo') {
       if (jarvisRunning) {
         await addSystem(UNDO_BLOCKED_RUNNING_TEXT);
@@ -2123,9 +2206,7 @@ export function Composer({
         if (isSupportedImagePath(path)) {
           try {
             const image = await imageAttachmentFromPath(path);
-            setAttachedImages((cur) =>
-              (cur.some((item) => item.sourcePath === path) ? cur : [...cur, image]).slice(0, 6),
-            );
+            setAttachedImages((cur) => appendComposerMedia(cur, [image]));
             setText('');
             return true;
           } catch (err) {
@@ -2136,7 +2217,7 @@ export function Composer({
             return true;
           }
         }
-        setAttachedFiles((cur) => (cur.includes(path) ? cur : [...cur, path]).slice(0, 8));
+        setAttachedFiles((cur) => [...cur, path].slice(0, 24));
         setText('');
         return true;
       }
@@ -2156,7 +2237,7 @@ export function Composer({
 
   const handleSend = async (
     overrideText?: string,
-    options: { bypassQueue?: boolean } = {},
+    options: { bypassQueue?: boolean; flushMode?: QueueFlushMode } = {},
   ): Promise<boolean> => {
     const draftText = overrideText ?? text;
     const trimmed = draftText.trim();
@@ -2175,7 +2256,8 @@ export function Composer({
     )
       return false;
     if (jarvisRunning && !options.bypassQueue && !overrideText) {
-      enqueueCurrentMessage(trimmed);
+      // Send button defaults to after-run; Enter passes after-tool explicitly.
+      enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run');
       return true;
     }
 
@@ -2534,6 +2616,8 @@ export function Composer({
       activeCancellationKeyRef.current = String(userMessage.id);
       const tokenOptimizationPreferences = browserTokenOptimizationPreferences.getSnapshot();
       const tokenOptimizationMode = browserTokenOptimizationPreferences.resolveMode(String(chatId));
+      // UI keeps full videos; vision path only receives image/* (+ sampled frames).
+      const visionAttachments = await visionAttachmentsForSend(attachedImages);
       window.dispatchEvent(
         new CustomEvent('jarvis:send', {
           detail: {
@@ -2542,7 +2626,7 @@ export function Composer({
             text: persistedText,
             mentionedAgentIds,
             filePaths: messageFilePaths,
-            imageAttachments: attachedImages,
+            imageAttachments: visionAttachments,
             terminalRefs: nextAttachedTerminals,
             contextNodes: nextAttachedContexts,
             pluginIds,
@@ -2822,9 +2906,55 @@ export function Composer({
       }
     }
 
-    if (e.key === 'Escape' && jarvisRunning && queuedMessagesRef.current[0]) {
+    // Bare Tab while running: queue until the full reply finishes.
+    if (
+      e.key === 'Tab' &&
+      !e.shiftKey &&
+      jarvisRunning &&
+      text.trim() &&
+      !modelPickerOpen &&
+      !optionPickerCtx &&
+      !slashCtx &&
+      !mentionCtx
+    ) {
       e.preventDefault();
-      interruptAndSendQueued(queuedMessagesRef.current[0].id);
+      enqueueCurrentMessage(text, 'after-run');
+      return;
+    }
+
+    // Bare Enter: send when idle; queue after-tool when Jarvis is running.
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      if (jarvisRunning && text.trim()) {
+        enqueueCurrentMessage(text, 'after-tool');
+      } else {
+        void handleSend(undefined, { flushMode: 'after-run' });
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      // Triple-Esc cancels the entire run (queue kept for resume/resend).
+      if (jarvisRunning && !modelPickerOpen && !optionPickerCtx && !slashCtx && !mentionCtx) {
+        const result = recordEscapePress(escapeCancelRef.current, Date.now());
+        escapeCancelRef.current = result.state;
+        if (result.shouldCancelRun) {
+          e.preventDefault();
+          suppressQueueFlushOnUserCancelRef.current = true;
+          const cancellationKey = activeCancellationKeyRef.current;
+          if (cancellationKey) {
+            window.dispatchEvent(
+              new CustomEvent('jarvis:cancel', { detail: { messageId: cancellationKey } }),
+            );
+          }
+          toast.info(CANCELLED_BY_USER_TOAST.title, CANCELLED_BY_USER_TOAST.body);
+          return;
+        }
+      }
+      if (jarvisRunning && queuedMessagesRef.current[0]) {
+        e.preventDefault();
+        interruptAndSendQueued(queuedMessagesRef.current[0].id);
+      }
     }
   };
 
@@ -3288,9 +3418,7 @@ export function Composer({
     if (isSupportedImagePath(clean)) {
       try {
         const image = await imageAttachmentFromPath(clean);
-        setAttachedImages((cur) =>
-          (cur.some((item) => item.sourcePath === clean) ? cur : [...cur, image]).slice(0, 6),
-        );
+        setAttachedImages((cur) => appendComposerMedia(cur, [image]));
         return;
       } catch (err) {
         toast.error(
@@ -3300,7 +3428,7 @@ export function Composer({
         return;
       }
     }
-    setAttachedFiles((cur) => (cur.includes(clean) ? cur : [...cur, clean]).slice(0, 8));
+    setAttachedFiles((cur) => [...cur, clean].slice(0, 24));
     setText((cur) => {
       const separator = cur.length === 0 || /\s$/.test(cur) ? '' : ' ';
       return `${cur}${separator}${clean}`;
@@ -3318,31 +3446,179 @@ export function Composer({
     return () => window.removeEventListener('jarvis:file:attach', onAttachFile as EventListener);
   }, [addDroppedPath, chatId]);
 
-  const addBrowserImages = useCallback(async (files: File[] | FileList) => {
-    const images = splitImageFiles(files);
-    if (images.length === 0) return false;
-    try {
-      const next = await Promise.all(images.slice(0, 6).map(imageAttachmentFromBrowserFile));
-      setAttachedImages((cur) => {
-        const seen = new Set(cur.map((image) => `${image.name}:${image.size ?? 0}`));
-        const merged = [...cur];
-        for (const image of next) {
-          const key = `${image.name}:${image.size ?? 0}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          merged.push(image);
-        }
-        return merged.slice(0, 6);
-      });
-      return true;
-    } catch (err) {
-      toast.error(
-        'Image attach failed',
-        err instanceof Error ? err.message : 'Could not attach image.',
-      );
-      return true;
-    }
+  const mergeAttachedImages = useCallback((next: ChatImageAttachment[]) => {
+    // No name/size dedupe — multi drag/drop/paste of the same file is allowed.
+    setAttachedImages((cur) => {
+      const result = appendComposerMediaResult(cur, next);
+      if (result.truncated > 0) {
+        toast.info(
+          'Attachment limit reached',
+          `${result.truncated} item(s) not added (max 24 media on this draft).`,
+        );
+      }
+      return result.items;
+    });
   }, []);
+
+  const addBrowserImages = useCallback(
+    async (files: File[] | FileList) => {
+      const images = splitImageFiles(files);
+      if (images.length === 0) return false;
+      const batch = images.slice(0, MAX_IMAGES_PER_BATCH);
+      const next: ChatImageAttachment[] = [];
+      let failed = 0;
+      for (const file of batch) {
+        try {
+          next.push(await imageAttachmentFromBrowserFile(file));
+        } catch {
+          failed += 1;
+        }
+      }
+      if (next.length > 0) mergeAttachedImages(next);
+      if (images.length > MAX_IMAGES_PER_BATCH) {
+        toast.info(
+          'Some images skipped',
+          `Attached ${MAX_IMAGES_PER_BATCH} of ${images.length} images this drop.`,
+        );
+      } else if (failed > 0) {
+        toast.warning(
+          'Some images failed',
+          `${failed} image(s) could not be attached; the rest were kept.`,
+        );
+      }
+      return true;
+    },
+    [mergeAttachedImages],
+  );
+
+  const addBrowserVideos = useCallback(
+    async (files: File[] | FileList) => {
+      const videos = splitVideoFiles(files);
+      if (videos.length === 0) return false;
+      const batch = videos.slice(0, MAX_VIDEOS_PER_BATCH);
+      // Full videos for UI; vision models get sampled frames only at send time.
+      const next: ChatImageAttachment[] = [];
+      let failed = 0;
+      for (const file of batch) {
+        try {
+          next.push(await videoAttachmentFromBrowserFile(file));
+        } catch {
+          failed += 1;
+        }
+      }
+      if (next.length > 0) mergeAttachedImages(next);
+      if (videos.length > MAX_VIDEOS_PER_BATCH) {
+        toast.info(
+          'Some videos skipped',
+          `Attached ${MAX_VIDEOS_PER_BATCH} of ${videos.length} videos this drop.`,
+        );
+      } else if (failed > 0) {
+        toast.warning(
+          'Some videos failed',
+          `${failed} video(s) could not be attached; the rest were kept.`,
+        );
+      }
+      return true;
+    },
+    [mergeAttachedImages],
+  );
+
+  /** OS FileList general files: path-based attach, or temp text for pathless text files. */
+  const addBrowserGeneralFiles = useCallback(async (files: File[] | FileList) => {
+    const classified = classifyBrowserFilesForAttach(files);
+    let attachedAny = false;
+
+    if (classified.pathFiles.length > 0) {
+      setAttachedFiles((cur) => {
+        // Allow multi-drop of the same path (duplicates OK).
+        return [...cur, ...classified.pathFiles.map((entry) => entry.path)].slice(0, 24);
+      });
+      attachedAny = true;
+    }
+
+    for (const file of classified.textWithoutPath.slice(0, 4)) {
+      try {
+        const text = await readBrowserFileAsText(file);
+        if (!text.trim()) continue;
+        // Prefer managed temp file so send uses the real file-path context path.
+        const temp = await createChatTextFileAttachment(
+          `// Attached file: ${file.name || 'file'}\n\n${text}`,
+        );
+        if (temp?.path) {
+          setAttachedFiles((cur) =>
+            (cur.includes(temp.path) ? cur : [...cur, temp.path]).slice(0, 8),
+          );
+          attachedAny = true;
+        } else {
+          // Browser preview: keep a synthetic path token so previews still list the name.
+          const synthetic = `clipboard:${file.name || 'file.txt'}`;
+          setAttachedFiles((cur) =>
+            (cur.includes(synthetic) ? cur : [...cur, synthetic]).slice(0, 8),
+          );
+          setText((cur) => {
+            const block = `\n\n--- ${file.name || 'file'} ---\n${text.slice(0, 12_000)}`;
+            return cur.includes(block.trim()) ? cur : `${cur}${block}`.trimStart();
+          });
+          attachedAny = true;
+        }
+      } catch (err) {
+        toast.error(
+          'File attach failed',
+          err instanceof Error ? err.message : `Could not attach ${file.name || 'file'}.`,
+        );
+        attachedAny = true;
+      }
+    }
+
+    if (classified.unsupportedWithoutPath.length > 0) {
+      const names = classified.unsupportedWithoutPath
+        .map((file) => file.name || 'file')
+        .slice(0, 3)
+        .join(', ');
+      toast.warning(
+        'Could not attach binary file',
+        `${names}: drop from disk in the desktop app (path required), or use /file from the project.`,
+      );
+      attachedAny = true;
+    }
+
+    return attachedAny;
+  }, []);
+
+  /** Shared paste/drop entry: images + videos + general files in one DataTransfer. */
+  const attachBrowserFileList = useCallback(
+    async (files: FileList | File[]) => {
+      if (!files || files.length === 0) return false;
+      const classified = classifyBrowserFilesForAttach(files);
+      let handled = false;
+      if (classified.images.length > 0) {
+        handled = (await addBrowserImages(classified.images)) || handled;
+      }
+      if (classified.videos.length > 0) {
+        handled = (await addBrowserVideos(classified.videos)) || handled;
+      }
+      if (
+        classified.pathFiles.length > 0 ||
+        classified.textWithoutPath.length > 0 ||
+        classified.unsupportedWithoutPath.length > 0
+      ) {
+        handled = (await addBrowserGeneralFiles(files)) || handled;
+      }
+      return handled;
+    },
+    [addBrowserGeneralFiles, addBrowserImages, addBrowserVideos],
+  );
+
+  // Full-chat OS file drops land on ChatView and re-dispatch here with FileList.
+  useEffect(() => {
+    const onMedia = (event: Event) => {
+      const detail = (event as CustomEvent<MediaAttachDetail>).detail;
+      if (detail?.chatId && String(detail.chatId) !== String(chatId)) return;
+      if (detail?.files?.length) void attachBrowserFileList(detail.files);
+    };
+    window.addEventListener(MEDIA_ATTACH_EVENT, onMedia as EventListener);
+    return () => window.removeEventListener(MEDIA_ATTACH_EVENT, onMedia as EventListener);
+  }, [attachBrowserFileList, chatId]);
 
   const addDroppedTerminal = useCallback((raw: string | TerminalRef) => {
     const ref = typeof raw === 'string' ? parseTerminalRef(raw) : raw;
@@ -3469,7 +3745,8 @@ export function Composer({
       clearSttFinalizeTimer();
       setSttAwaitingFinal(false);
       setSttInterim('');
-      VoiceService.setInactivityTimeoutMs(15_000);
+      // Free/default system STT: 3 minutes (180s) of no speech before timeout.
+      VoiceService.setInactivityTimeoutMs(180_000);
       const snap = sttSnapshotRef.current;
       sttSnapshotRef.current = null;
       voiceReplyRequestedRef.current = true;
@@ -3609,14 +3886,14 @@ export function Composer({
           VoiceService.interruptListening();
         }
         captureComposerSttSnapshot();
-        VoiceService.setInactivityTimeoutMs(null);
+        VoiceService.setInactivityTimeoutMs(180_000);
         setSttInterim('');
         const started = VoiceService.startListening();
         if (!started) {
           setSttListening(false);
           setSttAwaitingFinal(false);
           sttSnapshotRef.current = null;
-          VoiceService.setInactivityTimeoutMs(15_000);
+          VoiceService.setInactivityTimeoutMs(180_000);
           await trySystemSttFallbacks();
           return;
         }
@@ -3629,7 +3906,7 @@ export function Composer({
         setSttAwaitingFinal(false);
         setSttInterim('');
         sttSnapshotRef.current = null;
-        VoiceService.setInactivityTimeoutMs(15_000);
+        VoiceService.setInactivityTimeoutMs(180_000);
       }
       return;
     }
@@ -3891,7 +4168,7 @@ export function Composer({
       setSttAwaitingFinal(false);
       revertComposerSttPreview();
       sttSnapshotRef.current = null;
-      VoiceService.setInactivityTimeoutMs(15_000);
+      VoiceService.setInactivityTimeoutMs(180_000);
     }, 2_500);
     try {
       VoiceService.stopListening();
@@ -4008,13 +4285,73 @@ export function Composer({
               data-terminal-drop="chat"
               data-terminal-drop-chat-id={String(chatId)}
               data-hive-active={chatModelSelection.mode === 'hive' ? 'true' : undefined}
+              data-composer-drop-zone="true"
+              onDragOver={(e) => {
+                if (getChatDragKind(e.dataTransfer.types) || hasOsFileDrag(e.dataTransfer.types)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'copy';
+                  setDragOver(true);
+                }
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setDragOver(false);
+                }
+              }}
+              onDrop={(e) => {
+                const fileList = e.dataTransfer.files;
+                if (fileList && fileList.length > 0) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOver(false);
+                  void attachBrowserFileList(fileList);
+                  const payload = getChatDropPayload(e.dataTransfer);
+                  if (payload?.kind === 'context') addDroppedContext(payload.raw);
+                  else if (payload?.kind === 'terminal') addDroppedTerminal(payload.raw);
+                  return;
+                }
+                const payload = getChatDropPayload(e.dataTransfer);
+                if (!payload) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOver(false);
+                if (payload.kind === 'context') addDroppedContext(payload.raw);
+                else if (payload.kind === 'terminal') addDroppedTerminal(payload.raw);
+                else void addDroppedPath(payload.path);
+              }}
               className={cn(
                 'rounded-lg border border-input bg-background',
                 'transition-colors focus-within:border-accent-cyan/40 focus-within:ring-1 focus-within:ring-ring',
                 chatModelSelection.mode === 'hive' && 'border-accent-copper/40',
+                dragOver &&
+                  'border-accent-copper/60 bg-accent-copper/5 ring-1 ring-accent-copper/40',
                 compact && 'p-1',
               )}
             >
+              {/* Media sits above the input as an extension of the chat box */}
+              <ComposerMediaStrip
+                images={attachedImages}
+                files={attachedFiles}
+                compact={compact}
+                onRemoveImage={(id) =>
+                  setAttachedImages((cur) => cur.filter((item) => item.id !== id))
+                }
+                onRemoveFile={(path) => {
+                  setAttachedFiles((cur) => cur.filter((p) => p !== path));
+                  setMediaPreview((current) =>
+                    current?.kind === 'file' && current.path === path ? null : current,
+                  );
+                }}
+                onActivateImage={(image) => setMediaPreview(mediaTargetFromAttachment(image))}
+                onActivateFile={(path) => {
+                  setMediaPreview({
+                    kind: 'file',
+                    path,
+                    projectRoot: getStoredProjectRoot(projectId),
+                  });
+                }}
+              />
               <textarea
                 ref={textareaRef}
                 value={text}
@@ -4039,37 +4376,10 @@ export function Composer({
                 onPaste={(e) => {
                   const files = e.clipboardData?.files;
                   if (files && files.length > 0) {
-                    const images = splitImageFiles(files);
-                    if (images.length > 0) {
-                      e.preventDefault();
-                      void addBrowserImages(images);
-                    }
-                  }
-                }}
-                onDragOver={(e) => {
-                  if (getChatDragKind(e.dataTransfer.types)) {
+                    // Prevent default so OS file paste is not also inserted as text.
                     e.preventDefault();
-                    setDragOver(true);
+                    void attachBrowserFileList(files);
                   }
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  const images = splitImageFiles(e.dataTransfer.files);
-                  if (images.length > 0) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragOver(false);
-                    void addBrowserImages(images);
-                    return;
-                  }
-                  const payload = getChatDropPayload(e.dataTransfer);
-                  if (!payload) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDragOver(false);
-                  if (payload.kind === 'context') addDroppedContext(payload.raw);
-                  else if (payload.kind === 'terminal') addDroppedTerminal(payload.raw);
-                  else void addDroppedPath(payload.path);
                 }}
                 placeholder={
                   placeholder ??
@@ -4098,7 +4408,6 @@ export function Composer({
                   'scrollbar-hidden',
                   !compact && 'text-body',
                   compact && 'px-2 py-1.5 leading-snug',
-                  dragOver && 'bg-accent-copper/10 ring-1 ring-accent-copper/50',
                 )}
               />
               {confirmedAgentMentions.length > 0 && (
@@ -4133,45 +4442,6 @@ export function Composer({
                       />
                     ))}
                   </TokenList>
-                </div>
-              )}
-              {attachedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 px-2 pb-1">
-                  {attachedFiles.map((path) => (
-                    <InputToken
-                      key={path}
-                      type="file"
-                      label={path.split(/[/\\]/).pop() ?? path}
-                      sublabel={path.includes('/') || path.includes('\\') ? '...' : undefined}
-                      onActivate={() => setPreviewFilePath(path)}
-                      onRemove={() => {
-                        setAttachedFiles((cur) => cur.filter((p) => p !== path));
-                        setPreviewFilePath((current) => (current === path ? null : current));
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-              {previewFilePath ? (
-                <FileAttachmentPreview
-                  path={previewFilePath}
-                  projectRoot={getStoredProjectRoot(projectId)}
-                  onClose={() => setPreviewFilePath(null)}
-                />
-              ) : null}
-              {attachedImages.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 px-2 pb-1">
-                  {attachedImages.map((image) => (
-                    <InputToken
-                      key={image.id}
-                      type="image"
-                      label={image.name}
-                      sublabel={image.size ? `${Math.ceil(image.size / 1024)} KB` : image.mimeType}
-                      onRemove={() =>
-                        setAttachedImages((cur) => cur.filter((item) => item.id !== image.id))
-                      }
-                    />
-                  ))}
                 </div>
               )}
               {attachedTerminals.length > 0 && (
@@ -4531,6 +4801,9 @@ export function Composer({
             returnPromptForgeFocus();
           }}
         />
+      ) : null}
+      {mediaPreview ? (
+        <MediaPreviewPanel target={mediaPreview} onClose={() => setMediaPreview(null)} />
       ) : null}
     </div>
   );

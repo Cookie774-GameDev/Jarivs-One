@@ -40,6 +40,19 @@ export async function createOversizedMessageAttachment(
   return bridge.create(text);
 }
 
+/**
+ * Always materialize text into a managed local temp file on desktop (any size).
+ * Used for pathless browser File paste/drop of text-like general files.
+ */
+export async function createChatTextFileAttachment(
+  text: string,
+  bridge: NativeBridge = nativeBridge,
+  nativeRuntime = isTauri,
+): Promise<OversizedMessageAttachment | null> {
+  if (!nativeRuntime || !text.trim()) return null;
+  return bridge.create(text);
+}
+
 export function cleanupExpiredOversizedMessageAttachments(
   bridge: NativeBridge = nativeBridge,
   nativeRuntime = isTauri,

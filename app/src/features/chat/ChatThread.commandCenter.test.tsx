@@ -245,6 +245,41 @@ describe('ChatThread Command Center routing', () => {
     expect(document.querySelector('[data-sik-evidence="chat.runtime-ready"]')).toBeNull();
   });
 
+  it('agentic chatting with messages does not stack a second classic mini command center', async () => {
+    hookState.messages = [
+      {
+        id: 'message-user' as Message['id'],
+        chat_id: 'chat-1' as Message['chat_id'],
+        role: 'user',
+        parts: [{ kind: 'text', text: 'Hello Jarvis' }],
+        created_at: 90,
+        updated_at: 90,
+      },
+      {
+        id: 'message-assistant' as Message['id'],
+        chat_id: 'chat-1' as Message['chat_id'],
+        role: 'assistant',
+        parts: [{ kind: 'text', text: 'Hello — staying on this chat.' }],
+        created_at: 100,
+        updated_at: 100,
+      },
+    ];
+
+    render(
+      <JarvisCommandCenterProvider value={undefined}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+
+    // Agentic success path: AgenticConsole owns the single mini command center.
+    // Classic ChatActivityTimeline must not also mount (would double jarvis-session-panel).
+    expect(screen.queryByTestId('legacy-timeline')).toBeNull();
+    await vi.waitFor(() => {
+      expect(document.querySelectorAll('[data-testid="jarvis-session-panel"]').length).toBe(1);
+    });
+    expect(document.querySelector('[data-agentic-console]')).not.toBeNull();
+  });
+
   it('discovers a canonical run from the account-bound data port without a legacy projection', async () => {
     render(
       <JarvisCommandCenterProvider value={binding([canonicalRun()])}>
