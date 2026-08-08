@@ -1,3 +1,5 @@
+import type { WebviewOptions } from '@tauri-apps/api/webview';
+
 import { isTauri } from '@/lib/utils';
 import { openExternal } from '@/lib/tauri';
 import {
@@ -13,7 +15,7 @@ export interface ProviderSurfaceBounds {
   readonly height: number;
 }
 
-export interface ManagedProviderWindow {
+export interface ManagedProviderSurface {
   readonly label: string;
   show(): Promise<void>;
   hide(): Promise<void>;
@@ -24,12 +26,11 @@ export interface ManagedProviderWindow {
 
 export interface ProviderSurfacePlatform {
   readonly desktop: boolean;
-  currentMainBounds(): Promise<{ x: number; y: number; scaleFactor: number }>;
-  getWindow(label: string): Promise<ManagedProviderWindow | null>;
-  createWindow(
+  getSurface(label: string): Promise<ManagedProviderSurface | null>;
+  createSurface(
     label: string,
-    options: Record<string, unknown>,
-  ): ManagedProviderWindow | Promise<ManagedProviderWindow>;
+    options: WebviewOptions,
+  ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
   openExternal(url: string): Promise<void>;
 }
 
@@ -65,8 +66,8 @@ export function createProviderSurfaceController(
     await Promise.all(
       BROWSER_CHAT_PROVIDERS.filter((provider) => provider.id !== selected).map(
         async (provider) => {
-          const window = await platform.getWindow(provider.windowLabel);
-          if (window) await window.hide();
+          const surface = await platform.getSurface(provider.windowLabel);
+          if (surface) await surface.hide();
         },
       ),
     );
@@ -84,38 +85,28 @@ export function createProviderSurfaceController(
       }
 
       await hideExcept(provider.id);
-      const main = await platform.currentMainBounds();
-      const absolute = {
-        x: main.x + bounds.x,
-        y: main.y + bounds.y,
+      const relative = {
+        x: bounds.x,
+        y: bounds.y,
         width: bounds.width,
         height: bounds.height,
       };
-      let window = await platform.getWindow(provider.windowLabel);
-      if (!window) {
-        window = await platform.createWindow(provider.windowLabel, {
+      let surface = await platform.getSurface(provider.windowLabel);
+      if (!surface) {
+        surface = await platform.createSurface(provider.windowLabel, {
           url: provider.homeUrl,
-          title: `${provider.label} · VibeSpace Browser Chat`,
           dataDirectory: provider.profileKey,
-          x: absolute.x,
-          y: absolute.y,
-          width: absolute.width,
-          height: absolute.height,
-          decorations: false,
-          resizable: false,
-          maximizable: false,
-          minimizable: false,
-          closable: false,
-          skipTaskbar: true,
-          alwaysOnTop: false,
-          visible: false,
+          x: relative.x,
+          y: relative.y,
+          width: relative.width,
+          height: relative.height,
           focus: false,
         });
       }
-      await window.setPosition({ x: absolute.x, y: absolute.y });
-      await window.setSize({ width: absolute.width, height: absolute.height });
-      await window.show();
-      await window.setFocus();
+      await surface.setPosition({ x: relative.x, y: relative.y });
+      await surface.setSize({ width: relative.width, height: relative.height });
+      await surface.show();
+      await surface.setFocus();
       return { kind: 'managed', providerId: provider.id };
     },
 
@@ -136,10 +127,9 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
   if (!isTauri) {
     return {
       desktop: false,
-      currentMainBounds: async () => ({ x: 0, y: 0, scaleFactor: 1 }),
-      getWindow: async () => null,
-      createWindow: () => {
-        throw new Error('Managed provider windows require the VibeSpace desktop app.');
+      getSurface: async () => null,
+      createSurface: () => {
+        throw new Error('Managed provider surfaces require the VibeSpace desktop app.');
       },
       openExternal: async (url) => {
         window.open(url, '_blank', 'noopener,noreferrer');
@@ -147,46 +137,36 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
     };
   }
 
-  const [{ WebviewWindow }, { LogicalPosition, LogicalSize }, { getCurrentWindow }] =
-    await Promise.all([
-      import('@tauri-apps/api/webviewWindow'),
-      import('@tauri-apps/api/dpi'),
-      import('@tauri-apps/api/window'),
-    ]);
+  const [{ Webview }, { LogicalPosition, LogicalSize }, { getCurrentWindow }] = await Promise.all([
+    import('@tauri-apps/api/webview'),
+    import('@tauri-apps/api/dpi'),
+    import('@tauri-apps/api/window'),
+  ]);
 
-  const wrap = (window: InstanceType<typeof WebviewWindow>): ManagedProviderWindow => ({
-    label: window.label,
-    show: () => window.show(),
-    hide: () => window.hide(),
-    setFocus: () => window.setFocus(),
-    setPosition: ({ x, y }) => window.setPosition(new LogicalPosition(x, y)),
-    setSize: ({ width, height }) => window.setSize(new LogicalSize(width, height)),
+  const wrap = (webview: InstanceType<typeof Webview>): ManagedProviderSurface => ({
+    label: webview.label,
+    show: () => webview.show(),
+    hide: () => webview.hide(),
+    setFocus: () => webview.setFocus(),
+    setPosition: ({ x, y }) => webview.setPosition(new LogicalPosition(x, y)),
+    setSize: ({ width, height }) => webview.setSize(new LogicalSize(width, height)),
   });
 
   return {
     desktop: true,
-    async currentMainBounds() {
-      const main = getCurrentWindow();
-      const [position, scaleFactor] = await Promise.all([main.innerPosition(), main.scaleFactor()]);
-      return {
-        x: position.x / scaleFactor,
-        y: position.y / scaleFactor,
-        scaleFactor,
-      };
+    async getSurface(label) {
+      const webview = await Webview.getByLabel(label);
+      return webview ? wrap(webview) : null;
     },
-    async getWindow(label) {
-      const window = await WebviewWindow.getByLabel(label);
-      return window ? wrap(window) : null;
-    },
-    async createWindow(label, options) {
-      const window = new WebviewWindow(label, options);
+    async createSurface(label, options) {
+      const webview = new Webview(getCurrentWindow(), label, options);
       await new Promise<void>((resolve, reject) => {
-        void window.once('tauri://created', () => resolve());
-        void window.once('tauri://error', (event) =>
+        void webview.once('tauri://created', () => resolve());
+        void webview.once('tauri://error', (event) =>
           reject(new Error(`Could not create Browser Chat surface: ${String(event.payload)}`)),
         );
       });
-      return wrap(window);
+      return wrap(webview);
     },
     openExternal,
   };

@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { WebviewOptions } from '@tauri-apps/api/webview';
 
 import { browserChatProvider } from './providerRegistry';
 import {
   createProviderSurfaceController,
-  type ManagedProviderWindow,
+  type ManagedProviderSurface,
   type ProviderSurfacePlatform,
 } from './providerSurface';
 
-function fakeWindow(label: string): ManagedProviderWindow {
+function fakeWindow(label: string): ManagedProviderSurface {
   return {
     label,
     show: vi.fn(async () => undefined),
@@ -19,18 +20,15 @@ function fakeWindow(label: string): ManagedProviderWindow {
 }
 
 function platform(desktop = true) {
-  const windows = new Map<string, ManagedProviderWindow>();
-  const created: Array<{ label: string; options: Record<string, unknown> }> = [];
+  const windows = new Map<string, ManagedProviderSurface>();
+  const created: Array<{ label: string; options: WebviewOptions }> = [];
   const opened: string[] = [];
   const implementation: ProviderSurfacePlatform = {
     desktop,
-    async currentMainBounds() {
-      return { x: 10, y: 20, scaleFactor: 1 };
-    },
-    async getWindow(label) {
+    async getSurface(label) {
       return windows.get(label) ?? null;
     },
-    createWindow(label, options) {
+    createSurface(label, options) {
       const window = fakeWindow(label);
       windows.set(label, window);
       created.push({ label, options });
@@ -44,7 +42,7 @@ function platform(desktop = true) {
 }
 
 describe('Browser Chat managed provider surface', () => {
-  it('creates only a registry-owned HTTPS surface with a provider-isolated profile', async () => {
+  it('creates a child surface with registry-owned HTTPS and main-relative bounds', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);
 
@@ -62,13 +60,16 @@ describe('Browser Chat managed provider surface', () => {
       options: {
         url: 'https://chatgpt.com/',
         dataDirectory: 'browser-chat/chatgpt',
-        decorations: false,
-        skipTaskbar: true,
-        alwaysOnTop: false,
+        x: 100,
+        y: 80,
+        width: 900,
+        height: 640,
         focus: false,
       },
     });
-    expect(fake.created[0]?.options).not.toHaveProperty('parent');
+    expect(fake.created[0]?.options).not.toHaveProperty('decorations');
+    expect(fake.created[0]?.options).not.toHaveProperty('skipTaskbar');
+    expect(fake.created[0]?.options).not.toHaveProperty('alwaysOnTop');
     expect(fake.created[0]?.options).not.toHaveProperty('focused');
     expect(fake.created[0]?.options).not.toHaveProperty('initializationScript');
   });

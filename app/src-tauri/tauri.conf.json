@@ -59,6 +59,7 @@
     "security": {
       "capabilities": [
         "default",
+        "browser-chat-host",
         "cold-start-intro",
         "pet-mini-panel",
         "pet-overlay",

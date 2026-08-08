@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser-chat-host",
+  "description": "Least-privilege authority for the local VibeSpace main webview to create and position Browser Chat child webviews. Remote provider origins receive no IPC capability.",
+  "webviews": ["main"],
+  "permissions": [
+    "core:webview:allow-create-webview",
+    "core:webview:allow-set-webview-focus",
+    "core:webview:allow-set-webview-position",
+    "core:webview:allow-set-webview-size",
+    "core:webview:allow-webview-hide",
+    "core:webview:allow-webview-show"
+  ]
+}
