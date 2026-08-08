@@ -735,6 +735,9 @@ mod tests {
 greet
 app_version
 refresh_app_branding
+browser_chat_surface::browser_chat_surface_open
+browser_chat_surface::browser_chat_surface_hide
+browser_chat_surface::browser_chat_surface_hide_all
 chat_temp_attachments::chat_temp_attachment_create
 chat_temp_attachments::chat_temp_attachment_cleanup
 runtime_profile_query
@@ -880,9 +883,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "fcf6b171e0b8f5943de72772fad402f1be58f1e860809b4c3bef0a8bc1c7165d";
+        "556d15af7234b1ae02c0ef7cae4b0366545058525e59ee033f3610504ca22e2c";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "f2701326bf1fe7181e0119d12ab1dbd04b98d87805b609e3b41d4084114d35da";
+        "bd51da1953a0f29641b65eb5b034917a1d555421dc891ac1f4c3ee76404abbd9";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1030,7 +1033,7 @@ wallpaper_master::wallpaper_full_cache_path";
         let joined = manifest.commands.join("\n");
         assert_eq!(
             joined, ORDINARY_HANDLER_AUTHORITY,
-            "the ordered handler must remain the frozen 141 production commands"
+            "the ordered handler must remain the frozen 150 production commands"
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(joined.as_bytes())),
