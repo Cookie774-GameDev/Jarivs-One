@@ -106,14 +106,14 @@ describe('PetChatSurface independent panel selection', () => {
     expect(screen.getByTestId('thread').textContent).toBe('chat-1');
     expect(screen.getByTestId('composer').textContent).toBe('chat-1');
     expect(screen.getByTestId('composer').getAttribute('data-compact')).toBe('true');
-    // Warm theme only: empty-state welcome (art + 4 starters).
+    // Every release theme gets its own empty-state art + the same 4 starters.
     expect(screen.getByTestId('warm-welcome').getAttribute('data-compact')).toBe('true');
   });
 
-  it('does not show warm notebook welcome outside the warm theme', () => {
+  it('keeps the scaled welcome available outside the warm theme', () => {
     uiState.theme = 'monochrome';
     render(<PetChatSurface />);
-    expect(screen.queryByTestId('warm-welcome')).toBeNull();
+    expect(screen.getByTestId('warm-welcome').getAttribute('data-compact')).toBe('true');
   });
 
   it('selects a panel tab without touching main app active chat', () => {

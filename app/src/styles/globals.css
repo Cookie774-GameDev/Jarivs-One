@@ -2124,3 +2124,55 @@ html[data-theme='monochrome'] .jarvis-context-menu {
     opacity: 0.5;
   }
 }
+
+/* ============================================================
+   Slash active command chip — compact Hive/rainbow-style glow box
+   when a slash command is confirmed/connected in the composer.
+   Reuses the same warm copper language as data-hive-active / jarvis-rainbow.
+   ============================================================ */
+[data-slash-active-glow='true'] {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+}
+
+[data-slash-active-glow='true']::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: -1;
+  background: conic-gradient(
+    from var(--jarvis-rainbow-angle, 0deg),
+    hsl(14 64% 60%),
+    hsl(36 56% 59%),
+    hsl(28 70% 52%),
+    hsl(14 64% 60%)
+  );
+  filter: blur(5px);
+  opacity: 0.72;
+  animation:
+    jarvis-rainbow-spin 6.5s linear infinite,
+    hive-composer-pulse 4.2s ease-in-out infinite;
+}
+
+[data-slash-active-glow='true']::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: -1;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, hsl(var(--accent-copper)) 55%, transparent),
+    0 0 14px color-mix(in srgb, hsl(var(--accent-copper)) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slash-active-glow='true']::before {
+    animation: none;
+    background: linear-gradient(135deg, hsl(14 64% 60%), hsl(36 56% 59%), hsl(14 64% 60%));
+    opacity: 0.55;
+  }
+}

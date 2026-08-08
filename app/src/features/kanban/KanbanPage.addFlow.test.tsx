@@ -4,7 +4,14 @@ import { useMilestonesStore } from '@/features/inspector/milestonesStore';
 import { KanbanPage } from './KanbanPage';
 
 vi.mock('@/features/inspector/workspaceTasks', () => ({
-  useWorkspaceOpenTasks: () => [],
+  useWorkspaceOpenTasks: () => [
+    {
+      id: 'milestone:unexpected',
+      source: 'milestone',
+      title: 'Must not become live activity',
+      updatedAt: 1,
+    },
+  ],
 }));
 
 vi.mock('@/features/inspector/workspaceAnalytics', () => ({
@@ -36,7 +43,7 @@ describe('KanbanPage add controls', () => {
   });
 
   it('adds typed to-dos and milestones through the existing shared store', () => {
-    render(<KanbanPage />);
+    const { container } = render(<KanbanPage />);
     const todoInput = screen.getByRole('textbox', { name: "New item for Today's to-do" });
     const milestoneInput = screen.getByRole('textbox', { name: 'New item for Milestones' });
 
@@ -53,5 +60,7 @@ describe('KanbanPage add controls', () => {
     );
     expect((todoInput as HTMLInputElement).value).toBe('');
     expect((milestoneInput as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('Live workspace activity')).toBeNull();
+    expect(container.querySelector('[data-kanban-checklist-grid="expanded"]')).not.toBeNull();
   });
 });

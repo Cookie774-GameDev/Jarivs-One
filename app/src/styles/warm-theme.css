@@ -307,6 +307,9 @@ html[data-theme='warm'] [data-vibespace-page='chat'] [data-testid='jarvis-sessio
 }
 
 html[data-theme='warm'] [data-vibespace-page='chat'] [data-tour='chat-composer'] {
+  /* Above .warm-chat-welcome (z-index: 3) so media strip sits over empty-chat starters. */
+  position: relative;
+  z-index: 5;
   margin: 0 clamp(16px, 2.2vw, 36px) clamp(14px, 2vh, 24px);
   border: 1px solid var(--warm-border);
   border-radius: var(--warm-radius-card);
@@ -557,8 +560,16 @@ html[data-theme='warm'] [data-monochrome-route='files']::before {
   pointer-events: none;
   content: '';
   background:
-    linear-gradient(90deg, #f8ebdd 0 34%, rgb(248 235 221 / 0.96) 42%, transparent 66%),
-    url('/assets/themes/warm/final-redo/files-scene-v1.webp') center / 100% 100% no-repeat;
+    linear-gradient(
+      90deg,
+      #f8ebdd 0 29%,
+      rgb(248 235 221 / 0.74) 36%,
+      rgb(248 235 221 / 0.22) 55%,
+      transparent 68%
+    ),
+    url('/assets/themes/warm/final-redo/files-scene-v1.webp') center / cover no-repeat;
+  filter: saturate(1.14) contrast(1.14);
+  image-rendering: auto;
 }
 
 html[data-theme='warm'] [data-monochrome-route='files'] > * {
@@ -572,22 +583,22 @@ html[data-theme='warm'] [data-monochrome-route='files'] [data-monochrome-surface
 }
 
 html[data-theme='warm'] [data-monochrome-route='files'] [data-monochrome-surface='files-editor'] {
-  background: rgb(248 235 221 / 0.34);
-  backdrop-filter: blur(5px);
+  background: rgb(248 235 221 / 0.18);
+  backdrop-filter: none;
 }
 
 html[data-theme='warm']
   [data-monochrome-route='files']
   [data-monochrome-surface='files-editor'][data-warm-state='empty'] {
-  background: rgb(251 241 228 / 0.68);
+  background: rgb(251 241 228 / 0.38);
 }
 
 html[data-theme='warm']
   [data-monochrome-route='files']
   [data-monochrome-surface='files-editor']
   textarea {
-  background: rgb(255 250 243 / 0.62);
-  backdrop-filter: blur(8px);
+  background: rgb(255 250 243 / 0.2);
+  backdrop-filter: none;
   caret-color: var(--warm-terracotta-deep);
 }
 
@@ -1164,7 +1175,7 @@ html[data-theme='warm'] [data-warm-surface='benchmarks-chart'] {
 }
 
 html[data-theme='warm'] [data-warm-surface='benchmarks-chart'] h2 {
-  font-size: 21px;
+  font-size: 25px;
   color: #3f2e21;
 }
 
@@ -1174,6 +1185,7 @@ html[data-theme='warm'] [data-warm-surface='benchmarks-chart'] svg {
 
 html[data-theme='warm'] [data-warm-surface='benchmarks-chart'] svg text {
   fill: #443326;
+  font-size: 15.6px;
 }
 
 html[data-theme='warm'] [data-warm-page='benchmarks'] [data-monochrome-surface='benchmarks-table'] {
@@ -1191,14 +1203,46 @@ html[data-theme='warm']
   [data-warm-page='benchmarks']
   [data-monochrome-surface='benchmarks-table']
   table {
-  font-size: 12.5px;
+  font-size: 11.5px;
+  line-height: 1.15;
 }
 
 html[data-theme='warm']
   [data-warm-page='benchmarks']
   [data-monochrome-surface='benchmarks-table']
   :is(th, td) {
-  padding: 8px 12px;
+  height: 26px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+html[data-theme='warm']
+  [data-warm-page='benchmarks']
+  [data-warm-table-mode='compact-scroll']
+  [data-warm-region='benchmarks-table-scroll'] {
+  max-height: min(54vh, 520px);
+  overscroll-behavior: contain;
+  scrollbar-color: rgb(169 105 65 / 0.52) rgb(248 232 211 / 0.62);
+  scrollbar-width: thin;
+}
+
+html[data-theme='warm']
+  [data-warm-page='benchmarks']
+  [data-warm-table-mode='compact-scroll']
+  thead {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  background: rgb(247 229 206 / 0.98);
+  box-shadow: 0 1px rgb(164 103 61 / 0.18);
+}
+
+html[data-theme='warm']
+  [data-warm-page='benchmarks']
+  [data-warm-table-mode='compact-scroll']
+  [data-warm-region='benchmarks-table-scroll']:focus-visible {
+  outline: 2px solid rgb(190 102 59 / 0.72);
+  outline-offset: -3px;
 }
 
 /*
@@ -1630,6 +1674,8 @@ html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-sce
   width: 1152px;
   max-width: none;
   height: auto;
+  filter: saturate(1.1) contrast(1.08);
+  image-rendering: auto;
 }
 
 html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-scene-left'] > img {
@@ -1647,14 +1693,14 @@ html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-was
   z-index: 1;
   inset: 0;
   background:
-    radial-gradient(ellipse 58% 70% at 57% 43%, rgb(251 243 231 / 0.98) 0 48%, transparent 76%),
+    radial-gradient(ellipse 58% 70% at 57% 43%, rgb(251 243 231 / 0.76) 0 42%, transparent 76%),
     linear-gradient(
       180deg,
-      rgb(252 245 235 / 0.98) 0 38%,
-      rgb(251 242 227 / 0.82) 66%,
+      rgb(252 245 235 / 0.74) 0 34%,
+      rgb(251 242 227 / 0.52) 66%,
       transparent 86%
     ),
-    linear-gradient(90deg, transparent 0 18%, rgb(250 239 220 / 0.88) 24% 63%, transparent 84%);
+    linear-gradient(90deg, transparent 0 18%, rgb(250 239 220 / 0.54) 24% 63%, transparent 84%);
   pointer-events: none;
 }
 
@@ -1678,10 +1724,11 @@ html[data-theme='warm'] .mc7f-settings-modal [data-sakura-surface='settings-cont
   padding: 30px 52px 42px;
   background: linear-gradient(
     180deg,
-    rgb(252 246 237 / 0.96) 0 52%,
-    rgb(251 243 231 / 0.92) 72%,
-    rgb(250 239 222 / 0.58) 100%
+    rgb(252 246 237 / 0.52) 0 38%,
+    rgb(251 243 231 / 0.38) 70%,
+    rgb(250 239 222 / 0.18) 100%
   );
+  backdrop-filter: blur(2px);
   scrollbar-color: rgb(177 132 91 / 0.5) transparent;
 }
 
@@ -1758,11 +1805,11 @@ html[data-theme='warm'] .mc7f-settings-modal nav button[aria-current='page'] svg
 html[data-theme='warm'] .mc7f-settings-modal [role='tabpanel'] section,
 html[data-theme='warm'] .mc7f-settings-modal [role='tabpanel'] article {
   border-color: var(--warm-border);
-  background: rgb(255 249 239 / 0.72);
+  background: rgb(255 249 239 / 0.56);
   box-shadow:
     0 9px 25px rgb(102 65 39 / 0.06),
     inset 0 1px 0 rgb(255 255 255 / 0.72);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(3px);
 }
 
 html[data-theme='warm']
@@ -1770,12 +1817,17 @@ html[data-theme='warm']
   [data-sakura-surface='settings-content']
   [class*='rounded-'][class*='border-border'] {
   border-color: var(--warm-border);
-  background-color: rgb(255 249 239 / 0.68);
+  background-color: rgb(255 249 239 / 0.52);
   background-image: none;
   box-shadow:
     0 8px 24px rgb(102 65 39 / 0.055),
     inset 0 1px 0 rgb(255 255 255 / 0.7);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(3px);
+}
+
+html[data-theme='warm'] .mc7f-settings-modal .mc7f-settings-appearance [class*='bg-panel'] {
+  background-color: rgb(255 249 239 / 0.52) !important;
+  backdrop-filter: blur(3px);
 }
 
 @media (min-width: 1401px) {

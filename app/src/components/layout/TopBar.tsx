@@ -566,7 +566,7 @@ export function TopBar() {
             <Avatar
               seed={displayName || workspaceId || 'jarvis'}
               initials={warmBenchmarks ? 'J' : (displayName || 'J').charAt(0)}
-              size={warmBenchmarks ? 36 : 24}
+              size={24}
             />
           </button>
         </div>

@@ -28,8 +28,6 @@ type PendingDelete = Readonly<{ id: string; title: string }>;
 export function PetChatSurface({ className }: { className?: string }) {
   const workspaceId = useAuthStore((s) => s.workspaceId);
   const projectId = useAuthStore((s) => s.projectId);
-  // Notebook/coffee welcome art is warm-theme only (same gate as main ChatView).
-  const theme = useUIStore((s) => s.theme);
   const panelActiveChatId = usePetPresentationStore((s) => s.panelActiveChatId);
   const setPanelActiveChatId = usePetPresentationStore((s) => s.setPanelActiveChatId);
   const registerChat = usePetPresentationStore((s) => s.registerChat);
@@ -102,8 +100,7 @@ export function PetChatSurface({ className }: { className?: string }) {
     try {
       await chatRepo.delete(id as ChatId);
       const remaining = workspaceChatIds.filter((chatId) => chatId !== id);
-      const nextPanel =
-        panelActiveChatId === id ? (remaining[0] ?? null) : panelActiveChatId;
+      const nextPanel = panelActiveChatId === id ? (remaining[0] ?? null) : panelActiveChatId;
       setPanelActiveChatId(nextPanel);
       // If main still pointed at the deleted chat, park it on a remaining one
       // so the main surface does not render a missing thread.
@@ -113,10 +110,7 @@ export function PetChatSurface({ className }: { className?: string }) {
       }
       setPendingDelete(null);
     } catch (err) {
-      toast.error(
-        'Could not delete chat',
-        err instanceof Error ? err.message : 'Try again.',
-      );
+      toast.error('Could not delete chat', err instanceof Error ? err.message : 'Try again.');
     } finally {
       setDeleting(false);
     }
@@ -127,7 +121,10 @@ export function PetChatSurface({ className }: { className?: string }) {
       className={cn('relative flex h-full min-h-0 min-w-0 flex-col gap-2', className)}
       data-pet-chat-surface="true"
     >
-      <div className="flex min-h-6 min-w-0 shrink-0 items-center gap-0.5" data-pet-chat-toolbar="true">
+      <div
+        className="flex min-h-6 min-w-0 shrink-0 items-center gap-0.5"
+        data-pet-chat-toolbar="true"
+      >
         <Button
           size="sm"
           variant="secondary"
@@ -224,10 +221,7 @@ export function PetChatSurface({ className }: { className?: string }) {
               className="relative min-h-0 flex-1 overflow-hidden"
               data-pet-chat-thread-host="true"
             >
-              {/* Warm theme only — matches main ChatView canShowWarmWelcome. */}
-              {theme === 'warm' ? (
-                <WarmChatWelcome chatId={String(activeId)} compact />
-              ) : null}
+              <WarmChatWelcome chatId={String(activeId)} compact />
               <ChatThread chatId={activeId} compact />
               <TokenBossCinematic chatId={String(activeId)} compact />
             </div>

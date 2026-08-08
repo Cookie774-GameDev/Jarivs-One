@@ -245,10 +245,9 @@ export function BenchmarksPage() {
   const chartRows = React.useMemo(
     () =>
       warmActive
-        ? (fromSnapshot && providerFilter === PROVIDER_FILTER_ALL && !openOnly
-            ? filtered.slice(0, TOP_N_FOR_CHART)
-            : topForChart
-          ).slice(0, 12)
+        ? fromSnapshot && providerFilter === PROVIDER_FILTER_ALL && !openOnly
+          ? filtered.slice(0, TOP_N_FOR_CHART)
+          : topForChart
         : topForChart,
     [filtered, fromSnapshot, openOnly, providerFilter, topForChart, warmActive],
   );
@@ -505,7 +504,7 @@ export function BenchmarksPage() {
               Loading leaderboard…
             </div>
           ) : (
-            <BarChart rows={chartRows} height={warmActive ? 360 : undefined} />
+            <BarChart rows={chartRows} height={warmActive ? 420 : undefined} />
           )}
         </section>
 
@@ -513,9 +512,15 @@ export function BenchmarksPage() {
         <section
           data-monochrome-surface="benchmarks-table"
           data-sakura-surface="benchmarks-table"
+          data-warm-table-mode={warmActive ? 'compact-scroll' : undefined}
           className="cozy-card !p-0 overflow-hidden"
         >
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-auto"
+            data-warm-region={warmActive ? 'benchmarks-table-scroll' : undefined}
+            tabIndex={warmActive ? 0 : undefined}
+            aria-label={warmActive ? `Leaderboard table, ${visibleRows.length} models` : undefined}
+          >
             <table className="w-full text-secondary [html[data-theme=monochrome]_&]:font-mono">
               <thead>
                 <tr className="border-b border-border bg-paper-soft text-metadata text-muted-foreground uppercase tracking-wider [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">

@@ -128,6 +128,42 @@ describe('BenchmarksPage Warm Schema B', () => {
     );
   });
 
+  it('contains all 50 leaderboard models in a compact independently scrollable Warm table', async () => {
+    const fiftyRows = Array.from({ length: 50 }, (_, index) => ({
+      ...fixtures.rows[index % fixtures.rows.length],
+      model: `Full Leaderboard Model ${index + 1}`,
+      arena_score: 100 - index,
+    }));
+    vi.mocked(fetchBenchmarks).mockResolvedValueOnce({
+      rows: fiftyRows,
+      fromSnapshot: true,
+      dataset: {
+        sourceName: 'Artificial Analysis',
+        sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
+        metricLabel: 'Artificial Analysis Intelligence Index',
+        benchmarkDate: fixtures.fetchedAt,
+        ingestedAt: fixtures.fetchedAt,
+        confidence: 'high',
+        normalizationNote: 'Deterministic test fixture.',
+      },
+    });
+
+    const { container } = render(<BenchmarksPage />);
+    await screen.findByText('Full Leaderboard Model 50');
+
+    const tableSurface = container.querySelector('[data-monochrome-surface="benchmarks-table"]');
+    const scrollRegion = tableSurface?.querySelector(
+      '[data-warm-region="benchmarks-table-scroll"]',
+    );
+    expect(tableSurface?.getAttribute('data-warm-table-mode')).toBe('compact-scroll');
+    expect(scrollRegion?.className).toContain('overflow-auto');
+    expect(tableSurface?.querySelectorAll('tbody tr')).toHaveLength(50);
+
+    const chart = within(container).getByRole('img');
+    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 25 models by arena score');
+    expect(chart.querySelectorAll(':scope > g:not([aria-hidden])')).toHaveLength(25);
+  });
+
   it('keeps Refresh real, disabled while loading, and recoverable after completion', async () => {
     render(<BenchmarksPage />);
     await screen.findByText('from snapshot');

@@ -554,7 +554,7 @@
   inset: 0 !important;
   z-index: 4;
   display: flex !important;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   pointer-events: none;
   overflow-y: auto;
@@ -568,6 +568,9 @@
 [data-pet-mini-panel='true'] .warm-chat-welcome__content {
   width: min(100%, 100%);
   max-width: 100%;
+  min-height: min-content;
+  margin-block: auto;
+  padding-block: calc(4px * var(--pet-ui-scale, 1));
   text-align: center;
   color: hsl(var(--foreground));
   transform: none !important;
@@ -605,6 +608,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   gap: calc(6px * var(--pet-ui-scale, 1) + 2px) !important;
   width: 100%;
+  min-width: 0;
   pointer-events: auto;
 }
 
@@ -619,6 +623,7 @@
   display: grid !important;
   grid-template-columns: calc(22px * var(--pet-ui-scale, 1) + 8px) minmax(0, 1fr) !important;
   align-items: center;
+  min-width: 0;
   min-height: calc(44px * var(--pet-ui-scale, 1) + 8px) !important;
   padding: calc(6px * var(--pet-ui-scale, 1)) calc(8px * var(--pet-ui-scale, 1)) !important;
   border: 1px solid hsl(var(--border));
@@ -653,8 +658,30 @@
   color: hsl(var(--muted-foreground));
 }
 
+[data-pet-mini-panel='true'] [data-warm-quick-prompt] span {
+  min-width: 0;
+}
+
+[data-pet-mini-panel='true'] [data-warm-quick-prompt] strong,
+[data-pet-mini-panel='true'] [data-warm-quick-prompt] small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container pet-panel (max-width: 359px) {
+  [data-pet-mini-panel='true'] .warm-chat-welcome__prompts {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  [data-pet-mini-panel='true'] .warm-chat-welcome__art {
+    width: calc(96px * var(--pet-ui-scale, 1) + 24px) !important;
+  }
+}
+
 /* Hide the sparse ThreadHint when the full welcome is present */
-[data-pet-mini-panel='true'] [data-pet-chat-thread-host='true']:has([data-pet-chat-welcome='true'])
+[data-pet-mini-panel='true']
+  [data-pet-chat-thread-host='true']:has([data-pet-chat-welcome='true'])
   [data-sakura-surface='thread-empty'] {
   display: none !important;
 }

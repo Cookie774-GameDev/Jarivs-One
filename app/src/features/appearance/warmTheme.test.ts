@@ -21,6 +21,7 @@ const modelFoundryPage = readFileSync(
 const accountPage = readFileSync(resolve(__dirname, '../account/AccountPage.tsx'), 'utf8');
 const launcherDialog = readFileSync(resolve(__dirname, '../launcher/LauncherDialog.tsx'), 'utf8');
 const settingsModal = readFileSync(resolve(__dirname, '../settings/SettingsModal.tsx'), 'utf8');
+const topBar = readFileSync(resolve(__dirname, '../../components/layout/TopBar.tsx'), 'utf8');
 const warmAssetRoot = resolve(__dirname, '../../../public/assets/themes/warm');
 const warmReferenceAssetRoot = resolve(warmAssetRoot, 'reference');
 const warmHistoryAssetRoot = resolve(warmAssetRoot, 'history');
@@ -262,6 +263,29 @@ describe('Warm theme presentation contract', () => {
     expect(css).not.toContain('bottom-mountains.svg');
   });
 
+  it('keeps the Warm benchmark chart readable without route-specific profile scaling', () => {
+    expect(css).toMatch(
+      /\[data-warm-surface='benchmarks-chart'\]\s+h2\s*\{[\s\S]*?font-size:\s*25px/u,
+    );
+    expect(css).toMatch(
+      /\[data-warm-surface='benchmarks-chart'\]\s+svg\s+text\s*\{[\s\S]*?font-size:\s*15\.6px/u,
+    );
+    expect(topBar).not.toContain('size={warmBenchmarks ? 36 : 24}');
+    expect(topBar).toContain('size={24}');
+  });
+
+  it('keeps the Warm Files waterfall crisp behind readable editor surfaces', () => {
+    expect(css).toMatch(
+      /\[data-monochrome-route='files'\]::before\s*\{[\s\S]*?filter:\s*saturate\(1\.14\)\s+contrast\(1\.14\)/u,
+    );
+    expect(css).toMatch(
+      /\[data-monochrome-route='files'\]\s+\[data-monochrome-surface='files-editor'\]\s*\{[\s\S]*?rgb\(248 235 221 \/ 0\.18\)[\s\S]*?backdrop-filter:\s*none/u,
+    );
+    expect(css).toMatch(
+      /\[data-monochrome-route='files'\]\s+\[data-monochrome-surface='files-editor'\]\s+textarea\s*\{[\s\S]*?rgb\(255 250 243 \/ 0\.2\)[\s\S]*?backdrop-filter:\s*none/u,
+    );
+  });
+
   it('keeps the Skills artwork visible behind the existing centered card', () => {
     expect(css).toMatch(
       /\[data-monochrome-surface='skill-detail'\]\s*>\s*div\s*\{[\s\S]*?background:\s*transparent/u,
@@ -432,12 +456,15 @@ describe('Warm theme presentation contract', () => {
     expect(css).toContain('--warm-tabs-h: 32px');
   });
 
-  it('uses translucent blurred paper consistently throughout Warm Settings', () => {
+  it('uses translucent clear paper consistently throughout Warm Settings', () => {
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*rgb\(255 249 239 \/ 0\.72\)[\s\S]*?backdrop-filter:\s*blur\(12px\)/u,
+      /\[data-sakura-surface='settings-content'\]\s*\{[\s\S]*?rgb\(251 243 231 \/ 0\.38\)[\s\S]*?backdrop-filter:\s*blur\(2px\)/u,
     );
     expect(css).toMatch(
-      /\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?background-color:\s*rgb\(255 249 239 \/ 0\.68\)[\s\S]*?backdrop-filter:\s*blur\(12px\)/u,
+      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*rgb\(255 249 239 \/ 0\.56\)[\s\S]*?backdrop-filter:\s*blur\(3px\)/u,
+    );
+    expect(css).toMatch(
+      /\.mc7f-settings-appearance\s+\[class\*='bg-panel'\]\s*\{[\s\S]*?background-color:\s*rgb\(255 249 239 \/ 0\.52\)\s*!important[\s\S]*?backdrop-filter:\s*blur\(3px\)/u,
     );
   });
 
@@ -649,7 +676,10 @@ describe('Warm theme presentation contract', () => {
       /\[data-monochrome-surface='benchmarks-table'\]\s*\{[\s\S]*?width:\s*min\(72%,\s*1040px\)/u,
     );
     expect(css).toMatch(
-      /\[data-monochrome-surface='benchmarks-table'\][\s\S]*?:is\(th,\s*td\)\s*\{[\s\S]*?padding:\s*8px 12px/u,
+      /\[data-monochrome-surface='benchmarks-table'\][\s\S]*?:is\(th,\s*td\)\s*\{[\s\S]*?height:\s*26px[\s\S]*?padding:\s*3px 9px/u,
+    );
+    expect(css).toMatch(
+      /\[data-warm-table-mode='compact-scroll'\][\s\S]*?\[data-warm-region='benchmarks-table-scroll'\]\s*\{[\s\S]*?max-height:\s*min\(54vh,\s*520px\)/u,
     );
   });
 
@@ -658,7 +688,7 @@ describe('Warm theme presentation contract', () => {
       /\.mc7f-account-page\s+\.sakura-account-panel\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.76\)[\s\S]*?backdrop-filter:\s*blur\(10px\)/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.68\)[\s\S]*?backdrop-filter:\s*blur\(12px\)/u,
+      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.52\)[\s\S]*?backdrop-filter:\s*blur\(3px\)/u,
     );
   });
 

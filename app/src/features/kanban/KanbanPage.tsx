@@ -12,9 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAuthStore } from '@/stores/auth';
 import { useMilestonesStore } from '@/features/inspector/milestonesStore';
-import { useWorkspaceOpenTasks } from '@/features/inspector/workspaceTasks';
 import { useWorkspaceAnalyticsStore } from '@/features/inspector/workspaceAnalytics';
 import { celebrate } from '@/features/celebrate';
 import { cn, formatRelative } from '@/lib/utils';
@@ -59,8 +57,6 @@ function useReducedMotion(): boolean {
 }
 
 export function KanbanPage() {
-  const workspaceId = useAuthStore((s) => s.workspaceId);
-  const projectId = useAuthStore((s) => s.projectId);
   const reducedMotion = useReducedMotion();
 
   const items = useKanbanMilestones();
@@ -70,7 +66,6 @@ export function KanbanPage() {
   const toggleDone = useMilestonesStore((s) => s.toggleDone);
   const clearCompletedTodos = useMilestonesStore((s) => s.clearCompletedTodos);
 
-  const workspaceTasks = useWorkspaceOpenTasks(workspaceId, projectId);
   const completedMilestones = useWorkspaceAnalyticsStore((s) => s.completedMilestones);
 
   const todos = useMemo(
@@ -142,12 +137,14 @@ export function KanbanPage() {
           todoOpen={todos.length - todoDone}
           todoDone={todoDone}
           milestonePercent={milestonePercent}
-          liveOpen={workspaceTasks.length}
           completedMilestones={completedMilestones}
         />
       </header>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-2">
+      <div
+        data-kanban-checklist-grid="expanded"
+        className="grid min-h-0 flex-1 auto-rows-fr grid-cols-1 items-stretch gap-4 lg:grid-cols-2"
+      >
         {/* ---- Today's To-do ---- */}
         <ChecklistCard
           icon={<ListChecks className="h-4 w-4 text-accent-copper" />}
@@ -210,8 +207,6 @@ export function KanbanPage() {
           onRemove={removeMilestone}
         />
       </div>
-
-      {workspaceTasks.length > 0 ? <LiveActivitySection tasks={workspaceTasks} /> : null}
     </div>
   );
 }
@@ -508,13 +503,11 @@ function AnalyticsSummary({
   todoOpen,
   todoDone,
   milestonePercent,
-  liveOpen,
   completedMilestones,
 }: {
   todoOpen: number;
   todoDone: number;
   milestonePercent: number;
-  liveOpen: number;
   completedMilestones: number;
 }) {
   return (
@@ -525,7 +518,6 @@ function AnalyticsSummary({
       <StatBlock label="To-do" value={String(todoOpen)} hint="open today" />
       <StatBlock label="Done" value={todoDone > 0 ? String(todoDone) : '—'} hint="today" />
       <StatBlock label="Milestones" value={`${milestonePercent}%`} hint="complete" />
-      <StatBlock label="Live work" value={String(liveOpen)} hint="open items" />
       <StatBlock
         label="Session"
         value={completedMilestones > 0 ? String(completedMilestones) : '—'}
@@ -542,39 +534,6 @@ function StatBlock({ label, value, hint }: { label: string; value: string; hint:
       <span className="font-display text-page-title text-foreground tabular-nums">{value}</span>
       <span className="text-metadata text-muted-foreground">{hint}</span>
     </div>
-  );
-}
-
-function LiveActivitySection({ tasks }: { tasks: ReturnType<typeof useWorkspaceOpenTasks> }) {
-  return (
-    <section
-      data-sakura-surface="kanban-activity"
-      className="rounded-xl bg-paper-soft p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
-    >
-      <header className="mb-3 flex items-center gap-2">
-        <Target className="h-4 w-4 text-accent-copper" />
-        <h3 className="font-display text-ui-strong text-foreground">Live workspace activity</h3>
-        <span className="eyebrow">{tasks.length}</span>
-      </header>
-      <p className="mb-3 text-secondary text-muted-foreground">
-        Read-only feed from terminals, chats, tools, and open Dexie tasks — same source as Inspector
-        → Today.
-      </p>
-      <ul className="grid gap-2 md:grid-cols-2">
-        {tasks.slice(0, 8).map((t) => (
-          <li
-            key={t.id}
-            className="flex items-center gap-2 rounded-lg border border-border bg-paper px-3 py-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
-          >
-            <span className="eyebrow shrink-0">{t.source}</span>
-            <span className="line-clamp-1 text-secondary text-foreground">{t.title}</span>
-            <span className="ml-auto text-metadata text-muted-foreground shrink-0">
-              {formatRelative(t.updatedAt)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
