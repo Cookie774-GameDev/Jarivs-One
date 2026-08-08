@@ -238,6 +238,13 @@ describe('model foundry domain', () => {
     expect(
       foundryModelOptions([
         base,
+        {
+          ...base,
+          id: 'job_weight',
+          name: 'Release adapter',
+          method: 'lora',
+          artifactPath: 'C:\\private\\weight-artifact',
+        },
         { ...base, id: 'job_unverified', artifactVerified: false },
         { ...base, id: 'job_failed', status: 'failed', artifactVerified: false },
       ]),
@@ -246,6 +253,11 @@ describe('model foundry domain', () => {
         id: 'foundry:job_12345',
         label: 'Release specialist',
         subtitle: 'Verified local knowledge · Qwen 2.5 1.5B Instruct',
+      },
+      {
+        id: 'foundry:job_weight',
+        label: 'Release adapter',
+        subtitle: 'Verified local LoRA model · Qwen 2.5 1.5B Instruct',
       },
     ]);
   });

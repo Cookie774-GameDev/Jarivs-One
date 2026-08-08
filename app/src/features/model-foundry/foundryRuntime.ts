@@ -5,6 +5,7 @@ const FOUNDRY_MODEL_PREFIX = 'foundry:';
 const MAX_RETRIEVED_CONTEXT_CHARS = 12_000;
 
 export interface FoundryRetrieval {
+  kind: 'knowledge';
   artifactId: string;
   modelName: string;
   version: number;
@@ -12,6 +13,20 @@ export interface FoundryRetrieval {
   defaultBehavior: string | null;
   context: string;
   sourceNames: string[];
+}
+
+export interface FoundryWeightArtifact {
+  kind: 'weight';
+  artifactId: string;
+  modelName: string;
+  version: number;
+  method: 'lora' | 'qlora' | 'full';
+}
+
+export interface FoundryWeightResponse extends Omit<FoundryWeightArtifact, 'kind'> {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
 }
 
 type NativeInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -39,16 +54,40 @@ export async function prepareFoundryAgentRequest(input: {
   agent: Agent;
   messages: readonly LLMMessage[];
   invoke: NativeInvoke;
-}): Promise<{ agent: Agent; retrieval: FoundryRetrieval | null }> {
+}): Promise<{
+  agent: Agent;
+  retrieval: FoundryRetrieval | null;
+  weightArtifact: FoundryWeightArtifact | null;
+}> {
   const artifactId = artifactIdForAgent(input.agent);
-  if (!artifactId) return { agent: input.agent, retrieval: null };
+  if (!artifactId) {
+    return { agent: input.agent, retrieval: null, weightArtifact: null };
+  }
 
-  const retrieval = await input.invoke<FoundryRetrieval>('model_foundry_retrieve', {
-    artifactId,
-    query: latestUserQuery(input.messages),
-    limit: 4,
-  });
-  if (retrieval.artifactId !== artifactId || !retrieval.baseModelId.trim()) {
+  const prepared = await input.invoke<FoundryRetrieval | FoundryWeightArtifact>(
+    'model_foundry_prepare_chat',
+    {
+      artifactId,
+      query: latestUserQuery(input.messages),
+      limit: 4,
+    },
+  );
+  if (prepared.artifactId !== artifactId) {
+    throw new Error('Model Foundry returned mismatched or incomplete artifact metadata.');
+  }
+  if (prepared.kind === 'weight') {
+    if (
+      !prepared.modelName.trim() ||
+      !Number.isInteger(prepared.version) ||
+      prepared.version < 1 ||
+      !['lora', 'qlora', 'full'].includes(prepared.method)
+    ) {
+      throw new Error('Model Foundry returned mismatched or incomplete artifact metadata.');
+    }
+    return { agent: input.agent, retrieval: null, weightArtifact: prepared };
+  }
+  const retrieval = prepared;
+  if (retrieval.kind !== 'knowledge' || !retrieval.baseModelId.trim()) {
     throw new Error('Model Foundry returned mismatched or incomplete artifact metadata.');
   }
 
@@ -74,5 +113,47 @@ export async function prepareFoundryAgentRequest(input: {
       },
     },
     retrieval,
+    weightArtifact: null,
   };
+}
+
+export async function runFoundryWeightArtifact(input: {
+  artifact: FoundryWeightArtifact;
+  requestId: string;
+  agent: Agent;
+  messages: readonly LLMMessage[];
+  maxOutputTokens?: number;
+  invoke: NativeInvoke;
+}): Promise<FoundryWeightResponse> {
+  const messages = [
+    ...(input.agent.system_prompt.trim()
+      ? [{ role: 'system', content: input.agent.system_prompt.trim() }]
+      : []),
+    ...input.messages
+      .map((message) => ({
+        role: message.role,
+        content: llmContentToText(message.content).trim(),
+      }))
+      .filter((message) => message.content),
+  ];
+  const response = await input.invoke<FoundryWeightResponse>('model_foundry_chat', {
+    requestId: input.requestId,
+    artifactId: input.artifact.artifactId,
+    messages,
+    maxOutputTokens: Math.max(1, Math.min(4_096, input.maxOutputTokens ?? 1_024)),
+  });
+  if (
+    response.artifactId !== input.artifact.artifactId ||
+    response.modelName !== input.artifact.modelName ||
+    response.version !== input.artifact.version ||
+    response.method !== input.artifact.method ||
+    !response.text.trim() ||
+    !Number.isSafeInteger(response.inputTokens) ||
+    response.inputTokens < 0 ||
+    !Number.isSafeInteger(response.outputTokens) ||
+    response.outputTokens < 1
+  ) {
+    throw new Error('Model Foundry returned mismatched or incomplete inference evidence.');
+  }
+  return response;
 }

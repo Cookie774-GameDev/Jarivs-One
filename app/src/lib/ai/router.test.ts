@@ -7,13 +7,18 @@ import { selectionFromOption } from './modelSelection';
 import { syncDiscoveredOllamaModels } from './models';
 import { JarvisProviderAttemptFailureError } from './providerAttemptEvidence';
 
-const { codexDetect, codexProbeAuth, codexSend, ollamaRun, openaiRun } = vi.hoisted(() => ({
-  codexDetect: vi.fn(),
-  codexProbeAuth: vi.fn(),
-  codexSend: vi.fn(),
-  ollamaRun: vi.fn(),
-  openaiRun: vi.fn(),
-}));
+const { codexDetect, codexProbeAuth, codexSend, nativeInvoke, ollamaRun, openaiRun } = vi.hoisted(
+  () => ({
+    codexDetect: vi.fn(),
+    codexProbeAuth: vi.fn(),
+    codexSend: vi.fn(),
+    nativeInvoke: vi.fn(),
+    ollamaRun: vi.fn(),
+    openaiRun: vi.fn(),
+  }),
+);
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: nativeInvoke }));
 
 vi.mock('./providers/openai', () => ({
   OPENAI_DEFAULT_MODEL: 'gpt-4o-mini',
@@ -124,6 +129,7 @@ describe('AI provider routing', () => {
     );
     openaiRun.mockReset();
     openaiRun.mockResolvedValue(successfulResponse);
+    nativeInvoke.mockReset();
     ollamaRun.mockReset();
     ollamaRun.mockResolvedValue({
       text: 'local result',
@@ -235,6 +241,104 @@ describe('AI provider routing', () => {
         }),
       }),
     );
+  });
+
+  it('runs verified Model Foundry weights through the native local boundary', async () => {
+    const chunks: Array<{ delta: string; first?: boolean; done?: boolean }> = [];
+    const foundryAgent: Agent = {
+      ...jarvis,
+      id: 'agent_foundry' as Agent['id'],
+      slug: 'release-adapter',
+      model: { provider: 'ollama', model: 'foundry:job_12345' },
+    };
+    nativeInvoke
+      .mockResolvedValueOnce({
+        kind: 'weight',
+        artifactId: 'job_12345',
+        modelName: 'Release adapter',
+        version: 2,
+        method: 'lora',
+      })
+      .mockResolvedValueOnce({
+        artifactId: 'job_12345',
+        modelName: 'Release adapter',
+        version: 2,
+        method: 'lora',
+        text: 'Verified local response',
+        inputTokens: 11,
+        outputTokens: 3,
+      });
+
+    const response = await runAgent({
+      agent: foundryAgent,
+      messages: [{ role: 'user', content: 'Review this release.' }],
+      max_output_tokens: 300,
+      onChunk: (chunk) => chunks.push(chunk),
+    });
+
+    expect(nativeInvoke).toHaveBeenNthCalledWith(2, 'model_foundry_chat', {
+      requestId: expect.stringMatching(/^infer_[A-Za-z0-9_-]+$/),
+      artifactId: 'job_12345',
+      messages: [
+        { role: 'system', content: 'You are Jarvis.' },
+        { role: 'user', content: 'Review this release.' },
+      ],
+      maxOutputTokens: 300,
+    });
+    expect(response).toEqual({
+      text: 'Verified local response',
+      usage: { input_tokens: 11, output_tokens: 3, cost_usd: 0 },
+      provider: 'ollama',
+      model: 'foundry:job_12345',
+      finish_reason: 'stop',
+    });
+    expect(chunks).toEqual([
+      { delta: 'Verified local response', first: true },
+      { delta: '', done: true },
+    ]);
+    expect(ollamaRun).not.toHaveBeenCalled();
+  });
+
+  it('cancels the exact native Model Foundry request when the caller aborts', async () => {
+    const controller = new AbortController();
+    let rejectInference: ((error: Error) => void) | undefined;
+    nativeInvoke
+      .mockResolvedValueOnce({
+        kind: 'weight',
+        artifactId: 'job_12345',
+        modelName: 'Release adapter',
+        version: 2,
+        method: 'lora',
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectInference = reject;
+          }),
+      )
+      .mockResolvedValueOnce(true);
+    const foundryAgent: Agent = {
+      ...jarvis,
+      id: 'agent_foundry' as Agent['id'],
+      slug: 'release-adapter',
+      model: { provider: 'ollama', model: 'foundry:job_12345' },
+    };
+
+    const result = runAgent({
+      agent: foundryAgent,
+      messages: [{ role: 'user', content: 'Review this release.' }],
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(rejectInference).toBeTypeOf('function'));
+    controller.abort();
+    await vi.waitFor(() =>
+      expect(nativeInvoke).toHaveBeenCalledWith('model_foundry_cancel_chat', {
+        requestId: expect.stringMatching(/^infer_[A-Za-z0-9_-]+$/),
+      }),
+    );
+    rejectInference?.(new Error('native process stopped'));
+
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('preserves exact protected native transport inputs and the caller signal', async () => {

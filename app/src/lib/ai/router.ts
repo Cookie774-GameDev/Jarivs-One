@@ -80,6 +80,7 @@ import {
 import {
   artifactIdForAgent,
   prepareFoundryAgentRequest,
+  runFoundryWeightArtifact,
 } from '@/features/model-foundry/foundryRuntime';
 
 export class NoModelSelectedError extends Error {
@@ -483,6 +484,9 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
 
   const protectedDispatch = req.compiledPrompt !== undefined;
   let foundryBaseModel: string | null = null;
+  let foundryWeight:
+    | Awaited<ReturnType<typeof prepareFoundryAgentRequest>>['weightArtifact']
+    | null = null;
   if (artifactIdForAgent(req.agent)) {
     if (protectedDispatch) {
       throw new Error('Model Foundry artifacts cannot replace a protected provider binding.');
@@ -495,6 +499,56 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
     });
     req = { ...req, agent: prepared.agent };
     foundryBaseModel = prepared.agent.model.model;
+    foundryWeight = prepared.weightArtifact;
+    if (foundryWeight) {
+      const originalModel = req.agent.model.model;
+      const requestId =
+        `infer_${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random()}`}`
+          .replace(/[^A-Za-z0-9_-]/g, '_')
+          .slice(0, 80);
+      const cancel = () => {
+        void invoke('model_foundry_cancel_chat', { requestId }).catch(() => undefined);
+      };
+      req.signal?.addEventListener('abort', cancel, { once: true });
+      let response: Awaited<ReturnType<typeof runFoundryWeightArtifact>>;
+      try {
+        response = await runFoundryWeightArtifact({
+          artifact: foundryWeight,
+          requestId,
+          agent: req.agent,
+          messages: req.messages,
+          maxOutputTokens: req.max_output_tokens,
+          invoke,
+        });
+      } catch (error) {
+        if (req.signal?.aborted) {
+          throw new DOMException('The request was aborted.', 'AbortError');
+        }
+        throw error;
+      } finally {
+        req.signal?.removeEventListener('abort', cancel);
+      }
+      if (req.signal?.aborted) {
+        throw new DOMException('The request was aborted.', 'AbortError');
+      }
+      req.onChunk?.({ delta: response.text, first: true });
+      req.onChunk?.({ delta: '', done: true });
+      const usage = {
+        input_tokens: response.inputTokens,
+        output_tokens: response.outputTokens,
+        cost_usd: 0,
+      };
+      useAgentStore
+        .getState()
+        .addTokens(req.agent.id, usage.input_tokens, usage.output_tokens, usage.cost_usd);
+      return {
+        text: response.text,
+        usage,
+        provider: 'ollama',
+        model: originalModel,
+        finish_reason: 'stop',
+      };
+    }
   }
   if (protectedDispatch) {
     if (!req.connectionId || !req.requestId || !req.protectedAttempt) {

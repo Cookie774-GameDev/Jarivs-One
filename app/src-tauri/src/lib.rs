@@ -613,6 +613,9 @@ fn run_ordinary(
             model_foundry::model_foundry_start_training,
             model_foundry::model_foundry_list_jobs,
             model_foundry::model_foundry_retrieve,
+            model_foundry::model_foundry_prepare_chat,
+            model_foundry::model_foundry_chat,
+            model_foundry::model_foundry_cancel_chat,
             model_foundry::model_foundry_detect_hardware,
             model_foundry::model_foundry_cancel_job,
             model_foundry::model_foundry_retry_job,
@@ -827,6 +830,9 @@ local_ai::open_system_speech_settings
 model_foundry::model_foundry_start_training
 model_foundry::model_foundry_list_jobs
 model_foundry::model_foundry_retrieve
+model_foundry::model_foundry_prepare_chat
+model_foundry::model_foundry_chat
+model_foundry::model_foundry_cancel_chat
 model_foundry::model_foundry_detect_hardware
 model_foundry::model_foundry_cancel_job
 model_foundry::model_foundry_retry_job
@@ -883,9 +889,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "556d15af7234b1ae02c0ef7cae4b0366545058525e59ee033f3610504ca22e2c";
+        "ea048c648d62ce13bead1449508e27b514cc49aa369ce3c93872da124164e106";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "bd51da1953a0f29641b65eb5b034917a1d555421dc891ac1f4c3ee76404abbd9";
+        "1c9798e02122da5530714589035dc1ed4cc4c138db4f1bbeb10f4bd86a5035a8";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1033,7 +1039,7 @@ wallpaper_master::wallpaper_full_cache_path";
         let joined = manifest.commands.join("\n");
         assert_eq!(
             joined, ORDINARY_HANDLER_AUTHORITY,
-            "the ordered handler must remain the frozen 150 production commands"
+            "the ordered handler must remain the frozen 153 production commands"
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(joined.as_bytes())),

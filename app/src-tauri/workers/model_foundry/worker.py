@@ -34,6 +34,21 @@ ALLOWED_REQUEST_KEYS = frozenset(
         "maxSteps",
     )
 )
+ALLOWED_INFERENCE_KEYS = frozenset(
+    (
+        "protocol",
+        "localOnly",
+        "method",
+        "baseModelPath",
+        "artifactPath",
+        "responsePath",
+        "messages",
+        "maxOutputTokens",
+    )
+)
+ALLOWED_MESSAGE_ROLES = frozenset(("system", "user", "assistant"))
+MAX_INFERENCE_CHARS = 128 * 1024
+MAX_INFERENCE_MESSAGES = 64
 
 
 def probe() -> int:
@@ -387,6 +402,176 @@ def validate_request(request_path: str) -> int:
     return 0
 
 
+def _read_inference_request(request_path: str) -> dict[str, Any]:
+    path = _absolute_path(request_path, "requestPath")
+    if not path.is_file() or path.stat().st_size > MAX_REQUEST_BYTES:
+        _fail("Inference request is missing or exceeds the safe size limit.")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or set(payload) - ALLOWED_INFERENCE_KEYS:
+        _fail("Inference request contains unsupported fields.")
+    if payload.get("protocol") != PROTOCOL or payload.get("localOnly") is not True:
+        _fail("Inference request must match the local-only worker protocol.")
+    method = payload.get("method")
+    if method not in ALLOWED_METHODS:
+        _fail("Inference method is not supported.")
+    model = _absolute_path(payload.get("baseModelPath"), "baseModelPath")
+    artifact = _absolute_path(payload.get("artifactPath"), "artifactPath")
+    response = _absolute_path(payload.get("responsePath"), "responsePath")
+    if not model.is_dir() or not (model / "config.json").is_file():
+        _fail("Base model must be a verified local Transformers directory.")
+    if not artifact.is_dir() or not (artifact / "vibespace-training.json").is_file():
+        _fail("Training artifact metadata is missing.")
+    if response.parent != artifact.parent or response.exists():
+        _fail("Inference response must be a new file inside the private job directory.")
+    metadata = json.loads(
+        (artifact / "vibespace-training.json").read_text(encoding="utf-8")
+    )
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("protocol") != PROTOCOL
+        or metadata.get("localOnly") is not True
+        or metadata.get("valid") is not True
+        or metadata.get("method") != method
+        or Path(str(metadata.get("baseModelPath", ""))).resolve(strict=False) != model
+    ):
+        _fail("Training artifact metadata does not match the inference request.")
+    messages = payload.get("messages")
+    if (
+        not isinstance(messages, list)
+        or not messages
+        or len(messages) > MAX_INFERENCE_MESSAGES
+    ):
+        _fail("Inference requires 1 to 64 messages.")
+    total_chars = 0
+    normalized_messages: list[dict[str, str]] = []
+    for message in messages:
+        if not isinstance(message, dict) or set(message) != {"role", "content"}:
+            _fail("Inference messages contain unsupported fields.")
+        role = message.get("role")
+        content = message.get("content")
+        if (
+            role not in ALLOWED_MESSAGE_ROLES
+            or not isinstance(content, str)
+            or not content.strip()
+        ):
+            _fail("Inference messages require a supported role and non-empty text.")
+        total_chars += len(content)
+        if total_chars > MAX_INFERENCE_CHARS:
+            _fail("Inference context exceeds the safe size limit.")
+        normalized_messages.append({"role": role, "content": content})
+    return {
+        **payload,
+        "baseModelPath": str(model),
+        "artifactPath": str(artifact),
+        "responsePath": str(response),
+        "messages": normalized_messages,
+        "maxOutputTokens": _bounded_integer(
+            payload.get("maxOutputTokens"), "maxOutputTokens", 1, 4096
+        ),
+    }
+
+
+def infer(request_path: str) -> int:
+    request = _read_inference_request(request_path)
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except Exception as error:
+        _fail(f"Verified local inference libraries are unavailable: {type(error).__name__}.")
+
+    model_path = str(request["baseModelPath"])
+    artifact_path = str(request["artifactPath"])
+    method = str(request["method"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        artifact_path,
+        local_files_only=True,
+        trust_remote_code=False,
+    )
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token_id is None or tokenizer.eos_token_id is None:
+        _fail("The trained model tokenizer has no safe generation boundary.")
+    model_source = artifact_path if method == "full" else model_path
+    model = AutoModelForCausalLM.from_pretrained(
+        model_source,
+        local_files_only=True,
+        trust_remote_code=False,
+        torch_dtype="auto",
+    )
+    if method in ("lora", "qlora"):
+        try:
+            from peft import PeftModel
+        except Exception as error:
+            _fail(f"PEFT inference libraries are unavailable: {type(error).__name__}.")
+        model = PeftModel.from_pretrained(
+            model,
+            artifact_path,
+            is_trainable=False,
+            local_files_only=True,
+        )
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    model.eval()
+    messages = request["messages"]
+    if getattr(tokenizer, "chat_template", None):
+        prompt = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    else:
+        prompt = "\n\n".join(
+            f"{message['role'].capitalize()}: {message['content']}"
+            for message in messages
+        )
+        prompt += "\n\nAssistant:"
+    configured_context = int(getattr(model.config, "max_position_embeddings", 4096))
+    context_tokens = max(256, min(configured_context, 16384))
+    output_budget = min(int(request["maxOutputTokens"]), context_tokens - 1)
+    encoded = tokenizer(
+        prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=context_tokens - output_budget,
+    )
+    encoded = {key: value.to(device) for key, value in encoded.items()}
+    input_tokens = int(encoded["input_ids"].shape[-1])
+    with torch.inference_mode():
+        generated = model.generate(
+            **encoded,
+            max_new_tokens=output_budget,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+    output_ids = generated[0][input_tokens:]
+    text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()
+    if not text:
+        _fail("The verified local model returned an empty response.")
+    response_path = Path(str(request["responsePath"]))
+    temporary = response_path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "protocol": PROTOCOL,
+                "localOnly": LOCAL_ONLY,
+                "completed": True,
+                "method": method,
+                "text": text,
+                "inputTokens": input_tokens,
+                "outputTokens": int(output_ids.shape[-1]),
+            },
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    temporary.replace(response_path)
+    return 0
+
+
 def _fail(message: str) -> None:
     raise ValueError(message)
 
@@ -410,7 +595,7 @@ def _bounded_integer(value: Any, field: str, minimum: int, maximum: int) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("command", choices=("probe", "validate", "train"))
+    parser.add_argument("command", choices=("probe", "validate", "train", "infer"))
     parser.add_argument("request", nargs="?")
     args = parser.parse_args()
     try:
@@ -420,6 +605,8 @@ def main() -> int:
             return validate_request(args.request)
         if args.command == "train" and args.request:
             return train(args.request)
+        if args.command == "infer" and args.request:
+            return infer(args.request)
         _fail("A request path is required.")
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(

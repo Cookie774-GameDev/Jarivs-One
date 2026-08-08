@@ -446,10 +446,14 @@ export function foundryModelOptions(jobs: unknown): Array<{
     )
     .map((job) => {
       const baseModel = TRAINABLE_MODELS.find((candidate) => candidate.id === job.baseModelId);
+      const artifactKind =
+        job.method === 'knowledge'
+          ? 'knowledge'
+          : `${job.method === 'lora' ? 'LoRA' : job.method === 'qlora' ? 'QLoRA' : 'full-weight'} model`;
       return {
         id: `foundry:${job.id}`,
         label: job.name,
-        subtitle: `Verified local knowledge · ${baseModel?.label ?? job.baseModelId}`,
+        subtitle: `Verified local ${artifactKind} · ${baseModel?.label ?? job.baseModelId}`,
       };
     });
 }

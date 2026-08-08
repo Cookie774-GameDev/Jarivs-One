@@ -132,6 +132,44 @@ pub struct FoundryRetrieval {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FoundryChatPreparation {
+    kind: String,
+    artifact_id: String,
+    model_name: String,
+    version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_behavior: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    context: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_names: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundryChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundryChatResponse {
+    artifact_id: String,
+    model_name: String,
+    version: u32,
+    method: String,
+    text: String,
+    input_tokens: u64,
+    output_tokens: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FoundryHardwareProfile {
     cpu: String,
     gpu: Option<String>,
@@ -752,6 +790,168 @@ pub fn model_foundry_retrieve(
     })
 }
 
+fn prepare_chat_from_job_dir(
+    job_dir: &Path,
+    artifact_id: &str,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<FoundryChatPreparation, String> {
+    if query.trim().is_empty() || query.chars().count() > 4_000 {
+        return Err("Model Foundry chat query must contain 1 to 4,000 characters.".into());
+    }
+    let job: FoundryJob = serde_json::from_slice(
+        &fs::read(job_dir.join("job.json"))
+            .map_err(|_| "Model Foundry artifact was not found.".to_string())?,
+    )
+    .map_err(|error| format!("Model Foundry job metadata is invalid: {error}"))?;
+    if job.id != artifact_id || job.status != "completed" || !job.artifact_verified {
+        return Err("Model Foundry artifact is not verified and cannot be used.".into());
+    }
+    match parsed_method(&job.method)? {
+        FoundryMethod::Knowledge => {
+            let artifact = validate_artifact(&job_dir.join("knowledge-artifact.json"))?;
+            if artifact.base_model_id != job.base_model_id
+                || artifact.model_name != job.name
+                || artifact.version != job.version
+            {
+                return Err("Model Foundry knowledge metadata failed integrity validation.".into());
+            }
+            let selected = rank_chunks(&artifact.chunks, query, limit.unwrap_or(4));
+            let source_names = selected
+                .iter()
+                .map(|chunk| chunk.source_name.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let context = selected
+                .iter()
+                .map(|chunk| format!("[Source: {}]\n{}", chunk.source_name, chunk.text))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            Ok(FoundryChatPreparation {
+                kind: "knowledge".into(),
+                artifact_id: artifact_id.into(),
+                model_name: artifact.model_name,
+                version: artifact.version,
+                method: None,
+                base_model_id: Some(artifact.base_model_id),
+                default_behavior: artifact.default_behavior,
+                context: Some(context),
+                source_names: Some(source_names),
+            })
+        }
+        FoundryMethod::Weight => {
+            let expected = job_dir.join("weight-artifact");
+            let recorded = job
+                .artifact_path
+                .as_deref()
+                .map(PathBuf::from)
+                .ok_or_else(|| "Model Foundry weight artifact path is missing.".to_string())?;
+            let expected = expected
+                .canonicalize()
+                .map_err(|_| "Model Foundry weight artifact is missing.".to_string())?;
+            let recorded = recorded
+                .canonicalize()
+                .map_err(|_| "Model Foundry weight artifact is missing.".to_string())?;
+            if recorded != expected {
+                return Err(
+                    "Model Foundry weight artifact escaped its private job directory.".into(),
+                );
+            }
+            crate::model_foundry_training::verify_training_artifact(&expected)?;
+            Ok(FoundryChatPreparation {
+                kind: "weight".into(),
+                artifact_id: artifact_id.into(),
+                model_name: job.name,
+                version: job.version,
+                method: Some(job.method),
+                base_model_id: None,
+                default_behavior: None,
+                context: None,
+                source_names: None,
+            })
+        }
+    }
+}
+
+#[tauri::command]
+pub fn model_foundry_prepare_chat(
+    app: tauri::AppHandle,
+    artifact_id: String,
+    query: String,
+    limit: Option<usize>,
+) -> Result<FoundryChatPreparation, String> {
+    let artifact_id = validated_job_id(artifact_id.trim())?;
+    let job_dir = foundry_root(&app)?.join("jobs").join(artifact_id);
+    prepare_chat_from_job_dir(&job_dir, artifact_id, &query, limit)
+}
+
+#[tauri::command]
+pub async fn model_foundry_chat(
+    app: tauri::AppHandle,
+    request_id: String,
+    artifact_id: String,
+    messages: Vec<FoundryChatMessage>,
+    max_output_tokens: Option<u32>,
+) -> Result<FoundryChatResponse, String> {
+    let request_id = validated_job_id(request_id.trim())?.to_string();
+    let artifact_id = validated_job_id(artifact_id.trim())?.to_string();
+    let query = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "user" && !message.content.trim().is_empty())
+        .map(|message| message.content.as_str())
+        .ok_or_else(|| "Model Foundry chat requires a user message.".to_string())?;
+    let job_dir = foundry_root(&app)?.join("jobs").join(&artifact_id);
+    let prepared = prepare_chat_from_job_dir(&job_dir, &artifact_id, query, Some(1))?;
+    if prepared.kind != "weight" {
+        return Err("Knowledge artifacts must use the verified retrieval route.".into());
+    }
+    let job: FoundryJob = serde_json::from_slice(
+        &fs::read(job_dir.join("job.json"))
+            .map_err(|_| "Model Foundry artifact was not found.".to_string())?,
+    )
+    .map_err(|error| format!("Model Foundry job metadata is invalid: {error}"))?;
+    let model_name = job.name.clone();
+    let version = job.version;
+    let method = job.method.clone();
+    let base_model_id = job.base_model_id.clone();
+    let normalized_messages = messages
+        .into_iter()
+        .map(|message| (message.role, message.content))
+        .collect::<Vec<_>>();
+    let inference_artifact_id = artifact_id.clone();
+    let inference_method = method.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::model_foundry_training::run_foundry_inference(
+            &app,
+            &request_id,
+            &inference_artifact_id,
+            &base_model_id,
+            &inference_method,
+            &job_dir,
+            &normalized_messages,
+            max_output_tokens.unwrap_or(1_024),
+        )
+    })
+    .await
+    .map_err(|error| format!("Model Foundry inference worker failed: {error}"))??;
+    Ok(FoundryChatResponse {
+        artifact_id,
+        model_name,
+        version,
+        method,
+        text: result.text,
+        input_tokens: result.input_tokens,
+        output_tokens: result.output_tokens,
+    })
+}
+
+#[tauri::command]
+pub fn model_foundry_cancel_chat(request_id: String) -> Result<bool, String> {
+    crate::model_foundry_training::cancel_foundry_inference(request_id.trim())
+}
+
 #[tauri::command]
 pub fn model_foundry_detect_hardware(
     app: tauri::AppHandle,
@@ -1173,5 +1373,79 @@ mod tests {
         let selected = rank_chunks(&chunks, "How are subscription credits reconciled?", 1);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].source_name, "billing.md");
+    }
+
+    #[test]
+    fn prepares_verified_weight_artifacts_for_local_chat_without_rag() {
+        let root = std::env::temp_dir().join(format!("vibespace-foundry-{}", nanoid::nanoid!()));
+        let artifact = root.join("weight-artifact");
+        fs::create_dir_all(&artifact).unwrap();
+        fs::write(
+            artifact.join("adapter_model.safetensors"),
+            b"verified adapter",
+        )
+        .unwrap();
+        crate::model_foundry_training::write_and_verify_training_artifact(&artifact, "lora")
+            .unwrap();
+        let job = FoundryJob {
+            id: "job_123456".into(),
+            name: "Release adapter".into(),
+            base_model_id: "qwen2.5-1.5b-instruct".into(),
+            method: "lora".into(),
+            status: "completed".into(),
+            progress: 100,
+            artifact_path: Some(artifact.to_string_lossy().into_owned()),
+            artifact_verified: true,
+            artifact_sha256: None,
+            storage_bytes: 16,
+            source_count: 1,
+            version: 2,
+            resume_available: false,
+            error: None,
+            created_at: "1".into(),
+            updated_at: "2".into(),
+        };
+        write_job(&root.join("job.json"), &job).unwrap();
+
+        let prepared =
+            prepare_chat_from_job_dir(&root, "job_123456", "Review release", Some(4)).unwrap();
+        assert_eq!(prepared.kind, "weight");
+        assert_eq!(prepared.method.as_deref(), Some("lora"));
+        assert!(prepared.base_model_id.is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn refuses_tampered_weight_artifacts_before_chat_activation() {
+        let root = std::env::temp_dir().join(format!("vibespace-foundry-{}", nanoid::nanoid!()));
+        let artifact = root.join("weight-artifact");
+        fs::create_dir_all(&artifact).unwrap();
+        let weight = artifact.join("adapter_model.safetensors");
+        fs::write(&weight, b"verified adapter").unwrap();
+        crate::model_foundry_training::write_and_verify_training_artifact(&artifact, "lora")
+            .unwrap();
+        fs::write(&weight, b"tampered adapter").unwrap();
+        let job = FoundryJob {
+            id: "job_123456".into(),
+            name: "Release adapter".into(),
+            base_model_id: "qwen2.5-1.5b-instruct".into(),
+            method: "lora".into(),
+            status: "completed".into(),
+            progress: 100,
+            artifact_path: Some(artifact.to_string_lossy().into_owned()),
+            artifact_verified: true,
+            artifact_sha256: None,
+            storage_bytes: 16,
+            source_count: 1,
+            version: 2,
+            resume_available: false,
+            error: None,
+            created_at: "1".into(),
+            updated_at: "2".into(),
+        };
+        write_job(&root.join("job.json"), &job).unwrap();
+
+        assert!(prepare_chat_from_job_dir(&root, "job_123456", "Review release", Some(4)).is_err());
+        let _ = fs::remove_dir_all(root);
     }
 }

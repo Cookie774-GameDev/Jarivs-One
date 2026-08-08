@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 
 const WORKER_PROTOCOL: u8 = 1;
@@ -18,10 +18,14 @@ const MAX_ARTIFACT_FILES: usize = 4_096;
 const MAX_ARTIFACT_DEPTH: usize = 8;
 const MAX_ARTIFACT_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_WORKER_LOG_BYTES: usize = 256 * 1024;
+const MAX_INFERENCE_RESPONSE_BYTES: u64 = 4 * 1024 * 1024;
+const INFERENCE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const TRAINING_MODEL_MARKER: &str = ".vibespace-model.json";
 const MAX_TRAINING_MODEL_MARKER_BYTES: u64 = 4 * 1024;
 const DOWNLOAD_BUFFER_BYTES: usize = 1024 * 1024;
 static ACTIVE_TRAINING: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+static ACTIVE_INFERENCE: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 static ACTIVE_MODEL_DOWNLOAD: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 static MODEL_STORAGE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -32,6 +36,16 @@ struct TrainingRegistryGuard(String);
 impl Drop for TrainingRegistryGuard {
     fn drop(&mut self) {
         if let Ok(mut active) = ACTIVE_TRAINING.lock() {
+            active.remove(&self.0);
+        }
+    }
+}
+
+struct InferenceRegistryGuard(String);
+
+impl Drop for InferenceRegistryGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE_INFERENCE.lock() {
             active.remove(&self.0);
         }
     }
@@ -461,6 +475,45 @@ struct TrainingRunResponse {
 pub(crate) struct TrainingRunResult {
     pub(crate) artifact_path: PathBuf,
     pub(crate) evidence: TrainingArtifactEvidence,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InferenceMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InferenceRequest {
+    protocol: u8,
+    local_only: bool,
+    method: String,
+    base_model_path: String,
+    artifact_path: String,
+    response_path: String,
+    messages: Vec<InferenceMessage>,
+    max_output_tokens: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InferenceResponse {
+    protocol: u8,
+    local_only: bool,
+    completed: bool,
+    method: String,
+    text: String,
+    input_tokens: u64,
+    output_tokens: u64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct FoundryInferenceResult {
+    pub(crate) text: String,
+    pub(crate) input_tokens: u64,
+    pub(crate) output_tokens: u64,
 }
 
 fn source_sha256(bytes: &[u8]) -> String {
@@ -1470,6 +1523,205 @@ pub(crate) fn run_training_worker(
         artifact_path: output,
         evidence,
     })
+}
+
+pub(crate) fn run_foundry_inference(
+    app: &tauri::AppHandle,
+    request_id: &str,
+    job_id: &str,
+    base_model_id: &str,
+    method: &str,
+    job_dir: &Path,
+    messages: &[(String, String)],
+    max_output_tokens: u32,
+) -> Result<FoundryInferenceResult, String> {
+    let request_id = safe_job_id(request_id)?;
+    let job_id = safe_job_id(job_id)?;
+    if !matches!(method, "lora" | "qlora" | "full") {
+        return Err("Unsupported Model Foundry inference method.".into());
+    }
+    if messages.is_empty()
+        || messages.len() > 64
+        || messages.iter().any(|(role, content)| {
+            !matches!(role.as_str(), "system" | "user" | "assistant") || content.trim().is_empty()
+        })
+        || messages
+            .iter()
+            .try_fold(0_usize, |total, (_, content)| {
+                total.checked_add(content.chars().count())
+            })
+            .is_none_or(|total| total > 128 * 1024)
+    {
+        return Err("Model Foundry inference messages are invalid or too large.".into());
+    }
+    if !(1..=4_096).contains(&max_output_tokens) {
+        return Err("Model Foundry output limit must be between 1 and 4,096 tokens.".into());
+    }
+
+    let root = training_root(app)?;
+    let _storage_guard = MODEL_STORAGE_LOCK
+        .lock()
+        .map_err(|_| "Training model storage lock is unavailable.".to_string())?;
+    let status = inspect_worker(&root);
+    let method_available = match method {
+        "full" => status.methods.iter().any(|value| value == "full"),
+        "lora" | "qlora" => status
+            .methods
+            .iter()
+            .any(|value| matches!(value.as_str(), "lora" | "qlora")),
+        _ => false,
+    };
+    if !status.installed || !status.attested || !method_available {
+        return Err(
+            "The verified local worker cannot run this trained model on this computer.".into(),
+        );
+    }
+    let python = status
+        .python
+        .ok_or_else(|| "Python 3 is required for local trained-model inference.".to_string())?;
+    let worker = worker_path(&root);
+    let model_manifest = catalog_model(base_model_id)?;
+    verify_training_model_files(&root, &model_manifest)?;
+    let model = training_model_path(&root, base_model_id)?
+        .canonicalize()
+        .map_err(|_| "The verified trainable base model is not installed.".to_string())?;
+    let job_dir = job_dir
+        .canonicalize()
+        .map_err(|_| "The private Model Foundry job directory is unavailable.".to_string())?;
+    let artifact = job_dir
+        .join("weight-artifact")
+        .canonicalize()
+        .map_err(|_| "The verified Model Foundry weight artifact is unavailable.".to_string())?;
+    if artifact.parent() != Some(job_dir.as_path()) {
+        return Err("Model Foundry weight artifact escaped its private job directory.".into());
+    }
+    verify_training_artifact(&artifact)?;
+
+    let request_path = job_dir.join(format!("inference-{request_id}.request.json"));
+    let response_path = job_dir.join(format!("inference-{request_id}.response.json"));
+    let request = InferenceRequest {
+        protocol: WORKER_PROTOCOL,
+        local_only: true,
+        method: method.into(),
+        base_model_path: model.to_string_lossy().into_owned(),
+        artifact_path: artifact.to_string_lossy().into_owned(),
+        response_path: response_path.to_string_lossy().into_owned(),
+        messages: messages
+            .iter()
+            .map(|(role, content)| InferenceMessage {
+                role: role.clone(),
+                content: content.clone(),
+            })
+            .collect(),
+        max_output_tokens,
+    };
+    let temporary = request_path.with_extension("json.tmp");
+    fs::write(
+        &temporary,
+        serde_json::to_vec(&request)
+            .map_err(|error| format!("Could not encode local inference request: {error}"))?,
+    )
+    .map_err(|error| format!("Could not persist local inference request: {error}"))?;
+    fs::rename(&temporary, &request_path)
+        .map_err(|error| format!("Could not activate local inference request: {error}"))?;
+
+    let result = (|| {
+        let child = Command::new(python)
+            .arg(&worker)
+            .arg("infer")
+            .arg(&request_path)
+            .current_dir(&root)
+            .env("HF_HUB_OFFLINE", "1")
+            .env("TRANSFORMERS_OFFLINE", "1")
+            .env("TOKENIZERS_PARALLELISM", "false")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| {
+                format!("Could not start the verified local inference worker: {error}")
+            })?;
+        let child = Arc::new(Mutex::new(child));
+        {
+            let mut active = ACTIVE_INFERENCE
+                .lock()
+                .map_err(|_| "Model Foundry inference registry is unavailable.".to_string())?;
+            if active
+                .insert(request_id.to_string(), child.clone())
+                .is_some()
+            {
+                let _ = child.lock().map(|mut process| process.kill());
+                return Err("This Model Foundry inference request is already active.".into());
+            }
+        }
+        let _registry_guard = InferenceRegistryGuard(request_id.to_string());
+        let started = Instant::now();
+        loop {
+            if let Some(status) = child
+                .lock()
+                .map_err(|_| "Model Foundry inference process is unavailable.".to_string())?
+                .try_wait()
+                .map_err(|error| format!("Could not monitor local model inference: {error}"))?
+            {
+                if !status.success() {
+                    return Err("The verified local model could not complete inference.".into());
+                }
+                break;
+            }
+            if started.elapsed() >= INFERENCE_TIMEOUT {
+                if let Ok(mut process) = child.lock() {
+                    let _ = process.kill();
+                    let _ = process.wait();
+                }
+                return Err("Local trained-model inference exceeded the safe time limit.".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let metadata = fs::metadata(&response_path)
+            .map_err(|_| "Local inference returned no completion evidence.".to_string())?;
+        if !metadata.is_file() || metadata.len() > MAX_INFERENCE_RESPONSE_BYTES {
+            return Err("Local inference completion evidence is invalid.".into());
+        }
+        let response: InferenceResponse = serde_json::from_slice(
+            &fs::read(&response_path)
+                .map_err(|error| format!("Could not read local inference evidence: {error}"))?,
+        )
+        .map_err(|_| "Local inference completion evidence is malformed.".to_string())?;
+        if response.protocol != WORKER_PROTOCOL
+            || !response.local_only
+            || !response.completed
+            || response.method != method
+            || response.text.trim().is_empty()
+        {
+            return Err("Local inference completion evidence did not match the request.".into());
+        }
+        Ok(FoundryInferenceResult {
+            text: response.text,
+            input_tokens: response.input_tokens,
+            output_tokens: response.output_tokens,
+        })
+    })();
+    let _ = fs::remove_file(&request_path);
+    let _ = fs::remove_file(&response_path);
+    result.map_err(|error| format!("{error} (Model Foundry job {job_id})"))
+}
+
+pub(crate) fn cancel_foundry_inference(request_id: &str) -> Result<bool, String> {
+    let request_id = safe_job_id(request_id)?;
+    let child = ACTIVE_INFERENCE
+        .lock()
+        .map_err(|_| "Model Foundry inference registry is unavailable.".to_string())?
+        .get(request_id)
+        .cloned();
+    let Some(child) = child else {
+        return Ok(false);
+    };
+    child
+        .lock()
+        .map_err(|_| "Model Foundry inference process is unavailable.".to_string())?
+        .kill()
+        .map_err(|error| format!("Could not stop local trained-model inference: {error}"))?;
+    Ok(true)
 }
 
 pub(crate) fn cancel_training_worker(job_id: &str) -> Result<bool, String> {
