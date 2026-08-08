@@ -22,7 +22,11 @@ import { useAgentStore } from '@/stores/agents';
 import { useUIStore } from '@/stores/ui';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { jarvisProviderAttemptEvidenceRevalidator, runAgent } from './router';
-import type { LLMContentPart, LLMMessage } from './types';
+import {
+  runBoundedLocalFinalBossRevision,
+  shouldRunLocalFinalBossRevision,
+} from './localFinalBossRevision';
+import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
 import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } from '@/lib/actions';
 import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
@@ -4146,7 +4150,7 @@ export function startRuntimeListener(
       }
       controller.signal.throwIfAborted();
       let responseCompositionVisible = false;
-      const response = await runAgent({
+      const providerRequest = {
         agent: runnable,
         messages: requestMessages,
         max_output_tokens: optimizedOutputTokenLimit,
@@ -4167,7 +4171,7 @@ export function startRuntimeListener(
         },
         workingDirectory: projectId ? (getStoredProjectRoot(projectId) ?? undefined) : undefined,
         signal: controller.signal,
-        onChunk: (chunk) => {
+        onChunk: (chunk: LLMStreamChunk) => {
           if (controller.signal.aborted) return;
           if (chunk.delta && chunk.delta.length > 0) {
             if (!responseCompositionVisible) {
@@ -4186,7 +4190,13 @@ export function startRuntimeListener(
           }
           if (chunk.done) flushNow();
         },
-      });
+      };
+      const response = shouldRunLocalFinalBossRevision(
+        reasoningPolicy?.mode,
+        runnable.model.provider,
+      )
+        ? await runBoundedLocalFinalBossRevision(runAgent, providerRequest)
+        : await runAgent(providerRequest);
       controller.signal.throwIfAborted();
 
       await mirrorShadowOutcome('completed', true);
