@@ -456,15 +456,16 @@ describe('Warm theme presentation contract', () => {
     expect(css).toContain('--warm-tabs-h: 32px');
   });
 
-  it('uses translucent clear paper consistently throughout Warm Settings', () => {
+  it('keeps Warm Settings controls readable without white backing or scenery blur', () => {
+    expect(css).toMatch(/\.mc7f-settings-modal\s*\{[\s\S]*?background:\s*#f9edd9/u);
     expect(css).toMatch(
-      /\[data-sakura-surface='settings-content'\]\s*\{[\s\S]*?rgb\(251 243 231 \/ 0\.38\)[\s\S]*?backdrop-filter:\s*blur\(2px\)/u,
+      /\[data-sakura-surface='settings-content'\]\s*\{[\s\S]*?background:\s*transparent[\s\S]*?backdrop-filter:\s*none/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*rgb\(255 249 239 \/ 0\.56\)[\s\S]*?backdrop-filter:\s*blur\(3px\)/u,
+      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*rgb\(242 225 205 \/ 0\.48\)[\s\S]*?backdrop-filter:\s*none/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-appearance\s+\[class\*='bg-panel'\]\s*\{[\s\S]*?background-color:\s*rgb\(255 249 239 \/ 0\.52\)\s*!important[\s\S]*?backdrop-filter:\s*blur\(3px\)/u,
+      /\.mc7f-settings-appearance\s+\[class\*='bg-panel'\]\s*\{[\s\S]*?background-color:\s*rgb\(242 225 205 \/ 0\.48\)\s*!important[\s\S]*?backdrop-filter:\s*none/u,
     );
   });
 
@@ -683,12 +684,12 @@ describe('Warm theme presentation contract', () => {
     );
   });
 
-  it('carries warm scenic-glass depth into account and settings cards', () => {
+  it('carries warm scenic-glass depth into account while keeping Settings parchment clear', () => {
     expect(css).toMatch(
       /\.mc7f-account-page\s+\.sakura-account-panel\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.76\)[\s\S]*?backdrop-filter:\s*blur\(10px\)/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(255\s+249\s+239\s*\/\s*0\.52\)[\s\S]*?backdrop-filter:\s*blur\(3px\)/u,
+      /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-content'\]\s+\[class\*='rounded-'\]\[class\*='border-border'\]\s*\{[\s\S]*?rgb\(242\s+225\s+205\s*\/\s*0\.48\)[\s\S]*?backdrop-filter:\s*none/u,
     );
   });
 
@@ -757,6 +758,12 @@ describe('Warm theme presentation contract', () => {
     );
     expect(css).toMatch(
       /\[data-warm-decoration='settings-wash'\]\s*\{[\s\S]*?radial-gradient[\s\S]*?linear-gradient/u,
+    );
+    expect(css).toMatch(
+      /\[data-warm-decoration='settings-scene-right'\]\s*\{[\s\S]*?width:\s*calc\(100%\s*-\s*255px\)[\s\S]*?height:\s*100%/u,
+    );
+    expect(css).toMatch(
+      /\[data-warm-decoration='settings-scene-right'\]\s*>\s*img\s*\{[\s\S]*?height:\s*100%[\s\S]*?object-fit:\s*cover[\s\S]*?filter:\s*saturate\(1\.12\)\s+contrast\(1\.12\)[\s\S]*?opacity:\s*1/u,
     );
     expect(css).toMatch(
       /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-navigation'\]\s+nav\s+button\s*\{[\s\S]*?color:\s*var\(--warm-text-muted\)\s*!important/u,

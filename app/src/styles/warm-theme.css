@@ -1626,7 +1626,7 @@ html[data-theme='warm'] .mc7f-settings-modal {
   overflow: clip;
   border-color: var(--warm-border-strong);
   border-radius: 22px;
-  background: #fbf2e5;
+  background: #f9edd9;
   color: var(--warm-ink);
   box-shadow:
     0 32px 90px rgb(43 27 18 / 0.32),
@@ -1662,8 +1662,8 @@ html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-sce
 
 html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-scene-right'] {
   right: 0;
-  width: 470px;
-  height: 328px;
+  width: calc(100% - 255px);
+  height: 100%;
 }
 
 html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-scene-left'] > img,
@@ -1685,7 +1685,13 @@ html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-sce
 
 html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-scene-right'] > img {
   right: 0;
-  opacity: 0.9;
+  width: auto;
+  min-width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: right bottom;
+  filter: saturate(1.12) contrast(1.12);
+  opacity: 1;
 }
 
 html[data-theme='warm'] .mc7f-settings-modal [data-warm-decoration='settings-wash'] {
@@ -1710,9 +1716,9 @@ html[data-theme='warm'] .mc7f-settings-modal [data-sakura-surface='settings-navi
   border-color: var(--warm-border);
   background: linear-gradient(
     180deg,
-    rgb(251 243 231 / 0.985) 0 72%,
-    rgb(249 237 218 / 0.62) 84%,
-    rgb(248 234 210 / 0.18) 100%
+    rgb(248 234 214 / 0.78) 0 70%,
+    rgb(239 216 190 / 0.46) 86%,
+    rgb(232 203 171 / 0.22) 100%
   );
   color: var(--warm-ink);
   box-shadow: 12px 0 32px rgb(91 59 37 / 0.035);
@@ -1722,13 +1728,8 @@ html[data-theme='warm'] .mc7f-settings-modal [data-sakura-surface='settings-cont
   position: relative;
   z-index: 2;
   padding: 30px 52px 42px;
-  background: linear-gradient(
-    180deg,
-    rgb(252 246 237 / 0.52) 0 38%,
-    rgb(251 243 231 / 0.38) 70%,
-    rgb(250 239 222 / 0.18) 100%
-  );
-  backdrop-filter: blur(2px);
+  background: transparent;
+  backdrop-filter: none;
   scrollbar-color: rgb(177 132 91 / 0.5) transparent;
 }
 
@@ -1805,11 +1806,11 @@ html[data-theme='warm'] .mc7f-settings-modal nav button[aria-current='page'] svg
 html[data-theme='warm'] .mc7f-settings-modal [role='tabpanel'] section,
 html[data-theme='warm'] .mc7f-settings-modal [role='tabpanel'] article {
   border-color: var(--warm-border);
-  background: rgb(255 249 239 / 0.56);
+  background: rgb(242 225 205 / 0.48);
   box-shadow:
     0 9px 25px rgb(102 65 39 / 0.06),
     inset 0 1px 0 rgb(255 255 255 / 0.72);
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
 }
 
 html[data-theme='warm']
@@ -1817,17 +1818,17 @@ html[data-theme='warm']
   [data-sakura-surface='settings-content']
   [class*='rounded-'][class*='border-border'] {
   border-color: var(--warm-border);
-  background-color: rgb(255 249 239 / 0.52);
+  background-color: rgb(242 225 205 / 0.48);
   background-image: none;
   box-shadow:
     0 8px 24px rgb(102 65 39 / 0.055),
     inset 0 1px 0 rgb(255 255 255 / 0.7);
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
 }
 
 html[data-theme='warm'] .mc7f-settings-modal .mc7f-settings-appearance [class*='bg-panel'] {
-  background-color: rgb(255 249 239 / 0.52) !important;
-  backdrop-filter: blur(3px);
+  background-color: rgb(242 225 205 / 0.48) !important;
+  backdrop-filter: none;
 }
 
 @media (min-width: 1401px) {
