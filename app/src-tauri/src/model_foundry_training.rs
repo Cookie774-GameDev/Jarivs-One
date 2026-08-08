@@ -1625,7 +1625,7 @@ pub(crate) fn run_foundry_inference(
     fs::rename(&temporary, &request_path)
         .map_err(|error| format!("Could not activate local inference request: {error}"))?;
 
-    let result = (|| {
+    let result: Result<FoundryInferenceResult, String> = (|| {
         let child = Command::new(python)
             .arg(&worker)
             .arg("infer")
