@@ -42,7 +42,13 @@ const INACTIVE_STATUSES: JarvisAgentStatus[] = ['blocked', 'done', 'failed', 'ca
 const HEADER_STATUS = 'Live agent work for this chat';
 
 export function AgentActivityCard({ part }: AgentActivityCardProps) {
-  const agent = part.agent;
+  const persistedAgent = part.agent;
+  const liveAgent = useJarvisInteractionStore((state) =>
+    (state.agentsByChat[String(persistedAgent.parentChatId)] ?? []).find(
+      (candidate) => String(candidate.agentId) === String(persistedAgent.agentId),
+    ),
+  );
+  const agent = liveAgent ?? persistedAgent;
   const openChildChat = () => {
     openNativeChildChat(agent.childChatId);
   };
