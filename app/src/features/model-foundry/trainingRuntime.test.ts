@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getLocalTrainingWorkerStatus,
   installLocalTrainingWorker,
+  listVerifiedTrainingModels,
   type TrainingRuntimeInvoke,
 } from './trainingRuntime';
 
@@ -62,5 +63,39 @@ describe('trainingRuntime', () => {
     expect(status.installed).toBe(true);
     expect(status.attested).toBe(true);
     expect(status.reason).toMatch(/libraries are incomplete/i);
+  });
+
+  it('loads the five pinned trainable models from native authority', async () => {
+    const invoke = vi.fn().mockResolvedValue([
+      {
+        id: 'smollm2-135m-instruct',
+        label: 'SmolLM2 135M Instruct',
+        sourceId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+        revision: '1'.repeat(40),
+        license: 'apache-2.0',
+        licenseUrl: 'https://www.apache.org/licenses/LICENSE-2.0',
+        gated: false,
+        parametersB: 0.135,
+        downloadBytes: 272_437_573,
+        expectedRamGb: 4,
+        expectedVramGb: 2,
+        contextTokens: 8192,
+        precision: 'BF16 safetensors',
+        speed: 'fast',
+        quality: 'efficient',
+        cpuPractical: true,
+        files: [],
+      },
+    ]);
+
+    const models = await listVerifiedTrainingModels({ native: true, invoke });
+
+    expect(invoke).toHaveBeenCalledWith('model_foundry_training_catalog');
+    expect(models[0]).toMatchObject({
+      id: 'smollm2-135m-instruct',
+      sourceId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      localOnly: true,
+      license: 'apache-2.0',
+    });
   });
 });

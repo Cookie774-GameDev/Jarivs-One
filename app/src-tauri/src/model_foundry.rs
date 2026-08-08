@@ -29,6 +29,15 @@ fn parsed_method(value: &str) -> Result<FoundryMethod, String> {
     }
 }
 
+fn allowed_model_for_method(base_model_id: &str, method: FoundryMethod) -> bool {
+    match method {
+        FoundryMethod::Knowledge => ALLOWED_MODELS.contains(&base_model_id),
+        FoundryMethod::Weight => {
+            crate::model_foundry_training::training_model_id_allowed(base_model_id)
+        }
+    }
+}
+
 fn active_jobs() -> &'static Mutex<BTreeSet<String>> {
     ACTIVE_JOBS.get_or_init(|| Mutex::new(BTreeSet::new()))
 }
@@ -569,10 +578,10 @@ pub fn model_foundry_start_training(
     if request.name.trim().is_empty() || request.name.chars().count() > 80 {
         return Err("Model name must contain 1 to 80 characters.".into());
     }
-    if !ALLOWED_MODELS.contains(&request.base_model_id.as_str()) {
+    let method = parsed_method(&request.method)?;
+    if !allowed_model_for_method(&request.base_model_id, method) {
         return Err("The selected base model is not in the verified local catalog.".into());
     }
-    let method = parsed_method(&request.method)?;
     let sources = validated_sources(&request.source_paths)?;
     if method == FoundryMethod::Weight
         && (sources.len() != 1
@@ -971,6 +980,30 @@ mod tests {
         assert_eq!(parsed_method("qlora").unwrap(), FoundryMethod::Weight);
         assert_eq!(parsed_method("full").unwrap(), FoundryMethod::Weight);
         assert!(parsed_method("rag-as-training").is_err());
+    }
+
+    #[test]
+    fn separates_verified_inference_models_from_trainable_weight_models() {
+        assert!(allowed_model_for_method(
+            "qwen2.5:1.5b-instruct-q4_K_M",
+            FoundryMethod::Knowledge
+        ));
+        assert!(!allowed_model_for_method(
+            "qwen2.5:1.5b-instruct-q4_K_M",
+            FoundryMethod::Weight
+        ));
+        assert!(allowed_model_for_method(
+            "qwen2.5-1.5b-instruct",
+            FoundryMethod::Weight
+        ));
+        assert!(!allowed_model_for_method(
+            "qwen2.5-1.5b-instruct",
+            FoundryMethod::Knowledge
+        ));
+        assert!(!allowed_model_for_method(
+            "../outside",
+            FoundryMethod::Weight
+        ));
     }
 
     #[test]

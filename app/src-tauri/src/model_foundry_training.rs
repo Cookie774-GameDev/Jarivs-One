@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -11,6 +11,7 @@ use tauri::Manager;
 
 const WORKER_PROTOCOL: u8 = 1;
 const WORKER_SOURCE: &str = include_str!("../workers/model_foundry/worker.py");
+const TRAINING_CATALOG_SOURCE: &str = include_str!("../workers/model_foundry/training-models.json");
 const TRAINING_ARTIFACT_MANIFEST: &str = ".vibespace-artifact.json";
 const MAX_ARTIFACT_FILES: usize = 4_096;
 const MAX_ARTIFACT_DEPTH: usize = 8;
@@ -27,6 +28,109 @@ impl Drop for TrainingRegistryGuard {
             active.remove(&self.0);
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TrainingCatalogFile {
+    path: String,
+    bytes: u64,
+    sha256: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TrainingCatalogModel {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) source_id: String,
+    pub(crate) revision: String,
+    pub(crate) license: String,
+    pub(crate) license_url: String,
+    pub(crate) gated: bool,
+    pub(crate) parameters_b: f64,
+    pub(crate) download_bytes: u64,
+    pub(crate) expected_ram_gb: u16,
+    pub(crate) expected_vram_gb: u16,
+    pub(crate) context_tokens: u32,
+    pub(crate) precision: String,
+    pub(crate) speed: String,
+    pub(crate) quality: String,
+    pub(crate) cpu_practical: bool,
+    pub(crate) files: Vec<TrainingCatalogFile>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrainingCatalogManifest {
+    schema_version: u8,
+    updated_at: String,
+    source_host: String,
+    models: Vec<TrainingCatalogModel>,
+}
+
+fn valid_hex(value: &str, length: usize) -> bool {
+    value.len() == length && value.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+pub(crate) fn training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
+    let manifest: TrainingCatalogManifest = serde_json::from_str(TRAINING_CATALOG_SOURCE)
+        .map_err(|error| format!("Verified training model catalog is invalid: {error}"))?;
+    if manifest.schema_version != 1
+        || manifest.source_host != "huggingface.co"
+        || manifest.updated_at.trim().is_empty()
+        || manifest.models.len() < 5
+    {
+        return Err("Verified training model catalog metadata is incomplete.".into());
+    }
+    let mut ids = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    for model in &manifest.models {
+        let download_bytes = model.files.iter().try_fold(0_u64, |total, file| {
+            total
+                .checked_add(file.bytes)
+                .ok_or_else(|| "Training model download size overflowed.".to_string())
+        })?;
+        let mut paths = BTreeSet::new();
+        if model.id.trim().is_empty()
+            || model.label.trim().is_empty()
+            || !ids.insert(model.id.clone())
+            || !sources.insert((model.source_id.clone(), model.revision.clone()))
+            || model.source_id.split('/').count() != 2
+            || !valid_hex(&model.revision, 40)
+            || model.license != "apache-2.0"
+            || model.license_url != "https://www.apache.org/licenses/LICENSE-2.0"
+            || model.gated
+            || !model.parameters_b.is_finite()
+            || model.parameters_b <= 0.0
+            || model.expected_ram_gb == 0
+            || model.expected_vram_gb == 0
+            || model.context_tokens == 0
+            || !matches!(model.speed.as_str(), "fast" | "medium" | "slow")
+            || !matches!(model.quality.as_str(), "efficient" | "balanced" | "high")
+            || model.files.is_empty()
+            || model.download_bytes != download_bytes
+            || !model.files.iter().all(|file| {
+                file.bytes > 0
+                    && valid_hex(&file.sha256, 64)
+                    && !file.path.is_empty()
+                    && !file.path.contains("..")
+                    && !file.path.contains(['/', '\\'])
+                    && paths.insert(file.path.clone())
+            })
+            || !paths.contains("config.json")
+            || !paths.contains("model.safetensors")
+        {
+            return Err("Verified training model catalog contains an unsafe entry.".into());
+        }
+    }
+    Ok(manifest.models)
+}
+
+pub(crate) fn training_model_id_allowed(base_model_id: &str) -> bool {
+    training_catalog()
+        .map(|models| models.iter().any(|model| model.id == base_model_id))
+        .unwrap_or(false)
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -133,13 +237,11 @@ fn worker_path(root: &Path) -> PathBuf {
 }
 
 pub(crate) fn training_model_path(root: &Path, base_model_id: &str) -> Result<PathBuf, String> {
-    let directory = match base_model_id {
-        "qwen2.5:1.5b-instruct-q4_K_M" => "qwen2.5-1.5b-instruct",
-        "qwen2.5:7b-instruct-q4_K_M" => "qwen2.5-7b-instruct",
-        "llama3.1:8b-instruct-q4_K_M" => "llama3.1-8b-instruct",
-        _ => return Err("The selected model has no verified local training manifest.".into()),
-    };
-    Ok(root.join("base-models").join(directory))
+    let model = training_catalog()?
+        .into_iter()
+        .find(|model| model.id == base_model_id)
+        .ok_or_else(|| "The selected model has no verified local training manifest.".to_string())?;
+    Ok(root.join("base-models").join(model.id))
 }
 
 fn artifact_file_sha256(path: &Path) -> Result<(u64, String), String> {
@@ -470,6 +572,11 @@ pub fn model_foundry_training_worker_status(
     app: tauri::AppHandle,
 ) -> Result<TrainingWorkerStatus, String> {
     Ok(inspect_worker(&training_root(&app)?))
+}
+
+#[tauri::command]
+pub fn model_foundry_training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
+    training_catalog()
 }
 
 #[tauri::command]
@@ -872,9 +979,10 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("vibespace-foundry-model-{}", nanoid::nanoid!()));
         assert_eq!(
-            training_model_path(&root, "qwen2.5:1.5b-instruct-q4_K_M").unwrap(),
+            training_model_path(&root, "qwen2.5-1.5b-instruct").unwrap(),
             root.join("base-models").join("qwen2.5-1.5b-instruct")
         );
+        assert!(training_model_path(&root, "qwen2.5:1.5b-instruct-q4_K_M").is_err());
         assert!(training_model_path(&root, "../outside").is_err());
         assert!(training_model_path(&root, "unknown:model").is_err());
     }
@@ -911,5 +1019,41 @@ mod tests {
             MAX_WORKER_LOG_BYTES
         );
         assert!(!cancel_training_worker("job_missing").unwrap());
+    }
+
+    #[test]
+    fn training_catalog_is_pinned_public_and_hash_complete() {
+        let catalog = training_catalog().unwrap();
+        assert_eq!(catalog.len(), 5);
+        for model in catalog {
+            assert_eq!(model.license, "apache-2.0");
+            assert!(!model.gated);
+            assert_eq!(model.revision.len(), 40);
+            assert!(model
+                .revision
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+            assert!(model.source_id.contains('/'));
+            assert!(model.download_bytes > 0);
+            assert!(model
+                .files
+                .iter()
+                .any(|file| file.path == "model.safetensors"));
+            assert!(model.files.iter().any(|file| file.path == "config.json"));
+            assert_eq!(
+                model.download_bytes,
+                model.files.iter().map(|file| file.bytes).sum::<u64>()
+            );
+            assert!(model.files.iter().all(|file| {
+                file.bytes > 0
+                    && file.sha256.len() == 64
+                    && file
+                        .sha256
+                        .chars()
+                        .all(|character| character.is_ascii_hexdigit())
+                    && !file.path.contains("..")
+                    && !file.path.contains(['/', '\\'])
+            }));
+        }
     }
 }

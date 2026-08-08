@@ -74,7 +74,7 @@ method to RAG or another training mode.
 
 ## Verified base-model catalog
 
-The exact Ollama runtime tags are:
+Knowledge/RAG uses these exact Ollama runtime tags:
 
 - `qwen2.5:1.5b-instruct-q4_K_M`
 - `qwen2.5:7b-instruct-q4_K_M`
@@ -92,6 +92,28 @@ The catalog metadata was verified against the official Ollama model pages on
 Model Foundry checks for the exact installed tag. A user-approved download uses
 the shared Ollama lifecycle and progress flow; installation of Ollama itself
 continues to require the explicit consent screen in Settings → Local Models.
+
+Weight training uses a separate, embedded, fail-closed Transformers checkpoint
+manifest. It never reuses the quantized Ollama inference files as trainable
+weights. The current public Apache-2.0 choices are:
+
+- `HuggingFaceTB/SmolLM2-135M-Instruct` at
+  `12fd25f77366fa6b3b4b768ec3050bf629380bac`;
+- `HuggingFaceTB/SmolLM2-360M-Instruct` at
+  `a10cc1512eabd3dde888204e902eca88bddb4951`;
+- `HuggingFaceTB/SmolLM2-1.7B-Instruct` at
+  `31b70e2e869a7173562077fd711b654946d38674`;
+- `Qwen/Qwen2.5-0.5B-Instruct` at
+  `7ae557604adf67be50417f59c2c2f167def9a775`;
+- `Qwen/Qwen2.5-1.5B-Instruct` at
+  `989aa7980e4cf806f80c7fef2b1adb7bc71aa306`.
+
+VibeSpace validates every catalog identifier, revision, license, filename,
+byte count, and SHA-256 before exposing it through the native bridge. These
+revisions, licenses, weight sizes, and weight hashes were revalidated against
+the official Hugging Face API on 2026-08-08. An unknown, gated, unpinned,
+path-bearing, duplicate, or hash-incomplete entry fails the entire catalog
+closed.
 
 ## Persistence and recovery
 

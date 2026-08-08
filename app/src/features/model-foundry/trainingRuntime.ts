@@ -28,7 +28,27 @@ interface NativeTrainingWorkerStatus {
   reason: string | null;
 }
 
-export type TrainingRuntimeInvoke = (command: string) => Promise<NativeTrainingWorkerStatus>;
+export interface VerifiedTrainingModel {
+  id: string;
+  label: string;
+  sourceId: string;
+  revision: string;
+  license: string;
+  licenseUrl: string;
+  gated: false;
+  parametersB: number;
+  downloadBytes: number;
+  expectedRamGb: number;
+  expectedVramGb: number;
+  contextTokens: number;
+  precision: string;
+  speed: 'fast' | 'medium' | 'slow';
+  quality: 'efficient' | 'balanced' | 'high';
+  cpuPractical: boolean;
+  localOnly: true;
+}
+
+export type TrainingRuntimeInvoke = (command: string) => Promise<unknown>;
 
 interface TrainingRuntimeOptions {
   native?: boolean;
@@ -83,7 +103,9 @@ export async function getLocalTrainingWorkerStatus(
   const native = options.native ?? isTauri;
   if (!native) return { ...WEB_STATUS };
   const invoke = await nativeInvoke(options);
-  return normalizeStatus(await invoke('model_foundry_training_worker_status'));
+  return normalizeStatus(
+    (await invoke('model_foundry_training_worker_status')) as NativeTrainingWorkerStatus,
+  );
 }
 
 export async function installLocalTrainingWorker(
@@ -92,5 +114,78 @@ export async function installLocalTrainingWorker(
   const native = options.native ?? isTauri;
   if (!native) return { ...WEB_STATUS };
   const invoke = await nativeInvoke(options);
-  return normalizeStatus(await invoke('model_foundry_install_training_worker'));
+  return normalizeStatus(
+    (await invoke('model_foundry_install_training_worker')) as NativeTrainingWorkerStatus,
+  );
+}
+
+export async function listVerifiedTrainingModels(
+  options: TrainingRuntimeOptions = {},
+): Promise<VerifiedTrainingModel[]> {
+  const native = options.native ?? isTauri;
+  if (!native) return [];
+  const invoke = await nativeInvoke(options);
+  const response = await invoke('model_foundry_training_catalog');
+  if (!Array.isArray(response)) {
+    throw new Error('Verified training model catalog returned an invalid response.');
+  }
+  return response.map((entry) => {
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      !('id' in entry) ||
+      typeof entry.id !== 'string' ||
+      !('label' in entry) ||
+      typeof entry.label !== 'string' ||
+      !('sourceId' in entry) ||
+      typeof entry.sourceId !== 'string' ||
+      !('revision' in entry) ||
+      typeof entry.revision !== 'string' ||
+      !('license' in entry) ||
+      entry.license !== 'apache-2.0' ||
+      !('licenseUrl' in entry) ||
+      typeof entry.licenseUrl !== 'string' ||
+      !('gated' in entry) ||
+      entry.gated !== false ||
+      !('parametersB' in entry) ||
+      typeof entry.parametersB !== 'number' ||
+      !('downloadBytes' in entry) ||
+      typeof entry.downloadBytes !== 'number' ||
+      !('expectedRamGb' in entry) ||
+      typeof entry.expectedRamGb !== 'number' ||
+      !('expectedVramGb' in entry) ||
+      typeof entry.expectedVramGb !== 'number' ||
+      !('contextTokens' in entry) ||
+      typeof entry.contextTokens !== 'number' ||
+      !('precision' in entry) ||
+      typeof entry.precision !== 'string' ||
+      !('speed' in entry) ||
+      !['fast', 'medium', 'slow'].includes(String(entry.speed)) ||
+      !('quality' in entry) ||
+      !['efficient', 'balanced', 'high'].includes(String(entry.quality)) ||
+      !('cpuPractical' in entry) ||
+      typeof entry.cpuPractical !== 'boolean'
+    ) {
+      throw new Error('Verified training model catalog contains an invalid entry.');
+    }
+    return {
+      id: entry.id,
+      label: entry.label,
+      sourceId: entry.sourceId,
+      revision: entry.revision,
+      license: entry.license,
+      licenseUrl: entry.licenseUrl,
+      gated: false,
+      parametersB: entry.parametersB,
+      downloadBytes: entry.downloadBytes,
+      expectedRamGb: entry.expectedRamGb,
+      expectedVramGb: entry.expectedVramGb,
+      contextTokens: entry.contextTokens,
+      precision: entry.precision,
+      speed: String(entry.speed) as VerifiedTrainingModel['speed'],
+      quality: String(entry.quality) as VerifiedTrainingModel['quality'],
+      cpuPractical: entry.cpuPractical,
+      localOnly: true,
+    };
+  });
 }
