@@ -64,7 +64,7 @@ const execution: PromptForgeExecutionResult = Object.freeze({
 });
 
 describe('usePromptForgeComposer', () => {
-  it('runs a reviewable upgrade without changing the composer, then supports replace and undo', async () => {
+  it('previews the upgrade in the composer, then supports accept and undo', async () => {
     const { jobs, repository } = memoryRepository();
     const setDraft = vi.fn();
     let nextId = 0;
@@ -121,10 +121,11 @@ describe('usePromptForgeComposer', () => {
     expect(result.current.status).toBe('ready');
     expect(result.current.reviewOpen).toBe(true);
     expect(result.current.upgradedDraft).toBe(execution.upgradedPrompt);
-    expect(setDraft).not.toHaveBeenCalled();
-
-    act(() => result.current.replace());
     expect(setDraft).toHaveBeenLastCalledWith(execution.upgradedPrompt);
+
+    act(() => result.current.accept());
+    expect(result.current.reviewOpen).toBe(false);
+    expect(result.current.isDraftApproved(execution.upgradedPrompt)).toBe(true);
     expect(result.current.canUndo).toBe(true);
 
     act(() => result.current.undo());
@@ -207,7 +208,7 @@ describe('usePromptForgeComposer', () => {
     expect(successful.result.current.reviewOpen).toBe(true);
     expect(successful.result.current.status).toBe('ready');
     expect(successful.result.current.isRunning).toBe(false);
-    expect(setDraft).not.toHaveBeenCalled();
+    expect(setDraft).toHaveBeenLastCalledWith(execution.upgradedPrompt);
 
     const failing = renderHook(() =>
       usePromptForgeComposer({

@@ -5,16 +5,18 @@
   "compatibility_date": "2026-08-05",
   "workers_dev": true,
   "triggers": {
-    "crons": ["7 * * * *"]
+    "crons": ["7 * * * *"],
   },
   "d1_databases": [
     {
-      "binding": "DB"
-    }
+      "binding": "DB",
+      "database_name": "vibespace-ai-news-db",
+      "database_id": "75fd3bdc-6041-45cb-b1b8-3358e1509290",
+    },
   ],
   "vars": {
     "CORS_ORIGIN": "*",
     "MAX_ITEMS_PER_RUN": "30",
-    "RETENTION_DAYS": "45"
-  }
+    "RETENTION_DAYS": "45",
+  },
 }

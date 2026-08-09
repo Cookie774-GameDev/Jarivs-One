@@ -145,7 +145,9 @@ describe('BenchmarksPage MonoChrome appearance', () => {
     expect(screen.getByRole('heading', { name: 'Benchmarks' })).toBeTruthy();
     expect(screen.getByText('Free public leaderboards. BYOK to run any of them.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
-    expect(screen.getByText(/Live fetch failed \(network blocked\)/u)).toBeTruthy();
+    expect(screen.queryByText(/Curated Top 50 unique models/u)).toBeNull();
+    expect(screen.queryByText(/one model per row/u)).toBeNull();
+    expect(screen.queryByText(/Ranked by Artificial Analysis/u)).toBeNull();
 
     const chip = screen.getByText('from snapshot');
     expect(chip.className).toContain('sev-pill');

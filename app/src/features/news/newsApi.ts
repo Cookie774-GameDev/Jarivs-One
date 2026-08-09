@@ -20,6 +20,7 @@ export interface LiveNewsResponse {
 }
 
 type FetchLike = typeof fetch;
+export const DEFAULT_NEWS_API_URL = 'https://vibespace-ai-news.vibespace-viper.workers.dev';
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -34,6 +35,14 @@ function requiredString(record: Record<string, unknown>, key: string): string {
     throw new Error('AI news response is malformed.');
   }
   return value;
+}
+
+function requiredId(record: Record<string, unknown>): string {
+  const value = record.id;
+  if ((typeof value !== 'string' && typeof value !== 'number') || String(value).trim() === '') {
+    throw new Error('AI news response is malformed.');
+  }
+  return String(value);
 }
 
 function kindForCategory(category: string): NewsKind {
@@ -92,7 +101,7 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
     }
     const category = requiredString(item, 'category');
     return {
-      id: requiredString(item, 'id'),
+      id: requiredId(item),
       title: requiredString(item, 'title'),
       summary: requiredString(item, 'summary'),
       url: requiredString(item, 'url'),
@@ -145,5 +154,5 @@ export async function fetchLiveNews(
 
 export function configuredNewsApiUrl(): string | null {
   const value = import.meta.env.VITE_NEWS_API_URL;
-  return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : null;
+  return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : DEFAULT_NEWS_API_URL;
 }

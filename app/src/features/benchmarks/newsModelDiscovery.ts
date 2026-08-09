@@ -1,4 +1,5 @@
 import { nativeFetch } from '@/lib/nativeFetch';
+import { DEFAULT_NEWS_API_URL } from '@/features/news/newsApi';
 import type { BenchmarkRow } from './benchmarkData';
 
 export type NewsVerification = 'official' | 'confirmed';
@@ -61,7 +62,7 @@ export type NewsBenchmarkDiscovery =
   | { status: 'error'; message: string; stalePair?: NewsBenchmarkPair };
 
 const CACHE_KEY = 'vibespace-news-benchmark-pair-v1';
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 const STALE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -70,7 +71,7 @@ let inFlight: Promise<NewsBenchmarkDiscovery> | null = null;
 
 export function resolveNewsApiUrl(explicitUrl?: string | null): string | null {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  const value = explicitUrl ?? env?.VITE_NEWS_API_URL;
+  const value = explicitUrl ?? env?.VITE_NEWS_API_URL ?? DEFAULT_NEWS_API_URL;
   if (!value) return null;
   const trimmed = value.trim().replace(/\/+$/, '');
   if (!/^https?:\/\//i.test(trimmed)) return null;
@@ -183,14 +184,11 @@ export async function discoverNewsBenchmarkPair(
   const task = (async (): Promise<NewsBenchmarkDiscovery> => {
     const cached = readCache(endpoint);
     try {
-      const response = await nativeFetch(
-        `${endpoint}/api/news?category=model-release&limit=40`,
-        {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          timeoutMs: FETCH_TIMEOUT_MS,
-        },
-      );
+      const response = await nativeFetch(`${endpoint}/api/news?category=model-release&limit=40`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        timeoutMs: FETCH_TIMEOUT_MS,
+      });
       if (!response.ok) throw new Error(`News API returned HTTP ${response.status}`);
 
       const payload = (await response.json()) as NewsApiResponse;
@@ -237,7 +235,10 @@ function selectBestModelName(names: readonly string[]): string | null {
 }
 
 function cleanModelName(value: string): string | null {
-  const trimmed = value.replace(/[|,:;!?()[\]{}]+$/g, '').replace(/\s+/g, ' ').trim();
+  const trimmed = value
+    .replace(/[|,:;!?()[\]{}]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (!trimmed || trimmed.length > 100) return null;
 
   const stopWords = new Set([
@@ -260,9 +261,7 @@ function cleanModelName(value: string): string | null {
     'an',
   ]);
   const words = trimmed.split(' ');
-  const cutoff = words.findIndex(
-    (word, index) => index > 0 && stopWords.has(word.toLowerCase()),
-  );
+  const cutoff = words.findIndex((word, index) => index > 0 && stopWords.has(word.toLowerCase()));
   const compact = (cutoff > 0 ? words.slice(0, cutoff) : words).join(' ').trim();
   return compact || null;
 }
@@ -281,7 +280,10 @@ function verificationWeight(value: NewsVerification): number {
 }
 
 function normalizeModelName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function modelFamily(value: string): string | null {
@@ -336,7 +338,9 @@ function findLeaderboardMatch(
 
     const candidateNumbers = numericTokens(row.model);
     if (targetNumbers.length && candidateNumbers.length) {
-      const numberOverlap = targetNumbers.filter((token) => candidateNumbers.includes(token)).length;
+      const numberOverlap = targetNumbers.filter((token) =>
+        candidateNumbers.includes(token),
+      ).length;
       if (numberOverlap === 0) score -= 50;
       else score += numberOverlap * 6;
     }
@@ -369,8 +373,7 @@ function selectSecondaryRow(input: {
     .map((row) => {
       const sameFamily = Boolean(input.family && modelFamily(row.model) === input.family);
       const sameProvider = Boolean(input.provider && row.provider === input.provider);
-      const priority =
-        (sameFamily ? 2_000 : 0) + (sameProvider ? 1_000 : 0) + row.arena_score;
+      const priority = (sameFamily ? 2_000 : 0) + (sameProvider ? 1_000 : 0) + row.arena_score;
       return { row, sameFamily, sameProvider, priority };
     })
     .sort((left, right) => right.priority - left.priority);
@@ -426,11 +429,7 @@ function readCache(
       pair?: unknown;
       cachedAt?: unknown;
     };
-    if (
-      parsed.endpoint !== endpoint ||
-      typeof parsed.cachedAt !== 'number' ||
-      !parsed.pair
-    ) {
+    if (parsed.endpoint !== endpoint || typeof parsed.cachedAt !== 'number' || !parsed.pair) {
       return null;
     }
     const value = parsed as {

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ArrowRight, ExternalLink, Newspaper, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn, formatRelative } from '@/lib/utils';
+import { BENCHMARK_REFRESH_COMPLETE_EVENT } from './BenchmarkRefreshHost';
 import { fetchBenchmarks } from './benchmarkData';
 import {
   discoverNewsBenchmarkPair,
@@ -11,7 +12,7 @@ import {
   type NewsBenchmarkPosition,
 } from './newsModelDiscovery';
 
-const FOREGROUND_REFRESH_MS = 15 * 60 * 1000;
+export const NEWS_BENCHMARK_REFRESH_MS = 60 * 60 * 1000;
 
 type LaneState = { status: 'loading' } | NewsBenchmarkDiscovery;
 
@@ -46,11 +47,20 @@ export function NewsModelBenchmarkLane() {
   React.useEffect(() => {
     if (!configured) return;
     let cancelled = false;
-    void (async () => {
+    let timer: number | null = null;
+    let lastCheckedAt = 0;
+    let running = false;
+
+    const run = async () => {
+      if (cancelled || running) return;
+      running = true;
       try {
         const benchmarks = await fetchBenchmarks();
         const discovery = await discoverNewsBenchmarkPair(benchmarks.rows);
-        if (!cancelled) setState(discovery);
+        if (!cancelled) {
+          lastCheckedAt = Date.now();
+          setState(discovery);
+        }
       } catch (error) {
         if (!cancelled) {
           setState({
@@ -58,25 +68,47 @@ export function NewsModelBenchmarkLane() {
             message: error instanceof Error ? error.message : 'Benchmark Scout could not load.',
           });
         }
+      } finally {
+        running = false;
+        if (!cancelled) {
+          timer = window.setTimeout(() => void run(), NEWS_BENCHMARK_REFRESH_MS);
+        }
       }
-    })();
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void load(false);
-    }, FOREGROUND_REFRESH_MS);
+    };
+
+    const onWake = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        navigator.onLine !== false &&
+        Date.now() - lastCheckedAt >= NEWS_BENCHMARK_REFRESH_MS
+      ) {
+        if (timer != null) window.clearTimeout(timer);
+        void run();
+      }
+    };
+
+    const onBenchmarkRefresh = () => {
+      if (timer != null) window.clearTimeout(timer);
+      void run();
+    };
+
+    void run();
+    window.addEventListener(BENCHMARK_REFRESH_COMPLETE_EVENT, onBenchmarkRefresh);
+    window.addEventListener('online', onWake);
+    document.addEventListener('visibilitychange', onWake);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      if (timer != null) window.clearTimeout(timer);
+      window.removeEventListener(BENCHMARK_REFRESH_COMPLETE_EVENT, onBenchmarkRefresh);
+      window.removeEventListener('online', onWake);
+      document.removeEventListener('visibilitychange', onWake);
     };
-  }, [configured, load]);
+  }, [configured]);
 
   if (state.status === 'unconfigured') return null;
 
   const pair =
-    state.status === 'ready'
-      ? state.pair
-      : state.status === 'error'
-        ? state.stalePair
-        : undefined;
+    state.status === 'ready' ? state.pair : state.status === 'error' ? state.stalePair : undefined;
 
   return (
     <section
@@ -177,8 +209,7 @@ function PositionCard({
     <article
       className={cn(
         'cozy-card !p-4',
-        primary &&
-          'border-accent-copper/50 shadow-[0_0_0_1px_hsl(var(--accent-copper)/0.15)]',
+        primary && 'border-accent-copper/50 shadow-[0_0_0_1px_hsl(var(--accent-copper)/0.15)]',
       )}
     >
       <div className="flex items-center justify-between gap-3">

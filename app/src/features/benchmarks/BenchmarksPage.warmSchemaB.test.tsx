@@ -74,7 +74,9 @@ describe('BenchmarksPage Warm Schema B', () => {
     const route = container.querySelector<HTMLElement>('[data-warm-page="benchmarks"]');
     expect(route).not.toBeNull();
     expect(route?.querySelector('[data-warm-surface="benchmarks-header"]')).not.toBeNull();
-    expect(route?.querySelector('[data-warm-surface="benchmarks-warning"]')).not.toBeNull();
+    expect(route?.querySelector('[data-warm-surface="benchmarks-warning"]')).toBeNull();
+    expect(route?.textContent).not.toContain('Curated Top 50 unique models');
+    expect(route?.textContent).not.toContain('one model per row');
     expect(route?.querySelector('[data-warm-surface="benchmarks-filters"]')).not.toBeNull();
     expect(route?.querySelector('[data-warm-surface="benchmarks-chart"]')).not.toBeNull();
     const scenicPlate = route?.querySelectorAll('[data-warm-decoration="benchmarks-scene"] > img');

@@ -34,6 +34,14 @@ describe('AI News API client', () => {
     });
   });
 
+  it('accepts numeric D1 identifiers from the production Worker', () => {
+    const parsed = parseNewsResponse({
+      ...validPayload,
+      items: [{ ...validPayload.items[0], id: 42 }],
+    });
+    expect(parsed.items[0]?.id).toBe('42');
+  });
+
   it('preserves the worker freshness warning and failed refresh state', () => {
     const parsed = parseNewsResponse({
       ...validPayload,

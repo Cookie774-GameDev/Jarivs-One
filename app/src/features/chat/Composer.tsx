@@ -469,6 +469,7 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
   together: 'Together',
+  qwen: 'Qwen / Alibaba Cloud',
   ollama: 'Ollama (local)',
   cohere: 'Cohere',
   perplexity: 'Perplexity',
@@ -2339,6 +2340,7 @@ export function Composer({
       promptForgeAutoUpgradeRef.current &&
       !overrideText &&
       !options.promptForgeApproved &&
+      !promptForge.isDraftApproved(rawSendText) &&
       rawSendText.trim().length > 0 &&
       promptForgeUpgradeForSendRef.current
     ) {
@@ -4405,7 +4407,11 @@ export function Composer({
                 value={text}
                 rows={1}
                 onChange={(e) => {
-                  setText(e.target.value);
+                  const nextDraft = e.target.value;
+                  setText(nextDraft);
+                  if (promptForge.reviewOpen) {
+                    promptForge.setUpgradedDraft(nextDraft);
+                  }
                   // Recompute on next tick so selectionStart reflects the new value
                   requestAnimationFrame(() => {
                     recomputeMention();
@@ -4458,6 +4464,20 @@ export function Composer({
                   compact && 'px-2 py-1.5 leading-snug',
                 )}
               />
+              {promptForge.job?.status === 'ready' && promptForge.job.generatedDraft !== null ? (
+                <PromptForgeReview
+                  open={promptForge.reviewOpen}
+                  compact={compact}
+                  job={promptForge.job}
+                  onAccept={promptForge.accept}
+                  onRegenerate={() => void promptForge.regenerate()}
+                  onRegenerateWithInstructions={(instructions) =>
+                    void promptForge.regenerate(instructions)
+                  }
+                  onRestoreOriginal={promptForge.restoreOriginal}
+                  onReturnFocus={returnPromptForgeFocus}
+                />
+              ) : null}
               {confirmedAgentMentions.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pb-1">
                   <TokenList>
@@ -4821,40 +4841,6 @@ export function Composer({
           </PopoverContent>
         </Popover>
       </div>
-      {promptForge.job?.status === 'ready' && promptForge.job.generatedDraft !== null ? (
-        <PromptForgeReview
-          open={promptForge.reviewOpen}
-          job={promptForge.job}
-          upgradedDraft={promptForge.upgradedDraft}
-          onUpgradedDraftChange={promptForge.setUpgradedDraft}
-          excludedSourceIds={promptForge.excludedSourceIds}
-          onExcludeSource={promptForge.toggleSource}
-          onReplace={promptForge.replace}
-          onInsertBelow={promptForge.insertBelow}
-          onCopy={() => {
-            void promptForge
-              .copy()
-              .then(() => toast.success('Upgraded prompt copied'))
-              .catch(() =>
-                toast.error('Copy failed', 'Select the upgraded prompt and copy it manually.'),
-              );
-          }}
-          onRegenerate={() => void promptForge.regenerate()}
-          onRegenerateWithInstructions={(instructions) => void promptForge.regenerate(instructions)}
-          onSendUpgraded={() =>
-            handleSend(promptForge.upgradedDraft, {
-              promptForgeApproved: true,
-            })
-          }
-          onReturnFocus={returnPromptForgeFocus}
-          onUndo={promptForge.undo}
-          canUndo={promptForge.canUndo}
-          onClose={() => {
-            promptForge.setReviewOpen(false);
-            returnPromptForgeFocus();
-          }}
-        />
-      ) : null}
       {mediaPreview ? (
         <MediaPreviewPanel target={mediaPreview} onClose={() => setMediaPreview(null)} />
       ) : null}

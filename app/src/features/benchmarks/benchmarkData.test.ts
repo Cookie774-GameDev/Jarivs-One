@@ -90,7 +90,7 @@ describe('benchmarkData live sources', () => {
     mockedFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        meta: { fetched_at: '2026-06-22T07:01:02.283089+00:00' },
+        meta: { fetched_at: new Date().toISOString() },
         models: Array.from({ length: 50 }, (_, index) => ({
           model: index === 0 ? 'claude-opus-4-6' : `live-model-${index + 1}`,
           vendor: index === 0 ? 'Anthropic' : 'OpenAI',
@@ -138,7 +138,8 @@ describe('benchmarkData live sources', () => {
     expect(result.rows[0]?.source).toBe('snapshot');
   });
 
-  it('serves curated Top 50 unique-model snapshot on default load', async () => {
+  it('attempts a structured refresh before using the embedded cold-start fallback', async () => {
+    mockedFetch.mockRejectedValue(new Error('offline'));
     const result = await fetchBenchmarks();
     expect(result.fromSnapshot).toBe(true);
     expect(result.rows).toHaveLength(50);
@@ -151,7 +152,37 @@ describe('benchmarkData live sources', () => {
     // One unique model per row — no reasoning-variant duplicates.
     const names = result.rows.map((r) => r.model);
     expect(new Set(names).size).toBe(50);
-    expect(mockedFetch).not.toHaveBeenCalled();
+    expect(mockedFetch).toHaveBeenCalled();
+  });
+
+  it('keeps a stale last-known-good live dataset when the hourly refresh fails', async () => {
+    const fetchedAt = Date.now() - 2 * 60 * 60 * 1000;
+    localStorage.setItem(
+      'jarvis-benchmark-cache-v5',
+      JSON.stringify({
+        fromSnapshot: false,
+        cachedAt: fetchedAt,
+        rows: Array.from({ length: 50 }, (_, index) => ({
+          model: `known-good-${index + 1}`,
+          provider: 'openai',
+          arena_score: 1500 - index,
+          ci_low: 1495 - index,
+          ci_high: 1505 - index,
+          open_source: false,
+          source: 'lmsys',
+          fetched_at: fetchedAt,
+        })),
+      }),
+    );
+    mockedFetch.mockRejectedValue(new Error('upstream unavailable'));
+
+    const result = await fetchBenchmarks();
+
+    expect(result.fromSnapshot).toBe(false);
+    expect(result.cached).toBe(true);
+    expect(result.stale).toBe(true);
+    expect(result.rows[0]?.model).toBe('known-good-1');
+    expect(result.reason).toContain('upstream unavailable');
   });
 
   it('keeps OpenRouter list prices and modalities on snapshot rows', async () => {

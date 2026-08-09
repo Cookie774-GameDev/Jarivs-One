@@ -55,16 +55,15 @@ describe('Prompt Forge Sakura appearance', () => {
 
   it('marks recovery and review chrome while leaving prompt content explicitly preserved', () => {
     expect(recoverySource).toContain('data-sakura-surface="prompt-forge-recovery"');
-    expect(reviewSource).toContain('data-sakura-surface="prompt-forge-review"');
-    expect(reviewSource).toContain('data-sakura-surface="prompt-forge-review-header"');
-    expect(reviewSource).toContain('data-sakura-surface="prompt-forge-review-tabs"');
-    expect(reviewSource).toContain('data-sakura-content="prompt-forge-review-content"');
-    expect(reviewSource).toContain('data-sakura-surface="prompt-forge-review-footer"');
+    expect(reviewSource).toContain('data-sakura-surface="prompt-forge-inline-review"');
+    expect(reviewSource).toContain('aria-label="Prompt Forge inline review"');
+    expect(reviewSource).not.toContain('<Dialog');
   });
 
   it('matches the ink-panel contract without remote assets or content selectors', () => {
     expect(controlSource).toContain("import './sakura-prompt-forge.css'");
     expect(css).toContain("html[data-theme='sakura'] [data-sakura-surface='prompt-forge']");
+    expect(css).toContain("[data-sakura-surface='prompt-forge-inline-review']");
     expect(css).toContain('var(--sakura-panel-strong-fallback)');
     expect(css).toContain('var(--sakura-pink-hsl)');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');

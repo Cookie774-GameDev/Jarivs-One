@@ -219,11 +219,11 @@ interface CacheEntry {
   cachedAt: number;
 }
 
-function isLiveCacheEntry(entry: CacheEntry): boolean {
+function isLiveCacheEntry(entry: CacheEntry, allowExpired = false): boolean {
   if (entry.fromSnapshot) return false;
   if (typeof entry.cachedAt !== 'number') return false;
   if (!Array.isArray(entry.rows) || entry.rows.length < REQUIRED_MODEL_COUNT) return false;
-  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) return false;
+  if (!allowExpired && Date.now() - entry.cachedAt > CACHE_TTL_MS) return false;
   if (entry.rows.some((r) => r.source === 'snapshot')) return false;
   const newestFetched = Math.max(...entry.rows.map((r) => r.fetched_at));
   if (!Number.isFinite(newestFetched)) return false;
@@ -231,13 +231,13 @@ function isLiveCacheEntry(entry: CacheEntry): boolean {
   return true;
 }
 
-function readCache(): CacheEntry | null {
+function readCache(allowExpired = false): CacheEntry | null {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CacheEntry;
-    if (!isLiveCacheEntry(parsed)) return null;
+    if (!isLiveCacheEntry(parsed, allowExpired)) return null;
     return parsed;
   } catch {
     return null;
@@ -258,6 +258,7 @@ export interface FetchResult {
   fromSnapshot: boolean;
   reason?: string;
   cached?: boolean;
+  stale?: boolean;
   dataset: {
     metricLabel: 'Arena score' | 'Artificial Analysis Intelligence Index';
     sourceName: string;
@@ -461,8 +462,9 @@ async function fetchLiveRows(now: number): Promise<BenchmarkRow[]> {
 }
 
 /**
- * Fetch benchmarks. Default load serves the curated Top 50 snapshot;
- * use `force: true` (Refresh) to pull live Wu Long / LMArena data.
+ * Fetch benchmarks. A normal load uses a fresh live cache when possible and
+ * otherwise refreshes the structured sources. The embedded snapshot is the
+ * final cold-start fallback only.
  */
 export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<FetchResult> {
   const curated: FetchResult = {
@@ -500,7 +502,6 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         },
       };
     }
-    return curated;
   }
 
   const now = Date.now();
@@ -523,6 +524,26 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Fetch failed';
+    const staleCache = readCache(true);
+    if (staleCache) {
+      return {
+        rows: enrichRows(staleCache.rows),
+        fromSnapshot: false,
+        cached: true,
+        stale: true,
+        reason,
+        dataset: {
+          metricLabel: 'Arena score',
+          sourceName: 'LMArena via Wu Long archive',
+          sourceUrl: WULONG_TEXT_LEADERBOARD,
+          benchmarkDate: Math.max(...staleCache.rows.map((row) => row.fetched_at)),
+          ingestedAt: staleCache.cachedAt,
+          confidence: 'medium',
+          normalizationNote:
+            'Last-known-good Arena rows are retained when the hourly refresh is unavailable; no scores are synthesized.',
+        },
+      };
+    }
     return { ...curated, reason };
   }
 }

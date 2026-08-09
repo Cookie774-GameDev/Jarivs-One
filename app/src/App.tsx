@@ -146,6 +146,7 @@ import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
 import { TerminalCliRuntimeHost } from '@/features/terminals';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
+import { BenchmarkRefreshHost } from '@/features/benchmarks/BenchmarkRefreshHost';
 import {
   flushWorkspacePersistence,
   flushWorkspacePersistenceAndAcknowledge,
@@ -2198,6 +2199,7 @@ function WorkspaceRoot() {
         </>
       ) : null}
       {plan.updateChecksEnabled ? <UpdateWarningHost /> : null}
+      {plan.backgroundServicesEnabled ? <BenchmarkRefreshHost /> : null}
 
       {/* Visual ambient effects removed — clean UI */}
 

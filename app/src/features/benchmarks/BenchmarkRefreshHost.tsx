@@ -3,6 +3,7 @@ import * as React from 'react';
 import { startBenchmarkRefreshScheduler, type BenchmarkRefreshOutcome } from './benchmarkRefresh';
 
 export const BENCHMARK_REFRESH_COMPLETE_EVENT = 'vibespace:benchmark-refresh-complete';
+export type BenchmarkRefreshCompleteEvent = CustomEvent<BenchmarkRefreshOutcome>;
 
 /**
  * App-wide, zero-UI scheduler host. It owns one timeout only and performs no

@@ -34,6 +34,10 @@ import { cn, formatCost, formatRelative, formatTokenCount } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { fetchBenchmarks, isSupportedProvider, type BenchmarkRow } from './benchmarkData';
+import {
+  BENCHMARK_REFRESH_COMPLETE_EVENT,
+  type BenchmarkRefreshCompleteEvent,
+} from './BenchmarkRefreshHost';
 import { BarChart } from './BarChart';
 import './sakura-benchmarks.css';
 
@@ -99,6 +103,7 @@ export function BenchmarksPage() {
   const warmActive = useUIStore((state) => state.theme === 'warm');
   const [rows, setRows] = React.useState<BenchmarkRow[]>([]);
   const [fromSnapshot, setFromSnapshot] = React.useState(false);
+  const [refreshStale, setRefreshStale] = React.useState(false);
   const [fetchedAt, setFetchedAt] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -121,8 +126,9 @@ export function BenchmarksPage() {
   const applyResult = React.useCallback((result: Awaited<ReturnType<typeof fetchBenchmarks>>) => {
     setRows(result.rows);
     setFromSnapshot(result.fromSnapshot);
-    setErrorReason(result.fromSnapshot ? (result.reason ?? null) : null);
-    setFetchedAt(result.rows.length > 0 ? result.rows[0].fetched_at : Date.now());
+    setRefreshStale(result.stale === true);
+    setErrorReason(result.fromSnapshot || result.stale ? (result.reason ?? null) : null);
+    setFetchedAt(result.dataset?.benchmarkDate ?? Date.now());
     setDataset(result.dataset ?? null);
   }, []);
 
@@ -139,6 +145,15 @@ export function BenchmarksPage() {
     return () => {
       cancelled = true;
     };
+  }, [applyResult]);
+
+  React.useEffect(() => {
+    const onScheduledRefresh = (event: Event) => {
+      const outcome = (event as BenchmarkRefreshCompleteEvent).detail;
+      if (outcome?.result) applyResult(outcome.result);
+    };
+    window.addEventListener(BENCHMARK_REFRESH_COMPLETE_EVENT, onScheduledRefresh);
+    return () => window.removeEventListener(BENCHMARK_REFRESH_COMPLETE_EVENT, onScheduledRefresh);
   }, [applyResult]);
 
   // Tick once a minute so the header relative-time stays fresh.
@@ -175,9 +190,9 @@ export function BenchmarksPage() {
     try {
       const result = await fetchBenchmarks({ force: true });
       applyResult(result);
-      if (result.fromSnapshot) {
+      if (result.fromSnapshot || result.stale) {
         toast.warning(
-          'Using snapshot data',
+          result.stale ? 'Using last-known-good data' : 'Using snapshot data',
           result.reason
             ? `Live fetch failed: ${result.reason}`
             : 'Live fetch failed; showing frozen leaderboard.',
@@ -196,7 +211,8 @@ export function BenchmarksPage() {
   }, [applyResult]);
 
   const stale =
-    fetchedAt != null && Date.now() - fetchedAt > (fromSnapshot ? 30 : 7) * 24 * 60 * 60 * 1000;
+    refreshStale ||
+    (fetchedAt != null && Date.now() - fetchedAt > (fromSnapshot ? 30 : 7) * 24 * 60 * 60 * 1000);
 
   // Distinct providers, sorted alphabetically.
   const providers = React.useMemo(() => {
@@ -376,36 +392,6 @@ export function BenchmarksPage() {
             <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
             Benchmark data is stale. The last known dataset remains visible; use Refresh to retry
             verified structured sources.
-          </div>
-        )}
-
-        {/* Snapshot warning panel — full width, only when we're on fallback */}
-        {fromSnapshot && !loading && (
-          <div
-            data-warm-surface="benchmarks-warning"
-            className="cozy-card !py-3 !px-4 flex items-start gap-3 border-warning/40"
-          >
-            <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-            <div className="text-secondary text-foreground">
-              {errorReason ? (
-                <>
-                  Showing a frozen snapshot from {fetchedAt && formatRelative(fetchedAt)}.{' '}
-                  <span className="text-muted-foreground">
-                    Live fetch failed ({errorReason}). Numbers below are the curated Top 50
-                    unique-model table — hit refresh to retry.
-                  </span>
-                </>
-              ) : (
-                <>
-                  Curated Top 50 unique models (one model per row)
-                  {fetchedAt ? ` · ${formatRelative(fetchedAt)}` : ''}.{' '}
-                  <span className="text-muted-foreground">
-                    Ranked by Artificial Analysis Intelligence Index; OpenRouter list prices &
-                    modalities. Hit refresh for a live Arena pull.
-                  </span>
-                </>
-              )}
-            </div>
           </div>
         )}
 

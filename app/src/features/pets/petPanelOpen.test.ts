@@ -31,7 +31,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     vi.resetModules();
   });
 
-  it('hides overlay only when panel is confirmed visible', async () => {
+  it('keeps the overlay visible when the panel is confirmed visible', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'pet_open_or_focus_panel') return undefined;
       if (cmd === 'pet_is_panel_visible') return true;
@@ -46,7 +46,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(result.panelVisible).toBe(true);
     expect(invoked('pet_open_or_focus_panel')).toBe(true);
     expect(invoked('pet_is_panel_visible')).toBe(true);
-    expect(invoked('pet_hide_overlay')).toBe(true);
+    expect(invoked('pet_hide_overlay')).toBe(false);
     expect(invoked('pet_show_overlay')).toBe(false);
   });
 

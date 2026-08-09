@@ -81,7 +81,7 @@ export const BENCHMARK_SOURCE_REGISTRY: readonly BenchmarkSourceDescriptor[] = [
 
 export type BenchmarkRefreshConfig = Readonly<{
   enabled: boolean;
-  localTime: string;
+  intervalMinutes: number;
 }>;
 
 export type BenchmarkRefreshAuditEntry = Readonly<{
@@ -102,17 +102,20 @@ export type BenchmarkRefreshOutcome = Readonly<{
   audit: BenchmarkRefreshAuditEntry;
 }>;
 
-const CONFIG_KEY = 'vibespace-benchmark-refresh-config-v1';
+const CONFIG_KEY = 'vibespace-benchmark-refresh-config-v2';
 const AUDIT_KEY = 'vibespace-benchmark-refresh-audit-v1';
 const LAST_RUN_KEY = 'vibespace-benchmark-refresh-last-run-v1';
 const MAX_AUDIT_ENTRIES = 40;
 export const DEFAULT_BENCHMARK_REFRESH_CONFIG: BenchmarkRefreshConfig = {
   enabled: true,
-  localTime: '12:00',
+  intervalMinutes: 60,
 };
 
-function validLocalTime(value: unknown): value is string {
-  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+function normalizeIntervalMinutes(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 15 && parsed <= 24 * 60
+    ? Math.round(parsed)
+    : DEFAULT_BENCHMARK_REFRESH_CONFIG.intervalMinutes;
 }
 
 export function readBenchmarkRefreshConfig(): BenchmarkRefreshConfig {
@@ -123,9 +126,7 @@ export function readBenchmarkRefreshConfig(): BenchmarkRefreshConfig {
     ) as Partial<BenchmarkRefreshConfig>;
     return {
       enabled: parsed.enabled !== false,
-      localTime: validLocalTime(parsed.localTime)
-        ? parsed.localTime
-        : DEFAULT_BENCHMARK_REFRESH_CONFIG.localTime,
+      intervalMinutes: normalizeIntervalMinutes(parsed.intervalMinutes),
     };
   } catch {
     return DEFAULT_BENCHMARK_REFRESH_CONFIG;
@@ -136,21 +137,22 @@ export function writeBenchmarkRefreshConfig(config: BenchmarkRefreshConfig): voi
   if (typeof window === 'undefined') return;
   const normalized = {
     enabled: Boolean(config.enabled),
-    localTime: validLocalTime(config.localTime)
-      ? config.localTime
-      : DEFAULT_BENCHMARK_REFRESH_CONFIG.localTime,
+    intervalMinutes: normalizeIntervalMinutes(config.intervalMinutes),
   };
   window.localStorage.setItem(CONFIG_KEY, JSON.stringify(normalized));
   window.dispatchEvent(new CustomEvent('vibespace:benchmark-refresh-config'));
 }
 
-export function nextBenchmarkRefreshAt(now: Date, config: BenchmarkRefreshConfig): Date | null {
-  if (!config.enabled || !validLocalTime(config.localTime)) return null;
-  const [hour, minute] = config.localTime.split(':').map(Number);
-  const next = new Date(now);
-  next.setHours(hour!, minute!, 0, 0);
-  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
-  return next;
+export function nextBenchmarkRefreshAt(
+  now: Date,
+  config: BenchmarkRefreshConfig,
+  lastRunAt: number | null = null,
+): Date | null {
+  if (!config.enabled) return null;
+  const intervalMs = normalizeIntervalMinutes(config.intervalMinutes) * 60 * 1000;
+  return new Date(
+    lastRunAt == null ? now.getTime() : Math.max(now.getTime(), lastRunAt + intervalMs),
+  );
 }
 
 export function shouldRunMissedBenchmarkRefresh(
@@ -158,11 +160,9 @@ export function shouldRunMissedBenchmarkRefresh(
   config: BenchmarkRefreshConfig,
   lastRunAt: number | null,
 ): boolean {
-  if (!config.enabled || !validLocalTime(config.localTime)) return false;
-  const [hour, minute] = config.localTime.split(':').map(Number);
-  const scheduledToday = new Date(now);
-  scheduledToday.setHours(hour!, minute!, 0, 0);
-  return now >= scheduledToday && (lastRunAt == null || lastRunAt < scheduledToday.getTime());
+  if (!config.enabled) return false;
+  if (lastRunAt == null) return true;
+  return now.getTime() - lastRunAt >= normalizeIntervalMinutes(config.intervalMinutes) * 60 * 1000;
 }
 
 function normalizedModelKey(row: BenchmarkRow): string {
@@ -278,15 +278,19 @@ export function startBenchmarkRefreshScheduler(
   onError?: (error: unknown) => void,
 ): () => void {
   let stopped = false;
+  let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const run = async (trigger: 'scheduled' | 'missed-run') => {
+    if (running || stopped) return;
+    running = true;
     try {
       const outcome = await refreshBenchmarkDataset(trigger);
       if (!stopped) onOutcome(outcome);
     } catch (error) {
       if (!stopped) onError?.(error);
     } finally {
+      running = false;
       if (!stopped) schedule();
     }
   };
@@ -299,17 +303,24 @@ export function startBenchmarkRefreshScheduler(
       timer = setTimeout(() => void run('missed-run'), 250);
       return;
     }
-    const next = nextBenchmarkRefreshAt(now, config);
+    const next = nextBenchmarkRefreshAt(now, config, lastBenchmarkRefreshAt());
     if (!next) return;
     timer = setTimeout(() => void run('scheduled'), Math.max(250, next.getTime() - now.getTime()));
   };
 
   const onConfig = () => schedule();
+  const onWake = () => {
+    if (document.visibilityState === 'visible' && navigator.onLine !== false) schedule();
+  };
   window.addEventListener('vibespace:benchmark-refresh-config', onConfig);
+  window.addEventListener('online', onWake);
+  document.addEventListener('visibilitychange', onWake);
   schedule();
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
     window.removeEventListener('vibespace:benchmark-refresh-config', onConfig);
+    window.removeEventListener('online', onWake);
+    document.removeEventListener('visibilitychange', onWake);
   };
 }

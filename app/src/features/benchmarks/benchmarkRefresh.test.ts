@@ -26,25 +26,32 @@ function row(model: string, votes: number, fetchedAt: number): BenchmarkRow {
 describe('benchmark refresh policy', () => {
   beforeEach(() => window.localStorage.clear());
 
-  it('defaults to 12:00 local and calculates the next local occurrence', () => {
-    expect(readBenchmarkRefreshConfig()).toEqual({ enabled: true, localTime: '12:00' });
-    const next = nextBenchmarkRefreshAt(new Date(2026, 7, 2, 11, 30), readBenchmarkRefreshConfig());
+  it('defaults to an hourly cadence and schedules from the last successful run', () => {
+    expect(readBenchmarkRefreshConfig()).toEqual({ enabled: true, intervalMinutes: 60 });
+    const now = new Date(2026, 7, 2, 11, 30);
+    const lastRunAt = new Date(2026, 7, 2, 11, 5).getTime();
+    const next = nextBenchmarkRefreshAt(now, readBenchmarkRefreshConfig(), lastRunAt);
     expect(next?.getHours()).toBe(12);
-    expect(next?.getMinutes()).toBe(0);
+    expect(next?.getMinutes()).toBe(5);
     expect(next?.getDate()).toBe(2);
   });
 
-  it('moves tomorrow after today’s configured time and detects a missed run', () => {
-    writeBenchmarkRefreshConfig({ enabled: true, localTime: '09:15' });
+  it('runs immediately when the hourly refresh is missing or overdue', () => {
+    writeBenchmarkRefreshConfig({ enabled: true, intervalMinutes: 60 });
     const now = new Date(2026, 7, 2, 10, 0);
-    const next = nextBenchmarkRefreshAt(now, readBenchmarkRefreshConfig());
-    expect(next?.getDate()).toBe(3);
     expect(shouldRunMissedBenchmarkRefresh(now, readBenchmarkRefreshConfig(), null)).toBe(true);
     expect(
       shouldRunMissedBenchmarkRefresh(
         now,
         readBenchmarkRefreshConfig(),
-        new Date(2026, 7, 2, 9, 16).getTime(),
+        new Date(2026, 7, 2, 8, 59).getTime(),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRunMissedBenchmarkRefresh(
+        now,
+        readBenchmarkRefreshConfig(),
+        new Date(2026, 7, 2, 9, 30).getTime(),
       ),
     ).toBe(false);
   });
