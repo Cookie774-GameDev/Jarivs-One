@@ -11,6 +11,11 @@ export interface LiveNewsResponse {
   freeOnly: true;
   generatedAt?: string;
   lastCompletedAt?: string;
+  freshness?: {
+    state: 'fresh' | 'stale' | 'degraded' | 'failed' | 'never';
+    ageMs?: number;
+    warning?: string;
+  };
   items: LiveNewsItem[];
 }
 
@@ -33,6 +38,31 @@ function requiredString(record: Record<string, unknown>, key: string): string {
 
 function kindForCategory(category: string): NewsKind {
   return /model|release|launch/i.test(category) ? 'model_drop' : 'ai_news';
+}
+
+function parseFreshness(value: unknown): LiveNewsResponse['freshness'] {
+  if (value === undefined) return undefined;
+  const freshness = asRecord(value);
+  const state = freshness.state;
+  if (!['fresh', 'stale', 'degraded', 'failed', 'never'].includes(String(state))) {
+    throw new Error('AI news response is malformed.');
+  }
+  if (
+    freshness.ageMs !== undefined &&
+    (typeof freshness.ageMs !== 'number' ||
+      !Number.isFinite(freshness.ageMs) ||
+      freshness.ageMs < 0)
+  ) {
+    throw new Error('AI news response is malformed.');
+  }
+  if (freshness.warning !== undefined && typeof freshness.warning !== 'string') {
+    throw new Error('AI news response is malformed.');
+  }
+  return {
+    state: state as NonNullable<LiveNewsResponse['freshness']>['state'],
+    ...(typeof freshness.ageMs === 'number' ? { ageMs: freshness.ageMs } : {}),
+    ...(typeof freshness.warning === 'string' ? { warning: freshness.warning } : {}),
+  };
 }
 
 export function parseNewsResponse(payload: unknown): LiveNewsResponse {
@@ -89,6 +119,7 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
         : typeof (root.latestRun as Record<string, unknown> | undefined)?.completed_at === 'string'
           ? String((root.latestRun as Record<string, unknown>).completed_at)
           : undefined,
+    freshness: parseFreshness(root.freshness),
     items,
   };
 }

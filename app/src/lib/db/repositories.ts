@@ -747,6 +747,140 @@ export type TaskListFilter = {
 /** Statuses considered "open" - i.e. still actionable and not completed/cancelled. */
 const OPEN_STATUSES: TaskStatus[] = ['open', 'in_progress', 'blocked'];
 
+export type ReminderMutationScope = {
+  taskId: TaskId;
+  reminderId: ReminderId;
+  claimId: string;
+  expectedWorkspaceId: WorkspaceId;
+  getActiveWorkspaceId: () => WorkspaceId | null;
+  now: number;
+};
+
+export type ReminderClaimInput = ReminderMutationScope & {
+  expiresAt: number;
+};
+
+function reminderWithoutClaim(reminder: Reminder): Reminder {
+  const { delivery_claim: _claim, ...rest } = reminder;
+  return rest;
+}
+
+function ownsReminderClaim(reminder: Reminder | undefined, claimId: string): reminder is Reminder {
+  return reminder?.status === 'scheduled' && reminder.delivery_claim?.id === claimId;
+}
+
+/**
+ * A transaction-scoped reminder CAS. Separate renderer connections serialize
+ * on the shared IndexedDB task row; the process-local delivery Set is only an
+ * optimization and is never the ownership authority.
+ */
+export function createReminderClaimRepository(database: JarvisDexie = db) {
+  const syncPersistedTask = async (task: Task | undefined): Promise<void> => {
+    if (task && database === db) {
+      await syncUpdate('tasks', task, captureSyncQueueOwner());
+    }
+  };
+
+  return {
+    async claim(input: ReminderClaimInput): Promise<Task | undefined> {
+      const claimed = await database.transaction('rw', database.tasks, async () => {
+        const task = await database.tasks.get(input.taskId);
+        const reminder = task?.reminders.find((candidate) => candidate.id === input.reminderId);
+        if (
+          !task ||
+          task.workspace_id !== input.expectedWorkspaceId ||
+          input.getActiveWorkspaceId() !== input.expectedWorkspaceId ||
+          !reminder ||
+          reminder.status !== 'scheduled' ||
+          reminder.fires_at > input.now ||
+          (reminder.delivery_claim && reminder.delivery_claim.expires_at > input.now)
+        ) {
+          return undefined;
+        }
+
+        const updated: Task = {
+          ...task,
+          reminders: task.reminders.map((candidate) =>
+            candidate.id === input.reminderId
+              ? {
+                  ...candidate,
+                  delivery_claim: {
+                    id: input.claimId,
+                    claimed_at: input.now,
+                    expires_at: input.expiresAt,
+                  },
+                }
+              : candidate,
+          ),
+          updated_at: input.now,
+        };
+        await database.tasks.put(updated);
+        return updated;
+      });
+      await syncPersistedTask(claimed);
+      return claimed;
+    },
+
+    async finalize(input: ReminderMutationScope): Promise<Task | undefined> {
+      const finalized = await database.transaction('rw', database.tasks, async () => {
+        const task = await database.tasks.get(input.taskId);
+        const reminder = task?.reminders.find((candidate) => candidate.id === input.reminderId);
+        if (
+          !task ||
+          task.workspace_id !== input.expectedWorkspaceId ||
+          input.getActiveWorkspaceId() !== input.expectedWorkspaceId ||
+          !ownsReminderClaim(reminder, input.claimId)
+        ) {
+          return undefined;
+        }
+
+        const updated: Task = {
+          ...task,
+          reminders: task.reminders.map((candidate) =>
+            candidate.id === input.reminderId
+              ? { ...reminderWithoutClaim(candidate), status: 'fired' as const }
+              : candidate,
+          ),
+          updated_at: input.now,
+        };
+        await database.tasks.put(updated);
+        return updated;
+      });
+      await syncPersistedTask(finalized);
+      return finalized;
+    },
+
+    async release(input: ReminderMutationScope): Promise<Task | undefined> {
+      const released = await database.transaction('rw', database.tasks, async () => {
+        const task = await database.tasks.get(input.taskId);
+        const reminder = task?.reminders.find((candidate) => candidate.id === input.reminderId);
+        if (
+          !task ||
+          task.workspace_id !== input.expectedWorkspaceId ||
+          input.getActiveWorkspaceId() !== input.expectedWorkspaceId ||
+          !ownsReminderClaim(reminder, input.claimId)
+        ) {
+          return undefined;
+        }
+
+        const updated: Task = {
+          ...task,
+          reminders: task.reminders.map((candidate) =>
+            candidate.id === input.reminderId ? reminderWithoutClaim(candidate) : candidate,
+          ),
+          updated_at: input.now,
+        };
+        await database.tasks.put(updated);
+        return updated;
+      });
+      await syncPersistedTask(released);
+      return released;
+    },
+  };
+}
+
+export const reminderClaimRepo = createReminderClaimRepository();
+
 async function updateTaskWithOwner(
   id: TaskId,
   patch: Partial<Task>,

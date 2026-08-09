@@ -14,7 +14,7 @@ A completely free, keyless Cloudflare backend for the VibeSpace News page.
 - No paid AI model
 - No source API keys
 
-The Worker performs deterministic filtering, categories, company detection, model-name detection, scoring, and duplicate removal. It does not call an AI model.
+The Worker performs deterministic filtering, categories, company detection, model-name detection, scoring, and duplicate removal. It does not call an AI model. Each hourly occurrence has a D1-backed cross-isolate lease, run key, unique fencing token, and explicit completed-run identity. Overlapping deliveries cannot start duplicate ingestion, a completed occurrence remains deduplicated, and an incomplete occurrence can recover after its lease expires. Audit and release writes require the current fencing token, so an expired holder cannot finalize a recovered lease. Unexpected failures are best-effort recorded with a bounded failed-run reason so retained data is not presented as fresh. Source requests use a 12-second timeout and two bounded backoff retries.
 
 ## Included feeds
 
@@ -42,10 +42,14 @@ Cloudflare may open a browser so you can sign in. Current Wrangler automatically
 The setup command:
 
 1. Deploys the Worker and automatically provisions D1.
-2. Creates the database tables.
+2. Applies all ordered D1 migrations and creates the database tables.
 3. Deploys the final Worker configuration.
 
 No billing upgrade or API keys are required.
+
+Migration history is sequential: `0001_init.sql` is the deployed base schema,
+and `0002_ingestion_lease.sql` adds fenced ingestion leases. Existing and new
+databases both apply that same `0001` → `0002` sequence.
 
 ## Hourly schedule
 
@@ -93,6 +97,10 @@ Example response:
     "fetched_count": 24,
     "stored_count": 4
   },
+  "freshness": {
+    "state": "fresh",
+    "ageMs": 2000
+  },
   "items": [
     {
       "id": 1,
@@ -114,6 +122,8 @@ Example response:
   ]
 }
 ```
+
+The `freshness` object is derived from the persisted ingestion audit. It reports `fresh`, `stale`, `degraded`, `failed`, or `never`, and includes a bounded warning whenever retained data must not be presented as current.
 
 ## Connect VibeSpace
 
@@ -169,6 +179,12 @@ Apply the local schema:
 
 ```bash
 npm run db:migrate:local
+```
+
+Apply all pending migrations to an existing deployed database:
+
+```bash
+npm run db:migrate:remote
 ```
 
 Trigger the scheduled handler:

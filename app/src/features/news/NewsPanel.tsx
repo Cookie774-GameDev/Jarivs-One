@@ -420,6 +420,11 @@ export function NewsPanel({
         </div>
 
         <footer className="shrink-0 border-t border-border bg-paper-soft px-4 py-2">
+          {live?.freshness?.warning && (
+            <p className="mb-1 text-[10px] leading-snug text-warning" role="status">
+              {live.freshness.warning}
+            </p>
+          )}
           <p className="text-[10px] leading-snug text-muted-foreground">
             {live
               ? `Free-only feed · Last ingestion ${formatNewsDate(live.lastCompletedAt ?? live.generatedAt ?? new Date().toISOString())}.`
