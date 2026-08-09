@@ -34,6 +34,23 @@ describe('AI News API client', () => {
     });
   });
 
+  it('preserves the worker freshness warning and failed refresh state', () => {
+    const parsed = parseNewsResponse({
+      ...validPayload,
+      freshness: {
+        state: 'failed',
+        ageMs: 3_600_000,
+        warning: 'The latest hourly refresh failed. Showing the last retained data.',
+      },
+    });
+
+    expect(parsed.freshness).toEqual({
+      state: 'failed',
+      ageMs: 3_600_000,
+      warning: 'The latest hourly refresh failed. Showing the last retained data.',
+    });
+  });
+
   it('rejects malformed or non-free responses', () => {
     expect(() => parseNewsResponse({ ...validPayload, freeOnly: false })).toThrow('free-only');
     expect(() => parseNewsResponse({ ...validPayload, items: [{}] })).toThrow('malformed');
