@@ -260,7 +260,6 @@ export function buildBridgeRegistrationFrame(options: BridgeRegistrationOptions)
   return {
     kind: 'register' as const,
     protocol_version: BRIDGE_PROTOCOL_VERSION,
-    token: options.jwt,
     client_nonce: options.clientNonce,
     daemon_version: options.daemonVersion ?? 'jarvis-app/0.1.0',
     platform:

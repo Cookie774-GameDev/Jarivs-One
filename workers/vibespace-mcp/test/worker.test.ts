@@ -72,6 +72,44 @@ async function connectDesktop(): Promise<WebSocket> {
 }
 
 describe('VibeSpace MCP Worker', () => {
+  it('registers the authenticated desktop relay without granting a local workspace', async () => {
+    const ticket = await issueRelayTicket(
+      subject,
+      'test-only-relay-ticket-signing-key-0000000000000000',
+    );
+    const upgrade = await SELF.fetch(
+      request(`/browser-chat/bridge?ticket=${encodeURIComponent(ticket)}`, {
+        headers: { upgrade: 'websocket' },
+      }),
+    );
+    expect(upgrade.status).toBe(101);
+    const socket = upgrade.webSocket!;
+    socket.accept();
+    const registered = nextMessage(socket);
+    socket.send(
+      JSON.stringify({
+        kind: 'register',
+        protocol_version: 2,
+        client_nonce: 'nonce_1234567890123456',
+        daemon_version: 'test',
+        platform: 'test',
+        tools: [],
+        writable: false,
+        shell_enabled: false,
+      }),
+    );
+
+    expect(await registered).toMatchObject({ kind: 'registered', protocol_version: 2 });
+    const stub = (env as unknown as Env).USER_RELAY.getByName(subject);
+    await expect(
+      (await stub.fetch('https://relay.internal/internal/status')).json(),
+    ).resolves.toEqual({
+      connected: true,
+      tools: [],
+    });
+    socket.close(1000, 'test complete');
+  });
+
   it('serves only the public consent bootstrap to the VibeSpace site origin', async () => {
     const response = await SELF.fetch(
       request('/public-config', {

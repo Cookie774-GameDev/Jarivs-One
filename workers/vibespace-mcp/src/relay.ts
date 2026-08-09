@@ -23,7 +23,7 @@ type PendingCall = {
 type Registration = {
   protocol_version: 2;
   client_nonce: string;
-  workspace_grant: { id: string; display_name: string };
+  workspace_grant?: { id: string; display_name: string };
   tools: Array<{ function?: { name?: string } }>;
 };
 
@@ -46,26 +46,11 @@ function byteLength(value: unknown): number {
 function parseRegistration(value: unknown): Registration | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const frame = value as Record<string, unknown>;
-  const grant = frame.workspace_grant;
   if (
     frame.kind !== 'register' ||
     frame.protocol_version !== 2 ||
     typeof frame.client_nonce !== 'string' ||
     !SAFE_IDENTIFIER.test(frame.client_nonce) ||
-    !grant ||
-    typeof grant !== 'object' ||
-    Array.isArray(grant)
-  ) {
-    return null;
-  }
-  const workspace = grant as Record<string, unknown>;
-  if (
-    typeof workspace.id !== 'string' ||
-    !SAFE_IDENTIFIER.test(workspace.id) ||
-    typeof workspace.display_name !== 'string' ||
-    !workspace.display_name.trim() ||
-    workspace.display_name.length > 120 ||
-    /[\u0000-\u001f\u007f]/u.test(workspace.display_name) ||
     !Array.isArray(frame.tools)
   ) {
     return null;
@@ -80,6 +65,22 @@ function parseRegistration(value: unknown): Registration | null {
   if (
     toolNames.some((name) => !SAFE_RELAY_TOOLS.has(name)) ||
     new Set(toolNames).size !== toolNames.length
+  ) {
+    return null;
+  }
+  const grant = frame.workspace_grant;
+  if (grant === undefined) {
+    return toolNames.length === 0 ? (frame as unknown as Registration) : null;
+  }
+  if (!grant || typeof grant !== 'object' || Array.isArray(grant)) return null;
+  const workspace = grant as Record<string, unknown>;
+  if (
+    typeof workspace.id !== 'string' ||
+    !SAFE_IDENTIFIER.test(workspace.id) ||
+    typeof workspace.display_name !== 'string' ||
+    !workspace.display_name.trim() ||
+    workspace.display_name.length > 120 ||
+    /[\u0000-\u001f\u007f]/u.test(workspace.display_name)
   ) {
     return null;
   }
@@ -210,8 +211,8 @@ export class UserRelay extends DurableObject<Env> {
         `UPDATE relay_state
          SET workspace_id = ?, workspace_name = ?, tools_json = ?, connected_at = ?
          WHERE singleton = 1`,
-        registration.workspace_grant.id,
-        registration.workspace_grant.display_name.trim(),
+        registration.workspace_grant?.id ?? '',
+        registration.workspace_grant?.display_name.trim() ?? '',
         JSON.stringify(tools),
         Date.now(),
       );
@@ -270,7 +271,7 @@ export class UserRelay extends DurableObject<Env> {
         'SELECT workspace_id, workspace_name, tools_json, connected_at FROM relay_state WHERE singleton = 1',
       ),
     ][0];
-    if (!row || sockets.length !== 1 || !row.workspace_id) {
+    if (!row || sockets.length !== 1) {
       return { connected: false, tools: [] };
     }
     let tools: string[] = [];
@@ -284,7 +285,9 @@ export class UserRelay extends DurableObject<Env> {
     }
     return {
       connected: true,
-      workspace: { id: row.workspace_id, displayName: row.workspace_name },
+      ...(row.workspace_id
+        ? { workspace: { id: row.workspace_id, displayName: row.workspace_name } }
+        : {}),
       tools,
       connectedAt: row.connected_at,
     };

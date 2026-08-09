@@ -6,6 +6,7 @@ import { browserChatStore } from './browserChatStore';
 import { BrowserChatHub } from './BrowserChatHub';
 import { browserChatSurface } from './providerSurface';
 import { useAuthStore } from '@/stores/auth';
+import * as bridge from '@/lib/bridge';
 import { getBridgeWorkspaceGrant, setBridgeWorkspaceGrant } from '@/lib/bridge';
 import { projectStorageKey, ROOT_PREFIX } from '@/features/files/projectFiles';
 import type { ProjectId } from '@/types/common';
@@ -75,7 +76,8 @@ describe('BrowserChatHub', () => {
     expect(screen.getByRole('tab', { name: /Gemini/i })).toBeTruthy();
     expect(screen.getByText(/page status/i)).toBeTruthy();
     expect(screen.getByText(/tool bridge/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /sign in or sign up/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /open chatgpt/i })).toBeTruthy();
+    expect(screen.queryByText(/sign in or sign up/i)).toBeNull();
     expect(screen.getByText(/not auto-connected/i)).toBeTruthy();
     expect(screen.getByText(/provider subscription and limits still apply/i)).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
@@ -122,6 +124,25 @@ describe('BrowserChatHub', () => {
     fireEvent.click(screen.getByRole('button', { name: /revoke project access/i }));
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     expect(getBridgeWorkspaceGrant()).toBeUndefined();
+  });
+
+  it('starts the authenticated relay for a signed-in account before local project access is granted', () => {
+    const useRelay = vi.spyOn(bridge, 'useBrowserChatRelay').mockReturnValue('connected');
+
+    render(<BrowserChatHub chatId="chat-1" />);
+
+    expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
+    expect(useRelay).toHaveBeenCalledWith(true);
+    expect(screen.getByText(/connected to this signed-in vibespace account/i)).toBeTruthy();
+  });
+
+  it('shows a relay failure instead of falling back to a not-configured provider status', () => {
+    vi.spyOn(bridge, 'useBrowserChatRelay').mockReturnValue('error');
+
+    render(<BrowserChatHub chatId="chat-1" />);
+
+    expect(screen.getAllByText(/connection error/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^setup required$/i)).toBeNull();
   });
 
   it('presents one branded VibeSpace MCP connection with honest approval boundaries', async () => {

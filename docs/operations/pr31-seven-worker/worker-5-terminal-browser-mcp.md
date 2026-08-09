@@ -146,3 +146,51 @@ Regression evidence:
 - Full app TypeScript remains `BLOCKED_ENVIRONMENT` only by the previously documented sparse
   worktree omissions. After correcting the new test fixture's nullable-session type, no diagnostic
   references either changed relay file.
+
+## 2026-08-09 signed-in provider-session checkpoint
+
+The owner confirmed that the browser-owned ChatGPT account session is signed in and the VibeSpace
+MCP app is connected. This checkpoint is treated as external provider state: VibeSpace does not
+recreate it, inspect provider cookies or DOM, or claim that the desktop can independently verify
+the ChatGPT app connection.
+
+Four app-side contract gaps were corrected:
+
+1. The desktop relay previously started only after an ephemeral local project-read grant. A normal
+   app restart therefore left the already-connected ChatGPT MCP app without a desktop relay until
+   local file access was approved again. The relay now starts from the restored signed-in
+   VibeSpace account session, with zero local tools until an explicit session-only project grant is
+   added. The account Durable Object accepts this authenticated no-grant registration and reports
+   a connected desktop with no workspace or tools. Local reads remain unavailable until the exact
+   account/project grant is present.
+2. Browser Chat repeated the VibeSpace access token in its WebSocket registration after already
+   exchanging that token for a signed, short-lived, one-use relay ticket. Browser Chat
+   registration no longer carries the token; every initial connection and reconnect still obtains
+   a fresh ticket with the current VibeSpace token.
+3. The Browser Chat header always asked the user to “Sign in or sign up.” It now says “Open
+   ChatGPT,” preserving the provider-owned session and leaving any actual expiry prompt to
+   ChatGPT. The UI distinguishes the verified desktop-relay status from the provider-owned
+   ChatGPT app/session status.
+4. A relay failure was hidden behind the provider’s default `not_configured` status. Browser Chat
+   now exposes the relay error truthfully instead of suggesting that setup is merely incomplete.
+
+Ticket validation now also rejects a ticket at its exact expiry instant rather than accepting it
+for that boundary second. No provider page, cookie, DOM, credential, message, or live ChatGPT
+action was read or changed.
+
+Focused evidence:
+
+- RED: `BrowserChatHub.test.tsx` observed `useBrowserChatRelay(false)` for a signed-in VibeSpace
+  account with no local grant; GREEN starts the authenticated relay independently of file access.
+- RED: `BridgeClient.test.ts` observed the raw VibeSpace token in the Browser Chat registration;
+  GREEN proves neither the token nor absolute local root is transmitted.
+- RED: the Browser Chat header exposed “Sign in or sign up”; GREEN exposes only “Open ChatGPT.”
+- GREEN: Browser Chat plus bridge gate passes 11 files and 72 tests, including per-chat
+  Native/Browser separation, persisted safe preferences, provider isolation, fresh reconnect
+  tickets, logout/token-change cancellation, read-grant scoping, and MCP preflight.
+- The Worker Vitest/typecheck harness is environment-blocked by the absent predeclared
+  `@cloudflare/vitest-pool-workers` package. No package or lockfile was changed.
+- A direct already-cached TypeScript smoke proved exact-expiry ticket rejection. An earlier
+  mistaken `npx tsx` invocation fetched `tsx@4.23.11` into the user npm cache before failing on
+  eval module format; it did not change repository manifests, lockfiles, or source. This
+  out-of-scope cache mutation was disclosed immediately to the controller.

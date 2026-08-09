@@ -88,12 +88,15 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     workspaceGrant?.accountId === accountId && workspaceGrant.projectId === projectId
       ? workspaceGrant
       : null;
-  const relayStatus = useBrowserChatRelay(Boolean(activeWorkspaceGrant));
+  const relayStatus = useBrowserChatRelay(Boolean(accountId));
   const mcpUrl = resolveBrowserChatMcpUrl(
     resolveBrowserChatCloudUrl(import.meta.env as Record<string, string | undefined>),
   );
   const bridgeStatus =
-    relayStatus === 'connected' || relayStatus === 'connecting' || relayStatus === 'reconnecting'
+    relayStatus === 'connected' ||
+    relayStatus === 'connecting' ||
+    relayStatus === 'reconnecting' ||
+    relayStatus === 'error'
       ? relayStatus
       : providerBridgeStatus;
   const setActiveChat = useUIStore((state) => state.setActiveChat);
@@ -342,13 +345,15 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   const mcpStatusLabel =
     relayStatus === 'connected'
       ? 'Desktop connected'
-      : mcpSetupState === 'checking'
-        ? 'Checking secure connection'
-        : mcpSetupState === 'opening'
-          ? 'Opening ChatGPT Plugins'
-          : mcpSetupState === 'waiting'
-            ? 'Waiting for owner approval'
-            : 'Setup required';
+      : relayStatus === 'error'
+        ? 'Connection error'
+        : mcpSetupState === 'checking'
+          ? 'Checking secure connection'
+          : mcpSetupState === 'opening'
+            ? 'Opening ChatGPT Plugins'
+            : mcpSetupState === 'waiting'
+              ? 'Waiting for owner approval'
+              : 'Setup required';
   const mcpSetupBusy = mcpSetupState === 'checking' || mcpSetupState === 'opening';
 
   return (
@@ -412,7 +417,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
             onClick={() => void browserChatSurface.openSystemBrowser(provider)}
           >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-            {provider.id === 'chatgpt' ? 'Sign in or sign up' : 'System browser'}
+            {provider.id === 'chatgpt' ? 'Open ChatGPT' : 'System browser'}
           </Button>
         </div>
       </header>
@@ -507,6 +512,12 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                 The provider page has no direct device authority. The official VibeSpace MCP app can
                 use only the project you approve below.
               </dd>
+              {relayStatus === 'connected' ? (
+                <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  Desktop relay connected to this signed-in VibeSpace account. ChatGPT app and
+                  provider-session status remain owned by ChatGPT.
+                </dd>
+              ) : null}
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
                 It is not auto-connected by page login. Approve a project, configure the public
                 VibeSpace MCP endpoint, then enable VibeSpace MCP in ChatGPT Settings → Apps.

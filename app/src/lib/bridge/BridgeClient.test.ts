@@ -45,7 +45,7 @@ describe('Browser Chat read-only bridge protocol', () => {
     expect(getBridgeWorkspaceGrant()).toBeUndefined();
   });
 
-  it('advertises only bounded read tools and never transmits an absolute workspace root', () => {
+  it('advertises only bounded read tools without transmitting the account token or absolute root', () => {
     const frame = buildBridgeRegistrationFrame({
       jwt: 'jwt-test-value',
       tools,
@@ -62,7 +62,6 @@ describe('Browser Chat read-only bridge protocol', () => {
     expect(frame).toMatchObject({
       kind: 'register',
       protocol_version: 2,
-      token: 'jwt-test-value',
       client_nonce: 'nonce_1234567890123456',
       writable: false,
       shell_enabled: false,
@@ -76,6 +75,7 @@ describe('Browser Chat read-only bridge protocol', () => {
       'fs.read',
     ]);
     expect(JSON.stringify(frame)).not.toContain('C:\\\\Users\\\\viper');
+    expect(frame).not.toHaveProperty('token');
     expect(frame).not.toHaveProperty('workspace_root');
   });
 

@@ -157,7 +157,7 @@ export async function verifyRelayTicket(
     typeof parsed.jti !== 'string' ||
     !UUID.test(parsed.jti) ||
     !Number.isSafeInteger(parsed.exp) ||
-    (parsed.exp as number) < nowSeconds ||
+    (parsed.exp as number) <= nowSeconds ||
     (parsed.exp as number) > nowSeconds + TICKET_LIFETIME_SECONDS
   ) {
     throw new Error('Invalid relay ticket.');

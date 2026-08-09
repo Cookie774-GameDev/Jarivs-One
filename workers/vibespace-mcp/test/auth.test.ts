@@ -20,7 +20,7 @@ describe('relay tickets', () => {
     await expect(verifyRelayTicket(`${ticket}x`, secret, 120)).rejects.toThrow(
       /invalid relay ticket/i,
     );
-    await expect(verifyRelayTicket(ticket, secret, 161)).rejects.toThrow(/invalid relay ticket/i);
+    await expect(verifyRelayTicket(ticket, secret, 160)).rejects.toThrow(/invalid relay ticket/i);
     await expect(issueRelayTicket(subject, 'weak', 100)).rejects.toThrow(/not configured/i);
   });
 });
