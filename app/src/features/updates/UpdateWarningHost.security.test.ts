@@ -36,7 +36,7 @@ vi.mock('@/lib/utils', async (importOriginal) => ({
 describe('UpdateWarningHost error boundary', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubEnv('DEV', '');
+    vi.stubEnv('DEV', false);
     vi.clearAllMocks();
   });
 

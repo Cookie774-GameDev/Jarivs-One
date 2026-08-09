@@ -101,12 +101,13 @@ describe('VibeSpace MCP Worker', () => {
 
     expect(await registered).toMatchObject({ kind: 'registered', protocol_version: 2 });
     const stub = (env as unknown as Env).USER_RELAY.getByName(subject);
-    await expect(
-      (await stub.fetch('https://relay.internal/internal/status')).json(),
-    ).resolves.toEqual({
+    const relayStatus = await (await stub.fetch('https://relay.internal/internal/status')).json();
+    expect(relayStatus).toEqual({
       connected: true,
+      connectedAt: expect.any(Number),
       tools: [],
     });
+    expect(relayStatus).not.toHaveProperty('workspace');
     socket.close(1000, 'test complete');
   });
 
