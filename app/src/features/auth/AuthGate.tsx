@@ -1,7 +1,6 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { nanoid } from 'nanoid';
 import { useOllamaModelOptions } from '@/lib/ai/models';
-import { bootstrapOllamaConnection } from '@/lib/ai/ollamaBootstrap';
 import { OllamaConnectionHost } from '@/features/local-models/OllamaConnectionHost';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -71,14 +70,6 @@ export function AuthGate({ children }: AuthGateProps) {
       setLocalUser(`usr_${nanoid(16)}`);
     }
   }, [localUserId, setLocalUser]);
-
-  // Start Ollama discovery before the model-access gate so local models can
-  // satisfy hasModelAccess and the catalog is warm when the shell mounts.
-  useEffect(() => {
-    const controller = new AbortController();
-    void bootstrapOllamaConnection({ signal: controller.signal });
-    return () => controller.abort();
-  }, []);
 
   // 2. Seed the local database (idempotent). Runs once we have a user id and
   // the seed module is available. Failures are non-fatal - the rest of the

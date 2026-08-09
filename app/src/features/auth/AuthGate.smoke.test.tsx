@@ -74,20 +74,19 @@ describe('AuthGate kernel smoke entry', () => {
     expect(screen.queryByTestId('workspace')).toBeNull();
   });
 
-  it('aborts its mount-time Ollama bootstrap when the gate unmounts', () => {
+  it('leaves Ollama discovery to the mounted connection host without a duplicate bootstrap', () => {
     const view = render(
       <AuthGate>
         <div data-testid="workspace" />
       </AuthGate>,
     );
-    const signal = vi.mocked(bootstrapOllamaConnection).mock.calls[0]?.[0]?.signal;
 
-    expect(signal).toBeInstanceOf(AbortSignal);
-    expect(signal?.aborted).toBe(false);
+    expect(screen.getByTestId('ollama-host')).toBeTruthy();
+    expect(bootstrapOllamaConnection).not.toHaveBeenCalled();
 
     view.unmount();
 
-    expect(signal?.aborted).toBe(true);
+    expect(bootstrapOllamaConnection).not.toHaveBeenCalled();
   });
 
   it('keeps an onboarded profile behind model access before native attestation', () => {
