@@ -189,7 +189,16 @@ export async function bootstrapOllamaConnection(
     lastReadyAt > 0 &&
     Date.now() - lastReadyAt < READY_RECENT_MS
   ) {
-    const names = await listOllamaModelInfo(options.signal).catch(() => []);
+    let names: Awaited<ReturnType<typeof listOllamaModelInfo>>;
+    try {
+      names = await listOllamaModelInfo(options.signal);
+    } catch (error) {
+      if (options.signal?.aborted || (error as Error)?.name === 'AbortError') {
+        throw (error as Error)?.name === 'AbortError' ? error : abortError();
+      }
+      names = [];
+    }
+    if (options.signal?.aborted) throw abortError();
     if (names.length > 0) {
       return {
         ready: true,

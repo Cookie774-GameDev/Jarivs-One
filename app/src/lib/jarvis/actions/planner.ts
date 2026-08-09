@@ -168,10 +168,12 @@ async function withTimeout<T>(
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abortHandler: (() => void) | undefined;
+  let timeoutFailure: Error | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => {
+      timeoutFailure = new Error(`Action timed out after ${timeoutMs} ms.`);
       controller.abort();
-      reject(new Error(`Action timed out after ${timeoutMs} ms.`));
+      reject(timeoutFailure);
     }, timeoutMs);
     if (signal) {
       abortHandler = () => {
@@ -182,7 +184,15 @@ async function withTimeout<T>(
     }
   });
   try {
-    return await Promise.race([operation(controller.signal), timeoutPromise]);
+    try {
+      return await Promise.race([operation(controller.signal), timeoutPromise]);
+    } catch (error) {
+      // Aborting a compliant executor can synchronously enqueue its AbortError
+      // before the timeout promise rejects. The timeout remains the initiating
+      // terminal cause even though cancellation is signalled first.
+      if (timeoutFailure) throw timeoutFailure;
+      throw error;
+    }
   } finally {
     if (timeout) clearTimeout(timeout);
     if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);

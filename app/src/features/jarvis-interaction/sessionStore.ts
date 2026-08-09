@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { ChatId } from '@/types/common';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
+import { normalizeChatModelSelection } from '@/lib/ai/modelSelection';
 import type { JarvisChatAgent, JarvisInteractionMode } from './types';
 import { normalizeInteractionMode } from './modes';
 
@@ -68,30 +69,105 @@ function asRecord<T>(value: unknown): Record<string, T> {
     : {};
 }
 
-function isJarvisChatAgent(value: unknown): value is JarvisChatAgent {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const agent = value as Partial<JarvisChatAgent>;
-  return (
-    typeof agent.agentId === 'string' &&
-    typeof agent.name === 'string' &&
-    typeof agent.parentChatId === 'string' &&
-    typeof agent.childChatId === 'string' &&
-    typeof agent.task === 'string' &&
-    typeof agent.modelLabel === 'string' &&
-    typeof agent.status === 'string' &&
-    ALL_AGENT_STATUSES.has(agent.status as JarvisChatAgent['status']) &&
-    Array.isArray(agent.filesTouched) &&
-    Array.isArray(agent.lockedFiles) &&
-    typeof agent.createdAt === 'string' &&
-    typeof agent.updatedAt === 'string'
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function sanitizeModelSelection(value: unknown): JarvisChatAgent['modelSelection'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const mode = record.mode;
+  if (mode !== 'none' && mode !== 'single' && mode !== 'hive') return undefined;
+  const providerId = typeof record.providerId === 'string' ? record.providerId.trim() : '';
+  if (mode === 'single' && (!providerId || typeof record.modelId !== 'string')) {
+    return undefined;
+  }
+  const normalized = normalizeChatModelSelection(
+    mode === 'single' ? { ...record, providerId } : value,
   );
+  // The canonical normalizer fails closed to { mode: 'none' }. Preserve that
+  // only when it was the persisted selection, not when malformed input caused it.
+  if (mode !== 'none' && normalized.mode === 'none') return undefined;
+  return normalized;
+}
+
+function sanitizeJarvisChatAgent(value: unknown): JarvisChatAgent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const agent = value as Partial<JarvisChatAgent>;
+  if (
+    typeof agent.agentId !== 'string' ||
+    typeof agent.name !== 'string' ||
+    typeof agent.parentChatId !== 'string' ||
+    typeof agent.childChatId !== 'string' ||
+    typeof agent.task !== 'string' ||
+    typeof agent.modelLabel !== 'string' ||
+    typeof agent.status !== 'string' ||
+    !ALL_AGENT_STATUSES.has(agent.status as JarvisChatAgent['status']) ||
+    !Array.isArray(agent.filesTouched) ||
+    !Array.isArray(agent.lockedFiles) ||
+    typeof agent.createdAt !== 'string' ||
+    typeof agent.updatedAt !== 'string'
+  ) {
+    return null;
+  }
+
+  const sanitized: JarvisChatAgent = {
+    agentId: agent.agentId,
+    name: agent.name,
+    parentChatId: agent.parentChatId,
+    childChatId: agent.childChatId,
+    task: agent.task,
+    modelLabel: agent.modelLabel,
+    status: agent.status as JarvisChatAgent['status'],
+    filesTouched: asStringArray(agent.filesTouched),
+    lockedFiles: asStringArray(agent.lockedFiles),
+    createdAt: agent.createdAt,
+    updatedAt: agent.updatedAt,
+  };
+  const currentStep = optionalString(agent.currentStep);
+  const summary = optionalString(agent.summary);
+  const error = optionalString(agent.error);
+  const modelSelection = sanitizeModelSelection(agent.modelSelection);
+  if (modelSelection !== undefined) sanitized.modelSelection = modelSelection;
+  if (currentStep !== undefined) sanitized.currentStep = currentStep;
+  if (Array.isArray(agent.filesRead)) sanitized.filesRead = asStringArray(agent.filesRead);
+  if (Array.isArray(agent.filesEditing)) sanitized.filesEditing = asStringArray(agent.filesEditing);
+  if (
+    agent.diffSummary &&
+    typeof agent.diffSummary === 'object' &&
+    typeof agent.diffSummary.addedLines === 'number' &&
+    Number.isFinite(agent.diffSummary.addedLines) &&
+    agent.diffSummary.addedLines >= 0 &&
+    typeof agent.diffSummary.removedLines === 'number' &&
+    Number.isFinite(agent.diffSummary.removedLines) &&
+    agent.diffSummary.removedLines >= 0
+  ) {
+    sanitized.diffSummary = {
+      addedLines: agent.diffSummary.addedLines,
+      removedLines: agent.diffSummary.removedLines,
+    };
+  }
+  if (summary !== undefined) sanitized.summary = summary;
+  if (error !== undefined) sanitized.error = error;
+  return sanitized;
 }
 
 function asAgentLists(value: unknown): Record<string, JarvisChatAgent[]> {
   return Object.fromEntries(
     Object.entries(asRecord<unknown>(value))
       .filter((entry): entry is [string, unknown[]] => Array.isArray(entry[1]))
-      .map(([chatId, agents]) => [chatId, agents.filter(isJarvisChatAgent)])
+      .map(([chatId, agents]) => [
+        chatId,
+        agents
+          .map(sanitizeJarvisChatAgent)
+          .filter((agent): agent is JarvisChatAgent => agent !== null),
+      ])
       .filter(([, agents]) => agents.length > 0),
   );
 }

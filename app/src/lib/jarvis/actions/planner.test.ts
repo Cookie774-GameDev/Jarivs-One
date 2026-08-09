@@ -107,4 +107,37 @@ describe('Jarvis typed planner', () => {
     expect(executionSignal).toBeInstanceOf(AbortSignal);
     expect(executionSignal?.aborted).toBe(true);
   });
+
+  it('reports timeout truth when the aborted executor immediately rejects with AbortError', async () => {
+    const definition = action('bounded.run', { supportsCancellation: true });
+    const plan = createJarvisPlan({
+      goal: 'Run a bounded action',
+      requestedSteps: [{ action: 'bounded.run', input: {} }],
+      catalog: [definition],
+    });
+    const executeApprovedStep = vi.fn(
+      (_step: unknown, signal: AbortSignal) =>
+        new Promise<never>((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Executor observed cancellation', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+
+    const result = await executeJarvisPlan(plan, [definition], {
+      executeApprovedStep,
+      timeoutMs: 5,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.steps[0]).toMatchObject({
+      status: 'failed',
+      verification: {
+        status: 'failed',
+        evidence: expect.stringMatching(/timed out/i),
+      },
+    });
+  });
 });

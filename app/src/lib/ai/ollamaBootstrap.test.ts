@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
-import { syncDiscoveredOllamaModels } from './models';
+import { getDiscoveredOllamaModels, syncDiscoveredOllamaModels } from './models';
 import {
   bootstrapOllamaConnection,
   invalidateOllamaBootstrap,
@@ -159,6 +159,41 @@ describe('bootstrapOllamaConnection', () => {
     expect(isOllamaReachable).not.toHaveBeenCalled();
     expect(ensureOllamaReadySilent).not.toHaveBeenCalled();
     expect(listOllamaModelInfo).not.toHaveBeenCalled();
+  });
+
+  it('does not start an orphan bootstrap when cancellation lands during the ready-cache probe', async () => {
+    vi.mocked(isOllamaReachable).mockResolvedValue(true);
+    vi.mocked(listOllamaModelInfo).mockResolvedValue([
+      { name: 'llama3.2:latest', size: 1, modifiedAt: 'now' },
+    ]);
+    await bootstrapOllamaConnection({ force: true });
+
+    vi.clearAllMocks();
+    useAuthStore.setState({ defaultLocalModel: 'llama3.2:latest' });
+    const controller = new AbortController();
+    vi.mocked(listOllamaModelInfo).mockImplementation(
+      (signal) =>
+        new Promise((_, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Cache probe cancelled', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+
+    const cancelled = bootstrapOllamaConnection({ signal: controller.signal });
+    await vi.waitFor(() => expect(listOllamaModelInfo).toHaveBeenCalledTimes(1));
+    const rejected = expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+
+    await rejected;
+    await Promise.resolve();
+    expect(isOllamaReachable).not.toHaveBeenCalled();
+    expect(ensureOllamaReadySilent).not.toHaveBeenCalled();
+    expect(listOllamaModelInfo).toHaveBeenCalledTimes(1);
+    expect(getDiscoveredOllamaModels()).toEqual(['llama3.2:latest']);
+    expect(useAuthStore.getState().defaultLocalModel).toBe('llama3.2:latest');
   });
 
   it('sanitizes a bad stored endpoint before connecting', () => {

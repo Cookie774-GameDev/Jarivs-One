@@ -121,4 +121,99 @@ describe('Jarvis interaction restart persistence', () => {
     expect(merged.modeForChat).toBe(current.modeForChat);
     expect(merged.updateAgent).toBe(current.updateAgent);
   });
+
+  it('sanitizes malformed rendered fields and array members in current-version agents', () => {
+    const current = useJarvisInteractionStore.getInitialState();
+    const malformed = {
+      ...agent('done', 'done'),
+      currentStep: { text: 'not safe to render' },
+      filesRead: ['safe/read.ts', 17, null],
+      filesEditing: ['safe/edit.ts', { path: 'unsafe' }],
+      diffSummary: { addedLines: 'many', removedLines: 2 },
+      filesTouched: ['safe/touched.ts', false],
+      lockedFiles: [null, 'safe/locked.ts'],
+      summary: ['not', 'a', 'string'],
+      error: { message: 'not a string' },
+      modelSelection: { mode: 'single', providerId: 'ollama', modelId: '' },
+    };
+
+    const merged = mergeJarvisInteractionState(
+      {
+        modesByChat: { chat_parent: 'agent' },
+        agentsByChat: { chat_parent: [malformed] },
+      },
+      current,
+    );
+    const expectedAgent = agent('done', 'done');
+    delete expectedAgent.currentStep;
+
+    expect(merged.agentsByChat.chat_parent).toEqual([
+      {
+        ...expectedAgent,
+        filesRead: ['safe/read.ts'],
+        filesEditing: ['safe/edit.ts'],
+        filesTouched: ['safe/touched.ts'],
+        lockedFiles: ['safe/locked.ts'],
+      },
+    ]);
+  });
+
+  it('preserves only structurally valid persisted model-selection provenance', () => {
+    const current = useJarvisInteractionStore.getInitialState();
+    const validSelectionAgent = {
+      ...agent('valid-selection', 'done'),
+      modelSelection: {
+        mode: 'single',
+        providerId: 'ollama',
+        modelId: '  llama3.2:latest  ',
+      },
+    };
+    const malformedSelectionAgent = {
+      ...agent('malformed-selection', 'failed'),
+      modelSelection: {
+        mode: 'single',
+        providerId: 'ollama',
+        modelId: '',
+      },
+    };
+    const objectProviderAgent = {
+      ...agent('object-provider', 'done'),
+      modelSelection: {
+        mode: 'single',
+        providerId: { id: 'ollama' },
+        modelId: 'llama3.2:latest',
+      },
+    };
+    const arrayProviderAgent = {
+      ...agent('array-provider', 'done'),
+      modelSelection: {
+        mode: 'single',
+        providerId: ['ollama'],
+        modelId: 'llama3.2:latest',
+      },
+    };
+
+    const merged = mergeJarvisInteractionState(
+      {
+        agentsByChat: {
+          chat_parent: [
+            validSelectionAgent,
+            malformedSelectionAgent,
+            objectProviderAgent,
+            arrayProviderAgent,
+          ],
+        },
+      },
+      current,
+    );
+
+    expect(merged.agentsByChat.chat_parent?.[0]?.modelSelection).toEqual({
+      mode: 'single',
+      providerId: 'ollama',
+      modelId: 'llama3.2:latest',
+    });
+    expect(merged.agentsByChat.chat_parent?.[1]).not.toHaveProperty('modelSelection');
+    expect(merged.agentsByChat.chat_parent?.[2]).not.toHaveProperty('modelSelection');
+    expect(merged.agentsByChat.chat_parent?.[3]).not.toHaveProperty('modelSelection');
+  });
 });
