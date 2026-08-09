@@ -79,7 +79,9 @@ ReactDOM.createRoot(rootEl).render(
 );
 
 const stopRendererHeartbeat = startRendererHeartbeat();
-window.addEventListener('pagehide', stopRendererHeartbeat, { once: true });
+if (import.meta.hot) {
+  import.meta.hot.dispose(stopRendererHeartbeat);
+}
 
 if (!taskbarUsageView && !coldStartIntroView) {
   const stopResourcePressureMonitor = startResourcePressureMonitor();

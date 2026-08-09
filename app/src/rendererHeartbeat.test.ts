@@ -46,4 +46,29 @@ describe('renderer heartbeat', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(emit).toHaveBeenCalledTimes(4);
   });
+
+  it('resumes heartbeats when a page-hidden document becomes visible again', async () => {
+    vi.useFakeTimers();
+    const emit = vi.fn(async (_event: string, _payload?: unknown) => undefined);
+
+    const stop = startRendererHeartbeat({ emit, isDesktop: true, windowLabel: 'main' });
+    await vi.runAllTicks();
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new Event('pageshow'));
+    await vi.runAllTicks();
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(emit).toHaveBeenCalledTimes(4);
+
+    stop();
+    window.dispatchEvent(new Event('pageshow'));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(emit).toHaveBeenCalledTimes(4);
+  });
 });

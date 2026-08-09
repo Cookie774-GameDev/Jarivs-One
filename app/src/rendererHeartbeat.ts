@@ -27,21 +27,37 @@ export function startRendererHeartbeat(options: RendererHeartbeatOptions = {}): 
     options.generation ??
     globalThis.crypto?.randomUUID?.() ??
     `renderer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  let stopped = false;
+  let disposed = false;
+  let timer: number | null = null;
 
   const beat = () => {
-    if (stopped) return;
+    if (disposed) return;
     void send(RENDERER_HEARTBEAT_EVENT, { at: Date.now(), generation }).catch(() => {
       // The native watchdog remains unarmed until it receives a heartbeat.
       // Renderer startup must never fail because the event bridge is unavailable.
     });
   };
 
-  beat();
-  const timer = window.setInterval(beat, RENDERER_HEARTBEAT_INTERVAL_MS);
+  const pause = () => {
+    if (timer === null) return;
+    window.clearInterval(timer);
+    timer = null;
+  };
+
+  const resume = () => {
+    if (disposed || timer !== null) return;
+    beat();
+    timer = window.setInterval(beat, RENDERER_HEARTBEAT_INTERVAL_MS);
+  };
+
+  window.addEventListener('pagehide', pause);
+  window.addEventListener('pageshow', resume);
+  resume();
 
   return () => {
-    stopped = true;
-    window.clearInterval(timer);
+    disposed = true;
+    pause();
+    window.removeEventListener('pagehide', pause);
+    window.removeEventListener('pageshow', resume);
   };
 }
