@@ -1,6 +1,11 @@
 import type { Message, Part } from '@/types';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
-import type { ChatActivityEvent, ChatActivityKind, ChatActivityStatus } from '../activity/types';
+import type {
+  ChatActivityCategory,
+  ChatActivityEvent,
+  ChatActivityKind,
+  ChatActivityStatus,
+} from '../activity/types';
 
 export const MAX_MOUNTED_BLOCKS = 400;
 export const TRANSCRIPT_PAGE_SIZE = 100;
@@ -56,6 +61,7 @@ export type ActivityBlock = BaseBlock & {
   kind: 'activity';
   status: ChatActivityStatus;
   activityKind: ChatActivityKind;
+  activityCategory?: ChatActivityCategory;
   title: string;
   detail?: string;
   filePath?: string;
@@ -67,6 +73,7 @@ export type ActivityBlock = BaseBlock & {
 export type DiffBlock = BaseBlock & {
   kind: 'diff';
   status: ChatActivityStatus;
+  activityCategory?: ChatActivityCategory;
   title: string;
   filePath?: string;
   diff: string;
@@ -384,6 +391,7 @@ function projectActivity(event: ChatActivityEvent): TranscriptBlock {
       ts: event.ts,
       kind: 'diff',
       status: event.status,
+      activityCategory: event.category,
       title: sanitizeConsoleText(event.title, 4096),
       filePath: event.filePath ? sanitizeConsoleText(event.filePath, 4096) : undefined,
       diff: boundedDiff(event.diff),
@@ -398,6 +406,7 @@ function projectActivity(event: ChatActivityEvent): TranscriptBlock {
     kind: 'activity',
     status: event.status,
     activityKind: event.kind,
+    activityCategory: event.category,
     title: sanitizeConsoleText(event.title, 4096),
     detail: event.detail ? sanitizeConsoleText(event.detail, 128 * 1024) : event.subtitle,
     filePath: event.filePath ? sanitizeConsoleText(event.filePath, 4096) : undefined,

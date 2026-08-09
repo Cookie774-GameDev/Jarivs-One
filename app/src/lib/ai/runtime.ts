@@ -1789,6 +1789,7 @@ async function maybeUpdateAllAboutMeFromChat(
       id: activityId,
       chatId,
       kind: 'tool',
+      category: 'learning',
       status: 'running',
       title: 'Jarvis is learning from this chat',
       subtitle: 'AllAboutMe.md update in progress',
@@ -1819,6 +1820,7 @@ async function maybeUpdateAllAboutMeFromChat(
       const summary = summarizeAllAboutMeLearningChange(existingMarkdown, revised);
       useChatActivityStore.getState().update(chatId, activityId, {
         kind: 'diff',
+        category: 'writing',
         status: 'done',
         title: 'AllAboutMe.md file written',
         subtitle: ALL_ABOUT_ME_FILE_LOCATION,
@@ -2978,6 +2980,7 @@ export function startRuntimeListener(
       id: agentActivityId,
       chatId,
       kind: mentionedAgents.length > 1 ? 'subagent' : 'agent',
+      category: mentionedAgents.length > 1 ? 'coordination' : 'thinking',
       status: 'running',
       title: `@${agent.slug} is working`,
       subtitle:
@@ -2999,6 +3002,7 @@ export function startRuntimeListener(
         id: createChatActivityId('file'),
         chatId,
         kind: 'file',
+        category: 'file',
         status: 'done',
         title: 'Reading file context',
         subtitle: path,
@@ -3011,6 +3015,7 @@ export function startRuntimeListener(
         id: createChatActivityId('image'),
         chatId,
         kind: 'file',
+        category: 'file',
         status: 'done',
         title: 'Attached image',
         subtitle: image.name,
@@ -3024,6 +3029,7 @@ export function startRuntimeListener(
         id: createChatActivityId('url'),
         chatId,
         kind: 'url',
+        category: 'context',
         status: 'done',
         title: 'Referenced URL',
         subtitle: url,
@@ -4178,6 +4184,7 @@ export function startRuntimeListener(
               responseCompositionVisible = true;
               useAgentStore.getState().setVerb(agent.id, 'preparing response');
               useChatActivityStore.getState().update(chatId, agentActivityId, {
+                category: 'response',
                 status: 'running',
                 title: `@${agent.slug} is preparing the final response`,
                 subtitle: `${runnable.model.provider}/${runnable.model.model}`,

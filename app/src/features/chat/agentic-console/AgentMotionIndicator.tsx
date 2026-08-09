@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { ChatActivityKind, ChatActivityStatus } from '../activity/types';
+import type { ChatActivityCategory, ChatActivityKind, ChatActivityStatus } from '../activity/types';
 import './agent-motion.css';
 
 export type AgentMotionKind =
@@ -13,6 +13,7 @@ export type AgentMotionKind =
 
 export interface AgentMotionEvidence {
   status?: ChatActivityStatus;
+  activityCategory?: ChatActivityCategory;
   activityKind?: ChatActivityKind;
   title?: string;
   detail?: string;
@@ -21,9 +22,40 @@ export interface AgentMotionEvidence {
 
 const LIVE_STATUSES = new Set<ChatActivityStatus>(['pending', 'running']);
 
+const CATEGORY_MOTION: Readonly<Record<ChatActivityCategory, AgentMotionKind>> = {
+  thinking: 'cursor-forge',
+  file: 'stack-shift',
+  writing: 'code-shimmer',
+  coordination: 'nine-dot-fold',
+  context: 'twin-loop',
+  learning: 'breathing-brackets',
+  response: 'glyph-current',
+};
+
+const KIND_CATEGORY: Readonly<Record<ChatActivityKind, ChatActivityCategory>> = {
+  diff: 'writing',
+  file: 'file',
+  url: 'context',
+  subagent: 'coordination',
+  tool: 'thinking',
+  agent: 'thinking',
+};
+
 export function resolveAgentMotion(evidence: AgentMotionEvidence): AgentMotionKind | null {
-  if (evidence.status && !LIVE_STATUSES.has(evidence.status)) return null;
-  return 'cursor-forge';
+  if (!evidence.status || !LIVE_STATUSES.has(evidence.status)) return null;
+  const structuredCategory =
+    evidence.activityCategory &&
+    Object.prototype.hasOwnProperty.call(CATEGORY_MOTION, evidence.activityCategory)
+      ? evidence.activityCategory
+      : undefined;
+  const structuredKind =
+    evidence.activityKind &&
+    Object.prototype.hasOwnProperty.call(KIND_CATEGORY, evidence.activityKind)
+      ? evidence.activityKind
+      : undefined;
+  const category =
+    structuredCategory ?? (structuredKind ? KIND_CATEGORY[structuredKind] : 'thinking');
+  return CATEGORY_MOTION[category];
 }
 
 export function AgentMotionIndicator({

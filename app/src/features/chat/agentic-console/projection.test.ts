@@ -127,6 +127,46 @@ describe('projectAgenticTranscript', () => {
     });
   });
 
+  it('preserves structured activity categories through transcript projection', () => {
+    const blocks = projectAgenticTranscript(
+      [],
+      [
+        {
+          id: 'response',
+          chatId: 'chat-1',
+          kind: 'agent',
+          category: 'response',
+          status: 'running',
+          title: 'Working',
+          ts: 5,
+        },
+        {
+          id: 'writing',
+          chatId: 'chat-1',
+          kind: 'diff',
+          category: 'writing',
+          status: 'running',
+          title: 'Working',
+          diff: '+change',
+          ts: 6,
+        },
+      ],
+    );
+
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        sourceId: 'activity:response',
+        kind: 'activity',
+        activityCategory: 'response',
+      }),
+      expect.objectContaining({
+        sourceId: 'activity:writing',
+        kind: 'diff',
+        activityCategory: 'writing',
+      }),
+    ]);
+  });
+
   it('extracts truthful exit and duration evidence from structured command results', () => {
     const messages = [
       message('command', 'assistant', 1, [

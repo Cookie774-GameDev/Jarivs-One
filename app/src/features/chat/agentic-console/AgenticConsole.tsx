@@ -427,10 +427,17 @@ function copyText(text: string) {
     .catch(() => toast.error('Copy failed'));
 }
 
-function DiffView({ block }: { block: Extract<TranscriptBlock, { kind: 'diff' }> }) {
+function DiffView({
+  block,
+  compact,
+}: {
+  block: Extract<TranscriptBlock, { kind: 'diff' }>;
+  compact?: boolean;
+}) {
   const lines = React.useMemo(() => formatUnifiedDiffLines(block.diff), [block.diff]);
   const motion = resolveAgentMotion({
     status: block.status,
+    activityCategory: block.activityCategory,
     activityKind: 'diff',
     title: block.title,
     filePath: block.filePath,
@@ -439,7 +446,7 @@ function DiffView({ block }: { block: Extract<TranscriptBlock, { kind: 'diff' }>
     <article className="agentic-diff" aria-label={`Diff ${block.filePath ?? block.title}`}>
       <div className="agentic-block-head">
         <span>
-          {motion ? <AgentMotionIndicator motion={motion} /> : null}
+          {motion ? <AgentMotionIndicator motion={motion} compact={compact} /> : null}
           <GitCompareArrows aria-hidden="true" />
           <strong>{block.filePath ?? block.title}</strong>
         </span>
@@ -476,20 +483,11 @@ function DiffView({ block }: { block: Extract<TranscriptBlock, { kind: 'diff' }>
   );
 }
 
-function CommandView({
-  block,
-  motionActive,
-}: {
-  block: Extract<TranscriptBlock, { kind: 'command' }>;
-  motionActive: boolean;
-}) {
+function CommandView({ block }: { block: Extract<TranscriptBlock, { kind: 'command' }> }) {
   return (
     <article className="agentic-command" aria-label={`Command ${block.command}`}>
       <div className="agentic-block-head">
         <span>
-          {motionActive && !block.output && !block.error ? (
-            <AgentMotionIndicator motion="cursor-forge" />
-          ) : null}
           <TerminalSquare aria-hidden="true" />
           <strong>{block.tool}</strong>
           {block.cwd ? <small>{block.cwd}</small> : null}
@@ -548,13 +546,11 @@ function BlockView({
   finalAnswerId,
   compact,
   creatorDraftKind,
-  motionActive,
 }: {
   block: TranscriptBlock;
   finalAnswerId?: string;
   compact?: boolean;
   creatorDraftKind?: JarvisCreatorKind;
-  motionActive: boolean;
 }) {
   if (block.kind === 'prompt') return <PromptBand block={block} />;
   if (block.kind === 'answer') {
@@ -576,7 +572,6 @@ function BlockView({
     return (
       <details className="agentic-reasoning">
         <summary>
-          {motionActive ? <AgentMotionIndicator motion="cursor-forge" /> : null}
           <Gauge aria-hidden="true" />
           Reasoning
         </summary>
@@ -587,6 +582,7 @@ function BlockView({
   if (block.kind === 'activity') {
     const motion = resolveAgentMotion({
       status: block.status,
+      activityCategory: block.activityCategory,
       activityKind: block.activityKind,
       title: block.title,
       detail: block.detail,
@@ -594,7 +590,7 @@ function BlockView({
     });
     return (
       <div className={cn('agentic-activity', `is-${block.status}`)}>
-        {motion ? <AgentMotionIndicator motion={motion} /> : null}
+        {motion ? <AgentMotionIndicator motion={motion} compact={compact} /> : null}
         <span className="agentic-activity__kind">{activityIcon(block.activityKind)}</span>
         <span className="agentic-activity__status">{statusIcon(block.status)}</span>
         <strong>{block.title}</strong>
@@ -603,8 +599,8 @@ function BlockView({
       </div>
     );
   }
-  if (block.kind === 'diff') return <DiffView block={block} />;
-  if (block.kind === 'command') return <CommandView block={block} motionActive={motionActive} />;
+  if (block.kind === 'diff') return <DiffView block={block} compact={compact} />;
+  if (block.kind === 'command') return <CommandView block={block} />;
   if (block.kind === 'tool') return <ToolView block={block} />;
   return (
     <div className="agentic-legacy" data-agentic-fallback="structured-message">
@@ -640,11 +636,6 @@ export function AgenticConsole({
     () => summarizeAgenticSession(messages, activity, sessionEvidence),
     [messages, activity, sessionEvidence],
   );
-  const motionActive =
-    summary.status === 'queued' ||
-    summary.status === 'planning' ||
-    summary.status === 'running' ||
-    summary.status === 'recovering';
   const windowed = React.useMemo(
     () => windowTranscriptBlocks(blocks, mountedCount),
     [blocks, mountedCount],
@@ -785,7 +776,6 @@ export function AgenticConsole({
               finalAnswerId={finalAnswerId}
               compact={compact}
               creatorDraftKind={creatorDraftKind}
-              motionActive={motionActive}
             />
           ))}
         </div>

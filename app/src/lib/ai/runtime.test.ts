@@ -4234,6 +4234,7 @@ describe('startRuntimeListener agent routing', () => {
       fakeTimersActive = true;
       providerInput.onChunk({ delta: 'PRE_ABORT_VISIBLE', done: false });
       providerInput.onChunk({ delta: '_SCHEDULED_BUT_CANCELLED', done: false });
+      expect(getChatActivityEvents(harness.chatId).at(-1)?.category).toBe('response');
       const messageWritesAtAbort = harness.updateMessage.mock.calls.length;
       const voiceDeltasAtAbort = mocks.streamingSession.onDelta.mock.calls.length;
 
@@ -4569,8 +4570,8 @@ describe('startRuntimeListener agent routing', () => {
       await idle;
       expect(useAllAboutMeStore.getState().markdown).toBe('# AllAboutMe.md\n\nUNCHANGED PROFILE');
       expect(
-        getChatActivityEvents(harness.chatId).find(({ kind }) => kind === 'tool')?.status,
-      ).toBe('cancelled');
+        getChatActivityEvents(harness.chatId).find(({ kind }) => kind === 'tool'),
+      ).toMatchObject({ category: 'learning', status: 'cancelled' });
       expect(mocks.notifyDone).not.toHaveBeenCalled();
       expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('idle');
     } finally {

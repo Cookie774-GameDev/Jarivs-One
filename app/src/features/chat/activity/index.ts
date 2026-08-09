@@ -20,11 +20,9 @@ export {
   countUnifiedDiffLines,
   recordChatDiffActivity,
 } from './activityStore';
-export {
-  mergeChatActivityEvents,
-  useUnifiedChatActivity,
-} from './unifiedActivity';
+export { mergeChatActivityEvents, useUnifiedChatActivity } from './unifiedActivity';
 export type {
+  ChatActivityCategory,
   ChatActivityEvent,
   ChatActivityKind,
   ChatActivityPatch,

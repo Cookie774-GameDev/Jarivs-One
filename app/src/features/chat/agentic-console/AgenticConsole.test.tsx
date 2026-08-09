@@ -95,59 +95,73 @@ describe('AgenticConsole', () => {
     );
   });
 
-  it('uses the same active Jarvis motion throughout live work', () => {
+  it('routes live work through all seven structured activity motions', () => {
     const activity: ChatActivityEvent[] = [
       {
-        id: 'context',
+        id: 'think',
         chatId: 'chat-console',
-        kind: 'tool',
+        kind: 'agent',
+        category: 'thinking',
         status: 'running',
-        title: 'Updating Context map',
+        title: 'Working',
         ts: 10,
       },
       {
-        id: 'profile',
+        id: 'read',
         chatId: 'chat-console',
-        kind: 'tool',
+        kind: 'file',
+        category: 'file',
         status: 'running',
-        title: 'Jarvis is learning from this chat',
-        detail: 'AllAboutMe.md update in progress',
+        title: 'Working',
+        filePath: 'src/App.tsx',
         ts: 20,
       },
       {
         id: 'agents',
         chatId: 'chat-console',
         kind: 'subagent',
+        category: 'coordination',
         status: 'running',
-        title: 'Coordinating subagents',
+        title: 'Working',
         ts: 30,
-      },
-      {
-        id: 'read',
-        chatId: 'chat-console',
-        kind: 'file',
-        status: 'running',
-        title: 'Reading file context',
-        filePath: 'src/App.tsx',
-        ts: 40,
       },
       {
         id: 'write',
         chatId: 'chat-console',
         kind: 'diff',
+        category: 'writing',
         status: 'running',
-        title: 'Writing code',
+        title: 'Working',
         filePath: 'src/App.tsx',
         diff: '+updated',
+        ts: 40,
+      },
+      {
+        id: 'context',
+        chatId: 'chat-console',
+        kind: 'url',
+        category: 'context',
+        status: 'running',
+        title: 'Working',
         ts: 50,
+      },
+      {
+        id: 'learning',
+        chatId: 'chat-console',
+        kind: 'tool',
+        category: 'learning',
+        status: 'running',
+        title: 'Working',
+        ts: 60,
       },
       {
         id: 'respond',
         chatId: 'chat-console',
         kind: 'agent',
+        category: 'response',
         status: 'running',
-        title: '@jarvis is preparing the final response',
-        ts: 60,
+        title: 'Working',
+        ts: 70,
       },
     ];
 
@@ -159,10 +173,86 @@ describe('AgenticConsole', () => {
     });
 
     const motions = rendered.container.querySelectorAll('[data-agent-motion]');
-    expect(motions.length).toBeGreaterThan(0);
+    expect([...motions].map((motion) => motion.getAttribute('data-agent-motion'))).toEqual([
+      'cursor-forge',
+      'stack-shift',
+      'nine-dot-fold',
+      'code-shimmer',
+      'twin-loop',
+      'breathing-brackets',
+      'glyph-current',
+    ]);
+  });
+
+  it('switches motion on a rapid structured activity transition and becomes still at completion', () => {
+    const baseActivity: ChatActivityEvent = {
+      id: 'phase',
+      chatId: 'chat-console',
+      kind: 'agent',
+      category: 'thinking',
+      status: 'pending',
+      title: 'Working',
+      ts: 10,
+    };
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [],
+      activity: [baseActivity],
+      compact: true,
+      sessionEvidence: { status: 'running', currentOperation: 'Working' },
+    });
+
     expect(
-      [...motions].every((motion) => motion.getAttribute('data-agent-motion') === 'cursor-forge'),
-    ).toBe(true);
+      rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
+    ).toBe('cursor-forge');
+    expect(
+      rendered.container
+        .querySelector('[data-agent-motion]')
+        ?.getAttribute('data-agent-motion-size'),
+    ).toBe('compact');
+
+    rendered.rerender(
+      <TooltipProvider>
+        <AgenticConsole
+          chatId="chat-console"
+          messages={[]}
+          activity={[
+            {
+              ...baseActivity,
+              category: 'response',
+              status: 'running',
+              ts: 20,
+            },
+          ]}
+          compact
+          sessionEvidence={{ status: 'running', currentOperation: 'Responding' }}
+        />
+      </TooltipProvider>,
+    );
+    expect(
+      rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
+    ).toBe('glyph-current');
+
+    rendered.rerender(
+      <TooltipProvider>
+        <AgenticConsole
+          chatId="chat-console"
+          messages={[]}
+          activity={[
+            {
+              ...baseActivity,
+              category: 'response',
+              status: 'done',
+              ts: 30,
+              endedAt: 30,
+            },
+          ]}
+          compact
+          sessionEvidence={{ status: 'done', currentOperation: 'Complete' }}
+        />
+      </TooltipProvider>,
+    );
+    expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
   });
 
   it('stops reasoning motion after the Jarvis run completes', () => {
@@ -196,6 +286,52 @@ describe('AgenticConsole', () => {
 
     expect(screen.getByText('Reasoning')).toBeTruthy();
     expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
+  });
+
+  it('keeps statusless historical commands and reasoning still during later live work', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('assistant-history', 'assistant', 10, [
+          {
+            kind: 'reasoning',
+            text: 'Historical reasoning without structured lifecycle evidence.',
+          },
+          {
+            kind: 'tool_call',
+            call_id: 'historical-command',
+            tool: 'terminal.exec',
+            args: { command: 'npm test' },
+          },
+        ]),
+      ],
+      activity: [
+        {
+          id: 'later-response',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'response',
+          status: 'running',
+          title: 'Preparing a later response',
+          ts: 20,
+        },
+      ],
+      sessionEvidence: { status: 'running', currentOperation: 'Preparing a later response' },
+    });
+
+    expect(
+      screen.getByText('Reasoning').closest('details')?.querySelector('[data-agent-motion]'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole('article', { name: 'Command npm test' })
+        .querySelector('[data-agent-motion]'),
+    ).toBeNull();
+    expect(
+      [...rendered.container.querySelectorAll('[data-agent-motion]')].map((motion) =>
+        motion.getAttribute('data-agent-motion'),
+      ),
+    ).toEqual(['glyph-current']);
   });
 
   it('changes only the scoped console profile and exposes classic view', () => {
