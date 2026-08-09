@@ -13,6 +13,7 @@ type PresenceClient = NonNullable<ReturnType<typeof getSupabaseClient>>;
 
 interface HeartbeatOptions {
   readonly client: PresenceClient | { rpc: PresenceClient['rpc'] };
+  readonly expectedUserId: string;
   readonly collect: () => Promise<DesktopPresenceInput>;
   readonly publish?: typeof publishDesktopPresence;
   readonly markOffline?: typeof markDesktopPresenceOffline;
@@ -23,6 +24,7 @@ interface HeartbeatOptions {
 
 export function startDesktopPresenceHeartbeat({
   client,
+  expectedUserId,
   collect,
   publish = publishDesktopPresence,
   markOffline = markDesktopPresenceOffline,
@@ -41,7 +43,7 @@ export function startDesktopPresenceHeartbeat({
       const snapshot = await collect();
       if (!active || !isCurrent()) return;
       lastDeviceId = snapshot.deviceId;
-      await publish(client, snapshot);
+      await publish(client, expectedUserId, snapshot);
     } catch {
       // The website will age the last heartbeat into an offline state.
     } finally {
@@ -56,7 +58,7 @@ export function startDesktopPresenceHeartbeat({
     active = false;
     unschedule(timer);
     if (lastDeviceId && isCurrent()) {
-      void markOffline(client, lastDeviceId).catch(() => undefined);
+      void markOffline(client, expectedUserId, lastDeviceId).catch(() => undefined);
     }
   };
 }
@@ -129,6 +131,7 @@ export function DesktopPresencePublisher({ appVersion }: { appVersion: string })
 
     return startDesktopPresenceHeartbeat({
       client,
+      expectedUserId: cloudUserId,
       isCurrent: () => (useAuthStore.getState().cloudSession?.user_id.trim() ?? '') === cloudUserId,
       collect: () =>
         collectDesktopPresenceSnapshot({

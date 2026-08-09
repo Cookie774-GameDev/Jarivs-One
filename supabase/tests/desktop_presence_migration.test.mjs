@@ -26,6 +26,16 @@ test('presence publishing derives ownership from auth and rejects revoked device
   );
   assert.match(sql, /v_user_id uuid := \(select auth\.uid\(\)\)/iu);
   assert.match(sql, /if v_user_id is null then[\s\S]*?raise exception 'authentication required'/iu);
+  assert.match(sql, /p_expected_user_id uuid/iu);
+  assert.match(
+    sql,
+    /if p_expected_user_id is null or v_user_id <> p_expected_user_id then[\s\S]*?raise exception 'account changed'/iu,
+  );
+  assert.ok(
+    sql.indexOf('v_user_id <> p_expected_user_id') <
+      sql.indexOf('insert into public.desktop_presence'),
+    'expected-user validation must happen before presence writes',
+  );
   assert.match(
     sql,
     /on conflict \(user_id, device_id\)[\s\S]*?where desktop_presence\.revoked_at is null/iu,
@@ -34,6 +44,26 @@ test('presence publishing derives ownership from auth and rejects revoked device
   assert.match(
     sql,
     /grant execute on function public\.publish_desktop_presence[\s\S]*?to authenticated/iu,
+  );
+});
+
+test('offline cleanup rejects a changed account before updating presence', async () => {
+  const sql = await readFile(migrationUrl, 'utf8');
+  const functionStart = sql.indexOf(
+    'create or replace function public.mark_desktop_presence_offline',
+  );
+  const functionEnd = sql.indexOf('$$;', functionStart);
+  const body = sql.slice(functionStart, functionEnd);
+
+  assert.match(body, /p_expected_user_id uuid/iu);
+  assert.match(
+    body,
+    /if p_expected_user_id is null or v_user_id <> p_expected_user_id then[\s\S]*?raise exception 'account changed'/iu,
+  );
+  assert.ok(
+    body.indexOf('v_user_id <> p_expected_user_id') <
+      body.indexOf('update public.desktop_presence'),
+    'expected-user validation must happen before offline updates',
   );
 });
 

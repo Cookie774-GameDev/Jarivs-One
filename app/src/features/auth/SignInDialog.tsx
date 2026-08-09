@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Loader2,
@@ -61,12 +61,14 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const generationRef = useRef(0);
   const cloudReady = isCloudSyncConfigured();
 
   const NOT_CONFIGURED =
     'VibeSpace Cloud is not configured in this build. Install the official release, or ask the maintainer to set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.';
 
   const reset = useCallback(() => {
+    generationRef.current += 1;
     setEmail('');
     setPassword('');
     setPasswordConfirmation('');
@@ -106,6 +108,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
     setInfo(null);
   }
 
+  function captureGeneration() {
+    const generation = generationRef.current;
+    return () => generationRef.current === generation;
+  }
+
   async function handleCredentialsSubmit() {
     setError(null);
     setInfo(null);
@@ -131,10 +138,12 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       setError(NOT_CONFIGURED);
       return;
     }
+    const isCurrent = captureGeneration();
 
     try {
       if (mode === 'recovery') {
         const { error: recoveryError } = await client.auth.resetPasswordForEmail(trimmedEmail);
+        if (!isCurrent()) return;
         if (recoveryError) throw recoveryError;
         setVerifyKind('recovery');
         setPhase('verify');
@@ -154,6 +163,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
             // Desktop / local web — OTP is entered in-app; no redirect required.
           },
         });
+        if (!isCurrent()) return;
         if (otpError) throw otpError;
         setVerifyKind('email');
         setPhase('verify');
@@ -171,6 +181,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
             emailRedirectTo: undefined,
           },
         });
+        if (!isCurrent()) return;
         if (signUpError) throw signUpError;
 
         if (data.session) {
@@ -201,13 +212,14 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         email: trimmedEmail,
         password,
       });
+      if (!isCurrent()) return;
       if (signInError) throw signInError;
       toast.success('Signed in', 'Cloud sync is enabled for this device.');
       closeDialog();
     } catch (err) {
-      setError(formatAuthError(err, 'Sign in failed. Try again.'));
+      if (isCurrent()) setError(formatAuthError(err, 'Sign in failed. Try again.'));
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -227,6 +239,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       setError(NOT_CONFIGURED);
       return;
     }
+    const isCurrent = captureGeneration();
 
     try {
       const { error: verifyError } = await client.auth.verifyOtp({
@@ -234,6 +247,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         token,
         type: verifyKind,
       });
+      if (!isCurrent()) return;
       if (verifyError) throw verifyError;
 
       if (verifyKind === 'recovery') {
@@ -253,9 +267,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       );
       closeDialog();
     } catch (err) {
-      setError(formatAuthError(err, 'Verification failed. Check the code and try again.'));
+      if (isCurrent()) {
+        setError(formatAuthError(err, 'Verification failed. Check the code and try again.'));
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -279,16 +295,20 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       setError(NOT_CONFIGURED);
       return;
     }
+    const isCurrent = captureGeneration();
 
     try {
       const { error: updateError } = await client.auth.updateUser({ password });
+      if (!isCurrent()) return;
       if (updateError) throw updateError;
       toast.success('Password updated', 'Your new password is active.');
       closeDialog();
     } catch (err) {
-      setError(formatAuthError(err, 'Could not update your password. Request a new code.'));
+      if (isCurrent()) {
+        setError(formatAuthError(err, 'Could not update your password. Request a new code.'));
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 
@@ -309,6 +329,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       setError(NOT_CONFIGURED);
       return;
     }
+    const isCurrent = captureGeneration();
 
     try {
       if (verifyKind === 'signup') {
@@ -316,6 +337,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
           type: 'signup',
           email: trimmedEmail,
         });
+        if (!isCurrent()) return;
         if (resendError) {
           // Fallback: some projects only re-send via signUp when password is still available.
           if (password) {
@@ -323,6 +345,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
               email: trimmedEmail,
               password,
             });
+            if (!isCurrent()) return;
             if (signUpError) throw resendError;
           } else {
             throw resendError;
@@ -333,9 +356,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
           email: trimmedEmail,
           options: { shouldCreateUser: false },
         });
+        if (!isCurrent()) return;
         if (otpError) throw otpError;
       } else {
         const { error: recoveryError } = await client.auth.resetPasswordForEmail(trimmedEmail);
+        if (!isCurrent()) return;
         if (recoveryError) throw recoveryError;
       }
       setOtpCode('');
@@ -344,9 +369,9 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       );
       toast.success('New code sent', `Check ${trimmedEmail}.`);
     } catch (err) {
-      setError(formatAuthError(err, 'Could not resend the code.'));
+      if (isCurrent()) setError(formatAuthError(err, 'Could not resend the code.'));
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   }
 

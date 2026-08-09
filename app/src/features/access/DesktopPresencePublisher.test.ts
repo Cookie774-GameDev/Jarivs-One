@@ -15,6 +15,8 @@ const snapshot = {
 };
 
 describe('desktop presence heartbeat', () => {
+  const expectedUserId = '11111111-1111-4111-8111-111111111111';
+
   it('publishes immediately, bounds the timer, and marks the device offline on disposal', async () => {
     let timer: (() => void) | undefined;
     const publish = vi.fn().mockResolvedValue(true);
@@ -23,6 +25,7 @@ describe('desktop presence heartbeat', () => {
 
     const dispose = startDesktopPresenceHeartbeat({
       client: { rpc: vi.fn() },
+      expectedUserId,
       collect: vi.fn().mockResolvedValue(snapshot),
       publish,
       markOffline,
@@ -41,8 +44,13 @@ describe('desktop presence heartbeat', () => {
     dispose();
     expect(clearInterval).toHaveBeenCalledWith(7);
     await vi.waitFor(() => {
-      expect(markOffline).toHaveBeenCalledWith(expect.anything(), 'device_12345678');
+      expect(markOffline).toHaveBeenCalledWith(
+        expect.anything(),
+        expectedUserId,
+        'device_12345678',
+      );
     });
+    expect(publish).toHaveBeenCalledWith(expect.anything(), expectedUserId, snapshot);
   });
 
   it('never overlaps a slow presence collection', async () => {
@@ -58,6 +66,7 @@ describe('desktop presence heartbeat', () => {
 
     const dispose = startDesktopPresenceHeartbeat({
       client: { rpc: vi.fn() },
+      expectedUserId,
       collect,
       publish,
       markOffline: vi.fn().mockResolvedValue(true),
@@ -91,6 +100,7 @@ describe('desktop presence heartbeat', () => {
 
     const dispose = startDesktopPresenceHeartbeat({
       client: { rpc: vi.fn() },
+      expectedUserId,
       collect,
       publish,
       markOffline,
@@ -124,6 +134,7 @@ describe('desktop presence heartbeat', () => {
 
     const dispose = startDesktopPresenceHeartbeat({
       client: { rpc: vi.fn() },
+      expectedUserId,
       collect: vi.fn().mockResolvedValue(snapshot),
       publish,
       markOffline,

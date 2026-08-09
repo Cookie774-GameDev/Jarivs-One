@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({
@@ -7,6 +7,9 @@ const auth = vi.hoisted(() => ({
   verifyOtp: vi.fn(),
   updateUser: vi.fn(),
 }));
+const toastSuccess = vi.hoisted(() => vi.fn());
+const toastError = vi.hoisted(() => vi.fn());
+const toastInfo = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/supabase/client', () => ({
   isCloudSyncConfigured: () => true,
@@ -15,9 +18,9 @@ vi.mock('@/lib/supabase/client', () => ({
 
 vi.mock('@/components/ui/toast', () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
+    success: toastSuccess,
+    error: toastError,
+    info: toastInfo,
   },
 }));
 
@@ -28,6 +31,9 @@ describe('SignInDialog password recovery', () => {
     auth.resetPasswordForEmail.mockReset().mockResolvedValue({ data: {}, error: null });
     auth.verifyOtp.mockReset().mockResolvedValue({ data: {}, error: null });
     auth.updateUser.mockReset().mockResolvedValue({ data: {}, error: null });
+    toastSuccess.mockReset();
+    toastError.mockReset();
+    toastInfo.mockReset();
   });
 
   it('verifies the emailed recovery code before accepting a new password', async () => {
@@ -216,6 +222,117 @@ describe('SignInDialog password recovery', () => {
     expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('');
     expect(screen.queryByLabelText('New password')).toBeNull();
     expect(screen.queryByDisplayValue('SecurePass9')).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed recovery-send result from before a controlled close and reopen', async () => {
+    let resolveRecovery: ((value: { data: object; error: null }) => void) | undefined;
+    auth.resetPasswordForEmail.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRecovery = resolve;
+      }),
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <SignInDialog open onOpenChange={onOpenChange} initialMode="recovery" />,
+    );
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'owner@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send recovery code/i }));
+    await waitFor(() => expect(auth.resetPasswordForEmail).toHaveBeenCalledTimes(1));
+
+    rerender(<SignInDialog open={false} onOpenChange={onOpenChange} initialMode="recovery" />);
+    rerender(<SignInDialog open onOpenChange={onOpenChange} initialMode="recovery" />);
+    await act(async () => {
+      resolveRecovery?.({ data: {}, error: null });
+    });
+
+    expect(screen.getByRole('heading', { name: /reset your password/i })).toBeTruthy();
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByLabelText('Digit 1 of 6')).toBeNull();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('ignores delayed recovery verification from before a controlled close and reopen', async () => {
+    let resolveVerify: ((value: { data: object; error: null }) => void) | undefined;
+    auth.verifyOtp.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveVerify = resolve;
+      }),
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <SignInDialog open onOpenChange={onOpenChange} initialMode="recovery" />,
+    );
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'owner@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send recovery code/i }));
+    await screen.findByLabelText('Digit 1 of 6');
+    toastSuccess.mockClear();
+    fireEvent.change(screen.getByLabelText('Digit 1 of 6'), {
+      target: { value: '123456' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /verify recovery code/i }));
+    await waitFor(() => expect(auth.verifyOtp).toHaveBeenCalledTimes(1));
+
+    rerender(<SignInDialog open={false} onOpenChange={onOpenChange} initialMode="recovery" />);
+    rerender(<SignInDialog open onOpenChange={onOpenChange} initialMode="recovery" />);
+    await act(async () => {
+      resolveVerify?.({ data: {}, error: null });
+    });
+
+    expect(screen.getByRole('heading', { name: /reset your password/i })).toBeTruthy();
+    expect(screen.queryByLabelText('New password')).toBeNull();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed password update from before a controlled close and reopen', async () => {
+    let resolveUpdate: ((value: { data: object; error: null }) => void) | undefined;
+    auth.updateUser.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <SignInDialog open onOpenChange={onOpenChange} initialMode="recovery" />,
+    );
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'owner@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send recovery code/i }));
+    await screen.findByLabelText('Digit 1 of 6');
+    fireEvent.change(screen.getByLabelText('Digit 1 of 6'), {
+      target: { value: '123456' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /verify recovery code/i }));
+    await screen.findByLabelText('New password');
+    toastSuccess.mockClear();
+    fireEvent.change(screen.getByLabelText('New password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+    await waitFor(() => expect(auth.updateUser).toHaveBeenCalledTimes(1));
+
+    rerender(<SignInDialog open={false} onOpenChange={onOpenChange} initialMode="recovery" />);
+    rerender(<SignInDialog open onOpenChange={onOpenChange} initialMode="recovery" />);
+    await act(async () => {
+      resolveUpdate?.({ data: {}, error: null });
+    });
+
+    expect(screen.getByRole('heading', { name: /reset your password/i })).toBeTruthy();
+    expect(screen.queryByLabelText('New password')).toBeNull();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

@@ -70,7 +70,12 @@ create policy desktop_presence_owner_select
   to authenticated
   using ((select auth.uid()) is not null and (select auth.uid()) = user_id);
 
+drop function if exists public.publish_desktop_presence(
+  text, text, text, jsonb, jsonb, jsonb, text, jsonb, integer, timestamptz
+);
+
 create or replace function public.publish_desktop_presence(
+  p_expected_user_id uuid,
   p_device_id text,
   p_display_name text,
   p_app_version text,
@@ -98,6 +103,9 @@ declare
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
+  end if;
+  if p_expected_user_id is null or v_user_id <> p_expected_user_id then
+    raise exception 'account changed' using errcode = '42501';
   end if;
 
   if p_device_id is null or p_device_id !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$' then
@@ -226,7 +234,12 @@ begin
 end;
 $$;
 
-create or replace function public.mark_desktop_presence_offline(p_device_id text)
+drop function if exists public.mark_desktop_presence_offline(text);
+
+create or replace function public.mark_desktop_presence_offline(
+  p_expected_user_id uuid,
+  p_device_id text
+)
 returns boolean
 language plpgsql
 security definer
@@ -238,6 +251,9 @@ declare
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
+  end if;
+  if p_expected_user_id is null or v_user_id <> p_expected_user_id then
+    raise exception 'account changed' using errcode = '42501';
   end if;
 
   update public.desktop_presence
@@ -279,14 +295,14 @@ end;
 $$;
 
 revoke all on function public.publish_desktop_presence(
-  text, text, text, jsonb, jsonb, jsonb, text, jsonb, integer, timestamptz
+  uuid, text, text, text, jsonb, jsonb, jsonb, text, jsonb, integer, timestamptz
 ) from public, anon;
 grant execute on function public.publish_desktop_presence(
-  text, text, text, jsonb, jsonb, jsonb, text, jsonb, integer, timestamptz
+  uuid, text, text, text, jsonb, jsonb, jsonb, text, jsonb, integer, timestamptz
 ) to authenticated;
 
-revoke all on function public.mark_desktop_presence_offline(text) from public, anon;
-grant execute on function public.mark_desktop_presence_offline(text) to authenticated;
+revoke all on function public.mark_desktop_presence_offline(uuid, text) from public, anon;
+grant execute on function public.mark_desktop_presence_offline(uuid, text) to authenticated;
 
 revoke all on function public.revoke_desktop_device(text) from public, anon;
 grant execute on function public.revoke_desktop_device(text) to authenticated;

@@ -14,6 +14,7 @@ const SAFE_STATUS = new Set([
   'unknown',
 ]);
 const SAFE_PROVIDER = /^[a-z0-9][a-z0-9._-]{0,39}$/;
+const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface PresenceItemInput {
   readonly id: string;
@@ -117,10 +118,14 @@ export function sanitizeDesktopPresence(input: DesktopPresenceInput): DesktopPre
 
 export async function publishDesktopPresence(
   client: PresenceRpcClient,
+  expectedUserId: string,
   input: DesktopPresenceInput,
 ): Promise<boolean> {
+  const normalizedUserId = expectedUserId.trim();
+  if (!USER_ID.test(normalizedUserId)) throw new Error('Invalid desktop account id.');
   const snapshot = sanitizeDesktopPresence(input);
   const { data, error } = await client.rpc('publish_desktop_presence', {
+    p_expected_user_id: normalizedUserId,
     p_device_id: snapshot.deviceId,
     p_display_name: snapshot.displayName,
     p_app_version: snapshot.appVersion,
@@ -138,10 +143,14 @@ export async function publishDesktopPresence(
 
 export async function markDesktopPresenceOffline(
   client: PresenceRpcClient,
+  expectedUserId: string,
   deviceId: string,
 ): Promise<boolean> {
+  const normalizedUserId = expectedUserId.trim();
+  if (!USER_ID.test(normalizedUserId)) throw new Error('Invalid desktop account id.');
   if (!DEVICE_ID.test(deviceId)) throw new Error('Invalid desktop device id.');
   const { data, error } = await client.rpc('mark_desktop_presence_offline', {
+    p_expected_user_id: normalizedUserId,
     p_device_id: deviceId,
   });
   if (error) throw new Error('Desktop presence is unavailable.');

@@ -47,6 +47,13 @@
 - Bound desktop presence heartbeat work to its captured cloud account. Identity changes invalidate
   delayed collection/publishing and skip stale offline RPC cleanup; the website TTL remains the
   truthful fallback for an old account's last heartbeat.
+- Follow-up review closed two post-invocation races. Every sign-in dialog request now captures a
+  monotonic dialog generation; controlled close/reopen invalidates the generation, so delayed
+  recovery send, code verification, password update, sign-in, sign-up, email-code, and resend
+  continuations cannot alter the new UI, emit a toast, or close it.
+- Presence publish and offline cleanup now send the captured cloud user ID as an explicit RPC
+  precondition. The security-definer functions compare it with `auth.uid()` and raise before any
+  insert or update when authentication changed while the shared client request was in flight.
 
 ## Focused verification
 
@@ -57,6 +64,9 @@
   stale/missing/error subscription authority.
 - `node --test tests/config_auth_templates.test.mjs tests/desktop_presence_migration.test.mjs`
   from `supabase` — 6 tests passed.
+- Follow-up strict RED reproduced all three dialog generation leaks and both missing SQL
+  expected-account contracts. Focused GREEN verification passes 20/20 frontend tests and 4/4
+  desktop-presence migration contracts.
 - Prettier check on every touched supported source file — passed.
 - `git diff --check` — passed.
 - Owned-path scope scan — passed.
