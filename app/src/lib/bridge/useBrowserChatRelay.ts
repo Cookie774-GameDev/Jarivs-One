@@ -47,10 +47,9 @@ export async function requestBrowserChatRelayTicket(
 ): Promise<string> {
   const value = cloudUrl.trim().replace(/\/+$/u, '');
   const base = new URL(value);
+  const loopback = base.hostname === '127.0.0.1' || base.hostname === 'localhost';
   if (
-    (base.protocol !== 'https:' &&
-      base.hostname !== '127.0.0.1' &&
-      base.hostname !== 'localhost') ||
+    (base.protocol !== 'https:' && !(base.protocol === 'http:' && loopback)) ||
     base.username ||
     base.password ||
     (base.pathname !== '' && base.pathname !== '/')
@@ -73,7 +72,22 @@ export async function requestBrowserChatRelayTicket(
     throw new Error('The VibeSpace MCP relay returned an invalid ticket.');
   }
   const relay = new URL(payload.url);
-  if (relay.host !== base.host || relay.pathname !== '/browser-chat/bridge') {
+  const expectedProtocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  const queryEntries = [...relay.searchParams.entries()];
+  const ticket = queryEntries[0]?.[1] ?? '';
+  if (
+    relay.protocol !== expectedProtocol ||
+    relay.host !== base.host ||
+    relay.username ||
+    relay.password ||
+    relay.pathname !== '/browser-chat/bridge' ||
+    relay.hash ||
+    queryEntries.length !== 1 ||
+    queryEntries[0]?.[0] !== 'ticket' ||
+    !ticket ||
+    ticket.length > 2_048 ||
+    /[\s\u0000-\u001f\u007f]/u.test(ticket)
+  ) {
     throw new Error('The VibeSpace MCP relay returned an invalid ticket.');
   }
   return relay.toString();

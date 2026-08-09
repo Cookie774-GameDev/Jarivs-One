@@ -58,12 +58,48 @@ describe('Browser Chat relay lifecycle', () => {
     );
   });
 
-  it('rejects cross-origin or unencrypted relay tickets', async () => {
+  it('rejects a non-HTTP loopback gateway before exchanging a token', async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({
+        url: 'ws://localhost/browser-chat/bridge?ticket=opaque',
+      }),
+    );
+    await expect(
+      requestBrowserChatRelayTicket('ftp://localhost', 'desktop-jwt', fetcher),
+    ).rejects.toThrow(/invalid/i);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('rejects cross-origin relay tickets', async () => {
     const crossOrigin = vi.fn(async () =>
       Response.json({ url: 'wss://attacker.test/browser-chat/bridge?ticket=opaque' }),
     );
     await expect(
       requestBrowserChatRelayTicket('https://mcp.vibespace.test', 'desktop-jwt', crossOrigin),
     ).rejects.toThrow(/invalid ticket/i);
+  });
+
+  it('rejects a same-origin plaintext relay downgrade from an HTTPS gateway', async () => {
+    const plaintext = vi.fn(async () =>
+      Response.json({ url: 'ws://mcp.vibespace.test/browser-chat/bridge?ticket=opaque' }),
+    );
+    await expect(
+      requestBrowserChatRelayTicket('https://mcp.vibespace.test', 'desktop-jwt', plaintext),
+    ).rejects.toThrow(/invalid ticket/i);
+  });
+
+  it('rejects a relay URL without exactly one opaque one-time ticket', async () => {
+    for (const url of [
+      'wss://mcp.vibespace.test/browser-chat/bridge',
+      'wss://mcp.vibespace.test/browser-chat/bridge?ticket=first&ticket=second',
+      'wss://mcp.vibespace.test/browser-chat/bridge?ticket=opaque&extra=value',
+      'wss://mcp.vibespace.test/browser-chat/bridge?ticket=opaque#fragment',
+      'wss://user:pass@mcp.vibespace.test/browser-chat/bridge?ticket=opaque',
+    ]) {
+      const malformedTicket = vi.fn(async () => Response.json({ url }));
+      await expect(
+        requestBrowserChatRelayTicket('https://mcp.vibespace.test', 'desktop-jwt', malformedTicket),
+      ).rejects.toThrow(/invalid ticket/i);
+    }
   });
 });
