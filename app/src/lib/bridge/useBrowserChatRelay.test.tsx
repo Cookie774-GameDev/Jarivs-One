@@ -1,13 +1,110 @@
-import { describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   requestBrowserChatRelayTicket,
   resolveBrowserChatCloudUrl,
   resolveBrowserChatMcpUrl,
   resolveBrowserChatRelayUrl,
+  useBrowserChatRelay,
 } from './useBrowserChatRelay';
 
+const relayMocks = vi.hoisted(() => {
+  let authListener:
+    | ((event: string, session: { access_token?: string } | null) => void)
+    | undefined;
+  const unsubscribe = vi.fn();
+  const getSession = vi.fn(
+    async (): Promise<{ data: { session: { access_token: string } | null } }> => ({
+      data: { session: { access_token: 'desktop-jwt' } },
+    }),
+  );
+  const onAuthStateChange = vi.fn(
+    (listener: (event: string, session: { access_token?: string } | null) => void) => {
+      authListener = listener;
+      return { data: { subscription: { unsubscribe } } };
+    },
+  );
+  const clients: Array<{
+    options: {
+      resolveUrl?: (jwt: string) => Promise<string>;
+      onStatus?: (status: 'connecting' | 'connected' | 'error') => void;
+    };
+    resolvedUrls: string[];
+    start: ReturnType<typeof vi.fn>;
+  }> = [];
+  const getBrowserChatBridgeClient = vi.fn(
+    (options: {
+      resolveUrl?: (jwt: string) => Promise<string>;
+      onStatus?: (status: 'connecting' | 'connected' | 'error') => void;
+    }) => {
+      const resolvedUrls: string[] = [];
+      const client = {
+        setJwt: vi.fn(),
+        start: vi.fn(async () => {
+          options.onStatus?.('connecting');
+          if (options.resolveUrl) {
+            resolvedUrls.push(await options.resolveUrl('desktop-jwt'));
+          }
+          options.onStatus?.('connected');
+        }),
+      };
+      clients.push({ options, resolvedUrls, start: client.start });
+      return client;
+    },
+  );
+
+  return {
+    clients,
+    emitAuth(event: string, session: { access_token?: string } | null) {
+      authListener?.(event, session);
+    },
+    getBrowserChatBridgeClient,
+    getSession,
+    onAuthStateChange,
+    resetBrowserChatBridgeClient: vi.fn(),
+    reset() {
+      authListener = undefined;
+      clients.length = 0;
+      unsubscribe.mockReset();
+      getSession.mockClear();
+      onAuthStateChange.mockClear();
+      getBrowserChatBridgeClient.mockClear();
+      this.resetBrowserChatBridgeClient.mockClear();
+    },
+  };
+});
+
+vi.mock('@/lib/supabase/env', () => ({
+  isSupabaseConfigured: () => true,
+}));
+
+vi.mock('@/lib/supabase/client', () => ({
+  getSupabaseClient: () => ({
+    auth: {
+      getSession: relayMocks.getSession,
+      onAuthStateChange: relayMocks.onAuthStateChange,
+    },
+  }),
+}));
+
+vi.mock('./BridgeClient', () => ({
+  getBrowserChatBridgeClient: relayMocks.getBrowserChatBridgeClient,
+  resetBrowserChatBridgeClient: relayMocks.resetBrowserChatBridgeClient,
+}));
+
 describe('Browser Chat relay lifecycle', () => {
+  beforeEach(() => {
+    relayMocks.reset();
+    vi.stubEnv('VITE_VIBESPACE_MCP_URL', 'https://vibespace-mcp.combatonline02.workers.dev');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
   it('uses a dedicated encrypted endpoint rather than the Phone/Voice bridge', () => {
     expect(resolveBrowserChatRelayUrl('https://cloud.vibespace.test/')).toBe(
       'wss://cloud.vibespace.test/browser-chat/bridge',
@@ -101,5 +198,167 @@ describe('Browser Chat relay lifecycle', () => {
         requestBrowserChatRelayTicket('https://mcp.vibespace.test', 'desktop-jwt', malformedTicket),
       ).rejects.toThrow(/invalid ticket/i);
     }
+  });
+
+  it('bounds a relay ticket request with an aborting timeout', async () => {
+    vi.useFakeTimers();
+    let ticketSignal: AbortSignal | undefined;
+    const fetcher = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          ticketSignal = init?.signal ?? undefined;
+          ticketSignal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+
+    const request = requestBrowserChatRelayTicket(
+      'https://mcp.vibespace.test',
+      'desktop-jwt',
+      fetcher,
+    );
+    const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(ticketSignal?.aborted).toBe(true);
+    await rejection;
+  });
+
+  it('resolves a fresh one-use ticket for every connect and reconnect', async () => {
+    let issued = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        issued += 1;
+        return Response.json({
+          url: `wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=opaque-${issued}`,
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useBrowserChatRelay(true));
+    await waitFor(() => expect(result.current).toBe('connected'));
+    const bridge = relayMocks.clients.at(-1);
+    expect(bridge?.resolvedUrls).toEqual([
+      'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=opaque-1',
+    ]);
+
+    await expect(bridge?.options.resolveUrl?.('desktop-jwt')).resolves.toBe(
+      'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=opaque-2',
+    );
+    expect(issued).toBe(2);
+  });
+
+  it('aborts a delayed initial relay ticket and ignores its completion after sign-out', async () => {
+    relayMocks.getSession.mockResolvedValueOnce({ data: { session: null } });
+    let resolveTicket: ((response: Response) => void) | undefined;
+    let ticketSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((resolve) => {
+            ticketSignal = init?.signal ?? undefined;
+            resolveTicket = resolve;
+          }),
+      ),
+    );
+
+    const { result } = renderHook(() => useBrowserChatRelay(true));
+    await waitFor(() => expect(relayMocks.onAuthStateChange).toHaveBeenCalledOnce());
+    act(() => relayMocks.emitAuth('SIGNED_IN', { access_token: 'desktop-jwt' }));
+    await waitFor(() => {
+      expect(ticketSignal).toBeDefined();
+    });
+    expect(relayMocks.clients).toHaveLength(1);
+
+    act(() => relayMocks.emitAuth('SIGNED_OUT', null));
+    expect(ticketSignal?.aborted).toBe(true);
+    expect(result.current).toBe('disabled');
+
+    await act(async () => {
+      resolveTicket?.(
+        Response.json({
+          url: 'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=late',
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(result.current).toBe('disabled');
+    expect(relayMocks.clients).toHaveLength(1);
+  });
+
+  it('aborts a reconnect ticket and ignores its late socket status after sign-out', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          url: 'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=initial',
+        }),
+      ),
+    );
+    const { result } = renderHook(() => useBrowserChatRelay(true));
+    await waitFor(() => expect(result.current).toBe('connected'));
+    const bridge = relayMocks.clients.at(-1);
+    const staleStatus = bridge?.options.onStatus;
+
+    let resolveReconnect: ((response: Response) => void) | undefined;
+    let reconnectSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((resolve) => {
+            reconnectSignal = init?.signal ?? undefined;
+            resolveReconnect = resolve;
+          }),
+      ),
+    );
+    const reconnect = bridge?.options.resolveUrl?.('desktop-jwt');
+    expect(reconnect).toBeDefined();
+    const rejectedReconnect = expect(reconnect).rejects.toMatchObject({ name: 'AbortError' });
+    await waitFor(() => expect(reconnectSignal).toBeDefined());
+
+    act(() => relayMocks.emitAuth('SIGNED_OUT', null));
+    expect(reconnectSignal?.aborted).toBe(true);
+    expect(result.current).toBe('disabled');
+    resolveReconnect?.(
+      Response.json({
+        url: 'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=late',
+      }),
+    );
+    await rejectedReconnect;
+    act(() => staleStatus?.('connected'));
+
+    expect(result.current).toBe('disabled');
+    expect(bridge?.resolvedUrls).toHaveLength(1);
+  });
+
+  it('ignores late bridge status callbacks after cleanup disables the relay', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          url: 'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=opaque',
+        }),
+      ),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) => useBrowserChatRelay(enabled),
+      { initialProps: { enabled: true } },
+    );
+    await waitFor(() => expect(result.current).toBe('connected'));
+    const staleStatus = relayMocks.clients.at(-1)?.options.onStatus;
+
+    rerender({ enabled: false });
+    expect(result.current).toBe('disabled');
+    act(() => staleStatus?.('connected'));
+
+    expect(result.current).toBe('disabled');
   });
 });

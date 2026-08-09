@@ -110,3 +110,39 @@ Both changes were implemented with observed RED/GREEN regression cycles.
 - Next action: `/root` reviews and integrates this bounded diff, runs full TypeScript/Worker/Rust
   gates from the complete integration worktree, and performs the recorded post-integration native
   smoke without provider data or paid model use.
+
+## 2026-08-09 cross-review follow-up: relay auth cancellation
+
+The Browser Chat relay hook now subscribes to Supabase auth changes before reading the initial
+session and owns a generation-scoped abort controller for each authenticated start. A sign-out,
+missing session, replacement token, disabled transition, or effect cleanup invalidates the prior
+generation, aborts its ticket request, resets the corresponding Browser Chat bridge singleton, and
+ignores any subsequent completion or status callback from that generation.
+
+Each `BridgeClient` connect and reconnect resolves a fresh one-use relay ticket through the same
+auth-generation-scoped resolver. The generation's controller remains alive after the initial
+connection so sign-out, disable, token replacement, or cleanup also aborts a reconnect ticket.
+`resetBrowserChatBridgeClient()` synchronously runs the old client's stop path, while the resolver's
+post-await abort checks prevent an abort-ignoring fetch from returning a late usable URL. Ticket
+requests have a 10-second aborting timeout while retaining the prior gateway protocol, same-origin,
+exact path, and single opaque ticket validation.
+
+Regression evidence:
+
+- RED: the original hook did not expose an abort signal while a ticket was pending because the auth
+  subscription was installed after `start()`; the cleanup test also observed an old `connected`
+  callback replacing `disabled`.
+- A parent review then verified that pre-acquiring one fixed ticket would break reconnects because
+  the relay enforces one-use, 60-second tickets. RED coverage observed no per-connect resolver and
+  no second ticket. GREEN coverage now proves distinct initial/reconnect ticket URLs, aborts a
+  delayed reconnect ticket on sign-out, and rejects its late completion/status.
+- GREEN: `useBrowserChatRelay.test.tsx` passes 14/14, covering the 10-second timeout, fresh one-use
+  reconnect tickets, initial and reconnect sign-out aborts, and ignored post-cleanup status.
+- Timeout mutation check: changing the production bound from 10 seconds to 20 seconds made the
+  focused timeout test fail (`expected false to be true`); restoring 10 seconds returned it green.
+- Fresh changed gate: relay plus Quick Launch passes 2 files / 16 tests.
+- Fresh Worker 5 focused gate: 27 files / 284 tests pass. The output-router fault-isolation test
+  intentionally emits its established diagnostic while passing.
+- Full app TypeScript remains `BLOCKED_ENVIRONMENT` only by the previously documented sparse
+  worktree omissions. After correcting the new test fixture's nullable-session type, no diagnostic
+  references either changed relay file.
