@@ -1,18 +1,20 @@
 import * as React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Search, MessageSquare } from 'lucide-react';
-import { db, projectRepo } from '@/lib/db';
+import { Search, MessageSquare, Trash2 } from 'lucide-react';
+import { chatRepo, db, projectRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { Avatar } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 import { cn, formatRelative } from '@/lib/utils';
 import type { Project } from '@/lib/db/schema';
 import type { Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
+import { deleteHistoryChats, historyDeletionFeedback } from './historyDeletion';
 
 export interface HistoryListProps {
   selectedChatId: ChatId | null;
-  onSelectChat: (id: ChatId) => void;
+  onSelectChat: (id: ChatId | null) => void;
 }
 
 type ProjectFilter = 'all' | 'active';
@@ -39,6 +41,7 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
 
   const [query, setQuery] = React.useState('');
   const [projectFilter, setProjectFilter] = React.useState<ProjectFilter>('all');
+  const [deleting, setDeleting] = React.useState(false);
 
   // Live chat list, scoped to workspace, sorted newest-first, capped.
   const chats = useLiveQuery(
@@ -122,15 +125,63 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
     return rows;
   }, [chats, query, projectFilter, activeProjectId, messageMatches]);
 
+  const removeChats = async (chatIds: readonly ChatId[]) => {
+    if (deleting || chatIds.length === 0 || !workspaceId) return;
+    const expectedWorkspaceId = String(workspaceId);
+    setDeleting(true);
+    try {
+      const result = await deleteHistoryChats(chatIds.map(String), {
+        expectedWorkspaceId,
+        getActiveWorkspaceId: () => {
+          const active = useAuthStore.getState().workspaceId;
+          return active ? String(active) : null;
+        },
+        read: (chatId) => chatRepo.getById(chatId as ChatId),
+        remove: (chatId) => chatRepo.delete(chatId as ChatId),
+      });
+      const feedback = historyDeletionFeedback(
+        result,
+        selectedChatId ? String(selectedChatId) : null,
+      );
+      if (feedback.clearSelection) onSelectChat(null);
+      toast[feedback.tone](feedback.title, feedback.message);
+    } catch (error) {
+      toast.error(
+        'Could not delete history',
+        error instanceof Error ? error.message : 'The operation failed safely.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <aside
       aria-label="Past chats"
       data-sakura-surface="history-list"
       className="flex w-[320px] shrink-0 flex-col border-r border-border bg-panel"
     >
-      <header className="border-b border-border px-4 py-3">
-        <h2 className="font-display text-page-title text-foreground">History</h2>
-        <p className="eyebrow mt-0.5">Past chats · replay</p>
+      <header className="flex items-start gap-2 border-b border-border px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-page-title text-foreground">History</h2>
+          <p className="eyebrow mt-0.5">Past chats · replay</p>
+        </div>
+        <button
+          type="button"
+          disabled={deleting || filtered.length === 0}
+          onClick={() => {
+            if (
+              !window.confirm(
+                `Delete ${filtered.length} visible chat${filtered.length === 1 ? '' : 's'}?`,
+              )
+            )
+              return;
+            void removeChats(filtered.map((chat) => chat.id));
+          }}
+          className="rounded px-2 py-1 text-metadata text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
+        >
+          Clear visible
+        </button>
       </header>
 
       <div className="border-b border-border px-3 py-2">
@@ -183,13 +234,16 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
               const selected =
                 (selectedChatId as unknown as string) === (chat.id as unknown as string);
               return (
-                <li key={chat.id as unknown as string}>
+                <li
+                  key={chat.id as unknown as string}
+                  className="group flex items-start gap-1 px-1"
+                >
                   <button
                     type="button"
                     onClick={() => onSelectChat(chat.id)}
                     aria-current={selected ? 'true' : undefined}
                     className={cn(
-                      'flex w-full items-start gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
+                      'flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
                       'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                       selected &&
                         'bg-paper ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:ring-0',
@@ -213,6 +267,18 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                         />
                       </div>
                     </div>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    aria-label={`Delete ${chat.title || 'Untitled chat'}`}
+                    onClick={() => {
+                      if (!window.confirm(`Delete ${chat.title || 'Untitled chat'}?`)) return;
+                      void removeChats([chat.id]);
+                    }}
+                    className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-30"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                 </li>
               );

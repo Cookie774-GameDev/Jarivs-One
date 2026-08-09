@@ -249,6 +249,22 @@ export function activateWorkspaceFile(projectId: ProjectId | null, path: string)
   );
 }
 
+export function renameWorkspaceFile(
+  projectId: ProjectId | null,
+  path: string,
+  newPath: string,
+): boolean {
+  const current = getFileWorkspaceState(projectId);
+  if (!current.tabs.some((tab) => tab.path === path)) return false;
+  if (current.tabs.some((tab) => tab.path === newPath)) return false;
+  update(projectId, (state) => ({
+    ...state,
+    tabs: state.tabs.map((tab) => (tab.path === path ? { ...tab, path: newPath } : tab)),
+    activePath: state.activePath === path ? newPath : state.activePath,
+  }));
+  return true;
+}
+
 export function closeWorkspaceFile(projectId: ProjectId | null, path: string): void {
   update(projectId, (current) => {
     const index = current.tabs.findIndex((tab) => tab.path === path);

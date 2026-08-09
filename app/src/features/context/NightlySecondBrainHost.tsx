@@ -1,20 +1,41 @@
 import { useEffect } from 'react';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { useAuthStore } from '@/stores/auth';
 import { NightlySecondBrainScheduler } from './nightlySecondBrainScheduler';
 import { runNightlySecondBrain } from './nightlySecondBrainRuntime';
-import { useNightlySecondBrainStore } from './nightlySecondBrainStore';
+import {
+  getNightlySecondBrainScope,
+  nightlySecondBrainScopeKey,
+  useNightlySecondBrainStore,
+} from './nightlySecondBrainStore';
 
 export function NightlySecondBrainHost() {
+  const cloudSession = useAuthStore((state) => state.cloudSession);
+  const localUserId = useAuthStore((state) => state.localUserId);
+  const workspaceId = useAuthStore((state) => state.workspaceId);
+  const projectId = useAuthStore((state) => state.projectId);
+  const identity = resolveAccountIdentity({ cloudSession, localUserId });
+  const scopeKey =
+    identity && workspaceId
+      ? nightlySecondBrainScopeKey({
+          accountId: identity.accountId,
+          workspaceId: String(workspaceId),
+          projectId: projectId ? String(projectId) : null,
+        })
+      : '';
+
   useEffect(() => {
+    if (!scopeKey) return;
     const scheduler = new NightlySecondBrainScheduler({
       now: () => new Date(),
       lastScheduledFor: () =>
-        useNightlySecondBrainStore
-          .getState()
-          .runs.reduce<
-            number | undefined
-          >((latest, run) => (latest === undefined || run.scheduledFor > latest ? run.scheduledFor : latest), undefined),
+        getNightlySecondBrainScope(scopeKey).runs.reduce<number | undefined>(
+          (latest, run) =>
+            latest === undefined || run.scheduledFor > latest ? run.scheduledFor : latest,
+          undefined,
+        ),
       run: async (scheduledFor) => {
-        const config = useNightlySecondBrainStore.getState().config;
+        const config = getNightlySecondBrainScope(scopeKey).config;
         if (!config.enabled || !config.model) return;
         await runNightlySecondBrain(scheduledFor);
       },
@@ -26,7 +47,7 @@ export function NightlySecondBrainHost() {
     };
     scheduler.start();
     const unsubscribe = useNightlySecondBrainStore.subscribe((state, previous) => {
-      if (state.config !== previous.config) scheduler.resume();
+      if (state.scopes[scopeKey]?.config !== previous.scopes[scopeKey]?.config) scheduler.resume();
     });
     document.addEventListener('visibilitychange', resume);
     window.addEventListener('focus', resume);
@@ -36,6 +57,6 @@ export function NightlySecondBrainHost() {
       unsubscribe();
       scheduler.stop();
     };
-  }, []);
+  }, [scopeKey]);
   return null;
 }

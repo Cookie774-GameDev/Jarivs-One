@@ -58,6 +58,10 @@ export interface ContextPersistenceService {
 export interface ContextTreeSaveOptions {
   mapId?: string;
   name?: string;
+  /** Update an already persisted map; never synthesize a replacement if it disappeared. */
+  requireExisting?: boolean;
+  /** Optional optimistic guard for callers updating a previously reviewed map. */
+  expectedUpdatedAt?: number;
   source?: {
     kind: 'local_folder' | 'local_file' | 'github_repository';
     label: string;
@@ -404,6 +408,15 @@ export function createContextPersistenceService(
       if (existing && existing.map.projectId !== tree.projectId) {
         fail('map_scope_conflict');
       }
+      if (options.requireExisting && !existing) {
+        fail('map_missing');
+      }
+      if (
+        options.expectedUpdatedAt !== undefined &&
+        existing?.map.updatedAt !== options.expectedUpdatedAt
+      ) {
+        fail('map_changed');
+      }
       if (
         !existing &&
         current.maps.filter((map) => map.status === 'active').length >= MAX_ACTIVE_MAPS
@@ -646,6 +659,51 @@ export async function ensureContextPersistence(
     productionInitializers.delete(key);
     throw error;
   }
+}
+
+export interface CapturedContextPersistenceScope {
+  readonly accountId: string;
+  readonly projectId: string | null;
+  load(): Promise<ContextPersistenceState>;
+  saveExistingTree(
+    tree: ProjectContextTree,
+    options: ContextTreeSaveOptions & { mapId: string; expectedUpdatedAt: number },
+  ): Promise<ContextPersistenceState>;
+}
+
+/**
+ * Capture an already authenticated Context persistence capability. Normal
+ * reads/writes still verify the active UI scope in their caller; the bound
+ * methods retain the original account solely so a partially applied batch can
+ * compensate safely if the UI account changes between changes.
+ */
+export async function captureContextPersistenceScope(
+  accountId: string,
+  projectId: string | null,
+): Promise<CapturedContextPersistenceScope> {
+  if (activeIdentity() !== accountId) fail('identity_changed');
+  const initialized = await ensureContextPersistence(projectId);
+  if (initialized.accountId !== accountId || initialized.projectId !== projectId) {
+    fail('identity_changed');
+  }
+  assertActiveIdentity(accountId);
+  return Object.freeze({
+    accountId,
+    projectId,
+    load: () => getProductionService().load(accountId, projectId),
+    saveExistingTree: async (
+      tree: ProjectContextTree,
+      options: ContextTreeSaveOptions & { mapId: string; expectedUpdatedAt: number },
+    ) => {
+      if (tree.projectId !== projectId) fail('identity_changed');
+      const saved = await getProductionService().saveTree(accountId, tree, {
+        ...options,
+        requireExisting: true,
+      });
+      await queuePersistedMapMetadataSafely(accountId, options.mapId);
+      return saved;
+    },
+  });
 }
 
 export async function loadPersistedContextMaps(

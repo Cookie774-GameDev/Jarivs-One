@@ -31,6 +31,8 @@ export interface SecondBrainSource {
 export interface SecondBrainChange {
   id: string;
   target: SecondBrainTarget;
+  /** Immutable Context Map identity captured when this change was proposed. */
+  targetMapId?: string;
   path: string;
   before: string;
   after: string;
@@ -73,6 +75,10 @@ export const DEFAULT_SECOND_BRAIN_CONFIG: SecondBrainConfig = Object.freeze({
   allowPrivateDataToCloud: false,
   sources: Object.freeze({ chat: true, terminal: true, project: true, context: true }),
 });
+
+export function manualSecondBrainScheduledFor(nowMs = Date.now()): number {
+  return Math.floor(nowMs / 60_000) * 60_000;
+}
 
 export function nextNightlySecondBrainRun(now: Date): Date {
   const next = new Date(now);
