@@ -33,4 +33,19 @@ describe('NightlySecondBrainScheduler', () => {
     expect(run).not.toHaveBeenCalled();
     scheduler.stop();
   });
+
+  it('continues scheduling after a run rejects', async () => {
+    const setTimer = vi.fn().mockReturnValue(11);
+    const scheduler = new NightlySecondBrainScheduler({
+      now: () => new Date(2026, 7, 2, 8),
+      lastScheduledFor: () => new Date(2026, 7, 1, 2).getTime(),
+      run: vi.fn().mockRejectedValue(new Error('temporary failure')),
+      setTimer,
+      clearTimer: vi.fn(),
+    });
+
+    scheduler.start();
+    await vi.waitFor(() => expect(setTimer).toHaveBeenCalledTimes(1));
+    scheduler.stop();
+  });
 });

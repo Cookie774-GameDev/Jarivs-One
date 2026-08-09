@@ -315,6 +315,15 @@ impl StrictProjectRoot {
         dir.open_with(name_path, &options)
             .map_err(|error| map_cap_open_error(&dir, name_path, error))
     }
+
+    fn file_parent_and_name(&self, path: &str) -> Result<(Dir, PathBuf), String> {
+        let relative = self.relative(path)?;
+        let name = relative
+            .file_name()
+            .ok_or_else(|| "not_a_file".to_string())?;
+        let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+        Ok((self.open_dir(parent)?, PathBuf::from(name)))
+    }
 }
 
 fn canonical_root(root: Option<&str>) -> Result<Option<PathBuf>, String> {
@@ -710,6 +719,79 @@ pub fn fs_create_dir_all(path: String, root: Option<String>) -> Result<(), Strin
     std::fs::create_dir_all(&p).map_err(|e| format!("io: {}", e))?;
     let canonical = std::fs::canonicalize(&p).map_err(|e| format!("io: {}", e))?;
     ensure_inside_root(&canonical, canonical_root.as_ref())
+}
+
+#[tauri::command]
+pub fn fs_rename_file(path: String, new_path: String, root: Option<String>) -> Result<(), String> {
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let (source_dir, source_name) = strict_root.file_parent_and_name(&path)?;
+    let (destination_dir, destination_name) = strict_root.file_parent_and_name(&new_path)?;
+
+    if cap_entry_is_link(&source_dir, &source_name) {
+        return Err("symlink_blocked".to_string());
+    }
+    let source_metadata = source_dir
+        .symlink_metadata(&source_name)
+        .map_err(|error| map_cap_open_error(&source_dir, &source_name, error))?;
+    if !source_metadata.is_file() {
+        return Err("not_a_file".to_string());
+    }
+
+    match destination_dir.symlink_metadata(&destination_name) {
+        Ok(_) => return Err("already_exists".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("io: {error}")),
+    }
+
+    // A hard-link-first move gives the destination create-new semantics: an
+    // existing file is never overwritten, even if it appears after the check
+    // above. Both paths are capability-relative to the already opened root.
+    source_dir
+        .hard_link(&source_name, &destination_dir, &destination_name)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "already_exists".to_string()
+            } else {
+                format!("io: {error}")
+            }
+        })?;
+
+    if cap_entry_is_link(&destination_dir, &destination_name) {
+        let _ = destination_dir.remove_file(&destination_name);
+        return Err("symlink_blocked".to_string());
+    }
+
+    if let Err(error) = source_dir.remove_file(&source_name) {
+        let _ = destination_dir.remove_file(&destination_name);
+        return Err(if error.kind() == std::io::ErrorKind::NotFound {
+            "not_found".to_string()
+        } else {
+            format!("io: {error}")
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fs_delete_file(path: String, root: Option<String>) -> Result<(), String> {
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let (parent, name) = strict_root.file_parent_and_name(&path)?;
+    if cap_entry_is_link(&parent, &name) {
+        return Err("symlink_blocked".to_string());
+    }
+    let metadata = parent
+        .symlink_metadata(&name)
+        .map_err(|error| map_cap_open_error(&parent, &name, error))?;
+    if !metadata.is_file() {
+        return Err("not_a_file".to_string());
+    }
+    parent.remove_file(&name).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "not_found".to_string()
+        } else {
+            format!("io: {error}")
+        }
+    })
 }
 
 #[cfg(test)]
@@ -1140,6 +1222,116 @@ mod tests {
             fs_create_dir_all(collision.to_string_lossy().to_string(), Some(root_text)),
             Err("not_a_dir".to_string())
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn renames_and_deletes_regular_files_without_overwriting() {
+        let root = test_root("file-mutations");
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        let source = root.join("notes.md");
+        let renamed = root.join("nested").join("renamed.md");
+        let collision = root.join("collision.md");
+        std::fs::write(&source, b"private test content").unwrap();
+        std::fs::write(&collision, b"keep").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+
+        fs_rename_file(
+            source.to_string_lossy().to_string(),
+            renamed.to_string_lossy().to_string(),
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert!(!source.exists());
+        assert_eq!(
+            std::fs::read_to_string(&renamed).unwrap(),
+            "private test content"
+        );
+        assert_eq!(
+            fs_rename_file(
+                renamed.to_string_lossy().to_string(),
+                collision.to_string_lossy().to_string(),
+                Some(root_text.clone()),
+            ),
+            Err("already_exists".to_string())
+        );
+        assert_eq!(std::fs::read_to_string(&collision).unwrap(), "keep");
+
+        fs_delete_file(
+            renamed.to_string_lossy().to_string(),
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert!(!renamed.exists());
+        assert_eq!(
+            fs_delete_file(renamed.to_string_lossy().to_string(), Some(root_text)),
+            Err("not_found".to_string())
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn file_mutations_require_an_explicit_root_and_reject_outside_paths() {
+        let root = test_root("mutation-root");
+        let outside = test_root("mutation-outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let inside = root.join("inside.md");
+        let outside_file = outside.join("outside.md");
+        std::fs::write(&inside, b"inside").unwrap();
+        std::fs::write(&outside_file, b"outside").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+
+        assert_eq!(
+            fs_delete_file(inside.to_string_lossy().to_string(), None),
+            Err("outside_root".to_string())
+        );
+        assert_eq!(
+            fs_delete_file(
+                outside_file.to_string_lossy().to_string(),
+                Some(root_text.clone()),
+            ),
+            Err("outside_root".to_string())
+        );
+        assert_eq!(
+            fs_rename_file(
+                inside.to_string_lossy().to_string(),
+                outside.join("renamed.md").to_string_lossy().to_string(),
+                Some(root_text),
+            ),
+            Err("outside_root".to_string())
+        );
+        assert!(inside.exists());
+        assert!(outside_file.exists());
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_mutations_reject_symlink_sources() {
+        let root = test_root("mutation-symlink");
+        std::fs::create_dir_all(&root).unwrap();
+        let real = root.join("real.md");
+        let link = root.join("linked.md");
+        std::fs::write(&real, b"real").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let root_text = root.to_string_lossy().to_string();
+
+        assert_eq!(
+            fs_delete_file(link.to_string_lossy().to_string(), Some(root_text.clone())),
+            Err("symlink_blocked".to_string())
+        );
+        assert_eq!(
+            fs_rename_file(
+                link.to_string_lossy().to_string(),
+                root.join("renamed.md").to_string_lossy().to_string(),
+                Some(root_text),
+            ),
+            Err("symlink_blocked".to_string())
+        );
+        assert!(real.exists());
+        assert!(link.exists());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

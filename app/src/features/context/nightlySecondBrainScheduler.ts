@@ -52,6 +52,10 @@ export class NightlySecondBrainScheduler {
       this.running = true;
       try {
         await this.ports.run(mostRecentNightlySecondBrainRun(now).getTime());
+      } catch {
+        // The runtime records its own bounded failure state. A scheduler-level
+        // failure must not strand the canonical timer for the rest of the app
+        // session.
       } finally {
         this.running = false;
       }

@@ -8,11 +8,13 @@ import {
   FolderOpen,
   Loader2,
   MessageSquare,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react';
 import { Button, Input, Textarea, toast } from '@/components/ui';
@@ -23,9 +25,11 @@ import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import type { ProjectId } from '@/types';
 import {
   createTextFile,
+  deleteProjectFile,
   describeFsError,
   listDirectory,
   readTextFile,
+  renameProjectFile,
   writeTextFile,
   type FsEntry,
 } from '@/lib/fs';
@@ -51,6 +55,7 @@ import {
   openWorkspaceFile,
   patchWorkspaceTab,
   reconcileWorkspaceFile,
+  renameWorkspaceFile,
   setAskPanelCollapsed,
   setAskPanelDefault,
   setFilesSidebarWidth,
@@ -71,6 +76,12 @@ function filesMiniSystemPrompt(assistantName: string): string {
     'Keep replies short, clear, and to the point — prefer tight bullet lines over long essays.',
     'Stay focused on the attached selection and the user question. Do not invent files that are not shown.',
   ].join(' ');
+}
+
+function workspaceFilePathKey(path: string): string {
+  const windowsStyle = path.includes('\\') || /^[A-Za-z]:\//u.test(path);
+  const normalized = windowsStyle ? path.replace(/\//gu, '\\') : path;
+  return windowsStyle ? normalized.toLocaleLowerCase('en-US') : normalized;
 }
 
 const MAX_TREE_CHILDREN = 500;
@@ -214,6 +225,7 @@ export function FilesPage() {
   const [entries, setEntries] = React.useState<FsEntry[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [newFileName, setNewFileName] = React.useState('');
+  const [fileActionBusy, setFileActionBusy] = React.useState(false);
   const [miniBusyPath, setMiniBusyPath] = React.useState<string | null>(null);
   const [selPopup, setSelPopup] = React.useState<{
     text: string;
@@ -352,6 +364,74 @@ export function FilesPage() {
     setNewFileName('');
     if (rootDir) await loadRoot(rootDir);
     await openFile(path);
+  };
+
+  const renameFile = async () => {
+    if (!selectedPath || !rootDir || fileActionBusy) return;
+    if (dirty) {
+      toast.warning('Save before renaming', 'Unsaved changes remain open and were not discarded.');
+      return;
+    }
+    const currentName = basename(selectedPath);
+    const requested = window.prompt(`Rename ${currentName}`, currentName);
+    if (requested === null) return;
+    const nextName = requested.trim();
+    if (
+      !nextName ||
+      nextName === '.' ||
+      nextName === '..' ||
+      nextName.includes('/') ||
+      nextName.includes('\\')
+    ) {
+      toast.error('Rename failed', 'Enter a single file name without folders.');
+      return;
+    }
+    if (nextName === currentName) return;
+    const nextPath = joinPath(dirname(selectedPath), nextName);
+    const nextPathKey = workspaceFilePathKey(nextPath);
+    const destinationAlreadyOpen = getFileWorkspaceState(projectId).tabs.some(
+      (tab) =>
+        workspaceFilePathKey(tab.path) === nextPathKey &&
+        workspaceFilePathKey(tab.path) !== workspaceFilePathKey(selectedPath),
+    );
+    if (destinationAlreadyOpen) {
+      toast.error(
+        'Rename failed',
+        `${nextName} is already open. Close that tab or choose another name.`,
+      );
+      return;
+    }
+    setFileActionBusy(true);
+    const result = await renameProjectFile(selectedPath, nextPath, { root: rootDir });
+    setFileActionBusy(false);
+    if (!result.ok) {
+      toast.error('Rename failed', describeFsError(result.error));
+      return;
+    }
+    renameWorkspaceFile(projectId, selectedPath, nextPath);
+    setStoredOpenFile(projectId, nextPath, false);
+    toast.success('Renamed', nextName);
+    await loadRoot(rootDir);
+  };
+
+  const deleteFile = async () => {
+    if (!selectedPath || !rootDir || fileActionBusy) return;
+    const warning = dirty
+      ? `Delete ${basename(selectedPath)} permanently and discard its unsaved changes?`
+      : `Delete ${basename(selectedPath)} permanently?`;
+    if (!window.confirm(warning)) return;
+    setFileActionBusy(true);
+    const result = await deleteProjectFile(selectedPath, { root: rootDir });
+    setFileActionBusy(false);
+    if (!result.ok) {
+      toast.error('Delete failed', describeFsError(result.error));
+      return;
+    }
+    closeWorkspaceFile(projectId, selectedPath);
+    const nextActive = getFileWorkspaceState(projectId).activePath ?? '';
+    setStoredOpenFile(projectId, nextActive, false);
+    toast.success('Deleted', basename(selectedPath));
+    await loadRoot(rootDir);
   };
 
   const readEditorSelection = React.useCallback((): string => {
@@ -749,6 +829,26 @@ export function FilesPage() {
               </span>
             )}
             {dirty && <span className="text-metadata text-accent-copper">Unsaved</span>}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void renameFile()}
+              disabled={!selectedPath || !rootDir || fileActionBusy}
+              aria-label="Rename selected file"
+              className="gap-1"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Rename
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void deleteFile()}
+              disabled={!selectedPath || !rootDir || fileActionBusy}
+              aria-label="Delete selected file"
+              className="gap-1 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </Button>
             <Button
               size="sm"
               variant="accent"

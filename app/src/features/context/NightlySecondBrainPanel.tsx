@@ -10,13 +10,20 @@ import {
 } from 'lucide-react';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
 import { formatUserDateTime } from '@/lib/timeFormat';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { useAuthStore } from '@/stores/auth';
 import {
   buildNightlySecondBrainWeek,
+  manualSecondBrainScheduledFor,
   nextNightlySecondBrainRun,
   type SecondBrainSourceKind,
   type SecondBrainWeekRun,
 } from './nightlySecondBrain';
-import { useNightlySecondBrainStore } from './nightlySecondBrainStore';
+import {
+  nightlySecondBrainScopeKey,
+  selectNightlySecondBrainScope,
+  useNightlySecondBrainStore,
+} from './nightlySecondBrainStore';
 
 const SOURCE_LABELS: Readonly<Record<SecondBrainSourceKind, string>> = {
   chat: 'New chat history',
@@ -27,9 +34,25 @@ const SOURCE_LABELS: Readonly<Record<SecondBrainSourceKind, string>> = {
 
 export function NightlySecondBrainPanel() {
   const [actionStatus, setActionStatus] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
   const { flatOptions } = useAccessibleChatModels();
-  const config = useNightlySecondBrainStore((state) => state.config);
-  const runs = useNightlySecondBrainStore((state) => state.runs);
+  const cloudSession = useAuthStore((state) => state.cloudSession);
+  const localUserId = useAuthStore((state) => state.localUserId);
+  const workspaceId = useAuthStore((state) => state.workspaceId);
+  const projectId = useAuthStore((state) => state.projectId);
+  const identity = resolveAccountIdentity({ cloudSession, localUserId });
+  const scopeKey =
+    identity && workspaceId
+      ? nightlySecondBrainScopeKey({
+          accountId: identity.accountId,
+          workspaceId: String(workspaceId),
+          projectId: projectId ? String(projectId) : null,
+        })
+      : '';
+  const scope = useNightlySecondBrainStore((state) =>
+    selectNightlySecondBrainScope(state, scopeKey),
+  );
+  const { config, runs } = scope;
   const setEnabled = useNightlySecondBrainStore((state) => state.setEnabled);
   const setMode = useNightlySecondBrainStore((state) => state.setMode);
   const setModel = useNightlySecondBrainStore((state) => state.setModel);
@@ -51,12 +74,16 @@ export function NightlySecondBrainPanel() {
     [configured, runs],
   );
   const perform = async (action: () => Promise<unknown>, success: string) => {
+    if (actionBusy) return;
+    setActionBusy(true);
     setActionStatus('Working…');
     try {
       await action();
       setActionStatus(success);
     } catch (error) {
       setActionStatus(error instanceof Error ? error.message : 'The operation failed safely.');
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -102,7 +129,8 @@ export function NightlySecondBrainPanel() {
             <input
               type="checkbox"
               checked={config.enabled}
-              onChange={(event) => setEnabled(event.target.checked)}
+              onChange={(event) => setEnabled(scopeKey, event.target.checked)}
+              disabled={!scopeKey}
             />
           </label>
 
@@ -113,6 +141,7 @@ export function NightlySecondBrainPanel() {
               onChange={(event) => {
                 const option = available.find((candidate) => candidate.id === event.target.value);
                 setModel(
+                  scopeKey,
                   option
                     ? {
                         id: option.id,
@@ -142,7 +171,7 @@ export function NightlySecondBrainPanel() {
                 type="radio"
                 name="nightly-second-brain-mode"
                 checked={config.mode === 'approve_only'}
-                onChange={() => setMode('approve_only')}
+                onChange={() => setMode(scopeKey, 'approve_only')}
               />
               <span>
                 <strong>Approve-only</strong> — review a compact diff in the morning.
@@ -153,7 +182,7 @@ export function NightlySecondBrainPanel() {
                 type="radio"
                 name="nightly-second-brain-mode"
                 checked={config.mode === 'auto'}
-                onChange={() => setMode('auto')}
+                onChange={() => setMode(scopeKey, 'auto')}
               />
               <span>
                 <strong>Auto</strong> — apply only verified, deduplicated changes with rollback
@@ -169,7 +198,7 @@ export function NightlySecondBrainPanel() {
                 <input
                   type="checkbox"
                   checked={config.sources[kind]}
-                  onChange={(event) => setSourceEnabled(kind, event.target.checked)}
+                  onChange={(event) => setSourceEnabled(scopeKey, kind, event.target.checked)}
                 />
                 {SOURCE_LABELS[kind]}
               </label>
@@ -181,7 +210,7 @@ export function NightlySecondBrainPanel() {
               <input
                 type="checkbox"
                 checked={config.allowPrivateDataToCloud}
-                onChange={(event) => setCloudPrivatePermission(event.target.checked)}
+                onChange={(event) => setCloudPrivatePermission(scopeKey, event.target.checked)}
               />
               <span>
                 Permit private/local-only source text to be sent to this cloud model. Off by
@@ -194,6 +223,21 @@ export function NightlySecondBrainPanel() {
             <Clock3 className="h-4 w-4" aria-hidden="true" />
             Next run: {formatUserDateTime(nextNightlySecondBrainRun(new Date()).getTime())}
           </div>
+          <button
+            type="button"
+            disabled={!configured || actionBusy}
+            onClick={() =>
+              void perform(
+                async () =>
+                  (await import('./nightlySecondBrainRuntime')).runNightlySecondBrain(
+                    manualSecondBrainScheduledFor(),
+                  ),
+                'Manual check completed.',
+              )
+            }
+          >
+            Run now
+          </button>
           <div className="flex gap-2 text-metadata text-muted-foreground" aria-live="polite">
             {latest ? <History className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             {latest ? latest.summary : 'No run yet. Context remains unchanged.'}

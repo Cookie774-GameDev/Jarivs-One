@@ -1,8 +1,8 @@
-import type { Agent, ProviderId } from '@/types';
+import type { Agent, ChatId, Message, ProjectId, ProviderId, WorkspaceId } from '@/types';
 import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { runAgent } from '@/lib/ai/router';
 import { db, openDb } from '@/lib/db';
-import { messageRepo, terminalScrollbackRepo, terminalSessionRepo } from '@/lib/db/repositories';
+import { terminalScrollbackRepo } from '@/lib/db/repositories';
 import { createDirectory, readTextFile, writeTextFile } from '@/lib/fs';
 import { getStoredProjectRoot, joinPath } from '@/features/files/projectFiles';
 import { loadAllAboutMeFile, saveAllAboutMeFile } from '@/features/all-about-me/allAboutMeFile';
@@ -17,13 +17,17 @@ import {
   type SecondBrainSource,
   type SecondBrainTarget,
 } from './nightlySecondBrain';
-import { useNightlySecondBrainStore } from './nightlySecondBrainStore';
 import {
-  contextMapFilePath,
-  loadSelectedContextMap,
-  saveContextTree,
-  type ProjectContextTree,
-} from './tree';
+  getNightlySecondBrainScope,
+  nightlySecondBrainScopeKey,
+  useNightlySecondBrainStore,
+} from './nightlySecondBrainStore';
+import {
+  captureContextPersistenceScope,
+  type CapturedContextPersistenceScope,
+  type ContextPersistenceState,
+} from './contextPersistence';
+import { contextMapFilePath, type ContextMapRecord, type ProjectContextTree } from './tree';
 
 const MAX_SOURCE_CHARS = 8_000;
 const MAX_TOTAL_SOURCE_CHARS = 80_000;
@@ -35,6 +39,120 @@ type ParsedProposal = {
   provenance: string[];
   confidence: number;
 };
+
+type NightlySecondBrainScope = {
+  key: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string | null;
+};
+
+type CapturedContextGetter = () => Promise<CapturedContextPersistenceScope>;
+
+function activeNightlySecondBrainScope(): NightlySecondBrainScope {
+  const account = getActiveAccountIdentity();
+  const auth = useAuthStore.getState();
+  if (!account || !auth.workspaceId) {
+    throw new Error('Nightly second-brain account scope is unavailable.');
+  }
+  const scope = {
+    accountId: account.accountId,
+    workspaceId: String(auth.workspaceId),
+    projectId: auth.projectId ? String(auth.projectId) : null,
+  };
+  return { ...scope, key: nightlySecondBrainScopeKey(scope) };
+}
+
+function assertActiveNightlySecondBrainScope(expected: NightlySecondBrainScope): void {
+  if (activeNightlySecondBrainScope().key !== expected.key) {
+    throw new Error('The active account or project changed; no context update was applied.');
+  }
+}
+
+export function selectedContextMapForCapturedScope(
+  state: Pick<ContextPersistenceState, 'accountId' | 'projectId' | 'selectedMapId' | 'maps'>,
+  scope: Pick<NightlySecondBrainScope, 'accountId' | 'projectId'>,
+): ContextMapRecord | null {
+  if (state.accountId !== scope.accountId || state.projectId !== scope.projectId) {
+    throw new Error('Nightly second-brain Context persistence scope changed.');
+  }
+  if (!state.selectedMapId) return null;
+  return (
+    state.maps.find(
+      (map) =>
+        map.id === state.selectedMapId &&
+        map.projectId === scope.projectId &&
+        map.status === 'active',
+    ) ?? null
+  );
+}
+
+function canonicalBoundPath(path: string): string | null {
+  const clean = path.trim().replace(/\\/gu, '/').replace(/\/+/gu, '/');
+  if (!clean || /[\u0000-\u001f]/u.test(clean)) return null;
+  const segments = clean.split('/');
+  if (segments.some((segment) => segment === '.' || segment === '..')) return null;
+  return clean;
+}
+
+function verifiedMapPath(map: ContextMapRecord): string | null {
+  const persisted = canonicalBoundPath(map.filePath ?? '');
+  const expected = canonicalBoundPath(contextMapFilePath(map.rootDir));
+  return persisted && expected && persisted === expected ? expected : null;
+}
+
+export function resolveContextMapChangeTarget(
+  state: Pick<ContextPersistenceState, 'selectedMapId' | 'maps'>,
+  change: Pick<SecondBrainChange, 'targetMapId' | 'path'>,
+  requireSelected = true,
+): ContextMapRecord {
+  const changePath = canonicalBoundPath(change.path);
+  if (!changePath) throw new Error('Context Map change path is invalid.');
+
+  const candidates = state.maps.filter(
+    (map) =>
+      map.status === 'active' &&
+      verifiedMapPath(map) === changePath &&
+      (!change.targetMapId || map.id === change.targetMapId),
+  );
+  if (candidates.length !== 1) {
+    throw new Error(
+      change.targetMapId
+        ? 'Context Map target or path changed since review.'
+        : 'Legacy Context Map target is missing or ambiguous.',
+    );
+  }
+  const target = candidates[0];
+  if (requireSelected && state.selectedMapId !== target.id) {
+    throw new Error('Context Map selection changed since review.');
+  }
+  return target;
+}
+
+export function assertRelatedMarkdownChangePath(root: string, reviewedPath: string): string {
+  const expected = canonicalBoundPath(joinPath(root, '.vibespace/second-brain.md'));
+  const reviewed = canonicalBoundPath(reviewedPath);
+  if (!expected || !reviewed || reviewed !== expected) {
+    throw new Error('Related markdown path changed since review.');
+  }
+  return joinPath(root, '.vibespace/second-brain.md');
+}
+
+async function loadScopedSelectedContextMap(
+  scope: NightlySecondBrainScope,
+  getContextPersistence: CapturedContextGetter,
+  enforceActive = true,
+): Promise<ContextMapRecord | null> {
+  if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+  const persistence = await getContextPersistence();
+  if (persistence.accountId !== scope.accountId || persistence.projectId !== scope.projectId) {
+    throw new Error('Nightly second-brain Context persistence scope changed.');
+  }
+  if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+  const state = await persistence.load();
+  if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+  return selectedContextMapForCapturedScope(state, scope);
+}
 
 function normalized(value: string): string {
   return value.trim().replace(/\s+/gu, ' ').toLocaleLowerCase('en-US');
@@ -102,7 +220,7 @@ export function parseSecondBrainProposal(
   return parsed;
 }
 
-function textFromMessage(message: Awaited<ReturnType<typeof messageRepo.list>>[number]): string {
+function textFromMessage(message: Message): string {
   return message.parts
     .flatMap((part) => (part.kind === 'text' || part.kind === 'reasoning' ? [part.text] : []))
     .join('\n')
@@ -110,20 +228,79 @@ function textFromMessage(message: Awaited<ReturnType<typeof messageRepo.list>>[n
     .slice(0, MAX_SOURCE_CHARS);
 }
 
-function cutoffForCollection(): number {
-  const successful = useNightlySecondBrainStore
-    .getState()
-    .runs.find((run) => run.status === 'applied' || run.status === 'pending_approval');
+function cutoffForCollection(scopeKey: string): number {
+  const successful = getNightlySecondBrainScope(scopeKey).runs.find(
+    (run) => run.status === 'applied' || run.status === 'pending_approval',
+  );
   return successful?.completedAt ?? Date.now() - 24 * 60 * 60 * 1_000;
 }
 
-async function collectProductionSources(): Promise<readonly SecondBrainSource[]> {
+export function scopedSecondBrainMessages<T extends { chat_id: unknown; updated_at: number }>(
+  messages: readonly T[],
+  chatIds: ReadonlySet<string>,
+  cutoff: number,
+): T[] {
+  return messages.filter(
+    (message) => chatIds.has(String(message.chat_id)) && message.updated_at > cutoff,
+  );
+}
+
+export function scopedSecondBrainTerminalSessions<
+  T extends {
+    workspace_id: unknown;
+    project_id?: unknown;
+    last_active_at: number;
+  },
+>(
+  sessions: readonly T[],
+  scope: { workspaceId: string; projectId: string | null },
+  cutoff: number,
+): T[] {
+  return sessions.filter(
+    (session) =>
+      String(session.workspace_id) === scope.workspaceId &&
+      (scope.projectId === null || String(session.project_id) === scope.projectId) &&
+      session.last_active_at > cutoff,
+  );
+}
+
+async function collectProductionSources(
+  scope: NightlySecondBrainScope,
+  getContextPersistence: CapturedContextGetter,
+): Promise<readonly SecondBrainSource[]> {
+  assertActiveNightlySecondBrainScope(scope);
   await openDb();
-  const auth = useAuthStore.getState();
-  const cutoff = cutoffForCollection();
+  const cutoff = cutoffForCollection(scope.key);
   const sources: SecondBrainSource[] = [];
-  const messages = (await messageRepo.list()).filter((message) => message.updated_at > cutoff);
-  for (const message of messages.slice(-100)) {
+  const scopedChats = (
+    await db.chats
+      .where('workspace_id')
+      .equals(scope.workspaceId as WorkspaceId)
+      .toArray()
+  )
+    .filter((chat) => scope.projectId === null || String(chat.project_id) === scope.projectId)
+    .sort((left, right) => right.updated_at - left.updated_at)
+    .slice(0, 50);
+  const scopedMessageRows = (
+    await Promise.all(
+      scopedChats.map((chat) =>
+        db.messages
+          .where('[chat_id+created_at]')
+          .between([chat.id as ChatId, 0], [chat.id as ChatId, Infinity])
+          .reverse()
+          .limit(100)
+          .toArray(),
+      ),
+    )
+  ).flat();
+  const messages = scopedSecondBrainMessages(
+    scopedMessageRows,
+    new Set(scopedChats.map((chat) => String(chat.id))),
+    cutoff,
+  )
+    .sort((left, right) => left.updated_at - right.updated_at)
+    .slice(-100);
+  for (const message of messages) {
     const content = textFromMessage(message);
     if (content) {
       sources.push({
@@ -136,9 +313,20 @@ async function collectProductionSources(): Promise<readonly SecondBrainSource[]>
     }
   }
 
-  const sessions = (await terminalSessionRepo.listRecentByLastActive(12)).filter(
-    (session) => session.last_active_at > cutoff,
-  );
+  const terminalCandidates = scope.projectId
+    ? await db.terminal_sessions
+        .where('project_id')
+        .equals(scope.projectId as ProjectId)
+        .limit(50)
+        .toArray()
+    : await db.terminal_sessions
+        .where('workspace_id')
+        .equals(scope.workspaceId as WorkspaceId)
+        .limit(50)
+        .toArray();
+  const sessions = scopedSecondBrainTerminalSessions(terminalCandidates, scope, cutoff)
+    .sort((left, right) => right.last_active_at - left.last_active_at)
+    .slice(0, 12);
   for (const session of sessions) {
     const chunks = await terminalScrollbackRepo.listBySession(session.id, 80);
     const transcript = terminalRestoreText({
@@ -168,12 +356,13 @@ async function collectProductionSources(): Promise<readonly SecondBrainSource[]>
     });
   }
 
-  const projectId = auth.projectId ? String(auth.projectId) : null;
+  const projectId = scope.projectId;
   if (projectId) {
+    const scopedProjectId = projectId as ProjectId;
     const [project, tasks, events] = await Promise.all([
-      db.projects.get(auth.projectId!),
-      db.tasks.where('project_id').equals(auth.projectId!).toArray(),
-      db.events.where('project_id').equals(auth.projectId!).toArray(),
+      db.projects.get(scopedProjectId),
+      db.tasks.where('project_id').equals(scopedProjectId).toArray(),
+      db.events.where('project_id').equals(scopedProjectId).toArray(),
     ]);
     const recentTasks = tasks.filter((task) => task.updated_at > cutoff).slice(-30);
     const recentEvents = events.filter((event) => event.updated_at > cutoff).slice(-30);
@@ -205,7 +394,7 @@ async function collectProductionSources(): Promise<readonly SecondBrainSource[]>
     }
   }
 
-  const selectedMap = loadSelectedContextMap(projectId);
+  const selectedMap = await loadScopedSelectedContextMap(scope, getContextPersistence);
   if (selectedMap) {
     sources.push({
       id: `context:${selectedMap.id}:${selectedMap.updatedAt}`,
@@ -220,12 +409,11 @@ async function collectProductionSources(): Promise<readonly SecondBrainSource[]>
     });
   }
 
-  const account = getActiveAccountIdentity();
-  if (account) {
-    const profile = await loadAllAboutMeFile(account.accountId).catch(() => null);
+  if (scope.accountId) {
+    const profile = await loadAllAboutMeFile(scope.accountId).catch(() => null);
     if (profile?.found) {
       sources.push({
-        id: `context:user-md:${account.accountId}`,
+        id: `context:user-md:${scope.accountId}`,
         kind: 'context',
         content: profile.markdown.slice(0, MAX_SOURCE_CHARS),
         observedAt: Date.now(),
@@ -235,12 +423,14 @@ async function collectProductionSources(): Promise<readonly SecondBrainSource[]>
   }
 
   let total = 0;
-  return sources
+  const admitted = sources
     .sort((left, right) => right.observedAt - left.observedAt)
     .filter((source) => {
       total += source.content.length;
       return total <= MAX_TOTAL_SOURCE_CHARS;
     });
+  assertActiveNightlySecondBrainScope(scope);
+  return admitted;
 }
 
 function proposalPrompt(sources: readonly SecondBrainSource[]): string {
@@ -266,7 +456,10 @@ async function readOrEmpty(path: string, root?: string): Promise<string> {
 async function proposedChanges(input: {
   model: SecondBrainConfig['model'] & {};
   sources: readonly SecondBrainSource[];
+  scope: NightlySecondBrainScope;
+  getContextPersistence: CapturedContextGetter;
 }): Promise<readonly SecondBrainChange[]> {
+  assertActiveNightlySecondBrainScope(input.scope);
   if (input.sources.length === 0) return [];
   const model = input.model;
   const now = Date.now();
@@ -309,13 +502,13 @@ async function proposedChanges(input: {
       confidence: Math.min(...proposals.map((proposal) => proposal.confidence)),
     };
   });
-  const auth = useAuthStore.getState();
-  const projectId = auth.projectId ? String(auth.projectId) : null;
+  const projectId = input.scope.projectId;
   const root = getStoredProjectRoot(projectId);
-  const map = loadSelectedContextMap(projectId);
-  const account = getActiveAccountIdentity();
-  const profile = account ? await loadAllAboutMeFile(account.accountId).catch(() => null) : null;
+  const map = await loadScopedSelectedContextMap(input.scope, input.getContextPersistence);
+  assertActiveNightlySecondBrainScope(input.scope);
+  const profile = await loadAllAboutMeFile(input.scope.accountId).catch(() => null);
   const relatedPath = root ? joinPath(root, '.vibespace/second-brain.md') : '';
+  assertActiveNightlySecondBrainScope(input.scope);
   const relatedBefore = relatedPath ? await readOrEmpty(relatedPath, root) : '';
   const changes: SecondBrainChange[] = [];
 
@@ -324,11 +517,11 @@ async function proposedChanges(input: {
     let before = '';
     let after = '';
     if (proposal.target === 'context_map' && map?.rootDir) {
-      path = map.filePath ?? contextMapFilePath(map.rootDir);
+      path = contextMapFilePath(map.rootDir);
       before = map.tree.summary;
       after = secondBrainMarkdownUpdate(before, proposal.content).trim();
-    } else if (proposal.target === 'user_md' && account) {
-      path = profile?.path ?? `account:${account.accountId}:all-about-me.md`;
+    } else if (proposal.target === 'user_md') {
+      path = profile?.path ?? `account:${input.scope.accountId}:all-about-me.md`;
       if (normalized(profile?.markdown ?? '').includes(normalized(proposal.content))) continue;
       before = '';
       after = proposal.content;
@@ -342,6 +535,7 @@ async function proposedChanges(input: {
     changes.push({
       id: `second-brain-change-${now}-${index}`,
       target: proposal.target,
+      ...(proposal.target === 'context_map' && map ? { targetMapId: map.id } : {}),
       path,
       before,
       after,
@@ -349,43 +543,57 @@ async function proposedChanges(input: {
       confidence: proposal.confidence,
     });
   }
+  assertActiveNightlySecondBrainScope(input.scope);
   return changes;
 }
 
-async function writeChange(change: SecondBrainChange, direction: 'apply' | 'rollback') {
+async function writeChange(
+  change: SecondBrainChange,
+  direction: 'apply' | 'rollback',
+  scope: NightlySecondBrainScope,
+  getContextPersistence: CapturedContextGetter,
+  enforceActive = true,
+) {
   const expected = direction === 'apply' ? change.before : change.after;
   const replacement = direction === 'apply' ? change.after : change.before;
-  const account = getActiveAccountIdentity();
   if (change.target === 'user_md') {
-    if (!account) throw new Error('The active account changed before the profile update.');
-    const current = await loadAllAboutMeFile(account.accountId);
+    if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+    const current = await loadAllAboutMeFile(scope.accountId);
     const markdown = current.markdown || '# All About Me\n';
     if (direction === 'apply') {
       if (normalized(markdown).includes(normalized(change.after))) {
         throw new Error('Profile already contains this context update.');
       }
-      await saveAllAboutMeFile(
-        account.accountId,
-        secondBrainMarkdownUpdate(markdown, change.after),
-      );
+      if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+      await saveAllAboutMeFile(scope.accountId, secondBrainMarkdownUpdate(markdown, change.after));
     } else {
+      if (enforceActive) assertActiveNightlySecondBrainScope(scope);
       await saveAllAboutMeFile(
-        account.accountId,
+        scope.accountId,
         removeSecondBrainMarkdownFact(markdown, change.after),
       );
     }
     return;
   }
-  const auth = useAuthStore.getState();
-  const projectId = auth.projectId ? String(auth.projectId) : null;
+  const projectId = scope.projectId;
+  let persistence: CapturedContextPersistenceScope | null = null;
+  let selectedContextMap: ContextMapRecord | null = null;
+  if (change.target === 'context_map') {
+    if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+    persistence = await getContextPersistence();
+    const state = await persistence.load();
+    if (state.accountId !== scope.accountId || state.projectId !== scope.projectId) {
+      throw new Error('Nightly second-brain Context persistence scope changed.');
+    }
+    if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+    selectedContextMap = resolveContextMapChangeTarget(state, change, enforceActive);
+  }
   const root =
-    change.target === 'context_map'
-      ? loadSelectedContextMap(projectId)?.rootDir
-      : getStoredProjectRoot(projectId);
+    change.target === 'context_map' ? selectedContextMap?.rootDir : getStoredProjectRoot(projectId);
   if (!root) throw new Error('The project root is unavailable.');
   if (change.target === 'context_map') {
-    const selected = loadSelectedContextMap(projectId);
-    if (!selected || selected.tree.summary !== expected) {
+    const selected = selectedContextMap;
+    if (!persistence || !selected || selected.tree.summary !== expected) {
       throw new Error('Context Map changed since review; refusing to overwrite it.');
     }
     const tree: ProjectContextTree = {
@@ -393,25 +601,55 @@ async function writeChange(change: SecondBrainChange, direction: 'apply' | 'roll
       generatedAt: Date.now(),
       summary: replacement,
     };
-    const serialized = JSON.stringify(
-      {
-        schema: 'jarvis.context-map',
-        schemaVersion: 1,
-        description:
-          'Generated VibeSpace project context map. Drag this file into Jarvis chat or terminals as project context.',
-        tree,
-      },
-      null,
-      2,
-    );
-    const result = await writeTextFile(change.path, serialized, { root });
+    if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+    const externalBefore = await readTextFile(change.path, { root });
+    if (!externalBefore.ok) {
+      throw new Error(
+        `Could not verify existing Context Map ${change.path} (${externalBefore.error.code}).`,
+      );
+    }
+    const serialize = (value: ProjectContextTree) =>
+      JSON.stringify(
+        {
+          schema: 'jarvis.context-map',
+          schemaVersion: 1,
+          description:
+            'Generated VibeSpace project context map. Drag this file into Jarvis chat or terminals as project context.',
+          tree: value,
+        },
+        null,
+        2,
+      );
+    if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+    const result = await writeTextFile(change.path, serialize(tree), { root });
     if (!result.ok) throw new Error(`Could not write ${change.path} (${result.error.code}).`);
-    saveContextTree(tree, { mapId: selected.id, name: selected.name });
+    try {
+      if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+      await persistence.saveExistingTree(tree, {
+        mapId: selected.id,
+        name: selected.name,
+        expectedUpdatedAt: selected.updatedAt,
+      });
+    } catch (error) {
+      const restored = await writeTextFile(change.path, externalBefore.content, { root });
+      if (!restored.ok) {
+        throw new Error(
+          `Context Map persistence failed and ${change.path} could not be restored (${restored.error.code}).`,
+        );
+      }
+      throw error;
+    }
     return;
   }
-  const current = await readOrEmpty(change.path, root);
+  const verifiedChangePath =
+    change.target === 'related_markdown'
+      ? assertRelatedMarkdownChangePath(root, change.path)
+      : change.path;
+  if (enforceActive) assertActiveNightlySecondBrainScope(scope);
+  const current = await readOrEmpty(verifiedChangePath, root);
   if (change.target === 'related_markdown' && !current) {
     const directory = joinPath(root, '.vibespace');
+    if (enforceActive) assertActiveNightlySecondBrainScope(scope);
     const created = await createDirectory(directory, { root });
     if (!created.ok) {
       throw new Error(`Could not create ${directory} (${created.error.code}).`);
@@ -420,72 +658,134 @@ async function writeChange(change: SecondBrainChange, direction: 'apply' | 'roll
   if (direction === 'apply' && normalized(current).includes(normalized(change.after))) {
     throw new Error('Related context already contains this update.');
   }
+  if (enforceActive) assertActiveNightlySecondBrainScope(scope);
   const result = await writeTextFile(
-    change.path,
+    verifiedChangePath,
     direction === 'apply'
       ? secondBrainMarkdownUpdate(current || '# Second Brain\n', change.after)
       : removeSecondBrainMarkdownFact(current, change.after),
     { root },
   );
-  if (!result.ok) throw new Error(`Could not write ${change.path} (${result.error.code}).`);
+  if (!result.ok) throw new Error(`Could not write ${verifiedChangePath} (${result.error.code}).`);
 }
 
-const ports: SecondBrainRuntimePorts = {
-  collectSources: collectProductionSources,
-  propose: proposedChanges,
-  apply: async (changes) => {
-    const applied: SecondBrainChange[] = [];
-    try {
-      for (const change of changes) {
-        await writeChange(change, 'apply');
-        applied.push(change);
-      }
-    } catch (error) {
-      for (const change of applied.reverse()) await writeChange(change, 'rollback');
-      throw error;
+export async function applySecondBrainChangesWithRollback(
+  changes: readonly SecondBrainChange[],
+  ports: {
+    assertActive(): void;
+    write(change: SecondBrainChange, direction: 'apply' | 'rollback'): Promise<void>;
+  },
+): Promise<void> {
+  const applied: SecondBrainChange[] = [];
+  try {
+    for (const change of changes) {
+      ports.assertActive();
+      await ports.write(change, 'apply');
+      applied.push(change);
     }
-  },
-  rollback: async (changes) => {
-    const rolledBack: SecondBrainChange[] = [];
-    try {
-      for (const change of changes) {
-        await writeChange(change, 'rollback');
-        rolledBack.push(change);
-      }
-    } catch (error) {
-      for (const change of rolledBack.reverse()) await writeChange(change, 'apply');
-      throw error;
-    }
-  },
-  saveRun: async (run) => {
-    useNightlySecondBrainStore.getState().recordRun(run);
-  },
-};
+  } catch (error) {
+    for (const change of applied.reverse()) await ports.write(change, 'rollback');
+    throw error;
+  }
+}
 
-const runner = new NightlySecondBrainRunner(ports);
+function scopedPorts(scope: NightlySecondBrainScope): SecondBrainRuntimePorts {
+  let contextPersistence: Promise<CapturedContextPersistenceScope> | undefined;
+  const getContextPersistence: CapturedContextGetter = async () => {
+    contextPersistence ??= captureContextPersistenceScope(scope.accountId, scope.projectId);
+    const captured = await contextPersistence;
+    if (captured.accountId !== scope.accountId || captured.projectId !== scope.projectId) {
+      throw new Error('Nightly second-brain Context persistence scope changed.');
+    }
+    return captured;
+  };
+  return {
+    collectSources: () => collectProductionSources(scope, getContextPersistence),
+    propose: ({ model, sources }) =>
+      proposedChanges({ model, sources, scope, getContextPersistence }),
+    apply: (changes) =>
+      applySecondBrainChangesWithRollback(changes, {
+        assertActive: () => assertActiveNightlySecondBrainScope(scope),
+        write: (change, direction) =>
+          writeChange(change, direction, scope, getContextPersistence, direction === 'apply'),
+      }),
+    rollback: async (changes) => {
+      const rolledBack: SecondBrainChange[] = [];
+      try {
+        for (const change of changes) {
+          assertActiveNightlySecondBrainScope(scope);
+          await writeChange(change, 'rollback', scope, getContextPersistence);
+          rolledBack.push(change);
+        }
+      } catch (error) {
+        for (const change of rolledBack.reverse()) {
+          await writeChange(change, 'apply', scope, getContextPersistence, false);
+        }
+        throw error;
+      }
+    },
+    saveRun: async (run) => {
+      useNightlySecondBrainStore.getState().recordRun(scope.key, run);
+    },
+  };
+}
+
+export function canonicalSecondBrainRun<T extends { scheduledFor: number; retryOf?: string }>(
+  runs: readonly T[],
+  scheduledFor: number,
+): T | undefined {
+  return runs.find((run) => run.scheduledFor === scheduledFor && !run.retryOf);
+}
+
+const inFlightRuns = new Map<string, Promise<SecondBrainRun>>();
 
 export async function runNightlySecondBrain(scheduledFor: number): Promise<SecondBrainRun> {
-  return runner.run({
-    config: useNightlySecondBrainStore.getState().config,
+  const scope = activeNightlySecondBrainScope();
+  const existing = canonicalSecondBrainRun(
+    getNightlySecondBrainScope(scope.key).runs,
+    scheduledFor,
+  );
+  if (existing) return existing;
+  const key = `${scope.key}\0${scheduledFor}`;
+  const pending = inFlightRuns.get(key);
+  if (pending) return pending;
+  const promise = new NightlySecondBrainRunner(scopedPorts(scope)).run({
+    config: getNightlySecondBrainScope(scope.key).config,
     scheduledFor,
   });
+  inFlightRuns.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightRuns.delete(key);
+  }
 }
 
-function requiredRun(runId: string): SecondBrainRun {
-  const run = useNightlySecondBrainStore
-    .getState()
-    .runs.find((candidate) => candidate.id === runId);
+function requiredRun(scope: NightlySecondBrainScope, runId: string): SecondBrainRun {
+  const run = getNightlySecondBrainScope(scope.key).runs.find(
+    (candidate) => candidate.id === runId,
+  );
   if (!run) throw new Error('Nightly second-brain run was not found.');
   return run;
 }
 
-export const approveNightlySecondBrainRun = (runId: string) => runner.approve(requiredRun(runId));
-export const rejectNightlySecondBrainRun = (runId: string) => runner.reject(requiredRun(runId));
-export const rollbackNightlySecondBrainRun = (runId: string) => runner.rollback(requiredRun(runId));
+export const approveNightlySecondBrainRun = (runId: string) => {
+  const scope = activeNightlySecondBrainScope();
+  return new NightlySecondBrainRunner(scopedPorts(scope)).approve(requiredRun(scope, runId));
+};
+export const rejectNightlySecondBrainRun = (runId: string) => {
+  const scope = activeNightlySecondBrainScope();
+  return new NightlySecondBrainRunner(scopedPorts(scope)).reject(requiredRun(scope, runId));
+};
+export const rollbackNightlySecondBrainRun = (runId: string) => {
+  const scope = activeNightlySecondBrainScope();
+  return new NightlySecondBrainRunner(scopedPorts(scope)).rollback(requiredRun(scope, runId));
+};
 export const retryNightlySecondBrainRun = (runId: string) => {
-  const run = requiredRun(runId);
-  return runner.run({
-    config: useNightlySecondBrainStore.getState().config,
+  const scope = activeNightlySecondBrainScope();
+  const run = requiredRun(scope, runId);
+  return new NightlySecondBrainRunner(scopedPorts(scope)).run({
+    config: getNightlySecondBrainScope(scope.key).config,
     scheduledFor: run.scheduledFor,
     retryOf: run.id,
   });

@@ -312,6 +312,31 @@ export async function createDirectory(
   }
 }
 
+export async function renameProjectFile(
+  path: string,
+  newPath: string,
+  options: FsAccessOptions = {},
+): Promise<FsWriteResult> {
+  try {
+    await invoke('fs_rename_file', { path, newPath, root: options.root ?? undefined });
+    return { ok: true, path: newPath };
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+export async function deleteProjectFile(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsWriteResult> {
+  try {
+    await invoke('fs_delete_file', { path, root: options.root ?? undefined });
+    return { ok: true, path };
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
 /**
  * Read multiple files in parallel. Failures are folded into the
  * returned list rather than rejecting the whole batch — the AI

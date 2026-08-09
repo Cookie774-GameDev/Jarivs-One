@@ -4,6 +4,7 @@ import {
   NightlySecondBrainRunner,
   buildNightlySecondBrainWeek,
   isNightlySecondBrainRunDue,
+  manualSecondBrainScheduledFor,
   nextNightlySecondBrainRun,
   type SecondBrainChange,
   type SecondBrainSource,
@@ -31,6 +32,12 @@ const change: SecondBrainChange = {
 };
 
 describe('nightly second-brain maintenance', () => {
+  it('buckets repeated manual requests into one canonical minute', () => {
+    expect(manualSecondBrainScheduledFor(Date.parse('2026-08-09T12:34:59.999Z'))).toBe(
+      Date.parse('2026-08-09T12:34:00.000Z'),
+    );
+  });
+
   it('always schedules 2 a.m. and detects a missed run after app restart', () => {
     expect(nextNightlySecondBrainRun(new Date(2026, 7, 2, 1, 30)).getHours()).toBe(2);
     expect(nextNightlySecondBrainRun(new Date(2026, 7, 2, 3)).getDate()).toBe(3);

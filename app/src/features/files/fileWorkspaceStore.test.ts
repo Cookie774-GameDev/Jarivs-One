@@ -10,6 +10,7 @@ import {
   openWorkspaceFile,
   patchWorkspaceTab,
   reconcileWorkspaceFile,
+  renameWorkspaceFile,
   resetFileWorkspaceForTests,
   setAskPanelCollapsed,
   setAskPanelDefault,
@@ -86,5 +87,24 @@ describe('fileWorkspaceStore', () => {
     expect(reconcileWorkspaceFile(projectA, 'dirty.ts', { ok: false })).toBe('preserved-unsaved');
     expect(getFileWorkspaceState(projectA).tabs.map((tab) => tab.path)).toEqual(['dirty.ts']);
     expect(getFileWorkspaceState(projectA).tabs[0]?.content).toBe('unsaved');
+  });
+
+  it('renames an open file without losing its editor state or active selection', () => {
+    openWorkspaceFile(projectA, 'C:\\project\\before.ts', 'saved');
+    patchWorkspaceTab(projectA, 'C:\\project\\before.ts', {
+      askDraft: 'keep this private draft in memory',
+    });
+
+    expect(renameWorkspaceFile(projectA, 'C:\\project\\before.ts', 'C:\\project\\after.ts')).toBe(
+      true,
+    );
+    expect(getFileWorkspaceState(projectA).activePath).toBe('C:\\project\\after.ts');
+    expect(getFileWorkspaceState(projectA).tabs).toEqual([
+      expect.objectContaining({
+        path: 'C:\\project\\after.ts',
+        content: 'saved',
+        askDraft: 'keep this private draft in memory',
+      }),
+    ]);
   });
 });
