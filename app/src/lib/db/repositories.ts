@@ -774,17 +774,22 @@ function ownsReminderClaim(reminder: Reminder | undefined, claimId: string): rem
  * on the shared IndexedDB task row; the process-local delivery Set is only an
  * optimization and is never the ownership authority.
  */
-export function createReminderClaimRepository(database: JarvisDexie = db) {
-  const syncPersistedTask = async (task: Task | undefined): Promise<void> => {
-    if (task && database === db) {
+export function createReminderClaimRepository(database?: JarvisDexie) {
+  const resolveDatabase = (): JarvisDexie => database ?? db;
+  const syncPersistedTask = async (
+    task: Task | undefined,
+    activeDatabase: JarvisDexie,
+  ): Promise<void> => {
+    if (task && activeDatabase === db) {
       await syncUpdate('tasks', task, captureSyncQueueOwner());
     }
   };
 
   return {
     async claim(input: ReminderClaimInput): Promise<Task | undefined> {
-      const claimed = await database.transaction('rw', database.tasks, async () => {
-        const task = await database.tasks.get(input.taskId);
+      const activeDatabase = resolveDatabase();
+      const claimed = await activeDatabase.transaction('rw', activeDatabase.tasks, async () => {
+        const task = await activeDatabase.tasks.get(input.taskId);
         const reminder = task?.reminders.find((candidate) => candidate.id === input.reminderId);
         if (
           !task ||
@@ -814,16 +819,17 @@ export function createReminderClaimRepository(database: JarvisDexie = db) {
           ),
           updated_at: input.now,
         };
-        await database.tasks.put(updated);
+        await activeDatabase.tasks.put(updated);
         return updated;
       });
-      await syncPersistedTask(claimed);
+      await syncPersistedTask(claimed, activeDatabase);
       return claimed;
     },
 
     async finalize(input: ReminderMutationScope): Promise<Task | undefined> {
-      const finalized = await database.transaction('rw', database.tasks, async () => {
-        const task = await database.tasks.get(input.taskId);
+      const activeDatabase = resolveDatabase();
+      const finalized = await activeDatabase.transaction('rw', activeDatabase.tasks, async () => {
+        const task = await activeDatabase.tasks.get(input.taskId);
         const reminder = task?.reminders.find((candidate) => candidate.id === input.reminderId);
         if (
           !task ||
@@ -843,16 +849,17 @@ export function createReminderClaimRepository(database: JarvisDexie = db) {
           ),
           updated_at: input.now,
         };
-        await database.tasks.put(updated);
+        await activeDatabase.tasks.put(updated);
         return updated;
       });
-      await syncPersistedTask(finalized);
+      await syncPersistedTask(finalized, activeDatabase);
       return finalized;
     },
 
     async release(input: ReminderMutationScope): Promise<Task | undefined> {
-      const released = await database.transaction('rw', database.tasks, async () => {
-        const task = await database.tasks.get(input.taskId);
+      const activeDatabase = resolveDatabase();
+      const released = await activeDatabase.transaction('rw', activeDatabase.tasks, async () => {
+        const task = await activeDatabase.tasks.get(input.taskId);
         const reminder = task?.reminders.find((candidate) => candidate.id === input.reminderId);
         if (
           !task ||
@@ -870,10 +877,10 @@ export function createReminderClaimRepository(database: JarvisDexie = db) {
           ),
           updated_at: input.now,
         };
-        await database.tasks.put(updated);
+        await activeDatabase.tasks.put(updated);
         return updated;
       });
-      await syncPersistedTask(released);
+      await syncPersistedTask(released, activeDatabase);
       return released;
     },
   };

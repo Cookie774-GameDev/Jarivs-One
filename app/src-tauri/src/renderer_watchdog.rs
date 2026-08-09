@@ -26,6 +26,26 @@ pub(crate) enum RecoveryAction {
     RestartApplication,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MainWebviewRecoveryPlan {
+    ReloadExisting,
+    PreserveExistingHost,
+    RebuildMissing,
+}
+
+pub(crate) fn main_webview_recovery_plan(
+    has_host_window: bool,
+    has_webview: bool,
+) -> MainWebviewRecoveryPlan {
+    if has_webview {
+        MainWebviewRecoveryPlan::ReloadExisting
+    } else if has_host_window {
+        MainWebviewRecoveryPlan::PreserveExistingHost
+    } else {
+        MainWebviewRecoveryPlan::RebuildMissing
+    }
+}
+
 #[derive(Debug)]
 struct RecoveryProgress {
     reload_attempts: u8,
@@ -35,6 +55,7 @@ struct RecoveryProgress {
 
 struct RendererWatchdog {
     last_heartbeat: Mutex<Instant>,
+    heartbeat_received: AtomicBool,
     recovery: Mutex<RecoveryProgress>,
     process_restart_allowed: AtomicBool,
     healthy_since: Mutex<Option<Instant>>,
@@ -44,6 +65,7 @@ impl RendererWatchdog {
     fn new(process_restart_allowed: bool) -> Self {
         Self {
             last_heartbeat: Mutex::new(Instant::now()),
+            heartbeat_received: AtomicBool::new(false),
             recovery: Mutex::new(RecoveryProgress {
                 reload_attempts: 0,
                 recreate_attempts: 0,
@@ -55,6 +77,7 @@ impl RendererWatchdog {
     }
 
     fn record_heartbeat(&self) -> bool {
+        self.heartbeat_received.store(true, Ordering::SeqCst);
         if let Ok(mut heartbeat) = self.last_heartbeat.lock() {
             *heartbeat = Instant::now();
         }
@@ -81,6 +104,9 @@ impl RendererWatchdog {
     }
 
     fn heartbeat_age(&self) -> Option<Duration> {
+        if !self.heartbeat_received.load(Ordering::SeqCst) {
+            return None;
+        }
         self.last_heartbeat
             .lock()
             .ok()
@@ -133,56 +159,25 @@ pub(crate) fn next_recovery_action(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct MainWindowPresentation {
-    position: Option<tauri::PhysicalPosition<i32>>,
-    size: Option<tauri::PhysicalSize<u32>>,
-    maximized: bool,
-    fullscreen: bool,
-    visible: bool,
-    focused: bool,
-}
-
-fn capture_main_window_presentation<R: Runtime>(
-    window: &tauri::Window<R>,
-) -> MainWindowPresentation {
-    MainWindowPresentation {
-        position: window.outer_position().ok(),
-        size: window.inner_size().ok(),
-        maximized: window.is_maximized().unwrap_or(false),
-        fullscreen: window.is_fullscreen().unwrap_or(false),
-        visible: window.is_visible().unwrap_or(true),
-        focused: window.is_focused().unwrap_or(false),
-    }
-}
-
-fn restore_main_window_presentation<R: Runtime>(
-    window: &tauri::Window<R>,
-    presentation: MainWindowPresentation,
-) {
-    if let Some(size) = presentation.size {
-        let _ = window.set_size(size);
-    }
-    if let Some(position) = presentation.position {
-        let _ = window.set_position(position);
-    }
-    if presentation.maximized {
-        let _ = window.maximize();
-    }
-    if presentation.fullscreen {
-        let _ = window.set_fullscreen(true);
-    }
-    if presentation.visible {
-        let _ = window.show();
-    } else {
-        let _ = window.hide();
-    }
-    if presentation.focused {
-        let _ = window.set_focus();
-    }
-}
-
 fn recreate_main_webview<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    let existing_host = app.get_window("main");
+    let existing_webview = app.get_webview("main");
+    match main_webview_recovery_plan(existing_host.is_some(), existing_webview.is_some()) {
+        MainWebviewRecoveryPlan::ReloadExisting => {
+            return existing_webview
+                .expect("recovery plan requires an existing main WebView")
+                .reload()
+                .map_err(|error| format!("failed to reload existing main WebView: {error}"));
+        }
+        MainWebviewRecoveryPlan::PreserveExistingHost => {
+            return Err(
+                "main host exists without a reloadable WebView; destructive recreation suppressed"
+                    .to_string(),
+            );
+        }
+        MainWebviewRecoveryPlan::RebuildMissing => {}
+    }
+
     let config = app
         .config()
         .app
@@ -191,28 +186,15 @@ fn recreate_main_webview<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), St
         .find(|window| window.label == "main")
         .cloned()
         .ok_or_else(|| "main window configuration is missing".to_string())?;
-    let existing = app.get_window("main");
-    let presentation = existing.as_ref().map(capture_main_window_presentation);
     let app_for_rebuild = app.clone();
     let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
 
     app.run_on_main_thread(move || {
         let result = (|| -> Result<(), String> {
-            if let Some(window) = existing {
-                window
-                    .destroy()
-                    .map_err(|error| format!("failed to destroy failed main WebView: {error}"))?;
-            }
-            let rebuilt = WebviewWindowBuilder::from_config(&app_for_rebuild, &config)
+            WebviewWindowBuilder::from_config(&app_for_rebuild, &config)
                 .map_err(|error| format!("failed to prepare main WebView recreation: {error}"))?
                 .build()
                 .map_err(|error| format!("failed to recreate main WebView: {error}"))?;
-            if let Some(presentation) = presentation {
-                let rebuilt_host = app_for_rebuild
-                    .get_window(rebuilt.label())
-                    .ok_or_else(|| "rebuilt main host window is unavailable".to_string())?;
-                restore_main_window_presentation(&rebuilt_host, presentation);
-            }
             Ok(())
         })();
         let _ = result_tx.send(result);
@@ -421,9 +403,9 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        can_restart_application, consume_recovery_marker, next_recovery_action,
-        should_rearm_process_restart, should_restart_renderer, write_recovery_marker,
-        RecoveryAction,
+        can_restart_application, consume_recovery_marker, main_webview_recovery_plan,
+        next_recovery_action, should_rearm_process_restart, should_restart_renderer,
+        write_recovery_marker, MainWebviewRecoveryPlan, RecoveryAction,
     };
     use std::fs;
     use std::time::Duration;
@@ -501,6 +483,22 @@ mod tests {
     }
 
     #[test]
+    fn never_destroys_an_existing_main_host_during_renderer_recovery() {
+        assert_eq!(
+            main_webview_recovery_plan(true, true),
+            MainWebviewRecoveryPlan::ReloadExisting
+        );
+        assert_eq!(
+            main_webview_recovery_plan(true, false),
+            MainWebviewRecoveryPlan::PreserveExistingHost
+        );
+        assert_eq!(
+            main_webview_recovery_plan(false, false),
+            MainWebviewRecoveryPlan::RebuildMissing
+        );
+    }
+
+    #[test]
     fn restart_circuit_requires_sustained_renderer_health_before_rearming() {
         assert!(!should_rearm_process_restart(None));
         assert!(!should_rearm_process_restart(Some(Duration::from_secs(1))));
@@ -533,5 +531,15 @@ mod tests {
         assert!(!path.exists());
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn watchdog_remains_unarmed_until_the_main_renderer_heartbeats() {
+        let watchdog = super::RendererWatchdog::new(true);
+
+        assert_eq!(watchdog.heartbeat_age(), None);
+
+        watchdog.record_heartbeat();
+        assert!(watchdog.heartbeat_age().is_some());
     }
 }
