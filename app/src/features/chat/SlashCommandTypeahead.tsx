@@ -308,7 +308,13 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     icon: CalendarDays,
     category: 'navigation',
   },
-  { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
+  {
+    cmd: 'chat',
+    description: 'Choose VibeSpace Chat or Browser Chat',
+    icon: MessageSquare,
+    category: 'chat',
+    hasOptions: true,
+  },
 
   {
     cmd: 'usage',

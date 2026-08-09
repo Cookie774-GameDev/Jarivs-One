@@ -5,9 +5,20 @@ import { chatRepo, db, projectRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/toast';
 import { cn, formatRelative } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import type { Project } from '@/lib/db/schema';
 import type { Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
 import { deleteHistoryChats, historyDeletionFeedback } from './historyDeletion';
@@ -18,6 +29,15 @@ export interface HistoryListProps {
 }
 
 type ProjectFilter = 'all' | 'active';
+
+interface PendingHistoryDeletion {
+  chatIds: ChatId[];
+  expectedAccountId: string;
+  expectedWorkspaceId: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+}
 
 const MAX_ROWS = 200;
 
@@ -35,6 +55,7 @@ const MAX_ROWS = 200;
  * automatically updates the chip.
  */
 export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) {
+  const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const activeProjectId = useAuthStore((s) => s.projectId) as ProjectId | null;
   const agents = useAgentStore((s) => s.agents);
@@ -42,6 +63,23 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
   const [query, setQuery] = React.useState('');
   const [projectFilter, setProjectFilter] = React.useState<ProjectFilter>('all');
   const [deleting, setDeleting] = React.useState(false);
+  const [pendingDeletion, setPendingDeletion] = React.useState<PendingHistoryDeletion | null>(null);
+  const cancelDeletionRef = React.useRef<HTMLButtonElement>(null);
+  const selectedChatIdRef = React.useRef(selectedChatId);
+
+  React.useLayoutEffect(() => {
+    selectedChatIdRef.current = selectedChatId;
+  }, [selectedChatId]);
+
+  React.useEffect(() => {
+    if (
+      pendingDeletion &&
+      (pendingDeletion.expectedAccountId !== accountId ||
+        pendingDeletion.expectedWorkspaceId !== String(workspaceId ?? ''))
+    ) {
+      setPendingDeletion(null);
+    }
+  }, [accountId, pendingDeletion, workspaceId]);
 
   // Live chat list, scoped to workspace, sorted newest-first, capped.
   const chats = useLiveQuery(
@@ -125,23 +163,35 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
     return rows;
   }, [chats, query, projectFilter, activeProjectId, messageMatches]);
 
-  const removeChats = async (chatIds: readonly ChatId[]) => {
-    if (deleting || chatIds.length === 0 || !workspaceId) return;
-    const expectedWorkspaceId = String(workspaceId);
+  const removeChats = async (request: PendingHistoryDeletion) => {
+    if (deleting || request.chatIds.length === 0) return;
     setDeleting(true);
     try {
-      const result = await deleteHistoryChats(chatIds.map(String), {
-        expectedWorkspaceId,
+      const result = await deleteHistoryChats(request.chatIds.map(String), {
+        expectedAccountId: request.expectedAccountId,
+        expectedWorkspaceId: request.expectedWorkspaceId,
+        getActiveAccountId: () =>
+          resolveAccountIdentity(useAuthStore.getState())?.accountId ?? null,
         getActiveWorkspaceId: () => {
           const active = useAuthStore.getState().workspaceId;
           return active ? String(active) : null;
         },
         read: (chatId) => chatRepo.getById(chatId as ChatId),
-        remove: (chatId) => chatRepo.delete(chatId as ChatId),
+        remove: (chatId) =>
+          chatRepo.deleteAuthorized(chatId as ChatId, {
+            expectedAccountId: request.expectedAccountId,
+            expectedWorkspaceId: request.expectedWorkspaceId,
+            getActiveAccountId: () =>
+              resolveAccountIdentity(useAuthStore.getState())?.accountId ?? null,
+            getActiveWorkspaceId: () => {
+              const active = useAuthStore.getState().workspaceId;
+              return active ? String(active) : null;
+            },
+          }),
       });
       const feedback = historyDeletionFeedback(
         result,
-        selectedChatId ? String(selectedChatId) : null,
+        selectedChatIdRef.current ? String(selectedChatIdRef.current) : null,
       );
       if (feedback.clearSelection) onSelectChat(null);
       toast[feedback.tone](feedback.title, feedback.message);
@@ -170,13 +220,16 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
           type="button"
           disabled={deleting || filtered.length === 0}
           onClick={() => {
-            if (
-              !window.confirm(
-                `Delete ${filtered.length} visible chat${filtered.length === 1 ? '' : 's'}?`,
-              )
-            )
-              return;
-            void removeChats(filtered.map((chat) => chat.id));
+            if (!accountId || !workspaceId) return;
+            const count = filtered.length;
+            setPendingDeletion({
+              chatIds: filtered.map((chat) => chat.id),
+              expectedAccountId: accountId,
+              expectedWorkspaceId: String(workspaceId),
+              title: `Delete ${count} visible chat${count === 1 ? '' : 's'}?`,
+              description: `${count} visible chat${count === 1 ? '' : 's'} will be permanently deleted from this workspace.`,
+              confirmLabel: `Delete ${count} chat${count === 1 ? '' : 's'}`,
+            });
           }}
           className="rounded px-2 py-1 text-metadata text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
         >
@@ -273,8 +326,16 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                     disabled={deleting}
                     aria-label={`Delete ${chat.title || 'Untitled chat'}`}
                     onClick={() => {
-                      if (!window.confirm(`Delete ${chat.title || 'Untitled chat'}?`)) return;
-                      void removeChats([chat.id]);
+                      if (!accountId || !workspaceId) return;
+                      const title = chat.title || 'Untitled chat';
+                      setPendingDeletion({
+                        chatIds: [chat.id],
+                        expectedAccountId: accountId,
+                        expectedWorkspaceId: String(workspaceId),
+                        title: `Delete ${title}?`,
+                        description: `${title} will be permanently deleted from this workspace.`,
+                        confirmLabel: 'Delete chat',
+                      });
                     }}
                     className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-30"
                   >
@@ -286,6 +347,50 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
           </ul>
         )}
       </div>
+      <Dialog
+        open={pendingDeletion !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeletion(null);
+        }}
+      >
+        <DialogContent
+          role="alertdialog"
+          hideClose
+          aria-labelledby="history-delete-title"
+          aria-describedby="history-delete-description"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            cancelDeletionRef.current?.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle id="history-delete-title">{pendingDeletion?.title}</DialogTitle>
+            <DialogDescription id="history-delete-description">
+              {pendingDeletion?.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button ref={cancelDeletionRef} type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting || pendingDeletion === null}
+              onClick={() => {
+                const request = pendingDeletion;
+                if (!request) return;
+                setPendingDeletion(null);
+                void removeChats(request);
+              }}
+            >
+              {pendingDeletion?.confirmLabel ?? 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }

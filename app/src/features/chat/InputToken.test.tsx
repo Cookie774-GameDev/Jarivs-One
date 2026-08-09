@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { InputToken } from './InputToken';
+import { InputToken, TokenList } from './InputToken';
 
 describe('InputToken visual variants', () => {
   it('renders confirmed command tokens with a warm animated treatment', () => {
@@ -35,5 +35,21 @@ describe('InputToken visual variants', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove notes.txt' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
     expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives AnimatePresence a ref-safe token when popLayout removes it', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rendered = render(
+      <TokenList>
+        <InputToken key="context-chat" type="command" label="/chat: Chat page" />
+      </TokenList>,
+    );
+
+    rendered.rerender(<TokenList>{null}</TokenList>);
+
+    expect(consoleError.mock.calls.flat().map(String).join('\n')).not.toContain(
+      'Function components cannot be given refs',
+    );
+    consoleError.mockRestore();
   });
 });

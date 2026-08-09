@@ -186,4 +186,12 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(SLASH_COMMANDS.some((cmd) => cmd.label === 'Token Boss')).toBe(false);
     expect(SLASH_COMMANDS.some((cmd) => cmd.displayCommand === '/token boss')).toBe(false);
   });
+
+  it('offers /chat as a two-engine option picker instead of a navigation reference', () => {
+    expect(findSlashCommandDef('chat')).toMatchObject({
+      cmd: 'chat',
+      category: 'chat',
+      hasOptions: true,
+    });
+  });
 });

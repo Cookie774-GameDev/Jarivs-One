@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { __setCachedDefaultWriteDirForTests } from './defaultWriteDir';
 import { inferFallbackActionProposals } from './fallbackActions';
 
 describe('inferFallbackActionProposals', () => {
+  afterEach(() => {
+    __setCachedDefaultWriteDirForTests(null);
+  });
+
   it('proposes opening Settings when a local model only replies in prose', () => {
     const proposals = inferFallbackActionProposals(
       'Okay can you open the settings page please',
@@ -181,6 +186,9 @@ describe('inferFallbackActionProposals', () => {
   });
 
   it('proposes files.create into a general default folder when no path is given', () => {
+    __setCachedDefaultWriteDirForTests(
+      'C:\\Users\\demo\\AppData\\Roaming\\ai.jarvis.desktop\\Projects',
+    );
     const proposals = inferFallbackActionProposals(
       'Jarvis make me a file and write a short story about cats in it',
       "I can't write files.",
@@ -190,6 +198,28 @@ describe('inferFallbackActionProposals', () => {
     const write = proposals.find((p) => p.action_id === 'files.create');
     expect(String(write?.params.path)).toMatch(/jarvis-note\.txt$/i);
     expect(String(write?.params.content).toLowerCase()).toMatch(/cat/);
+    expect(write?.params.root).toBe(
+      'C:\\Users\\demo\\AppData\\Roaming\\ai.jarvis.desktop\\Projects',
+    );
+  });
+
+  it('does not authorize an explicit path by labeling it as the default root', () => {
+    __setCachedDefaultWriteDirForTests(
+      'C:\\Users\\demo\\AppData\\Roaming\\ai.jarvis.desktop\\Projects',
+    );
+    const proposals = inferFallbackActionProposals(
+      'Create a text file at "C:\\Users\\demo\\Downloads\\qualification.txt" that contains exactly: VibeSpace file action.',
+      'I cannot write files.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'files.create',
+      params: {
+        path: 'C:\\Users\\demo\\Downloads\\qualification.txt',
+        content: 'VibeSpace file action.',
+      },
+    });
+    expect(proposals[0]?.params.root).toBeUndefined();
   });
 
   it('proposes files.read when the user asks to inspect an absolute file path', () => {

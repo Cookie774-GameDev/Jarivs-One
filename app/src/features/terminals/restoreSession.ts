@@ -35,6 +35,7 @@ interface ResolveTerminalRestoreInput {
   activeSessions: BackendTerminalInfo[];
   transcripts: Record<string, SessionTranscript>;
   renderedSnapshot?: TerminalSnapshotPayload | null;
+  readActiveScreenSnapshot?: (sessionId: string) => string;
 }
 
 function normalizeProjectId(projectId: string | null | undefined): string | null {
@@ -46,10 +47,9 @@ function findHistoricalPaneTranscript(
   paneId: string,
   projectId: string | null,
 ): SessionTranscript | null {
-  const matches = Object.values(transcripts).filter((session) => (
-    session.paneId === paneId &&
-    normalizeProjectId(session.projectId) === projectId
-  ));
+  const matches = Object.values(transcripts).filter(
+    (session) => session.paneId === paneId && normalizeProjectId(session.projectId) === projectId,
+  );
   matches.sort((a, b) => b.lastWriteAt - a.lastWriteAt);
   return matches[0] ?? null;
 }
@@ -82,15 +82,15 @@ function restoredTextForDeadSession(
 function restoredTextForAttachedSession(
   session: SessionTranscript | null | undefined,
   backendInfo: BackendTerminalInfo,
+  activeScreenSnapshot: string,
 ): string {
-  if (!session || isInteractiveTuiSession(session, backendInfo)) {
+  if (isInteractiveTuiSession(session, backendInfo)) {
     return '';
   }
-  // The Rust PTY bridge streams only future output; it does not retain a
-  // backlog for a replacement xterm renderer. Replaying the locally persisted
-  // shell transcript here restores the renderer without writing history back
-  // into the live PTY or starting a duplicate process.
-  return terminalRestoreText(session);
+  // A stripped PTY event transcript is not a terminal screen: cursor motion
+  // and carriage-return overwrites have already been lost. Only replay the
+  // effective xterm buffer captured for this exact live session.
+  return activeScreenSnapshot;
 }
 
 export function resolveTerminalRestoreSession({
@@ -100,14 +100,16 @@ export function resolveTerminalRestoreSession({
   activeSessions,
   transcripts,
   renderedSnapshot,
+  readActiveScreenSnapshot,
 }: ResolveTerminalRestoreInput): TerminalRestoreDecision {
   const normalizedProjectId = normalizeProjectId(projectId);
 
   if (existingSessionId) {
-    const activeExisting = activeSessions.find((session) => (
-      session.sessionId === existingSessionId &&
-      normalizeProjectId(session.projectId) === normalizedProjectId
-    ));
+    const activeExisting = activeSessions.find(
+      (session) =>
+        session.sessionId === existingSessionId &&
+        normalizeProjectId(session.projectId) === normalizedProjectId,
+    );
     if (activeExisting) {
       return {
         kind: 'attach',
@@ -115,6 +117,7 @@ export function resolveTerminalRestoreSession({
         restoredText: restoredTextForAttachedSession(
           transcripts[existingSessionId],
           activeExisting,
+          readActiveScreenSnapshot?.(existingSessionId) ?? '',
         ),
         source: 'existing-session',
       };
@@ -124,10 +127,7 @@ export function resolveTerminalRestoreSession({
     return {
       kind: 'spawn',
       restoredText: restoredTextForDeadSession(oldSession, renderedSnapshot),
-      restoredInput: sanitizePersistedDraft(
-        oldSession?.currentInput ?? '',
-        oldSession?.text ?? '',
-      ),
+      restoredInput: sanitizePersistedDraft(oldSession?.currentInput ?? '', oldSession?.text ?? ''),
       oldSessionId: existingSessionId,
       source: 'dead-existing-session',
     };
@@ -140,10 +140,11 @@ export function resolveTerminalRestoreSession({
       normalizedProjectId,
     );
     if (historicalSession) {
-      const activeHistorical = activeSessions.find((session) => (
-        session.sessionId === historicalSession.sessionId &&
-        normalizeProjectId(session.projectId) === normalizedProjectId
-      ));
+      const activeHistorical = activeSessions.find(
+        (session) =>
+          session.sessionId === historicalSession.sessionId &&
+          normalizeProjectId(session.projectId) === normalizedProjectId,
+      );
       if (activeHistorical) {
         return {
           kind: 'attach',
@@ -151,6 +152,7 @@ export function resolveTerminalRestoreSession({
           restoredText: restoredTextForAttachedSession(
             historicalSession,
             activeHistorical,
+            readActiveScreenSnapshot?.(historicalSession.sessionId) ?? '',
           ),
           source: 'historical-pane',
         };

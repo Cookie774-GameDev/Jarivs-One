@@ -26,6 +26,10 @@ import {
   runBoundedLocalFinalBossRevision,
   shouldRunLocalFinalBossRevision,
 } from './localFinalBossRevision';
+import {
+  explicitExactLiteralFromRequest,
+  reconcileExplicitExactLiteral,
+} from './exactLiteralReply';
 import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
 import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } from '@/lib/actions';
@@ -3501,6 +3505,8 @@ export function startRuntimeListener(
             preference: effectiveReasoningPreference,
           })
         : null;
+    const bufferExactLiteralStreaming =
+      reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null;
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
@@ -4192,10 +4198,12 @@ export function startRuntimeListener(
               });
             }
             acc += chunk.delta;
-            scheduleFlush();
-            scheduleSpeechDelta();
+            if (!bufferExactLiteralStreaming) {
+              scheduleFlush();
+              scheduleSpeechDelta();
+            }
           }
-          if (chunk.done) flushNow();
+          if (chunk.done && !bufferExactLiteralStreaming) flushNow();
         },
       };
       const response = shouldRunLocalFinalBossRevision(
@@ -4217,9 +4225,14 @@ export function startRuntimeListener(
       // Force a final write with whatever the provider says is canonical.
       // textToParts() splits the text on action-proposal fences so the
       // chat thread renders inline Approve/Cancel cards alongside prose.
-      const finalText = sanitizePromptLeaks(
-        sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(response.text || acc)),
-      );
+      const rawFinalText = response.text || acc;
+      const reconciledExactLiteral = reconcileExplicitExactLiteral(text, rawFinalText);
+      const finalText =
+        reconciledExactLiteral !== rawFinalText
+          ? reconciledExactLiteral
+          : sanitizePromptLeaks(
+              sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(rawFinalText)),
+            );
       const responseInspector = retrievedResponseContext
         ? buildContextResponseInspector(
             projectId ? String(projectId) : null,
@@ -4368,7 +4381,7 @@ export function startRuntimeListener(
       if (streamingVoice) {
         try {
           cancelSpeechDelta();
-          flushSpeechDelta();
+          if (!bufferExactLiteralStreaming) flushSpeechDelta();
           if (canVoiceModuleSpeak()) {
             await streamingVoice.onComplete(finalText);
           } else {

@@ -1,5 +1,6 @@
 import type { ParsedActionProposal } from './types';
 import { defaultWriteFilePath, getCachedDefaultWriteDir } from './defaultWriteDir';
+import { isPathInsideRoot } from './filePolicy';
 
 let nextFallbackId = 1;
 
@@ -411,14 +412,21 @@ export function inferFallbackActionProposals(
     );
   }
 
+  const defaultWriteDir = getCachedDefaultWriteDir();
   const fileWrite = extractFileWriteRequest(userText, assistantText, {
-    defaultDir: getCachedDefaultWriteDir(),
+    defaultDir: defaultWriteDir,
   });
   if (fileWrite) {
+    const usesDefaultRoot =
+      defaultWriteDir !== null && isPathInsideRoot(fileWrite.path, defaultWriteDir);
     proposals.push(
       proposal(
         'files.create',
-        { path: fileWrite.path, content: fileWrite.content },
+        {
+          path: fileWrite.path,
+          content: fileWrite.content,
+          ...(usesDefaultRoot ? { root: defaultWriteDir } : {}),
+        },
         `Write ${fileWrite.path} after user approval.`,
       ),
     );
@@ -459,7 +467,7 @@ export function extractFileReadRequest(userText: string): { path: string } | nul
 /**
  * Infer a files.create proposal when the user clearly asks to create a text
  * file. Absolute path preferred; if missing, use the general default folder
- * (Downloads/Documents/VibeSpace). Tiny local models often refuse in prose
+ * (the allowed Jarvis Projects root). Tiny local models often refuse in prose
  * instead of emitting the action block — this is the safety net.
  */
 export function extractFileWriteRequest(

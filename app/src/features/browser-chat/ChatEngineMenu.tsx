@@ -5,37 +5,33 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui';
-import { useBrowserChatStore, type VibeSpaceChatEngine } from './browserChatStore';
+import { useBrowserChatStore } from './browserChatStore';
+import {
+  CHAT_ENGINE_OPTIONS,
+  transitionChatEngine,
+  type ChatEngineTransitionInput,
+  type ChatEngineTransitionResult,
+} from './chatEngineTransition';
 
 interface ChatEngineMenuProps {
   readonly onNavigateChat?: () => void;
   readonly className?: string;
+  readonly transitionEngine?: (
+    input: ChatEngineTransitionInput,
+  ) => Promise<ChatEngineTransitionResult>;
 }
 
-const ENGINES: ReadonlyArray<{
-  id: VibeSpaceChatEngine;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: 'native',
-    label: 'VibeSpace Chat',
-    description: 'Models, local AI, agents, files, tools, voice, and Prompt Forge.',
-  },
-  {
-    id: 'browser',
-    label: 'Browser Chat',
-    description: 'Real ChatGPT in an isolated VibeSpace browser surface.',
-  },
-];
-
-export function ChatEngineMenu({ onNavigateChat, className }: ChatEngineMenuProps) {
+export function ChatEngineMenu({
+  onNavigateChat,
+  className,
+  transitionEngine = transitionChatEngine,
+}: ChatEngineMenuProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
   const engine = useBrowserChatStore(
     (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
   );
-  const setEngine = useBrowserChatStore((state) => state.setEngine);
   const [open, setOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -60,7 +56,7 @@ export function ChatEngineMenu({ onNavigateChat, className }: ChatEngineMenuProp
           </p>
         </div>
         <div role="menu" aria-label="Chat modes" className="space-y-1">
-          {ENGINES.map((option) => {
+          {CHAT_ENGINE_OPTIONS.map((option) => {
             const active = option.id === engine;
             return (
               <button
@@ -68,10 +64,20 @@ export function ChatEngineMenu({ onNavigateChat, className }: ChatEngineMenuProp
                 type="button"
                 role="menuitemradio"
                 aria-checked={active}
+                disabled={busy || !activeChatId}
                 onClick={() => {
-                  setEngine(option.id, activeChatId);
-                  onNavigateChat?.();
-                  setOpen(false);
+                  if (!activeChatId || busy) return;
+                  setBusy(true);
+                  void transitionEngine({
+                    chatId: activeChatId,
+                    targetEngine: option.id,
+                  }).then((result) => {
+                    if (result.status !== 'failed') {
+                      onNavigateChat?.();
+                      setOpen(false);
+                    }
+                    setBusy(false);
+                  });
                 }}
                 className={cn(
                   'flex w-full items-start gap-3 rounded-md px-2.5 py-2 text-left transition-colors',

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { browserChatStore } from './browserChatStore';
-import { BrowserChatHub } from './BrowserChatHub';
+import { BrowserChatHub, browserChatMcpStatusLabel } from './BrowserChatHub';
 import { browserChatSurface } from './providerSurface';
 import { useAuthStore } from '@/stores/auth';
 import * as bridge from '@/lib/bridge';
@@ -57,6 +57,11 @@ describe('BrowserChatHub', () => {
     useAuthStore.setState({
       projectId: 'project-1' as ProjectId,
       localUserId: 'account-1',
+      cloudSession: {
+        user_id: 'account-1',
+        email: 'account-1@example.test',
+        expires_at: 4_102_444_800,
+      },
     });
     browserChatStore.setState({
       engine: 'browser',
@@ -66,6 +71,22 @@ describe('BrowserChatHub', () => {
       providerRuntime: {},
     });
   });
+
+  it.each([
+    ['disabled', false, 'idle', 'VibeSpace sign-in required'],
+    ['disabled', true, 'idle', 'Setup required'],
+    ['connecting', true, 'idle', 'Connecting desktop relay'],
+    ['reconnecting', true, 'idle', 'Reconnecting desktop relay'],
+    ['error', true, 'idle', 'Connection error'],
+    ['connected', true, 'idle', 'Desktop connected'],
+    ['disabled', true, 'checking', 'Checking secure connection'],
+    ['disabled', true, 'waiting', 'Waiting for owner approval'],
+  ] as const)(
+    'reports relay=%s signedIn=%s setup=%s as %s',
+    (relayStatus, signedIn, setupState, expected) => {
+      expect(browserChatMcpStatusLabel(relayStatus, signedIn, setupState)).toBe(expected);
+    },
+  );
   afterEach(cleanup);
 
   it('shows the three provider-owned surfaces with separate page and bridge status', () => {
@@ -132,7 +153,10 @@ describe('BrowserChatHub', () => {
     render(<BrowserChatHub chatId="chat-1" />);
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
-    expect(useRelay).toHaveBeenCalledWith(true);
+    expect(useRelay).toHaveBeenCalledWith(true, {
+      accountId: 'account-1',
+      projectId: 'project-1',
+    });
     expect(screen.getByText(/connected to this signed-in vibespace account/i)).toBeTruthy();
   });
 

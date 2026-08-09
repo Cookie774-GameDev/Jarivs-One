@@ -503,6 +503,176 @@ describe('startRuntimeListener agent routing', () => {
     expect(request.agent.system_prompt).toContain('calm, precise, capable');
   });
 
+  it('buffers Token Saver exact-literal text and voice until one reconciled final emission', async () => {
+    const jarvis = agent('agent_jarvis_exact_saver', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_exact_saver' as ChatId;
+    const placeholderId = 'msg_exact_saver_assistant' as MessageId;
+    const updateMessage = vi.fn(
+      async (_id: MessageId, _patch: Partial<Omit<Message, 'id'>>) => undefined,
+    );
+    mocks.runAgent.mockImplementationOnce(async (request) => {
+      request.onChunk({ delta: 'TOKEN-', done: false });
+      request.onChunk({ delta: 'SAVER-OK', done: false });
+      request.onChunk({ delta: '', done: true });
+      return {
+        text: 'TOKEN-SAVER-OK',
+        usage: { input_tokens: 8, output_tokens: 4, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      };
+    });
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Reply with exactly: TOKEN_SAVER_OK',
+          speakReply: true,
+          reasoningPreference: { mode: 'token-saver', effortOverride: null },
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await stop.whenIdle();
+    const finalWrite = updateMessage.mock.calls.at(-1)?.[1];
+    expect(finalWrite?.parts).toEqual([{ kind: 'text', text: 'TOKEN_SAVER_OK' }]);
+    expect(updateMessage).toHaveBeenCalledOnce();
+    expect(mocks.streamingSession.onDelta).not.toHaveBeenCalled();
+    expect(mocks.streamingSession.onComplete).toHaveBeenCalledOnce();
+    expect(mocks.streamingSession.onComplete).toHaveBeenCalledWith('TOKEN_SAVER_OK');
+    expect(mocks.runAgent).toHaveBeenCalledOnce();
+  });
+
+  it('keeps ordinary Token Saver message and voice streaming unchanged', async () => {
+    const jarvis = agent('agent_jarvis_ordinary_saver', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_ordinary_saver' as ChatId;
+    const placeholderId = 'msg_ordinary_saver_assistant' as MessageId;
+    const updateMessage = vi.fn(
+      async (_id: MessageId, _patch: Partial<Omit<Message, 'id'>>) => undefined,
+    );
+    mocks.runAgent.mockImplementationOnce(async (request) => {
+      request.onChunk({ delta: 'HELLO', done: false });
+      request.onChunk({ delta: ' WORLD', done: false });
+      request.onChunk({ delta: '', done: true });
+      return {
+        text: 'HELLO WORLD',
+        usage: { input_tokens: 8, output_tokens: 4, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      };
+    });
+    const stop = trackListener(
+      startRuntimeListener(
+        {
+          getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+          getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+          getAgentForChat: vi.fn(async () => jarvis),
+          getMessages: vi.fn(async () => []),
+          appendMessage: vi.fn(async (message) => ({
+            ...message,
+            id: placeholderId,
+            created_at: 2,
+            updated_at: 2,
+          })),
+          updateMessage,
+        },
+        { jarvisKernelMode: 'legacy', flushIntervalMs: 0 },
+      ),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Say hello normally.',
+          speakReply: true,
+          reasoningPreference: { mode: 'token-saver', effortOverride: null },
+        },
+      }),
+    );
+
+    await stop.whenIdle();
+    expect(updateMessage.mock.calls.map((call) => call[1].parts)).toContainEqual([
+      { kind: 'text', text: 'HELLO' },
+    ]);
+    expect(mocks.streamingSession.onDelta).toHaveBeenCalledWith('HELLO');
+    expect(mocks.streamingSession.onComplete).toHaveBeenCalledWith('HELLO WORLD');
+    expect(mocks.runAgent).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      name: 'materially different exact-literal response',
+      prompt: 'Reply with exactly: TOKEN_SAVER_OK',
+      providerText: 'TOKEN-SAVER-NOT-OK',
+    },
+    {
+      name: 'ordinary prose containing the word exactly',
+      prompt: 'Explain exactly why token saving matters.',
+      providerText: 'Token saving matters because it reduces unnecessary context.',
+    },
+  ])('does not rewrite $name', async ({ prompt, providerText }) => {
+    const jarvis = agent('agent_jarvis_exact_negative', 'jarvis', 'You are Jarvis.');
+    const chatId = `chat_exact_negative_${prompt.length}` as ChatId;
+    const placeholderId = `msg_exact_negative_${prompt.length}` as MessageId;
+    const updateMessage = vi.fn(
+      async (_id: MessageId, _patch: Partial<Omit<Message, 'id'>>) => undefined,
+    );
+    mocks.runAgent.mockResolvedValueOnce({
+      text: providerText,
+      usage: { input_tokens: 8, output_tokens: 8, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: prompt,
+          reasoningPreference: { mode: 'token-saver', effortOverride: null },
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await stop.whenIdle();
+    const finalWrite = updateMessage.mock.calls.at(-1)?.[1];
+    expect(finalWrite?.parts).toEqual([{ kind: 'text', text: providerText }]);
+    expect(mocks.runAgent).toHaveBeenCalledOnce();
+  });
+
   it('auto-routes a protected Jarvis image turn through an active catalog connection without changing the picker', async () => {
     const jarvis = agent('agent_jarvis_auto_route', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_auto_route' as ChatId;

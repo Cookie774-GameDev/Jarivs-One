@@ -10,6 +10,39 @@ const issuer = 'https://tipeobvisjqvpbzcpckh.supabase.co/auth/v1';
 const subject = '99f194ac-1822-4ff8-b3b1-8a7338365646';
 const workspaceId = 'workspace_1234567890';
 
+function safeTool(name: 'fs.list' | 'fs.read') {
+  return {
+    type: 'function',
+    function: {
+      name,
+      description:
+        name === 'fs.list'
+          ? 'List entries in a directory inside the workspace.'
+          : 'Read a UTF-8 text file from the workspace.',
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path'],
+      },
+    },
+  };
+}
+
+function registrationFrame(overrides: Record<string, unknown> = {}) {
+  return {
+    kind: 'register',
+    protocol_version: 2,
+    client_nonce: 'nonce_1234567890123456',
+    daemon_version: 'test',
+    platform: 'test',
+    tools: [safeTool('fs.list'), safeTool('fs.read')],
+    writable: false,
+    shell_enabled: false,
+    workspace_grant: { id: workspaceId, display_name: 'VibeSpace Test' },
+    ...overrides,
+  };
+}
+
 function request(path: string, init?: RequestInit): Request {
   return new Request(`${origin}${path}`, init);
 }
@@ -46,23 +79,7 @@ async function connectDesktop(): Promise<WebSocket> {
   expect(socket).not.toBeNull();
   socket!.accept();
   const registered = nextMessage(socket!);
-  socket!.send(
-    JSON.stringify({
-      kind: 'register',
-      protocol_version: 2,
-      token: 'not-reused-by-the-worker',
-      client_nonce: 'nonce_1234567890123456',
-      daemon_version: 'test',
-      platform: 'test',
-      tools: [
-        { type: 'function', function: { name: 'fs.list', parameters: {} } },
-        { type: 'function', function: { name: 'fs.read', parameters: {} } },
-      ],
-      writable: false,
-      shell_enabled: false,
-      workspace_grant: { id: workspaceId, display_name: 'VibeSpace Test' },
-    }),
-  );
+  socket!.send(JSON.stringify(registrationFrame()));
   expect(await registered).toMatchObject({
     kind: 'registered',
     protocol_version: 2,
@@ -72,6 +89,173 @@ async function connectDesktop(): Promise<WebSocket> {
 }
 
 describe('VibeSpace MCP Worker', () => {
+  it.each([
+    [
+      'workspace grant credential',
+      registrationFrame({
+        workspace_grant: {
+          id: workspaceId,
+          display_name: 'VibeSpace Test',
+          token: 'nested-token',
+        },
+      }),
+    ],
+    [
+      'tool credential',
+      registrationFrame({
+        tools: [{ ...safeTool('fs.read'), secret: 'nested-secret' }],
+      }),
+    ],
+    [
+      'function credential',
+      registrationFrame({
+        tools: [
+          {
+            ...safeTool('fs.read'),
+            function: {
+              ...safeTool('fs.read').function,
+              authorization: 'nested-authorization',
+            },
+          },
+        ],
+      }),
+    ],
+    [
+      'deep parameters credential',
+      registrationFrame({
+        tools: [
+          {
+            ...safeTool('fs.read'),
+            function: {
+              ...safeTool('fs.read').function,
+              parameters: {
+                type: 'object',
+                properties: {
+                  path: { type: 'string', 'API Key': 'nested-api-key' },
+                },
+                required: ['path'],
+              },
+            },
+          },
+        ],
+      }),
+    ],
+    [
+      'unknown nested key',
+      registrationFrame({
+        tools: [
+          {
+            ...safeTool('fs.read'),
+            function: { ...safeTool('fs.read').function, ignored_extra: true },
+          },
+        ],
+      }),
+    ],
+    [
+      'wrong tool type',
+      registrationFrame({
+        tools: [{ ...safeTool('fs.read'), type: 'command' }],
+      }),
+    ],
+    [
+      'altered tool description',
+      registrationFrame({
+        tools: [
+          {
+            ...safeTool('fs.read'),
+            function: { ...safeTool('fs.read').function, description: 'Read any file.' },
+          },
+        ],
+      }),
+    ],
+    [
+      'altered parameters schema',
+      registrationFrame({
+        tools: [
+          {
+            ...safeTool('fs.read'),
+            function: {
+              ...safeTool('fs.read').function,
+              parameters: {
+                ...safeTool('fs.read').function.parameters,
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+      }),
+    ],
+    ['writable capability', registrationFrame({ writable: true })],
+    ['shell capability', registrationFrame({ shell_enabled: true })],
+  ])('rejects unsafe or inexact nested registration: %s', async (_label, frame) => {
+    const ticket = await issueRelayTicket(
+      subject,
+      'test-only-relay-ticket-signing-key-0000000000000000',
+    );
+    const upgrade = await SELF.fetch(
+      request(`/browser-chat/bridge?ticket=${encodeURIComponent(ticket)}`, {
+        headers: { upgrade: 'websocket' },
+      }),
+    );
+    const socket = upgrade.webSocket!;
+    socket.accept();
+    const outcome = Promise.race([
+      nextMessage(socket).then(() => ({ kind: 'message' as const, code: 0 })),
+      new Promise<{ kind: 'close'; code: number }>((resolve) =>
+        socket.addEventListener('close', (event) => resolve({ kind: 'close', code: event.code }), {
+          once: true,
+        }),
+      ),
+    ]);
+    socket.send(JSON.stringify(frame));
+    await expect(outcome).resolves.toEqual({ kind: 'close', code: 4002 });
+  });
+
+  it.each([
+    ['token', 'raw-token'],
+    ['authorization', 'Bearer raw-token'],
+    ['access_token', 'raw-token'],
+    ['refresh_token', 'raw-token'],
+    ['cookie', 'session=raw'],
+    ['password', 'raw-password'],
+    ['secret', 'raw-secret'],
+    ['unknown_field', 'unexpected'],
+  ])('rejects credential-shaped or unknown registration field %s', async (key, value) => {
+    const ticket = await issueRelayTicket(
+      subject,
+      'test-only-relay-ticket-signing-key-0000000000000000',
+    );
+    const upgrade = await SELF.fetch(
+      request(`/browser-chat/bridge?ticket=${encodeURIComponent(ticket)}`, {
+        headers: { upgrade: 'websocket' },
+      }),
+    );
+    const socket = upgrade.webSocket!;
+    socket.accept();
+    const outcome = Promise.race([
+      nextMessage(socket).then(() => ({ kind: 'message' as const, code: 0 })),
+      new Promise<{ kind: 'close'; code: number }>((resolve) =>
+        socket.addEventListener('close', (event) => resolve({ kind: 'close', code: event.code }), {
+          once: true,
+        }),
+      ),
+    ]);
+    socket.send(
+      JSON.stringify({
+        kind: 'register',
+        protocol_version: 2,
+        client_nonce: 'nonce_1234567890123456',
+        daemon_version: 'test',
+        platform: 'test',
+        tools: [],
+        writable: false,
+        shell_enabled: false,
+        [key]: value,
+      }),
+    );
+    await expect(outcome).resolves.toEqual({ kind: 'close', code: 4002 });
+  });
+
   it('registers the authenticated desktop relay without granting a local workspace', async () => {
     const ticket = await issueRelayTicket(
       subject,

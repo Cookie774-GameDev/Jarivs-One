@@ -10,6 +10,7 @@ import {
   canonicalTerminalSpawnToken,
   createTerminalExitLatch,
   createTerminalOutputLatch,
+  finalizeTerminalRendererTeardown,
   formatTerminalVoiceFailure,
   observeTerminalDocumentTheme,
   settleTerminalInitializationFailure,
@@ -398,6 +399,129 @@ describe('TerminalView canonical execution truth', () => {
     expect(childSpawn).toBeGreaterThan(sessionCreation);
   });
 
+  it('restores an exact live screen once without spawning, writing to the PTY, or appending replay', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('readTerminalScreenSnapshot({');
+    expect(source).toContain('readActiveScreenSnapshot:');
+    expect(source).toContain('captureTerminalScreenSnapshot(');
+
+    const attachStart = source.indexOf(
+      '} else {',
+      source.indexOf("if (restoreDecision.kind === 'spawn')"),
+    );
+    const attachEnd = source.indexOf('      } catch (err) {', attachStart);
+    const attachBlock = source.slice(attachStart, attachEnd);
+    expect(attachBlock.match(/term\.write\(restoreDecision\.restoredText/gu)).toHaveLength(1);
+    expect(attachBlock).not.toContain("invoke('terminal_spawn'");
+    expect(attachBlock).not.toContain("invoke('terminal_write'");
+    expect(attachBlock).not.toContain('.appendOutput(');
+  });
+
+  it('waits for the final accepted xterm write before capturing and disposing the old renderer', async () => {
+    const order: string[] = [];
+    let renderedScreen = 'PS C:\\repo> ';
+    let releaseWrite: (() => void) | undefined;
+    let drained = false;
+    const capture = vi.fn(() => {
+      order.push('capture');
+      expect(renderedScreen.match(/FINAL_MARKER/gu)).toHaveLength(1);
+    });
+    const appendTranscript = vi.fn((text: string) => {
+      order.push('append');
+      expect(text).toBe('FINAL_MARKER');
+    });
+    const dispose = vi.fn(() => order.push('dispose'));
+
+    const finalizer = finalizeTerminalRendererTeardown({
+      terminal: {
+        write(data, callback) {
+          order.push('write');
+          releaseWrite = () => {
+            renderedScreen += data;
+            callback();
+          };
+        },
+      },
+      pendingWrite: Promise.resolve(),
+      drainAcceptedOutput: () => {
+        if (drained) return null;
+        drained = true;
+        return { displayData: 'FINAL_MARKER', transcriptData: 'FINAL_MARKER' };
+      },
+      appendTranscript,
+      identityIsCurrent: () => true,
+      captureSnapshot: capture,
+      dispose,
+    });
+
+    await vi.waitFor(() => expect(releaseWrite).toBeTypeOf('function'));
+    expect(capture).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
+
+    releaseWrite?.();
+    await finalizer;
+
+    expect(appendTranscript).toHaveBeenCalledOnce();
+    expect(capture).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(order).toEqual(['write', 'append', 'capture', 'dispose']);
+  });
+
+  it('does not let a delayed old-renderer finalizer overwrite a later identity owner', async () => {
+    let releaseWrite: (() => void) | undefined;
+    let identityIsCurrent = true;
+    let drained = false;
+    const capture = vi.fn();
+    const dispose = vi.fn();
+
+    const finalizer = finalizeTerminalRendererTeardown({
+      terminal: {
+        write(_data, callback) {
+          releaseWrite = callback;
+        },
+      },
+      pendingWrite: Promise.resolve(),
+      drainAcceptedOutput: () => {
+        if (drained) return null;
+        drained = true;
+        return { displayData: 'OLD_FINAL', transcriptData: 'OLD_FINAL' };
+      },
+      appendTranscript: vi.fn(),
+      identityIsCurrent: () => identityIsCurrent,
+      captureSnapshot: capture,
+      dispose,
+    });
+
+    await vi.waitFor(() => expect(releaseWrite).toBeTypeOf('function'));
+    identityIsCurrent = false;
+    releaseWrite?.();
+    await finalizer;
+
+    expect(capture).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('settles teardown without an unhandled rejection when snapshot and disposal fail', async () => {
+    await expect(
+      finalizeTerminalRendererTeardown({
+        terminal: { write: vi.fn() },
+        pendingWrite: Promise.resolve(),
+        drainAcceptedOutput: () => null,
+        appendTranscript: vi.fn(),
+        identityIsCurrent: () => true,
+        captureSnapshot: () => {
+          throw new Error('private snapshot failure');
+        },
+        dispose: () => {
+          throw new Error('private disposal failure');
+        },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('keeps preserve-existing capacity native and writes ordered setup commands in sequence', () => {
     const frontend = readFileSync(
       resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
@@ -409,7 +533,9 @@ describe('TerminalView canonical execution truth', () => {
     expect(frontend).toContain('for (const startupWrite of orderedStartupCommands)');
     expect(frontend).toContain('data: commandToInput(startupWrite)');
     expect(backend).toContain('preserve_existing: Option<bool>');
-    expect(backend).toContain('terminal: project capacity reached; existing terminals were preserved');
+    expect(backend).toContain(
+      'terminal: project capacity reached; existing terminals were preserved',
+    );
   });
 
   it('regenerates the managed briefing and Context pack from supervised session changes', () => {

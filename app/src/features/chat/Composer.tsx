@@ -43,6 +43,11 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appearance/themes';
 import {
+  CHAT_ENGINE_OPTIONS,
+  storedChatEngine,
+  transitionChatEngine,
+} from '@/features/browser-chat/chatEngineTransition';
+import {
   CONSOLE_PROFILES,
   loadConsolePreferences,
   parseChatPresentationCommand,
@@ -1073,6 +1078,10 @@ export function Composer({
     const cmd = optionPickerCtx.cmd.cmd;
     if (isGlobalThemePickerCommand(cmd) || cmd === 'theme') return [];
 
+    if (normalizeSlashCmd(cmd) === 'chat') {
+      return CHAT_ENGINE_OPTIONS.map((option) => ({ ...option }));
+    }
+
     if (normalizeSlashCmd(cmd) === 'agent') {
       const live = useJarvisInteractionStore.getState().agentsByChat[String(chatId)] ?? [];
       return agentSelectorOptions(live).map((row) => ({
@@ -1519,6 +1528,7 @@ export function Composer({
       (isChatAttachSlashCmd(cmd.cmd) ||
         normalizeSlashCmd(cmd.cmd) === 'permissions' ||
         normalizeSlashCmd(cmd.cmd) === 'agent' ||
+        canonicalCmd === 'chat' ||
         cmd.cmd === 'effort' ||
         cmd.cmd === 'mode' ||
         canonicalCmd === 'md' ||
@@ -1532,13 +1542,15 @@ export function Composer({
           ? useUIStore.getState().theme
           : cmd.cmd === 'theme'
             ? loadConsolePreferences().profile
-            : cmd.cmd === 'effort' || cmd.cmd === 'mode'
-              ? (buildReasoningSlashPickerState({
-                  command: cmd.cmd,
-                  selection: reasoningSelectionFromChatModel(chatModelSelection),
-                  preference: reasoningPreference,
-                }).selectedId ?? '')
-              : '',
+            : canonicalCmd === 'chat'
+              ? storedChatEngine(String(chatId))
+              : cmd.cmd === 'effort' || cmd.cmd === 'mode'
+                ? (buildReasoningSlashPickerState({
+                    command: cmd.cmd,
+                    selection: reasoningSelectionFromChatModel(chatModelSelection),
+                    preference: reasoningPreference,
+                  }).selectedId ?? '')
+                : '',
       );
       setOptionPickerCtx({ cmd, query: '' });
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -1589,6 +1601,24 @@ export function Composer({
     if (!optionPickerCtx) return;
     const cmd = optionPickerCtx.cmd;
     const canonical = normalizeSlashCmd(cmd.cmd);
+
+    if (canonical === 'chat') {
+      const targetEngine = option.id === 'browser' ? 'browser' : 'native';
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      setText('');
+      void transitionChatEngine({
+        chatId: String(chatId),
+        targetEngine,
+      }).then((result) => {
+        if (result.status === 'failed') {
+          toast.error('Could not switch chat mode', 'The current chat was left unchanged.');
+        } else {
+          useUIStore.getState().setRoute('chat');
+        }
+      });
+      return;
+    }
 
     // /agent: open the selected live subagent/multitask child thread (native).
     if (canonical === 'agent') {
@@ -1792,7 +1822,9 @@ export function Composer({
           ? useUIStore.getState().theme
           : def.cmd === 'theme'
             ? loadConsolePreferences().profile
-            : (reasoningState?.selectedId ?? ''),
+            : normalizeSlashCmd(def.cmd) === 'chat'
+              ? storedChatEngine(String(chatId))
+              : (reasoningState?.selectedId ?? ''),
       );
       setOptionPickerCtx({ cmd: def, query: '' });
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -1823,6 +1855,10 @@ export function Composer({
         }
       }
       openAttachPicker('mode');
+      return true;
+    }
+    if (cmd === 'chat') {
+      openAttachPicker('chat');
       return true;
     }
     if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms' || cmd === 'access') {
@@ -2015,7 +2051,6 @@ export function Composer({
       tools: 'tools',
       agents: 'agents',
       schedule: 'schedule',
-      chat: 'chat',
     };
     if (cmd in routes) {
       const def = findSlashCommandDef(cmd);

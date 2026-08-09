@@ -7,7 +7,9 @@ describe('history deletion', () => {
 
     await expect(
       deleteHistoryChats(['chat-b', 'chat-a', 'chat-b'], {
+        expectedAccountId: 'account-a',
         expectedWorkspaceId: 'workspace-a',
+        getActiveAccountId: () => 'account-a',
         getActiveWorkspaceId: () => 'workspace-a',
         read: async (id) => ({ id, workspace_id: 'workspace-a' }),
         remove,
@@ -23,7 +25,9 @@ describe('history deletion', () => {
 
     await expect(
       deleteHistoryChats(ids, {
+        expectedAccountId: 'account-a',
         expectedWorkspaceId: 'workspace-a',
+        getActiveAccountId: () => 'account-a',
         getActiveWorkspaceId: () => 'workspace-a',
         read: async (id) => ({ id, workspace_id: 'workspace-a' }),
         remove,
@@ -40,7 +44,9 @@ describe('history deletion', () => {
 
     await expect(
       deleteHistoryChats(['chat-a', 'chat-b'], {
+        expectedAccountId: 'account-a',
         expectedWorkspaceId: 'workspace-a',
+        getActiveAccountId: () => 'account-a',
         getActiveWorkspaceId: () => activeWorkspace,
         read: async (id) => ({ id, workspace_id: 'workspace-a' }),
         remove,
@@ -57,7 +63,9 @@ describe('history deletion', () => {
     const remove = vi.fn();
     await expect(
       deleteHistoryChats(['chat-a'], {
+        expectedAccountId: 'account-a',
         expectedWorkspaceId: 'workspace-a',
+        getActiveAccountId: () => 'account-a',
         getActiveWorkspaceId: () => 'workspace-a',
         read: async (id) => ({ id, workspace_id: 'workspace-b' }),
         remove,
@@ -68,6 +76,53 @@ describe('history deletion', () => {
       error: expect.stringMatching(/does not belong/i),
     });
     expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the account changes while the workspace id remains equal', async () => {
+    let activeAccount = 'account-a';
+    const remove = vi.fn();
+
+    const result = await deleteHistoryChats(['chat-a'], {
+      expectedAccountId: 'account-a',
+      expectedWorkspaceId: 'workspace-a',
+      getActiveAccountId: () => activeAccount,
+      getActiveWorkspaceId: () => 'workspace-a',
+      read: async (id) => {
+        activeAccount = 'account-b';
+        return { id, workspace_id: 'workspace-a' };
+      },
+      remove,
+    });
+
+    expect(result).toMatchObject({
+      deletedIds: [],
+      failedId: 'chat-a',
+      error: expect.stringMatching(/account changed/i),
+    });
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('reports local deletion truthfully when post-delete synchronization rejects', async () => {
+    const result = await deleteHistoryChats(['chat-a'], {
+      expectedAccountId: 'account-a',
+      expectedWorkspaceId: 'workspace-a',
+      getActiveAccountId: () => 'account-a',
+      getActiveWorkspaceId: () => 'workspace-a',
+      read: async (id) => ({ id, workspace_id: 'workspace-a' }),
+      remove: async () => ({ localDeleted: true, syncQueued: false }),
+    });
+
+    expect(result).toEqual({
+      deletedIds: ['chat-a'],
+      degradedId: 'chat-a',
+      error: 'The chat was deleted locally, but cloud synchronization could not be confirmed.',
+    });
+    expect(historyDeletionFeedback(result, 'chat-a')).toMatchObject({
+      clearSelection: true,
+      tone: 'error',
+      title: 'History partially cleared',
+      message: expect.stringMatching(/deleted locally.*synchronization could not be confirmed/i),
+    });
   });
 
   it('truthfully reconciles selection and messaging after a partial delete', () => {

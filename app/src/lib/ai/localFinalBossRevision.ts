@@ -1,6 +1,7 @@
 import type { RunAgentRequest } from './router';
 import type { ReasoningMode } from './reasoningControls';
 import { llmContentToText, type LLMResponse } from './types';
+import { reconcileExplicitExactLiteral } from './exactLiteralReply';
 
 type RunAgent = (request: RunAgentRequest) => Promise<LLMResponse>;
 
@@ -114,6 +115,10 @@ export async function runBoundedLocalFinalBossRevision(
   request.signal?.throwIfAborted();
   const draftText = boundedDraft(draft.text);
   if (!draftText) throw new Error('Token Final Boss draft was empty.');
+  const originalRequest = [...request.messages]
+    .reverse()
+    .find((message) => message.role === 'user')?.content;
+  const originalRequestText = originalRequest ? llmContentToText(originalRequest) : '';
 
   let revision: LLMResponse;
   try {
@@ -128,25 +133,24 @@ export async function runBoundedLocalFinalBossRevision(
     });
   } catch (error) {
     if (request.signal?.aborted) throw error;
-    request.onChunk?.({ delta: draft.text, first: true });
+    const reconciledDraftText = reconcileExplicitExactLiteral(originalRequestText, draft.text);
+    request.onChunk?.({ delta: reconciledDraftText, first: true });
     request.onChunk?.({ delta: '', done: true });
-    return draft;
+    return { ...draft, text: reconciledDraftText };
   }
   request.signal?.throwIfAborted();
-  const originalRequest = [...request.messages]
-    .reverse()
-    .find((message) => message.role === 'user')?.content;
-  const originalRequestText = originalRequest ? llmContentToText(originalRequest) : '';
   const winner =
     selectHigherQualityFinalBossCandidate(originalRequestText, draftText, revision.text) ===
     'revision'
       ? revision
       : draft;
-  request.onChunk?.({ delta: winner.text, first: true });
+  const winnerText = reconcileExplicitExactLiteral(originalRequestText, winner.text);
+  request.onChunk?.({ delta: winnerText, first: true });
   request.onChunk?.({ delta: '', done: true });
 
   return {
     ...winner,
+    text: winnerText,
     usage: {
       input_tokens: draft.usage.input_tokens + revision.usage.input_tokens,
       output_tokens: draft.usage.output_tokens + revision.usage.output_tokens,

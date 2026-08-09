@@ -26,6 +26,11 @@ import { cn } from '@/lib/utils';
 import { OtpCodeInput } from './OtpCodeInput';
 import { formatAuthError, isLikelyExistingAccountSignUp } from './authErrors';
 import {
+  abandonRecoverySessionOwnership,
+  createRecoverySessionOwnership,
+  type RecoverySessionOwnership,
+} from './recoveryCallback';
+import {
   isCompleteOtpCode,
   normalizeOtpCode,
   validateEmail,
@@ -33,16 +38,79 @@ import {
 } from './authValidation';
 import './sakura-auth.css';
 
+export interface RecoveryPasswordSession {
+  generation: number;
+  userId: string;
+  email: string;
+  ownership: RecoverySessionOwnership;
+}
+
+type RecoveryOwnership = RecoveryPasswordSession;
+
 interface SignInDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Which tab to open on. Defaults to 'signin'. */
   initialMode?: Mode;
+  recoverySession?: RecoveryPasswordSession;
 }
 
 type Mode = 'signin' | 'signup' | 'magic' | 'recovery';
 type Phase = 'credentials' | 'verify' | 'new-password';
 type VerifyKind = 'signup' | 'email' | 'recovery';
+const SESSION_VERIFICATION_ERROR = 'Authentication could not be verified. Try again.';
+
+function exactSessionIdentity(
+  value: unknown,
+  expectedEmail: string,
+): { accessToken: string; userId: string; email: string } | null {
+  const snapshot = sessionSnapshot(value);
+  return snapshot?.email === expectedEmail ? snapshot : null;
+}
+
+function sessionSnapshot(value: unknown): {
+  accessToken: string;
+  userId: string;
+  email: string;
+} | null {
+  if (!value || typeof value !== 'object') return null;
+  const session = (value as { session?: unknown }).session;
+  if (!session || typeof session !== 'object') return null;
+  const record = session as {
+    access_token?: unknown;
+    user?: { id?: unknown; email?: unknown };
+  };
+  const userId = typeof record.user?.id === 'string' ? record.user.id.trim() : '';
+  const email =
+    typeof record.user?.email === 'string' ? record.user.email.trim().toLowerCase() : '';
+  if (!userId || !email) return null;
+  return {
+    accessToken: typeof record.access_token === 'string' ? record.access_token.trim() : '',
+    userId,
+    email,
+  };
+}
+
+function hasExactSessionForEmail(value: unknown, expectedEmail: string): boolean {
+  return Boolean(exactSessionIdentity(value, expectedEmail));
+}
+
+function isUnambiguousVerificationResponse(value: unknown, expectedEmail: string): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as {
+    session?: unknown;
+    user?: { id?: unknown; email?: unknown; identities?: unknown[] | null } | null;
+  };
+  const userId = typeof data.user?.id === 'string' ? data.user.id.trim() : '';
+  const email = typeof data.user?.email === 'string' ? data.user.email.trim().toLowerCase() : '';
+  return (
+    !data.session &&
+    Boolean(userId) &&
+    email === expectedEmail &&
+    Array.isArray(data.user?.identities) &&
+    data.user.identities.length > 0
+  );
+}
 
 /**
  * Supabase auth form:
@@ -50,7 +118,12 @@ type VerifyKind = 'signup' | 'email' | 'recovery';
  *   - signup: email + password, then 6-digit email verification code
  *   - magic:  email-only sign-in via 6-digit code (no password)
  */
-export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogProps) {
+export function SignInDialog({
+  open,
+  onOpenChange,
+  initialMode,
+  recoverySession,
+}: SignInDialogProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
@@ -58,10 +131,16 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   const [mode, setMode] = useState<Mode>(initialMode ?? 'signin');
   const [phase, setPhase] = useState<Phase>('credentials');
   const [verifyKind, setVerifyKind] = useState<VerifyKind>('signup');
+  const [verifiedRecoverySession, setVerifiedRecoverySession] = useState<RecoveryOwnership | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const generationRef = useRef(0);
+  const lifecycleGenerationRef = useRef(0);
+  const wasOpenRef = useRef(open);
+  const recoveryOwnershipRef = useRef<RecoveryOwnership | null>(null);
   const cloudReady = isCloudSyncConfigured();
 
   const NOT_CONFIGURED =
@@ -76,18 +155,68 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
     setMode(initialMode ?? 'signin');
     setPhase('credentials');
     setVerifyKind('signup');
+    setVerifiedRecoverySession(null);
     setBusy(false);
     setError(null);
     setInfo(null);
   }, [initialMode]);
 
   useEffect(() => {
+    const lifecycleGeneration = ++lifecycleGenerationRef.current;
+    return () => {
+      queueMicrotask(() => {
+        if (lifecycleGenerationRef.current !== lifecycleGeneration) return;
+        const expected = recoveryOwnershipRef.current;
+        recoveryOwnershipRef.current = null;
+        if (!expected) return;
+        const client = getSupabaseClient();
+        if (client) void abandonRecoverySessionOwnership(client.auth, expected.ownership);
+        else expected.ownership.release();
+      });
+    };
+  }, []);
+
+  useEffect(() => {
     // Controlled parents can close without Radix emitting onOpenChange.
     // Reset on both edges so no secret or recovery state survives a closed interval.
+    if (wasOpenRef.current && !open && recoveryOwnershipRef.current) {
+      const client = getSupabaseClient();
+      if (client) void abandonRecoveryOwnership(client);
+    }
+    wasOpenRef.current = open;
     reset();
   }, [open, reset]);
 
-  function closeDialog() {
+  useEffect(() => {
+    if (!open || !recoverySession) return;
+    if (
+      recoveryOwnershipRef.current &&
+      recoveryOwnershipRef.current.ownership !== recoverySession.ownership
+    ) {
+      const client = getSupabaseClient();
+      if (client) void abandonRecoveryOwnership(client);
+      else recoveryOwnershipRef.current.ownership.release();
+    }
+    generationRef.current += 1;
+    setEmail(recoverySession.email);
+    setPassword('');
+    setPasswordConfirmation('');
+    setOtpCode('');
+    setMode('recovery');
+    setPhase('new-password');
+    setVerifyKind('recovery');
+    recoveryOwnershipRef.current = recoverySession;
+    setVerifiedRecoverySession(null);
+    setBusy(false);
+    setError(null);
+    setInfo('Recovery link accepted. Choose a new password for your VibeSpace account.');
+  }, [open, recoverySession]);
+
+  function closeDialog(recoveryAlreadySignedOut = false) {
+    if (recoveryOwnershipRef.current && !recoveryAlreadySignedOut) {
+      const client = getSupabaseClient();
+      if (client) void abandonRecoveryOwnership(client);
+    }
     reset();
     onOpenChange(false);
   }
@@ -101,9 +230,19 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   }
 
   function selectMode(next: Mode) {
+    if (recoveryOwnershipRef.current) {
+      const client = getSupabaseClient();
+      if (client) void abandonRecoveryOwnership(client);
+    }
+    generationRef.current += 1;
     setMode(next);
     setPhase('credentials');
+    setEmail('');
+    setPassword('');
+    setPasswordConfirmation('');
     setOtpCode('');
+    setVerifiedRecoverySession(null);
+    setBusy(false);
     setError(null);
     setInfo(null);
   }
@@ -111,6 +250,38 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   function captureGeneration() {
     const generation = generationRef.current;
     return () => generationRef.current === generation;
+  }
+
+  async function cleanupReturnedSession(
+    client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+    value: unknown,
+  ) {
+    const returned = sessionSnapshot(value);
+    if (!returned) return;
+    try {
+      const { data: currentData, error: currentError } = await client.auth.getSession();
+      if (currentError) return;
+      const current = sessionSnapshot(currentData);
+      const matches = returned.accessToken
+        ? current?.accessToken === returned.accessToken
+        : !current?.accessToken &&
+          current?.userId === returned.userId &&
+          current?.email === returned.email;
+      if (matches) await client.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    } catch {
+      // A cleanup probe must never surface secrets or affect a session we cannot prove belongs here.
+    }
+  }
+
+  async function abandonRecoveryOwnership(
+    client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+    currentData?: unknown,
+  ) {
+    const expected = recoveryOwnershipRef.current;
+    recoveryOwnershipRef.current = null;
+    setVerifiedRecoverySession(null);
+    if (!expected) return;
+    await abandonRecoverySessionOwnership(client.auth, expected.ownership, currentData);
   }
 
   async function handleCredentialsSubmit() {
@@ -127,6 +298,10 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       const passwordError = validatePassword(password, mode);
       if (passwordError) {
         setError(passwordError);
+        return;
+      }
+      if (mode === 'signup' && password !== passwordConfirmation) {
+        setError('Passwords do not match.');
         return;
       }
     }
@@ -181,20 +356,35 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
             emailRedirectTo: undefined,
           },
         });
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          await cleanupReturnedSession(client, data);
+          return;
+        }
         if (signUpError) throw signUpError;
 
         if (data.session) {
+          if (!hasExactSessionForEmail(data, trimmedEmail)) {
+            await cleanupReturnedSession(client, data);
+            if (!isCurrent()) return;
+            throw new Error(SESSION_VERIFICATION_ERROR);
+          }
           toast.success('Welcome to VibeSpace', 'Your account is ready and cloud sync is on.');
           closeDialog();
           return;
         }
 
         if (isLikelyExistingAccountSignUp(data)) {
-          setError(
-            'That email already has an account. Sign in with your password, or use Email code.',
-          );
+          setPassword('');
+          setPasswordConfirmation('');
           setMode('signin');
+          setError('Unable to complete sign-up. Try signing in or use Email code.');
+          return;
+        }
+        if (!isUnambiguousVerificationResponse(data, trimmedEmail)) {
+          setPassword('');
+          setPasswordConfirmation('');
+          setMode('signin');
+          setError('Unable to complete sign-up. Try signing in or use Email code.');
           return;
         }
 
@@ -208,12 +398,20 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         return;
       }
 
-      const { error: signInError } = await client.auth.signInWithPassword({
+      const { data, error: signInError } = await client.auth.signInWithPassword({
         email: trimmedEmail,
         password,
       });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        await cleanupReturnedSession(client, data);
+        return;
+      }
       if (signInError) throw signInError;
+      if (!hasExactSessionForEmail(data, trimmedEmail)) {
+        await cleanupReturnedSession(client, data);
+        if (!isCurrent()) return;
+        throw new Error(SESSION_VERIFICATION_ERROR);
+      }
       toast.success('Signed in', 'Cloud sync is enabled for this device.');
       closeDialog();
     } catch (err) {
@@ -242,21 +440,47 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
     const isCurrent = captureGeneration();
 
     try {
-      const { error: verifyError } = await client.auth.verifyOtp({
+      const { data, error: verifyError } = await client.auth.verifyOtp({
         email: trimmedEmail,
         token,
         type: verifyKind,
       });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        await cleanupReturnedSession(client, data);
+        return;
+      }
       if (verifyError) throw verifyError;
 
       if (verifyKind === 'recovery') {
+        const recoveredIdentity = exactSessionIdentity(data, trimmedEmail);
+        if (!recoveredIdentity?.accessToken) {
+          await cleanupReturnedSession(client, data);
+          if (!isCurrent()) return;
+          throw new Error(SESSION_VERIFICATION_ERROR);
+        }
+        const ownership = {
+          generation: generationRef.current,
+          userId: recoveredIdentity.userId,
+          email: recoveredIdentity.email,
+          ownership: createRecoverySessionOwnership(
+            recoveredIdentity.accessToken,
+            recoveredIdentity.userId,
+            recoveredIdentity.email,
+          ),
+        };
+        recoveryOwnershipRef.current = ownership;
+        setVerifiedRecoverySession(ownership);
         setPhase('new-password');
         setOtpCode('');
         setPassword('');
         setPasswordConfirmation('');
         setInfo('Recovery code accepted. Choose a new password for your VibeSpace account.');
         return;
+      }
+      if (!hasExactSessionForEmail(data, trimmedEmail)) {
+        await cleanupReturnedSession(client, data);
+        if (!isCurrent()) return;
+        throw new Error(SESSION_VERIFICATION_ERROR);
       }
 
       toast.success(
@@ -296,13 +520,43 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       return;
     }
     const isCurrent = captureGeneration();
+    const expectedRecovery = recoverySession ?? verifiedRecoverySession;
 
     try {
+      if (expectedRecovery) {
+        if (
+          verifiedRecoverySession &&
+          verifiedRecoverySession.generation !== generationRef.current
+        ) {
+          setPassword('');
+          setPasswordConfirmation('');
+          setError('Recovery session changed. Request a new recovery link.');
+          return;
+        }
+        const { data: currentData, error: currentError } = await client.auth.getSession();
+        if (!isCurrent()) return;
+        if (currentError || !expectedRecovery.ownership.matchesSession(currentData)) {
+          await abandonRecoveryOwnership(client, currentData);
+          setPassword('');
+          setPasswordConfirmation('');
+          setError('Recovery session changed. Request a new recovery link.');
+          return;
+        }
+      }
       const { error: updateError } = await client.auth.updateUser({ password });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        if (expectedRecovery) {
+          await abandonRecoveryOwnership(client);
+        }
+        return;
+      }
       if (updateError) throw updateError;
+      if (expectedRecovery) {
+        await abandonRecoveryOwnership(client);
+        if (!isCurrent()) return;
+      }
       toast.success('Password updated', 'Your new password is active.');
-      closeDialog();
+      closeDialog(Boolean(expectedRecovery));
     } catch (err) {
       if (isCurrent()) {
         setError(formatAuthError(err, 'Could not update your password. Request a new code.'));
@@ -341,12 +595,13 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         if (resendError) {
           // Fallback: some projects only re-send via signUp when password is still available.
           if (password) {
-            const { error: signUpError } = await client.auth.signUp({
+            const { data: signUpData, error: signUpError } = await client.auth.signUp({
               email: trimmedEmail,
               password,
             });
             if (!isCurrent()) return;
-            if (signUpError) throw resendError;
+            if (signUpError || !isUnambiguousVerificationResponse(signUpData, trimmedEmail))
+              throw resendError;
           } else {
             throw resendError;
           }
@@ -365,9 +620,12 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       }
       setOtpCode('');
       setInfo(
-        'A new code is on the way. Check inbox and spam — wait a minute before requesting another.',
+        'Your request was accepted. If a new code arrives, check inbox and spam before trying again.',
       );
-      toast.success('New code sent', `Check ${trimmedEmail}.`);
+      toast.success(
+        'Request accepted',
+        `Check ${trimmedEmail} if a new code arrives. Delivery can be delayed.`,
+      );
     } catch (err) {
       if (isCurrent()) setError(formatAuthError(err, 'Could not resend the code.'));
     } finally {
@@ -378,6 +636,20 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   const verifying = phase === 'verify';
   const choosingPassword = phase === 'new-password';
   const trimmedEmail = email.trim();
+  const normalizedEmail = trimmedEmail.toLowerCase();
+  const emailValidationError = validateEmail(normalizedEmail);
+  const visibleEmailError = email ? emailValidationError : null;
+  const signupPasswordError =
+    mode === 'signup' && password ? validatePassword(password, 'signup') : null;
+  const signupPasswordMismatch =
+    mode === 'signup' && Boolean(passwordConfirmation) && password !== passwordConfirmation;
+  const credentialsInvalid =
+    Boolean(emailValidationError) ||
+    (mode === 'signin' && !password) ||
+    (mode === 'signup' &&
+      (Boolean(validatePassword(password, 'signup')) ||
+        !passwordConfirmation ||
+        password !== passwordConfirmation));
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
@@ -486,6 +758,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 <Label htmlFor="recovery-new-password">New password</Label>
                 <Input
                   id="recovery-new-password"
+                  name="new-password"
                   type="password"
                   autoComplete="new-password"
                   value={password}
@@ -497,6 +770,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 <Label htmlFor="recovery-confirm-password">Confirm new password</Label>
                 <Input
                   id="recovery-confirm-password"
+                  name="new-password-confirmation"
                   type="password"
                   autoComplete="new-password"
                   value={passwordConfirmation}
@@ -537,12 +811,15 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 <Label htmlFor="signin-email">Email</Label>
                 <Input
                   id="signin-email"
+                  name="email"
                   type="email"
                   autoComplete="email"
                   inputMode="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  aria-invalid={Boolean(visibleEmailError)}
+                  aria-describedby={visibleEmailError ? 'auth-email-error' : undefined}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -552,6 +829,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                   disabled={busy}
                   className="h-10"
                 />
+                {visibleEmailError ? (
+                  <p id="auth-email-error" className="text-xs text-destructive" role="alert">
+                    {visibleEmailError}
+                  </p>
+                ) : null}
               </div>
 
               {mode !== 'magic' && mode !== 'recovery' && (
@@ -559,6 +841,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                   <Label htmlFor="signin-password">Password</Label>
                   <Input
                     id="signin-password"
+                    name="password"
                     type="password"
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'}
@@ -574,19 +857,49 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                     className="h-10"
                   />
                   {mode === 'signup' ? (
-                    <p className="text-metadata text-muted-foreground">
-                      Use 8+ characters with at least one letter and one number.
-                    </p>
+                    signupPasswordError ? (
+                      <p className="text-xs text-destructive">{signupPasswordError}</p>
+                    ) : (
+                      <p className="text-metadata text-muted-foreground">
+                        Use 8+ characters with at least one letter and one number.
+                      </p>
+                    )
                   ) : null}
                 </div>
               )}
+              {mode === 'signup' ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="signup-password-confirmation">Confirm password</Label>
+                  <Input
+                    id="signup-password-confirmation"
+                    name="password-confirmation"
+                    type="password"
+                    autoComplete="new-password"
+                    value={passwordConfirmation}
+                    onChange={(event) => setPasswordConfirmation(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void handleCredentialsSubmit();
+                      }
+                    }}
+                    disabled={busy}
+                    className="h-10"
+                  />
+                  {signupPasswordMismatch ? (
+                    <p className="text-xs text-destructive" role="alert">
+                      Passwords do not match.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {mode === 'signin' ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="w-fit px-0 text-secondary"
-                  disabled={busy}
+                  disabled={busy || Boolean(emailValidationError)}
                   onClick={() => selectMode('recovery')}
                 >
                   Forgot password?
@@ -617,13 +930,22 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         </div>
 
         <DialogFooter className="!justify-between gap-2 border-t border-border/70 bg-muted/20 px-6 py-4 sm:!justify-between">
-          {verifying || choosingPassword ? (
+          {(verifying || choosingPassword) && !recoverySession ? (
             <Button
               variant="ghost"
               disabled={busy}
               onClick={() => {
+                if (verifiedRecoverySession) {
+                  const client = getSupabaseClient();
+                  if (client) void abandonRecoveryOwnership(client);
+                }
+                generationRef.current += 1;
                 setPhase(choosingPassword ? 'verify' : 'credentials');
+                setPassword('');
+                setPasswordConfirmation('');
                 setOtpCode('');
+                setVerifiedRecoverySession(null);
+                setBusy(false);
                 setError(null);
                 setInfo(null);
               }}
@@ -632,7 +954,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
               Back
             </Button>
           ) : (
-            <Button variant="ghost" onClick={closeDialog} disabled={busy}>
+            <Button variant="ghost" onClick={() => closeDialog()} disabled={busy}>
               Cancel
             </Button>
           )}
@@ -650,6 +972,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
               busy ||
               !cloudReady ||
               (verifying && !isCompleteOtpCode(otpCode)) ||
+              (!verifying && !choosingPassword && credentialsInvalid) ||
               (choosingPassword && (!password || !passwordConfirmation))
             }
           >

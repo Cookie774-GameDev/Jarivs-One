@@ -30,6 +30,7 @@ const MAX_DEADLINE_MS = 30_000;
 const MAX_RESULT_ENTRIES = 500;
 const MAX_SEEN_CALLS = 256;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9_-]{12,96}$/u;
+const SAFE_SCOPE_IDENTIFIER = /^[A-Za-z0-9_.:@/-]{1,160}$/u;
 
 type ReadToolName = 'fs.list' | 'fs.read';
 
@@ -49,6 +50,8 @@ export interface BridgeWorkspaceGrantMetadata {
 }
 
 export interface BridgeWorkspaceGrant extends BridgeWorkspaceGrantMetadata {
+  accountId: string;
+  projectId: string;
   root: string;
 }
 
@@ -102,6 +105,9 @@ export interface BridgeClientOptions {
   jwt: string;
   /** Explicit session-only read grant. Its local root is never transmitted. */
   workspaceGrant?: BridgeWorkspaceGrant;
+  /** Exact signed-in account and active project allowed to use the grant. */
+  accountId?: string;
+  projectId?: string | null;
   /** Phone/Voice is the compatibility default; Browser Chat is isolated. */
   mode?: 'phone_voice' | 'browser_chat';
   /** Daemon version string (defaults to app version). */
@@ -150,17 +156,35 @@ function safeWorkspaceGrant(
 ): BridgeWorkspaceGrant | undefined {
   const root = safeWorkspaceRoot(grant?.root);
   const id = grant?.id.trim() ?? '';
+  const accountId = grant?.accountId.trim() ?? '';
+  const projectId = grant?.projectId.trim() ?? '';
   const displayName = grant?.displayName.trim() ?? '';
   if (
     !root ||
     !SAFE_IDENTIFIER.test(id) ||
+    !SAFE_SCOPE_IDENTIFIER.test(accountId) ||
+    !SAFE_SCOPE_IDENTIFIER.test(projectId) ||
     !displayName ||
     displayName.length > 120 ||
     /[\u0000-\u001f\u007f]/u.test(displayName)
   ) {
     return undefined;
   }
-  return { id, root, displayName };
+  return { id, accountId, projectId, root, displayName };
+}
+
+function grantMatchesScope(
+  grant: BridgeWorkspaceGrant | undefined,
+  accountId: string | undefined,
+  projectId: string | null | undefined,
+): grant is BridgeWorkspaceGrant {
+  return Boolean(
+    grant &&
+    accountId &&
+    projectId &&
+    grant.accountId === accountId &&
+    grant.projectId === projectId,
+  );
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -433,14 +457,17 @@ export class BridgeClient {
   /** Apply or revoke the current explicit session-only read grant. */
   setWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): void {
     const normalized = safeWorkspaceGrant(workspaceGrant);
+    const scoped = grantMatchesScope(normalized, this.opts.accountId, this.opts.projectId)
+      ? normalized
+      : undefined;
     if (
-      this.opts.workspaceGrant?.id === normalized?.id &&
-      this.opts.workspaceGrant?.root === normalized?.root &&
-      this.opts.workspaceGrant?.displayName === normalized?.displayName
+      this.opts.workspaceGrant?.id === scoped?.id &&
+      this.opts.workspaceGrant?.root === scoped?.root &&
+      this.opts.workspaceGrant?.displayName === scoped?.displayName
     ) {
       return;
     }
-    this.opts.workspaceGrant = normalized;
+    this.opts.workspaceGrant = scoped;
     if (this.wantsConnected) this.reconnect();
   }
 
@@ -810,10 +837,13 @@ export function getBrowserChatBridgeClient(opts?: BridgeClientOptions): BridgeCl
     if (!opts) {
       throw new Error('BridgeClient.getBrowserChatBridgeClient: must pass options on first call');
     }
+    const requestedGrant = pendingWorkspaceGrant ?? safeWorkspaceGrant(opts.workspaceGrant);
     browserChatSingleton = new BridgeClient({
       ...opts,
       mode: 'browser_chat',
-      workspaceGrant: pendingWorkspaceGrant ?? safeWorkspaceGrant(opts.workspaceGrant),
+      workspaceGrant: grantMatchesScope(requestedGrant, opts.accountId, opts.projectId)
+        ? requestedGrant
+        : undefined,
     });
   }
   return browserChatSingleton;
@@ -829,6 +859,15 @@ export function setBridgeWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): 
   browserChatSingleton?.setWorkspaceGrant(pendingWorkspaceGrant);
 }
 
-export function getBridgeWorkspaceGrant(): BridgeWorkspaceGrant | undefined {
-  return pendingWorkspaceGrant ? { ...pendingWorkspaceGrant } : undefined;
+export function getBridgeWorkspaceGrant(
+  accountId?: string,
+  projectId?: string | null,
+): BridgeWorkspaceGrant | undefined {
+  if (
+    pendingWorkspaceGrant &&
+    (accountId === undefined || grantMatchesScope(pendingWorkspaceGrant, accountId, projectId))
+  ) {
+    return { ...pendingWorkspaceGrant };
+  }
+  return undefined;
 }

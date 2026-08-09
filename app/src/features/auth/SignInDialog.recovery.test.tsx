@@ -6,6 +6,8 @@ const auth = vi.hoisted(() => ({
   resetPasswordForEmail: vi.fn(),
   verifyOtp: vi.fn(),
   updateUser: vi.fn(),
+  getSession: vi.fn(),
+  signOut: vi.fn(),
 }));
 const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
@@ -26,11 +28,47 @@ vi.mock('@/components/ui/toast', () => ({
 
 import { SignInDialog } from './SignInDialog';
 
+function recoverySession(accessToken = 'recovery-token') {
+  let token = accessToken;
+  return {
+    generation: 7,
+    userId: 'user-a',
+    email: 'owner@example.test',
+    ownership: {
+      matchesSession(value: unknown) {
+        const session = (value as { session?: { access_token?: string } })?.session;
+        return Boolean(token) && session?.access_token === token;
+      },
+      release() {
+        token = '';
+      },
+    },
+  };
+}
+
 describe('SignInDialog password recovery', () => {
   beforeEach(() => {
     auth.resetPasswordForEmail.mockReset().mockResolvedValue({ data: {}, error: null });
-    auth.verifyOtp.mockReset().mockResolvedValue({ data: {}, error: null });
+    auth.verifyOtp.mockReset().mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'recovery-token',
+          user: { id: 'user-a', email: 'owner@example.test' },
+        },
+      },
+      error: null,
+    });
     auth.updateUser.mockReset().mockResolvedValue({ data: {}, error: null });
+    auth.getSession.mockReset().mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'recovery-token',
+          user: { id: 'user-a', email: 'owner@example.test' },
+        },
+      },
+      error: null,
+    });
+    auth.signOut.mockReset().mockResolvedValue({ error: null });
     toastSuccess.mockReset();
     toastError.mockReset();
     toastInfo.mockReset();
@@ -40,6 +78,9 @@ describe('SignInDialog password recovery', () => {
     const onOpenChange = vi.fn();
     render(<SignInDialog open onOpenChange={onOpenChange} />);
 
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'owner@example.test' },
+    });
     fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
     fireEvent.change(screen.getByLabelText('Email'), {
       target: { value: ' Owner@Example.test ' },
@@ -101,6 +142,234 @@ describe('SignInDialog password recovery', () => {
     fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/passwords do not match/i);
+    expect(auth.updateUser).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing', null, false],
+    [
+      'wrong-account',
+      {
+        access_token: 'wrong-recovery-token',
+        user: { id: 'user-b', email: 'other@example.test' },
+      },
+      true,
+    ],
+  ])(
+    'fails closed when recovery verification returns a %s session',
+    async (_label, session, signsOut) => {
+      auth.verifyOtp.mockResolvedValueOnce({ data: { session }, error: null });
+      auth.getSession.mockResolvedValueOnce({ data: { session }, error: null });
+      render(<SignInDialog open onOpenChange={vi.fn()} initialMode="recovery" />);
+      fireEvent.change(screen.getByLabelText('Email'), {
+        target: { value: 'owner@example.test' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /send recovery code/i }));
+      await screen.findByLabelText('Digit 1 of 6');
+      fireEvent.change(screen.getByLabelText('Digit 1 of 6'), {
+        target: { value: '123456' },
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /verify recovery code/i }));
+
+      expect((await screen.findByRole('alert')).textContent).toMatch(/could not be verified/i);
+      expect(screen.queryByLabelText('New password')).toBeNull();
+      if (signsOut) {
+        expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+      } else {
+        expect(auth.signOut).not.toHaveBeenCalled();
+      }
+      expect(auth.updateUser).not.toHaveBeenCalled();
+    },
+  );
+
+  it('signs out the verified recovery session when returning from password entry', async () => {
+    render(<SignInDialog open onOpenChange={vi.fn()} initialMode="recovery" />);
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'owner@example.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /send recovery code/i }));
+    await screen.findByLabelText('Digit 1 of 6');
+    fireEvent.change(screen.getByLabelText('Digit 1 of 6'), {
+      target: { value: '123456' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /verify recovery code/i }));
+    await screen.findByLabelText('New password');
+
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' }));
+    expect(await screen.findByRole('button', { name: /verify recovery code/i })).toBeTruthy();
+  });
+
+  it('binds a recovery callback password update to the exact recovered account', async () => {
+    const onOpenChange = vi.fn();
+    render(<SignInDialog open onOpenChange={onOpenChange} recoverySession={recoverySession()} />);
+
+    const newPassword = await screen.findByLabelText('New password');
+    expect(newPassword.getAttribute('name')).toBe('new-password');
+    expect(newPassword.getAttribute('autocomplete')).toBe('new-password');
+    expect(screen.getByLabelText('Confirm new password').getAttribute('name')).toBe(
+      'new-password-confirmation',
+    );
+    fireEvent.change(newPassword, {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+
+    await waitFor(() => expect(auth.updateUser).toHaveBeenCalledWith({ password: 'SecurePass9' }));
+    expect(auth.getSession).toHaveBeenCalled();
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('does not update or sign out a newer same-account callback session', async () => {
+    auth.getSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'newer-token',
+          user: { id: 'user-a', email: 'owner@example.test' },
+        },
+      },
+      error: null,
+    });
+    render(
+      <SignInDialog
+        open
+        onOpenChange={vi.fn()}
+        recoverySession={recoverySession('callback-token')}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/request a new recovery link/i);
+    expect(auth.updateUser).not.toHaveBeenCalled();
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('does not sign out a newer same-account session when a callback dialog closes', async () => {
+    auth.getSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'newer-token',
+          user: { id: 'user-a', email: 'owner@example.test' },
+        },
+      },
+      error: null,
+    });
+    render(
+      <SignInDialog
+        open
+        onOpenChange={vi.fn()}
+        recoverySession={recoverySession('callback-token')}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+
+    await waitFor(() => expect(auth.getSession).toHaveBeenCalled());
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('cleans exact callback ownership when the dialog unmounts', async () => {
+    const session = recoverySession();
+    const { unmount } = render(
+      <SignInDialog open onOpenChange={vi.fn()} recoverySession={session} />,
+    );
+    await screen.findByLabelText('New password');
+
+    unmount();
+
+    await waitFor(() => expect(auth.getSession).toHaveBeenCalled());
+    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('keeps callback ownership live through the StrictMode effect probe', async () => {
+    const session = recoverySession();
+    render(
+      <React.StrictMode>
+        <SignInDialog open onOpenChange={vi.fn()} recoverySession={session} />
+      </React.StrictMode>,
+    );
+
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+
+    await waitFor(() => expect(auth.updateUser).toHaveBeenCalledWith({ password: 'SecurePass9' }));
+  });
+
+  it('does not sign out a newer session that arrives after a successful password update', async () => {
+    auth.getSession
+      .mockResolvedValueOnce({
+        data: {
+          session: {
+            access_token: 'callback-token',
+            user: { id: 'user-a', email: 'owner@example.test' },
+          },
+        },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session: {
+            access_token: 'newer-token',
+            user: { id: 'user-a', email: 'owner@example.test' },
+          },
+        },
+        error: null,
+      });
+    render(
+      <SignInDialog
+        open
+        onOpenChange={vi.fn()}
+        recoverySession={recoverySession('callback-token')}
+      />,
+    );
+
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+
+    await waitFor(() => expect(auth.updateUser).toHaveBeenCalledWith({ password: 'SecurePass9' }));
+    await waitFor(() => expect(auth.getSession).toHaveBeenCalledTimes(2));
+    expect(auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the callback session account drifts before password update', async () => {
+    auth.getSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'user-b', email: 'other@example.test' } } },
+      error: null,
+    });
+    render(<SignInDialog open onOpenChange={vi.fn()} recoverySession={recoverySession()} />);
+
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/request a new recovery link/i);
     expect(auth.updateUser).not.toHaveBeenCalled();
   });
 
@@ -223,6 +492,31 @@ describe('SignInDialog password recovery', () => {
     expect(screen.queryByLabelText('New password')).toBeNull();
     expect(screen.queryByDisplayValue('SecurePass9')).toBeNull();
     expect(onOpenChange).not.toHaveBeenCalled();
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' }));
+  });
+
+  it('cleans up a matching callback session when revalidation errors', async () => {
+    auth.getSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'recovery-token',
+          user: { id: 'user-a', email: 'owner@example.test' },
+        },
+      },
+      error: new Error('session unavailable'),
+    });
+    render(<SignInDialog open onOpenChange={vi.fn()} recoverySession={recoverySession()} />);
+    fireEvent.change(await screen.findByLabelText('New password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/request a new recovery link/i);
+    expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(auth.updateUser).not.toHaveBeenCalled();
   });
 
   it('ignores a delayed recovery-send result from before a controlled close and reopen', async () => {
@@ -334,5 +628,6 @@ describe('SignInDialog password recovery', () => {
     expect(toastSuccess).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledWith({ scope: 'local' }));
   });
 });

@@ -14,6 +14,48 @@ const MAX_ARGUMENT_BYTES = 64 * 1024;
 const MAX_RESULT_BYTES = 128 * 1024;
 const REQUEST_TIMEOUT_MS = 10_000;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9_-]{12,96}$/u;
+const REGISTRATION_FIELDS = new Set([
+  'kind',
+  'protocol_version',
+  'client_nonce',
+  'daemon_version',
+  'platform',
+  'tools',
+  'writable',
+  'shell_enabled',
+  'workspace_grant',
+]);
+const REQUIRED_REGISTRATION_FIELDS = [...REGISTRATION_FIELDS].filter(
+  (field) => field !== 'workspace_grant',
+);
+const WORKSPACE_GRANT_FIELDS = new Set(['id', 'display_name']);
+const TOOL_FIELDS = new Set(['type', 'function']);
+const TOOL_FUNCTION_FIELDS = new Set(['name', 'description', 'parameters']);
+const CREDENTIAL_KEY_FRAGMENTS = [
+  'token',
+  'authorization',
+  'auth',
+  'cookie',
+  'secret',
+  'credential',
+  'password',
+  'apikey',
+] as const;
+const PATH_PARAMETERS_SCHEMA = {
+  type: 'object',
+  properties: { path: { type: 'string' } },
+  required: ['path'],
+} as const;
+const SAFE_TOOL_DESCRIPTORS = {
+  'fs.list': {
+    description: 'List entries in a directory inside the workspace.',
+    parameters: PATH_PARAMETERS_SCHEMA,
+  },
+  'fs.read': {
+    description: 'Read a UTF-8 text file from the workspace.',
+    parameters: PATH_PARAMETERS_SCHEMA,
+  },
+} as const;
 
 type PendingCall = {
   resolve: (value: RelayInvocationResult) => void;
@@ -24,7 +66,14 @@ type Registration = {
   protocol_version: 2;
   client_nonce: string;
   workspace_grant?: { id: string; display_name: string };
-  tools: Array<{ function?: { name?: string } }>;
+  tools: Array<{
+    type: 'function';
+    function: {
+      name: keyof typeof SAFE_TOOL_DESCRIPTORS;
+      description: string;
+      parameters: typeof PATH_PARAMETERS_SCHEMA;
+    };
+  }>;
 };
 
 type SocketAttachment = {
@@ -43,24 +92,98 @@ function byteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function hasExactFields(value: Record<string, unknown>, fields: ReadonlySet<string>): boolean {
+  const keys = Object.keys(value);
+  return keys.length === fields.size && keys.every((key) => fields.has(key));
+}
+
+function hasCredentialShapedKey(value: unknown): boolean {
+  const pending = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || typeof current !== 'object') continue;
+    if (Array.isArray(current)) {
+      pending.push(...current);
+      continue;
+    }
+    for (const [key, nested] of Object.entries(current)) {
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/gu, '');
+      if (CREDENTIAL_KEY_FRAGMENTS.some((fragment) => normalized.includes(fragment))) return true;
+      pending.push(nested);
+    }
+  }
+  return false;
+}
+
+function exactJsonValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => exactJsonValue(value, right[index]))
+    );
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(right, key) && exactJsonValue(left[key], right[key]),
+    )
+  );
+}
+
+function isSafeLabel(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    Boolean(value.trim()) &&
+    value.length <= 120 &&
+    !/[\u0000-\u001f\u007f]/u.test(value)
+  );
+}
+
 function parseRegistration(value: unknown): Registration | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const frame = value as Record<string, unknown>;
+  if (hasCredentialShapedKey(value) || !isRecord(value)) return null;
+  const frame = value;
   if (
+    Object.keys(frame).some((key) => !REGISTRATION_FIELDS.has(key)) ||
+    REQUIRED_REGISTRATION_FIELDS.some((key) => !Object.prototype.hasOwnProperty.call(frame, key)) ||
     frame.kind !== 'register' ||
     frame.protocol_version !== 2 ||
     typeof frame.client_nonce !== 'string' ||
     !SAFE_IDENTIFIER.test(frame.client_nonce) ||
+    !isSafeLabel(frame.daemon_version) ||
+    !isSafeLabel(frame.platform) ||
+    frame.writable !== false ||
+    frame.shell_enabled !== false ||
     !Array.isArray(frame.tools)
   ) {
     return null;
   }
   const toolNames = frame.tools.map((tool) => {
-    if (!tool || typeof tool !== 'object' || Array.isArray(tool)) return '';
-    const fn = (tool as Record<string, unknown>).function;
-    return fn && typeof fn === 'object' && !Array.isArray(fn)
-      ? String((fn as Record<string, unknown>).name ?? '')
-      : '';
+    if (!isRecord(tool) || !hasExactFields(tool, TOOL_FIELDS) || tool.type !== 'function') {
+      return '';
+    }
+    const fn = tool.function;
+    if (!isRecord(fn) || !hasExactFields(fn, TOOL_FUNCTION_FIELDS)) return '';
+    const name = typeof fn.name === 'string' ? fn.name : '';
+    if (!SAFE_RELAY_TOOLS.has(name) || !(name in SAFE_TOOL_DESCRIPTORS)) return '';
+    const descriptor = SAFE_TOOL_DESCRIPTORS[name as keyof typeof SAFE_TOOL_DESCRIPTORS];
+    if (
+      fn.description !== descriptor.description ||
+      !exactJsonValue(fn.parameters, descriptor.parameters)
+    ) {
+      return '';
+    }
+    return name;
   });
   if (
     toolNames.some((name) => !SAFE_RELAY_TOOLS.has(name)) ||
@@ -72,15 +195,12 @@ function parseRegistration(value: unknown): Registration | null {
   if (grant === undefined) {
     return toolNames.length === 0 ? (frame as unknown as Registration) : null;
   }
-  if (!grant || typeof grant !== 'object' || Array.isArray(grant)) return null;
-  const workspace = grant as Record<string, unknown>;
+  if (!isRecord(grant) || !hasExactFields(grant, WORKSPACE_GRANT_FIELDS)) return null;
+  const workspace = grant;
   if (
     typeof workspace.id !== 'string' ||
     !SAFE_IDENTIFIER.test(workspace.id) ||
-    typeof workspace.display_name !== 'string' ||
-    !workspace.display_name.trim() ||
-    workspace.display_name.length > 120 ||
-    /[\u0000-\u001f\u007f]/u.test(workspace.display_name)
+    !isSafeLabel(workspace.display_name)
   ) {
     return null;
   }

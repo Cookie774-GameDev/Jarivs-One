@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  resolveTerminalRestoreSession,
-  type BackendTerminalInfo,
-} from './restoreSession';
+import { resolveTerminalRestoreSession, type BackendTerminalInfo } from './restoreSession';
 import type { SessionTranscript } from './transcriptStore';
 import type { TerminalSnapshotPayload } from './terminalSnapshot';
 
@@ -53,26 +50,30 @@ function renderedSnapshot(text: string): TerminalSnapshotPayload {
 }
 
 describe('resolveTerminalRestoreSession', () => {
-  it('reattaches a live historical pane session and replays its transcript into the new renderer', () => {
+  it('reattaches a live historical pane session from its authoritative rendered screen', () => {
     const decision = resolveTerminalRestoreSession({
       existingSessionId: null,
       paneId: 'pane-a',
       projectId: 'project-a',
       activeSessions: [backend('session-a', 'project-a')],
       transcripts: {
-        'session-a': transcript('session-a', 'pane-a', 'project-a'),
+        'session-a': {
+          ...transcript('session-a', 'pane-a', 'project-a'),
+          text: 'PS C:\\repo> PS C:\\repo> echo MARK',
+        },
       },
+      readActiveScreenSnapshot: () => 'PS C:\\repo> echo MARK\r\nMARK\r\nPS C:\\repo> ',
     });
 
     expect(decision.kind).toBe('attach');
     if (decision.kind === 'attach') {
       expect(decision.sessionId).toBe('session-a');
       expect(decision.source).toBe('historical-pane');
-      expect(decision.restoredText).toBe('output from session-a');
+      expect(decision.restoredText).toBe('PS C:\\repo> echo MARK\r\nMARK\r\nPS C:\\repo> ');
     }
   });
 
-  it('reattaches an explicitly known live shell and replays its transcript into the new renderer', () => {
+  it('reattaches an explicitly known live shell but fails closed without an exact screen snapshot', () => {
     const decision = resolveTerminalRestoreSession({
       existingSessionId: 'session-a',
       paneId: 'pane-a',
@@ -86,7 +87,7 @@ describe('resolveTerminalRestoreSession', () => {
     expect(decision.kind).toBe('attach');
     if (decision.kind === 'attach') {
       expect(decision.sessionId).toBe('session-a');
-      expect(decision.restoredText).toBe('output from session-a');
+      expect(decision.restoredText).toBe('');
     }
   });
 

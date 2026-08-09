@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
+import { forwardRef } from 'react';
 import {
   X,
   FileText,
@@ -78,25 +79,25 @@ const TOKEN_GLOW: Record<TokenType, string> = {
 const SPRING = 'spring' as const;
 const TOKEN_TRANSITION = { type: SPRING, stiffness: 520, damping: 26, mass: 0.7 };
 
-export function InputToken({
-  type,
-  label,
-  sublabel,
-  icon,
-  onActivate,
-  onRemove,
-  className,
-}: InputTokenProps) {
+export const InputToken = forwardRef<HTMLDivElement, InputTokenProps>(function InputToken(
+  { type, label, sublabel, icon, onActivate, onRemove, className },
+  ref,
+) {
   const Icon = TOKEN_ICONS[type];
   const isCommand = type === 'command';
   const tokenTransition = useThemeMotionTransition(TOKEN_TRANSITION);
+  const filterTransition =
+    'duration' in tokenTransition && tokenTransition.duration === 0
+      ? { duration: 0 }
+      : { type: 'tween' as const, duration: 0.18, ease: 'easeOut' as const };
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, scale: 0.72, y: 8, filter: 'blur(2px)' }}
       animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
       exit={{ opacity: 0, scale: 0.85, y: -6, filter: 'blur(1px)' }}
-      transition={tokenTransition}
+      transition={{ ...tokenTransition, filter: filterTransition }}
       data-slash-active-glow={isCommand ? 'true' : undefined}
       className={cn(
         'relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
@@ -190,7 +191,7 @@ export function InputToken({
       )}
     </motion.div>
   );
-}
+});
 
 export interface TokenListProps {
   children: React.ReactNode;

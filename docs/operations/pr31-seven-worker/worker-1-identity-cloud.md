@@ -61,6 +61,13 @@
 - Account Hub consumes password and OTP input values before awaiting Auth and clears both fields
   plus OTP visibility on every transition. Device revocation now carries the rendered account ID
   into SQL, where `auth.uid()` mismatch is rejected before mutation.
+- Added a generic recovery-link callback path without enabling broad URL session detection.
+  Callback material is accepted only for an explicit recovery type, removed from the address
+  synchronously before asynchronous Auth work, and exchanged through the shared Supabase
+  singleton. The resulting new-password dialog is bound to the exact recovered user, email, and
+  UI generation; account drift, malformed or replayed callbacks, and wrong callback types fail
+  closed with a generic message. Cancel and successful password update locally revoke the
+  recovered session. The existing six-digit recovery flow remains independent and unchanged.
 
 ## Focused verification
 
@@ -78,6 +85,15 @@
 - Final strict RED reproduced stale Account A usage and billing continuations, same-tier Access
   authorization reuse and stale session bootstrap, retained website password/OTP input, and
   unbound device revocation. Fresh focused GREEN verification is recorded above.
+- Generic recovery callback RED first failed because no bounded callback consumer existed, then
+  the callback-dialog RED proved the dedicated recovered-session password UI was absent. Fresh
+  GREEN verification passes 20/20 callback, App integration, and recovery-dialog tests; the app
+  TypeScript build also passes.
+- Callback cross-review follow-up now rejects duplicate recognized parameters, cross-query/hash
+  conflicts, mixed or empty transports, and any callback without exactly one recovery type. Once
+  session establishment has been attempted, every returned error, malformed session, or thrown
+  continuation performs a best-effort local sign-out, including adapters whose cleanup throws
+  synchronously. The expanded focused gate passes 30/30.
 - Prettier check on every touched supported source file — passed.
 - `git diff --check` — passed.
 - Owned-path scope scan — passed.

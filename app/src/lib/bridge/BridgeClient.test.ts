@@ -33,13 +33,22 @@ describe('Browser Chat read-only bridge protocol', () => {
   it('keeps an explicit workspace grant in session memory and revokes it', () => {
     setBridgeWorkspaceGrant({
       id: 'grant_1234567890abcdef',
+      accountId: 'account-a',
+      projectId: 'project-a',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
     });
     expect(getBridgeWorkspaceGrant()).toEqual({
       id: 'grant_1234567890abcdef',
+      accountId: 'account-a',
+      projectId: 'project-a',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
+    });
+    expect(getBridgeWorkspaceGrant('account-b', 'project-a')).toBeUndefined();
+    expect(getBridgeWorkspaceGrant('account-a', 'project-b')).toBeUndefined();
+    expect(getBridgeWorkspaceGrant('account-a', 'project-a')).toMatchObject({
+      root: 'C:\\Users\\viper\\Projects\\Safe',
     });
     setBridgeWorkspaceGrant();
     expect(getBridgeWorkspaceGrant()).toBeUndefined();

@@ -207,6 +207,79 @@ describe('AgentManager save lifecycle', () => {
     expect(maxTokens.value).toBe('recommended');
   });
 
+  it('renders unavailable mock-default state truthfully without migrating agent or auth state', async () => {
+    const mockDefaultAgent: Agent = {
+      ...baseAgent,
+      model: { provider: 'mock', model: 'mock-default' },
+    };
+    const agentRepo = await repoMocks(mockDefaultAgent);
+    useAuthStore.setState({
+      apiKeys: {},
+      defaultProvider: 'ollama',
+      defaultLocalModel: 'llama3.2:latest',
+    });
+    syncDiscoveredOllamaModels(['llama3.2:latest']);
+    registerOnly(mockDefaultAgent);
+
+    render(<AgentManager />);
+
+    const provider = screen.getByLabelText('Provider') as HTMLSelectElement;
+    const unavailable = Array.from(provider.options).find((option) => option.value === 'mock');
+    expect(provider.value).toBe('mock');
+    expect(unavailable?.selected).toBe(true);
+    expect(unavailable?.disabled).toBe(true);
+    expect(unavailable?.textContent).toContain('Mock (demo)');
+    expect(unavailable?.textContent).toContain('unavailable');
+    expect(screen.getByText(/configured for Mock \(demo\)/i).textContent).toContain(
+      'Default provider (Local Models)',
+    );
+    expect(screen.queryByText(/Connect Mock/i)).toBeNull();
+
+    expect(agentRepo.update).not.toHaveBeenCalled();
+    expect(useAgentStore.getState().agents[mockDefaultAgent.id]?.model).toEqual({
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    expect(useAuthStore.getState().defaultProvider).toBe('ollama');
+    expect(useAuthStore.getState().defaultLocalModel).toBe('llama3.2:latest');
+  });
+
+  it('keeps a connected provider as a normal available provider', async () => {
+    registerOnly(baseAgent);
+    await repoMocks(baseAgent);
+
+    render(<AgentManager />);
+
+    const provider = screen.getByLabelText('Provider') as HTMLSelectElement;
+    const googleOption = Array.from(provider.options).find((option) => option.value === 'google');
+    expect(provider.value).toBe('google');
+    expect(googleOption?.disabled).toBe(false);
+    expect(screen.queryByText(/unavailable current provider/i)).toBeNull();
+  });
+
+  it('preserves the actual Default provider sentinel behavior', async () => {
+    const defaultAgent: Agent = {
+      ...baseAgent,
+      model: { provider: 'mock', model: 'default-provider' },
+    };
+    useAuthStore.setState({
+      apiKeys: {},
+      defaultProvider: 'ollama',
+      defaultLocalModel: 'llama3.2:latest',
+    });
+    syncDiscoveredOllamaModels(['llama3.2:latest']);
+    registerOnly(defaultAgent);
+    await repoMocks(defaultAgent);
+
+    render(<AgentManager />);
+
+    const provider = screen.getByLabelText('Provider') as HTMLSelectElement;
+    expect(provider.value).toBe('default');
+    expect(provider.selectedOptions[0]?.textContent).toContain('Default provider');
+    expect(screen.getByText('Follows Settings → Providers → Default provider')).toBeTruthy();
+    expect(screen.queryByText(/configured for Mock \(demo\).*unavailable/i)).toBeNull();
+  });
+
   it('enables NO BS with the approved cinematic and persists its directive at the prompt end', async () => {
     const agentRepo = await repoMocks();
     render(<AgentManager />);

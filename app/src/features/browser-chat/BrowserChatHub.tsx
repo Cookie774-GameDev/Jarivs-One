@@ -58,6 +58,22 @@ const stagedFilesByChat = new Map<string, File[]>();
 
 type McpSetupState = 'idle' | 'checking' | 'opening' | 'waiting' | 'error';
 
+export function browserChatMcpStatusLabel(
+  relayStatus: ReturnType<typeof useBrowserChatRelay>,
+  signedIn: boolean,
+  setupState: McpSetupState,
+): string {
+  if (relayStatus === 'connected') return 'Desktop connected';
+  if (relayStatus === 'connecting') return 'Connecting desktop relay';
+  if (relayStatus === 'reconnecting') return 'Reconnecting desktop relay';
+  if (relayStatus === 'error') return 'Connection error';
+  if (!signedIn) return 'VibeSpace sign-in required';
+  if (setupState === 'checking') return 'Checking secure connection';
+  if (setupState === 'opening') return 'Opening ChatGPT Plugins';
+  if (setupState === 'waiting') return 'Waiting for owner approval';
+  return 'Setup required';
+}
+
 function usageText(value: number | null, limit: number | null, unit: string | null): string {
   if (value === null || limit === null || !unit) {
     return 'ChatGPT web quota is not exposed to VibeSpace.';
@@ -77,6 +93,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   const providerBridgeStatus = runtime?.toolBridgeStatus ?? provider.toolBridgeStatus;
   const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
+  const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? '');
   const accountId = useAuthStore((state) => state.cloudSession?.user_id ?? state.localUserId ?? '');
   const workspaceGrant = React.useSyncExternalStore(
     browserChatWorkspaceGrantStore.subscribe,
@@ -85,10 +102,13 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   );
   const projectRoot = getStoredProjectRoot(projectId);
   const activeWorkspaceGrant =
-    workspaceGrant?.accountId === accountId && workspaceGrant.projectId === projectId
+    workspaceGrant?.accountId === cloudAccountId && workspaceGrant.projectId === projectId
       ? workspaceGrant
       : null;
-  const relayStatus = useBrowserChatRelay(Boolean(accountId));
+  const relayStatus = useBrowserChatRelay(Boolean(cloudAccountId), {
+    accountId: cloudAccountId,
+    projectId: projectId ? String(projectId) : null,
+  });
   const mcpUrl = resolveBrowserChatMcpUrl(
     resolveBrowserChatCloudUrl(import.meta.env as Record<string, string | undefined>),
   );
@@ -200,12 +220,12 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   React.useEffect(() => {
     if (
       workspaceGrant &&
-      (workspaceGrant.accountId !== accountId || workspaceGrant.projectId !== projectId)
+      (workspaceGrant.accountId !== cloudAccountId || workspaceGrant.projectId !== projectId)
     ) {
       revokeBrowserChatWorkspace();
       setBridgeWorkspaceGrant();
     }
-  }, [accountId, projectId, workspaceGrant]);
+  }, [cloudAccountId, projectId, workspaceGrant]);
 
   const stageFiles = (files: FileList | null) => {
     if (!chatId || !files) return;
@@ -236,7 +256,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   };
 
   const approveProjectRead = () => {
-    if (!accountId || !projectId || !projectRoot) {
+    if (!cloudAccountId || !projectId || !projectRoot) {
       toast.error(
         'Project access is unavailable',
         'Select a signed-in account and a project folder before enabling the local relay.',
@@ -245,13 +265,15 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     }
     try {
       const grant = grantBrowserChatWorkspace({
-        accountId,
+        accountId: cloudAccountId,
         projectId,
         root: projectRoot,
         displayName: basename(projectRoot),
       });
       setBridgeWorkspaceGrant({
         id: grant.id,
+        accountId: grant.accountId,
+        projectId: grant.projectId,
         root: grant.canonicalRoot,
         displayName: grant.displayName,
       });
@@ -342,18 +364,11 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     }
   };
 
-  const mcpStatusLabel =
-    relayStatus === 'connected'
-      ? 'Desktop connected'
-      : relayStatus === 'error'
-        ? 'Connection error'
-        : mcpSetupState === 'checking'
-          ? 'Checking secure connection'
-          : mcpSetupState === 'opening'
-            ? 'Opening ChatGPT Plugins'
-            : mcpSetupState === 'waiting'
-              ? 'Waiting for owner approval'
-              : 'Setup required';
+  const mcpStatusLabel = browserChatMcpStatusLabel(
+    relayStatus,
+    Boolean(cloudAccountId),
+    mcpSetupState,
+  );
   const mcpSetupBusy = mcpSetupState === 'checking' || mcpSetupState === 'opening';
 
   return (
@@ -665,7 +680,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                     size="sm"
                     variant="outline"
                     className="w-full"
-                    disabled={!projectRoot || !accountId || !projectId}
+                    disabled={!projectRoot || !cloudAccountId || !projectId}
                     onClick={approveProjectRead}
                   >
                     Approve current project read-only

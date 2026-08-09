@@ -483,6 +483,18 @@ export function AgentManager() {
       }),
     [apiKeys, offlineMode, plan, defaultProvider, defaultLocalModel, ollamaOptions],
   );
+  const providerChoiceAvailable =
+    !draft || providerOptions.some((option) => option.id === draft.providerChoice);
+  const unavailableMockDefault =
+    !!draft &&
+    !providerChoiceAvailable &&
+    draft.providerChoice === 'mock' &&
+    draft.provider === 'mock' &&
+    draft.model === 'mock-default';
+  const defaultProviderGuidance =
+    defaultProvider === 'ollama' || defaultProvider === 'local'
+      ? 'Default provider (Local Models)'
+      : (providerOptions.find((option) => option.id === 'default')?.label ?? 'Default provider');
 
   const modelOptions = React.useMemo(() => {
     if (!draft || draft.providerChoice === 'default') return [];
@@ -1301,6 +1313,11 @@ export function AgentManager() {
                           'transition-colors',
                         )}
                       >
+                        {!providerChoiceAvailable && draft.providerChoice !== 'default' ? (
+                          <option value={draft.providerChoice} disabled>
+                            ⚠ {getProviderDisplayName(draft.providerChoice)} — unavailable (current)
+                          </option>
+                        ) : null}
                         {providerOptions.map((opt) => (
                           <option key={opt.id} value={opt.id}>
                             {opt.id === 'ollama' || opt.id === 'local'
@@ -1359,9 +1376,11 @@ export function AgentManager() {
                         className="flex min-h-8 items-center gap-2 rounded-md border border-dashed border-accent-copper/35 bg-accent-copper/5 px-2 text-secondary text-muted-foreground"
                       >
                         <ProviderMark provider={draft.providerChoice} />
-                        {draft.providerChoice === 'ollama' || draft.providerChoice === 'local'
-                          ? 'No local models found — open Settings → Local Models to download one'
-                          : `Connect ${getProviderDisplayName(draft.providerChoice)} in Settings → Providers to load models`}
+                        {unavailableMockDefault
+                          ? `This agent is configured for Mock (demo), which is unavailable. Choose ${defaultProviderGuidance} or another connected provider.`
+                          : draft.providerChoice === 'ollama' || draft.providerChoice === 'local'
+                            ? 'No local models found — open Settings → Local Models to download one'
+                            : `Connect ${getProviderDisplayName(draft.providerChoice)} in Settings → Providers to load models`}
                       </p>
                     )}
                     {!agentModelAvailable && modelOptions.length > 0 ? (

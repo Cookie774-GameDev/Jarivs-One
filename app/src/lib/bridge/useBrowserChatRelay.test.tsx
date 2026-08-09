@@ -11,16 +11,23 @@ import {
 
 const relayMocks = vi.hoisted(() => {
   let authListener:
-    | ((event: string, session: { access_token?: string } | null) => void)
+    | ((event: string, session: { access_token?: string; user?: { id: string } } | null) => void)
     | undefined;
   const unsubscribe = vi.fn();
   const getSession = vi.fn(
-    async (): Promise<{ data: { session: { access_token: string } | null } }> => ({
-      data: { session: { access_token: 'desktop-jwt' } },
+    async (): Promise<{
+      data: { session: { access_token: string; user: { id: string } } | null };
+    }> => ({
+      data: { session: { access_token: 'desktop-jwt', user: { id: 'account-a' } } },
     }),
   );
   const onAuthStateChange = vi.fn(
-    (listener: (event: string, session: { access_token?: string } | null) => void) => {
+    (
+      listener: (
+        event: string,
+        session: { access_token?: string; user?: { id: string } } | null,
+      ) => void,
+    ) => {
       authListener = listener;
       return { data: { subscription: { unsubscribe } } };
     },
@@ -29,6 +36,8 @@ const relayMocks = vi.hoisted(() => {
     options: {
       resolveUrl?: (jwt: string) => Promise<string>;
       onStatus?: (status: 'connecting' | 'connected' | 'error') => void;
+      accountId?: string;
+      projectId?: string | null;
     };
     resolvedUrls: string[];
     start: ReturnType<typeof vi.fn>;
@@ -37,6 +46,8 @@ const relayMocks = vi.hoisted(() => {
     (options: {
       resolveUrl?: (jwt: string) => Promise<string>;
       onStatus?: (status: 'connecting' | 'connected' | 'error') => void;
+      accountId?: string;
+      projectId?: string | null;
     }) => {
       const resolvedUrls: string[] = [];
       const client = {
@@ -56,13 +67,14 @@ const relayMocks = vi.hoisted(() => {
 
   return {
     clients,
-    emitAuth(event: string, session: { access_token?: string } | null) {
+    emitAuth(event: string, session: { access_token?: string; user?: { id: string } } | null) {
       authListener?.(event, session);
     },
     getBrowserChatBridgeClient,
     getSession,
     onAuthStateChange,
     resetBrowserChatBridgeClient: vi.fn(),
+    setBridgeWorkspaceGrant: vi.fn(),
     reset() {
       authListener = undefined;
       clients.length = 0;
@@ -71,6 +83,7 @@ const relayMocks = vi.hoisted(() => {
       onAuthStateChange.mockClear();
       getBrowserChatBridgeClient.mockClear();
       this.resetBrowserChatBridgeClient.mockClear();
+      this.setBridgeWorkspaceGrant.mockClear();
     },
   };
 });
@@ -91,6 +104,7 @@ vi.mock('@/lib/supabase/client', () => ({
 vi.mock('./BridgeClient', () => ({
   getBrowserChatBridgeClient: relayMocks.getBrowserChatBridgeClient,
   resetBrowserChatBridgeClient: relayMocks.resetBrowserChatBridgeClient,
+  setBridgeWorkspaceGrant: relayMocks.setBridgeWorkspaceGrant,
 }));
 
 describe('Browser Chat relay lifecycle', () => {
@@ -239,7 +253,9 @@ describe('Browser Chat relay lifecycle', () => {
       }),
     );
 
-    const { result } = renderHook(() => useBrowserChatRelay(true));
+    const { result } = renderHook(() =>
+      useBrowserChatRelay(true, { accountId: 'account-a', projectId: 'project-a' }),
+    );
     await waitFor(() => expect(result.current).toBe('connected'));
     const bridge = relayMocks.clients.at(-1);
     expect(bridge?.resolvedUrls).toEqual([
@@ -269,7 +285,12 @@ describe('Browser Chat relay lifecycle', () => {
 
     const { result } = renderHook(() => useBrowserChatRelay(true));
     await waitFor(() => expect(relayMocks.onAuthStateChange).toHaveBeenCalledOnce());
-    act(() => relayMocks.emitAuth('SIGNED_IN', { access_token: 'desktop-jwt' }));
+    act(() =>
+      relayMocks.emitAuth('SIGNED_IN', {
+        access_token: 'desktop-jwt',
+        user: { id: 'account-a' },
+      }),
+    );
     await waitFor(() => {
       expect(ticketSignal).toBeDefined();
     });
@@ -290,6 +311,55 @@ describe('Browser Chat relay lifecycle', () => {
 
     expect(result.current).toBe('disabled');
     expect(relayMocks.clients).toHaveLength(1);
+  });
+
+  it('clears the grant and refuses a stale account before creating its ticketed client', async () => {
+    relayMocks.getSession.mockResolvedValueOnce({ data: { session: null } });
+    const { result } = renderHook(() =>
+      useBrowserChatRelay(true, { accountId: 'account-a', projectId: 'project-a' }),
+    );
+    await waitFor(() => expect(relayMocks.onAuthStateChange).toHaveBeenCalledOnce());
+
+    act(() =>
+      relayMocks.emitAuth('SIGNED_IN', {
+        access_token: 'account-b-jwt',
+        user: { id: 'account-b' },
+      }),
+    );
+
+    expect(result.current).toBe('disabled');
+    expect(relayMocks.setBridgeWorkspaceGrant).toHaveBeenCalledWith();
+    expect(relayMocks.getBrowserChatBridgeClient).not.toHaveBeenCalled();
+  });
+
+  it('clears the session grant before replacing the token for the same account', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          url: 'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=opaque',
+        }),
+      ),
+    );
+    const { result } = renderHook(() =>
+      useBrowserChatRelay(true, { accountId: 'account-a', projectId: 'project-a' }),
+    );
+    await waitFor(() => expect(result.current).toBe('connected'));
+    relayMocks.setBridgeWorkspaceGrant.mockClear();
+
+    act(() =>
+      relayMocks.emitAuth('TOKEN_REFRESHED', {
+        access_token: 'replacement-jwt',
+        user: { id: 'account-a' },
+      }),
+    );
+
+    expect(relayMocks.setBridgeWorkspaceGrant).toHaveBeenCalledWith();
+    await waitFor(() => expect(relayMocks.clients).toHaveLength(2));
+    expect(relayMocks.clients[1]?.options).toMatchObject({
+      accountId: 'account-a',
+      projectId: 'project-a',
+    });
   });
 
   it('aborts a reconnect ticket and ignores its late socket status after sign-out', async () => {

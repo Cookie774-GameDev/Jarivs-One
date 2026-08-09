@@ -100,6 +100,49 @@ describe('runBoundedLocalFinalBossRevision', () => {
     });
   });
 
+  it('restores an unambiguous exact literal without adding a third provider call', async () => {
+    const streamed: string[] = [];
+    const request = {
+      agent: {
+        id: 'agent_test' as AgentId,
+        slug: 'jarvis',
+        name: 'Jarvis',
+        description: 'Test',
+        system_prompt: 'Be accurate.',
+        model: { provider: 'ollama', model: 'llama3.2:latest' },
+        tools_allowed: [],
+        memory_scope: 'workspace',
+        capabilities: [],
+        builtin: true,
+        created_at: 1,
+        updated_at: 1,
+      },
+      messages: [
+        {
+          role: 'user',
+          content: 'Return exactly FINAL_BOSS_OK after checking your answer twice.',
+        },
+      ],
+      max_output_tokens: 8192,
+      onChunk: (chunk) => {
+        if (chunk.delta) streamed.push(chunk.delta);
+      },
+    } satisfies RunAgentRequest;
+    const response = {
+      text: 'FINAL BOSS OK!',
+      usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0 },
+      provider: 'ollama',
+      model: 'llama3.2:latest',
+    };
+    const run = vi.fn().mockResolvedValueOnce(response).mockResolvedValueOnce(response);
+
+    await expect(runBoundedLocalFinalBossRevision(run, request)).resolves.toMatchObject({
+      text: 'FINAL_BOSS_OK',
+    });
+    expect(streamed).toEqual(['FINAL_BOSS_OK']);
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
   it('returns the completed draft when the private verifier is unavailable', async () => {
     const streamed: string[] = [];
     const request = {

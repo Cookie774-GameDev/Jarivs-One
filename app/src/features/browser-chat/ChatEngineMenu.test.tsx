@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { browserChatStore } from './browserChatStore';
@@ -13,22 +13,25 @@ describe('ChatEngineMenu', () => {
   });
   afterEach(cleanup);
 
-  it('switches between native and Browser Chat without changing the selected model', () => {
+  it('delegates selection to the shared transition without changing the selected model', async () => {
     const navigateChat = vi.fn();
-    render(<ChatEngineMenu onNavigateChat={navigateChat} />);
+    const transitionEngine = vi.fn(async () => ({
+      status: 'reused' as const,
+      chatId: 'chat-browser-mode',
+      engine: 'browser' as const,
+    }));
+    render(<ChatEngineMenu onNavigateChat={navigateChat} transitionEngine={transitionEngine} />);
 
     fireEvent.click(screen.getByRole('button', { name: /chat modes/i }));
     fireEvent.click(screen.getByRole('menuitemradio', { name: /browser chat/i }));
 
-    expect(browserChatStore.getState().chatPreferences['chat-browser-mode']?.engine).toBe(
-      'browser',
+    await waitFor(() =>
+      expect(transitionEngine).toHaveBeenCalledWith({
+        chatId: 'chat-browser-mode',
+        targetEngine: 'browser',
+      }),
     );
     expect(navigateChat).toHaveBeenCalledOnce();
-
-    fireEvent.click(screen.getByRole('button', { name: /chat modes/i }));
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /vibespace chat/i }));
-
-    expect(browserChatStore.getState().chatPreferences['chat-browser-mode']?.engine).toBe('native');
     expect(Object.keys(browserChatStore.getState())).not.toContain('modelId');
   });
 });

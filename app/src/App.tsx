@@ -33,6 +33,13 @@ import {
 import { handleVoiceModuleClosed, syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import { useAgentStore } from '@/stores/agents';
 import { AuthGate } from '@/features/auth';
+import { SignInDialog, type RecoveryPasswordSession } from '@/features/auth/SignInDialog';
+import {
+  abandonRecoverySessionOwnership,
+  consumeRecoveryCallbackOnce,
+  type RecoveryCallbackResult,
+} from '@/features/auth/recoveryCallback';
+import { getSupabaseClient } from '@/lib/supabase/client';
 import {
   AccessAppHost,
   InstalledAccessAppHost,
@@ -260,18 +267,14 @@ async function readCanonicalProjectionSnapshot(accountId: string): Promise<{
   events: JarvisEvent[];
 }> {
   const runs = await jarvisRunRepo.listByAccount(accountId, { limit: 500 });
-  const rows = await boundedMap(
-    runs,
-    CANONICAL_PROJECTION_READ_CONCURRENCY,
-    async (run) => {
-      const limits = canonicalProjectionLimits(run.status);
-      const [events, artifacts] = await Promise.all([
-        jarvisEventRepo.listByRun(accountId, run.id, { limit: limits.events }),
-        jarvisArtifactRepo.listByRun(accountId, run.id, limits.artifacts),
-      ]);
-      return { run, events, artifacts };
-    },
-  );
+  const rows = await boundedMap(runs, CANONICAL_PROJECTION_READ_CONCURRENCY, async (run) => {
+    const limits = canonicalProjectionLimits(run.status);
+    const [events, artifacts] = await Promise.all([
+      jarvisEventRepo.listByRun(accountId, run.id, { limit: limits.events }),
+      jarvisArtifactRepo.listByRun(accountId, run.id, limits.artifacts),
+    ]);
+    return { run, events, artifacts };
+  });
   const activityByChat: Record<string, ChatActivityEvent[]> = {};
   const projections: JarvisTaskRunProjection[] = [];
   const allEvents: JarvisEvent[] = [];
@@ -3146,7 +3149,50 @@ function AppContent({ plan }: { plan: RuntimePlan }) {
   );
 }
 
+function RecoveryCallbackHost({ callback }: { callback: Promise<RecoveryCallbackResult> }) {
+  const [recoverySession, setRecoverySession] = React.useState<RecoveryPasswordSession | null>(
+    null,
+  );
+
+  React.useEffect(() => {
+    let current = true;
+    void callback.then((result) => {
+      if (!current) {
+        if (result.status === 'ready') {
+          const client = getSupabaseClient();
+          if (client) void abandonRecoverySessionOwnership(client.auth, result.ownership);
+          else result.ownership.release();
+        }
+        return;
+      }
+      if (result.status === 'ready') {
+        setRecoverySession(result);
+      } else if (result.status === 'error') {
+        toast.error('Recovery link unavailable', result.message);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [callback]);
+
+  return recoverySession ? (
+    <SignInDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) setRecoverySession(null);
+      }}
+      recoverySession={recoverySession}
+    />
+  ) : null;
+}
+
 export function App() {
+  // Callback material must leave the address before any gate or ordinary app
+  // surface renders. The singleton consumer also coalesces StrictMode renders.
+  const supabase = getSupabaseClient();
+  const recoveryCallback = consumeRecoveryCallbackOnce(window, supabase?.auth ?? null);
+
   // Resolve all compile-time inputs synchronously before React mounts any
   // product effect host. Invalid profile or isolation identity values throw.
   const plan = resolveRuntimePlan();
@@ -3159,6 +3205,7 @@ export function App() {
   return (
     <RuntimeProfileHandshakeGate plan={plan} expectation={expectation}>
       <MonochromeFixtureController plan={plan} request={request}>
+        <RecoveryCallbackHost callback={recoveryCallback} />
         <AppContent plan={plan} />
       </MonochromeFixtureController>
     </RuntimeProfileHandshakeGate>
