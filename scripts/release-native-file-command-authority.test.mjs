@@ -17,6 +17,12 @@ function between(value, startMarker, endMarker) {
   return value.slice(bodyStart, end);
 }
 
+function rustStringConstant(value, name) {
+  const match = value.match(new RegExp(`const\\s+${name}:\\s*&str\\s*=\\s*"([0-9a-f]{64})";`, 'u'));
+  assert.ok(match, `missing Rust string constant: ${name}`);
+  return match[1];
+}
+
 test('ordinary native authority registers the exact bounded file mutation commands', () => {
   const ordinary = between(source, 'fn run_ordinary(', '#[cfg(test)]');
   const handler = between(ordinary, '.invoke_handler(tauri::generate_handler![', '])');
@@ -49,16 +55,8 @@ test('ordinary native authority registers the exact bounded file mutation comman
     .filter(Boolean)
     .join('\n');
   const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
-  const authorityHash = between(
-    source,
-    'const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =\n        "',
-    '";',
-  );
-  const normalizedHash = between(
-    source,
-    'const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =\n        "',
-    '";',
-  );
+  const authorityHash = rustStringConstant(source, 'ORDINARY_HANDLER_AUTHORITY_SHA256');
+  const normalizedHash = rustStringConstant(source, 'ORDINARY_HANDLER_NORMALIZED_SHA256');
 
   assert.equal(hash(frozenAuthority), authorityHash);
   assert.equal(hash(normalizedHandler), normalizedHash);
