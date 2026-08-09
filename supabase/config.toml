@@ -252,6 +252,14 @@ content_path = "./supabase/templates/confirmation.html"
 subject = "Your VibeSpace sign-in code"
 content_path = "./supabase/templates/magic_link.html"
 
+[auth.email.template.recovery]
+subject = "Your VibeSpace password recovery code"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your VibeSpace email change"
+content_path = "./supabase/templates/email_change.html"
+
 # [auth.email.template.invite]
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"

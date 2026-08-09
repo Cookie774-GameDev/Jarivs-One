@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Loader2,
@@ -40,9 +40,9 @@ interface SignInDialogProps {
   initialMode?: Mode;
 }
 
-type Mode = 'signin' | 'signup' | 'magic';
-type Phase = 'credentials' | 'verify';
-type VerifyKind = 'signup' | 'email';
+type Mode = 'signin' | 'signup' | 'magic' | 'recovery';
+type Phase = 'credentials' | 'verify' | 'new-password';
+type VerifyKind = 'signup' | 'email' | 'recovery';
 
 /**
  * Supabase auth form:
@@ -53,6 +53,7 @@ type VerifyKind = 'signup' | 'email';
 export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [mode, setMode] = useState<Mode>(initialMode ?? 'signin');
   const [phase, setPhase] = useState<Phase>('credentials');
@@ -62,27 +63,39 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   const [info, setInfo] = useState<string | null>(null);
   const cloudReady = isCloudSyncConfigured();
 
-  useEffect(() => {
-    if (open) {
-      setMode(initialMode ?? 'signin');
-      setPhase('credentials');
-      setOtpCode('');
-      setError(null);
-      setInfo(null);
-    }
-  }, [open, initialMode]);
-
   const NOT_CONFIGURED =
     'VibeSpace Cloud is not configured in this build. Install the official release, or ask the maintainer to set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.';
 
-  function reset() {
+  const reset = useCallback(() => {
     setEmail('');
     setPassword('');
+    setPasswordConfirmation('');
     setOtpCode('');
+    setMode(initialMode ?? 'signin');
     setPhase('credentials');
+    setVerifyKind('signup');
     setBusy(false);
     setError(null);
     setInfo(null);
+  }, [initialMode]);
+
+  useEffect(() => {
+    // Controlled parents can close without Radix emitting onOpenChange.
+    // Reset on both edges so no secret or recovery state survives a closed interval.
+    reset();
+  }, [open, reset]);
+
+  function closeDialog() {
+    reset();
+    onOpenChange(false);
+  }
+
+  function handleDialogOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      closeDialog();
+      return;
+    }
+    onOpenChange(true);
   }
 
   function selectMode(next: Mode) {
@@ -103,7 +116,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       return;
     }
 
-    if (mode !== 'magic') {
+    if (mode !== 'magic' && mode !== 'recovery') {
       const passwordError = validatePassword(password, mode);
       if (passwordError) {
         setError(passwordError);
@@ -120,6 +133,19 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
     }
 
     try {
+      if (mode === 'recovery') {
+        const { error: recoveryError } = await client.auth.resetPasswordForEmail(trimmedEmail);
+        if (recoveryError) throw recoveryError;
+        setVerifyKind('recovery');
+        setPhase('verify');
+        setOtpCode('');
+        setInfo(
+          'Enter the recovery code from your email. The code expires in one hour and works once.',
+        );
+        toast.success('Recovery code sent', `Check ${trimmedEmail}.`);
+        return;
+      }
+
       if (mode === 'magic') {
         const { error: otpError } = await client.auth.signInWithOtp({
           email: trimmedEmail,
@@ -149,8 +175,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
 
         if (data.session) {
           toast.success('Welcome to VibeSpace', 'Your account is ready and cloud sync is on.');
-          onOpenChange(false);
-          reset();
+          closeDialog();
           return;
         }
 
@@ -178,8 +203,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       });
       if (signInError) throw signInError;
       toast.success('Signed in', 'Cloud sync is enabled for this device.');
-      onOpenChange(false);
-      reset();
+      closeDialog();
     } catch (err) {
       setError(formatAuthError(err, 'Sign in failed. Try again.'));
     } finally {
@@ -212,16 +236,57 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       });
       if (verifyError) throw verifyError;
 
+      if (verifyKind === 'recovery') {
+        setPhase('new-password');
+        setOtpCode('');
+        setPassword('');
+        setPasswordConfirmation('');
+        setInfo('Recovery code accepted. Choose a new password for your VibeSpace account.');
+        return;
+      }
+
       toast.success(
         verifyKind === 'signup' ? 'Account verified' : 'Signed in',
         verifyKind === 'signup'
           ? 'Your email is confirmed and cloud sync is enabled.'
           : 'Cloud sync is enabled for this device.',
       );
-      onOpenChange(false);
-      reset();
+      closeDialog();
     } catch (err) {
       setError(formatAuthError(err, 'Verification failed. Check the code and try again.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleNewPasswordSubmit() {
+    setError(null);
+    setInfo(null);
+    const passwordError = validatePassword(password, 'signup');
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+    if (password !== passwordConfirmation) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setBusy(true);
+    const client = getSupabaseClient();
+    if (!client) {
+      setBusy(false);
+      setError(NOT_CONFIGURED);
+      return;
+    }
+
+    try {
+      const { error: updateError } = await client.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      toast.success('Password updated', 'Your new password is active.');
+      closeDialog();
+    } catch (err) {
+      setError(formatAuthError(err, 'Could not update your password. Request a new code.'));
     } finally {
       setBusy(false);
     }
@@ -263,15 +328,20 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
             throw resendError;
           }
         }
-      } else {
+      } else if (verifyKind === 'email') {
         const { error: otpError } = await client.auth.signInWithOtp({
           email: trimmedEmail,
           options: { shouldCreateUser: false },
         });
         if (otpError) throw otpError;
+      } else {
+        const { error: recoveryError } = await client.auth.resetPasswordForEmail(trimmedEmail);
+        if (recoveryError) throw recoveryError;
       }
       setOtpCode('');
-      setInfo('A new code is on the way. Check inbox and spam — wait a minute before requesting another.');
+      setInfo(
+        'A new code is on the way. Check inbox and spam — wait a minute before requesting another.',
+      );
       toast.success('New code sent', `Check ${trimmedEmail}.`);
     } catch (err) {
       setError(formatAuthError(err, 'Could not resend the code.'));
@@ -281,16 +351,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   }
 
   const verifying = phase === 'verify';
+  const choosingPassword = phase === 'new-password';
   const trimmedEmail = email.trim();
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        onOpenChange(v);
-        if (!v) reset();
-      }}
-    >
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="sakura-auth-dialog max-w-[440px] overflow-hidden border-border/80 bg-elevated p-0 shadow-2xl sm:rounded-2xl">
         <div
           className="relative overflow-hidden border-b border-border/70 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 pb-5 pt-6"
@@ -304,25 +369,39 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
               VibeSpace Cloud
             </div>
             <DialogTitle className="text-xl text-white sm:text-2xl">
-              {verifying
-                ? 'Enter your code'
-                : mode === 'signup'
-                  ? 'Create your account'
-                  : mode === 'magic'
-                    ? 'Email code sign-in'
-                    : 'Welcome back'}
+              {choosingPassword
+                ? 'Choose a new password'
+                : verifying
+                  ? 'Enter your code'
+                  : mode === 'signup'
+                    ? 'Create your account'
+                    : mode === 'magic'
+                      ? 'Email code sign-in'
+                      : mode === 'recovery'
+                        ? 'Reset your password'
+                        : 'Welcome back'}
             </DialogTitle>
             <DialogDescription className="text-[13.5px] leading-relaxed text-slate-300">
-              {verifying ? (
+              {choosingPassword ? (
+                'Use at least 8 characters with a letter and a number.'
+              ) : verifying ? (
                 <>
                   We sent a <span className="font-medium text-white">6-digit code</span> to{' '}
                   <span className="font-medium text-sky-200">{trimmedEmail}</span>. Paste it below
-                  to {verifyKind === 'signup' ? 'finish creating your account' : 'sign in'}.
+                  to{' '}
+                  {verifyKind === 'signup'
+                    ? 'finish creating your account'
+                    : verifyKind === 'recovery'
+                      ? 'reset your password'
+                      : 'sign in'}
+                  .
                 </>
               ) : mode === 'signup' ? (
                 'Create an account with email and password. We’ll email a one-time code so only you can activate it.'
               ) : mode === 'magic' ? (
                 'No password needed. We’ll email a one-time code for this device.'
+              ) : mode === 'recovery' ? (
+                'We’ll email a one-time recovery code. VibeSpace never asks you to share it.'
               ) : (
                 'Sign in to sync plans, billing, and workspace data across devices.'
               )}
@@ -344,24 +423,64 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
             </div>
           )}
 
-          {!verifying && (
+          {!verifying && !choosingPassword && (
             <div
               className="grid grid-cols-3 gap-1 rounded-xl border border-border/80 bg-muted/60 p-1"
               data-sakura-surface="auth-modes"
             >
-              <ModeButton current={mode} value="signin" onSelect={selectMode} icon={<KeyRound className="h-3.5 w-3.5" />}>
+              <ModeButton
+                current={mode}
+                value="signin"
+                onSelect={selectMode}
+                icon={<KeyRound className="h-3.5 w-3.5" />}
+              >
                 Sign in
               </ModeButton>
-              <ModeButton current={mode} value="signup" onSelect={selectMode} icon={<ShieldCheck className="h-3.5 w-3.5" />}>
+              <ModeButton
+                current={mode}
+                value="signup"
+                onSelect={selectMode}
+                icon={<ShieldCheck className="h-3.5 w-3.5" />}
+              >
                 Sign up
               </ModeButton>
-              <ModeButton current={mode} value="magic" onSelect={selectMode} icon={<Mail className="h-3.5 w-3.5" />}>
+              <ModeButton
+                current={mode}
+                value="magic"
+                onSelect={selectMode}
+                icon={<Mail className="h-3.5 w-3.5" />}
+              >
                 Email code
               </ModeButton>
             </div>
           )}
 
-          {verifying ? (
+          {choosingPassword ? (
+            <div className="flex flex-col gap-3.5">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="recovery-new-password">New password</Label>
+                <Input
+                  id="recovery-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="recovery-confirm-password">Confirm new password</Label>
+                <Input
+                  id="recovery-confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordConfirmation}
+                  onChange={(event) => setPasswordConfirmation(event.target.value)}
+                  disabled={busy}
+                />
+              </div>
+            </div>
+          ) : verifying ? (
             <div className="flex flex-col items-center gap-4 py-1">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-400/25 bg-sky-400/10 text-sky-300 shadow-inner">
                 <Mail className="h-5 w-5" />
@@ -410,7 +529,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 />
               </div>
 
-              {mode !== 'magic' && (
+              {mode !== 'magic' && mode !== 'recovery' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="signin-password">Password</Label>
                   <Input
@@ -436,6 +555,18 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                   ) : null}
                 </div>
               )}
+              {mode === 'signin' ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-fit px-0 text-secondary"
+                  disabled={busy}
+                  onClick={() => selectMode('recovery')}
+                >
+                  Forgot password?
+                </Button>
+              ) : null}
             </div>
           )}
 
@@ -461,12 +592,12 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         </div>
 
         <DialogFooter className="!justify-between gap-2 border-t border-border/70 bg-muted/20 px-6 py-4 sm:!justify-between">
-          {verifying ? (
+          {verifying || choosingPassword ? (
             <Button
               variant="ghost"
               disabled={busy}
               onClick={() => {
-                setPhase('credentials');
+                setPhase(choosingPassword ? 'verify' : 'credentials');
                 setOtpCode('');
                 setError(null);
                 setInfo(null);
@@ -476,23 +607,41 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
               Back
             </Button>
           ) : (
-            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
+            <Button variant="ghost" onClick={closeDialog} disabled={busy}>
               Cancel
             </Button>
           )}
           <Button
             variant="accent"
             className="min-w-[9.5rem]"
-            onClick={() => void (verifying ? handleVerifySubmit() : handleCredentialsSubmit())}
-            disabled={busy || !cloudReady || (verifying && !isCompleteOtpCode(otpCode))}
+            onClick={() =>
+              void (choosingPassword
+                ? handleNewPasswordSubmit()
+                : verifying
+                  ? handleVerifySubmit()
+                  : handleCredentialsSubmit())
+            }
+            disabled={
+              busy ||
+              !cloudReady ||
+              (verifying && !isCompleteOtpCode(otpCode)) ||
+              (choosingPassword && (!password || !passwordConfirmation))
+            }
           >
             {busy ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Working…
               </>
+            ) : choosingPassword ? (
+              <>Save new password</>
             ) : verifying ? (
-              <>Verify & continue</>
+              <>{verifyKind === 'recovery' ? 'Verify recovery code' : 'Verify & continue'}</>
+            ) : mode === 'recovery' ? (
+              <>
+                <Mail className="h-3.5 w-3.5" />
+                Send recovery code
+              </>
             ) : mode === 'magic' ? (
               <>
                 <Mail className="h-3.5 w-3.5" />

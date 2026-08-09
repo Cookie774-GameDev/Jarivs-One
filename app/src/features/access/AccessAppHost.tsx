@@ -2,6 +2,7 @@ import * as React from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { SignInDialog } from '@/features/auth/SignInDialog';
+import { DesktopPresencePublisher } from './DesktopPresencePublisher';
 import { getSupabaseClient, type TypedSupabaseClient } from '@/lib/supabase/client';
 import { openExternal } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
@@ -521,8 +522,8 @@ function InstalledCloudAuthentication({
             className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100"
             role="alert"
           >
-            Cloud authentication is not configured in this build. Install the official release
-            or contact VibeSpace support.
+            Cloud authentication is not configured in this build. Install the official release or
+            contact VibeSpace support.
           </p>
         ) : null}
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -610,23 +611,22 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
           onSignIn={() => openAuthentication('signin')}
           onCreateAccount={() => openAuthentication('signup')}
         />
-        <SignInDialog
-          open={signInOpen}
-          onOpenChange={setSignInOpen}
-          initialMode={signInMode}
-        />
+        <SignInDialog open={signInOpen} onOpenChange={setSignInOpen} initialMode={signInMode} />
       </>
     );
   }
 
   return (
-    <AccessAppHost
-      enabled={accessGateEnabled}
-      runtime={runtime}
-      privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
-      termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
-    >
-      {children}
-    </AccessAppHost>
+    <>
+      <DesktopPresencePublisher appVersion={appVersion} />
+      <AccessAppHost
+        enabled={accessGateEnabled}
+        runtime={runtime}
+        privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
+        termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
+      >
+        {children}
+      </AccessAppHost>
+    </>
   );
 }

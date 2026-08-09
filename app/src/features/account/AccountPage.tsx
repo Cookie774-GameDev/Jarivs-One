@@ -54,6 +54,7 @@ import {
   resolveAccountTabFromSearch,
   type AccountTabId,
 } from './accountTabs';
+import { AccountSecurityPanel } from './AccountSecurityPanel';
 import './sakura-account.css';
 
 const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
@@ -275,6 +276,10 @@ export function AccountPage() {
               warmSurface="profile"
             >
               <Account profileOnly />
+              <AccountSecurityPanel
+                key={cloudUserId?.trim() || 'signed-out'}
+                accountId={cloudUserId?.trim() ?? ''}
+              />
             </PanelCard>
           </TabsContent>
 
