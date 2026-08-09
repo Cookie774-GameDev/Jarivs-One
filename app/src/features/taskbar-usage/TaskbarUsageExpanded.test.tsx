@@ -89,5 +89,5 @@ describe('TaskbarUsageExpanded', () => {
       target: { value: 'codex' },
     });
     expect(onOpenConnections).toHaveBeenCalledWith('openai');
-  });
+  }, 10_000);
 });

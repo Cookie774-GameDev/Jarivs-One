@@ -7,7 +7,7 @@ import {
   COLD_START_INTRO_WINDOW_LABEL,
   MAIN_WINDOW_LABEL,
 } from './introAsset';
-import { createDoubleEscapeSkipState, noteEscapeKeyEvent } from './doubleEscapeSkip';
+import { createTripleEscapeSkipState, noteEscapeKeyEvent } from './tripleEscapeSkip';
 
 type FinishReason = 'ended' | 'skipped' | 'failed';
 
@@ -18,7 +18,7 @@ type FinishReason = 'ended' | 'skipped' | 'failed';
 export function ColdStartIntroView() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const finishedRef = useRef(false);
-  const escapeStateRef = useRef(createDoubleEscapeSkipState());
+  const escapeStateRef = useRef(createTripleEscapeSkipState());
   const [fading, setFading] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -83,7 +83,7 @@ export function ColdStartIntroView() {
   }, []);
 
   useEffect(() => {
-    // Capture keyboard focus so double-Escape works without OS chrome.
+    // Capture keyboard focus so the three-Escape gesture works without OS chrome.
     try {
       window.focus();
       document.body.focus();

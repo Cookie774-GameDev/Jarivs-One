@@ -557,6 +557,8 @@ fn run_ordinary(
             fsread::fs_create_text_file,
             fsread::fs_create_text_with_content,
             fsread::fs_list_dir,
+            fsread::fs_rename_file,
+            fsread::fs_delete_file,
             fsread::fs_read_image_base64,
             fsread::fs_read_text,
             fsread::fs_read_text_sample,
@@ -776,6 +778,8 @@ pets::pet_validate_action
 fsread::fs_create_text_file
 fsread::fs_create_text_with_content
 fsread::fs_list_dir
+fsread::fs_rename_file
+fsread::fs_delete_file
 fsread::fs_read_image_base64
 fsread::fs_read_text
 fsread::fs_read_text_sample
@@ -889,9 +893,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "ea048c648d62ce13bead1449508e27b514cc49aa369ce3c93872da124164e106";
+        "f0b7c9d64d090afb8859f0b9f112e4f4c79c0a14548845508cf8ab8a237be917";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "1c9798e02122da5530714589035dc1ed4cc4c138db4f1bbeb10f4bd86a5035a8";
+        "029a2bfe14ff50d95f71daeccb66dcf65dfc4ff4a92940359e0b287fe4c9102b";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1039,7 +1043,7 @@ wallpaper_master::wallpaper_full_cache_path";
         let joined = manifest.commands.join("\n");
         assert_eq!(
             joined, ORDINARY_HANDLER_AUTHORITY,
-            "the ordered handler must remain the frozen 153 production commands"
+            "the ordered handler must remain the frozen production command authority"
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(joined.as_bytes())),

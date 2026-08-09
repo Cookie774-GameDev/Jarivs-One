@@ -8,8 +8,8 @@ export {
   MAIN_WINDOW_LABEL,
 } from './introAsset';
 export {
-  DOUBLE_ESCAPE_WINDOW_MS,
-  createDoubleEscapeSkipState,
+  THREE_ESCAPE_WINDOW_MS,
+  createTripleEscapeSkipState,
   noteEscapeKeyEvent,
-  type DoubleEscapeSkipState,
-} from './doubleEscapeSkip';
+  type TripleEscapeSkipState,
+} from './tripleEscapeSkip';

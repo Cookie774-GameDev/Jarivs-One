@@ -55,7 +55,7 @@
     "livekit-client": "^2.19.1",
     "lucide-react": "^0.469.0",
     "motion": "^11.15.0",
-    "nanoid": "^5.0.9",
+    "nanoid": "^5.1.16",
     "pixi.js": "^8.19.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
