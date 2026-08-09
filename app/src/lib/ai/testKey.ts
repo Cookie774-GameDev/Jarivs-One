@@ -69,9 +69,7 @@ async function timedFetchVia(
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error('timeout')), TIMEOUT_MS);
-  const composite = init.signal
-    ? mergeSignals(controller.signal, init.signal)
-    : controller.signal;
+  const composite = init.signal ? mergeSignals(controller.signal, init.signal) : controller.signal;
   try {
     return await fetchImpl(url, { ...init, signal: composite });
   } finally {
@@ -126,10 +124,7 @@ function summariseError(text: string): string {
 /*  Per-provider checks                                                       */
 /* -------------------------------------------------------------------------- */
 
-async function testOpenAI(
-  key: string,
-  signal?: AbortSignal,
-): Promise<ProviderTestResult> {
+async function testOpenAI(key: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   try {
     const res = await timedFetch('https://api.openai.com/v1/models', {
       method: 'GET',
@@ -153,10 +148,7 @@ async function testOpenAI(
   }
 }
 
-async function testAnthropic(
-  key: string,
-  signal?: AbortSignal,
-): Promise<ProviderTestResult> {
+async function testAnthropic(key: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   try {
     const res = await timedFetch('https://api.anthropic.com/v1/models', {
       method: 'GET',
@@ -190,10 +182,7 @@ async function testAnthropic(
   }
 }
 
-async function testGoogle(
-  key: string,
-  signal?: AbortSignal,
-): Promise<ProviderTestResult> {
+async function testGoogle(key: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   // Hitting `/v1beta/models` validates the key without spending tokens.
   // The list is small (a few KB) and Google routes 401 / 403 there
   // consistently with the streamGenerateContent endpoint we use for chat.
@@ -222,10 +211,7 @@ async function testGoogle(
   }
 }
 
-async function testGroq(
-  key: string,
-  signal?: AbortSignal,
-): Promise<ProviderTestResult> {
+async function testGroq(key: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   try {
     const res = await timedFetch('https://api.groq.com/openai/v1/models', {
       method: 'GET',
@@ -249,10 +235,7 @@ async function testGroq(
   }
 }
 
-async function testOllama(
-  rawBaseUrl: string,
-  signal?: AbortSignal,
-): Promise<ProviderTestResult> {
+async function testOllama(rawBaseUrl: string, signal?: AbortSignal): Promise<ProviderTestResult> {
   const { normalizeStoredOllamaEndpoint } = await import('./providers/ollama');
   const base = normalizeStoredOllamaEndpoint(rawBaseUrl.trim() || undefined);
 
@@ -306,9 +289,7 @@ async function testOllama(
     }
     // Verify the body parses and exposes a `models` array. A non-Ollama
     // service on the same port (rare but possible) might 200 on the URL.
-    const json = (await res.json().catch(() => null)) as
-      | { models?: unknown[] }
-      | null;
+    const json = (await res.json().catch(() => null)) as { models?: unknown[] } | null;
     if (!json || !Array.isArray(json.models)) {
       return {
         kind: 'invalid',
@@ -413,6 +394,13 @@ export async function testProviderKey(
       return testOpenAICompatible('mistral', 'https://api.mistral.ai/v1', trimmed, signal);
     case 'together':
       return testOpenAICompatible('together', 'https://api.together.xyz/v1', trimmed, signal);
+    case 'qwen':
+      return testOpenAICompatible(
+        'qwen',
+        'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+        trimmed,
+        signal,
+      );
     case 'cohere':
     case 'perplexity':
     case 'fireworks':

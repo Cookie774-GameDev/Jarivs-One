@@ -191,6 +191,18 @@ describe('AI provider routing', () => {
     expect(resolved.model).toBe('llama-3.1-8b-instant');
   });
 
+  it('routes a connected Qwen selection through the first-class Model Studio provider', () => {
+    useAuthStore.setState({
+      apiKeys: { qwen: 'qwen-test-key' },
+      chatModelSelection: selectionFromOption('qwen', 'qwen3.7-plus'),
+    });
+
+    const resolved = resolveProviderAndModel(defaultProviderAgent);
+
+    expect(resolved.provider.id).toBe('qwen');
+    expect(resolved.model).toBe('qwen3.7-plus');
+  });
+
   it('does not route unsupported advertised placeholders as real AI', () => {
     useAuthStore.setState({
       apiKeys: { perplexity: 'sk-test' },

@@ -14,6 +14,7 @@ import {
   MISTRAL_DEFAULT_MODEL,
   TOGETHER_DEFAULT_MODEL,
   XAI_DEFAULT_MODEL,
+  QWEN_DEFAULT_MODEL,
 } from './providers/compatibleInstances';
 
 export interface ModelOption {
@@ -38,6 +39,7 @@ export const REAL_CHAT_PROVIDERS: readonly ProviderId[] = [
   'mistral',
   'together',
   'xai',
+  'qwen',
   'ollama',
   'local',
 ];
@@ -52,6 +54,7 @@ const CLOUD_KEY_PROVIDERS: readonly ProviderId[] = [
   'mistral',
   'together',
   'xai',
+  'qwen',
 ];
 
 export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
@@ -216,6 +219,56 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     id: 'grok-4.3',
     label: 'Grok 4.3',
     contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.7-max',
+    label: 'Qwen 3.7 Max',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.7-max-2026-06-08',
+    label: 'Qwen 3.7 Max (2026-06-08)',
+  },
+  {
+    provider: 'qwen',
+    id: QWEN_DEFAULT_MODEL,
+    label: 'Qwen 3.7 Plus',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.7-plus-2026-05-26',
+    label: 'Qwen 3.7 Plus (2026-05-26)',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.6-plus',
+    label: 'Qwen 3.6 Plus',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.6-plus-2026-04-02',
+    label: 'Qwen 3.6 Plus (2026-04-02)',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.6-flash',
+    label: 'Qwen 3.6 Flash',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.6-flash-2026-04-16',
+    label: 'Qwen 3.6 Flash (2026-04-16)',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3.6-27b',
+    label: 'Qwen 3.6 27B',
+  },
+  {
+    provider: 'qwen',
+    id: 'qwen3-coder-next',
+    label: 'Qwen3 Coder Next',
   },
 ];
 
@@ -460,6 +513,8 @@ export function defaultModelForProvider(
       return TOGETHER_DEFAULT_MODEL;
     case 'xai':
       return XAI_DEFAULT_MODEL;
+    case 'qwen':
+      return QWEN_DEFAULT_MODEL;
     case 'ollama':
     case 'local':
       if (localModelsAvailable(localModel)) {

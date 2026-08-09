@@ -115,6 +115,7 @@ export type ProviderId =
   | 'deepseek'
   | 'mistral'
   | 'together'
+  | 'qwen'
   | 'ollama'
   // V3 — additional OpenAI-compatible providers.
   | 'cohere'

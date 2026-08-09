@@ -78,6 +78,13 @@ import {
   subscribeKernelSmokeBinding,
 } from '@/lib/ai/providers/kernelSmoke';
 import { runDueJarvisSchedules } from './jarvisScheduleRunner';
+import {
+  clearScheduleDraft,
+  readScheduleDraft,
+  scheduleDraftsEqual,
+  writeScheduleDraft,
+  type ScheduleDraft,
+} from './scheduleDraftPersistence';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -85,6 +92,34 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
+
+function createEmptyScheduleDraft(): ScheduleDraft {
+  const start = defaultEventStartMs();
+  return {
+    schemaVersion: 1,
+    quick: '',
+    title: '',
+    startInput: toLocalDateTimeInput(start),
+    endInput: toLocalDateTimeInput(defaultEventEndMs(start)),
+    allDay: false,
+    description: '',
+    reminderOffsets: [15],
+    scheduleMode: 'event',
+    jarvisRecurrence: 'once',
+    intervalAmount: 2,
+    intervalUnit: 'hours',
+    jarvisModelOptionId: '',
+  };
+}
+
+function cleanScheduleDraft(draft: ScheduleDraft): ScheduleDraft {
+  return {
+    ...draft,
+    quick: '',
+    title: '',
+    description: '',
+  };
+}
 
 function formatScheduleSuccess(summary: string): string {
   return formatJarvisVerifiedNarration({ kind: 'success', summary }).text;
@@ -350,23 +385,35 @@ export function SchedulePage() {
     return map;
   }, [timeline]);
 
-  const [quick, setQuick] = React.useState('');
-  const [title, setTitle] = React.useState('');
-  const [startInput, setStartInput] = React.useState(() =>
-    toLocalDateTimeInput(defaultEventStartMs()),
+  const initialScheduleDraft = React.useMemo<ScheduleDraft>(() => {
+    return (workspaceId && readScheduleDraft(workspaceId)) || createEmptyScheduleDraft();
+  }, [workspaceId]);
+  const cleanScheduleDraftRef = React.useRef<ScheduleDraft>(
+    cleanScheduleDraft(initialScheduleDraft),
   );
-  const [endInput, setEndInput] = React.useState(() =>
-    toLocalDateTimeInput(defaultEventEndMs(defaultEventStartMs())),
-  );
-  const [allDay, setAllDay] = React.useState(false);
-  const [description, setDescription] = React.useState('');
-  const [reminderOffsets, setReminderOffsets] = React.useState<number[]>([15]);
+  const draftWorkspaceRef = React.useRef<WorkspaceId | null>(workspaceId);
+  const skipDraftPersistenceRef = React.useRef(false);
+  const [quick, setQuick] = React.useState(initialScheduleDraft.quick);
+  const [title, setTitle] = React.useState(initialScheduleDraft.title);
+  const [startInput, setStartInput] = React.useState(initialScheduleDraft.startInput);
+  const [endInput, setEndInput] = React.useState(initialScheduleDraft.endInput);
+  const [allDay, setAllDay] = React.useState(initialScheduleDraft.allDay);
+  const [description, setDescription] = React.useState(initialScheduleDraft.description);
+  const [reminderOffsets, setReminderOffsets] = React.useState<number[]>([
+    ...initialScheduleDraft.reminderOffsets,
+  ]);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
   const [selectedDayKey, setSelectedDayKey] = React.useState<string | null>(null);
-  const [scheduleMode, setScheduleMode] = React.useState<'event' | 'jarvis'>('event');
-  const [jarvisRecurrence, setJarvisRecurrence] = React.useState<JarvisScheduleRecurrence>('once');
-  const [intervalAmount, setIntervalAmount] = React.useState(2);
-  const [intervalUnit, setIntervalUnit] = React.useState<'minutes' | 'hours' | 'days'>('hours');
+  const [scheduleMode, setScheduleMode] = React.useState<'event' | 'jarvis'>(
+    initialScheduleDraft.scheduleMode,
+  );
+  const [jarvisRecurrence, setJarvisRecurrence] = React.useState<JarvisScheduleRecurrence>(
+    initialScheduleDraft.jarvisRecurrence,
+  );
+  const [intervalAmount, setIntervalAmount] = React.useState(initialScheduleDraft.intervalAmount);
+  const [intervalUnit, setIntervalUnit] = React.useState<'minutes' | 'hours' | 'days'>(
+    initialScheduleDraft.intervalUnit,
+  );
   const [modelPickerOpen, setModelPickerOpen] = React.useState(false);
   const [timelineView, setTimelineView] = React.useState<'timeline' | 'jarvis'>('timeline');
   const [openJarvisEventId, setOpenJarvisEventId] = React.useState<string | null>(null);
@@ -415,8 +462,73 @@ export function SchedulePage() {
     [jarvisEvents, openJarvisEventId],
   );
   const [jarvisModelOptionId, setJarvisModelOptionId] = React.useState(
-    () => selectionOptionId(chatModelSelection) ?? '',
+    () => initialScheduleDraft.jarvisModelOptionId || selectionOptionId(chatModelSelection) || '',
   );
+
+  React.useLayoutEffect(() => {
+    if (draftWorkspaceRef.current === workspaceId) return;
+    draftWorkspaceRef.current = workspaceId;
+    skipDraftPersistenceRef.current = true;
+
+    const nextDraft = (workspaceId && readScheduleDraft(workspaceId)) || createEmptyScheduleDraft();
+    cleanScheduleDraftRef.current = cleanScheduleDraft(nextDraft);
+    setQuick(nextDraft.quick);
+    setTitle(nextDraft.title);
+    setStartInput(nextDraft.startInput);
+    setEndInput(nextDraft.endInput);
+    setAllDay(nextDraft.allDay);
+    setDescription(nextDraft.description);
+    setReminderOffsets([...nextDraft.reminderOffsets]);
+    setScheduleMode(nextDraft.scheduleMode);
+    setJarvisRecurrence(nextDraft.jarvisRecurrence);
+    setIntervalAmount(nextDraft.intervalAmount);
+    setIntervalUnit(nextDraft.intervalUnit);
+    setJarvisModelOptionId(
+      nextDraft.jarvisModelOptionId || selectionOptionId(chatModelSelection) || '',
+    );
+  }, [chatModelSelection, workspaceId]);
+
+  React.useLayoutEffect(() => {
+    if (skipDraftPersistenceRef.current) {
+      skipDraftPersistenceRef.current = false;
+      return;
+    }
+    if (!workspaceId) return;
+    const draft: ScheduleDraft = {
+      schemaVersion: 1,
+      quick,
+      title,
+      startInput,
+      endInput,
+      allDay,
+      description,
+      reminderOffsets,
+      scheduleMode,
+      jarvisRecurrence,
+      intervalAmount,
+      intervalUnit,
+      jarvisModelOptionId,
+    };
+    if (scheduleDraftsEqual(draft, cleanScheduleDraftRef.current)) {
+      clearScheduleDraft(workspaceId);
+      return;
+    }
+    writeScheduleDraft(workspaceId, draft);
+  }, [
+    allDay,
+    description,
+    endInput,
+    intervalAmount,
+    intervalUnit,
+    jarvisModelOptionId,
+    jarvisRecurrence,
+    quick,
+    reminderOffsets,
+    scheduleMode,
+    startInput,
+    title,
+    workspaceId,
+  ]);
   const selectedJarvisModel = React.useMemo(() => {
     const exact = jarvisModelOptions.find((option) => option.id === jarvisModelOptionId);
     if (exact) return exact;
@@ -616,8 +728,26 @@ export function SchedulePage() {
       setTitle('');
       setDescription('');
       const nextStart = defaultEventStartMs();
-      setStartInput(toLocalDateTimeInput(nextStart));
-      setEndInput(toLocalDateTimeInput(defaultEventEndMs(nextStart)));
+      const nextStartInput = toLocalDateTimeInput(nextStart);
+      const nextEndInput = toLocalDateTimeInput(defaultEventEndMs(nextStart));
+      cleanScheduleDraftRef.current = {
+        schemaVersion: 1,
+        quick: '',
+        title: '',
+        startInput: nextStartInput,
+        endInput: nextEndInput,
+        allDay: false,
+        description: '',
+        reminderOffsets,
+        scheduleMode,
+        jarvisRecurrence: 'once',
+        intervalAmount: 2,
+        intervalUnit: 'hours',
+        jarvisModelOptionId,
+      };
+      clearScheduleDraft(workspaceId);
+      setStartInput(nextStartInput);
+      setEndInput(nextEndInput);
       setAllDay(false);
       setJarvisRecurrence('once');
       setIntervalAmount(2);

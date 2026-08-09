@@ -82,6 +82,16 @@ const BYOK_PROVIDERS: ProviderRow[] = [
     category: 'major',
     color: 'from-blue-500/20 to-indigo-500/20',
   },
+  {
+    id: 'qwen',
+    name: 'Qwen / Alibaba Cloud',
+    hint: 'Live Qwen catalog loads from Model Studio after connection',
+    placeholder: 'sk-... (Model Studio)',
+    freeKeyUrl: 'https://bailian.console.alibabacloud.com/?apiKey=1',
+    freeKeyLabel: 'Get Model Studio key',
+    category: 'major',
+    color: 'from-violet-500/20 to-blue-500/20',
+  },
   // Fast inference providers
   {
     id: 'groq',
@@ -256,6 +266,7 @@ const DEFAULT_PROVIDER_OPTIONS: { id: ProviderId; label: string; description: st
   { id: 'anthropic', label: 'Anthropic', description: 'Best for reasoning and writing.' },
   { id: 'openai', label: 'OpenAI', description: 'Strong generalist with realtime voice.' },
   { id: 'google', label: 'Gemini', description: 'Long context, fast Flash tier.' },
+  { id: 'qwen', label: 'Qwen / Alibaba Cloud', description: 'Qwen 3.7 via Model Studio.' },
   { id: 'groq', label: 'Groq', description: 'Sub-second open-weights inference.' },
   { id: 'deepseek', label: 'DeepSeek', description: 'DeepSeek V4 Flash via subscription credits.' },
   { id: 'ollama', label: 'Ollama (local)', description: 'Local models on this device.' },

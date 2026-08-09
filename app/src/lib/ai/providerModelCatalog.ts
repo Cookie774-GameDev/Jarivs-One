@@ -83,7 +83,10 @@ function sanitizeModelId(raw: string): string {
   return sanitizeModelIdForInput(raw);
 }
 
-function toRegistryOption(option: ModelOption, availability: ModelAvailability = 'stable'): RegistryModelOption {
+function toRegistryOption(
+  option: ModelOption,
+  availability: ModelAvailability = 'stable',
+): RegistryModelOption {
   return {
     id: option.id,
     label: option.label,
@@ -222,9 +225,14 @@ export function resolveModelOnProviderChange(
   ctx: ProviderConnectionContext,
 ): string {
   const options = getModelsForProvider(nextProvider, ctx, currentModel);
-  const keep = options.find((option) => option.id.toLowerCase() === sanitizeModelId(currentModel).toLowerCase());
+  const keep = options.find(
+    (option) => option.id.toLowerCase() === sanitizeModelId(currentModel).toLowerCase(),
+  );
   if (keep && !keep.isCustom) return keep.id;
-  return options.find((option) => !option.isCustom)?.id ?? defaultModelForProvider(nextProvider, ctx.defaultLocalModel);
+  return (
+    options.find((option) => !option.isCustom)?.id ??
+    defaultModelForProvider(nextProvider, ctx.defaultLocalModel)
+  );
 }
 
 export function getProviderModelCacheState(providerId: ProviderId): {
@@ -267,7 +275,9 @@ function parseOpenAiCompatibleModels(
     }));
 }
 
-function parseGoogleModels(payload: { models?: Array<{ name?: string; displayName?: string }> }): RegistryModelOption[] {
+function parseGoogleModels(payload: {
+  models?: Array<{ name?: string; displayName?: string }>;
+}): RegistryModelOption[] {
   const rows: RegistryModelOption[] = [];
   for (const row of payload.models ?? []) {
     const raw = row.name?.replace(/^models\//, '').trim();
@@ -327,9 +337,14 @@ async function fetchModelsFromProvider(
       return parseGoogleModels(await res.json());
     }
     case 'groq':
-    case 'openrouter': {
+    case 'openrouter':
+    case 'qwen': {
       const base =
-        providerId === 'groq' ? 'https://api.groq.com/openai/v1/models' : 'https://openrouter.ai/api/v1/models';
+        providerId === 'groq'
+          ? 'https://api.groq.com/openai/v1/models'
+          : providerId === 'qwen'
+            ? 'https://dashscope-us.aliyuncs.com/compatible-mode/v1/models'
+            : 'https://openrouter.ai/api/v1/models';
       const res = await timedFetch(base, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });

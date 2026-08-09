@@ -476,7 +476,11 @@ export function BuildYourOwnAIPage() {
         className="mx-auto grid min-h-full max-w-[1680px] gap-4 p-3 lg:grid-cols-[235px_minmax(0,1fr)] xl:grid-cols-[235px_minmax(0,1fr)_280px] xl:gap-8 xl:p-[22px]"
         data-warm-surface="model-foundry-content"
       >
-        <div aria-hidden="true" data-warm-decoration="model-foundry-scene">
+        <div
+          aria-hidden="true"
+          className="hidden [html[data-theme=warm]_&]:block"
+          data-warm-decoration="model-foundry-scene"
+        >
           <img
             src="/assets/themes/warm/model-foundry/model-foundry-landscape-v3-selected.webp"
             alt=""

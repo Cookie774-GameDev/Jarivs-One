@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { syncDiscoveredOllamaModels } from './models';
 import {
   getModelsForProvider,
+  loadProviderModels,
   modelBelongsToProvider,
   resetProviderModelCache,
   resolveModelOnProviderChange,
@@ -30,6 +31,29 @@ describe('providerModelCatalog', () => {
     const models = getModelsForProvider('google', ctx);
     expect(models.some((model) => model.id === 'gemini-3.5-flash')).toBe(true);
     expect(models.every((model) => model.provider === 'google')).toBe(true);
+  });
+
+  it('discovers the Qwen models available to the connected Model Studio account', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: [{ id: 'qwen3.7-plus' }, { id: 'qwen3-coder-next' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const qwenCtx = { ...ctx, apiKeys: { qwen: 'qwen-test-key' } };
+
+    const models = await loadProviderModels('qwen', qwenCtx, { force: true });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://dashscope-us.aliyuncs.com/compatible-mode/v1/models',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer qwen-test-key' },
+      }),
+    );
+    expect(models.map((model) => model.id)).toEqual(
+      expect.arrayContaining(['qwen3.7-plus', 'qwen3-coder-next']),
+    );
+    fetchMock.mockRestore();
   });
 
   it('clears mismatched model when provider changes', () => {

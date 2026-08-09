@@ -10,6 +10,17 @@ import { KERNEL_SMOKE_PROVIDER_ID } from './providers/kernelSmoke';
 describe('providerRegistry', () => {
   it('maps google internal id to Gemini display name', () => {
     expect(getProviderDisplayName('google')).toBe('Gemini');
+    expect(getProviderDisplayName('qwen')).toBe('Qwen / Alibaba Cloud');
+  });
+
+  it('registers Qwen as a dynamically listed BYOK provider', () => {
+    expect(buildProviderRegistry({ devBuild: false, explicitFlag: undefined })).toContainEqual({
+      id: 'qwen',
+      displayName: 'Qwen / Alibaba Cloud',
+      requiresApiKey: true,
+      supportsDynamicListing: true,
+      hiveEligible: true,
+    });
   });
 
   it('formats connected provider labels for dropdowns', () => {

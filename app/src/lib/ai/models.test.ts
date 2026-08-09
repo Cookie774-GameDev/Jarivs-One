@@ -26,10 +26,33 @@ describe('chat model catalog', () => {
       'mistral',
       'together',
       'xai',
+      'qwen',
       'ollama',
       'local',
     ]);
     expect(isRealChatProvider('openrouter')).toBe(true);
+  });
+
+  it('ships the current Qwen catalog with Qwen 3.7 Plus as the safe default', () => {
+    const apiKeys = { qwen: 'test-qwen-key' };
+    const ids = getAccessibleModelOptions('qwen', apiKeys, false).map((model) => model.id);
+
+    expect(defaultModelForProvider('qwen')).toBe('qwen3.7-plus');
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'qwen3.7-max',
+        'qwen3.7-max-2026-06-08',
+        'qwen3.7-plus',
+        'qwen3.7-plus-2026-05-26',
+        'qwen3.6-plus',
+        'qwen3.6-plus-2026-04-02',
+        'qwen3.6-flash',
+        'qwen3.6-flash-2026-04-16',
+        'qwen3.6-27b',
+        'qwen3-coder-next',
+      ]),
+    );
+    expect(getAccessibleProviders(apiKeys, false)).toContain('qwen');
   });
 
   it('never exposes mock demo in accessible providers', () => {

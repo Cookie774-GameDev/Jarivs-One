@@ -5,6 +5,7 @@ export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-chat';
 export const MISTRAL_DEFAULT_MODEL = 'mistral-large-latest';
 export const TOGETHER_DEFAULT_MODEL = 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
 export const XAI_DEFAULT_MODEL = 'grok-2-1212';
+export const QWEN_DEFAULT_MODEL = 'qwen3.7-plus';
 
 export const openrouterProvider = makeOpenAICompatibleProvider({
   id: 'openrouter',
@@ -48,4 +49,12 @@ export const xaiProvider = makeOpenAICompatibleProvider({
   baseUrl: 'https://api.x.ai/v1',
   apiKeyStoreKey: 'xai',
   defaultModel: XAI_DEFAULT_MODEL,
+});
+
+export const qwenProvider = makeOpenAICompatibleProvider({
+  id: 'qwen',
+  name: 'Qwen / Alibaba Cloud',
+  baseUrl: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+  apiKeyStoreKey: 'qwen',
+  defaultModel: QWEN_DEFAULT_MODEL,
 });

@@ -18,6 +18,7 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
   mistral: 'Mistral',
   together: 'Together AI',
   xai: 'xAI',
+  qwen: 'Qwen / Alibaba Cloud',
   mock: 'Mock (demo)',
   cohere: 'Cohere',
   perplexity: 'Perplexity',
@@ -90,6 +91,13 @@ const BASE_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   {
     id: 'openrouter',
     displayName: 'OpenRouter',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'qwen',
+    displayName: 'Qwen / Alibaba Cloud',
     requiresApiKey: true,
     supportsDynamicListing: true,
     hiveEligible: true,

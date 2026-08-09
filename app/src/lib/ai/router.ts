@@ -37,6 +37,7 @@ import {
   mistralProvider,
   togetherProvider,
   xaiProvider,
+  qwenProvider,
 } from './providers/compatibleInstances';
 import { agentUsesDefaultProvider } from './agentProviderOptions';
 import { EMPTY_CHAT_MODEL_SELECTION } from './modelSelection';
@@ -103,6 +104,7 @@ const providers: Record<ProviderId, LLMProvider> = {
   mock: mockProvider,
   local: ollamaProvider,
   xai: xaiProvider,
+  qwen: qwenProvider,
   openrouter: openrouterProvider,
   deepseek: deepseekProvider,
   mistral: mistralProvider,

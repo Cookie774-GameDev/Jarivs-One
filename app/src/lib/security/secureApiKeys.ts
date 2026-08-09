@@ -11,6 +11,7 @@ export const SECRET_API_KEY_PROVIDERS: readonly ProviderId[] = [
   'deepseek',
   'mistral',
   'together',
+  'qwen',
   'cohere',
   'perplexity',
   'fireworks',

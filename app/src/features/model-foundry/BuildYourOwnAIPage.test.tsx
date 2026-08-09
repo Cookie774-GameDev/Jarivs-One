@@ -53,6 +53,9 @@ describe('BuildYourOwnAIPage', () => {
     const scenicImage = page.querySelector<HTMLImageElement>(
       '[data-warm-decoration="model-foundry-scene"] > img',
     );
+    const scenicDecoration = scenicImage?.parentElement;
+    expect(scenicDecoration?.className).toContain('hidden');
+    expect(scenicDecoration?.className).toContain('[html[data-theme=warm]_&]:block');
     expect(scenicImage?.getAttribute('src')).toBe(
       '/assets/themes/warm/model-foundry/model-foundry-landscape-v3-selected.webp',
     );
