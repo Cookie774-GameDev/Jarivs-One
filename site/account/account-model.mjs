@@ -12,6 +12,29 @@ const ALLOWED_STATUS = new Set([
   'unknown',
 ]);
 const AUTHORITATIVE_PLAN_STATUSES = new Set(['active', 'trialing', 'grace']);
+const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export function takeSecretInput(input) {
+  const value = String(input?.value ?? '');
+  if (input) input.value = '';
+  return value;
+}
+
+export function clearAccountAuthSecrets({ passwordInput, otpInput, otpCard }) {
+  if (passwordInput) passwordInput.value = '';
+  if (otpInput) otpInput.value = '';
+  if (otpCard) otpCard.hidden = true;
+}
+
+export async function revokeDesktopDevice(client, expectedUserId, deviceId) {
+  const normalizedUserId = String(expectedUserId ?? '').trim();
+  if (!USER_ID.test(normalizedUserId)) return false;
+  const { data, error } = await client.rpc('revoke_desktop_device', {
+    p_expected_user_id: normalizedUserId,
+    p_device_id: deviceId,
+  });
+  return !error && data === true;
+}
 
 export function createAccountTransitionController({
   prepare,

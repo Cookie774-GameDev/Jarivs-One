@@ -541,6 +541,7 @@ function InstalledCloudAuthentication({
 
 export function InstalledAccessAppHost({ children }: { children: React.ReactNode }) {
   const featureTier = useAuthStore((state) => state.plan);
+  const cloudUserId = useAuthStore((state) => state.cloudSession?.user_id.trim() ?? '');
   const environment = import.meta.env as AccessBuildEnvironment;
   const accessGateEnabled = isAccessGateEnabled(environment);
   const appVersion = environment.VITE_APP_VERSION?.trim() || '0.0.0';
@@ -552,7 +553,7 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
   const [signInMode, setSignInMode] = React.useState<'signin' | 'signup'>('signin');
   const runtime = React.useMemo(
     () => createInstalledRuntime(featureTier, appVersion, publicKeyConfiguration),
-    [appVersion, featureTier, publicKeyConfiguration],
+    [appVersion, cloudUserId, featureTier, publicKeyConfiguration],
   );
 
   React.useEffect(() => {
@@ -570,18 +571,28 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
     }
 
     let active = true;
+    let authGeneration = 0;
     const publish = (session: Session | null) => {
       if (!active) return;
       setHasCloudSession(publishInstalledCloudSession(session));
       setAuthReady(true);
     };
 
+    const bootstrapGeneration = authGeneration;
     void client.auth
       .getSession()
-      .then(({ data, error }) => publish(error ? null : data.session))
-      .catch(() => publish(null));
+      .then(({ data, error }) => {
+        if (bootstrapGeneration !== authGeneration) return;
+        publish(error ? null : data.session);
+      })
+      .catch(() => {
+        if (bootstrapGeneration === authGeneration) publish(null);
+      });
 
-    const { data } = client.auth.onAuthStateChange((_event, session) => publish(session));
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      authGeneration += 1;
+      publish(session);
+    });
     return () => {
       active = false;
       data.subscription.unsubscribe();
@@ -620,6 +631,7 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
     <>
       <DesktopPresencePublisher appVersion={appVersion} />
       <AccessAppHost
+        key={cloudUserId}
         enabled={accessGateEnabled}
         runtime={runtime}
         privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}

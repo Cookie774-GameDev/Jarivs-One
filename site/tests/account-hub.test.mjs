@@ -176,3 +176,47 @@ test('paid plan labels require an error-free active subscription authority', () 
     'Pro',
   );
 });
+
+test('account auth secrets are consumed immediately and cleared on every transition', () => {
+  assert.equal(typeof accountModel.takeSecretInput, 'function');
+  assert.equal(typeof accountModel.clearAccountAuthSecrets, 'function');
+  const passwordInput = { value: 'correct horse battery staple' };
+  const otpInput = { value: '123456' };
+  const otpCard = { hidden: false };
+
+  assert.equal(accountModel.takeSecretInput(passwordInput), 'correct horse battery staple');
+  assert.equal(passwordInput.value, '');
+
+  accountModel.clearAccountAuthSecrets({ passwordInput, otpInput, otpCard });
+  assert.equal(passwordInput.value, '');
+  assert.equal(otpInput.value, '');
+  assert.equal(otpCard.hidden, true);
+});
+
+test('device revocation binds the RPC to the account captured by the rendered device', async () => {
+  assert.equal(typeof accountModel.revokeDesktopDevice, 'function');
+  const calls = [];
+  const client = {
+    rpc(name, params) {
+      calls.push({ name, params });
+      return Promise.resolve({ data: true, error: null });
+    },
+  };
+
+  const result = await accountModel.revokeDesktopDevice(
+    client,
+    '67c86772-5cf3-4f30-908a-f6507f54fe2b',
+    'device_shared',
+  );
+
+  assert.equal(result, true);
+  assert.deepEqual(calls, [
+    {
+      name: 'revoke_desktop_device',
+      params: {
+        p_expected_user_id: '67c86772-5cf3-4f30-908a-f6507f54fe2b',
+        p_device_id: 'device_shared',
+      },
+    },
+  ]);
+});

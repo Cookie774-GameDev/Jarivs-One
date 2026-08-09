@@ -87,18 +87,35 @@ export function AccountPage() {
   const [usage, setUsage] = React.useState<CombinedUsage | null>(null);
   const [usageLoading, setUsageLoading] = React.useState(false);
   const [usageError, setUsageError] = React.useState<string | null>(null);
+  const accountRef = React.useRef(cloudUserId?.trim() ?? '');
+  const accountGeneration = React.useRef(0);
+
+  React.useLayoutEffect(() => {
+    accountRef.current = cloudUserId?.trim() ?? '';
+    accountGeneration.current += 1;
+    setUsage(null);
+    setUsageError(null);
+    setUsageLoading(Boolean(accountRef.current));
+  }, [cloudUserId]);
 
   const loadUsage = React.useCallback(async () => {
-    if (!cloudUserId) {
+    const operationAccount = cloudUserId?.trim() ?? '';
+    if (!operationAccount) {
       setUsage(null);
       setUsageError(null);
       setUsageLoading(false);
       return;
     }
+    const operationGeneration = accountGeneration.current;
+    const isCurrentOperation = () =>
+      accountRef.current === operationAccount &&
+      accountGeneration.current === operationGeneration &&
+      (useAuthStore.getState().cloudSession?.user_id.trim() ?? '') === operationAccount;
     setUsageLoading(true);
     setUsageError(null);
     try {
       const data = await getCombinedUsage();
+      if (!isCurrentOperation()) return;
       if (!data) {
         setUsage(null);
         setUsageError('Could not load usage. Check your connection and try again.');
@@ -106,10 +123,11 @@ export function AccountPage() {
         setUsage(data);
       }
     } catch {
+      if (!isCurrentOperation()) return;
       setUsage(null);
       setUsageError('Could not load usage. Try again in a moment.');
     } finally {
-      setUsageLoading(false);
+      if (isCurrentOperation()) setUsageLoading(false);
     }
   }, [cloudUserId]);
 
@@ -145,7 +163,14 @@ export function AccountPage() {
       );
       return;
     }
+    const operationAccount = cloudUserId.trim();
+    const operationGeneration = accountGeneration.current;
+    const isCurrentOperation = () =>
+      accountRef.current === operationAccount &&
+      accountGeneration.current === operationGeneration &&
+      (useAuthStore.getState().cloudSession?.user_id.trim() ?? '') === operationAccount;
     const result = await callCheckoutSession(target);
+    if (!isCurrentOperation()) return;
     if (!result.ok) {
       toast.error('Checkout unavailable', result.error);
       return;
@@ -153,6 +178,7 @@ export function AccountPage() {
     try {
       await openExternal(result.url);
     } catch (err) {
+      if (!isCurrentOperation()) return;
       toast.error(
         'Could not open checkout',
         err instanceof Error ? err.message : 'Open Stripe manually.',
@@ -166,7 +192,14 @@ export function AccountPage() {
       setTab('profile');
       return;
     }
+    const operationAccount = cloudUserId.trim();
+    const operationGeneration = accountGeneration.current;
+    const isCurrentOperation = () =>
+      accountRef.current === operationAccount &&
+      accountGeneration.current === operationGeneration &&
+      (useAuthStore.getState().cloudSession?.user_id.trim() ?? '') === operationAccount;
     const result = await callCustomerPortal();
+    if (!isCurrentOperation()) return;
     if (!result.ok) {
       toast.error('Billing portal unavailable', result.error);
       return;
@@ -174,6 +207,7 @@ export function AccountPage() {
     try {
       await openExternal(result.url);
     } catch (err) {
+      if (!isCurrentOperation()) return;
       toast.error('Could not open portal', err instanceof Error ? err.message : 'Try again.');
     }
   };

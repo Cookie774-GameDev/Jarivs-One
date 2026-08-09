@@ -54,19 +54,30 @@
 - Presence publish and offline cleanup now send the captured cloud user ID as an explicit RPC
   precondition. The security-definer functions compare it with `auth.uid()` and raise before any
   insert or update when authentication changed while the shared client request was in flight.
+- Account usage, checkout, and portal continuations now bind to an exact account generation.
+  Identity changes synchronously clear usage and suppress stale results, billing URLs, and toasts.
+- Installed Access now keys its authorization host and runtime to the exact cloud user ID, enters
+  loading on same-tier account switches, and ignores bootstrap sessions superseded by Auth events.
+- Account Hub consumes password and OTP input values before awaiting Auth and clears both fields
+  plus OTP visibility on every transition. Device revocation now carries the rendered account ID
+  into SQL, where `auth.uid()` mismatch is rejected before mutation.
 
 ## Focused verification
 
-- `npm test -- --run src/features/auth/SignInDialog.recovery.test.tsx src/features/auth/accountContinuity.test.ts src/features/account/AccountSecurityPanel.test.tsx src/lib/supabase/desktopPresence.test.ts src/features/access/DesktopPresencePublisher.test.ts src/features/access/AccessAppHost.test.tsx src/features/access/InstalledAccessAppHost.auth.test.tsx src/features/auth/AuthGate.smoke.test.tsx src/features/billing/planLimits.test.ts`
-  — 9 files, 55 tests passed.
+- `npm test -- --run src/features/account/AccountPage.identity.test.tsx src/features/account/AccountSecurityPanel.test.tsx src/features/access/InstalledAccessAppHost.auth.test.tsx src/features/access/AccessAppHost.test.tsx src/features/access/DesktopPresencePublisher.test.ts src/features/auth/SignInDialog.recovery.test.tsx src/features/auth/accountContinuity.test.ts src/lib/supabase/desktopPresence.test.ts src/features/auth/AuthGate.smoke.test.tsx src/features/billing/planLimits.test.ts`
+  — 10 files, 65 tests passed.
 - `node --test tests/account-hub.test.mjs tests/access-pricing.test.mjs tests/oauth-consent.test.mjs tests/appearance.test.mjs tests/origami.test.mjs` from `site`
-  — 13 tests passed, including delayed Account A to Account B transition behavior and
-  stale/missing/error subscription authority.
+  — 15 tests passed, including delayed Account A to Account B transition behavior,
+  stale/missing/error subscription authority, transition secret clearing, and account-bound
+  device revocation.
 - `node --test tests/config_auth_templates.test.mjs tests/desktop_presence_migration.test.mjs`
-  from `supabase` — 6 tests passed.
+  from `supabase` — 8 tests passed.
 - Follow-up strict RED reproduced all three dialog generation leaks and both missing SQL
   expected-account contracts. Focused GREEN verification passes 20/20 frontend tests and 4/4
   desktop-presence migration contracts.
+- Final strict RED reproduced stale Account A usage and billing continuations, same-tier Access
+  authorization reuse and stale session bootstrap, retained website password/OTP input, and
+  unbound device revocation. Fresh focused GREEN verification is recorded above.
 - Prettier check on every touched supported source file — passed.
 - `git diff --check` — passed.
 - Owned-path scope scan — passed.

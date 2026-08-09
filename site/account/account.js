@@ -1,8 +1,11 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/+esm';
 import {
+  clearAccountAuthSecrets,
   createAccountTransitionController,
   normalizeDesktopPresence,
+  revokeDesktopDevice,
   resolvePlanPresentation,
+  takeSecretInput,
 } from './account-model.mjs';
 
 const gatewayOrigin = 'https://vibespace-mcp.combatonline02.workers.dev';
@@ -11,6 +14,8 @@ const authView = document.querySelector('#auth-view');
 const hubView = document.querySelector('#hub-view');
 const otpCard = document.querySelector('#otp-card');
 const emailInput = document.querySelector('#email');
+const passwordInput = document.querySelector('#password');
+const otpInput = document.querySelector('#otp-code');
 let supabase;
 let accountController;
 let refreshTimer;
@@ -20,12 +25,14 @@ function status(message) {
 }
 
 function showSignedOut() {
+  clearAccountAuthSecrets({ passwordInput, otpInput, otpCard });
   authView.hidden = false;
   hubView.hidden = true;
   status('Sign in to load your account-scoped VibeSpace data.');
 }
 
 function clearAccountDerivedView() {
+  clearAccountAuthSecrets({ passwordInput, otpInput, otpCard });
   hubView.hidden = true;
   authView.hidden = true;
   document.querySelector('#account-email').textContent = 'VibeSpace account';
@@ -72,7 +79,7 @@ function renderItems(list, items, emptyLabel) {
   });
 }
 
-function renderDevices(devices) {
+function renderDevices(devices, expectedUserId) {
   const container = document.querySelector('#device-list');
   const template = document.querySelector('#device-template');
   container.replaceChildren();
@@ -111,10 +118,8 @@ function renderDevices(devices) {
       )
         return;
       status('Revoking device presence…');
-      const { data, error } = await supabase.rpc('revoke_desktop_device', {
-        p_device_id: device.deviceId,
-      });
-      if (error || data !== true) {
+      const revoked = await revokeDesktopDevice(supabase, expectedUserId, device.deviceId);
+      if (!revoked) {
         status('Could not revoke that device.');
         return;
       }
@@ -203,7 +208,7 @@ function renderAccountHub(
     : 'Company credit breakdown is temporarily unavailable.';
 
   const devices = normalizeDesktopPresence(presenceResult.data || []);
-  renderDevices(devices);
+  renderDevices(devices, user.id);
   document.querySelector('#device-count').textContent = String(devices.length);
   const onlineCount = devices.filter((device) => device.online).length;
   document.querySelector('#online-summary').textContent =
@@ -289,7 +294,7 @@ document.querySelector('#signin-form').addEventListener('submit', async (event) 
   event.preventDefault();
   status('Signing in securely…');
   const email = emailInput.value.trim().toLowerCase();
-  const password = document.querySelector('#password').value;
+  const password = takeSecretInput(passwordInput);
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) {
     status(error.message || 'Sign in failed.');
@@ -321,7 +326,7 @@ document.querySelector('#email-code-button').addEventListener('click', async () 
 document.querySelector('#otp-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const email = emailInput.value.trim().toLowerCase();
-  const token = document.querySelector('#otp-code').value.replace(/\D/gu, '').slice(0, 6);
+  const token = takeSecretInput(otpInput).replace(/\D/gu, '').slice(0, 6);
   if (token.length !== 6) {
     status('Enter the complete 6-digit code.');
     return;

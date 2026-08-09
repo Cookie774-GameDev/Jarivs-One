@@ -268,7 +268,12 @@ begin
 end;
 $$;
 
-create or replace function public.revoke_desktop_device(p_device_id text)
+drop function if exists public.revoke_desktop_device(text);
+
+create or replace function public.revoke_desktop_device(
+  p_expected_user_id uuid,
+  p_device_id text
+)
 returns boolean
 language plpgsql
 security definer
@@ -280,6 +285,9 @@ declare
 begin
   if v_user_id is null then
     raise exception 'authentication required' using errcode = '42501';
+  end if;
+  if p_expected_user_id is null or v_user_id <> p_expected_user_id then
+    raise exception 'account changed' using errcode = '42501';
   end if;
 
   update public.desktop_presence
@@ -304,5 +312,5 @@ grant execute on function public.publish_desktop_presence(
 revoke all on function public.mark_desktop_presence_offline(uuid, text) from public, anon;
 grant execute on function public.mark_desktop_presence_offline(uuid, text) to authenticated;
 
-revoke all on function public.revoke_desktop_device(text) from public, anon;
-grant execute on function public.revoke_desktop_device(text) to authenticated;
+revoke all on function public.revoke_desktop_device(uuid, text) from public, anon;
+grant execute on function public.revoke_desktop_device(uuid, text) to authenticated;

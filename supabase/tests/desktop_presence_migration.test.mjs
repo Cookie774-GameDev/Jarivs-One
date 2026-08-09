@@ -67,6 +67,28 @@ test('offline cleanup rejects a changed account before updating presence', async
   );
 });
 
+test('device revocation rejects a changed account before updating presence', async () => {
+  const sql = await readFile(migrationUrl, 'utf8');
+  const functionStart = sql.indexOf('create or replace function public.revoke_desktop_device');
+  const functionEnd = sql.indexOf('$$;', functionStart);
+  const body = sql.slice(functionStart, functionEnd);
+
+  assert.match(body, /p_expected_user_id uuid/iu);
+  assert.match(
+    body,
+    /if p_expected_user_id is null or v_user_id <> p_expected_user_id then[\s\S]*?raise exception 'account changed'/iu,
+  );
+  assert.ok(
+    body.indexOf('v_user_id <> p_expected_user_id') <
+      body.indexOf('update public.desktop_presence'),
+    'expected-user validation must happen before revocation updates',
+  );
+  assert.match(
+    sql,
+    /grant execute on function public\.revoke_desktop_device\(uuid, text\) to authenticated/iu,
+  );
+});
+
 test('presence metadata is bounded and has no raw content fields', async () => {
   const sql = await readFile(migrationUrl, 'utf8');
 
