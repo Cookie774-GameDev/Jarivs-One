@@ -160,25 +160,29 @@ function abortError(): DOMException {
 }
 
 async function withTimeout<T>(
-  promise: Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<T> {
   if (signal?.aborted) throw abortError();
+  const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abortHandler: (() => void) | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(
-      () => reject(new Error(`Action timed out after ${timeoutMs} ms.`)),
-      timeoutMs,
-    );
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Action timed out after ${timeoutMs} ms.`));
+    }, timeoutMs);
     if (signal) {
-      abortHandler = () => reject(abortError());
+      abortHandler = () => {
+        controller.abort();
+        reject(abortError());
+      };
       signal.addEventListener('abort', abortHandler, { once: true });
     }
   });
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race([operation(controller.signal), timeoutPromise]);
   } finally {
     if (timeout) clearTimeout(timeout);
     if (signal && abortHandler) signal.removeEventListener('abort', abortHandler);
@@ -189,7 +193,10 @@ export async function executeJarvisPlan(
   plan: JarvisExecutionPlan,
   catalog: readonly JarvisActionDefinition[],
   options: {
-    executeApprovedStep: (step: Readonly<JarvisPlanStep>) => Promise<ActionResult>;
+    executeApprovedStep: (
+      step: Readonly<JarvisPlanStep>,
+      signal: AbortSignal,
+    ) => Promise<ActionResult>;
     signal?: AbortSignal;
     timeoutMs?: number;
     approved?: boolean;
@@ -239,7 +246,8 @@ export async function executeJarvisPlan(
     options.onProgress?.(structuredClone(next));
     try {
       const result = await withTimeout(
-        options.executeApprovedStep(Object.freeze(structuredClone(step))),
+        (executionSignal) =>
+          options.executeApprovedStep(Object.freeze(structuredClone(step)), executionSignal),
         options.timeoutMs ?? 30_000,
         options.signal,
       );

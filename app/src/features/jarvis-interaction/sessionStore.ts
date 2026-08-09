@@ -18,12 +18,136 @@ interface JarvisInteractionState {
   agentsForChat: (chatId: ChatId | string) => JarvisChatAgent[];
 }
 
+type JarvisInteractionPersistedState = Pick<
+  JarvisInteractionState,
+  'modesByChat' | 'planSafeApprovalsByChat' | 'agentsByChat'
+>;
+
+const ACTIVE_AGENT_STATUSES = new Set<JarvisChatAgent['status']>([
+  'queued',
+  'thinking',
+  'planning',
+  'asking_question',
+  'waiting_permission',
+  'editing',
+  'testing',
+]);
+const ALL_AGENT_STATUSES = new Set<JarvisChatAgent['status']>([
+  ...ACTIVE_AGENT_STATUSES,
+  'blocked',
+  'done',
+  'failed',
+  'cancelled',
+]);
+
+function reconcileRestartedAgents(
+  agentsByChat: Record<string, JarvisChatAgent[]>,
+): Record<string, JarvisChatAgent[]> {
+  return Object.fromEntries(
+    Object.entries(agentsByChat).map(([chatId, agents]) => [
+      chatId,
+      agents.map((agent) =>
+        ACTIVE_AGENT_STATUSES.has(agent.status)
+          ? {
+              ...agent,
+              status: 'failed' as const,
+              currentStep: 'Interrupted by app restart',
+              summary:
+                'This child run did not report a terminal result before VibeSpace restarted.',
+              error: 'Interrupted by app restart.',
+            }
+          : agent,
+      ),
+    ]),
+  );
+}
+
+function asRecord<T>(value: unknown): Record<string, T> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, T>)
+    : {};
+}
+
+function isJarvisChatAgent(value: unknown): value is JarvisChatAgent {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const agent = value as Partial<JarvisChatAgent>;
+  return (
+    typeof agent.agentId === 'string' &&
+    typeof agent.name === 'string' &&
+    typeof agent.parentChatId === 'string' &&
+    typeof agent.childChatId === 'string' &&
+    typeof agent.task === 'string' &&
+    typeof agent.modelLabel === 'string' &&
+    typeof agent.status === 'string' &&
+    ALL_AGENT_STATUSES.has(agent.status as JarvisChatAgent['status']) &&
+    Array.isArray(agent.filesTouched) &&
+    Array.isArray(agent.lockedFiles) &&
+    typeof agent.createdAt === 'string' &&
+    typeof agent.updatedAt === 'string'
+  );
+}
+
+function asAgentLists(value: unknown): Record<string, JarvisChatAgent[]> {
+  return Object.fromEntries(
+    Object.entries(asRecord<unknown>(value))
+      .filter((entry): entry is [string, unknown[]] => Array.isArray(entry[1]))
+      .map(([chatId, agents]) => [chatId, agents.filter(isJarvisChatAgent)])
+      .filter(([, agents]) => agents.length > 0),
+  );
+}
+
+function asModes(value: unknown): Record<string, JarvisInteractionMode> {
+  return Object.fromEntries(
+    Object.entries(asRecord<unknown>(value)).filter(
+      (entry): entry is [string, JarvisInteractionMode] =>
+        entry[1] === 'ask' || entry[1] === 'plan' || entry[1] === 'agent',
+    ),
+  );
+}
+
+export function serializeJarvisInteractionState(
+  state: JarvisInteractionPersistedState,
+): JarvisInteractionPersistedState {
+  return {
+    modesByChat: state.modesByChat,
+    // Plan-safe approval is authority for the current renderer session only.
+    // A restart must require the user to approve again.
+    planSafeApprovalsByChat: {},
+    // Child runtimes do not survive a renderer restart. Persist terminal truth
+    // instead of resurrecting an orphan as queued/thinking/editing.
+    agentsByChat: reconcileRestartedAgents(state.agentsByChat),
+  };
+}
+
+export function migrateJarvisInteractionState(
+  persisted: unknown,
+  _fromVersion: number,
+): JarvisInteractionPersistedState {
+  const state = asRecord<unknown>(persisted);
+  return serializeJarvisInteractionState({
+    modesByChat: asModes(state.modesByChat),
+    planSafeApprovalsByChat: asRecord<boolean>(state.planSafeApprovalsByChat),
+    agentsByChat: asAgentLists(state.agentsByChat),
+  });
+}
+
+export function mergeJarvisInteractionState(
+  persisted: unknown,
+  current: JarvisInteractionState,
+): JarvisInteractionState {
+  const sanitized = migrateJarvisInteractionState(persisted, 2);
+  return {
+    ...current,
+    ...sanitized,
+  };
+}
+
 function key(chatId: ChatId | string): string {
   return String(chatId);
 }
 
 export const useJarvisInteractionStore = create<JarvisInteractionState>()(
-  persist(
+  persist<JarvisInteractionState, [], [], JarvisInteractionPersistedState>(
     (set, get) => ({
       modesByChat: {},
       planSafeApprovalsByChat: {},
@@ -73,9 +197,9 @@ export const useJarvisInteractionStore = create<JarvisInteractionState>()(
           return {
             agentsByChat: {
               ...state.agentsByChat,
-              [chatKey]: existing.map((agent) => (
-                String(agent.agentId) === agentId ? { ...agent, ...patch } : agent
-              )),
+              [chatKey]: existing.map((agent) =>
+                String(agent.agentId) === agentId ? { ...agent, ...patch } : agent,
+              ),
             },
           };
         });
@@ -87,12 +211,10 @@ export const useJarvisInteractionStore = create<JarvisInteractionState>()(
     {
       name: 'jarvis-interaction-session',
       storage: createJSONStorage(() => safeLocalStorage),
-      version: 1,
-      partialize: (state) => ({
-        modesByChat: state.modesByChat,
-        planSafeApprovalsByChat: state.planSafeApprovalsByChat,
-        agentsByChat: state.agentsByChat,
-      }),
+      version: 2,
+      migrate: migrateJarvisInteractionState,
+      merge: mergeJarvisInteractionState,
+      partialize: serializeJarvisInteractionState,
     },
   ),
 );
