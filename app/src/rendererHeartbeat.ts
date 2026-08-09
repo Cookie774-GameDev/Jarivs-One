@@ -38,26 +38,33 @@ export function startRendererHeartbeat(options: RendererHeartbeatOptions = {}): 
     });
   };
 
-  const pause = () => {
-    if (timer === null) return;
-    window.clearInterval(timer);
-    timer = null;
-  };
-
-  const resume = () => {
-    if (disposed || timer !== null) return;
+  const sendImmediateAndEnsureCadence = () => {
+    if (disposed) return;
     beat();
-    timer = window.setInterval(beat, RENDERER_HEARTBEAT_INTERVAL_MS);
+    if (timer === null) {
+      timer = window.setInterval(beat, RENDERER_HEARTBEAT_INTERVAL_MS);
+    }
   };
 
-  window.addEventListener('pagehide', pause);
-  window.addEventListener('pageshow', resume);
-  resume();
+  const beatWhenVisible = () => {
+    if (!document.hidden) {
+      sendImmediateAndEnsureCadence();
+    }
+  };
+
+  window.addEventListener('pageshow', sendImmediateAndEnsureCadence);
+  window.addEventListener('focus', sendImmediateAndEnsureCadence);
+  document.addEventListener('visibilitychange', beatWhenVisible);
+  sendImmediateAndEnsureCadence();
 
   return () => {
     disposed = true;
-    pause();
-    window.removeEventListener('pagehide', pause);
-    window.removeEventListener('pageshow', resume);
+    if (timer !== null) {
+      window.clearInterval(timer);
+      timer = null;
+    }
+    window.removeEventListener('pageshow', sendImmediateAndEnsureCadence);
+    window.removeEventListener('focus', sendImmediateAndEnsureCadence);
+    document.removeEventListener('visibilitychange', beatWhenVisible);
   };
 }

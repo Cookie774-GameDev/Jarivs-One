@@ -4,6 +4,7 @@ import { startRendererHeartbeat } from './rendererHeartbeat';
 describe('renderer heartbeat', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('does nothing in a normal browser preview', () => {
@@ -47,7 +48,7 @@ describe('renderer heartbeat', () => {
     expect(emit).toHaveBeenCalledTimes(4);
   });
 
-  it('resumes heartbeats when a page-hidden document becomes visible again', async () => {
+  it('keeps heartbeating after pagehide when Tauri does not emit pageshow', async () => {
     vi.useFakeTimers();
     const emit = vi.fn(async (_event: string, _payload?: unknown) => undefined);
 
@@ -56,19 +57,53 @@ describe('renderer heartbeat', () => {
     expect(emit).toHaveBeenCalledTimes(1);
 
     window.dispatchEvent(new Event('pagehide'));
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(emit).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(emit).toHaveBeenCalledTimes(8);
 
     window.dispatchEvent(new Event('pageshow'));
     await vi.runAllTicks();
-    expect(emit).toHaveBeenCalledTimes(2);
+    expect(emit).toHaveBeenCalledTimes(9);
 
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(emit).toHaveBeenCalledTimes(4);
+    expect(emit).toHaveBeenCalledTimes(11);
 
     stop();
     window.dispatchEvent(new Event('pageshow'));
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(emit).toHaveBeenCalledTimes(4);
+    expect(emit).toHaveBeenCalledTimes(11);
+  });
+
+  it('beats immediately when a hidden renderer returns to the foreground', async () => {
+    vi.useFakeTimers();
+    let hidden = false;
+    vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
+    const emit = vi.fn(async (_event: string, _payload?: unknown) => undefined);
+
+    const stop = startRendererHeartbeat({ emit, isDesktop: true, windowLabel: 'main' });
+    await vi.runAllTicks();
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new Event('focus'));
+    await vi.runAllTicks();
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.runAllTicks();
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.runAllTicks();
+    expect(emit).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(emit).toHaveBeenCalledTimes(5);
+
+    stop();
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(emit).toHaveBeenCalledTimes(5);
   });
 });

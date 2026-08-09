@@ -123,20 +123,25 @@ pub(crate) fn should_rearm_process_restart(healthy_for: Option<Duration>) -> boo
 pub(crate) fn should_restart_renderer(
     heartbeat_age: Duration,
     visible: bool,
-    _focused: bool,
+    focused: bool,
 ) -> bool {
-    heartbeat_age > RENDERER_STALE_AFTER && visible
+    heartbeat_age > RENDERER_STALE_AFTER && visible && focused
+}
+
+pub(crate) fn should_check_stale_renderer(previously_focused: bool, focused: bool) -> bool {
+    previously_focused && focused
 }
 
 pub(crate) fn next_recovery_action(
     heartbeat_age: Duration,
     visible: bool,
+    focused: bool,
     reload_attempts: u8,
     recreate_attempts: u8,
     time_since_last_action: Option<Duration>,
     allow_process_restart: bool,
 ) -> RecoveryAction {
-    if !should_restart_renderer(heartbeat_age, visible, false) {
+    if !should_restart_renderer(heartbeat_age, visible, focused) {
         return RecoveryAction::None;
     }
     if reload_attempts > 0
@@ -273,6 +278,7 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
     });
 
     let app_handle = app.handle().clone();
+    let mut main_was_focused = false;
     std::thread::Builder::new()
         .name("renderer-watchdog".into())
         .spawn(move || loop {
@@ -283,6 +289,12 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
                 .as_ref()
                 .and_then(|window| window.is_visible().ok())
                 .unwrap_or(true);
+            let focused = main_window
+                .as_ref()
+                .and_then(|window| window.is_focused().ok())
+                .unwrap_or(true);
+            let should_check_stale = should_check_stale_renderer(main_was_focused, focused);
+            main_was_focused = focused;
             let Some(age) = state.heartbeat_age() else {
                 continue;
             };
@@ -301,6 +313,7 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
                 let action = next_recovery_action(
                     age,
                     visible,
+                    should_check_stale,
                     recovery.reload_attempts,
                     recovery.recreate_attempts,
                     time_since_last_action,
@@ -404,8 +417,8 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
 mod tests {
     use super::{
         can_restart_application, consume_recovery_marker, main_webview_recovery_plan,
-        next_recovery_action, should_rearm_process_restart, should_restart_renderer,
-        write_recovery_marker, MainWebviewRecoveryPlan, RecoveryAction,
+        next_recovery_action, should_check_stale_renderer, should_rearm_process_restart,
+        should_restart_renderer, write_recovery_marker, MainWebviewRecoveryPlan, RecoveryAction,
     };
     use std::fs;
     use std::time::Duration;
@@ -421,7 +434,15 @@ mod tests {
         assert!(!should_restart_renderer(fresh, true, true));
         assert!(!should_restart_renderer(grace_boundary, true, true));
         assert!(!should_restart_renderer(stale, false, true));
-        assert!(should_restart_renderer(stale, true, false));
+        assert!(!should_restart_renderer(stale, true, false));
+    }
+
+    #[test]
+    fn defers_recovery_for_the_first_tick_after_focus_returns() {
+        assert!(!should_check_stale_renderer(false, false));
+        assert!(!should_check_stale_renderer(true, false));
+        assert!(!should_check_stale_renderer(false, true));
+        assert!(should_check_stale_renderer(true, true));
     }
 
     #[test]
@@ -430,31 +451,35 @@ mod tests {
         let retry_ready = Duration::from_secs(21);
 
         assert_eq!(
-            next_recovery_action(stale, true, 0, 0, None, true),
+            next_recovery_action(stale, true, true, 0, 0, None, true),
             RecoveryAction::ReloadWebview
         );
         assert_eq!(
-            next_recovery_action(stale, true, 1, 0, Some(retry_ready), true),
+            next_recovery_action(stale, true, true, 1, 0, Some(retry_ready), true),
             RecoveryAction::ReloadWebview
         );
         assert_eq!(
-            next_recovery_action(stale, true, 2, 0, Some(retry_ready), true),
+            next_recovery_action(stale, true, true, 2, 0, Some(retry_ready), true),
             RecoveryAction::RecreateWebview
         );
         assert_eq!(
-            next_recovery_action(stale, true, 1, 0, Some(Duration::from_secs(10)), true),
+            next_recovery_action(stale, true, true, 1, 0, Some(Duration::from_secs(10)), true,),
             RecoveryAction::None
         );
         assert_eq!(
-            next_recovery_action(stale, false, 2, 0, Some(retry_ready), true),
+            next_recovery_action(stale, false, true, 2, 0, Some(retry_ready), true),
             RecoveryAction::None
         );
         assert_eq!(
-            next_recovery_action(stale, true, 2, 1, Some(retry_ready), false),
+            next_recovery_action(stale, true, false, 2, 1, Some(retry_ready), false),
+            RecoveryAction::None
+        );
+        assert_eq!(
+            next_recovery_action(stale, true, true, 2, 1, Some(retry_ready), false),
             RecoveryAction::RecreateWebview
         );
         assert_eq!(
-            next_recovery_action(stale, true, 2, 3, Some(retry_ready), false),
+            next_recovery_action(stale, true, true, 2, 3, Some(retry_ready), false),
             RecoveryAction::None
         );
     }
@@ -465,19 +490,19 @@ mod tests {
         let retry_ready = Duration::from_secs(21);
 
         assert_eq!(
-            next_recovery_action(stale, true, 2, 0, Some(retry_ready), true),
+            next_recovery_action(stale, true, true, 2, 0, Some(retry_ready), true),
             RecoveryAction::RecreateWebview
         );
         assert_eq!(
-            next_recovery_action(stale, true, 2, 0, Some(retry_ready), false),
+            next_recovery_action(stale, true, true, 2, 0, Some(retry_ready), false),
             RecoveryAction::RecreateWebview
         );
         assert_eq!(
-            next_recovery_action(stale, true, 2, 1, Some(retry_ready), true),
+            next_recovery_action(stale, true, true, 2, 1, Some(retry_ready), true),
             RecoveryAction::RestartApplication
         );
         assert_eq!(
-            next_recovery_action(stale, true, 2, 1, Some(retry_ready), false),
+            next_recovery_action(stale, true, true, 2, 1, Some(retry_ready), false),
             RecoveryAction::RecreateWebview
         );
     }
