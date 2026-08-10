@@ -167,7 +167,7 @@ describe('useAccessibleChatModels', () => {
 
     expect(ensureExternalConnectionAutoDetection).not.toHaveBeenCalled();
     expect(
-      result.current.flatOptions.some((option) => option.connection.mode === 'external-cli'),
+      result.current.flatOptions.some((option) => option.connection?.mode === 'external-cli'),
     ).toBe(false);
 
     isConnectionSessionChecked.mockReturnValue(true);
