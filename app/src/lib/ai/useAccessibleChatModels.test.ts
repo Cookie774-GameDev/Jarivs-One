@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useAuthStore } from '@/stores/auth';
 import { syncDiscoveredOllamaModels } from './models';
 import {
@@ -158,21 +158,17 @@ describe('useAccessibleChatModels', () => {
     ).toBe(true);
   });
 
-  it('does not trust persisted ChatGPT auth until this app session completes detection', async () => {
+  it('keeps CLI and subscription bridges out of normal VibeSpace Chat', async () => {
     writeConnectionPickerStates({
       'openai-codex': { available: true, auth: 'authenticated' },
     });
 
     const { result } = renderHook(() => useAccessibleChatModels());
 
-    await waitFor(() => {
-      expect(ensureExternalConnectionAutoDetection).toHaveBeenCalledOnce();
-    });
+    expect(ensureExternalConnectionAutoDetection).not.toHaveBeenCalled();
     expect(
-      result.current.flatOptions
-        .filter((option) => option.connectionId === 'openai-codex')
-        .every((option) => option.available === false),
-    ).toBe(true);
+      result.current.flatOptions.some((option) => option.connection.mode === 'external-cli'),
+    ).toBe(false);
 
     isConnectionSessionChecked.mockReturnValue(true);
     act(() => {
@@ -184,13 +180,7 @@ describe('useAccessibleChatModels', () => {
       });
     });
     expect(
-      result.current.flatOptions
-        .filter((option) => option.connectionId === 'openai-codex')
-        .map((option) => ({ modelId: option.modelId, available: option.available })),
-    ).toEqual([
-      { modelId: 'gpt-5.6-sol', available: true },
-      { modelId: 'gpt-5.6-terra', available: true },
-      { modelId: 'gpt-5.6-luna', available: true },
-    ]);
+      result.current.flatOptions.some((option) => option.connectionId === 'openai-codex'),
+    ).toBe(false);
   });
 });

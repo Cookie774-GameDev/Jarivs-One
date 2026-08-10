@@ -15,7 +15,6 @@ import {
   PROVIDER_CATALOG,
   PROVIDER_CONNECTIONS,
 } from './adapters/catalog';
-import { ensureExternalConnectionAutoDetection } from './adapters/autoDetectConnections';
 import {
   AI_CONNECTION_STATE_EVENT,
   deriveAiConnectionHealth,
@@ -172,34 +171,24 @@ export function useAccessibleChatModels() {
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
-  const preferredConnections = useAuthStore(
-    (s) => s.preferredConnectionIdByProviderFamily,
-  );
+  const preferredConnections = useAuthStore((s) => s.preferredConnectionIdByProviderFamily);
   const ollamaOptions = useOllamaModelOptions();
   const [connectionRevision, setConnectionRevision] = useState(0);
   useEffect(() => {
     const update = () => setConnectionRevision((value) => value + 1);
-    const revalidateOnFocus = () => {
-      if (!offlineMode) void ensureExternalConnectionAutoDetection().catch(() => undefined);
-    };
     window.addEventListener(AI_CONNECTION_STATE_EVENT, update);
     window.addEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
-    window.addEventListener('focus', revalidateOnFocus);
-    if (!offlineMode) {
-      void ensureExternalConnectionAutoDetection().catch(() => undefined);
-    }
     return () => {
       window.removeEventListener(AI_CONNECTION_STATE_EVENT, update);
       window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
-      window.removeEventListener('focus', revalidateOnFocus);
     };
-  }, [offlineMode]);
+  }, []);
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
 
   const groups = useMemo(() => {
-    const pickerConnections = offlineMode
-      ? PROVIDER_CONNECTIONS.filter((connection) => connection.mode === 'local')
-      : PROVIDER_CONNECTIONS;
+    const pickerConnections = PROVIDER_CONNECTIONS.filter((connection) =>
+      offlineMode ? connection.mode === 'local' : connection.mode !== 'external-cli',
+    );
     const legacy = buildModelPickerGroups({ apiKeys, offlineMode, plan, defaultLocalModel });
     const modelsByProvider: Record<string, { id: string; label: string }[]> = Object.fromEntries(
       legacy.map((group) => [
@@ -280,9 +269,9 @@ export function useAccessibleChatModels() {
         ),
       }))
       .sort(
-      (a, b) =>
-        Number(b.options.some((option) => option.available)) -
-        Number(a.options.some((option) => option.available)),
+        (a, b) =>
+          Number(b.options.some((option) => option.available)) -
+          Number(a.options.some((option) => option.available)),
       );
   }, [
     apiKeys,

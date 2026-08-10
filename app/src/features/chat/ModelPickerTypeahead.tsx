@@ -18,7 +18,6 @@ import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMot
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { getLivePanelUiScale } from '@/lib/ui/panelScale';
-import { ensureExternalConnectionAutoDetection } from '@/lib/ai/adapters/autoDetectConnections';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -82,10 +81,6 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
     const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
     const panelScale = compact ? getLivePanelUiScale() : 1;
-
-    useEffect(() => {
-      void ensureExternalConnectionAutoDetection().catch(() => undefined);
-    }, []);
 
     const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
 
