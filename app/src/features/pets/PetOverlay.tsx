@@ -116,7 +116,7 @@ export function PetOverlay({
   const characterId = usePetSettingsStore((s) => s.characterId);
   const settingsPositionLocked = usePetSettingsStore((s) => s.positionLocked);
   const setPositionLocked = usePetSettingsStore((s) => s.setPositionLocked);
-  const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'always-on-top';
+  const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
   const settingsEdgeSnapping = usePetSettingsStore((s) => s.edgeSnapping);
   const settingsAnimationLevel = usePetSettingsStore((s) => s.animationLevel) ?? 'calm';
   const animationLevel = animationLevelOverride ?? settingsAnimationLevel;

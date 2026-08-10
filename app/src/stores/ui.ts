@@ -20,6 +20,9 @@ import {
   normalizeClockFormat,
   type ClockFormat,
 } from '@/lib/timeFormat';
+import { parseRouteLocation, type Route } from '@/features/navigation/routeSchema';
+
+export type { Route } from '@/features/navigation/routeSchema';
 
 const debouncedUiStorage = createDebouncedStateStorage(safeLocalStorage);
 
@@ -124,36 +127,16 @@ export function normalizeDoneNotifications(value: unknown): DoneNotificationSett
  * Owned by this store; consumed by `PageRouter` and `NavPane`.
  *
  * NOTE: `route` is intentionally **transient** — see `partialize` below.
- * Reloads always land back on `'chat'` unless the user navigates again.
+ * The canonical URL query owns reload/deep-link restoration instead of
+ * local-storage persistence.
  */
-export type Route =
-  | 'chat'
-  | 'canvas'
-  | 'workbench'
-  | 'preview'
-  | 'browser'
-  | 'terminal'
-  | 'kanban'
-  | 'schedule'
-  | 'agents'
-  | 'model-foundry'
-  | 'agent-detail'
-  | 'project-detail'
-  | 'context'
-  | 'skills'
-  | 'benchmarks'
-  | 'history'
-  | 'tools'
-  | 'files'
-  | 'account';
-
 /**
- * Normal reloads remain in Classic VibeSpace. The explicit query is used only
- * by the detached Workbench window so it can boot directly into its surface.
+ * Canonical route queries restore main-window navigation. The detached
+ * Workbench marker remains authoritative for its dedicated window.
  */
 export function resolveInitialRoute(search?: string): Route {
   const value = search ?? (typeof window !== 'undefined' ? window.location.search : '');
-  return new URLSearchParams(value).get('workbench') === '1' ? 'workbench' : 'chat';
+  return parseRouteLocation(value).route;
 }
 
 /**

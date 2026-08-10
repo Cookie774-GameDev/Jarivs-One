@@ -41,8 +41,10 @@ import './browser.sakura.css';
  * primary surface is an in-app iframe (works for localhost + embeddable sites).
  * Optional CDP agent runtime for advanced control when Edge/Chrome is available.
  */
-export function BrowserPage() {
+export function BrowserPage({ routeVisible = true }: { routeVisible?: boolean }) {
   const cdpRef = React.useRef<CdpSession | null>(null);
+  const routeVisibleRef = React.useRef(routeVisible);
+  routeVisibleRef.current = routeVisible;
   const hostLeaseRef = React.useRef<BrowserGoalHostLease | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const [cdpConnected, setCdpConnected] = React.useState(false);
@@ -89,7 +91,9 @@ export function BrowserPage() {
       const pageWs = (await resolvePageWsUrl(wsUrl)) ?? wsUrl;
       const session = new CdpSession();
       await session.connect(pageWs);
-      session.onScreencast((b64) => setFrame(`data:image/jpeg;base64,${b64}`));
+      session.onScreencast((b64) => {
+        if (routeVisibleRef.current) setFrame(`data:image/jpeg;base64,${b64}`);
+      });
       session.onCdpEvent((method, params) => {
         if (method === 'Runtime.consoleAPICalled' && params && typeof params === 'object') {
           const p = params as {
@@ -111,8 +115,23 @@ export function BrowserPage() {
           }
         }
       });
-      await session.startScreencast();
       cdpRef.current = session;
+      try {
+        if (routeVisibleRef.current) {
+          await session.startScreencast();
+        } else {
+          await session.stopScreencast();
+          setFrame(null);
+        }
+        if (cdpRef.current !== session) {
+          await session.close();
+          throw new Error('CDP session was replaced while connecting');
+        }
+      } catch (error) {
+        if (cdpRef.current === session) cdpRef.current = null;
+        await session.close();
+        throw error;
+      }
       setCdpConnected(true);
       pushConsole('info', 'Agent CDP connected');
       return session;
@@ -138,19 +157,22 @@ export function BrowserPage() {
   }, []);
 
   React.useEffect(() => {
+    const session = cdpRef.current;
+    if (!routeVisible) {
+      setFrame(null);
+      if (session) void session.stopScreencast().catch(() => undefined);
+      return;
+    }
+    if (session) void session.startScreencast().catch(() => undefined);
+  }, [routeVisible, setFrame]);
+
+  React.useEffect(() => {
     hostLeaseRef.current?.revoke();
     hostLeaseRef.current = null;
     const identity = getActiveAccountIdentity();
     const session = cdpRef.current;
     const sessionId = runtime?.session_id;
-    if (
-      engine !== 'agent' ||
-      !cdpConnected ||
-      !identity ||
-      !session ||
-      !sessionId ||
-      !active
-    ) {
+    if (engine !== 'agent' || !cdpConnected || !identity || !session || !sessionId || !active) {
       return;
     }
     let origin = 'null';

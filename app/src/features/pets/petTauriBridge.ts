@@ -80,7 +80,7 @@ export async function setPetStartWithWindows(enabled: boolean): Promise<boolean 
 export async function openOrFocusPetPanel(
   nearX?: number,
   nearY?: number,
-  panelMode: PetPanelMode = 'always-on-top',
+  panelMode: PetPanelMode = 'normal',
 ): Promise<void> {
   await invoke('pet_open_or_focus_panel', {
     nearX: nearX ?? null,
@@ -158,7 +158,7 @@ async function pollPanelVisible(attempts = 5, gapMs = 100): Promise<boolean> {
 export async function openPetPanelSafely(
   nearX?: number,
   nearY?: number,
-  panelMode: PetPanelMode = 'always-on-top',
+  panelMode: PetPanelMode = 'normal',
 ): Promise<{ panelVisible: boolean }> {
   const result = await openOrFocusPetMiniPanel(nearX, nearY, panelMode);
   return { panelVisible: result.panelVisible };
@@ -176,7 +176,7 @@ export async function openPetPanelSafely(
 export async function openOrFocusPetMiniPanel(
   nearX?: number,
   nearY?: number,
-  panelMode: PetPanelMode = 'always-on-top',
+  panelMode: PetPanelMode = 'normal',
 ): Promise<OpenPetMiniPanelResult> {
   if (openPanelInFlight) {
     const result = await openPanelInFlight;

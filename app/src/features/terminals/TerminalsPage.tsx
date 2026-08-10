@@ -211,7 +211,7 @@ export function canClaimCanonicalTerminalCommand(
   return countLeaves(projected) < MAX_PANES;
 }
 
-export function TerminalsPage() {
+export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean }) {
   const projectId = useAuthStore((s) => s.projectId);
   const currentProjectId = projectId ?? null;
   const setProjectId = useAuthStore((s) => s.setProjectId);
@@ -605,17 +605,19 @@ export function TerminalsPage() {
         data-sakura-surface="terminal-grid"
         className="flex-1 min-h-0 p-2 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:p-1"
       >
-        <TileGrid
-          tree={tree}
-          onChange={handleChange}
-          defaultCommand={defaultShell()}
-          defaultCommandForAgent={commandForAgent}
-          fullscreenPaneId={fullscreenPaneId}
-          projectId={treeProjectId}
-          projectName={projectName}
-          onFullscreenToggle={handleFullscreenToggle}
-          onMoveTerminal={handleMoveTerminal}
-        />
+        {routeVisible ? (
+          <TileGrid
+            tree={tree}
+            onChange={handleChange}
+            defaultCommand={defaultShell()}
+            defaultCommandForAgent={commandForAgent}
+            fullscreenPaneId={fullscreenPaneId}
+            projectId={treeProjectId}
+            projectName={projectName}
+            onFullscreenToggle={handleFullscreenToggle}
+            onMoveTerminal={handleMoveTerminal}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -455,7 +455,6 @@ function createInstalledRuntime(
     async signOut() {
       const client = requireClient();
       const { error } = await client.auth.signOut();
-      useAuthStore.setState({ cloudSession: null, plan: 'free' });
       if (error) throw new Error('Sign out failed.');
     },
     async backupLocalData() {
@@ -482,9 +481,12 @@ export function isAccessGateEnabled(environment: AccessBuildEnvironment): boolea
 
 function publishInstalledCloudSession(session: Session | null): boolean {
   const userId = session?.user.id?.trim() ?? '';
-  const previousUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+  const authState = useAuthStore.getState();
+  const previousUserId = authState.cloudSession?.user_id.trim() ?? '';
   if (!userId) {
-    useAuthStore.setState({ cloudSession: null, plan: 'free' });
+    if (authState.cloudSession !== null || authState.plan !== 'free') {
+      useAuthStore.setState({ cloudSession: null, plan: 'free' });
+    }
     return false;
   }
   useAuthStore.setState({
@@ -507,13 +509,28 @@ function InstalledCloudAuthentication({
   onSignIn: () => void;
   onCreateAccount: () => void;
 }) {
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const focused = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    if (focused.current) return;
+    focused.current = true;
+    headingRef.current?.focus();
+  }, []);
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
       <section className="w-full max-w-md rounded-3xl border border-border/80 bg-elevated p-7 shadow-2xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-copper">
           VibeSpace Access
         </p>
-        <h1 className="mt-3 text-2xl font-semibold text-foreground">Sign in to VibeSpace</h1>
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="mt-3 text-2xl font-semibold text-foreground"
+        >
+          Sign in to VibeSpace
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Sign in or create an account before VibeSpace verifies your trial or subscription.
         </p>
@@ -539,7 +556,12 @@ function InstalledCloudAuthentication({
   );
 }
 
-export function InstalledAccessAppHost({ children }: { children: React.ReactNode }) {
+export function InstalledAccessAppHost({
+  children,
+  authenticatedBoundary: AuthenticatedBoundary,
+}: React.PropsWithChildren<{
+  authenticatedBoundary?: React.ComponentType<React.PropsWithChildren>;
+}>) {
   const featureTier = useAuthStore((state) => state.plan);
   const cloudUserId = useAuthStore((state) => state.cloudSession?.user_id.trim() ?? '');
   const environment = import.meta.env as AccessBuildEnvironment;
@@ -627,18 +649,28 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
     );
   }
 
+  const protectedWorkspace = accessGateEnabled ? (
+    <AccessAppHost
+      key={cloudUserId}
+      enabled
+      runtime={runtime}
+      privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
+      termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
+    >
+      {children}
+    </AccessAppHost>
+  ) : (
+    children
+  );
+
   return (
     <>
       <DesktopPresencePublisher appVersion={appVersion} />
-      <AccessAppHost
-        key={cloudUserId}
-        enabled={accessGateEnabled}
-        runtime={runtime}
-        privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
-        termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
-      >
-        {children}
-      </AccessAppHost>
+      {AuthenticatedBoundary ? (
+        <AuthenticatedBoundary>{protectedWorkspace}</AuthenticatedBoundary>
+      ) : (
+        protectedWorkspace
+      )}
     </>
   );
 }

@@ -482,9 +482,15 @@ fn run_ordinary(
         })
         .on_window_event(|window, event| {
             match event {
-                tauri::WindowEvent::Focused(true)
+                tauri::WindowEvent::Moved(_)
                 | tauri::WindowEvent::Resized(_)
                 | tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                    if window.label() == "main" {
+                        branding::apply_app_branding(&window.app_handle());
+                        pets::schedule_visible_overlay_reconstrain(window.app_handle().clone());
+                    }
+                }
+                tauri::WindowEvent::Focused(true) => {
                     if window.label() == "main" {
                         branding::apply_app_branding(&window.app_handle());
                     }
@@ -530,6 +536,7 @@ fn run_ordinary(
             kernel_host::kernel_host_respond,
             kernel_host::release_kernel_host,
             cli_bridge::cli_bridge_scan,
+            cli_bridge::cli_bridge_codex_account_snapshot,
             cli_bridge::cli_bridge_probe,
             cli_bridge::cli_bridge_start,
             cli_bridge::cli_bridge_cancel,

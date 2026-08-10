@@ -52,6 +52,7 @@ import { createAccessViewModel } from '@/features/access/accessViewModel';
 import { AppShell } from '@/components/layout';
 import { JarvisContextMenu } from '@/components/layout/JarvisContextMenu';
 import { PageRouter } from '@/components/layout/PageRouter';
+import { NavigationHistoryBoundary } from '@/features/navigation/NavigationHistoryBoundary';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { startNotificationLoop } from '@/features/tasks';
 import { startClockEngine } from '@/features/clock/clockEngine';
@@ -1096,7 +1097,11 @@ function useBoot() {
             'hydrateKeys',
           );
         } catch {
-          /* fallback to localStorage */
+          useAuthStore.setState({
+            credentialVaultState: 'degraded',
+            credentialVaultFailedProviders: [],
+          });
+          console.warn('[credentials] credential-hydration-timeout');
         }
       }
 
@@ -1706,7 +1711,7 @@ function KernelBridgeBootstrap() {
     <RuntimeProfileAuthBoundary plan={plan}>
       <PluginManagementCapabilityProvider value={pluginManagement}>
         {ready ? (
-          <InstalledAccessAppHost>
+          <InstalledAccessAppHost authenticatedBoundary={WorkspaceRuntimeBoundary}>
             <WorkspaceRoot />
           </InstalledAccessAppHost>
         ) : null}
@@ -2085,11 +2090,24 @@ function WorkspaceLifecycleHosts() {
   return null;
 }
 
+function WorkspaceRuntimeBoundary({ children }: React.PropsWithChildren) {
+  const commandCenterBinding = useBoot();
+  const plan = resolveRuntimePlan();
+
+  return (
+    <JarvisCommandCenterProvider value={commandCenterBinding}>
+      {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? (
+        <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
+      ) : null}
+      {children}
+    </JarvisCommandCenterProvider>
+  );
+}
+
 /**
  * Inner shell - rendered after AuthGate has confirmed local user + seeding.
  */
 function WorkspaceRoot() {
-  const commandCenterBinding = useBoot();
   const plan = resolveRuntimePlan();
 
   React.useEffect(() => {
@@ -2160,14 +2178,12 @@ function WorkspaceRoot() {
   }, []);
 
   return (
-    <JarvisCommandCenterProvider value={commandCenterBinding}>
+    <>
       {plan.lifecycleEnabled ? <WorkspaceLifecycleHosts /> : null}
-      {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? (
-        <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
-      ) : null}
       {plan.globalHotkeyEnabled ? <GlobalHotkeysHost /> : null}
       {plan.isOrdinary ? <FullscreenHost /> : null}
       {plan.idleEnabled ? <IdleDetectionHost /> : null}
+      <NavigationHistoryBoundary />
       <AppShell>
         <ActiveCanvas />
       </AppShell>
@@ -2243,7 +2259,7 @@ function WorkspaceRoot() {
       {/* Toast outlet */}
       {plan.backgroundServicesEnabled ? <JarvisContextMenu /> : null}
       <Toaster />
-    </JarvisCommandCenterProvider>
+    </>
   );
 }
 

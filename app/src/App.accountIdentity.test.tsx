@@ -1648,6 +1648,7 @@ function accountIdentityBootSuite(): void {
     const { unmount } = render(<App />);
     await waitForAccountScopeBoot();
     await expectEveryListenerStartedWith('stable-local-user');
+    const initialApiKeys = useAuthStore.getState().apiKeys;
 
     act(() => {
       useAuthStore.setState({ cloudSession: cloudSession('cloud-user') });
@@ -1668,6 +1669,8 @@ function accountIdentityBootSuite(): void {
     ]);
     await expectEveryListenerStartedWith('cloud-user', 1);
     expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
+    expect(useAuthStore.getState().apiKeys).toBe(initialApiKeys);
+    expect(useAuthStore.getState().apiKeys).toEqual({ mock: 'test-model-access' });
 
     act(() => {
       useAuthStore.setState({ cloudSession: null });
@@ -1685,6 +1688,8 @@ function accountIdentityBootSuite(): void {
       'start:all-about-me:stable-local-user',
     ]);
     expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
+    expect(useAuthStore.getState().apiKeys).toBe(initialApiKeys);
+    expect(useAuthStore.getState().apiKeys).toEqual({ mock: 'test-model-access' });
 
     unmount();
     expect(accountListeners.events.slice(-2)).toEqual([
