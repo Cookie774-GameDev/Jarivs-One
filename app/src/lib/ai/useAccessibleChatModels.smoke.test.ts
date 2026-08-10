@@ -3,16 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 
-import {
-  activateKernelSmokeBinding,
-  clearKernelSmokeBinding,
-} from './providers/kernelSmoke';
+import { activateKernelSmokeBinding, clearKernelSmokeBinding } from './providers/kernelSmoke';
 import { useAccessibleChatModels } from './useAccessibleChatModels';
 
 describe('smoke connection model access', () => {
   afterEach(() => clearKernelSmokeBinding());
 
-  it('exposes both real provider transports only after native binding activation', async () => {
+  it('exposes only the native smoke transport in the normal chat picker after activation', async () => {
     const { result } = renderHook(() => useAccessibleChatModels());
     expect(
       result.current.flatOptions.filter(
@@ -34,10 +31,7 @@ describe('smoke connection model access', () => {
         result.current.flatOptions
           .filter(({ provider }) => String(provider) === 'vibespace-kernel-smoke')
           .map(({ id, available }) => ({ id, available })),
-      ).toEqual([
-        { id: 'vibespace-kernel-smoke-native:kernel-smoke-v1', available: true },
-        { id: 'vibespace-kernel-smoke-cli:kernel-smoke-v1', available: true },
-      ]),
+      ).toEqual([{ id: 'vibespace-kernel-smoke-native:kernel-smoke-v1', available: true }]),
     );
   });
 });

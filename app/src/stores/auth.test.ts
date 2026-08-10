@@ -3,6 +3,10 @@ import { useAuthStore } from './auth';
 import { secureDeleteApiKey, secureGetApiKey } from '@/lib/security/secureApiKeys';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('Prompt Forge model preference', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -282,10 +286,9 @@ describe('useAuthStore API key persistence', () => {
     const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
     expect(persisted).toContain('"stackPreset":"custom"');
     expect(persisted).toContain('"chatModelSelection":{"mode":"hive","hiveId":"custom"}');
-    expect(persisted).toContain('"model":"gpt-4o-mini"');
+    expect(persisted).toContain('"model":"gpt-5.1"');
     expect(persisted).not.toContain('sk_');
     expect(persisted).not.toContain('service_role');
-    vi.unstubAllEnvs();
   });
 
   it('refuses Hive stack activation while the product is gated', () => {

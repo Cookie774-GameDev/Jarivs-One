@@ -115,14 +115,14 @@ describe('chat model catalog', () => {
     expect(getAccessibleModelOptions('deepseek', apiKeys, false, 'llama3.2', 'starter')).toEqual([
       {
         provider: 'deepseek',
-        id: 'deepseek-chat',
-        label: 'DeepSeek V3 Chat',
+        id: 'deepseek-v4-flash',
+        label: 'DeepSeek V4 Flash',
         contextWindowTokens: 128_000,
       },
       {
         provider: 'deepseek',
-        id: 'deepseek-reasoner',
-        label: 'DeepSeek R1',
+        id: 'deepseek-v4-pro',
+        label: 'DeepSeek V4 Pro',
         contextWindowTokens: 128_000,
       },
     ]);

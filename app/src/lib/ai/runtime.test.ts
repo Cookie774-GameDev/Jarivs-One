@@ -673,7 +673,7 @@ describe('startRuntimeListener agent routing', () => {
     expect(mocks.runAgent).toHaveBeenCalledOnce();
   });
 
-  it('auto-routes a protected Jarvis image turn through an active catalog connection without changing the picker', async () => {
+  it('fails an image turn closed when automatic routing has no cost-safe vision candidate', async () => {
     const jarvis = agent('agent_jarvis_auto_route', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_auto_route' as ChatId;
     const placeholderId = 'msg_auto_route_assistant' as MessageId;
@@ -685,7 +685,7 @@ describe('startRuntimeListener agent routing', () => {
       created_at: 1,
       updated_at: 1,
     };
-    const originalSelection = selectionFromOption('xai', 'grok-2-1212');
+    const originalSelection = selectionFromOption('xai', 'grok-4.5');
     useAuthStore.setState({
       automaticModelRoutingEnabled: true,
       apiKeys: { google: 'test-google-key', xai: 'test-xai-key' },
@@ -696,6 +696,7 @@ describe('startRuntimeListener agent routing', () => {
       'xai-api': { available: true, auth: 'authenticated' },
     });
     const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-auto-route');
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => 'toast-auto-route-error');
 
     trackListener(
       startRuntimeListener({
@@ -733,20 +734,14 @@ describe('startRuntimeListener agent routing', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
-    expect(mocks.runAgent.mock.calls[0]![0]).toEqual(
-      expect.objectContaining({
-        agent: expect.objectContaining({
-          model: { provider: 'google', model: 'gemini-2.5-flash' },
-        }),
-        connectionId: 'google-gemini-api',
-        provider_options: { thinking_level: 'high' },
-      }),
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        'Cannot send',
+        'This model cannot process the attached image. Choose Gemini, GPT-4o/4.1/5, Claude 3+, a local vision model, or another vision-capable model.',
+      ),
     );
-    expect(info).toHaveBeenCalledWith(
-      'Automatic model routing',
-      'Auto-selected gemini-2.5-flash because this request includes images.',
-    );
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(info).not.toHaveBeenCalled();
     expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
   });
 
@@ -798,7 +793,7 @@ describe('startRuntimeListener agent routing', () => {
     expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
   });
 
-  it('routes from the resolved prompt size and active catalog context metadata', async () => {
+  it('keeps a cost-unverified current model when no safe larger-context route exists', async () => {
     const jarvis = agent('agent_jarvis_context_route', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_context_route' as ChatId;
     const longHistory: Message = {
@@ -809,7 +804,7 @@ describe('startRuntimeListener agent routing', () => {
       created_at: 1,
       updated_at: 1,
     };
-    const originalSelection = selectionFromOption('xai', 'grok-2-1212');
+    const originalSelection = selectionFromOption('xai', 'grok-4.5');
     useAuthStore.setState({
       automaticModelRoutingEnabled: true,
       apiKeys: { google: 'test-google-key', xai: 'test-xai-key' },
@@ -845,13 +840,10 @@ describe('startRuntimeListener agent routing', () => {
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     expect(mocks.runAgent.mock.calls[0]![0].agent.model).toEqual({
-      provider: 'google',
-      model: 'gemini-2.5-flash',
+      provider: 'xai',
+      model: 'grok-4.5',
     });
-    expect(info).toHaveBeenCalledWith(
-      'Automatic model routing',
-      'Auto-selected gemini-2.5-flash because this request needs a larger context window.',
-    );
+    expect(info).not.toHaveBeenCalled();
     expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
   });
 
