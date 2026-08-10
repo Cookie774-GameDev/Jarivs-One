@@ -130,6 +130,7 @@ describe('AgentMotionIndicator', () => {
       expect(standardMotion?.getAttribute('aria-hidden')).toBe('true');
       expect(standardMotion?.classList.contains('agent-motion-slot')).toBe(true);
       expect(standardMotion?.querySelector('.agent-motion')).not.toBeNull();
+      expect((standardMotion as HTMLElement | null)?.style.opacity).toBe('1');
 
       standard.rerender(<AgentMotionIndicator motion={motion} compact />);
       expect(

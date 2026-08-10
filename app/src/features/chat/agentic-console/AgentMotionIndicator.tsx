@@ -72,6 +72,7 @@ export function AgentMotionIndicator({
     'data-agent-motion-size': compact ? 'compact' : 'standard',
     'data-agent-motion-presence': presence,
     'aria-hidden': true,
+    style: presence === 'current' ? ({ opacity: 1 } as React.CSSProperties) : undefined,
   } as const;
 
   let animation: React.ReactNode;
