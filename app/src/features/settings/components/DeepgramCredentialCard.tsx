@@ -135,6 +135,17 @@ export function DeepgramCredentialCard({
         toast.success('Deepgram connected', 'Saved in secure platform credential storage.');
       } else if (next.health === 'invalid') {
         toast.error('Deepgram rejected the key', 'The key was not saved.');
+      } else if (next.configured) {
+        setReplacing(false);
+        toast.warning(
+          'Deepgram saved',
+          'Saved securely. Deepgram could not be reached, so use Test when the connection recovers.',
+        );
+      } else if (next.errorCode === 'storage') {
+        toast.error(
+          'Credential vault unavailable',
+          'The key was not saved. Restart the native app and try again.',
+        );
       } else {
         toast.warning('Deepgram unavailable', 'The key was not saved. Check your connection.');
       }

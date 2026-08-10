@@ -22,9 +22,11 @@ import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import {
   SECRET_API_KEY_PROVIDERS,
   isSecretApiKeyProvider,
-  loadSecureApiKeys,
+  loadSecureApiKeysDetailed,
+  saveApiKeySecurely,
   secureDeleteApiKey,
   secureSetApiKey,
+  type ApiKeySaveResult,
 } from '@/lib/security/secureApiKeys';
 import {
   VOICE_SILENCE_DELAY_MS_DEFAULT,
@@ -169,12 +171,16 @@ interface AuthState {
 
   /** Telemetry opt-in */
   telemetryOptIn: boolean;
+  credentialVaultState: 'idle' | 'hydrating' | 'ready' | 'degraded';
+  credentialVaultFailedProviders: ProviderId[];
+  preferredConnectionIdByProviderFamily: Partial<Record<string, string>>;
 
   // Actions
   setDisplayName: (n: string) => void;
-  setApiKey: (provider: ProviderId, key: string) => void;
+  setPreferredConnectionId: (provider: string, connectionId: string) => void;
+  setApiKey: (provider: ProviderId, key: string) => Promise<ApiKeySaveResult>;
   clearApiKey: (provider: ProviderId) => void;
-  hydrateApiKeysFromVault: () => Promise<void>;
+  hydrateApiKeysFromVault: () => Promise<'ready' | 'degraded'>;
   setDefaultProvider: (p: ProviderId) => void;
   setSelectedModel: (provider: ProviderId, model: string) => void;
   setPersona: (p: AuthState['personaPreset']) => void;
@@ -298,18 +304,27 @@ export const useAuthStore = create<AuthState>()(
       promptForgeModelSelection: DEFAULT_PROMPT_FORGE_MODEL_SELECTION,
       promptForgeAutoUpgradeOnSend: false,
       telemetryOptIn: false,
+      credentialVaultState: 'idle',
+      credentialVaultFailedProviders: [],
+      preferredConnectionIdByProviderFamily: {},
 
       setDisplayName: (n) => set({ displayName: n }),
-      setApiKey: (provider, key) =>
-        set((s) => {
-          const trimmed = key.trim();
-          if (isSecretApiKeyProvider(provider)) {
-            void secureSetApiKey(provider, trimmed).catch((err) => {
-              console.warn(`[credentials] Could not save ${provider} API key`, err);
-            });
-          }
-          return { apiKeys: { ...s.apiKeys, [provider]: trimmed } };
-        }),
+      setPreferredConnectionId: (provider, connectionId) =>
+        set((s) => ({
+          preferredConnectionIdByProviderFamily: {
+            ...s.preferredConnectionIdByProviderFamily,
+            [provider]: connectionId,
+          },
+        })),
+      setApiKey: async (provider, key) => {
+        const trimmed = key.trim();
+        if (isSecretApiKeyProvider(provider)) {
+          const result = await saveApiKeySecurely(provider, trimmed);
+          if (!result.ok) return result;
+        }
+        set((s) => ({ apiKeys: { ...s.apiKeys, [provider]: trimmed } }));
+        return { ok: true };
+      },
       clearApiKey: (provider) =>
         set((s) => {
           if (isSecretApiKeyProvider(provider)) {
@@ -321,8 +336,14 @@ export const useAuthStore = create<AuthState>()(
           return { apiKeys: rest };
         }),
       hydrateApiKeysFromVault: async () => {
-        const secureKeys = await loadSecureApiKeys();
-        set((s) => ({ apiKeys: { ...s.apiKeys, ...secureKeys } }));
+        set({ credentialVaultState: 'hydrating', credentialVaultFailedProviders: [] });
+        const result = await loadSecureApiKeysDetailed();
+        set((s) => ({
+          apiKeys: { ...s.apiKeys, ...result.keys },
+          credentialVaultState: result.status,
+          credentialVaultFailedProviders: result.failedProviders,
+        }));
+        return result.status;
       },
       setDefaultProvider: (p) => set({ defaultProvider: p }),
       setSelectedModel: (provider, model) =>
@@ -486,8 +507,9 @@ export const useAuthStore = create<AuthState>()(
         promptForgeModelSelection: s.promptForgeModelSelection,
         promptForgeAutoUpgradeOnSend: s.promptForgeAutoUpgradeOnSend,
         telemetryOptIn: s.telemetryOptIn,
+        preferredConnectionIdByProviderFamily: s.preferredConnectionIdByProviderFamily,
       }),
-      version: 16,
+      version: 17,
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<AuthState>;
@@ -624,6 +646,13 @@ export const useAuthStore = create<AuthState>()(
         }
         if (fromVersion < 16 || typeof state.promptForgeAutoUpgradeOnSend !== 'boolean') {
           state.promptForgeAutoUpgradeOnSend = false;
+        }
+        if (
+          fromVersion < 17 ||
+          !state.preferredConnectionIdByProviderFamily ||
+          typeof state.preferredConnectionIdByProviderFamily !== 'object'
+        ) {
+          state.preferredConnectionIdByProviderFamily = {};
         }
         return state;
       },

@@ -40,7 +40,12 @@ export interface PluginCompatibilityEntry {
   disconnect: string;
   productionRequirement: string;
   oneClickReady: boolean;
-  implementationPath: 'system_browser' | 'hosted_callback' | 'provider_surface' | 'credential_form' | 'none';
+  implementationPath:
+    | 'system_browser'
+    | 'hosted_callback'
+    | 'provider_surface'
+    | 'credential_form'
+    | 'none';
   coverageDisposition: PluginCoverageDisposition;
   capabilities: Readonly<{
     oauth2: CapabilityFinding;
@@ -67,6 +72,12 @@ const HIGH_RISK_SCOPE = /(?:admin|manage|write|full|compose|send|delete|payment)
 
 function connectionClass(plugin: PluginManifest): PluginConnectionClass {
   if (plugin.status === 'blocked' || plugin.status === 'planned') return 'unsupported';
+  if (
+    plugin.connectionStrategy === 'device_authorization' ||
+    plugin.connectionStrategy === 'app_installation'
+  ) {
+    return 'official_one_click';
+  }
   if (plugin.id === 'zapier' || plugin.authType === 'none') return 'official_connector';
   if (plugin.authType !== 'oauth') return 'manual_credential';
   if (plugin.category === 'Google Workspace' || plugin.category === 'Microsoft 365') {
@@ -86,12 +97,16 @@ function entry(plugin: PluginManifest): PluginCompatibilityEntry {
   const isConnector = classification === 'official_connector';
   const isOAuth = classification === 'official_one_click' || classification === 'official_backend';
   const hasShippedCredentialForm =
+    plugin.authType !== 'oauth' &&
     plugin.fields.length > 0 &&
     plugin.status !== 'blocked' &&
     plugin.status !== 'planned';
   const externalPrerequisites = [
     ...(classification === 'official_one_click'
-      ? ['Registered production desktop application', 'Provider consent-screen approval when required']
+      ? [
+          'Registered production desktop application',
+          'Provider consent-screen approval when required',
+        ]
       : []),
     ...(classification === 'official_backend'
       ? ['Registered confidential application', 'Hosted VibeSpace callback service']
@@ -156,9 +171,13 @@ function entry(plugin: PluginManifest): PluginCompatibilityEntry {
     oneClickReady: false,
     implementationPath: isConnector
       ? 'provider_surface'
-      : hasShippedCredentialForm
-        ? 'credential_form'
-        : 'none',
+      : isOAuth
+        ? nativePublic || plugin.connectionStrategy === 'device_authorization'
+          ? 'system_browser'
+          : 'hosted_callback'
+        : hasShippedCredentialForm
+          ? 'credential_form'
+          : 'none',
     coverageDisposition: isConnector
       ? 'shipped_connector'
       : hasShippedCredentialForm
@@ -171,8 +190,12 @@ function entry(plugin: PluginManifest): PluginCompatibilityEntry {
       oauth21: 'not_selected',
       pkce: nativePublic ? 'supported' : isOAuth ? 'not_selected' : 'not_supported',
       deviceAuthorization:
-        plugin.category === 'Microsoft 365' && isOAuth ? 'supported' : 'not_selected',
-      appInstallation: 'not_selected',
+        plugin.connectionStrategy === 'device_authorization' ||
+        (plugin.category === 'Microsoft 365' && isOAuth)
+          ? 'supported'
+          : 'not_selected',
+      appInstallation:
+        plugin.connectionStrategy === 'app_installation' ? 'supported' : 'not_selected',
       officialApi: plugin.docsUrl ? 'supported' : 'not_selected',
       officialSdk: 'not_selected',
       officialMcp: plugin.id === 'zapier' ? 'supported' : 'not_selected',

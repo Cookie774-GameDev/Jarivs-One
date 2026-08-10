@@ -170,7 +170,7 @@ export function createDeepgramCredentialService(options: DeepgramCredentialServi
       return emit({ configured: false, health: 'invalid', errorCode: 'invalid_key' });
     }
     const validated = await validate(trimmed, false, 'saved');
-    if (validated.health !== 'connected') return validated;
+    if (validated.health === 'invalid') return validated;
     try {
       await options.adapter.write(DEEPGRAM_CREDENTIAL_ID, trimmed);
       for (const legacyId of DEEPGRAM_LEGACY_CREDENTIAL_IDS) {

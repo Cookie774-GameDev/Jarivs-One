@@ -25,11 +25,9 @@
  * The runner stays out of the chat path entirely, so a paused-network
  * laptop never blocks the chat UI on a validation timeout.
  *
- * Ollama is special-cased: we route its probe through `nativeFetch` so
- * a packaged Tauri build (which can't speak to `http://localhost:11434`
- * because of CORS on `tauri://localhost`) gets the same green check the
- * dev build does. Cloud providers ship with permissive CORS already so
- * we keep using browser fetch for them.
+ * Every probe routes through `nativeFetch`. In a packaged Tauri build this
+ * uses the exact-host HTTP capability, avoiding browser-origin CORS failures.
+ * In the web preview it delegates to the normal browser fetch implementation.
  */
 
 import type { ProviderId } from '@/types/common';
@@ -53,14 +51,13 @@ async function timedFetch(
   url: string,
   init: RequestInit & { signal?: AbortSignal },
 ): Promise<Response> {
-  return timedFetchVia(globalThis.fetch.bind(globalThis), url, init);
+  return timedFetchVia(nativeFetch, url, init);
 }
 
 /**
  * Same as `timedFetch` but parameterised on the underlying fetch
- * implementation. Used by the Ollama check so it can hop through the
- * Tauri HTTP plugin while every other provider keeps using browser
- * fetch (cloud APIs ship with proper CORS).
+ * implementation. This remains useful for focused tests and explicit
+ * loopback behavior.
  */
 async function timedFetchVia(
   fetchImpl: typeof globalThis.fetch,
@@ -334,10 +331,11 @@ async function testOpenAICompatible(
   baseUrl: string,
   key: string,
   signal?: AbortSignal,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch.bind(globalThis),
 ): Promise<ProviderTestResult> {
   const url = `${baseUrl.replace(/\/+$/, '')}/models`;
   try {
-    const res = await timedFetch(url, {
+    const res = await timedFetchVia(fetchImpl, url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${key}` },
       signal,
@@ -400,6 +398,7 @@ export async function testProviderKey(
         'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
         trimmed,
         signal,
+        nativeFetch,
       );
     case 'cohere':
     case 'perplexity':

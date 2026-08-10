@@ -72,6 +72,7 @@ import {
   createJarvisProviderAttemptEvidenceAuthority,
 } from './providerAttemptEvidence';
 import { providerActivityTracker } from '@/features/taskbar-usage/activityTracker';
+import { recordConnectionUsage } from './connectionUsageLedger';
 import {
   LocalCloudEscalationRequiredError,
   planLocalCloudEscalation,
@@ -614,7 +615,7 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
             prompt,
             modelId: req.agent.model.model,
             reasoningEffort:
-              connection.adapterId === 'codex' &&
+              connection.adapterId === 'codex-cli' &&
               typeof req.provider_options?.reasoning_effort === 'string'
                 ? req.provider_options.reasoning_effort
                 : undefined,
@@ -646,6 +647,16 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
           response.usage.output_tokens,
           response.usage.cost_usd,
         );
+      recordConnectionUsage({
+        connectionId: connection.id,
+        providerId: connection.providerId,
+        modelId: req.agent.model.model,
+        timestamp: Date.now(),
+        inputTokens: response.usage.input_tokens,
+        cachedInputTokens: 0,
+        outputTokens: response.usage.output_tokens,
+        costUsd: response.usage.cost_usd,
+      });
       return response;
     }
   }
@@ -776,6 +787,16 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
       response.usage.output_tokens,
       response.usage.cost_usd,
     );
+  recordConnectionUsage({
+    connectionId: selectedConnection?.id ?? provider.id,
+    providerId: provider.id,
+    modelId: model,
+    timestamp: Date.now(),
+    inputTokens: response.usage.input_tokens,
+    cachedInputTokens: 0,
+    outputTokens: response.usage.output_tokens,
+    costUsd: response.usage.cost_usd,
+  });
 
   return response;
 }

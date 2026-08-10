@@ -14,6 +14,7 @@ import {
 } from '../types';
 import { parseSSE } from './sse';
 import { sanitizeReasoningProviderOptions } from '../reasoningControls';
+import { nativeFetch } from '@/lib/nativeFetch';
 
 export interface OpenAICompatibleConfig {
   id: ProviderId;
@@ -22,6 +23,7 @@ export interface OpenAICompatibleConfig {
   apiKeyStoreKey: ProviderId;
   defaultModel: string;
   extraHeaders?: Record<string, string>;
+  transport?: 'browser' | 'native';
 }
 
 function safeJSON(s: string): unknown {
@@ -91,7 +93,8 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
         ...cfg.extraHeaders,
       };
 
-      const res = await fetch(chatUrl, {
+      const fetchImpl = cfg.transport === 'native' ? nativeFetch : globalThis.fetch;
+      const res = await fetchImpl(chatUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),

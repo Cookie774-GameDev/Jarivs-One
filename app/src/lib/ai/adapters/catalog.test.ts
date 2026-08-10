@@ -38,6 +38,10 @@ const EXPECTED_CONNECTIONS = [
   'zai-api',
   'qwen-code',
   'qwen-api',
+  'groq-api',
+  'openrouter-api',
+  'mistral-api',
+  'together-api',
   'ollama-local',
   'opencode-cli',
 ] as const;
@@ -80,7 +84,7 @@ describe('provider capability catalog', () => {
     ]);
   });
 
-  it('covers the ten approved families and fifteen distinct connections', () => {
+  it('covers every implemented chat family and distinct connection', () => {
     expect(Object.keys(PROVIDER_CATALOG)).toEqual([
       'openai',
       'anthropic',
@@ -90,11 +94,17 @@ describe('provider capability catalog', () => {
       'deepseek',
       'zai',
       'qwen',
+      'groq',
+      'openrouter',
+      'mistral',
+      'together',
       'ollama',
       'opencode',
     ]);
     expect(PROVIDER_CONNECTIONS.map(({ id }) => id)).toEqual(EXPECTED_CONNECTIONS);
-    expect(new Set(PROVIDER_CONNECTIONS.map(({ id }) => id)).size).toBe(15);
+    expect(new Set(PROVIDER_CONNECTIONS.map(({ id }) => id)).size).toBe(
+      EXPECTED_CONNECTIONS.length,
+    );
   });
 
   it('keeps every approved connection mode explicit', () => {
@@ -113,6 +123,10 @@ describe('provider capability catalog', () => {
       'zai-api': 'native-api',
       'qwen-code': 'external-cli',
       'qwen-api': 'native-api',
+      'groq-api': 'native-api',
+      'openrouter-api': 'native-api',
+      'mistral-api': 'native-api',
+      'together-api': 'native-api',
       'ollama-local': 'local',
       'opencode-cli': 'external-cli',
     });
@@ -183,7 +197,16 @@ describe('provider capability catalog', () => {
       subscriptionQuota: false,
       localOnly: false,
     };
-    for (const id of ['xai-api', 'deepseek-api', 'zai-api', 'qwen-api']) {
+    for (const id of [
+      'xai-api',
+      'deepseek-api',
+      'zai-api',
+      'qwen-api',
+      'groq-api',
+      'openrouter-api',
+      'mistral-api',
+      'together-api',
+    ]) {
       expect(getProviderConnectionDescriptor(id).capabilities).toEqual(native);
     }
     for (const id of ['openai-api', 'anthropic-api', 'google-gemini-api', 'google-vertex']) {
@@ -271,16 +294,22 @@ describe('provider capability catalog', () => {
       status: 'authenticated',
       detail: 'Authenticated through ChatGPT.',
     });
+    expect(classifyCodexAuthProbe(probe('Logged in using an API key'))).toEqual({
+      status: 'unauthenticated',
+      detail: 'Codex is using an API key, not a ChatGPT subscription session.',
+    });
+    expect(classifyCodexAuthProbe(probe('Unexpected future output'))).toEqual({
+      status: 'unauthenticated',
+      detail: 'ChatGPT subscription sign-in is not active.',
+    });
     for (const result of [
-      probe('Logged in using an API key'),
       probe('Logged in using ChatGPT', { truncated: true }),
-      probe('Unexpected future output'),
       probe('', { exitCode: 1 }),
       probe('', { timedOut: true }),
     ]) {
       expect(classifyCodexAuthProbe(result)).toEqual({
-        status: 'unauthenticated',
-        detail: 'ChatGPT subscription sign-in is not active.',
+        status: 'unknown',
+        detail: 'Codex sign-in status could not be verified.',
       });
     }
     expect(CODEX_CLI_DEFINITION.classifyAuthProbe).toBe(classifyCodexAuthProbe);

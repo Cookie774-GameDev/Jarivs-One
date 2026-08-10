@@ -51,6 +51,19 @@ function validChatId(value: unknown): value is string {
   );
 }
 
+/**
+ * A Browser Chat selection belongs to one conversation. The legacy global
+ * value remains available before a conversation exists, but it must never
+ * leak into a newly created/unconfigured VibeSpace chat.
+ */
+export function resolveChatEngine(
+  state: Pick<BrowserChatState, 'engine' | 'chatPreferences'>,
+  chatId?: string | null,
+): VibeSpaceChatEngine {
+  if (!validChatId(chatId)) return state.engine;
+  return state.chatPreferences[chatId]?.engine ?? 'native';
+}
+
 function validatedChatPreferences(value: unknown): Record<string, BrowserChatPreference> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
   const result: Record<string, BrowserChatPreference> = {};

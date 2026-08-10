@@ -10,6 +10,19 @@ import {
 } from './connectionFramework';
 
 describe('shared plugin connection framework', () => {
+  it('never substitutes credential setup pages for authorization endpoints', () => {
+    expect(PLUGIN_CONNECTION_ADAPTERS.gmail.authorizationUrl).toBe(
+      'https://accounts.google.com/o/oauth2/v2/auth',
+    );
+    expect(PLUGIN_CONNECTION_ADAPTERS.gmail.authorizationUrl).not.toContain(
+      'console.cloud.google.com',
+    );
+    expect(PLUGIN_CONNECTION_ADAPTERS.github.path).toBe('device_authorization');
+    expect(PLUGIN_CONNECTION_ADAPTERS.github.authorizationUrl).toBe(
+      'https://github.com/login/device',
+    );
+  });
+
   it('provides one honest extensible adapter for every catalog entry', () => {
     expect(Object.keys(PLUGIN_CONNECTION_ADAPTERS)).toHaveLength(112);
     for (const plugin of PLUGIN_CATALOG) {

@@ -98,6 +98,28 @@ describe('automatic model routing preference', () => {
   });
 });
 
+describe('provider family connection preference', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({ preferredConnectionIdByProviderFamily: {} });
+  });
+
+  it('persists the exact billing route instead of reducing it to a provider and model', async () => {
+    useAuthStore.getState().setPreferredConnectionId('openai', 'openai-codex');
+    const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
+    expect(persisted).toContain(
+      '"preferredConnectionIdByProviderFamily":{"openai":"openai-codex"}',
+    );
+
+    useAuthStore.setState({ preferredConnectionIdByProviderFamily: {} });
+    window.localStorage.setItem('jarvis-auth', persisted);
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().preferredConnectionIdByProviderFamily.openai).toBe(
+      'openai-codex',
+    );
+  });
+});
+
 describe('voice defaults', () => {
   it('defaults new installs to Jarvis High neural voice', () => {
     expect(useAuthStore.getInitialState().voiceEngine).toBe('jarvis');
@@ -152,13 +174,20 @@ describe('useAuthStore API key persistence', () => {
     await secureDeleteApiKey('groq');
   });
 
-  it('does not persist secret provider keys to localStorage', () => {
-    useAuthStore.getState().setApiKey('groq', 'gsk_secret_value');
-    useAuthStore.getState().setApiKey('ollama', 'http://localhost:11434');
+  it('does not persist secret provider keys to localStorage', async () => {
+    await useAuthStore.getState().setApiKey('groq', 'gsk_secret_value');
+    await useAuthStore.getState().setApiKey('ollama', 'http://localhost:11434');
 
     const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
     expect(persisted).not.toContain('gsk_secret_value');
     expect(persisted).toContain('http://localhost:11434');
+  });
+
+  it('updates connected state only after secure storage confirms the credential', async () => {
+    const save = useAuthStore.getState().setApiKey('groq', 'gsk_verified');
+    expect(useAuthStore.getState().apiKeys.groq).toBeUndefined();
+    await expect(save).resolves.toEqual({ ok: true });
+    expect(useAuthStore.getState().apiKeys.groq).toBe('gsk_verified');
   });
 
   it('migrates legacy plaintext provider keys into secure storage', async () => {

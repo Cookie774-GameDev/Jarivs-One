@@ -125,26 +125,35 @@ export function normalizeCodexJsonl(input: string, limits?: JsonlParserLimits): 
   return normalizeProviderJsonl(input, normalizeCodexRecord, limits);
 }
 
-const CODEX_CHATGPT_LOGIN_STATUS = 'Logged in using ChatGPT';
-
 export function classifyCodexAuthProbe(probe: Readonly<CliProbeResult>): AuthProbeResult {
-  const reportsChatGpt =
-    !probe.timedOut &&
-    probe.exitCode === 0 &&
-    !probe.stdout.truncated &&
-    !probe.stderr.truncated &&
-    [probe.stdout.data, probe.stderr.data]
-      .flatMap((output) => output.split(/\r?\n/u))
-      .some((line) => line.trim() === CODEX_CHATGPT_LOGIN_STATUS);
-  return reportsChatGpt
-    ? {
-        status: 'authenticated',
-        detail: 'Authenticated through ChatGPT.',
-      }
-    : {
-        status: 'unauthenticated',
-        detail: 'ChatGPT subscription sign-in is not active.',
-      };
+  if (
+    probe.timedOut ||
+    probe.exitCode !== 0 ||
+    probe.stdout.truncated ||
+    probe.stderr.truncated
+  ) {
+    return {
+      status: 'unknown',
+      detail: 'Codex sign-in status could not be verified.',
+    };
+  }
+  const output = `${probe.stdout.data}\n${probe.stderr.data}`;
+  if (/\blogged\s+in\s+(?:to|using)\s+chatgpt\b/iu.test(output)) {
+    return {
+      status: 'authenticated',
+      detail: 'Authenticated through ChatGPT.',
+    };
+  }
+  if (/\b(?:api[- ]?key|openai_api_key)\b/iu.test(output)) {
+    return {
+      status: 'unauthenticated',
+      detail: 'Codex is using an API key, not a ChatGPT subscription session.',
+    };
+  }
+  return {
+    status: 'unauthenticated',
+    detail: 'ChatGPT subscription sign-in is not active.',
+  };
 }
 
 export const CODEX_CLI_DEFINITION: CliProviderDefinition = Object.freeze({

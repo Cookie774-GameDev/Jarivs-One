@@ -14,6 +14,8 @@ import {
 } from './taskbarUsageNativeWindow';
 import type { ProviderUsageSnapshot } from './providerUsageTypes';
 import { createUsageRefreshCoordinator } from './usageRefreshCoordinator';
+import { aggregateConnectionUsage } from '@/lib/ai/connectionUsageLedger';
+import { readCodexAccountUsage } from '@/lib/ai/adapters/codexAccountUsage';
 import {
   BACKGROUND_PROVIDER_REFRESH_MS,
   DISPLAY_REFRESH_MS,
@@ -78,14 +80,73 @@ export function startTaskbarUsageController(): () => void {
             () => ({}),
           );
           if (stopped) return;
-          const refreshedSnapshots = buildAutomaticProviderSnapshots({
+          let refreshedSnapshots = buildAutomaticProviderSnapshots({
             connections: PROVIDER_CONNECTIONS,
             connectedProviderIds,
             connectionMetadata: readConnectionMetadata(),
             localUsage,
+            connectionUsage: Object.fromEntries(
+              PROVIDER_CONNECTIONS.map((connection) => {
+                const usage = aggregateConnectionUsage(
+                  connection.id,
+                  Date.now() - 30 * 24 * 60 * 60 * 1_000,
+                );
+                return [
+                  connection.id,
+                  {
+                    inputTokens: usage.inputTokens,
+                    outputTokens: usage.outputTokens,
+                    cachedTokens: usage.cachedInputTokens,
+                    costUsd: usage.costUsd,
+                    calls: usage.requests,
+                    lastUsed: usage.lastRequestAt,
+                  },
+                ];
+              }),
+            ),
             activity: providerActivityTracker.snapshot(),
             now: Date.now(),
           });
+          if (
+            refreshedSnapshots.some((snapshot) => snapshot.providerId === 'openai-codex')
+          ) {
+            try {
+              const codexUsage = await readCodexAccountUsage();
+              const primary = codexUsage.windows[0];
+              refreshedSnapshots = refreshedSnapshots.map((snapshot) =>
+                snapshot.providerId === 'openai-codex'
+                  ? {
+                      ...snapshot,
+                      ...(primary
+                        ? {
+                            usageValue: primary.usedPercent,
+                            usageLimit: 100,
+                            usageUnit: 'percent' as const,
+                            usagePercent: primary.usedPercent,
+                            resetAt: primary.resetsAt,
+                          }
+                        : {}),
+                      planScope: [
+                        codexUsage.planType,
+                        codexUsage.windows
+                          .map((window) => `${window.label} ${window.usedPercent}%`)
+                          .join(' · '),
+                        codexUsage.creditsRemaining === null
+                          ? null
+                          : `${codexUsage.creditsRemaining} credits`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · '),
+                      source: 'provider-api' as const,
+                      updatedAt: codexUsage.updatedAt,
+                      freshness: 'fresh' as const,
+                    }
+                  : snapshot,
+              );
+            } catch {
+              // Exact-route local usage remains available with honest terminal provenance.
+            }
+          }
           snapshots = providerId
             ? [
                 ...snapshots.filter(

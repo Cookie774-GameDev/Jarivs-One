@@ -4,7 +4,7 @@ import { messageRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { ChatId } from '@/types';
-import { browserChatStore, type VibeSpaceChatEngine } from './browserChatStore';
+import { browserChatStore, resolveChatEngine, type VibeSpaceChatEngine } from './browserChatStore';
 import { captureSyncQueueOwner, type SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
 import type { AccountIdentity } from '@/lib/accountIdentity';
 
@@ -59,8 +59,7 @@ export type ChatEngineTransitionResult = {
 };
 
 export function storedChatEngine(chatId: string): VibeSpaceChatEngine {
-  const state = browserChatStore.getState();
-  return state.chatPreferences[chatId]?.engine ?? state.engine;
+  return resolveChatEngine(browserChatStore.getState(), chatId);
 }
 
 const defaultDependencies: ChatEngineTransitionDependencies = {

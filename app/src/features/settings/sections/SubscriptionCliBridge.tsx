@@ -178,15 +178,16 @@ export function SubscriptionCliBridge({
   const [busy, setBusy] = useState(false);
   const [checkingIds, setCheckingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
-  const [selectedRouteByFamily, setSelectedRouteByFamily] = useState<
-    Partial<Record<string, string>>
-  >({});
   const [metadata, setMetadata] = useState<ConnectionMetadata>(
     () => records ?? readConnectionMetadata(),
   );
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const selectedRouteByFamily = useAuthStore(
+    (s) => s.preferredConnectionIdByProviderFamily,
+  );
+  const setPreferredConnectionId = useAuthStore((s) => s.setPreferredConnectionId);
 
   useEffect(() => {
     if (records) return undefined;
@@ -589,10 +590,7 @@ export function SubscriptionCliBridge({
                           : 'border-border text-muted-foreground hover:text-foreground',
                       )}
                       onClick={() =>
-                        setSelectedRouteByFamily((current) => ({
-                          ...current,
-                          [family.id]: routeConnection.id,
-                        }))
+                        setPreferredConnectionId(family.id, routeConnection.id)
                       }
                     >
                       {connectorModeLabel(routeConnection.mode)}

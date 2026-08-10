@@ -23,6 +23,21 @@ export const SECRET_API_KEY_PROVIDERS: readonly ProviderId[] = [
 
 const browserSessionVault = new Map<ProviderId, string>();
 
+export type ApiKeySaveErrorCode =
+  | 'credential-write-failed'
+  | 'credential-read-failed'
+  | 'credential-verification-failed';
+
+export type ApiKeySaveResult =
+  | { ok: true }
+  | { ok: false; code: ApiKeySaveErrorCode };
+
+export interface SecureApiKeyHydrationResult {
+  keys: Partial<Record<ProviderId, string>>;
+  status: 'ready' | 'degraded';
+  failedProviders: ProviderId[];
+}
+
 export function isSecretApiKeyProvider(provider: ProviderId): boolean {
   return SECRET_API_KEY_PROVIDERS.includes(provider);
 }
@@ -61,17 +76,67 @@ export async function secureDeleteApiKey(provider: ProviderId): Promise<void> {
   browserSessionVault.delete(provider);
 }
 
-export async function loadSecureApiKeys(): Promise<Partial<Record<ProviderId, string>>> {
+function sameSecret(left: string | undefined, right: string): boolean {
+  if (!left || left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < right.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+  return difference === 0;
+}
+
+interface VerifiedSaveDependencies {
+  set: typeof secureSetApiKey;
+  get: typeof secureGetApiKey;
+}
+
+export async function saveApiKeySecurely(
+  provider: ProviderId,
+  key: string,
+  dependencies: VerifiedSaveDependencies = {
+    set: secureSetApiKey,
+    get: secureGetApiKey,
+  },
+): Promise<ApiKeySaveResult> {
+  const trimmed = key.trim();
+  try {
+    await dependencies.set(provider, trimmed);
+  } catch {
+    return { ok: false, code: 'credential-write-failed' };
+  }
+
+  let stored: string | undefined;
+  try {
+    stored = await dependencies.get(provider);
+  } catch {
+    return { ok: false, code: 'credential-read-failed' };
+  }
+  return sameSecret(stored, trimmed)
+    ? { ok: true }
+    : { ok: false, code: 'credential-verification-failed' };
+}
+
+export async function loadSecureApiKeysDetailed(): Promise<SecureApiKeyHydrationResult> {
+  const failedProviders: ProviderId[] = [];
   const entries = await Promise.all(
     SECRET_API_KEY_PROVIDERS.map(async (provider) => {
       try {
         const value = await secureGetApiKey(provider);
         return value ? ([provider, value] as const) : null;
-      } catch (err) {
-        console.warn(`[credentials] Could not load ${provider} API key from secure storage`, err);
+      } catch {
+        failedProviders.push(provider);
+        console.warn(`[credentials] credential-read-failed:${provider}`);
         return null;
       }
     }),
   );
-  return Object.fromEntries(entries.filter(Boolean) as Array<readonly [ProviderId, string]>);
+  return {
+    keys: Object.fromEntries(entries.filter(Boolean) as Array<readonly [ProviderId, string]>),
+    status: failedProviders.length > 0 ? 'degraded' : 'ready',
+    failedProviders,
+  };
+}
+
+export async function loadSecureApiKeys(): Promise<Partial<Record<ProviderId, string>>> {
+  return (await loadSecureApiKeysDetailed()).keys;
 }

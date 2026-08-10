@@ -45,7 +45,7 @@ import {
   type ConsolePreferences,
   type ConsoleProfile,
 } from './preferences';
-import { AgentMotionIndicator, resolveAgentMotion } from './AgentMotionIndicator';
+import { PerceptibleAgentMotionIndicator, resolveAgentMotion } from './AgentMotionIndicator';
 import { SubagentsHeaderButton } from './SubagentsMiniPanel';
 import { buildChatSessionExport, downloadChatSessionExport } from './sessionExport';
 import './agentic-console.css';
@@ -446,7 +446,7 @@ function DiffView({
     <article className="agentic-diff" aria-label={`Diff ${block.filePath ?? block.title}`}>
       <div className="agentic-block-head">
         <span>
-          {motion ? <AgentMotionIndicator motion={motion} compact={compact} /> : null}
+          <PerceptibleAgentMotionIndicator motion={motion} compact={compact} />
           <GitCompareArrows aria-hidden="true" />
           <strong>{block.filePath ?? block.title}</strong>
         </span>
@@ -590,7 +590,7 @@ function BlockView({
     });
     return (
       <div className={cn('agentic-activity', `is-${block.status}`)}>
-        {motion ? <AgentMotionIndicator motion={motion} compact={compact} /> : null}
+        <PerceptibleAgentMotionIndicator motion={motion} compact={compact} />
         <span className="agentic-activity__kind">{activityIcon(block.activityKind)}</span>
         <span className="agentic-activity__status">{statusIcon(block.status)}</span>
         <strong>{block.title}</strong>

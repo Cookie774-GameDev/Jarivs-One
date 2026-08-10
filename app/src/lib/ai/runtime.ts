@@ -21,6 +21,11 @@ import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { useUIStore } from '@/stores/ui';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  acknowledgeConnectionRouteDisclosure,
+  buildConnectionRouteDisclosure,
+  needsConnectionRouteDisclosure,
+} from './connectionDisclosure';
 import { jarvisProviderAttemptEvidenceRevalidator, runAgent } from './router';
 import {
   runBoundedLocalFinalBossRevision,
@@ -75,7 +80,13 @@ import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
 import { buildUserIdentityContextBlock } from './userIdentity';
 import { composeSkillAddenda, resolveSkills } from '@/lib/agents/skills';
 import { applyAgentRuntimeConfig } from '@/lib/agents/applyAgentConfig';
-import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
+import {
+  bindLiveAgentActivityRun,
+  createChatActivityId,
+  setLiveAgentActivityPhase,
+  setLiveAgentActivityRunPhase,
+  useChatActivityStore,
+} from '@/features/chat/activity';
 import { classifyStackTask, parseStackSlashCommand } from './stacks/classifier';
 import { stepsForPreset } from './stacks/presets';
 import { runStack } from './stacks/runner';
@@ -801,6 +812,11 @@ export async function installJarvisKernelRuntimeHost(
                   previewState = decision.state;
                   const scope = activeTurnScopes.get(providerInput.runId);
                   if (!decision.allowed || !scope) return;
+                  setLiveAgentActivityRunPhase(providerInput.runId, {
+                    category: 'response',
+                    title: 'Jarvis is preparing the final response',
+                    subtitle: `${providerInput.agent.model.provider}/${providerInput.agent.model.model}`,
+                  });
                   setPreview({
                     ...scope,
                     text: decision.visibleText,
@@ -2955,6 +2971,44 @@ export function startRuntimeListener(
 
     const projectId = chatRecord?.project_id ?? authState.projectId;
     const tokenOptimizationMode = detail.tokenOptimizationMode ?? 'off';
+    const activity = useChatActivityStore.getState();
+    const agentActivityId = createChatActivityId('agent');
+    const hasAttachedFiles =
+      (detail.filePaths?.length ?? 0) > 0 || (detail.imageAttachments?.length ?? 0) > 0;
+    const initialActivityPhase = {
+      category: mentionedAgents.length > 1 ? 'coordination' : hasAttachedFiles ? 'file' : 'context',
+      title:
+        mentionedAgents.length > 1
+          ? `@${agent.slug} is coordinating agents`
+          : hasAttachedFiles
+            ? `@${agent.slug} is reading attached files`
+            : `@${agent.slug} is gathering context`,
+      subtitle:
+        mentionedAgents.length > 1
+          ? `${mentionedAgents.length} mentioned agents`
+          : hasAttachedFiles
+            ? `${(detail.filePaths?.length ?? 0) + (detail.imageAttachments?.length ?? 0)} attached item(s)`
+            : 'Resolving approved project and conversation context',
+    } as const;
+    activity.record({
+      id: agentActivityId,
+      chatId,
+      kind: mentionedAgents.length > 1 ? 'subagent' : 'agent',
+      category: initialActivityPhase.category,
+      status: 'running',
+      title: initialActivityPhase.title,
+      subtitle: initialActivityPhase.subtitle,
+      agentId: agent.id,
+      agentSlug: agent.slug,
+      ts: Date.now(),
+      detail:
+        mentionedAgents.length > 0
+          ? mentionedAgents
+              .map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`)
+              .join('\n')
+          : undefined,
+    });
+    setLiveAgentActivityPhase(chatId, agentActivityId, initialActivityPhase);
     let resolvedRequestContext: Awaited<ReturnType<typeof resolveJarvisContext>>;
     try {
       rememberConversationDestination(chatId, text);
@@ -2969,6 +3023,11 @@ export function startRuntimeListener(
         ],
       });
     } catch (error) {
+      activity.update(chatId, agentActivityId, {
+        status: 'error',
+        title: `@${agent.slug} could not gather context`,
+        subtitle: error instanceof Error ? error.message : String(error),
+      });
       failEarlySetup('context', error);
       return;
     }
@@ -2977,29 +3036,6 @@ export function startRuntimeListener(
       text,
       destination: resolvedRequestContext.preferredDestination,
       hasResolvedDestination: Boolean(resolvedRequestContext.preferredDestination),
-    });
-    const activity = useChatActivityStore.getState();
-    const agentActivityId = createChatActivityId('agent');
-    activity.record({
-      id: agentActivityId,
-      chatId,
-      kind: mentionedAgents.length > 1 ? 'subagent' : 'agent',
-      category: mentionedAgents.length > 1 ? 'coordination' : 'thinking',
-      status: 'running',
-      title: `@${agent.slug} is working`,
-      subtitle:
-        mentionedAgents.length > 1
-          ? `${mentionedAgents.length} mentioned agents in context`
-          : `${agent.model.provider}/${agent.model.model}`,
-      agentId: agent.id,
-      agentSlug: agent.slug,
-      ts: Date.now(),
-      detail:
-        mentionedAgents.length > 0
-          ? mentionedAgents
-              .map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`)
-              .join('\n')
-          : undefined,
     });
     for (const path of detail.filePaths ?? []) {
       activity.record({
@@ -3227,10 +3263,24 @@ export function startRuntimeListener(
       });
     }
     try {
+      if ((detail.filePaths?.length ?? 0) > 0) {
+        setLiveAgentActivityPhase(chatId, agentActivityId, {
+          category: 'file',
+          title: `@${agent.slug} is reading attached files`,
+          subtitle: `${detail.filePaths!.length} file(s)`,
+        });
+      }
       explicitFilesContext = await getExplicitFilesBlock(
         detail.filePaths ?? [],
         getStoredProjectRoot(projectId),
       );
+      if ((detail.filePaths?.length ?? 0) > 0) {
+        setLiveAgentActivityPhase(chatId, agentActivityId, {
+          category: 'context',
+          title: `@${agent.slug} is gathering context`,
+          subtitle: 'Combining approved sources for this turn',
+        });
+      }
     } catch (err) {
       devConsole.log({
         channel: 'ai',
@@ -3691,10 +3741,50 @@ export function startRuntimeListener(
       stopStreamingVoiceTurn();
     };
     controller.signal.addEventListener('abort', cancelScheduledStreamingEffects, { once: true });
+    let routeDisclosurePersisted = false;
+    const persistRouteDisclosureBeforeProviderUse = async (): Promise<void> => {
+      if (
+        routeDisclosurePersisted ||
+        (isProtectedJarvis && activeKernelMode === 'kernel') ||
+        chatModelSelection.mode !== 'single' ||
+        !chatModelSelection.connectionId
+      ) {
+        return;
+      }
+      const identity = resolveAccountIdentity(authState);
+      if (!identity) return;
+      const disclosure = {
+        accountId: identity.accountId,
+        connectionId: chatModelSelection.connectionId,
+        connectionMode: chatModelSelection.connectionMode,
+        providerId: chatModelSelection.providerId,
+        modelLabel: chatModelSelection.modelId,
+      };
+      if (needsConnectionRouteDisclosure(disclosure)) {
+        await bindings.appendMessage({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [{ kind: 'text', text: buildConnectionRouteDisclosure(disclosure) }],
+        });
+        acknowledgeConnectionRouteDisclosure(disclosure);
+      }
+      routeDisclosurePersisted = true;
+    };
 
     try {
       dispatchKernelSmokeRuntimeStage('execution');
       controller.signal.throwIfAborted();
+      setLiveAgentActivityPhase(chatId, agentActivityId, {
+        category: stackSteps.length > 0 ? 'coordination' : 'thinking',
+        title:
+          stackSteps.length > 0
+            ? `@${agent.slug} is coordinating the model stack`
+            : `@${agent.slug} is reasoning`,
+        subtitle:
+          stackSteps.length > 0
+            ? `${stackSteps.length} model step(s)`
+            : `${runnable.model.provider}/${runnable.model.model}`,
+      });
       if (shouldSpeakReply && !isProtectedJarvis) {
         streamingVoice = createStreamingVoiceSession({
           voiceEngine: voiceSettings.voiceEngine,
@@ -3789,43 +3879,50 @@ export function startRuntimeListener(
             if (boundPlan.kind === 'account_authority_revoked') {
               throw new Error('kernel_account_authority_revoked');
             }
+            await persistRouteDisclosureBeforeProviderUse();
+            controller.signal.throwIfAborted();
             dispatchKernelSmokeRuntimeStage('hive_workers');
-            const stackOutcome = await runStack(
-              {
-                parentRunId: turn.run.id,
-                steps: stackSteps,
-                finalTurnBasis: {
-                  run: boundPlan.value,
-                  attempt: turn.attempt,
-                  userMessageId: turn.userMessageId,
-                  interactionMode: turn.interactionMode,
-                  agent: turn.agent,
-                  userText: turn.userText,
-                  messageHistory: turn.messageHistory,
-                  identity: turn.identity,
-                  profile: turn.profile,
-                  model: turn.model,
-                  capabilities: turn.capabilities,
-                  context: turn.context,
-                  outputContract: turn.outputContract,
-                  ...(turn.workingDirectory === undefined
-                    ? {}
-                    : { workingDirectory: turn.workingDirectory }),
+            const releaseLiveRun = bindLiveAgentActivityRun(turn.run.id, chatId, agentActivityId);
+            let stackOutcome: Awaited<ReturnType<typeof runStack>>;
+            try {
+              stackOutcome = await runStack(
+                {
+                  parentRunId: turn.run.id,
+                  steps: stackSteps,
+                  finalTurnBasis: {
+                    run: boundPlan.value,
+                    attempt: turn.attempt,
+                    userMessageId: turn.userMessageId,
+                    interactionMode: turn.interactionMode,
+                    agent: turn.agent,
+                    userText: turn.userText,
+                    messageHistory: turn.messageHistory,
+                    identity: turn.identity,
+                    profile: turn.profile,
+                    model: turn.model,
+                    capabilities: turn.capabilities,
+                    context: turn.context,
+                    outputContract: turn.outputContract,
+                    ...(turn.workingDirectory === undefined
+                      ? {}
+                      : { workingDirectory: turn.workingDirectory }),
+                  },
+                  onStep: (step) => {
+                    setLiveAgentActivityPhase(chatId, agentActivityId, {
+                      category: 'coordination',
+                      title: `@${agent.slug} is coordinating the model stack`,
+                      subtitle: `${step.label} · ${step.provider}/${step.model}`,
+                    });
+                  },
                 },
-                onStep: (step) => {
-                  useChatActivityStore.getState().update(chatId, agentActivityId, {
-                    status: 'running',
-                    title: `@${agent.slug} is working`,
-                    subtitle: `${step.label} · ${step.provider}/${step.model}`,
-                    ts: Date.now(),
-                  });
+                {
+                  kernel: { openHiveWorker: host.openHiveWorker },
+                  finalizer: { kernel: { runHiveFinalTurn: host.runHiveFinalTurn } },
                 },
-              },
-              {
-                kernel: { openHiveWorker: host.openHiveWorker },
-                finalizer: { kernel: { runHiveFinalTurn: host.runHiveFinalTurn } },
-              },
-            );
+              );
+            } finally {
+              releaseLiveRun();
+            }
             if (stackOutcome.kind === 'account_authority_revoked') {
               throw new Error('kernel_account_authority_revoked');
             }
@@ -3878,57 +3975,69 @@ export function startRuntimeListener(
               model,
             });
             await bindCanonicalCancellation(host, turn);
+            await persistRouteDisclosureBeforeProviderUse();
+            controller.signal.throwIfAborted();
             let response: import('@/lib/jarvis/contracts').JarvisResponseEnvelope;
-            if (turn.surface === 'voice') {
-              const voiceSessionId = detail.voiceSessionId;
-              if (
-                !voiceSessionId ||
-                !isCurrentBoundVoiceScope(turn.accountId, turn.chatId, voiceSessionId) ||
-                !useVoiceStore.getState().setSessionRun(turn.run.id, voiceSessionId, null)
-              ) {
-                throw new Error('canonical_voice_session_scope_revoked');
-              }
-              try {
-                const started = await host.startVoiceTurn(
-                  turn as Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
-                );
-                if (started.kind === 'account_authority_revoked') {
+            const releaseLiveRun = bindLiveAgentActivityRun(turn.run.id, chatId, agentActivityId);
+            try {
+              if (turn.surface === 'voice') {
+                const voiceSessionId = detail.voiceSessionId;
+                if (
+                  !voiceSessionId ||
+                  !isCurrentBoundVoiceScope(turn.accountId, turn.chatId, voiceSessionId) ||
+                  !useVoiceStore.getState().setSessionRun(turn.run.id, voiceSessionId, null)
+                ) {
+                  throw new Error('canonical_voice_session_scope_revoked');
+                }
+                try {
+                  const started = await host.startVoiceTurn(
+                    turn as Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+                  );
+                  if (started.kind === 'account_authority_revoked') {
+                    throw new Error('kernel_account_authority_revoked');
+                  }
+                  const { result, handle } = started.value;
+                  try {
+                    controller.signal.throwIfAborted();
+                    const ready = await handle.commitResponseReady();
+                    controller.signal.throwIfAborted();
+                    if (ready.kind === 'account_authority_revoked') {
+                      throw new Error('kernel_account_authority_revoked');
+                    }
+                    if (!ready.value.committed) {
+                      throw new Error(`voice_response_ready_${ready.value.reason}`);
+                    }
+                    const playback = await handle.runValidatedPlayback();
+                    controller.signal.throwIfAborted();
+                    if (playback.kind === 'account_authority_revoked') {
+                      throw new Error('kernel_account_authority_revoked');
+                    }
+                    if (!playback.value.committed) {
+                      throw new Error(`voice_playback_${playback.value.reason}`);
+                    }
+                    canonicalVoiceCancelled = playback.value.run.status === 'cancelled';
+                    response = result.response;
+                  } finally {
+                    handle.dispose();
+                  }
+                } finally {
+                  useVoiceStore.getState().setSessionRun(undefined, voiceSessionId, turn.run.id);
+                }
+              } else {
+                const outcome = await host.runInitialTurn(turn);
+                if (outcome.kind === 'account_authority_revoked') {
                   throw new Error('kernel_account_authority_revoked');
                 }
-                const { result, handle } = started.value;
-                try {
-                  controller.signal.throwIfAborted();
-                  const ready = await handle.commitResponseReady();
-                  controller.signal.throwIfAborted();
-                  if (ready.kind === 'account_authority_revoked') {
-                    throw new Error('kernel_account_authority_revoked');
-                  }
-                  if (!ready.value.committed) {
-                    throw new Error(`voice_response_ready_${ready.value.reason}`);
-                  }
-                  const playback = await handle.runValidatedPlayback();
-                  controller.signal.throwIfAborted();
-                  if (playback.kind === 'account_authority_revoked') {
-                    throw new Error('kernel_account_authority_revoked');
-                  }
-                  if (!playback.value.committed) {
-                    throw new Error(`voice_playback_${playback.value.reason}`);
-                  }
-                  canonicalVoiceCancelled = playback.value.run.status === 'cancelled';
-                  response = result.response;
-                } finally {
-                  handle.dispose();
-                }
-              } finally {
-                useVoiceStore.getState().setSessionRun(undefined, voiceSessionId, turn.run.id);
+                response = outcome.value.response;
               }
-            } else {
-              const outcome = await host.runInitialTurn(turn);
-              if (outcome.kind === 'account_authority_revoked') {
-                throw new Error('kernel_account_authority_revoked');
-              }
-              response = outcome.value.response;
+            } finally {
+              releaseLiveRun();
             }
+            setLiveAgentActivityPhase(chatId, agentActivityId, {
+              category: 'response',
+              title: `@${agent.slug} is preparing the final response`,
+              subtitle: `${response.provider.providerId}/${response.provider.modelId}`,
+            });
             canonicalDisplayText = response.displayText;
             canonicalSpokenText = response.spokenText;
             canonicalProviderId = response.provider.providerId;
@@ -4129,6 +4238,11 @@ export function startRuntimeListener(
 
       useAgentStore.getState().setRunState(agent.id, 'streaming');
       useAgentStore.getState().setVerb(agent.id, 'thinking');
+      setLiveAgentActivityPhase(chatId, agentActivityId, {
+        category: 'thinking',
+        title: `@${agent.slug} is reasoning`,
+        subtitle: `${runnable.model.provider}/${runnable.model.model}`,
+      });
 
       // DevConsole breadcrumb — the most useful "where did the chat
       // go wrong" entry. Logged AFTER the placeholder + history are
@@ -4160,6 +4274,8 @@ export function startRuntimeListener(
           'Hive requires the canonical JARVIS kernel runtime.',
         );
       }
+      controller.signal.throwIfAborted();
+      await persistRouteDisclosureBeforeProviderUse();
       controller.signal.throwIfAborted();
       let responseCompositionVisible = false;
       const providerRequest = {
@@ -4213,6 +4329,13 @@ export function startRuntimeListener(
         ? await runBoundedLocalFinalBossRevision(runAgent, providerRequest)
         : await runAgent(providerRequest);
       controller.signal.throwIfAborted();
+      if (!responseCompositionVisible) {
+        setLiveAgentActivityPhase(chatId, agentActivityId, {
+          category: 'response',
+          title: `@${agent.slug} is preparing the final response`,
+          subtitle: `${response.provider}/${response.model}`,
+        });
+      }
 
       await mirrorShadowOutcome('completed', true);
       controller.signal.throwIfAborted();

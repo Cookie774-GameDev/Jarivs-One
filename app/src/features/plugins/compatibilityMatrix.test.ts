@@ -3,6 +3,12 @@ import { PLUGIN_CATALOG } from './catalog';
 import { PLUGIN_COMPATIBILITY_BY_ID, PLUGIN_COMPATIBILITY_MATRIX } from './compatibilityMatrix';
 
 describe('112-plugin compatibility matrix', () => {
+  it('never classifies OAuth providers as credential forms', () => {
+    for (const plugin of PLUGIN_CATALOG.filter((entry) => entry.authType === 'oauth')) {
+      expect(PLUGIN_COMPATIBILITY_BY_ID[plugin.id]?.implementationPath).not.toBe('credential_form');
+    }
+  });
+
   it('covers every catalog entry exactly once with official documentation and lifecycle rules', () => {
     expect(PLUGIN_COMPATIBILITY_MATRIX).toHaveLength(112);
     expect(new Set(PLUGIN_COMPATIBILITY_MATRIX.map((entry) => entry.id)).size).toBe(112);

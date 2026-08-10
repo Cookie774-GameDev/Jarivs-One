@@ -18,7 +18,9 @@ import {
 import { ensureExternalConnectionAutoDetection } from './adapters/autoDetectConnections';
 import {
   AI_CONNECTION_STATE_EVENT,
+  deriveAiConnectionHealth,
   isConnectionSessionChecked,
+  readConnectionMetadata,
   readConnectionPickerStates,
   readConnectionSessionPickerStates,
   type ConnectionPickerState,
@@ -170,18 +172,26 @@ export function useAccessibleChatModels() {
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
+  const preferredConnections = useAuthStore(
+    (s) => s.preferredConnectionIdByProviderFamily,
+  );
   const ollamaOptions = useOllamaModelOptions();
   const [connectionRevision, setConnectionRevision] = useState(0);
   useEffect(() => {
     const update = () => setConnectionRevision((value) => value + 1);
+    const revalidateOnFocus = () => {
+      if (!offlineMode) void ensureExternalConnectionAutoDetection().catch(() => undefined);
+    };
     window.addEventListener(AI_CONNECTION_STATE_EVENT, update);
     window.addEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
+    window.addEventListener('focus', revalidateOnFocus);
     if (!offlineMode) {
       void ensureExternalConnectionAutoDetection().catch(() => undefined);
     }
     return () => {
       window.removeEventListener(AI_CONNECTION_STATE_EVENT, update);
       window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
+      window.removeEventListener('focus', revalidateOnFocus);
     };
   }, [offlineMode]);
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
@@ -213,9 +223,9 @@ export function useAccessibleChatModels() {
         (option) => option.provider === connection.providerId,
       ).map((option) => ({ id: option.id, label: option.label }));
     }
-    const accessible = new Set(legacy.map((group) => group.provider));
     const scanned = readConnectionPickerStates();
     const sessionScanned = readConnectionSessionPickerStates();
+    const metadata = readConnectionMetadata();
     const stateByConnection = Object.fromEntries(
       pickerConnections.map((connection) => {
         let state: ConnectionPickerState;
@@ -227,15 +237,30 @@ export function useAccessibleChatModels() {
         ) {
           state = { available: false, auth: 'unknown' };
         } else if (connection.mode === 'external-cli') {
-          state = sessionScanned[connection.id] ?? { available: false, auth: 'unknown' };
+          const current = sessionScanned[connection.id] ?? { available: false, auth: 'unknown' };
+          const health = deriveAiConnectionHealth({
+            connection,
+            metadata: metadata[connection.id] ?? {
+              installation: current.available ? 'installed' : 'not-installed',
+              auth: current.auth,
+            },
+          });
+          state = { available: health.usable, auth: current.auth };
         } else {
-          state = scanned[connection.id] ?? {
-            available: accessible.has(connection.providerId as ProviderId),
-            auth:
-              accessible.has(connection.providerId as ProviderId) || connection.mode === 'local'
-                ? 'authenticated'
-                : 'unauthenticated',
-          };
+          const health = deriveAiConnectionHealth({
+            connection,
+            metadata: metadata[connection.id],
+            credentialSaved: Boolean(apiKeys[connection.providerId as ProviderId]),
+          });
+          state =
+            scanned[connection.id] ??
+            ({
+              available: health.usable,
+              auth:
+                health.auth === 'authenticated' || health.auth === 'not_required'
+                  ? 'authenticated'
+                  : health.auth,
+            } satisfies ConnectionPickerState);
         }
         return [connection.id, state];
       }),
@@ -245,12 +270,29 @@ export function useAccessibleChatModels() {
       modelsByProvider,
       modelsByConnection: CONNECTION_MODEL_OPTIONS,
       stateByConnection,
-    }).sort(
+    })
+      .map((group) => ({
+        ...group,
+        options: [...group.options].sort(
+          (left, right) =>
+            Number(right.connectionId === preferredConnections[group.provider]) -
+            Number(left.connectionId === preferredConnections[group.provider]),
+        ),
+      }))
+      .sort(
       (a, b) =>
         Number(b.options.some((option) => option.available)) -
         Number(a.options.some((option) => option.available)),
-    );
-  }, [apiKeys, offlineMode, plan, defaultLocalModel, ollamaSignature, connectionRevision]);
+      );
+  }, [
+    apiKeys,
+    offlineMode,
+    plan,
+    defaultLocalModel,
+    ollamaSignature,
+    connectionRevision,
+    preferredConnections,
+  ]);
 
   const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
   return {

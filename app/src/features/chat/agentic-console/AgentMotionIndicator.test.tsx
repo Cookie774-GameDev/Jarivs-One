@@ -1,12 +1,17 @@
 import * as React from 'react';
-import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatActivityCategory, ChatActivityKind, ChatActivityStatus } from '../activity/types';
 import {
   AgentMotionIndicator,
+  PerceptibleAgentMotionIndicator,
   resolveAgentMotion,
   type AgentMotionKind,
 } from './AgentMotionIndicator';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const EXPECTED_MOTIONS: ReadonlyArray<readonly [ChatActivityCategory, AgentMotionKind]> = [
   ['thinking', 'cursor-forge'],
@@ -123,6 +128,8 @@ describe('AgentMotionIndicator', () => {
       expect(standardMotion?.getAttribute('data-agent-motion')).toBe(motion);
       expect(standardMotion?.getAttribute('data-agent-motion-size')).toBe('standard');
       expect(standardMotion?.getAttribute('aria-hidden')).toBe('true');
+      expect(standardMotion?.classList.contains('agent-motion-slot')).toBe(true);
+      expect(standardMotion?.querySelector('.agent-motion')).not.toBeNull();
 
       standard.rerender(<AgentMotionIndicator motion={motion} compact />);
       expect(
@@ -132,4 +139,43 @@ describe('AgentMotionIndicator', () => {
       ).toBe('compact');
     },
   );
+
+  it('shows a new truthful phase immediately while the prior phase completes a bounded exit', () => {
+    vi.useFakeTimers();
+    const view = render(<PerceptibleAgentMotionIndicator motion="twin-loop" />);
+
+    view.rerender(<PerceptibleAgentMotionIndicator motion="cursor-forge" />);
+
+    expect(
+      [...view.container.querySelectorAll('[data-agent-motion]')].map((node) => [
+        node.getAttribute('data-agent-motion'),
+        node.getAttribute('data-agent-motion-presence'),
+      ]),
+    ).toEqual([
+      ['cursor-forge', 'current'],
+      ['twin-loop', 'exiting'],
+    ]);
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+
+    expect(
+      [...view.container.querySelectorAll('[data-agent-motion]')].map((node) =>
+        node.getAttribute('data-agent-motion'),
+      ),
+    ).toEqual(['cursor-forge']);
+
+    view.rerender(<PerceptibleAgentMotionIndicator motion={null} />);
+    expect(
+      view.container
+        .querySelector('[data-agent-motion="cursor-forge"]')
+        ?.getAttribute('data-agent-motion-presence'),
+    ).toBe('exiting');
+
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(view.container.querySelector('[data-agent-motion]')).toBeNull();
+  });
 });

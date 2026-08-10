@@ -2877,13 +2877,19 @@ describe('startRuntimeListener agent routing', () => {
       created_at: 1,
       updated_at: 1,
     });
-    mocks.runAgent.mockImplementation(async (providerInput) => ({
-      text: 'The installed kernel host returned a partial response, Sir.',
-      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
-      provider: providerInput.agent.model.provider,
-      model: providerInput.agent.model.model,
-      finish_reason: 'length',
-    }));
+    mocks.runAgent.mockImplementation(async (providerInput) => {
+      providerInput.onChunk?.({
+        delta: 'The installed kernel host returned a partial response, Sir.',
+        done: false,
+      });
+      return {
+        text: 'The installed kernel host returned a partial response, Sir.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: providerInput.agent.model.provider,
+        model: providerInput.agent.model.model,
+        finish_reason: 'length',
+      };
+    });
     const getCapabilities = vi.fn(async () => ({
       capturedAt: 1,
       tools: [],
@@ -2915,6 +2921,15 @@ describe('startRuntimeListener agent routing', () => {
       }),
     );
 
+    const liveCategories: string[] = [];
+    const unsubscribeActivity = useChatActivityStore.subscribe((state) => {
+      const runningAgent = state.eventsByChat[harness.chatId]?.find(
+        (event) => event.kind === 'agent' && event.status === 'running',
+      );
+      if (runningAgent?.category && liveCategories.at(-1) !== runningAgent.category) {
+        liveCategories.push(runningAgent.category);
+      }
+    });
     try {
       window.dispatchEvent(
         new CustomEvent('jarvis:send', {
@@ -3044,6 +3059,9 @@ describe('startRuntimeListener agent routing', () => {
       expect(JSON.stringify(contextEvent)).not.toContain('PROJECT_CONTEXT_PROVENANCE_SENTINEL');
       expect(JSON.stringify(contextEvent)).not.toContain('AAM_PROVENANCE_SENTINEL');
       expect(JSON.stringify(contextEvent)).not.toContain('Acme renewal is in October.');
+      expect(liveCategories).toEqual(expect.arrayContaining(['context', 'thinking', 'response']));
+      expect(liveCategories.indexOf('context')).toBeLessThan(liveCategories.indexOf('thinking'));
+      expect(liveCategories.indexOf('thinking')).toBeLessThan(liveCategories.indexOf('response'));
       await expect(
         createJarvisRepositories(database).artifact.listByRun(
           'runtime-test-account',
@@ -3052,6 +3070,7 @@ describe('startRuntimeListener agent routing', () => {
       ).resolves.toEqual([]);
       await vi.waitFor(() => expect(mocks.notifyDone).toHaveBeenCalledOnce());
     } finally {
+      unsubscribeActivity();
       disposeHost();
       database.close();
       await database.delete();

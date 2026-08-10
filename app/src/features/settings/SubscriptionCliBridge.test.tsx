@@ -5,6 +5,7 @@ import {
   SubscriptionCliBridge,
 } from './sections/SubscriptionCliBridge';
 import { writeConnectionMetadata } from '@/lib/ai/connectionState';
+import { useAuthStore } from '@/stores/auth';
 
 vi.mock('@/lib/ai/adapters/autoDetectConnections', () => ({
   ensureExternalConnectionAutoDetection: vi.fn(async () => ({})),
@@ -26,6 +27,7 @@ describe('SubscriptionCliBridge', () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    useAuthStore.setState({ preferredConnectionIdByProviderFamily: {} });
   });
 
   it('never starts sign-in or scanning without an explicit click when autoDetect is off', async () => {

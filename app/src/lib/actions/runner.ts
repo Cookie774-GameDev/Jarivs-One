@@ -39,6 +39,7 @@ import type {
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import { isCanonicalFileArtifactResult } from './registryFiles';
 import { dispatchCanonicalBrowserGoalAction } from '@/features/browser/browserGoalIntegration';
+import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
 
 /** @internal Re-reads a committed action result and its exact producer evidence. */
 export interface CanonicalFileActionResultReadPort {
@@ -273,6 +274,50 @@ function describe(v: unknown): string {
  */
 const OMITTED_ACTION_PARAM_RE =
   /^(?:command|script|content|prompt|rolesJson|stepsJson|body|payload)$/i;
+const WRITING_FILE_ACTIONS = new Set(['files.create', 'files.edit']);
+
+function beginLiveFileActionActivity(
+  definition: ActionDef,
+  context: ActionRunContext,
+): string | null {
+  if (context.source !== 'ai' || !context.chatId || definition.category !== 'file') return null;
+  const writing = WRITING_FILE_ACTIONS.has(definition.id);
+  const activityId = createChatActivityId(writing ? 'write' : 'read');
+  useChatActivityStore.getState().record({
+    id: activityId,
+    chatId: context.chatId,
+    kind: 'tool',
+    category: writing ? 'writing' : 'file',
+    status: 'running',
+    title: writing ? 'Writing project files' : 'Reading project files',
+    subtitle: definition.label,
+    agentSlug: 'jarvis',
+    ts: Date.now(),
+  });
+  return activityId;
+}
+
+function finishLiveFileActionActivity(
+  definition: ActionDef,
+  context: ActionRunContext,
+  activityId: string | null,
+  result: ActionResult,
+): void {
+  if (!activityId || !context.chatId) return;
+  const writing = WRITING_FILE_ACTIONS.has(definition.id);
+  useChatActivityStore.getState().update(context.chatId, activityId, {
+    status: result.ok ? 'done' : 'error',
+    title: result.ok
+      ? writing
+        ? 'Project file update complete'
+        : 'Project file read complete'
+      : writing
+        ? 'Project file update failed'
+        : 'Project file read failed',
+    detail: result.ok ? result.summary : result.error,
+    ts: Date.now(),
+  });
+}
 
 function actionParamsForLog(params: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -380,8 +425,10 @@ async function runActionOnce(
     return { ok: false, error };
   }
 
+  const liveFileActivityId = beginLiveFileActionActivity(def, ctx);
   try {
     const result = await def.run(validation.params, ctx);
+    finishLiveFileActionActivity(def, ctx, liveFileActivityId, result);
     if (emitToast) {
       if (result.ok) {
         toast.success(
@@ -410,6 +457,7 @@ async function runActionOnce(
     return result;
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
+    finishLiveFileActionActivity(def, ctx, liveFileActivityId, { ok: false, error });
     if (emitToast) toast.error(def.label, error);
     devConsole.log({
       channel: 'action',

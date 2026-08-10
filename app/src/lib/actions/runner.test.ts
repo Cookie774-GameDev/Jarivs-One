@@ -39,6 +39,7 @@ import {
 import { canonicalizeBrowserJson } from '@/features/browser/browserActions';
 import { revokeBrowserGoalHostSession } from '@/features/browser/browserGoalIntegration';
 import { hashJarvisText } from '@/lib/jarvis/identity';
+import { useChatActivityStore } from '@/features/chat/activity';
 
 describe('resolveAction', () => {
   it('finds built-in actions by id', () => {
@@ -107,6 +108,7 @@ describe('runAction', () => {
     useToolStore.setState({ tools: [] });
     useTerminalCommandQueue.getState().clear();
     useDevConsoleStore.getState().clear();
+    useChatActivityStore.setState({ eventsByChat: {} });
   });
 
   it('returns a structured error for unknown ids and toasts by default', async () => {
@@ -345,6 +347,61 @@ describe('runAction', () => {
       { query: 'smoke fixture', maxResults: 1 },
       expect.objectContaining({ source: 'ai', signal }),
     );
+  });
+
+  it('shows live writing only while an approved file mutation is actually executing', async () => {
+    const registration = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'files.edit',
+    )!;
+    const definition = resolveAction('files.edit')!;
+    let finishWrite!: (value: { ok: true; summary: string }) => void;
+    vi.spyOn(definition, 'run').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    const signal = new AbortController().signal;
+    const beginExternalEffect = vi.fn((begin) => ({
+      kind: 'committed' as const,
+      value: begin(signal),
+    }));
+    const dispatcher = createJarvisRegisteredBuiltinDispatcher();
+
+    const outcome = dispatcher({
+      registration,
+      params: { path: 'C:\\project\\notes.md', content: 'Updated notes.' },
+      context: {
+        source: 'ai',
+        chatId: 'chat-file-write',
+        accountId: 'account-kernel',
+        runId: 'run-file-write',
+        approvalId: 'approval-file-write',
+        requestId: 'request-file-write',
+        attemptNumber: 1,
+      },
+      execution: { beginExternalEffect } as never,
+    });
+
+    await vi.waitFor(() =>
+      expect(useChatActivityStore.getState().eventsByChat['chat-file-write']?.at(-1)).toMatchObject(
+        {
+          category: 'writing',
+          status: 'running',
+          title: 'Writing project files',
+        },
+      ),
+    );
+    finishWrite({ ok: true, summary: 'Updated notes.' });
+    await expect(outcome).resolves.toMatchObject({
+      kind: 'executor_returned',
+      result: { ok: true },
+    });
+    expect(useChatActivityStore.getState().eventsByChat['chat-file-write']?.at(-1)).toMatchObject({
+      category: 'writing',
+      status: 'done',
+      title: 'Project file update complete',
+    });
   });
 
   it('routes canonical browser registrations only to a live scoped host', async () => {

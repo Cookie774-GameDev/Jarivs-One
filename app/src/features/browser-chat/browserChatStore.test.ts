@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   BROWSER_CHAT_STORAGE_KEY,
   createBrowserChatStore,
+  resolveChatEngine,
   type BrowserChatStorage,
 } from './browserChatStore';
 
@@ -52,6 +53,16 @@ describe('Browser Chat engine state', () => {
     });
     expect(storage.getItem(BROWSER_CHAT_STORAGE_KEY)).toContain('"chat-browser"');
     expect(storage.getItem(BROWSER_CHAT_STORAGE_KEY)).toContain('"chat-native"');
+  });
+
+  it('defaults every unconfigured new conversation to native without changing explicit Browser chats', () => {
+    const store = createBrowserChatStore(memoryStorage());
+    store.getState().setEngine('browser');
+    store.getState().setEngine('browser', 'explicit-browser-chat');
+
+    expect(resolveChatEngine(store.getState(), 'new-chat')).toBe('native');
+    expect(resolveChatEngine(store.getState(), 'explicit-browser-chat')).toBe('browser');
+    expect(resolveChatEngine(store.getState(), null)).toBe('browser');
   });
 
   it('persists only local Browser Chat preferences', () => {

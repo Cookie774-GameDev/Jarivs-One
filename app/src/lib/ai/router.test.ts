@@ -412,6 +412,7 @@ describe('AI provider routing', () => {
       protectedAttempt,
       signal: controller.signal,
       workingDirectory: 'C:\\workspace with spaces',
+      provider_options: { reasoning_effort: 'xhigh' },
     });
 
     const expectedPrompt = [
@@ -429,6 +430,7 @@ describe('AI provider routing', () => {
         connection: expect.objectContaining({ id: 'openai-codex', providerId: 'openai' }),
         prompt: expectedPrompt,
         modelId: codexAgent.model.model,
+        reasoningEffort: 'xhigh',
         systemPrompt: undefined,
         workingDirectory: 'C:\\workspace with spaces',
         signal: controller.signal,

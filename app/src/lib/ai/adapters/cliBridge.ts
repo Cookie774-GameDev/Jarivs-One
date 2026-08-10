@@ -551,7 +551,9 @@ function safeDetail(value: string): string {
   return boundedProviderText(value, DEFAULT_JSONL_LIMITS.maxMessageChars)?.trim() || '';
 }
 
-async function findExecutable(executableName: string): Promise<DetectedExecutable | undefined> {
+export async function findCliExecutable(
+  executableName: string,
+): Promise<DetectedExecutable | undefined> {
   const result = await scanCliBridge({
     executableNames: [executableName],
     customPath: null,
@@ -565,7 +567,7 @@ async function findExecutable(executableName: string): Promise<DetectedExecutabl
 
 async function detectProvider(definition: CliProviderDefinition): Promise<DetectionResult> {
   try {
-    const executable = await findExecutable(definition.executableName);
+    const executable = await findCliExecutable(definition.executableName);
     if (!executable) return { status: 'unavailable' };
     const probe = await probeCliBridge({
       executableId: executable.executableId,
@@ -619,7 +621,7 @@ async function probeProviderAuth(definition: CliProviderDefinition): Promise<Aut
       detail: 'Authentication status could not be verified.',
     };
   try {
-    const executable = await findExecutable(definition.executableName);
+    const executable = await findCliExecutable(definition.executableName);
     if (!executable) return classifyUnavailable();
     const probe = await probeCliBridge({
       executableId: executable.executableId,
@@ -648,7 +650,7 @@ async function* sendProviderRequest(
   ) {
     throw new Error('CLI provider prompt transport declaration mismatch.');
   }
-  const executable = await findExecutable(definition.executableName);
+  const executable = await findCliExecutable(definition.executableName);
   if (!executable) {
     throw new Error(`${definition.executableName} CLI is not installed`);
   }

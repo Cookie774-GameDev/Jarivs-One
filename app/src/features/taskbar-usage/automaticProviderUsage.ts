@@ -10,6 +10,7 @@ export function buildAutomaticProviderSnapshots(input: {
   connectedProviderIds: readonly string[];
   connectionMetadata: ConnectionMetadata;
   localUsage: Partial<Record<string, LocalUsageTotals>>;
+  connectionUsage?: Partial<Record<string, LocalUsageTotals>>;
   activity: ProviderActivitySnapshot;
   now: number;
 }): ProviderUsageSnapshot[] {
@@ -28,10 +29,11 @@ export function buildAutomaticProviderSnapshots(input: {
       : connectedProviders.has(connection.providerId);
     if (!connected) continue;
 
-    // Provider-level response metadata cannot safely distinguish a CLI session
-    // from a native API connection in the same family. Attribute it only to
-    // the native connection; CLI quota remains explicitly unavailable.
-    const local = external ? undefined : input.localUsage[connection.providerId];
+    // Exact-route ledger wins. Provider-family totals are used only for native
+    // API connections whose historical rows predate connection attribution.
+    const local =
+      input.connectionUsage?.[connection.id] ??
+      (external ? undefined : input.localUsage[connection.providerId]);
     const locallyRecordedTokens = local
       ? local.inputTokens + local.outputTokens + local.cachedTokens
       : 0;
