@@ -404,19 +404,7 @@ export function SettingsModal({
           <div
             aria-hidden="true"
             className="hidden [html[data-theme=warm]_&]:block"
-            data-warm-decoration="settings-scene-left"
-          >
-            <img
-              src="/assets/themes/warm/settings/settings-landscape-v4-selected.webp"
-              alt=""
-              decoding="async"
-              draggable={false}
-            />
-          </div>
-          <div
-            aria-hidden="true"
-            className="hidden [html[data-theme=warm]_&]:block"
-            data-warm-decoration="settings-scene-right"
+            data-warm-decoration="settings-scene"
           >
             <img
               src="/assets/themes/warm/settings/settings-landscape-v4-selected.webp"

@@ -57,11 +57,13 @@ import { fetchBenchmarks } from './benchmarkData';
 
 describe('BenchmarksPage Warm Schema B', () => {
   beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(fixtures.fetchedAt + 29 * 24 * 60 * 60 * 1000);
     useUIStore.setState({ theme: 'warm' });
     document.documentElement.setAttribute('data-theme', 'warm');
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
     useUIStore.setState({ theme: 'default' });
     document.documentElement.setAttribute('data-theme', 'dark');
@@ -112,6 +114,17 @@ describe('BenchmarksPage Warm Schema B', () => {
     const table = route!.querySelector('[data-monochrome-surface="benchmarks-table"]');
     expect(table).not.toBeNull();
     expect(table?.textContent).toContain('Schema Model 12');
+  });
+
+  it('shows the truthful stale warning immediately beyond the thirty-day boundary', async () => {
+    vi.mocked(Date.now).mockReturnValue(fixtures.fetchedAt + 30 * 24 * 60 * 60 * 1000 + 1);
+
+    const { container } = render(<BenchmarksPage />);
+    await screen.findByText('from snapshot');
+
+    expect(
+      container.querySelector('[data-warm-surface="benchmarks-warning"]')?.textContent,
+    ).toContain('Benchmark data is stale');
   });
 
   it('keeps provider and open-source filters functional in the reference layout', async () => {
