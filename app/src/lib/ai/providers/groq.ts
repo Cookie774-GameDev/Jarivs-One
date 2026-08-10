@@ -27,6 +27,7 @@ import {
   systemPromptForRequest,
 } from '../types';
 import { useAuthStore } from '@/stores/auth';
+import { nativeFetch } from '@/lib/nativeFetch';
 import { parseSSE } from './sse';
 import { sanitizeReasoningProviderOptions } from '../reasoningControls';
 
@@ -82,7 +83,7 @@ export const groqProvider: LLMProvider = {
     const model = req.agent.model.model || GROQ_DEFAULT_MODEL;
     const body = buildGroqRequestBody(req);
 
-    const res = await fetch(API_URL, {
+    const res = await nativeFetch(API_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

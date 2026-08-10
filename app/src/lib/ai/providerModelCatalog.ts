@@ -258,10 +258,20 @@ async function timedFetch(url: string, init: RequestInit): Promise<Response> {
 
 function parseOpenAiCompatibleModels(
   providerId: ProviderId,
-  payload: { data?: Array<{ id?: string }> },
+  payload: {
+    data?: Array<{
+      id?: string;
+      type?: string;
+      capabilities?: { completion_chat?: boolean };
+    }>;
+  },
 ): RegistryModelOption[] {
   const rows = payload.data ?? [];
   return rows
+    .filter(
+      (row) => !row.type || row.type === 'chat' || row.type === 'language' || row.type === 'code',
+    )
+    .filter((row) => row.capabilities?.completion_chat !== false)
     .map((row) => row.id?.trim())
     .filter((id): id is string => Boolean(id))
     .filter((id) => !id.includes('embed') && !id.includes('whisper') && !id.includes('tts'))
@@ -338,13 +348,22 @@ async function fetchModelsFromProvider(
     }
     case 'groq':
     case 'openrouter':
+    case 'deepseek':
+    case 'mistral':
+    case 'together':
+    case 'xai':
     case 'qwen': {
-      const base =
-        providerId === 'groq'
-          ? 'https://api.groq.com/openai/v1/models'
-          : providerId === 'qwen'
-            ? 'https://dashscope-us.aliyuncs.com/compatible-mode/v1/models'
-            : 'https://openrouter.ai/api/v1/models';
+      const endpoints: Record<string, string> = {
+        groq: 'https://api.groq.com/openai/v1/models',
+        openrouter: 'https://openrouter.ai/api/v1/models',
+        deepseek: 'https://api.deepseek.com/models',
+        mistral: 'https://api.mistral.ai/v1/models',
+        together: 'https://api.together.xyz/v1/models',
+        xai: 'https://api.x.ai/v1/models',
+        qwen: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1/models',
+      };
+      const base = endpoints[providerId];
+      if (!base) return [];
       const res = await timedFetch(base, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });

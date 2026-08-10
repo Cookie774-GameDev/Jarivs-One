@@ -78,14 +78,14 @@ const BASE_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     id: 'deepseek',
     displayName: 'DeepSeek',
     requiresApiKey: true,
-    supportsDynamicListing: false,
+    supportsDynamicListing: true,
     hiveEligible: true,
   },
   {
     id: 'xai',
     displayName: 'xAI',
     requiresApiKey: true,
-    supportsDynamicListing: false,
+    supportsDynamicListing: true,
     hiveEligible: true,
   },
   {
@@ -106,14 +106,14 @@ const BASE_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     id: 'mistral',
     displayName: 'Mistral',
     requiresApiKey: true,
-    supportsDynamicListing: false,
+    supportsDynamicListing: true,
     hiveEligible: true,
   },
   {
     id: 'together',
     displayName: 'Together AI',
     requiresApiKey: true,
-    supportsDynamicListing: false,
+    supportsDynamicListing: true,
     hiveEligible: true,
   },
   {

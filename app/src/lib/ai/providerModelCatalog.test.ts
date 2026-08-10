@@ -56,6 +56,48 @@ describe('providerModelCatalog', () => {
     fetchMock.mockRestore();
   });
 
+  it('refreshes every OpenAI-compatible chat catalog and excludes non-chat models', async () => {
+    const endpoints = {
+      deepseek: 'https://api.deepseek.com/models',
+      mistral: 'https://api.mistral.ai/v1/models',
+      together: 'https://api.together.xyz/v1/models',
+      xai: 'https://api.x.ai/v1/models',
+    } as const;
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+    for (const [provider, endpoint] of Object.entries(endpoints)) {
+      fetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [
+              { id: `${provider}-chat`, type: 'chat' },
+              { id: `${provider}-image`, type: 'image' },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const models = await loadProviderModels(
+        provider as keyof typeof endpoints,
+        {
+          ...ctx,
+          apiKeys: { [provider]: `${provider}-key` },
+        },
+        { force: true },
+      );
+
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        endpoint,
+        expect.objectContaining({
+          headers: { Authorization: `Bearer ${provider}-key` },
+        }),
+      );
+      expect(models.some((model) => model.id === `${provider}-chat`)).toBe(true);
+      expect(models.some((model) => model.id === `${provider}-image`)).toBe(false);
+    }
+    fetchMock.mockRestore();
+  });
+
   it('clears mismatched model when provider changes', () => {
     const next = resolveModelOnProviderChange('groq', 'gemini-3.5-flash', ctx);
     expect(modelBelongsToProvider('groq', next)).toBe(true);

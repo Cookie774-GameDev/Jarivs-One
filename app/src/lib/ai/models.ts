@@ -61,7 +61,7 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   {
     provider: 'google',
     id: GOOGLE_DEFAULT_MODEL,
-    label: 'Gemini 2.5 Flash Lite',
+    label: 'Gemini 3.6 Flash',
     contextWindowTokens: 1_000_000,
   },
   {
@@ -113,8 +113,7 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   {
     provider: 'openai',
     id: OPENAI_DEFAULT_MODEL,
-    label: 'GPT-4o Mini',
-    contextWindowTokens: 128_000,
+    label: 'GPT-5.1',
   },
   {
     provider: 'openai',
@@ -149,8 +148,7 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   {
     provider: 'anthropic',
     id: ANTHROPIC_DEFAULT_MODEL,
-    label: 'Claude 3.5 Sonnet',
-    contextWindowTokens: 200_000,
+    label: 'Claude Sonnet 5',
   },
   {
     provider: 'anthropic',
@@ -172,21 +170,20 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   },
   {
     provider: 'deepseek',
-    id: 'deepseek-chat',
-    label: 'DeepSeek V3 Chat',
+    id: DEEPSEEK_DEFAULT_MODEL,
+    label: 'DeepSeek V4 Flash',
     contextWindowTokens: 128_000,
   },
   {
     provider: 'deepseek',
-    id: 'deepseek-reasoner',
-    label: 'DeepSeek R1',
+    id: 'deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro',
     contextWindowTokens: 128_000,
   },
   {
     provider: 'openrouter',
     id: OPENROUTER_DEFAULT_MODEL,
-    label: 'Claude 3.5 Sonnet (OR)',
-    contextWindowTokens: 200_000,
+    label: 'OpenRouter Auto',
   },
   {
     provider: 'openrouter',
@@ -203,16 +200,13 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   {
     provider: 'together',
     id: TOGETHER_DEFAULT_MODEL,
-    label: 'Llama 3.3 70B (Together)',
-    contextWindowTokens: 131_072,
+    label: 'Qwen 3.5 397B A17B (Together)',
+    contextWindowTokens: 262_144,
   },
   {
     provider: 'xai',
     id: XAI_DEFAULT_MODEL,
-    label: 'Grok 2',
-    contextWindowTokens: 131_072,
-    maximumCostPerMillionUsd: 10,
-    costMetadataSource: 'embedded_snapshot',
+    label: 'Grok 4.5',
   },
   {
     provider: 'xai',

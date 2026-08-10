@@ -82,11 +82,7 @@ describe('Qwen compatible provider', () => {
     ['mistral', mistralProvider, 'https://api.mistral.ai/v1/chat/completions'],
     ['together', togetherProvider, 'https://api.together.xyz/v1/chat/completions'],
     ['xai', xaiProvider, 'https://api.x.ai/v1/chat/completions'],
-    [
-      'qwen',
-      qwenProvider,
-      'https://dashscope-us.aliyuncs.com/compatible-mode/v1/chat/completions',
-    ],
+    ['qwen', qwenProvider, 'https://dashscope-us.aliyuncs.com/compatible-mode/v1/chat/completions'],
   ] as const)('%s streams through the packaged-app native transport', async (id, provider, url) => {
     useAuthStore.setState({ apiKeys: { [id]: `${id}-test-key` } });
     nativeFetchMock.mockResolvedValue(

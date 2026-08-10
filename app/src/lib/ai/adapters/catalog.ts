@@ -6,9 +6,13 @@ import {
   ANTHROPIC_API_CONNECTION,
   DEEPSEEK_API_CONNECTION,
   GEMINI_API_CONNECTION,
+  GROQ_API_CONNECTION,
+  MISTRAL_API_CONNECTION,
   OLLAMA_LOCAL_CONNECTION,
   OPENAI_API_CONNECTION,
+  OPENROUTER_API_CONNECTION,
   QWEN_API_CONNECTION,
+  TOGETHER_API_CONNECTION,
   VERTEX_API_CONNECTION,
   XAI_API_CONNECTION,
   ZAI_API_CONNECTION,
@@ -28,6 +32,10 @@ type BaseProviderFamilyId =
   | 'deepseek'
   | 'zai'
   | 'qwen'
+  | 'groq'
+  | 'openrouter'
+  | 'mistral'
+  | 'together'
   | 'ollama'
   | 'opencode';
 
@@ -282,6 +290,10 @@ const BASE_PROVIDER_CATALOG: Readonly<
   deepseek: family('deepseek', 'DeepSeek', [DEEPSEEK_API_CONNECTION]),
   zai: family('zai', 'Z.AI / GLM', [ZAI_API_CONNECTION]),
   qwen: family('qwen', 'Qwen', [QWEN_CLI_CONNECTION, QWEN_API_CONNECTION], QWEN_CLI_SURFACE),
+  groq: family('groq', 'Groq', [GROQ_API_CONNECTION]),
+  openrouter: family('openrouter', 'OpenRouter', [OPENROUTER_API_CONNECTION]),
+  mistral: family('mistral', 'Mistral', [MISTRAL_API_CONNECTION]),
+  together: family('together', 'Together AI', [TOGETHER_API_CONNECTION]),
   ollama: family('ollama', 'Ollama', [OLLAMA_LOCAL_CONNECTION]),
   opencode: family('opencode', 'OpenCode', [OPENCODE_CLI_CONNECTION], OPENCODE_CLI_SURFACE),
 });
@@ -300,6 +312,10 @@ const BASE_PROVIDER_CONNECTIONS: readonly Readonly<ProviderConnection>[] = Objec
   ZAI_API_CONNECTION,
   QWEN_CLI_CONNECTION,
   QWEN_API_CONNECTION,
+  GROQ_API_CONNECTION,
+  OPENROUTER_API_CONNECTION,
+  MISTRAL_API_CONNECTION,
+  TOGETHER_API_CONNECTION,
   OLLAMA_LOCAL_CONNECTION,
   OPENCODE_CLI_CONNECTION,
 ]);

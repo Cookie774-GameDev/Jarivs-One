@@ -312,9 +312,7 @@ export function Providers() {
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
   const credentialVaultState = useAuthStore((s) => s.credentialVaultState);
-  const credentialVaultFailedProviders = useAuthStore(
-    (s) => s.credentialVaultFailedProviders,
-  );
+  const credentialVaultFailedProviders = useAuthStore((s) => s.credentialVaultFailedProviders);
   const hydrateApiKeysFromVault = useAuthStore((s) => s.hydrateApiKeysFromVault);
   const [usageRevision, setUsageRevision] = useState(0);
   const usageSnapshot = useLiveQuery(async () => {
@@ -434,7 +432,9 @@ export function Providers() {
           className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3"
         >
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">Secure credential vault unavailable</p>
+            <p className="text-sm font-medium text-foreground">
+              Secure credential vault unavailable
+            </p>
             <p className="text-xs text-muted-foreground">
               VibeSpace could not verify
               {credentialVaultFailedProviders.length > 0
@@ -628,9 +628,9 @@ const ProviderKeyRow = memo(function ProviderKeyRow({
   const [draft, setDraft] = useState(value);
   const [revealed, setRevealed] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [saveState, setSaveState] = useState<
-    'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
-  >('idle');
+  const [saveState, setSaveState] = useState<'idle' | 'unsaved' | 'saving' | 'saved' | 'error'>(
+    'idle',
+  );
   const [validationState, setValidationState] = useState<
     'unverified' | 'testing' | 'connected' | 'rejected' | 'network-error'
   >('unverified');
@@ -1035,10 +1035,7 @@ const ProviderKeyRow = memo(function ProviderKeyRow({
           className="mt-1"
         />
         {apiConnectionId ? (
-          <ApiConnectionUsageAnalytics
-            connectionId={apiConnectionId}
-            revision={usageRevision}
-          />
+          <ApiConnectionUsageAnalytics connectionId={apiConnectionId} revision={usageRevision} />
         ) : null}
       </div>
     </motion.div>
@@ -1098,13 +1095,13 @@ function ApiConnectionUsageAnalytics({
         ))}
       </div>
       <p className="mt-2 text-[10px] text-muted-foreground/70">
-        Requests through VibeSpace · exact connection {connectionId} · source:
-        VibeSpace local request ledger
+        Requests through VibeSpace · exact connection {connectionId} · source: VibeSpace local
+        request ledger
         {lastRequestAt ? ` · last request ${new Date(lastRequestAt).toLocaleString()}` : ''}
       </p>
       <p className="mt-1 text-[10px] text-muted-foreground/70">
-        Provider billing: unavailable for this credential unless separately authorized. Local
-        totals are not your complete provider bill.
+        Provider billing: unavailable for this credential unless separately authorized. Local totals
+        are not your complete provider bill.
       </p>
     </details>
   );

@@ -24,15 +24,14 @@ import {
   systemPromptForRequest,
 } from '../types';
 import { useAuthStore } from '@/stores/auth';
+import { nativeFetch } from '@/lib/nativeFetch';
 import { parseSSE } from './sse';
 import { sanitizeReasoningProviderOptions } from '../reasoningControls';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-/** Default Gemini model. Flash Lite is the fastest + cheapest in the
- *  2.5 family and has a generous free tier on AI Studio (no card),
- *  which is why Jarvis ships pinned to it for the Free plan. */
-export const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+/** Current stable fast Gemini model; the live catalog can supersede it. */
+export const GOOGLE_DEFAULT_MODEL = 'gemini-3.6-flash';
 
 /** Convert our role -> Gemini role. Gemini doesn't have `system` in messages. */
 function geminiRole(role: LLMMessage['role']): 'user' | 'model' {
@@ -100,7 +99,7 @@ export const googleProvider: LLMProvider = {
     // URLs (DevConsole fetch log, proxies, browser devtools network tab).
     const url = `${API_BASE}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
 
-    const res = await fetch(url, {
+    const res = await nativeFetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify(body),

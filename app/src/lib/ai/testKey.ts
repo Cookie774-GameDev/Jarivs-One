@@ -331,7 +331,7 @@ async function testOpenAICompatible(
   baseUrl: string,
   key: string,
   signal?: AbortSignal,
-  fetchImpl: typeof globalThis.fetch = globalThis.fetch.bind(globalThis),
+  fetchImpl: typeof globalThis.fetch = nativeFetch,
 ): Promise<ProviderTestResult> {
   const url = `${baseUrl.replace(/\/+$/, '')}/models`;
   try {

@@ -23,6 +23,24 @@ describe('providerRegistry', () => {
     });
   });
 
+  it('dynamically refreshes every implemented cloud provider catalog', () => {
+    const registry = buildProviderRegistry({ devBuild: false, explicitFlag: undefined });
+    for (const providerId of [
+      'google',
+      'anthropic',
+      'openai',
+      'groq',
+      'deepseek',
+      'xai',
+      'openrouter',
+      'qwen',
+      'mistral',
+      'together',
+    ]) {
+      expect(registry.find((entry) => entry.id === providerId)?.supportsDynamicListing).toBe(true);
+    }
+  });
+
   it('formats connected provider labels for dropdowns', () => {
     const label = formatProviderOptionLabel('groq', {
       apiKeys: { groq: 'gsk_test' },
