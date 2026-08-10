@@ -758,6 +758,7 @@ kernel_host::kernel_client_request
 kernel_host::kernel_host_respond
 kernel_host::release_kernel_host
 cli_bridge::cli_bridge_scan
+cli_bridge::cli_bridge_codex_account_snapshot
 cli_bridge::cli_bridge_probe
 cli_bridge::cli_bridge_start
 cli_bridge::cli_bridge_cancel
@@ -900,9 +901,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "f0b7c9d64d090afb8859f0b9f112e4f4c79c0a14548845508cf8ab8a237be917";
+        "78841530bc44c745f67dc86227e59c901731db0354d9b0569bf312e616192094";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "029a2bfe14ff50d95f71daeccb66dcf65dfc4ff4a92940359e0b287fe4c9102b";
+        "9c75ddecfb830d89c7deb44cbbc9b09b0534c394584c83a05f5d5e265584a8a6";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
