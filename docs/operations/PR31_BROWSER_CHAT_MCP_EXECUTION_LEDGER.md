@@ -953,14 +953,16 @@ staged, restored, reformatted, or committed by this task.
   the Browser Chat/MCP changed-file set; no failing test was deleted or
   weakened.
 - Rust: `VERIFIED` for default-feature and no-default-features Cargo checks,
-  Rust formatting, and 4/4 focused Browser Chat native tests. The successful
-  default-feature command used the deliberately short generated target
+  Rust formatting, and 4/4 focused Browser Chat native tests under both
+  default features and no default features. The successful default-feature
+  check used the deliberately short generated target
   `C:\ct\pr31`, disabled incremental output/debug info to fit the available
   disk, compiled `espeak-rs-sys`, and finished in 3m27s with only 11 existing
-  dead-code warnings. Cargo then removed the exact temporary target (10,435
-  files, 1.6 GiB). An earlier low-disk attempt and 5.2 GiB worktree-target
-  cleanup remain recorded as recovered environmental setup, not test
-  failures.
+  dead-code warnings. The matching default-feature focused test compiled the
+  same stack and passed 4/4 in 3m42s with three existing warnings. Cargo
+  removed both exact temporary targets afterward (1.6 GiB and 2.6 GiB).
+  An earlier low-disk attempt and 5.2 GiB worktree-target cleanup remain
+  recorded as recovered environmental setup, not test failures.
 - AI-boundary workflow: `BLOCKED — TECHNICAL`; the pinned
   `promptfoo@0.121.20` executable is not installed locally and
   `npx --no-install` correctly refused to fetch it. Dependency installation
