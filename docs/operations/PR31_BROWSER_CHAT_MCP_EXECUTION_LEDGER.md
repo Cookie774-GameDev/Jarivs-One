@@ -732,7 +732,7 @@ staged, restored, reformatted, or committed by this task.
   does not claim that Browser Chat remote tools produced them unless their
   source/run records say so, and it does not expose a backing file as a
   downloadable link without a separate verified materialization authority.
-- Commit: pending.
+- Commit: `1854a2c8`.
 
 ## Completion labels
 
