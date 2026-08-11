@@ -345,6 +345,10 @@ export function createOpenCodeRunAgentAdapter(
           ? { parentSessionId: record.session.parentSessionId }
           : {}),
       });
+      if (!authority.bind(record.session.id, authorityClaim)) {
+        await retireScopeTree(record.parentScopeId ?? scopeId);
+        throw new Error('OpenCode session authority changed.');
+      }
 
       const pendingMessages = input.messages.slice(record.messageCount);
       const parts = promptParts(pendingMessages);

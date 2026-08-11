@@ -173,6 +173,41 @@ describe('runAgent OpenCode adapter', () => {
     );
   });
 
+  it('retires the session and never sends when authority changes in onSessionBound', async () => {
+    const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    let currentAuthority = authorityClaim(1);
+    const bindings = new Map<string, ToolGatewayAuthorityClaim>();
+    const authority = {
+      capture: vi.fn(() => currentAuthority),
+      bind: vi.fn((sessionId: string, claim: ToolGatewayAuthorityClaim) => {
+        if (claim !== currentAuthority) return false;
+        const existing = bindings.get(sessionId);
+        if (existing && existing !== claim) return false;
+        bindings.set(sessionId, claim);
+        return true;
+      }),
+      release: vi.fn((sessionId: string) => {
+        bindings.delete(sessionId);
+      }),
+    };
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness, authority);
+
+    const result = adapter.run({
+      agent,
+      messages: [{ role: 'user', content: 'hello' }],
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      scopeId: 'scope-callback-transition',
+      onSessionBound: () => {
+        currentAuthority = authorityClaim(2);
+      },
+    });
+
+    await expect(result).rejects.toThrow(/authority changed/i);
+    expect(fake.deleteSession).toHaveBeenCalledWith('session-1', undefined);
+    expect(authority.release).toHaveBeenCalledWith('session-1');
+    expect(fake.send).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({
