@@ -54,8 +54,8 @@ export function capabilityCatalog(connected: boolean, advertisedTools: readonly 
     const available = Boolean(connected && relayTool && advertised.has(relayTool));
     const unavailableReason = available
       ? undefined
-      : tool.approvalRequired
-        ? 'Open VibeSpace to review and approve this sensitive action.'
+      : !relayTool
+        ? 'This capability is not implemented in the current VibeSpace ChatGPT MCP bridge.'
         : connected
           ? 'This read capability is not included in the active workspace grant.'
           : 'The signed-in VibeSpace desktop relay is offline.';
