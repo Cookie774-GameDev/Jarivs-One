@@ -207,6 +207,31 @@ staged, restored, reformatted, or committed by this task.
   because its kernel-assets path was unavailable. No fallback browser was used;
   this is recorded as a verification-environment limitation, not a product
   capability claim.
+- Commit: `3bc477e0`.
+
+### M5a — fail-closed Browser Chat permission registry
+
+- Status: `VERIFIED`
+- RED evidence: the relay exposed only a fixed read allowlist and had no
+  versioned plan/custom-mode contract, dynamic per-capability decision source,
+  or one-shot revocable operation lease.
+- GREEN evidence: 6/6 focused permission-registry tests pass and app
+  TypeScript passes.
+- Policy: `off`, `read`, `project_developer`, `full_local_developer`, and
+  `custom` resolve across a stable fourteen-capability catalog. Critical
+  delete, terminal, browser-mutation, and downstream-MCP capabilities cannot
+  be serialized with automatic approval; preset profiles cannot smuggle
+  custom overrides.
+- Decision safety: catalog entries separately report permission-plan,
+  workspace-grant, provider-bridge, and local-runtime denial sources, with
+  stable catalog diffs for dynamic registration.
+- Runtime safety: scoped one-shot leases reject wrong account/workspace,
+  replay, expiry, revocation, malformed identity, and unavailable
+  capabilities. Revocation, sign-out, and timeout abort active operations
+  immediately.
+- Coordination limitation: the recorded `workers/vibespace-mcp/**` owner is
+  still marked implementing in the root coordination ledger, so this slice
+  intentionally changes only the newly owned frontend registry files.
 - Commit: pending exact-path commit.
 
 ## Completion labels

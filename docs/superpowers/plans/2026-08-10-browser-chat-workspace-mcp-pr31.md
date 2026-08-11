@@ -169,7 +169,7 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 - [ ] Add failing serialization, capability calculation, catalog-diff,
       revocation, sign-out cancellation, wrong-account, replay, timeout, and
       unavailable-tool tests.
-- [ ] Implement the permission registry before individual mutation tools.
+- [x] Implement the permission registry before individual mutation tools.
 - [ ] Adapt existing approval-gated brokers one capability family at a time,
       with real fixture execution and structured results.
 - [ ] Keep provider-plan limitations distinct from VibeSpace authorization.
