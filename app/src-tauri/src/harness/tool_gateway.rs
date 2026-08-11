@@ -33,7 +33,6 @@ const TOOL_CATALOG: &[&str] = &[
     "context.list",
     "context.read",
     "context.attach",
-    "context.update",
     "skills.list",
     "skills.load",
     "plugins.list",

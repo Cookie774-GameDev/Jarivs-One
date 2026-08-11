@@ -185,6 +185,7 @@ import {
   openCodeToolsForInteractionMode,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
+import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 
@@ -282,7 +283,7 @@ describe('startRuntimeListener agent routing', () => {
     const agentTools = openCodeToolsForInteractionMode('agent');
     expect(agentTools['terminal.write']).toBe(true);
     expect(agentTools['app.navigate']).toBe(true);
-    expect(Object.keys(agentTools)).toHaveLength(26);
+    expect(Object.keys(agentTools)).toHaveLength(TOOL_GATEWAY_CATALOG.length);
   });
 
   it('presents an OpenCode approval in the live placeholder and preserves its decision', async () => {

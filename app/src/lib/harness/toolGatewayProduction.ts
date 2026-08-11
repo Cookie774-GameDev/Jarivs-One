@@ -14,89 +14,19 @@ import { createTask, completeTask, reopenTask, updateTask } from '@/features/tas
 import { enqueueTerminalCommand } from '@/features/terminals/terminalCommandQueue';
 import { useTerminalSchedulerStore } from '@/features/terminals/terminalScheduler';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
-import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { TaskId } from '@/types/common';
 import type { ActionResult } from '@/lib/actions/types';
 import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
-import type { ToolGatewayRequest } from './toolGatewayProtocol';
+import {
+  authorizeToolGatewayMutation,
+  authorizeToolGatewayRequest,
+  clearToolGatewayAuthorityForTests,
+  grantToolGatewayMutation,
+} from './toolGatewayAuthority';
 
-type AuthorityScope = Readonly<{
-  accountId: string;
-  accountSource: 'supabase' | 'local';
-  workspaceId: string;
-  projectId: string | null;
-}>;
-type MutationGrant = {
-  mode: 'once' | 'always';
-  expiresAt: number;
-  authority: AuthorityScope;
-};
-const grants = new Map<string, Map<string, MutationGrant>>();
-const sessionAuthorities = new Map<string, AuthorityScope>();
-const revokedSessions = new Set<string>();
-const ONCE_GRANT_TTL_MS = 2 * 60_000;
-const ALWAYS_GRANT_TTL_MS = 30 * 60_000;
-const MAX_GRANT_SESSIONS = 128;
-const MAX_GRANTS_PER_SESSION = 32;
-const MAX_REVOKED_SESSIONS = 256;
-
-function activeAuthority(): AuthorityScope | null {
-  const auth = useAuthStore.getState();
-  const identity = resolveAccountIdentity(auth);
-  if (!identity || !auth.workspaceId) return null;
-  return {
-    accountId: identity.accountId,
-    accountSource: identity.source,
-    workspaceId: String(auth.workspaceId),
-    projectId: auth.projectId ? String(auth.projectId) : null,
-  };
-}
-
-function sameAuthority(left: AuthorityScope, right: AuthorityScope): boolean {
-  return (
-    left.accountId === right.accountId &&
-    left.accountSource === right.accountSource &&
-    left.workspaceId === right.workspaceId &&
-    left.projectId === right.projectId
-  );
-}
-
-function revokeBoundSessions(): void {
-  for (const sessionId of sessionAuthorities.keys()) {
-    revokedSessions.add(sessionId);
-  }
-  while (revokedSessions.size > MAX_REVOKED_SESSIONS) {
-    const oldest = revokedSessions.values().next().value as string | undefined;
-    if (!oldest) break;
-    revokedSessions.delete(oldest);
-  }
-  sessionAuthorities.clear();
-  grants.clear();
-}
-
-let observedAuthority = activeAuthority();
-useAuthStore.subscribe(() => {
-  const next = activeAuthority();
-  if (
-    (observedAuthority === null) !== (next === null) ||
-    (observedAuthority !== null && next !== null && !sameAuthority(observedAuthority, next))
-  ) {
-    revokeBoundSessions();
-  }
-  observedAuthority = next;
-});
-
-function authorizeSession(request: ToolGatewayRequest): boolean {
-  if (revokedSessions.has(request.sessionId)) return false;
-  const current = activeAuthority();
-  if (!current) return false;
-  const bound = sessionAuthorities.get(request.sessionId);
-  if (bound) return sameAuthority(bound, current);
-  sessionAuthorities.set(request.sessionId, current);
-  return true;
-}
+export { grantToolGatewayMutation } from './toolGatewayAuthority';
 
 type ToolGatewayPluginReadPort = Readonly<{
   run(input: {
@@ -120,84 +50,8 @@ export function grantNextToolGatewayMutation(sessionId: string): void {
   grantToolGatewayMutation(sessionId, '*', 'once');
 }
 
-export function grantToolGatewayMutation(
-  sessionId: string,
-  capability: string,
-  mode: 'once' | 'always',
-): () => void {
-  const authority = activeAuthority();
-  if (!authority || revokedSessions.has(sessionId)) {
-    throw new Error('tool_gateway_authority_unavailable');
-  }
-  const bound = sessionAuthorities.get(sessionId);
-  if (bound && !sameAuthority(bound, authority)) {
-    throw new Error('tool_gateway_authority_changed');
-  }
-  sessionAuthorities.set(sessionId, authority);
-  let session = grants.get(sessionId);
-  if (!session) {
-    session = new Map();
-    grants.set(sessionId, session);
-  }
-  session.delete(capability);
-  session.set(capability, {
-    mode,
-    expiresAt: Date.now() + (mode === 'always' ? ALWAYS_GRANT_TTL_MS : ONCE_GRANT_TTL_MS),
-    authority,
-  });
-  while (session.size > MAX_GRANTS_PER_SESSION) {
-    const oldest = session.keys().next().value as string | undefined;
-    if (!oldest) break;
-    session.delete(oldest);
-  }
-  while (grants.size > MAX_GRANT_SESSIONS) {
-    const oldest = grants.keys().next().value as string | undefined;
-    if (!oldest) break;
-    grants.delete(oldest);
-  }
-  return () => {
-    const current = grants.get(sessionId);
-    current?.delete(capability);
-    if (current?.size === 0) grants.delete(sessionId);
-  };
-}
-
 export function clearToolGatewayMutationGrants(): void {
-  grants.clear();
-  sessionAuthorities.clear();
-  revokedSessions.clear();
-  observedAuthority = activeAuthority();
-}
-
-function consumeMutationGrant(request: ToolGatewayRequest): boolean {
-  const session = grants.get(request.sessionId);
-  const capability = session?.has(request.tool) ? request.tool : '*';
-  const grant = session?.get(capability);
-  const current = activeAuthority();
-  const bound = sessionAuthorities.get(request.sessionId);
-  if (
-    !session ||
-    !grant ||
-    !current ||
-    !bound ||
-    revokedSessions.has(request.sessionId) ||
-    !sameAuthority(grant.authority, current) ||
-    !sameAuthority(bound, current) ||
-    grant.expiresAt < Date.now()
-  ) {
-    session?.delete(capability);
-    if (session?.size === 0) grants.delete(request.sessionId);
-    return false;
-  }
-  if (grant.mode === 'once') {
-    session.delete(capability);
-  } else {
-    session.set(capability, { ...grant, expiresAt: Date.now() + ALWAYS_GRANT_TTL_MS });
-  }
-  if (session.size === 0) {
-    grants.delete(request.sessionId);
-  }
-  return true;
+  clearToolGatewayAuthorityForTests();
 }
 
 function stringArg(args: Record<string, unknown>, key: string): string {
@@ -311,8 +165,8 @@ async function runApprovedAction(
 
 export function createProductionToolGatewayDependencies(): ToolGatewayDependencies {
   return {
-    authorizeRequest: authorizeSession,
-    authorizeMutation: consumeMutationGrant,
+    authorizeRequest: authorizeToolGatewayRequest,
+    authorizeMutation: authorizeToolGatewayMutation,
     terminal: {
       list: (args) => terminalSummary((args.limit as number | undefined) ?? 100),
       open: (args) => {

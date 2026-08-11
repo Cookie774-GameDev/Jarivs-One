@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Agent } from '@/types';
+import type { ProjectId, WorkspaceId } from '@/types/common';
+import { clearToolGatewayAuthorityForTests } from '@/lib/harness/toolGatewayAuthority';
 import type {
   CreateHarnessSession,
   HarnessEvent,
   HarnessSendRequest,
   VibeSpaceHarness,
 } from '@/lib/harness/types';
+import { useAuthStore } from '@/stores/auth';
 import { createOpenCodeRunAgentAdapter } from './openCodeRunAgent';
 
 const agent: Agent = {
@@ -50,8 +53,36 @@ function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
 }
 
 describe('runAgent OpenCode adapter', () => {
+  it('binds a newly created OpenCode session before it can send tools', async () => {
+    const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    const authority = {
+      bind: vi.fn(() => true),
+      release: vi.fn(),
+    };
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness, authority);
+
+    await adapter.run({
+      agent,
+      messages: [{ role: 'user', content: 'hello' }],
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      scopeId: 'scope-authority',
+    });
+
+    expect(authority.bind).toHaveBeenCalledWith('session-1');
+    expect(authority.bind.mock.invocationCallOrder[0]).toBeLessThan(
+      fake.send.mock.invocationCallOrder[0]!,
+    );
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({
+      localUserId: 'account-a',
+      cloudSession: null,
+      workspaceId: 'workspace-a' as WorkspaceId,
+      projectId: 'project-a' as ProjectId,
+    });
+    clearToolGatewayAuthorityForTests();
   });
 
   it('preserves streaming, exact model identity, usage, attachments, and working directory', async () => {

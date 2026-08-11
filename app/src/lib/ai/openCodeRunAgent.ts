@@ -9,6 +9,10 @@ import type {
   VibeSpaceApproval,
   VibeSpaceHarness,
 } from '@/lib/harness/types';
+import {
+  bindToolGatewaySessionAuthority,
+  releaseToolGatewaySessionAuthority,
+} from '@/lib/harness/toolGatewayAuthority';
 import type {
   AiPurpose,
   LLMMessage,
@@ -59,6 +63,16 @@ export interface OpenCodeRunAgentAdapter {
   run(input: OpenCodeRunAgentInput): Promise<LLMResponse>;
   clear(): Promise<void>;
 }
+
+export interface OpenCodeSessionAuthorityPort {
+  bind(sessionId: string): boolean;
+  release(sessionId: string): void;
+}
+
+const productionSessionAuthority: OpenCodeSessionAuthorityPort = {
+  bind: bindToolGatewaySessionAuthority,
+  release: releaseToolGatewaySessionAuthority,
+};
 
 function abortError(): DOMException {
   return new DOMException('The request was aborted.', 'AbortError');
@@ -172,6 +186,7 @@ function usageValue(value: number | undefined): number {
 
 export function createOpenCodeRunAgentAdapter(
   harness: VibeSpaceHarness = openCodeHarness,
+  authority: OpenCodeSessionAuthorityPort = productionSessionAuthority,
 ): OpenCodeRunAgentAdapter {
   const sessions = new Map<string, SessionRecord>();
 
@@ -192,6 +207,7 @@ export function createOpenCodeRunAgentAdapter(
         throw new Error('OpenCode session capacity is reserved by active child relationships.');
       }
       sessions.delete(oldest[0]);
+      authority.release(oldest[1].session.id);
       await harness
         .deleteSession?.(oldest[1].session.id, oldest[1].workingDirectory)
         .catch(() => undefined);
@@ -228,6 +244,10 @@ export function createOpenCodeRunAgentAdapter(
             title: input.agent.name.slice(0, 256),
             ...(workingDirectory ? { workingDirectory } : {}),
           });
+          if (!authority.bind(session.id)) {
+            await harness.deleteSession?.(session.id, workingDirectory).catch(() => undefined);
+            throw new Error('OpenCode session authority is unavailable.');
+          }
           parent = {
             session,
             messageCount: 0,
@@ -252,6 +272,7 @@ export function createOpenCodeRunAgentAdapter(
       if (!record) {
         if (existing) {
           sessions.delete(scopeId);
+          authority.release(existing.session.id);
           await harness
             .deleteSession?.(existing.session.id, existing.workingDirectory)
             .catch(() => undefined);
@@ -263,6 +284,10 @@ export function createOpenCodeRunAgentAdapter(
           ...(parentSessionId ? { parentSessionId } : {}),
           ...(workingDirectory ? { workingDirectory } : {}),
         });
+        if (!authority.bind(session.id)) {
+          await harness.deleteSession?.(session.id, workingDirectory).catch(() => undefined);
+          throw new Error('OpenCode session authority is unavailable.');
+        }
         record = {
           session,
           messageCount: 0,
@@ -272,6 +297,9 @@ export function createOpenCodeRunAgentAdapter(
           touchedAt: Date.now(),
         };
         sessions.set(scopeId, record);
+      }
+      if (!authority.bind(record.session.id)) {
+        throw new Error('OpenCode session authority changed.');
       }
       await input.onSessionBound?.({
         sessionId: record.session.id,
@@ -354,6 +382,9 @@ export function createOpenCodeRunAgentAdapter(
     async clear() {
       const records = [...sessions.values()];
       sessions.clear();
+      for (const record of records) {
+        authority.release(record.session.id);
+      }
       await Promise.all(
         records.map((record) =>
           harness
