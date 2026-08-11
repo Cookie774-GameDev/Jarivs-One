@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   activeWorkspaceId: 'workspace-a',
   liveQueryCall: 0,
   chats: [] as Chat[],
+  bindings: [] as Array<{ chatId: string; provider: string; localTitle: string }>,
   getById: vi.fn(),
   remove: vi.fn(),
   toastError: vi.fn(),
@@ -18,11 +19,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: () => {
-    const slot = mocks.liveQueryCall++ % 4;
+    const slot = mocks.liveQueryCall++ % 5;
     if (slot === 0) return mocks.chats;
     if (slot === 1) return [];
     if (slot === 2) return {};
-    return null;
+    if (slot === 3) return null;
+    return mocks.bindings;
   },
 }));
 
@@ -34,6 +36,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     chats: {},
     messages: {},
+    browser_chat_bindings: {},
   },
   projectRepo: {
     listByWorkspace: vi.fn(),
@@ -101,6 +104,7 @@ beforeEach(() => {
   mocks.activeWorkspaceId = 'workspace-a';
   mocks.liveQueryCall = 0;
   mocks.chats = [chat('chat-a', 'Alpha chat'), chat('chat-b', 'Beta chat')];
+  mocks.bindings = [];
   mocks.getById.mockReset();
   mocks.getById.mockImplementation(async (id: string) => ({
     id,
@@ -118,6 +122,26 @@ afterEach(() => {
 });
 
 describe('HistoryList destructive confirmation', () => {
+  it('labels and opens a durable Browser Chat binding without replaying provider content', () => {
+    const onSelectChat = vi.fn();
+    const onOpenBrowserChat = vi.fn();
+    mocks.bindings = [{ chatId: 'chat-a', provider: 'chatgpt', localTitle: 'Bound browser chat' }];
+    render(
+      <HistoryList
+        selectedChatId={null}
+        onSelectChat={onSelectChat}
+        onOpenBrowserChat={onOpenBrowserChat}
+      />,
+    );
+
+    expect(screen.getByText('Browser Chat · ChatGPT')).toBeTruthy();
+    fireEvent.click(screen.getByText('Alpha chat').closest('button')!);
+
+    expect(onOpenBrowserChat).toHaveBeenCalledWith('chat-a');
+    expect(onSelectChat).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(/provider message|provider reply/i);
+  });
+
   it('opens an alert dialog for one chat and keeps Cancel focused without deleting', async () => {
     renderHistory();
 

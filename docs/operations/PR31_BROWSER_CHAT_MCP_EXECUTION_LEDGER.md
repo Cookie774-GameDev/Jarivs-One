@@ -131,6 +131,22 @@ staged, restored, reformatted, or committed by this task.
   optional eSpeak CMake dependency and failed on Windows path length. The
   Browser Chat surface itself compiles and tests with voice disabled. Installed
   drag/resize/maximize/provider-switch smoke remains required.
+- Commit: `bd23c65c`.
+
+### M4a — Browser Chat history summaries
+
+- Status: `VERIFIED`
+- RED evidence: a bound Browser Chat history row rendered as an ordinary
+  native transcript and had no route back to its provider surface.
+- GREEN evidence: 10/10 focused HistoryList tests pass and app TypeScript
+  passes.
+- Behavior: exact account/workspace-scoped durable bindings label matching
+  local history rows as Browser Chat sessions. Selecting a bound row switches
+  that local chat back to Browser mode and opens the chat route; native rows
+  retain the existing replay behavior.
+- Authority safety: History renders only local chat metadata and the durable
+  binding summary. It does not display or imply access to provider-owned
+  messages.
 - Commit: pending exact-path commit.
 
 ## Completion labels

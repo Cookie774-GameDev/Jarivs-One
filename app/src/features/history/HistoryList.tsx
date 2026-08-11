@@ -19,13 +19,15 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/toast';
 import { cn, formatRelative } from '@/lib/utils';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
-import type { Project } from '@/lib/db/schema';
+import type { BrowserChatBindingRow, Project } from '@/lib/db/schema';
 import type { Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
 import { deleteHistoryChats, historyDeletionFeedback } from './historyDeletion';
+import { browserChatProvider } from '@/features/browser-chat/providerRegistry';
 
 export interface HistoryListProps {
   selectedChatId: ChatId | null;
   onSelectChat: (id: ChatId | null) => void;
+  onOpenBrowserChat?: (id: ChatId) => void;
 }
 
 type ProjectFilter = 'all' | 'active';
@@ -54,7 +56,7 @@ const MAX_ROWS = 200;
  * the user's active project. Switching projects elsewhere in the app
  * automatically updates the chip.
  */
-export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) {
+export function HistoryList({ selectedChatId, onSelectChat, onOpenBrowserChat }: HistoryListProps) {
   const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const activeProjectId = useAuthStore((s) => s.projectId) as ProjectId | null;
@@ -145,6 +147,22 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
     },
     [query],
     null as Set<string> | null,
+  );
+
+  const browserBindings = useLiveQuery(
+    async () => {
+      if (!accountId || !workspaceId) return [] as BrowserChatBindingRow[];
+      return db.browser_chat_bindings
+        .where('[accountId+workspaceId]')
+        .equals([accountId, String(workspaceId)])
+        .toArray();
+    },
+    [accountId, workspaceId],
+    [] as BrowserChatBindingRow[],
+  );
+  const browserBindingByChatId = React.useMemo(
+    () => new Map(browserBindings.map((binding) => [binding.chatId, binding] as const)),
+    [browserBindings],
   );
 
   const filtered = React.useMemo(() => {
@@ -284,6 +302,7 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                 ? projectById[chat.project_id as unknown as string]
                 : undefined;
               const count = messageCounts?.[chat.id as unknown as string] ?? 0;
+              const browserBinding = browserBindingByChatId.get(String(chat.id));
               const selected =
                 (selectedChatId as unknown as string) === (chat.id as unknown as string);
               return (
@@ -293,7 +312,11 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                 >
                   <button
                     type="button"
-                    onClick={() => onSelectChat(chat.id)}
+                    onClick={() =>
+                      browserBinding && onOpenBrowserChat
+                        ? onOpenBrowserChat(chat.id)
+                        : onSelectChat(chat.id)
+                    }
                     aria-current={selected ? 'true' : undefined}
                     className={cn(
                       'flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
@@ -318,6 +341,11 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                           icon={<MessageSquare className="h-3 w-3" />}
                           label={`${count} msg${count === 1 ? '' : 's'}`}
                         />
+                        {browserBinding ? (
+                          <RowChip
+                            label={`Browser Chat · ${browserChatProvider(browserBinding.provider).label}`}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </button>
