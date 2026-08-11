@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { browserChatProvider } from './providerRegistry';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
+import { browserChatStore } from './browserChatStore';
 
 describe('BrowserProviderSurface', () => {
   afterEach(() => {
@@ -11,6 +12,7 @@ describe('BrowserProviderSurface', () => {
     vi.restoreAllMocks();
   });
   beforeEach(() => {
+    browserChatStore.setState({ providerRuntime: {} });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 20,
       y: 30,
@@ -218,5 +220,65 @@ describe('BrowserProviderSurface', () => {
     expect(onNavigation).toHaveBeenCalledWith(
       expect.objectContaining({ providerId: 'chatgpt', providerConversationKey: 'current' }),
     );
+  });
+
+  it('does not report a managed surface ready before native navigation evidence', async () => {
+    let hostGeometryListener: (() => void) | undefined;
+    let navigationListener:
+      | ((navigation: {
+          providerId: 'chatgpt';
+          surfaceId: string;
+          url: string;
+          timestamp: number;
+          kind: 'conversation';
+          providerConversationKey: string;
+        }) => void)
+      | undefined;
+    const runtime = {
+      openManaged: vi.fn(async () => ({
+        kind: 'managed' as const,
+        providerId: 'chatgpt' as const,
+      })),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openExternalNavigation: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+      subscribeHostGeometry: vi.fn(async (listener: () => void) => {
+        hostGeometryListener = listener;
+        return () => undefined;
+      }),
+      subscribeNavigation: vi.fn(async (listener: typeof navigationListener) => {
+        navigationListener = listener;
+        return () => undefined;
+      }),
+    };
+
+    render(
+      <BrowserProviderSurface
+        provider={browserChatProvider('chatgpt')}
+        navigationUrl="https://chatgpt.com/c/current"
+        runtime={runtime}
+      />,
+    );
+
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+    expect(browserChatStore.getState().providerRuntime.chatgpt?.pageStatus).toBe('opening');
+
+    navigationListener?.({
+      providerId: 'chatgpt',
+      surfaceId: 'browser-chat-chatgpt',
+      url: 'https://chatgpt.com/c/current',
+      timestamp: 2,
+      kind: 'conversation',
+      providerConversationKey: 'current',
+    });
+
+    await waitFor(() =>
+      expect(browserChatStore.getState().providerRuntime.chatgpt?.pageStatus).toBe('ready'),
+    );
+
+    hostGeometryListener?.();
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledTimes(2));
+    expect(browserChatStore.getState().providerRuntime.chatgpt?.pageStatus).toBe('ready');
   });
 });

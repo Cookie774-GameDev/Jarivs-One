@@ -2,7 +2,7 @@ import * as React from 'react';
 import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { useBrowserChatStore } from './browserChatStore';
+import { browserChatStore, useBrowserChatStore } from './browserChatStore';
 import type { BrowserChatProviderDefinition } from './providerRegistry';
 import {
   browserChatSurface,
@@ -29,6 +29,7 @@ export function BrowserProviderSurface({
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
   const onNavigationRef = React.useRef(onNavigation);
   const navigationUrlRef = React.useRef(navigationUrl);
+  const navigationTargetRef = React.useRef({ providerId: provider.id, navigationUrl });
   const synchronizeRef = React.useRef<((force?: boolean) => void) | null>(null);
   onNavigationRef.current = onNavigation;
   navigationUrlRef.current = navigationUrl;
@@ -40,6 +41,10 @@ export function BrowserProviderSurface({
     void runtime
       .subscribeNavigation((navigation) => {
         if (!disposed && navigation.providerId === provider.id) {
+          setProviderRuntime(provider.id, {
+            pageStatus: 'ready',
+            toolBridgeStatus: provider.toolBridgeStatus,
+          });
           onNavigationRef.current?.(navigation);
         }
       })
@@ -54,7 +59,7 @@ export function BrowserProviderSurface({
       disposed = true;
       unsubscribe?.();
     };
-  }, [provider.id, runtime]);
+  }, [provider.id, provider.toolBridgeStatus, runtime, setProviderRuntime]);
 
   React.useEffect(() => {
     const host = hostRef.current;
@@ -81,10 +86,12 @@ export function BrowserProviderSurface({
             const result = await runtime.openManaged(provider, bounds, navigationUrlRef.current);
             if (!disposed) {
               setError(null);
-              setProviderRuntime(provider.id, {
-                pageStatus: result.kind === 'managed' ? 'ready' : 'system_browser',
-                toolBridgeStatus: provider.toolBridgeStatus,
-              });
+              if (result.kind === 'system_browser') {
+                setProviderRuntime(provider.id, {
+                  pageStatus: 'system_browser',
+                  toolBridgeStatus: provider.toolBridgeStatus,
+                });
+              }
             }
           } catch (cause) {
             if (!disposed) {
@@ -128,15 +135,19 @@ export function BrowserProviderSurface({
           return;
         }
         lastResizeBounds = bounds;
-        setProviderRuntime(provider.id, {
-          pageStatus: 'opening',
-          toolBridgeStatus: provider.toolBridgeStatus,
-        });
         void openLatestBounds(bounds);
       });
     };
     synchronizeRef.current = synchronize;
 
+    if (
+      browserChatStore.getState().providerRuntime[provider.id]?.pageStatus !== 'ready'
+    ) {
+      setProviderRuntime(provider.id, {
+        pageStatus: 'opening',
+        toolBridgeStatus: provider.toolBridgeStatus,
+      });
+    }
     synchronize();
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => synchronize());
@@ -165,8 +176,21 @@ export function BrowserProviderSurface({
   }, [provider, runtime, setProviderRuntime]);
 
   React.useEffect(() => {
+    const previous = navigationTargetRef.current;
+    if (previous.providerId === provider.id && previous.navigationUrl === navigationUrl) return;
+    navigationTargetRef.current = { providerId: provider.id, navigationUrl };
+    const providerChanged = previous.providerId !== provider.id;
+    if (
+      !providerChanged ||
+      browserChatStore.getState().providerRuntime[provider.id]?.pageStatus !== 'ready'
+    ) {
+      setProviderRuntime(provider.id, {
+        pageStatus: 'opening',
+        toolBridgeStatus: provider.toolBridgeStatus,
+      });
+    }
     synchronizeRef.current?.(true);
-  }, [navigationUrl]);
+  }, [navigationUrl, provider.id, provider.toolBridgeStatus, setProviderRuntime]);
 
   return (
     <div
