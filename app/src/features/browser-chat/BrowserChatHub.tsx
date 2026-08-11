@@ -198,7 +198,9 @@ export function BrowserChatHub({
   );
   const projectRoot = getStoredProjectRoot(projectId);
   const activeWorkspaceGrant =
-    workspaceGrant?.accountId === cloudAccountId && workspaceGrant.projectId === projectId
+    workspaceGrant?.accountId === cloudAccountId &&
+    workspaceGrant.workspaceId === bindingWorkspaceId &&
+    workspaceGrant.projectId === projectId
       ? workspaceGrant
       : null;
   const relayStatus = React.useSyncExternalStore(
@@ -456,7 +458,7 @@ export function BrowserChatHub({
 
   React.useEffect(() => {
     setProjectGrantRevoked(false);
-  }, [cloudAccountId, projectId]);
+  }, [bindingWorkspaceId, cloudAccountId, projectId]);
 
   React.useEffect(
     () => () => {
@@ -468,12 +470,14 @@ export function BrowserChatHub({
   React.useEffect(() => {
     if (
       workspaceGrant &&
-      (workspaceGrant.accountId !== cloudAccountId || workspaceGrant.projectId !== projectId)
+      (workspaceGrant.accountId !== cloudAccountId ||
+        workspaceGrant.workspaceId !== bindingWorkspaceId ||
+        workspaceGrant.projectId !== projectId)
     ) {
       revokeBrowserChatWorkspace();
       setBridgeWorkspaceGrant();
     }
-  }, [cloudAccountId, projectId, workspaceGrant]);
+  }, [bindingWorkspaceId, cloudAccountId, projectId, workspaceGrant]);
 
   React.useEffect(() => {
     let active = true;
@@ -492,7 +496,7 @@ export function BrowserChatHub({
           stored ?? {
             version: 1,
             accountId: permissionScope.accountId,
-            workspaceId: permissionScope.projectId,
+            workspaceId: permissionScope.workspaceId,
             plan: 'read',
             overrides: {},
             updatedAt: Date.now(),
@@ -514,6 +518,7 @@ export function BrowserChatHub({
       setBridgeWorkspaceGrant({
         id: grant.id,
         accountId: grant.accountId,
+        workspaceId: grant.workspaceId,
         projectId: grant.projectId,
         root: grant.canonicalRoot,
         displayName: grant.displayName,
@@ -777,7 +782,7 @@ export function BrowserChatHub({
   };
 
   const approveProjectRead = () => {
-    if (!cloudAccountId || !projectId || !projectRoot) {
+    if (!cloudAccountId || !bindingWorkspaceId || !projectId || !projectRoot) {
       toast.error(
         'Project access is unavailable',
         'Select a signed-in account and a project folder before enabling the local relay.',
@@ -787,6 +792,7 @@ export function BrowserChatHub({
     try {
       const grant = grantBrowserChatWorkspace({
         accountId: cloudAccountId,
+        workspaceId: bindingWorkspaceId,
         projectId,
         root: projectRoot,
         displayName: basename(projectRoot),
@@ -795,6 +801,7 @@ export function BrowserChatHub({
       setBridgeWorkspaceGrant({
         id: grant.id,
         accountId: grant.accountId,
+        workspaceId: grant.workspaceId,
         projectId: grant.projectId,
         root: grant.canonicalRoot,
         displayName: grant.displayName,

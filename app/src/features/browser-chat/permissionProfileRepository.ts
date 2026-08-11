@@ -23,11 +23,7 @@ function normalizeScope(
   const accountId = input.accountId.trim();
   const workspaceId = input.workspaceId.trim();
   const projectId = input.projectId.trim();
-  if (
-    !SAFE_SCOPE.test(accountId) ||
-    !SAFE_SCOPE.test(workspaceId) ||
-    !SAFE_SCOPE.test(projectId)
-  ) {
+  if (!SAFE_SCOPE.test(accountId) || !SAFE_SCOPE.test(workspaceId) || !SAFE_SCOPE.test(projectId)) {
     throw new Error('browser_chat_permission_profile_scope_invalid');
   }
   return { accountId, workspaceId, projectId };
@@ -38,7 +34,7 @@ function validateProfileForScope(
   scope: BrowserChatPermissionProfileScope,
   updatedAt: number,
 ): BrowserChatPermissionProfile {
-  if (profile.accountId !== scope.accountId || profile.workspaceId !== scope.projectId) {
+  if (profile.accountId !== scope.accountId || profile.workspaceId !== scope.workspaceId) {
     throw new Error('browser_chat_permission_profile_scope_mismatch');
   }
   return deserializePermissionProfile(

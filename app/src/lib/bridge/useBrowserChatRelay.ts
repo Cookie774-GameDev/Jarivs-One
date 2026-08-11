@@ -18,6 +18,7 @@ interface RelayTicketRequestOptions {
 
 export interface BrowserChatRelayScope {
   readonly accountId: string;
+  readonly workspaceId: string | null;
   readonly projectId: string | null;
 }
 
@@ -132,8 +133,15 @@ export function useBrowserChatRelay(
   const [status, setStatus] = useState<BridgeStatus | 'disabled'>('disabled');
   const lifecycleGenerationRef = useRef(0);
   const authGenerationRef = useRef(0);
+  const activeScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const scopeKey = `${scope?.accountId ?? ''}\u0000${scope?.workspaceId ?? ''}\u0000${scope?.projectId ?? ''}`;
+    if (activeScopeRef.current !== null && activeScopeRef.current !== scopeKey) {
+      setBridgeWorkspaceGrant();
+      revokeBrowserChatWorkspace();
+    }
+    activeScopeRef.current = scopeKey;
     const lifecycleGeneration = ++lifecycleGenerationRef.current;
     const environment = import.meta.env as Record<string, string | undefined>;
     const cloudUrl = resolveBrowserChatCloudUrl(environment);
@@ -196,6 +204,7 @@ export function useBrowserChatRelay(
           url,
           jwt,
           accountId,
+          workspaceId: scope?.workspaceId,
           projectId: scope?.projectId,
           ...(usesTicketGateway
             ? {
@@ -255,7 +264,7 @@ export function useBrowserChatRelay(
       unsubscribe?.();
       resetBrowserChatBridgeClient();
     };
-  }, [enabled, scope?.accountId, scope?.projectId]);
+  }, [enabled, scope?.accountId, scope?.workspaceId, scope?.projectId]);
 
   return status;
 }

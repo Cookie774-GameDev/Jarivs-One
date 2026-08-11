@@ -8,6 +8,7 @@ import {
 export interface BrowserChatWorkspaceGrant {
   readonly id: string;
   readonly accountId: string;
+  readonly workspaceId: string;
   readonly projectId: string;
   readonly canonicalRoot: string;
   readonly displayName: string;
@@ -23,6 +24,7 @@ export interface BrowserChatWorkspaceGrant {
 
 interface GrantInput {
   readonly accountId: string;
+  readonly workspaceId: string;
   readonly projectId: string;
   readonly root: string;
   readonly displayName: string;
@@ -82,6 +84,7 @@ export function grantBrowserChatWorkspace(input: GrantInput): BrowserChatWorkspa
     !canonicalRoot ||
     isBlockedRoot(canonicalRoot) ||
     !SAFE_ID.test(input.accountId) ||
+    !SAFE_ID.test(input.workspaceId) ||
     !SAFE_ID.test(input.projectId)
   ) {
     throw new Error('This folder cannot be granted to Browser Chat.');
@@ -96,7 +99,7 @@ export function grantBrowserChatWorkspace(input: GrantInput): BrowserChatWorkspa
       : {
           version: 1,
           accountId: input.accountId,
-          workspaceId: input.projectId,
+          workspaceId: input.workspaceId,
           plan: 'read',
           overrides: {},
           updatedAt: timestamp,
@@ -106,13 +109,14 @@ export function grantBrowserChatWorkspace(input: GrantInput): BrowserChatWorkspa
   }
   if (
     permissionProfile.accountId !== input.accountId ||
-    permissionProfile.workspaceId !== input.projectId
+    permissionProfile.workspaceId !== input.workspaceId
   ) {
     throw new Error('This Browser Chat permission profile scope does not match the project.');
   }
   currentGrant = Object.freeze({
     id: grantId(),
     accountId: input.accountId,
+    workspaceId: input.workspaceId,
     projectId: input.projectId,
     canonicalRoot,
     displayName,
@@ -147,7 +151,7 @@ export function updateBrowserChatWorkspacePermissionProfile(
   }
   if (
     validated.accountId !== currentGrant.accountId ||
-    validated.workspaceId !== currentGrant.projectId
+    validated.workspaceId !== currentGrant.workspaceId
   ) {
     throw new Error('Browser Chat permission profile scope does not match the workspace grant.');
   }

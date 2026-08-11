@@ -12,6 +12,7 @@ describe('Browser Chat workspace grant', () => {
   it('creates one read-only, session-only grant for an explicit project root', () => {
     const grant = grantBrowserChatWorkspace({
       accountId: 'account-1',
+      workspaceId: 'workspace-1',
       projectId: 'project-1',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
@@ -19,6 +20,7 @@ describe('Browser Chat workspace grant', () => {
 
     expect(grant).toMatchObject({
       accountId: 'account-1',
+      workspaceId: 'workspace-1',
       projectId: 'project-1',
       canonicalRoot: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
@@ -31,7 +33,7 @@ describe('Browser Chat workspace grant', () => {
       permissionProfile: {
         version: 1,
         accountId: 'account-1',
-        workspaceId: 'project-1',
+        workspaceId: 'workspace-1',
         plan: 'read',
         overrides: {},
       },
@@ -50,6 +52,7 @@ describe('Browser Chat workspace grant', () => {
     expect(() =>
       grantBrowserChatWorkspace({
         accountId: 'account-1',
+        workspaceId: 'workspace-1',
         projectId: 'project-1',
         root,
         displayName: 'Unsafe',
@@ -63,6 +66,7 @@ describe('Browser Chat workspace grant', () => {
 
     grantBrowserChatWorkspace({
       accountId: 'account-1',
+      workspaceId: 'workspace-1',
       projectId: 'project-1',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
@@ -77,6 +81,7 @@ describe('Browser Chat workspace grant', () => {
   it('updates only a matching grant profile and preserves the approved root and grant id', () => {
     const grant = grantBrowserChatWorkspace({
       accountId: 'account-1',
+      workspaceId: 'workspace-1',
       projectId: 'project-1',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',

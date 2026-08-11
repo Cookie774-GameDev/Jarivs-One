@@ -7,9 +7,11 @@ import { useBrowserChatRelay } from './useBrowserChatRelay';
 
 export function VibeSpaceMcpRuntimeHost() {
   const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id.trim() ?? '');
+  const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
   const relayStatus = useBrowserChatRelay(Boolean(cloudAccountId), {
     accountId: cloudAccountId,
+    workspaceId: workspaceId ? String(workspaceId) : null,
     projectId: projectId ? String(projectId) : null,
   });
 

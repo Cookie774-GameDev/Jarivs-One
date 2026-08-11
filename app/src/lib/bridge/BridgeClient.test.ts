@@ -76,7 +76,7 @@ function permissionProfile(
   return {
     version: 1,
     accountId: 'account-a',
-    workspaceId: 'project-a',
+    workspaceId: 'workspace-a',
     plan,
     overrides: {},
     updatedAt: 1,
@@ -88,6 +88,7 @@ describe('Browser Chat read-only bridge protocol', () => {
     setBridgeWorkspaceGrant({
       id: 'grant_1234567890abcdef',
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
@@ -95,13 +96,15 @@ describe('Browser Chat read-only bridge protocol', () => {
     expect(getBridgeWorkspaceGrant()).toEqual({
       id: 'grant_1234567890abcdef',
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
     });
-    expect(getBridgeWorkspaceGrant('account-b', 'project-a')).toBeUndefined();
-    expect(getBridgeWorkspaceGrant('account-a', 'project-b')).toBeUndefined();
-    expect(getBridgeWorkspaceGrant('account-a', 'project-a')).toMatchObject({
+    expect(getBridgeWorkspaceGrant('account-b', 'workspace-a', 'project-a')).toBeUndefined();
+    expect(getBridgeWorkspaceGrant('account-a', 'workspace-b', 'project-a')).toBeUndefined();
+    expect(getBridgeWorkspaceGrant('account-a', 'workspace-a', 'project-b')).toBeUndefined();
+    expect(getBridgeWorkspaceGrant('account-a', 'workspace-a', 'project-a')).toMatchObject({
       root: 'C:\\Users\\viper\\Projects\\Safe',
     });
     setBridgeWorkspaceGrant();
@@ -161,6 +164,7 @@ describe('Browser Chat read-only bridge protocol', () => {
           id: 'grant_1234567890abcdef',
           displayName: 'Safe',
           accountId: 'account-a',
+          workspaceId: 'workspace-a',
           projectId: 'project-a',
           permissionProfile: profile,
         },
@@ -408,10 +412,12 @@ describe('BridgeClient connection ownership and liveness', () => {
       jwt: 'jwt',
       mode: 'browser_chat',
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
       workspaceGrant: {
         id: 'grant_1234567890abcdef',
         accountId: 'account-a',
+        workspaceId: 'workspace-a',
         projectId: 'project-a',
         root: 'C:\\Users\\viper\\Projects\\Safe',
         displayName: 'Safe',
@@ -547,6 +553,7 @@ describe('BridgeClient connection ownership and liveness', () => {
     const baseGrant = {
       id: 'grant_1234567890abcdef',
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
@@ -556,6 +563,7 @@ describe('BridgeClient connection ownership and liveness', () => {
       jwt: 'jwt',
       mode: 'browser_chat',
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
       workspaceGrant: {
         ...baseGrant,

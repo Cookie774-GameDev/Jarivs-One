@@ -882,6 +882,7 @@ describe('BrowserChatHub', () => {
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toMatchObject({
       accountId: 'account-1',
+      workspaceId: 'workspace-1',
       projectId: 'project-1',
       canonicalRoot: 'C:\\Users\\viper\\Projects\\Safe',
       readAllowed: true,
@@ -889,6 +890,7 @@ describe('BrowserChatHub', () => {
       terminalAllowed: false,
     });
     expect(getBridgeWorkspaceGrant()).toMatchObject({
+      workspaceId: 'workspace-1',
       root: 'C:\\Users\\viper\\Projects\\Safe',
       displayName: 'Safe',
     });

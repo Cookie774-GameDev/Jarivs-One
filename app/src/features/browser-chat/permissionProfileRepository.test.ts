@@ -17,7 +17,7 @@ function profile(
   return {
     version: 1,
     accountId: SCOPE.accountId,
-    workspaceId: SCOPE.projectId,
+    workspaceId: SCOPE.workspaceId,
     plan,
     overrides,
     updatedAt: 1,
@@ -58,7 +58,7 @@ describe('Browser Chat permission profile repository', () => {
     await expect(repo.get(SCOPE)).resolves.toMatchObject({
       plan: 'read',
       accountId: SCOPE.accountId,
-      workspaceId: SCOPE.projectId,
+      workspaceId: SCOPE.workspaceId,
     });
     await expect(repo.get({ ...SCOPE, accountId: 'account-b' })).resolves.toBeUndefined();
     await expect(repo.get({ ...SCOPE, workspaceId: 'workspace-b' })).resolves.toBeUndefined();
@@ -97,9 +97,9 @@ describe('Browser Chat permission profile repository', () => {
       },
     });
 
-    await expect(
-      repo.save(SCOPE, { ...profile('read'), accountId: 'account-b' }),
-    ).rejects.toThrow('browser_chat_permission_profile_scope_mismatch');
+    await expect(repo.save(SCOPE, { ...profile('read'), accountId: 'account-b' })).rejects.toThrow(
+      'browser_chat_permission_profile_scope_mismatch',
+    );
     await expect(
       repo.save(SCOPE, {
         ...profile('custom'),
@@ -111,10 +111,7 @@ describe('Browser Chat permission profile repository', () => {
   it('revokes only the exact persisted profile', async () => {
     const repo = repository();
     await repo.save(SCOPE, profile('read'));
-    await repo.save(
-      { ...SCOPE, projectId: 'project-b' },
-      { ...profile('off'), workspaceId: 'project-b' },
-    );
+    await repo.save({ ...SCOPE, projectId: 'project-b' }, profile('off'));
 
     await expect(repo.remove(SCOPE)).resolves.toBe(true);
     await expect(repo.get(SCOPE)).resolves.toBeUndefined();

@@ -2,7 +2,7 @@ import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAuthStore } from '@/stores/auth';
-import type { ProjectId } from '@/types/common';
+import type { ProjectId, WorkspaceId } from '@/types/common';
 import type { BrowserChatRelayStatus } from './browserChatRelayStatus';
 import { browserChatRelayStatusStore, resetBrowserChatRelayStatus } from './browserChatRelayStatus';
 import { VibeSpaceMcpRuntimeHost } from './VibeSpaceMcpRuntimeHost';
@@ -28,6 +28,7 @@ describe('VibeSpaceMcpRuntimeHost', () => {
     mocks.status = 'connected';
     resetBrowserChatRelayStatus();
     useAuthStore.setState({
+      workspaceId: 'workspace-a' as WorkspaceId,
       projectId: 'project-a' as ProjectId,
       cloudSession: {
         user_id: 'account-a',
@@ -42,6 +43,7 @@ describe('VibeSpaceMcpRuntimeHost', () => {
 
     expect(mocks.useRelay).toHaveBeenCalledWith(true, {
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
     });
     expect(browserChatRelayStatusStore.getSnapshot()).toBe('connected');

@@ -60,12 +60,14 @@ export interface BridgeWorkspaceGrantMetadata {
   id: string;
   displayName: string;
   accountId?: string;
+  workspaceId?: string;
   projectId?: string;
   permissionProfile?: BrowserChatPermissionProfile;
 }
 
 export interface BridgeWorkspaceGrant extends BridgeWorkspaceGrantMetadata {
   accountId: string;
+  workspaceId: string;
   projectId: string;
   root: string;
 }
@@ -122,6 +124,7 @@ export interface BridgeClientOptions {
   workspaceGrant?: BridgeWorkspaceGrant;
   /** Exact signed-in account and active project allowed to use the grant. */
   accountId?: string;
+  workspaceId?: string | null;
   projectId?: string | null;
   /** Phone/Voice is the compatibility default; Browser Chat is isolated. */
   mode?: 'phone_voice' | 'browser_chat';
@@ -177,12 +180,14 @@ function safeWorkspaceGrant(
   const root = safeWorkspaceRoot(grant?.root);
   const id = grant?.id.trim() ?? '';
   const accountId = grant?.accountId.trim() ?? '';
+  const workspaceId = grant?.workspaceId.trim() ?? '';
   const projectId = grant?.projectId.trim() ?? '';
   const displayName = grant?.displayName.trim() ?? '';
   if (
     !root ||
     !SAFE_IDENTIFIER.test(id) ||
     !SAFE_SCOPE_IDENTIFIER.test(accountId) ||
+    !SAFE_SCOPE_IDENTIFIER.test(workspaceId) ||
     !SAFE_SCOPE_IDENTIFIER.test(projectId) ||
     !displayName ||
     displayName.length > 120 ||
@@ -190,11 +195,12 @@ function safeWorkspaceGrant(
   ) {
     return undefined;
   }
-  const permissionProfile = safePermissionProfile(grant.permissionProfile, accountId, projectId);
+  const permissionProfile = safePermissionProfile(grant.permissionProfile, accountId, workspaceId);
   if (grant.permissionProfile && !permissionProfile) return undefined;
   return {
     id,
     accountId,
+    workspaceId,
     projectId,
     root,
     displayName,
@@ -205,12 +211,12 @@ function safeWorkspaceGrant(
 function safePermissionProfile(
   profile: BrowserChatPermissionProfile | undefined,
   accountId: string | undefined,
-  projectId: string | undefined,
+  workspaceId: string | undefined,
 ): BrowserChatPermissionProfile | undefined {
   if (!profile) return undefined;
   try {
     const validated = deserializePermissionProfile(serializePermissionProfile(profile));
-    return validated.accountId === accountId && validated.workspaceId === projectId
+    return validated.accountId === accountId && validated.workspaceId === workspaceId
       ? validated
       : undefined;
   } catch {
@@ -231,13 +237,16 @@ function readToolAllowed(
 function grantMatchesScope(
   grant: BridgeWorkspaceGrant | undefined,
   accountId: string | undefined,
+  workspaceId: string | null | undefined,
   projectId: string | null | undefined,
 ): grant is BridgeWorkspaceGrant {
   return Boolean(
     grant &&
     accountId &&
+    workspaceId &&
     projectId &&
     grant.accountId === accountId &&
+    grant.workspaceId === workspaceId &&
     grant.projectId === projectId,
   );
 }
@@ -321,7 +330,7 @@ export function buildBridgeRegistrationFrame(options: BridgeRegistrationOptions)
   const permissionProfile = safePermissionProfile(
     options.workspaceGrant?.permissionProfile,
     options.workspaceGrant?.accountId,
-    options.workspaceGrant?.projectId,
+    options.workspaceGrant?.workspaceId,
   );
   const permissionProfileInvalid =
     Boolean(options.workspaceGrant?.permissionProfile) && !permissionProfile;
@@ -530,11 +539,19 @@ export class BridgeClient {
   /** Apply or revoke the current explicit session-only read grant. */
   setWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): void {
     const normalized = safeWorkspaceGrant(workspaceGrant);
-    const scoped = grantMatchesScope(normalized, this.opts.accountId, this.opts.projectId)
+    const scoped = grantMatchesScope(
+      normalized,
+      this.opts.accountId,
+      this.opts.workspaceId,
+      this.opts.projectId,
+    )
       ? normalized
       : undefined;
     if (
       this.opts.workspaceGrant?.id === scoped?.id &&
+      this.opts.workspaceGrant?.accountId === scoped?.accountId &&
+      this.opts.workspaceGrant?.workspaceId === scoped?.workspaceId &&
+      this.opts.workspaceGrant?.projectId === scoped?.projectId &&
       this.opts.workspaceGrant?.root === scoped?.root &&
       this.opts.workspaceGrant?.displayName === scoped?.displayName &&
       JSON.stringify(this.opts.workspaceGrant?.permissionProfile) ===
@@ -1020,7 +1037,12 @@ export function getBrowserChatBridgeClient(opts?: BridgeClientOptions): BridgeCl
     browserChatSingleton = new BridgeClient({
       ...opts,
       mode: 'browser_chat',
-      workspaceGrant: grantMatchesScope(requestedGrant, opts.accountId, opts.projectId)
+      workspaceGrant: grantMatchesScope(
+        requestedGrant,
+        opts.accountId,
+        opts.workspaceId,
+        opts.projectId,
+      )
         ? requestedGrant
         : undefined,
     });
@@ -1044,11 +1066,13 @@ export function setBridgeWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): 
 
 export function getBridgeWorkspaceGrant(
   accountId?: string,
+  workspaceId?: string | null,
   projectId?: string | null,
 ): BridgeWorkspaceGrant | undefined {
   if (
     pendingWorkspaceGrant &&
-    (accountId === undefined || grantMatchesScope(pendingWorkspaceGrant, accountId, projectId))
+    (accountId === undefined ||
+      grantMatchesScope(pendingWorkspaceGrant, accountId, workspaceId, projectId))
   ) {
     return { ...pendingWorkspaceGrant };
   }
