@@ -10,6 +10,10 @@ import {
 } from './providerRegistry';
 import { CHATGPT_APPS_URL } from './mcpConnection';
 import { normalizeProviderNavigation, type ProviderNavigationKind } from './providerNavigation';
+import {
+  isBrowserChatAccountProfileKey,
+  type BrowserChatAccountProfileKey,
+} from './providerProfileScope';
 
 export interface ProviderSurfaceBounds {
   readonly x: number;
@@ -31,6 +35,7 @@ export interface ManagedProviderSurface {
 export interface NativeProviderSurfaceNavigation {
   readonly providerId: string;
   readonly surfaceId: string;
+  readonly accountProfileKey: string;
   readonly url: string;
   readonly timestamp: number;
   readonly kind: string;
@@ -39,6 +44,7 @@ export interface NativeProviderSurfaceNavigation {
 export interface ProviderSurfaceNavigation {
   readonly providerId: BrowserChatProviderId;
   readonly surfaceId: string;
+  readonly accountProfileKey: BrowserChatAccountProfileKey;
   readonly url: string;
   readonly timestamp: number;
   readonly kind: ProviderNavigationKind;
@@ -65,6 +71,7 @@ export interface ProviderSurfaceController {
     provider: BrowserChatProviderDefinition,
     bounds: ProviderSurfaceBounds,
     navigationUrl?: string,
+    accountProfileKey?: BrowserChatAccountProfileKey,
   ): Promise<
     | { kind: 'managed'; providerId: BrowserChatProviderId }
     | { kind: 'system_browser'; providerId: BrowserChatProviderId }
@@ -85,11 +92,14 @@ export type NativeBrowserChatInvoke = (
 ) => Promise<unknown>;
 
 export function createNativeManagedProviderSurface(
-  label: string,
+  surfaceKey: string,
   invoke: NativeBrowserChatInvoke,
 ): ManagedProviderSurface {
+  const separator = surfaceKey.lastIndexOf(':');
+  const label = separator >= 0 ? surfaceKey.slice(0, separator) : '';
+  const accountProfileKey = separator >= 0 ? surfaceKey.slice(separator + 1) : '';
   const provider = BROWSER_CHAT_PROVIDERS.find((candidate) => candidate.windowLabel === label);
-  if (!provider) {
+  if (!provider || !isBrowserChatAccountProfileKey(accountProfileKey)) {
     throw new Error('Unsupported Browser Chat provider window label.');
   }
   let bounds: ProviderSurfaceBounds = {
@@ -107,6 +117,7 @@ export function createNativeManagedProviderSurface(
       await invoke('browser_chat_surface_open', {
         providerId: provider.id,
         bounds,
+        accountProfileKey,
         ...(navigationUrl ? { navigationUrl } : {}),
       });
       navigationUrl = undefined;
@@ -114,6 +125,7 @@ export function createNativeManagedProviderSurface(
     async hide() {
       await invoke('browser_chat_surface_hide', {
         providerId: provider.id,
+        accountProfileKey,
       });
     },
     async navigate(url) {
@@ -150,22 +162,26 @@ export function createProviderSurfaceController(
 ): ProviderSurfaceController {
   const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
   const lastRequestedNavigation = new Map<string, string>();
-  const hideExcept = async (selected?: BrowserChatProviderId) => {
+  const knownSurfaceKeys = new Set<string>();
+  const hideExcept = async (selectedSurfaceKey?: string) => {
     await Promise.all(
-      BROWSER_CHAT_PROVIDERS.filter((provider) => provider.id !== selected).map(
-        async (provider) => {
-          const surface = await platform.getSurface(provider.windowLabel);
+      [...knownSurfaceKeys]
+        .filter((surfaceKey) => surfaceKey !== selectedSurfaceKey)
+        .map(async (surfaceKey) => {
+          const surface = await platform.getSurface(surfaceKey);
           if (surface) await surface.hide();
-        },
-      ),
+        }),
     );
   };
 
   return {
-    async openManaged(provider, bounds, navigationUrl = provider.homeUrl) {
+    async openManaged(provider, bounds, navigationUrl = provider.homeUrl, accountProfileKey) {
       assertBounds(bounds);
       if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
         throw new Error('Unsupported Browser Chat provider definition.');
+      }
+      if (!isBrowserChatAccountProfileKey(accountProfileKey)) {
+        throw new Error('Browser Chat account profile is unavailable.');
       }
       const normalized = normalizeProviderNavigation(provider.id, navigationUrl);
       if (!normalized) {
@@ -177,22 +193,23 @@ export function createProviderSurfaceController(
         return { kind: 'system_browser', providerId: provider.id };
       }
 
-      await hideExcept(provider.id);
+      const surfaceKey = `${provider.windowLabel}:${accountProfileKey}`;
+      await hideExcept(surfaceKey);
       const relative = {
         x: bounds.x,
         y: bounds.y,
         width: bounds.width,
         height: bounds.height,
       };
-      let surface = await platform.getSurface(provider.windowLabel);
+      let surface = await platform.getSurface(surfaceKey);
       let created = false;
       if (!surface) {
-        let pending = pendingCreations.get(provider.windowLabel);
+          let pending = pendingCreations.get(surfaceKey);
         if (!pending) {
           pending = Promise.resolve(
-            platform.createSurface(provider.windowLabel, {
+            platform.createSurface(surfaceKey, {
               url: targetUrl,
-              dataDirectory: provider.profileKey,
+              dataDirectory: accountProfileKey,
               x: relative.x,
               y: relative.y,
               width: relative.width,
@@ -200,22 +217,23 @@ export function createProviderSurfaceController(
               focus: false,
             }),
           );
-          pendingCreations.set(provider.windowLabel, pending);
+          pendingCreations.set(surfaceKey, pending);
         }
         try {
           surface = await pending;
           created = true;
         } finally {
-          if (pendingCreations.get(provider.windowLabel) === pending) {
-            pendingCreations.delete(provider.windowLabel);
+          if (pendingCreations.get(surfaceKey) === pending) {
+            pendingCreations.delete(surfaceKey);
           }
         }
       }
-      if (lastRequestedNavigation.get(provider.windowLabel) !== targetUrl) {
+      knownSurfaceKeys.add(surfaceKey);
+      if (lastRequestedNavigation.get(surfaceKey) !== targetUrl) {
         if (!created) {
           await surface.navigate(targetUrl);
         }
-        lastRequestedNavigation.set(provider.windowLabel, targetUrl);
+        lastRequestedNavigation.set(surfaceKey, targetUrl);
       }
       await surface.setPosition({ x: relative.x, y: relative.y });
       await surface.setSize({ width: relative.width, height: relative.height });
@@ -259,6 +277,7 @@ export function createProviderSurfaceController(
         (await platform.subscribeNavigation?.((event) => {
           if (
             !isBrowserChatProviderId(event.providerId) ||
+            !isBrowserChatAccountProfileKey(event.accountProfileKey) ||
             !Number.isFinite(event.timestamp) ||
             event.timestamp < 0
           ) {
@@ -270,10 +289,14 @@ export function createProviderSurfaceController(
           if (!provider || event.surfaceId !== provider.windowLabel) return;
           const normalized = normalizeProviderNavigation(event.providerId, event.url);
           if (!normalized || normalized.kind !== event.kind) return;
-          lastRequestedNavigation.set(provider.windowLabel, normalized.normalizedUrl);
+          lastRequestedNavigation.set(
+            `${provider.windowLabel}:${event.accountProfileKey}`,
+            normalized.normalizedUrl,
+          );
           listener({
             providerId: event.providerId,
             surfaceId: event.surfaceId,
+            accountProfileKey: event.accountProfileKey,
             url: normalized.normalizedUrl,
             timestamp: event.timestamp,
             kind: normalized.kind,
@@ -356,8 +379,13 @@ async function controller(): Promise<ProviderSurfaceController> {
 }
 
 export const browserChatSurface: ProviderSurfaceController = {
-  async openManaged(provider, bounds, navigationUrl) {
-    return (await controller()).openManaged(provider, bounds, navigationUrl);
+  async openManaged(provider, bounds, navigationUrl, accountProfileKey) {
+    return (await controller()).openManaged(
+      provider,
+      bounds,
+      navigationUrl,
+      accountProfileKey,
+    );
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);

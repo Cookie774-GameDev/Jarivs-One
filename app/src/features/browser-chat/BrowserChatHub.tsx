@@ -82,6 +82,10 @@ import {
   type BrowserChatMcpSetupState,
 } from './browserChatStatusModel';
 import { listBrowserChatOutputFeed, type BrowserChatOutputFeed } from './browserChatOutputFeed';
+import {
+  getOrCreateBrowserChatAccountProfileKey,
+  scopedProviderProfileKey,
+} from './providerProfileScope';
 
 const BROWSER_CHAT_EXECUTABLE_CAPABILITIES = new Set<BrowserChatCapabilityId>([
   'files.list',
@@ -176,6 +180,17 @@ export function BrowserChatHub({
   );
   const accountId = bindingScope?.accountId ?? authenticatedAccountId;
   const bindingWorkspaceId = bindingScope?.workspaceId ?? (workspaceId ? String(workspaceId) : '');
+  const accountProfileKey = React.useMemo(() => {
+    if (!accountId) return null;
+    try {
+      return getOrCreateBrowserChatAccountProfileKey(accountId);
+    } catch {
+      return null;
+    }
+  }, [accountId]);
+  const currentProviderProfileKey = accountProfileKey
+    ? scopedProviderProfileKey(provider.profileKey, accountProfileKey)
+    : null;
   const workspaceGrant = React.useSyncExternalStore(
     browserChatWorkspaceGrantStore.subscribe,
     browserChatWorkspaceGrantStore.getSnapshot,
@@ -564,14 +579,14 @@ export function BrowserChatHub({
       forceNew: true,
       title: `${provider.label} browser chat`,
     });
-    if (!nextId || !accountId || !bindingWorkspaceId) return;
+    if (!nextId || !accountId || !bindingWorkspaceId || !currentProviderProfileKey) return;
     await bindingRepository.create({
       accountId,
       workspaceId: bindingWorkspaceId,
       projectId: projectId ? String(projectId) : undefined,
       chatId: String(nextId),
       provider: provider.id,
-      providerProfileKey: provider.profileKey,
+      providerProfileKey: currentProviderProfileKey,
       localTitle: `${provider.label} browser chat`,
     });
     setEngine('browser', nextId);
@@ -584,6 +599,7 @@ export function BrowserChatHub({
       !navigation?.providerConversationKey ||
       !accountId ||
       !bindingWorkspaceId ||
+      !accountProfileKey ||
       savingProviderNavigation
     ) {
       return;
@@ -604,7 +620,10 @@ export function BrowserChatHub({
         projectId: projectId ? String(projectId) : undefined,
         chatId: String(nextId),
         provider: navigation.providerId,
-        providerProfileKey: providerDefinition.profileKey,
+        providerProfileKey: scopedProviderProfileKey(
+          providerDefinition.profileKey,
+          accountProfileKey,
+        ),
         providerConversationKey: navigation.providerConversationKey,
         resumeUrl: navigation.url,
         providerProjectKey: navigation.providerProjectKey,
@@ -723,7 +742,8 @@ export function BrowserChatHub({
       const existingSession = sessions.find(
         ({ binding }) =>
           binding.provider === navigation.providerId &&
-          binding.providerProfileKey === browserChatProvider(navigation.providerId).profileKey &&
+          binding.providerProfileKey ===
+            (activeBinding?.providerProfileKey ?? currentProviderProfileKey) &&
           binding.providerConversationKey === navigation.providerConversationKey,
       );
       if (existingSession) {
@@ -1353,12 +1373,22 @@ export function BrowserChatHub({
           </aside>
         ) : null}
 
-        <BrowserProviderSurface
-          key={provider.id}
-          provider={provider}
-          navigationUrl={activeBinding?.resumeUrl ?? provider.homeUrl}
-          onNavigation={captureProviderNavigation}
-        />
+        {accountProfileKey ? (
+          <BrowserProviderSurface
+            key={`${provider.id}:${accountProfileKey}`}
+            provider={provider}
+            accountProfileKey={accountProfileKey}
+            navigationUrl={activeBinding?.resumeUrl ?? provider.homeUrl}
+            onNavigation={captureProviderNavigation}
+          />
+        ) : (
+          <div
+            role="status"
+            className="grid min-h-[22rem] place-items-center rounded-xl border border-border bg-background p-8 text-center text-xs text-muted-foreground"
+          >
+            Select a valid VibeSpace account before opening a provider profile.
+          </div>
+        )}
 
         {presentationMode === 'vibespace' ? (
           <aside

@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserChatProvider } from './providerRegistry';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
 import { browserChatStore } from './browserChatStore';
+import type { BrowserChatAccountProfileKey } from './providerProfileScope';
+
+const ACCOUNT_PROFILE_KEY = `profile_${'a'.repeat(64)}` as const;
+const OTHER_ACCOUNT_PROFILE_KEY = `profile_${'b'.repeat(64)}` as const;
 
 describe('BrowserProviderSurface', () => {
   afterEach(() => {
@@ -44,7 +48,11 @@ describe('BrowserProviderSurface', () => {
       }),
     };
     const rendered = render(
-      <BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />,
+      <BrowserProviderSurface
+        provider={browserChatProvider('chatgpt')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
+        runtime={runtime}
+      />,
     );
 
     expect(screen.getByLabelText('ChatGPT provider surface')).toBeTruthy();
@@ -86,7 +94,13 @@ describe('BrowserProviderSurface', () => {
       }),
     };
 
-    render(<BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />);
+    render(
+      <BrowserProviderSurface
+        provider={browserChatProvider('chatgpt')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
+        runtime={runtime}
+      />,
+    );
     await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
 
     hostGeometryListener?.();
@@ -116,6 +130,7 @@ describe('BrowserProviderSurface', () => {
     const rendered = render(
       <BrowserProviderSurface
         provider={browserChatProvider('chatgpt')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
         navigationUrl="https://chatgpt.com/c/saved-conversation"
         runtime={runtime}
       />,
@@ -126,6 +141,7 @@ describe('BrowserProviderSurface', () => {
         expect.objectContaining({ id: 'chatgpt' }),
         expect.objectContaining({ width: 900, height: 640 }),
         'https://chatgpt.com/c/saved-conversation',
+        ACCOUNT_PROFILE_KEY,
       ),
     );
 
@@ -133,6 +149,7 @@ describe('BrowserProviderSurface', () => {
     rendered.rerender(
       <BrowserProviderSurface
         provider={browserChatProvider('chatgpt')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
         navigationUrl="https://chatgpt.com/c/other-conversation"
         runtime={runtime}
       />,
@@ -143,6 +160,7 @@ describe('BrowserProviderSurface', () => {
         expect.objectContaining({ id: 'chatgpt' }),
         expect.objectContaining({ width: 900, height: 640 }),
         'https://chatgpt.com/c/other-conversation',
+        ACCOUNT_PROFILE_KEY,
       ),
     );
     expect(runtime.hideAll).not.toHaveBeenCalled();
@@ -158,7 +176,13 @@ describe('BrowserProviderSurface', () => {
       openExternalNavigation: vi.fn(async () => undefined),
       openChatGptPlugins: vi.fn(async () => undefined),
     };
-    render(<BrowserProviderSurface provider={browserChatProvider('claude')} runtime={runtime} />);
+    render(
+      <BrowserProviderSurface
+        provider={browserChatProvider('claude')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
+        runtime={runtime}
+      />,
+    );
 
     expect(await screen.findByText(/managed provider surface is unavailable/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /open claude in system browser/i })).toBeTruthy();
@@ -169,6 +193,7 @@ describe('BrowserProviderSurface', () => {
       | ((navigation: {
           providerId: 'chatgpt' | 'claude';
           surfaceId: string;
+          accountProfileKey: BrowserChatAccountProfileKey;
           url: string;
           timestamp: number;
           kind: 'conversation';
@@ -193,6 +218,7 @@ describe('BrowserProviderSurface', () => {
     render(
       <BrowserProviderSurface
         provider={browserChatProvider('chatgpt')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
         runtime={runtime}
         onNavigation={onNavigation}
       />,
@@ -200,8 +226,18 @@ describe('BrowserProviderSurface', () => {
     await waitFor(() => expect(runtime.subscribeNavigation).toHaveBeenCalledOnce());
 
     navigationListener?.({
+      providerId: 'chatgpt',
+      surfaceId: 'browser-chat-chatgpt',
+      accountProfileKey: OTHER_ACCOUNT_PROFILE_KEY,
+      url: 'https://chatgpt.com/c/wrong-account',
+      timestamp: 1,
+      kind: 'conversation',
+      providerConversationKey: 'wrong-account',
+    });
+    navigationListener?.({
       providerId: 'claude',
       surfaceId: 'browser-chat-claude',
+      accountProfileKey: ACCOUNT_PROFILE_KEY,
       url: 'https://claude.ai/chat/other',
       timestamp: 1,
       kind: 'conversation',
@@ -210,6 +246,7 @@ describe('BrowserProviderSurface', () => {
     navigationListener?.({
       providerId: 'chatgpt',
       surfaceId: 'browser-chat-chatgpt',
+      accountProfileKey: ACCOUNT_PROFILE_KEY,
       url: 'https://chatgpt.com/c/current',
       timestamp: 2,
       kind: 'conversation',
@@ -228,6 +265,7 @@ describe('BrowserProviderSurface', () => {
       | ((navigation: {
           providerId: 'chatgpt';
           surfaceId: string;
+          accountProfileKey: typeof ACCOUNT_PROFILE_KEY;
           url: string;
           timestamp: number;
           kind: 'conversation';
@@ -256,6 +294,7 @@ describe('BrowserProviderSurface', () => {
     render(
       <BrowserProviderSurface
         provider={browserChatProvider('chatgpt')}
+        accountProfileKey={ACCOUNT_PROFILE_KEY}
         navigationUrl="https://chatgpt.com/c/current"
         runtime={runtime}
       />,
@@ -267,6 +306,7 @@ describe('BrowserProviderSurface', () => {
     navigationListener?.({
       providerId: 'chatgpt',
       surfaceId: 'browser-chat-chatgpt',
+      accountProfileKey: ACCOUNT_PROFILE_KEY,
       url: 'https://chatgpt.com/c/current',
       timestamp: 2,
       kind: 'conversation',

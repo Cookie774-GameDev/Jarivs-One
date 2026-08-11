@@ -10,9 +10,11 @@ import {
   type ProviderSurfaceController,
   type ProviderSurfaceBounds,
 } from './providerSurface';
+import type { BrowserChatAccountProfileKey } from './providerProfileScope';
 
 interface BrowserProviderSurfaceProps {
   readonly provider: BrowserChatProviderDefinition;
+  readonly accountProfileKey: BrowserChatAccountProfileKey;
   readonly navigationUrl?: string;
   readonly runtime?: ProviderSurfaceController;
   readonly onNavigation?: (navigation: ProviderSurfaceNavigation) => void;
@@ -20,6 +22,7 @@ interface BrowserProviderSurfaceProps {
 
 export function BrowserProviderSurface({
   provider,
+  accountProfileKey,
   navigationUrl,
   runtime = browserChatSurface,
   onNavigation,
@@ -40,7 +43,11 @@ export function BrowserProviderSurface({
     let unsubscribe: (() => void) | undefined;
     void runtime
       .subscribeNavigation((navigation) => {
-        if (!disposed && navigation.providerId === provider.id) {
+        if (
+          !disposed &&
+          navigation.providerId === provider.id &&
+          navigation.accountProfileKey === accountProfileKey
+        ) {
           setProviderRuntime(provider.id, {
             pageStatus: 'ready',
             toolBridgeStatus: provider.toolBridgeStatus,
@@ -59,7 +66,13 @@ export function BrowserProviderSurface({
       disposed = true;
       unsubscribe?.();
     };
-  }, [provider.id, provider.toolBridgeStatus, runtime, setProviderRuntime]);
+  }, [
+    accountProfileKey,
+    provider.id,
+    provider.toolBridgeStatus,
+    runtime,
+    setProviderRuntime,
+  ]);
 
   React.useEffect(() => {
     const host = hostRef.current;
@@ -83,7 +96,12 @@ export function BrowserProviderSurface({
           const bounds = nextBounds;
           queuedBounds = null;
           try {
-            const result = await runtime.openManaged(provider, bounds, navigationUrlRef.current);
+            const result = await runtime.openManaged(
+              provider,
+              bounds,
+              navigationUrlRef.current,
+              accountProfileKey,
+            );
             if (!disposed) {
               setError(null);
               if (result.kind === 'system_browser') {
@@ -173,7 +191,7 @@ export function BrowserProviderSurface({
       synchronizeRef.current = null;
       void runtime.hideAll();
     };
-  }, [provider, runtime, setProviderRuntime]);
+  }, [accountProfileKey, provider, runtime, setProviderRuntime]);
 
   React.useEffect(() => {
     const previous = navigationTargetRef.current;

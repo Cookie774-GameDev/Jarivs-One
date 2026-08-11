@@ -28,10 +28,12 @@ import * as outputFeedModule from './browserChatOutputFeed';
 
 const providerSurfaceHarness = vi.hoisted(() => ({
   navigationUrl: undefined as string | undefined,
+  accountProfileKey: undefined as `profile_${string}` | undefined,
   onNavigation: undefined as
     | ((navigation: {
         providerId: 'chatgpt';
         surfaceId: string;
+        accountProfileKey: `profile_${string}`;
         url: string;
         timestamp: number;
         kind: 'conversation';
@@ -51,14 +53,17 @@ vi.mock('./chatGptExport', () => ({
 vi.mock('./BrowserProviderSurface', () => ({
   BrowserProviderSurface: ({
     provider,
+    accountProfileKey,
     navigationUrl,
     onNavigation,
   }: {
     provider: { label: string };
+    accountProfileKey: `profile_${string}`;
     navigationUrl?: string;
     onNavigation?: typeof providerSurfaceHarness.onNavigation;
   }) => {
     providerSurfaceHarness.navigationUrl = navigationUrl;
+    providerSurfaceHarness.accountProfileKey = accountProfileKey;
     providerSurfaceHarness.onNavigation = onNavigation;
     return (
       <div aria-label={`${provider.label} provider surface`}>
@@ -109,6 +114,7 @@ describe('BrowserChatHub', () => {
     vi.stubEnv('VITE_PHONE_JARVIS_CLOUD_URL', 'https://vibespace-mcp.fly.dev');
     providerSurfaceHarness.onNavigation = undefined;
     providerSurfaceHarness.navigationUrl = undefined;
+    providerSurfaceHarness.accountProfileKey = undefined;
     localStorage.clear();
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
@@ -452,6 +458,7 @@ describe('BrowserChatHub', () => {
     providerSurfaceHarness.onNavigation?.({
       providerId: 'chatgpt',
       surfaceId: 'browser-chat-chatgpt',
+      accountProfileKey: providerSurfaceHarness.accountProfileKey!,
       url: 'https://chatgpt.com/c/conversation-1',
       timestamp: 101,
       kind: 'conversation',
@@ -755,6 +762,7 @@ describe('BrowserChatHub', () => {
       providerSurfaceHarness.onNavigation?.({
         providerId: 'chatgpt',
         surfaceId: 'browser-chat-chatgpt',
+        accountProfileKey: providerSurfaceHarness.accountProfileKey!,
         url: 'https://chatgpt.com/c/conversation-b',
         timestamp: 220,
         kind: 'conversation',
@@ -827,6 +835,7 @@ describe('BrowserChatHub', () => {
       providerSurfaceHarness.onNavigation?.({
         providerId: 'chatgpt',
         surfaceId: 'browser-chat-chatgpt',
+        accountProfileKey: providerSurfaceHarness.accountProfileKey!,
         url: 'https://chatgpt.com/c/conversation-new',
         timestamp: 320,
         kind: 'conversation',
@@ -847,7 +856,7 @@ describe('BrowserChatHub', () => {
           { accountId: 'account-1', workspaceId: 'workspace-1' },
           {
             provider: 'chatgpt',
-            providerProfileKey: 'browser-chat/chatgpt',
+            providerProfileKey: `browser-chat/chatgpt/${providerSurfaceHarness.accountProfileKey!}`,
             providerConversationKey: 'conversation-new',
           },
         ),
