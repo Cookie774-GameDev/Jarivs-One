@@ -14,6 +14,7 @@ function fakeWindow(label: string): ManagedProviderSurface {
     label,
     show: vi.fn(async () => undefined),
     hide: vi.fn(async () => undefined),
+    navigate: vi.fn(async () => undefined),
     setFocus: vi.fn(async () => undefined),
     setPosition: vi.fn(async () => undefined),
     setSize: vi.fn(async () => undefined),
@@ -58,6 +59,28 @@ describe('Browser Chat managed provider surface', () => {
     await surface.hide();
     expect(invoke).toHaveBeenLastCalledWith('browser_chat_surface_hide', {
       providerId: 'chatgpt',
+    });
+  });
+
+  it('sends a saved navigation only once and retains geometry-only surface updates', async () => {
+    const invoke = vi.fn(async () => undefined);
+    const surface = createNativeManagedProviderSurface('browser-chat-chatgpt', invoke);
+    await surface.setPosition({ x: 120, y: 90 });
+    await surface.setSize({ width: 880, height: 620 });
+    await surface.navigate('https://chatgpt.com/c/conversation-1');
+
+    await surface.show();
+    await surface.setSize({ width: 900, height: 640 });
+    await surface.show();
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'browser_chat_surface_open', {
+      providerId: 'chatgpt',
+      bounds: { x: 120, y: 90, width: 880, height: 620 },
+      navigationUrl: 'https://chatgpt.com/c/conversation-1',
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'browser_chat_surface_open', {
+      providerId: 'chatgpt',
+      bounds: { x: 120, y: 90, width: 900, height: 640 },
     });
   });
 
@@ -131,6 +154,29 @@ describe('Browser Chat managed provider surface', () => {
     expect(first).toEqual({ kind: 'managed', providerId: 'chatgpt' });
     expect(second).toEqual(first);
     expect(fake.created).toHaveLength(1);
+  });
+
+  it('reopens an existing child at a normalized saved location without reloading on geometry only', async () => {
+    const fake = platform();
+    const surface = fakeWindow('browser-chat-chatgpt');
+    fake.windows.set(surface.label, surface);
+    const controller = createProviderSurfaceController(fake.implementation);
+    const bounds = { x: 20, y: 30, width: 800, height: 600 };
+
+    await controller.openManaged(
+      browserChatProvider('chatgpt'),
+      bounds,
+      'https://chatgpt.com/c/conversation-1?temporary=true#private',
+    );
+    await controller.openManaged(
+      browserChatProvider('chatgpt'),
+      { ...bounds, width: 900 },
+      'https://chatgpt.com/c/conversation-1',
+    );
+
+    expect(surface.navigate).toHaveBeenCalledOnce();
+    expect(surface.navigate).toHaveBeenCalledWith('https://chatgpt.com/c/conversation-1');
+    expect(surface.setSize).toHaveBeenCalledTimes(2);
   });
 
   it('forwards only normalized registry-owned top-level navigation metadata', async () => {

@@ -207,6 +207,12 @@ fn normalized_navigation(
     })
 }
 
+fn normalized_provider_url(provider: &ProviderConfig, raw_url: &str) -> Option<url::Url> {
+    let candidate = raw_url.parse().ok()?;
+    let navigation = normalized_navigation(provider, &candidate, 0)?;
+    navigation.url.parse().ok()
+}
+
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -220,6 +226,7 @@ fn create_provider(
     app: &AppHandle,
     caller: &WebviewWindow,
     provider: &ProviderConfig,
+    navigation_url: &url::Url,
     bounds: &BrowserChatBounds,
 ) -> Result<Webview, String> {
     let (position, size) = relative_bounds(bounds)?;
@@ -234,7 +241,7 @@ fn create_provider(
 
     let navigation_app = app.clone();
     let navigation_provider = provider.clone();
-    let builder = WebviewBuilder::new(provider.label, WebviewUrl::External(provider.url.clone()))
+    let builder = WebviewBuilder::new(provider.label, WebviewUrl::External(navigation_url.clone()))
         .data_directory(profile_dir)
         .on_navigation(move |candidate| {
             if let Some(navigation) =
@@ -255,6 +262,7 @@ fn open_provider(
     app: &AppHandle,
     caller: &WebviewWindow,
     provider: &ProviderConfig,
+    navigation_url: Option<&url::Url>,
     bounds: &BrowserChatBounds,
     activate: bool,
 ) -> Result<(), String> {
@@ -262,9 +270,23 @@ fn open_provider(
     let (webview, created) = match app.get_webview(provider.label) {
         Some(existing) => {
             apply_bounds(&existing, bounds)?;
+            if let Some(target) = navigation_url {
+                existing
+                    .navigate(target.clone())
+                    .map_err(|error| format!("browser_chat_navigate_failed:{error}"))?;
+            }
             (existing, false)
         }
-        None => (create_provider(app, caller, provider, bounds)?, true),
+        None => (
+            create_provider(
+                app,
+                caller,
+                provider,
+                navigation_url.unwrap_or(&provider.url),
+                bounds,
+            )?,
+            true,
+        ),
     };
     if activate || created {
         webview
@@ -283,10 +305,18 @@ pub fn browser_chat_surface_open(
     caller: WebviewWindow,
     provider_id: String,
     bounds: BrowserChatBounds,
+    navigation_url: Option<String>,
 ) -> Result<BrowserChatSurfaceStatus, String> {
     ensure_main_caller(caller.label())?;
     validate_bounds(&bounds)?;
     let provider = provider_config(&provider_id)?;
+    let navigation_url = navigation_url
+        .as_deref()
+        .map(|raw_url| {
+            normalized_provider_url(&provider, raw_url)
+                .ok_or_else(|| "browser_chat_navigation_not_allowed".to_string())
+        })
+        .transpose()?;
     let created = app.get_webview(provider.label).is_none();
 
     std::thread::spawn(move || {
@@ -295,7 +325,14 @@ pub fn browser_chat_surface_open(
             return;
         };
         let activate = state.active_provider != Some(provider.id);
-        match open_provider(&app, &caller, &provider, &bounds, activate) {
+        match open_provider(
+            &app,
+            &caller,
+            &provider,
+            navigation_url.as_ref(),
+            &bounds,
+            activate,
+        ) {
             Ok(()) => state.active_provider = Some(provider.id),
             Err(error) => eprintln!("[browser-chat] provider surface failed: {error}"),
         }
@@ -410,5 +447,18 @@ mod tests {
             9,
         )
         .is_none());
+        assert_eq!(
+            normalized_provider_url(
+                &provider,
+                "https://chatgpt.com/c/abc?temporary=true#private"
+            )
+            .expect("saved provider location")
+            .as_str(),
+            "https://chatgpt.com/c/abc"
+        );
+        assert!(
+            normalized_provider_url(&provider, "https://chatgpt.com.evil.example/c/stolen")
+                .is_none()
+        );
     }
 }

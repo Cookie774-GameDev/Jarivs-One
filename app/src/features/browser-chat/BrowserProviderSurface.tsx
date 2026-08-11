@@ -13,12 +13,14 @@ import {
 
 interface BrowserProviderSurfaceProps {
   readonly provider: BrowserChatProviderDefinition;
+  readonly navigationUrl?: string;
   readonly runtime?: ProviderSurfaceController;
   readonly onNavigation?: (navigation: ProviderSurfaceNavigation) => void;
 }
 
 export function BrowserProviderSurface({
   provider,
+  navigationUrl,
   runtime = browserChatSurface,
   onNavigation,
 }: BrowserProviderSurfaceProps) {
@@ -26,7 +28,10 @@ export function BrowserProviderSurface({
   const [error, setError] = React.useState<string | null>(null);
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
   const onNavigationRef = React.useRef(onNavigation);
+  const navigationUrlRef = React.useRef(navigationUrl);
+  const synchronizeRef = React.useRef<((force?: boolean) => void) | null>(null);
   onNavigationRef.current = onNavigation;
+  navigationUrlRef.current = navigationUrl;
 
   React.useEffect(() => {
     if (!runtime.subscribeNavigation) return;
@@ -73,7 +78,7 @@ export function BrowserProviderSurface({
           const bounds = nextBounds;
           queuedBounds = null;
           try {
-            const result = await runtime.openManaged(provider, bounds);
+            const result = await runtime.openManaged(provider, bounds, navigationUrlRef.current);
             if (!disposed) {
               setError(null);
               setProviderRuntime(provider.id, {
@@ -130,6 +135,7 @@ export function BrowserProviderSurface({
         void openLatestBounds(bounds);
       });
     };
+    synchronizeRef.current = synchronize;
 
     synchronize();
     const observer =
@@ -153,9 +159,14 @@ export function BrowserProviderSurface({
       observer?.disconnect();
       window.removeEventListener('resize', handleWindowResize);
       unsubscribeHostGeometry?.();
+      synchronizeRef.current = null;
       void runtime.hideAll();
     };
   }, [provider, runtime, setProviderRuntime]);
+
+  React.useEffect(() => {
+    synchronizeRef.current?.(true);
+  }, [navigationUrl]);
 
   return (
     <div

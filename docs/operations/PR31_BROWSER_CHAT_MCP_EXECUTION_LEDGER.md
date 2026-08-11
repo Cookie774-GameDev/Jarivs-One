@@ -787,6 +787,36 @@ staged, restored, reformatted, or committed by this task.
   separate checkpoint.
 - Commit: `a66c45fd`.
 
+### M6c — exact saved-session child-WebView reopen
+
+- Status: `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`
+- Root cause: durable bindings persisted a validated `resumeUrl`, but selecting
+  a saved row only changed local chat/provider state. The child WebView open
+  lifecycle still received the provider home URL, so exact managed-session
+  reopen was not composed end to end.
+- RED evidence: Hub, provider component, and controller tests failed because
+  the active binding supplied no navigation target and the managed controller
+  never navigated an existing child surface.
+- GREEN evidence: 46/46 focused Hub, provider component/controller, and Tauri
+  capability tests pass; app TypeScript passes. All 3 focused native surface
+  tests, Cargo formatting, and `cargo check --lib --no-default-features` pass.
+- Reopen behavior: the active durable binding supplies its saved resume
+  location to the managed open operation. The provider adapter normalizes it
+  before any platform call; native code independently revalidates it before
+  child creation or navigation.
+- Lifecycle: a stable per-provider managed-surface wrapper retains the pending
+  target until the guarded native open call consumes it. Repeated
+  geometry-only updates omit navigation, while a different saved conversation
+  navigates the existing child without hide/recreate teardown.
+- Safety: only exact supported provider HTTPS paths are accepted. Credentials,
+  spoofed origins, ports, unsupported paths, query strings, and fragments do
+  not reach the child WebView.
+- Remaining native acceptance: an installed Windows build must still prove
+  exact A/B/C conversation switching and restart restore against real
+  provider sessions. Provider rejection or provider URL changes remain
+  provider-verification outcomes.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

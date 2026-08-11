@@ -99,6 +99,53 @@ describe('BrowserProviderSurface', () => {
     expect(runtime.openManaged).toHaveBeenCalledTimes(2);
   });
 
+  it('passes the saved resume location into the managed open lifecycle', async () => {
+    const runtime = {
+      openManaged: vi.fn(async () => ({
+        kind: 'managed' as const,
+        providerId: 'chatgpt' as const,
+      })),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openExternalNavigation: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+    };
+
+    const rendered = render(
+      <BrowserProviderSurface
+        provider={browserChatProvider('chatgpt')}
+        navigationUrl="https://chatgpt.com/c/saved-conversation"
+        runtime={runtime}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(runtime.openManaged).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'chatgpt' }),
+        expect.objectContaining({ width: 900, height: 640 }),
+        'https://chatgpt.com/c/saved-conversation',
+      ),
+    );
+
+    runtime.openManaged.mockClear();
+    rendered.rerender(
+      <BrowserProviderSurface
+        provider={browserChatProvider('chatgpt')}
+        navigationUrl="https://chatgpt.com/c/other-conversation"
+        runtime={runtime}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(runtime.openManaged).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'chatgpt' }),
+        expect.objectContaining({ width: 900, height: 640 }),
+        'https://chatgpt.com/c/other-conversation',
+      ),
+    );
+    expect(runtime.hideAll).not.toHaveBeenCalled();
+  });
+
   it('shows a truthful fallback action when managed opening fails', async () => {
     const runtime = {
       openManaged: vi.fn(async () => {

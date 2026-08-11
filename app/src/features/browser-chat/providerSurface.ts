@@ -22,6 +22,7 @@ export interface ManagedProviderSurface {
   readonly label: string;
   show(): Promise<void>;
   hide(): Promise<void>;
+  navigate(url: string): Promise<void>;
   setFocus(): Promise<void>;
   setPosition(position: { x: number; y: number }): Promise<void>;
   setSize(size: { width: number; height: number }): Promise<void>;
@@ -63,6 +64,7 @@ export interface ProviderSurfaceController {
   openManaged(
     provider: BrowserChatProviderDefinition,
     bounds: ProviderSurfaceBounds,
+    navigationUrl?: string,
   ): Promise<
     | { kind: 'managed'; providerId: BrowserChatProviderId }
     | { kind: 'system_browser'; providerId: BrowserChatProviderId }
@@ -96,6 +98,7 @@ export function createNativeManagedProviderSurface(
     width: Number.NaN,
     height: Number.NaN,
   };
+  let navigationUrl: string | undefined;
 
   return {
     label,
@@ -104,12 +107,17 @@ export function createNativeManagedProviderSurface(
       await invoke('browser_chat_surface_open', {
         providerId: provider.id,
         bounds,
+        ...(navigationUrl ? { navigationUrl } : {}),
       });
+      navigationUrl = undefined;
     },
     async hide() {
       await invoke('browser_chat_surface_hide', {
         providerId: provider.id,
       });
+    },
+    async navigate(url) {
+      navigationUrl = url;
     },
     async setFocus() {
       // The guarded native open command focuses the provider after applying
@@ -141,6 +149,7 @@ export function createProviderSurfaceController(
   platform: ProviderSurfacePlatform,
 ): ProviderSurfaceController {
   const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
+  const lastRequestedNavigation = new Map<string, string>();
   const hideExcept = async (selected?: BrowserChatProviderId) => {
     await Promise.all(
       BROWSER_CHAT_PROVIDERS.filter((provider) => provider.id !== selected).map(
@@ -153,13 +162,18 @@ export function createProviderSurfaceController(
   };
 
   return {
-    async openManaged(provider, bounds) {
+    async openManaged(provider, bounds, navigationUrl = provider.homeUrl) {
       assertBounds(bounds);
       if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
         throw new Error('Unsupported Browser Chat provider definition.');
       }
+      const normalized = normalizeProviderNavigation(provider.id, navigationUrl);
+      if (!normalized) {
+        throw new Error('Unsupported Browser Chat provider location.');
+      }
+      const targetUrl = normalized.normalizedUrl;
       if (!platform.desktop) {
-        await platform.openExternal(provider.homeUrl);
+        await platform.openExternal(targetUrl);
         return { kind: 'system_browser', providerId: provider.id };
       }
 
@@ -171,12 +185,13 @@ export function createProviderSurfaceController(
         height: bounds.height,
       };
       let surface = await platform.getSurface(provider.windowLabel);
+      let created = false;
       if (!surface) {
         let pending = pendingCreations.get(provider.windowLabel);
         if (!pending) {
           pending = Promise.resolve(
             platform.createSurface(provider.windowLabel, {
-              url: provider.homeUrl,
+              url: targetUrl,
               dataDirectory: provider.profileKey,
               x: relative.x,
               y: relative.y,
@@ -189,11 +204,18 @@ export function createProviderSurfaceController(
         }
         try {
           surface = await pending;
+          created = true;
         } finally {
           if (pendingCreations.get(provider.windowLabel) === pending) {
             pendingCreations.delete(provider.windowLabel);
           }
         }
+      }
+      if (lastRequestedNavigation.get(provider.windowLabel) !== targetUrl) {
+        if (!created) {
+          await surface.navigate(targetUrl);
+        }
+        lastRequestedNavigation.set(provider.windowLabel, targetUrl);
       }
       await surface.setPosition({ x: relative.x, y: relative.y });
       await surface.setSize({ width: relative.width, height: relative.height });
@@ -248,6 +270,7 @@ export function createProviderSurfaceController(
           if (!provider || event.surfaceId !== provider.windowLabel) return;
           const normalized = normalizeProviderNavigation(event.providerId, event.url);
           if (!normalized || normalized.kind !== event.kind) return;
+          lastRequestedNavigation.set(provider.windowLabel, normalized.normalizedUrl);
           listener({
             providerId: event.providerId,
             surfaceId: event.surfaceId,
@@ -284,16 +307,26 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
   ]);
   const currentWindow = getCurrentWindow();
   const nativeInvoke: NativeBrowserChatInvoke = (command, args) => invoke(command, args);
+  const managedSurfaces = new Map<string, ManagedProviderSurface>();
 
   return {
     desktop: true,
     async getSurface(label) {
-      return createNativeManagedProviderSurface(label, nativeInvoke);
+      let surface = managedSurfaces.get(label);
+      if (!surface) {
+        surface = createNativeManagedProviderSurface(label, nativeInvoke);
+        managedSurfaces.set(label, surface);
+      }
+      return surface;
     },
     async createSurface(label, options) {
       const surface = createNativeManagedProviderSurface(label, nativeInvoke);
       await surface.setPosition({ x: options.x, y: options.y });
       await surface.setSize({ width: options.width, height: options.height });
+      if (typeof options.url === 'string') {
+        await surface.navigate(options.url);
+      }
+      managedSurfaces.set(label, surface);
       return surface;
     },
     openExternal,
@@ -323,8 +356,8 @@ async function controller(): Promise<ProviderSurfaceController> {
 }
 
 export const browserChatSurface: ProviderSurfaceController = {
-  async openManaged(provider, bounds) {
-    return (await controller()).openManaged(provider, bounds);
+  async openManaged(provider, bounds, navigationUrl) {
+    return (await controller()).openManaged(provider, bounds, navigationUrl);
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);

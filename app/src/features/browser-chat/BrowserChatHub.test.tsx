@@ -26,6 +26,7 @@ import {
 import * as outputFeedModule from './browserChatOutputFeed';
 
 const providerSurfaceHarness = vi.hoisted(() => ({
+  navigationUrl: undefined as string | undefined,
   onNavigation: undefined as
     | ((navigation: {
         providerId: 'chatgpt';
@@ -49,11 +50,14 @@ vi.mock('./chatGptExport', () => ({
 vi.mock('./BrowserProviderSurface', () => ({
   BrowserProviderSurface: ({
     provider,
+    navigationUrl,
     onNavigation,
   }: {
     provider: { label: string };
+    navigationUrl?: string;
     onNavigation?: typeof providerSurfaceHarness.onNavigation;
   }) => {
+    providerSurfaceHarness.navigationUrl = navigationUrl;
     providerSurfaceHarness.onNavigation = onNavigation;
     return (
       <div aria-label={`${provider.label} provider surface`}>
@@ -103,6 +107,7 @@ describe('BrowserChatHub', () => {
     vi.restoreAllMocks();
     vi.stubEnv('VITE_PHONE_JARVIS_CLOUD_URL', 'https://vibespace-mcp.fly.dev');
     providerSurfaceHarness.onNavigation = undefined;
+    providerSurfaceHarness.navigationUrl = undefined;
     localStorage.clear();
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
@@ -611,6 +616,7 @@ describe('BrowserChatHub', () => {
 
     expect(screen.getByText(/Project Alpha · Last opened/i)).toBeTruthy();
     expect(screen.getByText(/Active · page ready · fs\.read running/i)).toBeTruthy();
+    expect(providerSurfaceHarness.navigationUrl).toBe('https://chatgpt.com/c/conversation-1');
     fireEvent.click(screen.getByRole('button', { name: `Actions for ${title}` }));
     fireEvent.click(screen.getByRole('menuitem', { name: `Open ${title} externally` }));
 

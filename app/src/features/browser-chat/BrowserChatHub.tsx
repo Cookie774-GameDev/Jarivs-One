@@ -1190,6 +1190,7 @@ export function BrowserChatHub({
         <BrowserProviderSurface
           key={provider.id}
           provider={provider}
+          navigationUrl={activeBinding?.resumeUrl ?? provider.homeUrl}
           onNavigation={captureProviderNavigation}
         />
 
