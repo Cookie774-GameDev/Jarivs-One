@@ -1,9 +1,9 @@
-task_id=VS-ROOT-20260811T121600Z-LEGACY-ROUTES
-phase=VS-PR31-OPENCODE-HARNESS-PHASE16-20260811
+task_id=VS-ROOT-20260811T122400Z-FINAL-EVIDENCE
+phase=VS-PR31-OPENCODE-HARNESS-PHASE17-20260811
 controller=/root
 branch=agent/pr30-fixes-and-updates
-starting_head=a087d263
-owned_paths=docs/superpowers/specs/2026-08-11-vibespace-opencode-only-production-routes-design.md;docs/superpowers/plans/2026-08-11-vibespace-opencode-only-production-routes.md;.agent-coordination.lock/owner.txt;app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/router.connection.test.ts;app/src/lib/ai/router.taskbarUsage.test.ts;app/src/lib/ai/openCodeOnlyArchitecture.test.ts;app/src/lib/actions/registryModelSelection.ts;app/src/lib/actions/registryModelSelection.test.ts
-exclusions=unrelated dirty/untracked work;provider metadata and migrations;provider settings and credential management;taskbar usage adapters;kernel smoke transport;OpenCode harness transport;native installer/runtime;merge;push;deploy;release;subagents
+starting_head=7b817a79
+owned_paths=docs/superpowers/plans/2026-08-11-vibespace-opencode-final-verification.md;docs/VIBESPACE_PR31_OPENCODE_ONLY_HARNESS_EVIDENCE.md;.agent-coordination.lock/owner.txt
+exclusions=unrelated dirty/untracked work;new product implementation unless a PR31 regression is proven;account-specific live credentials;global OpenCode mutation;merge;push;deploy;release;subagents
 status=RELEASED
-completed_head=d1780fa4
+completed_head=5eaed924
