@@ -815,7 +815,7 @@ staged, restored, reformatted, or committed by this task.
   exact A/B/C conversation switching and restart restore against real
   provider sessions. Provider rejection or provider URL changes remain
   provider-verification outcomes.
-- Commit: pending.
+- Commit: `96a8ed90`.
 
 ## Completion labels
 
