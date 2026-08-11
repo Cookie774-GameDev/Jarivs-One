@@ -385,7 +385,7 @@ staged, restored, reformatted, or committed by this task.
   wrappers but is not added to relay registration yet. The unresolved Worker
   ownership means the end-to-end catalog remains truthfully limited to its
   existing executable read routes.
-- Commit: pending exact-path commit.
+- Commit: `e1cec586`.
 
 ## Completion labels
 
