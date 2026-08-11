@@ -567,6 +567,7 @@ mod tests {
             "native.invoke",
             "terminal_list",
             "terminal.list;rm",
+            "context.update",
             "",
         ] {
             assert_eq!(

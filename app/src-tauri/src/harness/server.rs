@@ -1524,6 +1524,8 @@ mod tests {
         assert!(!plugin.contains(&endpoint.token));
         assert!(!plugin.contains("tauri.invoke"));
         assert!(!plugin.contains("nativeCommand"));
+        assert!(!plugin.contains("\"context.update\""));
+        assert!(config["permission"].get("context.update").is_none());
         assert_eq!(
             spec.tool_gateway_environment,
             [
