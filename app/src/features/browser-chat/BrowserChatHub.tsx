@@ -65,7 +65,12 @@ import {
   type BrowserChatBindingUpdateInput,
   type BrowserChatScope,
 } from './browserChatRepository';
-import { importChatGptExport } from './chatGptExport';
+import {
+  CHATGPT_EXPORT_MAX_ARCHIVE_BYTES,
+  importChatGptExport,
+  readBoundedChatGptExportFile,
+  type ChatGptImportProgress,
+} from './chatGptExport';
 import type { BrowserChatBindingRow, Project, ProviderProjectLinkRow } from '@/lib/db/schema';
 import {
   createBrowserChatPermissionProfileRepository,
@@ -352,6 +357,7 @@ export function BrowserChatHub({
   const [mcpSetupState, setMcpSetupState] = React.useState<BrowserChatMcpSetupState>('idle');
   const [mcpSetupError, setMcpSetupError] = React.useState('');
   const [importingExport, setImportingExport] = React.useState(false);
+  const [importProgress, setImportProgress] = React.useState<ChatGptImportProgress | null>(null);
   const [projectGrantRevoked, setProjectGrantRevoked] = React.useState(false);
   const [stagedFiles, setStagedFiles] = React.useState<File[]>(() =>
     chatId ? (stagedFilesByChat.get(chatId) ?? []) : [],
@@ -366,18 +372,31 @@ export function BrowserChatHub({
 
   const importOfficialExport = async (file: File | undefined) => {
     if (!file || !accountId || !bindingWorkspaceId || importingExport) return;
+    if (file.size > CHATGPT_EXPORT_MAX_ARCHIVE_BYTES) {
+      toast.error(
+        'Export import failed',
+        `The selected archive exceeds the ${CHATGPT_EXPORT_MAX_ARCHIVE_BYTES / 1024 / 1024} MiB safe import limit.`,
+      );
+      return;
+    }
     const controller = new AbortController();
     exportAbortRef.current?.abort();
     exportAbortRef.current = controller;
     setImportingExport(true);
+    setImportProgress({ phase: 'reading', completed: 0, total: file.size });
     try {
+      const archive = await readBoundedChatGptExportFile(file, {
+        signal: controller.signal,
+        onProgress: setImportProgress,
+      });
       const result = await importChatGptExport({
         database,
         accountId,
         workspaceId: bindingWorkspaceId,
         fileName: file.name,
-        archive: await file.arrayBuffer(),
+        archive,
         signal: controller.signal,
+        onProgress: setImportProgress,
       });
       toast.success(
         result.reusedImport ? 'Export already imported' : 'ChatGPT export imported',
@@ -395,6 +414,7 @@ export function BrowserChatHub({
     } finally {
       if (exportAbortRef.current === controller) exportAbortRef.current = null;
       setImportingExport(false);
+      setImportProgress(null);
     }
   };
   const agents = useLiveQuery(() => database.agents.toArray(), [database], []);
@@ -1281,6 +1301,31 @@ export function BrowserChatHub({
               <span className="ml-1 text-[9px] text-muted-foreground">{importedSnapshotCount}</span>
             ) : null}
           </Button>
+          {importingExport ? (
+            <>
+              <span role="status" aria-live="polite" className="text-[10px] text-muted-foreground">
+                {importProgress
+                  ? `${statusLabel(importProgress.phase)} · ${
+                      importProgress.total > 0
+                        ? Math.min(
+                            100,
+                            Math.round((importProgress.completed / importProgress.total) * 100),
+                          )
+                        : 0
+                    }%`
+                  : 'starting'}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                aria-label="Cancel ChatGPT export import"
+                onClick={() => exportAbortRef.current?.abort()}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : null}
           <Badge variant={pageStatus === 'ready' ? 'success' : 'secondary'}>
             Page · {statusLabel(pageStatus)}
           </Badge>

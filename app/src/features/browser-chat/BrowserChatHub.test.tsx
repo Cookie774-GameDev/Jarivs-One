@@ -47,10 +47,13 @@ const providerSurfaceHarness = vi.hoisted(() => ({
 
 const exportImportHarness = vi.hoisted(() => ({
   importExport: vi.fn(),
+  readFile: vi.fn(async (file: File) => file.arrayBuffer()),
 }));
 
 vi.mock('./chatGptExport', () => ({
+  CHATGPT_EXPORT_MAX_ARCHIVE_BYTES: 64 * 1024 * 1024,
   importChatGptExport: exportImportHarness.importExport,
+  readBoundedChatGptExportFile: exportImportHarness.readFile,
 }));
 
 vi.mock('./BrowserProviderSurface', () => ({
@@ -143,6 +146,7 @@ describe('BrowserChatHub', () => {
     testDatabase = createJarvisDb(uniqueTestDbName('browser-chat-hub'), TEST_INDEXED_DB);
     await testDatabase.open();
     exportImportHarness.importExport.mockReset();
+    exportImportHarness.readFile.mockClear();
     exportImportHarness.importExport.mockResolvedValue({
       importId: 'import-a',
       added: 1,
@@ -407,9 +411,49 @@ describe('BrowserChatHub', () => {
           fileName: 'chatgpt-export.zip',
           archive: expect.any(ArrayBuffer),
           signal: expect.any(AbortSignal),
+          onProgress: expect.any(Function),
         }),
       ),
     );
+  });
+
+  it('rejects an oversized export before reading it and exposes cancellation while importing', async () => {
+    renderHub();
+    const input = screen.getByLabelText('Choose official ChatGPT export ZIP');
+    const oversized = new File([new Uint8Array([1])], 'oversized.zip', {
+      type: 'application/zip',
+    });
+    Object.defineProperty(oversized, 'size', { value: 64 * 1024 * 1024 + 1 });
+
+    fireEvent.change(input, { target: { files: [oversized] } });
+    expect(exportImportHarness.readFile).not.toHaveBeenCalled();
+    expect(exportImportHarness.importExport).not.toHaveBeenCalled();
+
+    let finishImport: (() => void) | undefined;
+    exportImportHarness.importExport.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishImport = () =>
+            resolve({
+              importId: 'import-1',
+              added: 0,
+              updated: 0,
+              unchanged: 0,
+              reusedImport: false,
+            });
+        }),
+    );
+    const accepted = new File([new Uint8Array([1, 2, 3])], 'accepted.zip', {
+      type: 'application/zip',
+    });
+    fireEvent.change(input, { target: { files: [accepted] } });
+    await waitFor(() => expect(exportImportHarness.importExport).toHaveBeenCalledOnce());
+    const signal = exportImportHarness.importExport.mock.calls[0]?.[0]?.signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel chatgpt export import/i }));
+    expect(signal.aborted).toBe(true);
+    await act(async () => finishImport?.());
   });
 
   it('keeps Claude and Gemini gated as future providers without scraping remote history', () => {

@@ -1,11 +1,12 @@
 import { deflateRawSync } from 'node:zlib';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import {
   createChatGptSnapshotRepository,
   importChatGptExport,
+  readBoundedChatGptExportFile,
   type ChatGptImportProgress,
 } from './chatGptExport';
 
@@ -160,6 +161,32 @@ describe('official ChatGPT export snapshots', () => {
   afterEach(async () => {
     database.close();
     await database.delete();
+  });
+
+  it('rejects the declared file size before allocation and reports bounded read progress', async () => {
+    const arrayBuffer = vi.fn(async () => new ArrayBuffer(1));
+    await expect(
+      readBoundedChatGptExportFile(
+        {
+          size: 11,
+          arrayBuffer,
+        } as unknown as File,
+        { maxBytes: 10 },
+      ),
+    ).rejects.toThrow('chatgpt_export_archive_too_large');
+    expect(arrayBuffer).not.toHaveBeenCalled();
+
+    const progress: ChatGptImportProgress[] = [];
+    const archive = await readBoundedChatGptExportFile(
+      new File([new Uint8Array([1, 2, 3])], 'export.zip'),
+      {
+        maxBytes: 3,
+        onProgress: (value) => progress.push(value),
+      },
+    );
+    expect(archive.byteLength).toBe(3);
+    expect(progress.at(0)).toEqual({ phase: 'reading', completed: 0, total: 3 });
+    expect(progress.at(-1)).toEqual({ phase: 'reading', completed: 3, total: 3 });
   });
 
   it('imports the current branch as inert provider-owned snapshot text', async () => {

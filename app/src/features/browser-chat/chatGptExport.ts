@@ -21,7 +21,7 @@ export type ChatGptImportLimits = {
 };
 
 export type ChatGptImportProgress = {
-  readonly phase: 'hashing' | 'extracting' | 'parsing' | 'writing' | 'complete';
+  readonly phase: 'reading' | 'hashing' | 'extracting' | 'parsing' | 'writing' | 'complete';
   readonly completed: number;
   readonly total: number;
 };
@@ -45,14 +45,16 @@ export type ChatGptImportResult = {
   readonly reusedImport: boolean;
 };
 
+export const CHATGPT_EXPORT_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+
 const DEFAULT_LIMITS: ChatGptImportLimits = Object.freeze({
-  maxArchiveBytes: 512 * 1024 * 1024,
+  maxArchiveBytes: CHATGPT_EXPORT_MAX_ARCHIVE_BYTES,
   maxEntries: 4096,
-  maxEntryBytes: 256 * 1024 * 1024,
+  maxEntryBytes: 24 * 1024 * 1024,
   maxCompressionRatio: 200,
-  maxConversations: 100_000,
-  maxMessagesPerConversation: 100_000,
-  maxMessageTextBytes: 4 * 1024 * 1024,
+  maxConversations: 25_000,
+  maxMessagesPerConversation: 10_000,
+  maxMessageTextBytes: 1024 * 1024,
 });
 
 const ZIP_LOCAL_HEADER = 0x04034b50;
@@ -96,7 +98,60 @@ function normalizeScope(input: ChatGptSnapshotScope): ChatGptSnapshotScope {
 }
 
 function toBytes(value: Uint8Array | ArrayBuffer): Uint8Array {
-  return value instanceof Uint8Array ? value.slice() : new Uint8Array(value.slice(0));
+  return value instanceof Uint8Array ? value : new Uint8Array(value);
+}
+
+export async function readBoundedChatGptExportFile(
+  file: File,
+  options: {
+    readonly signal?: AbortSignal;
+    readonly maxBytes?: number;
+    readonly onProgress?: (progress: ChatGptImportProgress) => void;
+  } = {},
+): Promise<ArrayBuffer> {
+  const maxBytes = options.maxBytes ?? CHATGPT_EXPORT_MAX_ARCHIVE_BYTES;
+  if (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > maxBytes) {
+    fail('chatgpt_export_archive_too_large');
+  }
+  checkCancelled(options.signal);
+  options.onProgress?.({ phase: 'reading', completed: 0, total: file.size });
+  if (typeof file.stream !== 'function') {
+    const archive = await file.arrayBuffer();
+    checkCancelled(options.signal);
+    if (archive.byteLength !== file.size || archive.byteLength > maxBytes) {
+      fail('chatgpt_export_archive_too_large');
+    }
+    options.onProgress?.({
+      phase: 'reading',
+      completed: archive.byteLength,
+      total: file.size,
+    });
+    return archive;
+  }
+
+  const reader = file.stream().getReader();
+  const archive = new Uint8Array(file.size);
+  let offset = 0;
+  try {
+    while (true) {
+      checkCancelled(options.signal);
+      const result = await reader.read();
+      if (result.done) break;
+      const chunk = new Uint8Array(result.value);
+      if (offset + chunk.byteLength > archive.byteLength || offset + chunk.byteLength > maxBytes) {
+        await reader.cancel();
+        fail('chatgpt_export_archive_too_large');
+      }
+      archive.set(chunk, offset);
+      offset += chunk.byteLength;
+      options.onProgress?.({ phase: 'reading', completed: offset, total: file.size });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  checkCancelled(options.signal);
+  if (offset !== file.size) fail('chatgpt_export_archive_invalid');
+  return archive.buffer;
 }
 
 function dataView(bytes: Uint8Array): DataView {
