@@ -563,6 +563,7 @@ fn run_ordinary(
             pets::pet_validate_action,
             fsread::fs_create_text_file,
             fsread::fs_create_text_with_content,
+            fsread::fs_compare_and_swap_text,
             fsread::fs_list_dir,
             fsread::fs_rename_file,
             fsread::fs_delete_file,
@@ -785,6 +786,7 @@ pets::pet_save_panel_geometry
 pets::pet_validate_action
 fsread::fs_create_text_file
 fsread::fs_create_text_with_content
+fsread::fs_compare_and_swap_text
 fsread::fs_list_dir
 fsread::fs_rename_file
 fsread::fs_delete_file
@@ -901,9 +903,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "78841530bc44c745f67dc86227e59c901731db0354d9b0569bf312e616192094";
+        "fa876e008013733b2ffa0d6624db9445d0d98b5017b99028faabf9b75cb3e20f";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "9c75ddecfb830d89c7deb44cbbc9b09b0534c394584c83a05f5d5e265584a8a6";
+        "1b13fc1e8409d8172f7e33bf621f4ac745e9c0edb6e30e40c8edd7d7d5247610";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {

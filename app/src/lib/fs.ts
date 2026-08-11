@@ -27,6 +27,9 @@ export type FsReadErrorCode =
   | 'unsupported_type'
   | 'outside_root'
   | 'symlink_blocked'
+  | 'stale_base'
+  | 'mutation_invalid'
+  | 'runtime_failure'
   | 'other_user_folder'
   | 'root_not_found'
   | 'root_not_dir'
@@ -58,6 +61,17 @@ export type FsListResult =
 
 export type FsWriteResult =
   | { ok: true; path: string }
+  | { ok: false; error: FsReadError; path: string };
+
+export type FsTextMutationResult =
+  | {
+      ok: true;
+      path: string;
+      beforeSha256: `sha256:${string}` | null;
+      afterSha256: `sha256:${string}` | null;
+      beforeBytes: number;
+      afterBytes: number;
+    }
   | { ok: false; error: FsReadError; path: string };
 
 export type FsImageReadResult =
@@ -99,6 +113,9 @@ function classifyError(raw: unknown): FsReadError {
     raw === 'unsupported_type' ||
     raw === 'outside_root' ||
     raw === 'symlink_blocked' ||
+    raw === 'stale_base' ||
+    raw === 'mutation_invalid' ||
+    raw === 'runtime_failure' ||
     raw === 'other_user_folder' ||
     raw === 'root_not_found' ||
     raw === 'root_not_dir'
@@ -295,6 +312,59 @@ export async function createTextFileWithContent(
   try {
     await invoke('fs_create_text_with_content', { path, content, root: options.root ?? undefined });
     return { ok: true, path };
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+const SHA256 = /^sha256:[a-f0-9]{64}$/u;
+
+function normalizeTextMutationReceipt(raw: unknown, path: string): FsTextMutationResult {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: { code: 'unknown' }, path };
+  }
+  const record = raw as Record<string, unknown>;
+  const beforeSha256 = record.beforeSha256;
+  const afterSha256 = record.afterSha256;
+  const beforeBytes = record.beforeBytes;
+  const afterBytes = record.afterBytes;
+  if (
+    (beforeSha256 !== null && (typeof beforeSha256 !== 'string' || !SHA256.test(beforeSha256))) ||
+    (afterSha256 !== null && (typeof afterSha256 !== 'string' || !SHA256.test(afterSha256))) ||
+    !Number.isSafeInteger(beforeBytes) ||
+    (beforeBytes as number) < 0 ||
+    !Number.isSafeInteger(afterBytes) ||
+    (afterBytes as number) < 0 ||
+    (beforeSha256 === null && beforeBytes !== 0) ||
+    (afterSha256 === null && afterBytes !== 0)
+  ) {
+    return { ok: false, error: { code: 'unknown' }, path };
+  }
+  return {
+    ok: true,
+    path,
+    beforeSha256: beforeSha256 as `sha256:${string}` | null,
+    afterSha256: afterSha256 as `sha256:${string}` | null,
+    beforeBytes: beforeBytes as number,
+    afterBytes: afterBytes as number,
+  };
+}
+
+/** Exact-base create/modify/delete for bounded UTF-8 project files. */
+export async function compareAndSwapTextFile(
+  path: string,
+  expectedSha256: `sha256:${string}` | null,
+  nextContent: string | null,
+  options: FsAccessOptions = {},
+): Promise<FsTextMutationResult> {
+  try {
+    const raw = await invoke<unknown>('fs_compare_and_swap_text', {
+      path,
+      expectedSha256: expectedSha256 ?? undefined,
+      nextContent: nextContent ?? undefined,
+      root: options.root ?? undefined,
+    });
+    return normalizeTextMutationReceipt(raw, path);
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
   }

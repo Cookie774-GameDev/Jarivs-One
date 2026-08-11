@@ -387,6 +387,34 @@ staged, restored, reformatted, or committed by this task.
   existing executable read routes.
 - Commit: `e1cec586`.
 
+### M5h — native exact-base text mutation authority
+
+- Status: `VERIFIED`
+- RED evidence: existing native file writes could overwrite without an
+  expected-base digest, so a Browser Chat preview could become stale before
+  apply and still mutate a newer file.
+- GREEN evidence: two real native temporary-directory tests pass for exclusive
+  create, exact-hash modify, stale-base rejection with content preservation,
+  and exact-hash delete. Six frontend filesystem normalization tests, app
+  TypeScript, and the frozen ordinary-handler authority test pass.
+- Native boundary: the new command requires an explicit strict project root,
+  opens parents/files through capability-relative no-follow handles, rejects
+  symlink/reparse traversal, accepts only UTF-8 text up to 256 KiB, serializes
+  app mutations, and synchronizes successful writes to disk.
+- Compare-and-swap: create uses create-new semantics; modify and delete require
+  the SHA-256 of the currently opened file. Mismatches return `stale_base`
+  without mutation.
+- Evidence: successful native receipts contain only before/after SHA-256 and
+  byte counts. The TypeScript wrapper validates the complete receipt and
+  normalizes malformed/native errors before Browser Chat can consume them.
+- Integration: the command is registered in the ordinary Tauri handler and
+  both frozen handler hashes were intentionally refreshed by their guarding
+  test.
+- Boundary: this native primitive is not itself a remotely advertised tool.
+  Browser Chat approval, preview, apply, rollback, and relay routing remain
+  separate layers.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

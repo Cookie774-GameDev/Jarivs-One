@@ -31,9 +31,11 @@ use base64::Engine;
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::ffi::OsString;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 /// Hard ceiling on a single file. Anything bigger is rejected with
 /// `too_large` so callers don't accidentally force a multi-GB read
@@ -44,6 +46,8 @@ const MAX_WRITE_BYTES: usize = 1024 * 1024;
 const MAX_DIR_ENTRIES: usize = 500;
 const MAX_SAMPLE_BYTES: u64 = 512 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_TEXT_MUTATION_BYTES: usize = 256 * 1024;
+static TEXT_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +66,15 @@ pub struct FsImageData {
     pub data: String,
     pub mime_type: String,
     pub size: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsTextMutationReceipt {
+    pub before_sha256: Option<String>,
+    pub after_sha256: Option<String>,
+    pub before_bytes: usize,
+    pub after_bytes: usize,
 }
 
 fn require_absolute(path: &str) -> Result<PathBuf, String> {
@@ -448,7 +461,7 @@ pub fn fs_read_text_sample(
     }
     let mut file = std::fs::File::open(&p).map_err(|e| format!("io: {}", e))?;
     let mut bytes = Vec::with_capacity(limit as usize);
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(limit)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("io: {}", e))?;
@@ -467,7 +480,7 @@ fn read_text_sample_from_open_file(
         return Err("too_large".to_string());
     }
     let mut bytes = Vec::with_capacity(limit as usize);
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(limit)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("io: {error}"))?;
@@ -691,6 +704,150 @@ pub fn fs_create_text_with_content(
             }
         })?;
     std::io::Write::write_all(&mut file, content.as_bytes()).map_err(|e| format!("io: {}", e))
+}
+
+fn text_sha256(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Applies one bounded text create/modify/delete against an exact base digest.
+///
+/// An absent base digest means create-new. A present digest requires an
+/// existing regular UTF-8 file with exactly that digest. `next_content = None`
+/// deletes the matching file. A process-wide lock serializes app mutations;
+/// the opened capability-relative handle prevents symlink/reparse traversal.
+#[tauri::command]
+pub fn fs_compare_and_swap_text(
+    path: String,
+    expected_sha256: Option<String>,
+    next_content: Option<String>,
+    root: Option<String>,
+) -> Result<FsTextMutationReceipt, String> {
+    if expected_sha256.is_none() && next_content.is_none() {
+        return Err("mutation_invalid".to_string());
+    }
+    if expected_sha256
+        .as_deref()
+        .is_some_and(|value| !valid_sha256(value))
+    {
+        return Err("mutation_invalid".to_string());
+    }
+    if next_content
+        .as_ref()
+        .is_some_and(|content| content.len() > MAX_TEXT_MUTATION_BYTES)
+    {
+        return Err("too_large".to_string());
+    }
+
+    let _guard = TEXT_MUTATION_LOCK
+        .lock()
+        .map_err(|_| "runtime_failure".to_string())?;
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let (parent, name) = strict_root.file_parent_and_name(&path)?;
+    if cap_entry_is_link(&parent, &name) {
+        return Err("symlink_blocked".to_string());
+    }
+
+    if expected_sha256.is_none() {
+        match parent.symlink_metadata(&name) {
+            Ok(_) => return Err("already_exists".to_string()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("io: {error}")),
+        }
+        let next = next_content.expect("validated create content");
+        let mut options = OpenOptions::new();
+        options
+            .write(true)
+            .create_new(true)
+            .follow(FollowSymlinks::No);
+        let mut file = parent.open_with(&name, &options).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "already_exists".to_string()
+            } else if cap_entry_is_link(&parent, &name) {
+                "symlink_blocked".to_string()
+            } else {
+                format!("io: {error}")
+            }
+        })?;
+        file.write_all(next.as_bytes())
+            .map_err(|error| format!("io: {error}"))?;
+        file.flush().map_err(|error| format!("io: {error}"))?;
+        file.sync_all().map_err(|error| format!("io: {error}"))?;
+        return Ok(FsTextMutationReceipt {
+            before_sha256: None,
+            after_sha256: Some(text_sha256(next.as_bytes())),
+            before_bytes: 0,
+            after_bytes: next.len(),
+        });
+    }
+
+    let metadata = parent
+        .symlink_metadata(&name)
+        .map_err(|error| map_cap_open_error(&parent, &name, error))?;
+    if !metadata.is_file() {
+        return Err("not_a_file".to_string());
+    }
+    if metadata.len() > MAX_TEXT_MUTATION_BYTES as u64 {
+        return Err("too_large".to_string());
+    }
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .write(next_content.is_some())
+        .follow(FollowSymlinks::No);
+    let mut file = parent
+        .open_with(&name, &options)
+        .map_err(|error| map_cap_open_error(&parent, &name, error))?;
+    let mut before = Vec::with_capacity(metadata.len() as usize);
+    file.read_to_end(&mut before)
+        .map_err(|error| format!("io: {error}"))?;
+    if before.len() > MAX_TEXT_MUTATION_BYTES {
+        return Err("too_large".to_string());
+    }
+    std::str::from_utf8(&before).map_err(|_| "not_utf8".to_string())?;
+    let before_sha256 = text_sha256(&before);
+    if expected_sha256.as_deref() != Some(before_sha256.as_str()) {
+        return Err("stale_base".to_string());
+    }
+
+    match next_content {
+        Some(next) => {
+            file.seek(SeekFrom::Start(0))
+                .map_err(|error| format!("io: {error}"))?;
+            file.write_all(next.as_bytes())
+                .map_err(|error| format!("io: {error}"))?;
+            file.set_len(next.len() as u64)
+                .map_err(|error| format!("io: {error}"))?;
+            file.flush().map_err(|error| format!("io: {error}"))?;
+            file.sync_all().map_err(|error| format!("io: {error}"))?;
+            Ok(FsTextMutationReceipt {
+                before_sha256: Some(before_sha256),
+                after_sha256: Some(text_sha256(next.as_bytes())),
+                before_bytes: before.len(),
+                after_bytes: next.len(),
+            })
+        }
+        None => {
+            drop(file);
+            parent
+                .remove_file(&name)
+                .map_err(|error| map_cap_open_error(&parent, &name, error))?;
+            Ok(FsTextMutationReceipt {
+                before_sha256: Some(before_sha256),
+                after_sha256: None,
+                before_bytes: before.len(),
+                after_bytes: 0,
+            })
+        }
+    }
 }
 
 #[tauri::command]
@@ -1332,6 +1489,83 @@ mod tests {
         );
         assert!(real.exists());
         assert!(link.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn compare_and_swap_text_creates_once_and_returns_hash_evidence() {
+        let root = test_root("cas-create");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("notes.md");
+        let root_text = root.to_string_lossy().to_string();
+        let file_text = file.to_string_lossy().to_string();
+
+        let receipt = fs_compare_and_swap_text(
+            file_text.clone(),
+            None,
+            Some("first".to_string()),
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert_eq!(receipt.before_sha256, None);
+        assert_eq!(receipt.after_sha256, Some(text_sha256(b"first")));
+        assert_eq!(receipt.before_bytes, 0);
+        assert_eq!(receipt.after_bytes, 5);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "first");
+        assert_eq!(
+            fs_compare_and_swap_text(
+                file_text,
+                None,
+                Some("overwrite".to_string()),
+                Some(root_text),
+            )
+            .unwrap_err(),
+            "already_exists"
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn compare_and_swap_text_modifies_and_deletes_only_the_exact_base() {
+        let root = test_root("cas-update-delete");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("notes.md");
+        std::fs::write(&file, b"before").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+        let file_text = file.to_string_lossy().to_string();
+        let before_hash = text_sha256(b"before");
+
+        let modified = fs_compare_and_swap_text(
+            file_text.clone(),
+            Some(before_hash.clone()),
+            Some("after".to_string()),
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert_eq!(modified.before_sha256, Some(before_hash));
+        assert_eq!(modified.after_sha256, Some(text_sha256(b"after")));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "after");
+
+        assert_eq!(
+            fs_compare_and_swap_text(
+                file_text.clone(),
+                Some(text_sha256(b"stale")),
+                Some("unsafe".to_string()),
+                Some(root_text.clone()),
+            )
+            .unwrap_err(),
+            "stale_base"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "after");
+
+        let deleted =
+            fs_compare_and_swap_text(file_text, modified.after_sha256, None, Some(root_text))
+                .unwrap();
+        assert_eq!(deleted.after_sha256, None);
+        assert_eq!(deleted.after_bytes, 0);
+        assert!(!file.exists());
+
         std::fs::remove_dir_all(root).unwrap();
     }
 }
