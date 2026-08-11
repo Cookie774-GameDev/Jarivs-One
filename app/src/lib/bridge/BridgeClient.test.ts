@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ToolDef } from '@/lib/mcp/registry';
 import type { BrowserChatPermissionProfile } from '@/features/browser-chat/permissionRegistry';
 import {
+  browserChatToolActivityStore,
+  clearBrowserChatToolActivity,
+} from '@/features/browser-chat/browserChatToolActivity';
+import { toolRegistry } from '@/lib/mcp/registry';
+import {
   buildBridgeRegistrationFrame,
   BridgeClient,
   getBridgeWorkspaceGrant,
@@ -386,9 +391,81 @@ describe('Browser Chat read-only bridge protocol', () => {
 
 describe('BridgeClient connection ownership and liveness', () => {
   afterEach(() => {
+    clearBrowserChatToolActivity();
     vi.useRealTimers();
     vi.unstubAllGlobals();
     FakeWebSocket.instances.length = 0;
+  });
+
+  it('publishes an account-scoped catalog and bounded live tool result truth', async () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const priorRead = toolRegistry.get('fs.read');
+    const priorList = toolRegistry.get('fs.list');
+    const unregisterRead = toolRegistry.register(tools[0]!);
+    const unregisterList = toolRegistry.register(tools[1]!);
+    const client = new BridgeClient({
+      url: 'wss://relay.example/bridge',
+      jwt: 'jwt',
+      mode: 'browser_chat',
+      accountId: 'account-a',
+      projectId: 'project-a',
+      workspaceGrant: {
+        id: 'grant_1234567890abcdef',
+        accountId: 'account-a',
+        projectId: 'project-a',
+        root: 'C:\\Users\\viper\\Projects\\Safe',
+        displayName: 'Safe',
+        permissionProfile: permissionProfile('read'),
+      },
+    });
+
+    try {
+      const start = client.start();
+      const socket = FakeWebSocket.instances[0]!;
+      socket.open();
+      socket.message({
+        kind: 'registered',
+        protocol_version: 2,
+        session_id: 'session_1234567890abcdef',
+        server_nonce: 'nonce_1234567890123456',
+      });
+      await start;
+      expect(browserChatToolActivityStore.getSnapshot()).toMatchObject({
+        accountId: 'account-a',
+        advertisedTools: ['fs.list', 'fs.read'],
+      });
+
+      const now = Date.now();
+      socket.message({
+        kind: 'tool_call',
+        protocol_version: 2,
+        session_id: 'session_1234567890abcdef',
+        call_id: 'call_123456789012',
+        sequence: 1,
+        name: 'fs.read',
+        args: { path: 'README.md' },
+        issued_at_ms: now,
+        expires_at_ms: now + 5_000,
+        deadline_ms: 5_000,
+      });
+      await vi.waitFor(() => {
+        expect(browserChatToolActivityStore.getSnapshot().lastResult).toMatchObject({
+          callId: 'call_123456789012',
+          toolName: 'fs.read',
+          ok: false,
+          errorCode: 'LOCAL_READ_DENIED',
+        });
+      });
+      expect(browserChatToolActivityStore.getSnapshot().activeCalls).toEqual([]);
+
+      await client.stop();
+      expect(browserChatToolActivityStore.getSnapshot().accountId).toBeNull();
+    } finally {
+      unregisterRead();
+      unregisterList();
+      if (priorRead) toolRegistry.register(priorRead);
+      if (priorList) toolRegistry.register(priorList);
+    }
   });
 
   it('abandons a socket that never acknowledges registration and schedules one replacement', async () => {

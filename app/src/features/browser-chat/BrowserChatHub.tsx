@@ -75,6 +75,7 @@ import {
   type BrowserChatPermissionProfile,
 } from './permissionRegistry';
 import { BrowserChatPermissionPanel } from './BrowserChatPermissionPanel';
+import { browserChatToolActivityStore } from './browserChatToolActivity';
 
 const BROWSER_CHAT_EXECUTABLE_CAPABILITIES = new Set<BrowserChatCapabilityId>([
   'files.list',
@@ -165,6 +166,12 @@ export function BrowserChatHub({
     browserChatRelayStatusStore.getSnapshot,
     () => 'disabled' as const,
   );
+  const toolActivity = React.useSyncExternalStore(
+    browserChatToolActivityStore.subscribe,
+    browserChatToolActivityStore.getSnapshot,
+    browserChatToolActivityStore.getSnapshot,
+  );
+  const accountToolActivity = toolActivity.accountId === cloudAccountId ? toolActivity : null;
   const mcpUrl = resolveBrowserChatMcpUrl(
     resolveBrowserChatCloudUrl(import.meta.env as Record<string, string | undefined>),
   );
@@ -1066,6 +1073,42 @@ export function BrowserChatHub({
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
                 The provider page has no direct device authority. The official VibeSpace MCP app can
                 use only the project you approve below.
+              </dd>
+              <dd
+                aria-live="polite"
+                className="mt-2 rounded-md border border-border/70 bg-muted/25 p-2 text-[9px] leading-4 text-muted-foreground"
+              >
+                {accountToolActivity ? (
+                  <>
+                    <span className="block font-medium text-foreground">
+                      {accountToolActivity.advertisedTools.length} advertised
+                      {' · '}
+                      {accountToolActivity.activeCalls.length} running
+                    </span>
+                    {accountToolActivity.activeCalls.map((call) => (
+                      <span key={call.callId} className="block">
+                        {call.toolName} running
+                      </span>
+                    ))}
+                    {accountToolActivity.lastResult ? (
+                      <span className="block">
+                        Last: {accountToolActivity.lastResult.toolName}
+                        {' · '}
+                        {accountToolActivity.lastResult.ok
+                          ? 'completed'
+                          : statusLabel(
+                              accountToolActivity.lastResult.errorCode ?? 'runtime failure',
+                            )}
+                        {' · '}
+                        {accountToolActivity.lastResult.elapsedMs} ms
+                      </span>
+                    ) : (
+                      <span className="block">No tool result in this relay session.</span>
+                    )}
+                  </>
+                ) : (
+                  <span>No account-scoped relay catalog is active.</span>
+                )}
               </dd>
               {relayStatus === 'connected' ? (
                 <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">

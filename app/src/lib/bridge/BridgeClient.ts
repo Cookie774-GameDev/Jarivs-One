@@ -28,6 +28,12 @@ import {
   serializePermissionProfile,
   type BrowserChatPermissionProfile,
 } from '@/features/browser-chat/permissionRegistry';
+import {
+  beginBrowserChatToolCall,
+  clearBrowserChatToolActivity,
+  finishBrowserChatToolCall,
+  publishBrowserChatToolCatalog,
+} from '@/features/browser-chat/browserChatToolActivity';
 
 const BRIDGE_PROTOCOL_VERSION = 2;
 const SAFE_READ_TOOLS = new Set(['fs.list', 'fs.read']);
@@ -506,6 +512,9 @@ export class BridgeClient {
       }
     }
     this.rejectPendingRegistration(new Error('Bridge stopped.'));
+    if (this.opts.mode === 'browser_chat' && this.opts.accountId) {
+      clearBrowserChatToolActivity(this.opts.accountId);
+    }
     this.setStatus('closed');
   }
 
@@ -646,6 +655,9 @@ export class BridgeClient {
         if (!this.isCurrentConnection(ws, epoch)) return;
         const wasConnected = this.status === 'connected';
         this.ws = null;
+        if (this.opts.mode === 'browser_chat' && this.opts.accountId) {
+          clearBrowserChatToolActivity(this.opts.accountId);
+        }
         this.clearHeartbeat();
         this.clearRegistrationTimeout();
 
@@ -702,6 +714,21 @@ export class BridgeClient {
         this.lastHeartbeatAckAt = this.connectedAt;
         this.clearRegistrationTimeout();
         this.setStatus('connected');
+        if (
+          this.opts.mode === 'browser_chat' &&
+          this.opts.accountId &&
+          SAFE_SCOPE_IDENTIFIER.test(this.opts.accountId)
+        ) {
+          try {
+            publishBrowserChatToolCatalog({
+              accountId: this.opts.accountId,
+              toolNames: [...this.advertisedTools],
+              now: this.connectedAt,
+            });
+          } catch {
+            clearBrowserChatToolActivity(this.opts.accountId);
+          }
+        }
         this.startHeartbeat();
         this.registerPending?.resolve();
         this.registerPending = null;
@@ -743,6 +770,8 @@ export class BridgeClient {
         ? frame.call_id
         : 'invalid_call';
     let sequence = Number.isSafeInteger(frame.sequence) ? Number(frame.sequence) : 0;
+    let activityStarted = false;
+    let toolName = '';
 
     try {
       if (!this.sessionId || !this.opts.workspaceGrant) {
@@ -757,12 +786,26 @@ export class BridgeClient {
         seenCallIds: this.seenCallIds,
       });
       callId = call.callId;
+      toolName = call.name;
       sequence = call.sequence;
       this.lastSequence = call.sequence;
       this.seenCallIds.add(call.callId);
       if (this.seenCallIds.size > MAX_SEEN_CALLS) {
         const oldest = this.seenCallIds.values().next().value;
         if (oldest) this.seenCallIds.delete(oldest);
+      }
+      if (this.opts.accountId) {
+        try {
+          beginBrowserChatToolCall({
+            accountId: this.opts.accountId,
+            callId,
+            toolName,
+            now: Date.now(),
+          });
+          activityStarted = true;
+        } catch {
+          // Tool activity is observational and must not become execution authority.
+        }
       }
       result = await invokeBridgeReadTool(call, this.opts.workspaceGrant.root);
     } catch {
@@ -774,6 +817,20 @@ export class BridgeClient {
     }
 
     const elapsedMs = Math.round(performance.now() - start);
+    if (activityStarted && this.opts.accountId) {
+      try {
+        finishBrowserChatToolCall({
+          accountId: this.opts.accountId,
+          callId,
+          ok,
+          ...(error ? { errorCode: error.code } : {}),
+          elapsedMs,
+          now: Date.now(),
+        });
+      } catch {
+        // A malformed telemetry transition cannot change the tool result.
+      }
+    }
     const reply = ok
       ? {
           kind: 'tool_result',

@@ -453,6 +453,35 @@ staged, restored, reformatted, or committed by this task.
   them end to end.
 - Commit: `01c49e2e`.
 
+### M5j — account-scoped live tool activity truth
+
+- Status: `VERIFIED`
+- RED evidence: the Connection inspector showed only coarse relay state and
+  could not distinguish the registered catalog, current tool calls, or last
+  verified local result.
+- GREEN evidence: 38/38 focused tool-activity, bridge, and Browser Chat hub
+  tests pass; app TypeScript passes; all six touched frontend files pass
+  Prettier.
+- Catalog truth: the bridge publishes the sorted, de-duplicated tool names
+  only after the relay acknowledges registration. Socket close, reconnect,
+  and explicit stop clear the matching account snapshot.
+- Activity truth: validated calls are marked running immediately before local
+  invocation and settled after the real adapter returns or denies. The store
+  supports bounded concurrency and records only tool name, opaque call ID,
+  success/error code, elapsed milliseconds, and timestamps.
+- Account isolation: catalog, begin, finish, and clear transitions require the
+  exact active account. Wrong-account, unadvertised, replayed, malformed, and
+  over-capacity events fail closed.
+- Privacy: tool arguments, roots, file paths, results, content, tokens, and raw
+  errors never enter the activity store. Telemetry failures are observational
+  and cannot change tool execution or its reply.
+- UX: the Connection inspector now independently reports advertised count,
+  running count/tool names, and the last bounded result. A missing scoped
+  catalog is shown explicitly rather than inferred from page or relay state.
+- Boundary: current catalog truth remains read-only because mutation routing
+  is still excluded at the Worker protocol boundary.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

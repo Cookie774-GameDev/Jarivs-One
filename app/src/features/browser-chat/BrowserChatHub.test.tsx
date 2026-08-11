@@ -17,6 +17,12 @@ import { createBrowserChatBindingRepository } from './browserChatRepository';
 import type { ChatId, WorkspaceId } from '@/types/common';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Chat } from '@/types/chat';
+import {
+  beginBrowserChatToolCall,
+  clearBrowserChatToolActivity,
+  finishBrowserChatToolCall,
+  publishBrowserChatToolCatalog,
+} from './browserChatToolActivity';
 
 const providerSurfaceHarness = vi.hoisted(() => ({
   onNavigation: undefined as
@@ -100,6 +106,7 @@ describe('BrowserChatHub', () => {
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
     bridge.resetBrowserChatRelayStatus();
+    clearBrowserChatToolActivity();
     useAuthStore.setState({
       workspaceId: 'workspace-1' as WorkspaceId,
       projectId: 'project-1' as ProjectId,
@@ -458,6 +465,40 @@ describe('BrowserChatHub', () => {
 
     expect(screen.getAllByText(/connection error/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/^setup required$/i)).toBeNull();
+  });
+
+  it('shows only account-scoped advertised, running, and last-result tool truth', () => {
+    publishBrowserChatToolCatalog({
+      accountId: 'account-1',
+      toolNames: ['fs.read', 'fs.list'],
+      now: 100,
+    });
+    beginBrowserChatToolCall({
+      accountId: 'account-1',
+      callId: 'call_completed0001',
+      toolName: 'fs.list',
+      now: 110,
+    });
+    finishBrowserChatToolCall({
+      accountId: 'account-1',
+      callId: 'call_completed0001',
+      ok: false,
+      errorCode: 'LOCAL_READ_DENIED',
+      elapsedMs: 25,
+      now: 135,
+    });
+    beginBrowserChatToolCall({
+      accountId: 'account-1',
+      callId: 'call_running000001',
+      toolName: 'fs.read',
+      now: 140,
+    });
+
+    renderHub('chat-1');
+
+    expect(screen.getByText(/2 advertised · 1 running/i)).toBeTruthy();
+    expect(screen.getByText(/^fs\.read running$/i)).toBeTruthy();
+    expect(screen.getByText(/last: fs\.list · local read denied · 25 ms/i)).toBeTruthy();
   });
 
   it('presents one branded VibeSpace MCP connection with honest approval boundaries', async () => {
