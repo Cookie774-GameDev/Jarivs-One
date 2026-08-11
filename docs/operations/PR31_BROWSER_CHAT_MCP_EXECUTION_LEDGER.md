@@ -958,6 +958,11 @@ staged, restored, reformatted, or committed by this task.
   CMake build: MSBuild cannot create/run the deeply nested linker tracking
   path. A preceding zero-disk-space attempt was remediated by `cargo clean`,
   which removed only 5.2 GiB of regenerable worktree Cargo artifacts.
+  A later retry with the deliberately short generated target
+  `C:\ct\pr31` could not reach the eSpeak build because C: had only about
+  129 MiB free and Rust exhausted it during dependency compilation. An exact
+  `cargo clean` removed the entire retry target (597 files, 165.1 MiB); no
+  short-target success is claimed.
 - AI-boundary workflow: `BLOCKED — TECHNICAL`; the pinned
   `promptfoo@0.121.20` executable is not installed locally and
   `npx --no-install` correctly refused to fetch it. Dependency installation
