@@ -86,12 +86,12 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 - [x] Reproduce localStorage-only session inference and missing durable rail
       operations with focused failing tests.
 - [x] Implement provider adapters without DOM inspection.
-- [ ] Migrate Browser Chat list selection to the durable binding repository
+- [x] Migrate Browser Chat list selection to the durable binding repository
       while retaining per-chat engine/provider compatibility.
-- [ ] Implement keyboard-accessible pinned and provider-session sections.
-- [ ] Verify duplicate prevention, restart restoration, stale URL failure, and
+- [x] Implement keyboard-accessible pinned and provider-session sections.
+- [x] Verify duplicate prevention, restart restoration, stale URL failure, and
       Provider/VibeSpace mode reuse.
-- [ ] Commit the verified slice.
+- [x] Commit the verified slice.
 
 ### Task 3: True child WebView and top-level navigation bridge
 

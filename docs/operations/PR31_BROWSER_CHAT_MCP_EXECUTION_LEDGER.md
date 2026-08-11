@@ -82,6 +82,28 @@ staged, restored, reformatted, or committed by this task.
   non-default ports, and unsupported paths.
 - Repository integration: binding and provider-project URL validation now
   consumes the shared adapter instead of duplicating provider URL assumptions.
+- Commit: `ad235c7f`.
+
+### M2b — durable session rail and legacy migration
+
+- Status: `VERIFIED`
+- RED evidence: the focused Hub test first failed because no durable pinned
+  section or binding-backed actions rendered. The migration suite then failed
+  because `migrateLegacyBrowserChatPreferences` did not exist.
+- GREEN evidence: 18/18 Hub tests pass; 6/6 store and migration tests pass;
+  the combined Browser Chat registry, navigation, repository, store, and Hub
+  gate passes 54/54; app TypeScript passes.
+- Behavior: the session rail now reads exact account/workspace-scoped durable
+  bindings, separates pinned and provider sessions, and provides
+  keyboard-accessible open, pin, rename, project move, and local removal
+  controls. Successful mutations update both durable bindings and existing
+  VibeSpace chat metadata where appropriate.
+- Compatibility: legacy per-chat Browser preferences migrate once into
+  durable bindings only when the referenced chat exists in the exact active
+  workspace. Native, missing, and foreign-workspace chats are skipped, and a
+  repeat migration creates zero rows.
+- Safety: removing a binding never deletes the provider conversation and
+  returns the local VibeSpace chat to native mode.
 - Commit: pending exact-path commit.
 
 ## Completion labels

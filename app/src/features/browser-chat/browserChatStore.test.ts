@@ -1,11 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   BROWSER_CHAT_STORAGE_KEY,
   createBrowserChatStore,
+  migrateLegacyBrowserChatPreferences,
   resolveChatEngine,
+  type BrowserChatPreference,
   type BrowserChatStorage,
 } from './browserChatStore';
+import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
+import type { ChatId, WorkspaceId } from '@/types/common';
 
 function memoryStorage(seed?: Record<string, string>): BrowserChatStorage {
   const values = new Map(Object.entries(seed ?? {}));
@@ -98,5 +103,87 @@ describe('Browser Chat engine state', () => {
     expect(store.getState().engine).toBe('native');
     expect(store.getState().providerId).toBe('chatgpt');
     expect(store.getState().preferManagedSurface).toBe(true);
+  });
+});
+
+describe('legacy Browser Chat preference migration', () => {
+  let database: JarvisDexie;
+
+  beforeEach(async () => {
+    database = createJarvisDb(
+      uniqueTestDbName('browser-chat-preference-migration'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+  });
+
+  afterEach(async () => {
+    database.close();
+    await database.delete();
+  });
+
+  it('migrates only browser chats in the exact workspace and is idempotent', async () => {
+    await database.chats.bulkPut([
+      {
+        id: 'browser-chat' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        title: 'Legacy browser chat',
+        mode: 'chat',
+        active_agent_ids: [],
+        pinned: true,
+        created_at: 1,
+        updated_at: 2,
+      },
+      {
+        id: 'native-chat' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        title: 'Native chat',
+        mode: 'chat',
+        active_agent_ids: [],
+        created_at: 1,
+        updated_at: 2,
+      },
+      {
+        id: 'foreign-chat' as ChatId,
+        workspace_id: 'workspace-2' as WorkspaceId,
+        title: 'Foreign browser chat',
+        mode: 'chat',
+        active_agent_ids: [],
+        created_at: 1,
+        updated_at: 2,
+      },
+    ]);
+    const preferences = {
+      'browser-chat': { engine: 'browser', providerId: 'chatgpt' },
+      'native-chat': { engine: 'native', providerId: 'claude' },
+      'foreign-chat': { engine: 'browser', providerId: 'gemini' },
+      missing: { engine: 'browser', providerId: 'chatgpt' },
+    } satisfies Record<string, BrowserChatPreference>;
+    let id = 0;
+    const input = {
+      database,
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      preferences,
+      clock: () => 100,
+      idFactory: () => `migrated-${++id}`,
+    };
+
+    await expect(migrateLegacyBrowserChatPreferences(input)).resolves.toBe(1);
+    await expect(migrateLegacyBrowserChatPreferences(input)).resolves.toBe(0);
+
+    const rows = await database.browser_chat_bindings.toArray();
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'migrated-1',
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        chatId: 'browser-chat',
+        provider: 'chatgpt',
+        providerProfileKey: 'browser-chat/chatgpt',
+        localTitle: 'Legacy browser chat',
+        pinned: true,
+      }),
+    ]);
   });
 });

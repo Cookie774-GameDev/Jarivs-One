@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { liveQuery } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Activity,
@@ -12,8 +13,12 @@ import {
   KeyRound,
   LockKeyhole,
   MonitorUp,
+  Pencil,
+  Pin,
+  PinOff,
   Plus,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +28,9 @@ import { ensureActiveChat } from '@/features/chat/chatLifecycle';
 import { formatContextTreeForPrompt, loadSelectedContextMap } from '@/features/context';
 import { selectPluginConnectionsForAccount, usePluginStore } from '@/features/plugins/store';
 import { taskbarUsageStore } from '@/features/taskbar-usage/taskbarUsageStore';
-import { agentRepo, db, projectRepo } from '@/lib/db';
+import { chatRepo, db, type JarvisDexie } from '@/lib/db';
+import type { Chat } from '@/types/chat';
+import type { ChatId } from '@/types/common';
 import { getStoredProjectRoot, basename } from '@/features/files/projectFiles';
 import {
   resolveBrowserChatCloudUrl,
@@ -36,7 +43,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
-import { useBrowserChatStore } from './browserChatStore';
+import { migrateLegacyBrowserChatPreferences, useBrowserChatStore } from './browserChatStore';
 import { BROWSER_CHAT_PROVIDERS, browserChatProvider } from './providerRegistry';
 import { browserChatSurface } from './providerSurface';
 import { buildBrowserAgentPrompt } from './browserAgentPrompt';
@@ -50,6 +57,12 @@ import {
   grantBrowserChatWorkspace,
   revokeBrowserChatWorkspace,
 } from './workspaceGrant';
+import {
+  createBrowserChatBindingRepository,
+  type BrowserChatBindingUpdateInput,
+  type BrowserChatScope,
+} from './browserChatRepository';
+import type { BrowserChatBindingRow, Project } from '@/lib/db/schema';
 
 function statusLabel(value: string): string {
   return value.replaceAll('_', ' ');
@@ -82,12 +95,32 @@ function usageText(value: number | null, limit: number | null, unit: string | nu
   return `${value.toLocaleString()} of ${limit.toLocaleString()} ${unit}`;
 }
 
-export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) {
+type BrowserChatHubProps = {
+  readonly chatId?: string | null;
+  readonly database?: JarvisDexie;
+  readonly updateChat?: (id: ChatId, patch: Partial<Chat>) => Promise<Chat>;
+  readonly bindingScope?: BrowserChatScope;
+  readonly initialSessions?: ReadonlyArray<{
+    readonly binding: BrowserChatBindingRow;
+    readonly chat: Chat;
+  }>;
+  readonly initialProjects?: ReadonlyArray<Project>;
+};
+
+export function BrowserChatHub({
+  chatId,
+  database = db,
+  updateChat = (id, patch) => chatRepo.update(id, patch),
+  bindingScope,
+  initialSessions,
+  initialProjects,
+}: BrowserChatHubProps) {
   const providerId = useBrowserChatStore(
     (state) => state.chatPreferences[chatId ?? '']?.providerId ?? state.providerId,
   );
   const setProvider = useBrowserChatStore((state) => state.setProvider);
   const setEngine = useBrowserChatStore((state) => state.setEngine);
+  const legacyChatPreferences = useBrowserChatStore((state) => state.chatPreferences);
   const runtime = useBrowserChatStore((state) => state.providerRuntime[providerId]);
   const provider = browserChatProvider(providerId);
   const pageStatus = runtime?.pageStatus ?? provider.pageStatus;
@@ -95,7 +128,11 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
   const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? '');
-  const accountId = useAuthStore((state) => state.cloudSession?.user_id ?? state.localUserId ?? '');
+  const authenticatedAccountId = useAuthStore(
+    (state) => state.cloudSession?.user_id ?? state.localUserId ?? '',
+  );
+  const accountId = bindingScope?.accountId ?? authenticatedAccountId;
+  const bindingWorkspaceId = bindingScope?.workspaceId ?? (workspaceId ? String(workspaceId) : '');
   const workspaceGrant = React.useSyncExternalStore(
     browserChatWorkspaceGrantStore.subscribe,
     browserChatWorkspaceGrantStore.getSnapshot,
@@ -122,27 +159,71 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
       ? relayStatus
       : providerBridgeStatus;
   const setActiveChat = useUIStore((state) => state.setActiveChat);
-  const chatPreferences = useBrowserChatStore((state) => state.chatPreferences);
-  const browserChatIds = React.useMemo(
-    () =>
-      Object.entries(chatPreferences)
-        .filter(([, preference]) => preference.engine === 'browser')
-        .map(([id]) => id),
-    [chatPreferences],
+  const bindingRepository = React.useMemo(
+    () => createBrowserChatBindingRepository(database),
+    [database],
   );
-  const sessions = useLiveQuery(
-    async () => {
-      if (!workspaceId || browserChatIds.length === 0) return [];
-      const rows = await db.chats.where('workspace_id').equals(workspaceId).toArray();
-      const ids = new Set(browserChatIds);
-      return rows
-        .filter((chat) => ids.has(chat.id))
-        .sort((left, right) => right.updated_at - left.updated_at)
-        .slice(0, 20);
-    },
-    [workspaceId, browserChatIds.join('|')],
-    [],
+  const [sessions, setSessions] = React.useState<
+    Array<{ readonly binding: BrowserChatBindingRow; readonly chat: Chat }>
+  >(() => [...(initialSessions ?? [])]);
+  React.useEffect(() => {
+    if (initialSessions || !accountId || !bindingWorkspaceId) return;
+    void migrateLegacyBrowserChatPreferences({
+      database,
+      accountId,
+      workspaceId: bindingWorkspaceId,
+      preferences: legacyChatPreferences,
+    }).catch((cause) => {
+      toast.error(
+        'Browser Chat migration incomplete',
+        cause instanceof Error
+          ? cause.message
+          : 'Some legacy Browser Chat preferences could not be migrated.',
+      );
+    });
+  }, [accountId, bindingWorkspaceId, database, initialSessions, legacyChatPreferences]);
+  React.useEffect(() => {
+    if (initialSessions) {
+      setSessions([...initialSessions]);
+      return;
+    }
+    if (!accountId || !bindingWorkspaceId) {
+      setSessions([]);
+      return;
+    }
+    const subscription = liveQuery(async () => {
+      const bindings = await bindingRepository.list({
+        accountId,
+        workspaceId: bindingWorkspaceId,
+      });
+      const chats = await database.chats.bulkGet(
+        bindings.map((binding) => binding.chatId as ChatId),
+      );
+      return bindings.flatMap((binding, index) => {
+        const chat = chats[index];
+        return chat ? [{ binding, chat }] : [];
+      });
+    }).subscribe({
+      next: setSessions,
+      error: (cause) => {
+        setSessions([]);
+        toast.error(
+          'Browser Chat sessions unavailable',
+          cause instanceof Error ? cause.message : 'The local session list could not be loaded.',
+        );
+      },
+    });
+    return () => subscription.unsubscribe();
+  }, [accountId, bindingWorkspaceId, bindingRepository, database, initialSessions]);
+  const liveProjects = useLiveQuery(
+    async (): Promise<Project[]> =>
+      workspaceId
+        ? await database.projects.where('workspace_id').equals(workspaceId).sortBy('name')
+        : [],
+    [database, workspaceId],
+    [] as Project[],
   );
+  const projects = initialProjects ?? liveProjects;
   const connections = usePluginStore((state) =>
     selectPluginConnectionsForAccount(state, accountId),
   );
@@ -171,14 +252,17 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   const [stagedFiles, setStagedFiles] = React.useState<File[]>(() =>
     chatId ? (stagedFilesByChat.get(chatId) ?? []) : [],
   );
-  const agents = useLiveQuery(() => agentRepo.list(), [], []);
+  const agents = useLiveQuery(() => database.agents.toArray(), [database], []);
   const project = useLiveQuery(
-    () => (projectId ? projectRepo.getById(projectId) : Promise.resolve(undefined)),
-    [projectId],
-    undefined,
+    async (): Promise<Project | undefined> =>
+      projectId ? await database.projects.get(projectId) : undefined,
+    [database, projectId],
+    undefined as Project | undefined,
   );
   const [selectedAgentId, setSelectedAgentId] = React.useState('');
   const [contextRevision, setContextRevision] = React.useState(0);
+  const [renamingBindingId, setRenamingBindingId] = React.useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = React.useState('');
   const contextMap = React.useMemo(
     () => loadSelectedContextMap(projectId),
     [contextRevision, projectId],
@@ -250,11 +334,85 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
   const createBrowserChat = async () => {
     const nextId = await ensureActiveChat({
       forceNew: true,
-      title: 'ChatGPT browser chat',
+      title: `${provider.label} browser chat`,
     });
-    if (!nextId) return;
+    if (!nextId || !accountId || !bindingWorkspaceId) return;
+    await bindingRepository.create({
+      accountId,
+      workspaceId: bindingWorkspaceId,
+      projectId: projectId ? String(projectId) : undefined,
+      chatId: String(nextId),
+      provider: provider.id,
+      providerProfileKey: provider.profileKey,
+      localTitle: `${provider.label} browser chat`,
+    });
     setEngine('browser', nextId);
-    setProvider('chatgpt', nextId);
+    setProvider(provider.id, nextId);
+  };
+
+  const updateBrowserSession = async (
+    binding: BrowserChatBindingRow,
+    patch: BrowserChatBindingUpdateInput,
+    chatPatch?: Partial<Chat>,
+  ) => {
+    if (!accountId || !bindingWorkspaceId) return;
+    try {
+      const updatedBinding = await bindingRepository.update(
+        { accountId, workspaceId: bindingWorkspaceId },
+        binding.id,
+        patch,
+      );
+      const updatedChat = chatPatch
+        ? await updateChat(binding.chatId as ChatId, chatPatch)
+        : undefined;
+      setSessions((current) =>
+        current.map((session) =>
+          session.binding.id === binding.id
+            ? { binding: updatedBinding, chat: updatedChat ?? session.chat }
+            : session,
+        ),
+      );
+    } catch (cause) {
+      toast.error(
+        'Browser Chat update failed',
+        cause instanceof Error ? cause.message : 'The Browser Chat could not be updated.',
+      );
+    }
+  };
+
+  const openBrowserSession = (binding: BrowserChatBindingRow) => {
+    setProvider(binding.provider, binding.chatId);
+    setEngine('browser', binding.chatId);
+    setActiveChat(binding.chatId as ChatId);
+  };
+
+  const saveBrowserSessionTitle = async (binding: BrowserChatBindingRow) => {
+    const title = renameDraft.trim();
+    if (!title) return;
+    await updateBrowserSession(binding, { localTitle: title }, { title });
+    setRenamingBindingId(null);
+    setRenameDraft('');
+  };
+
+  const removeBrowserSession = async (binding: BrowserChatBindingRow) => {
+    if (!accountId || !bindingWorkspaceId) return;
+    if (
+      !window.confirm(
+        `Remove the local Browser Chat binding for "${binding.localTitle}"? The provider conversation will not be deleted.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await bindingRepository.remove({ accountId, workspaceId: bindingWorkspaceId }, binding.id);
+      setSessions((current) => current.filter((session) => session.binding.id !== binding.id));
+      setEngine('native', binding.chatId);
+    } catch (cause) {
+      toast.error(
+        'Browser Chat removal failed',
+        cause instanceof Error ? cause.message : 'The local binding could not be removed.',
+      );
+    }
   };
 
   const approveProjectRead = () => {
@@ -372,6 +530,152 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     mcpSetupState,
   );
   const mcpSetupBusy = mcpSetupState === 'checking' || mcpSetupState === 'opening';
+  const pinnedSessions = sessions.filter(({ binding }) => binding.pinned);
+  const providerSessions = sessions.filter(({ binding }) => !binding.pinned);
+
+  const renderBrowserSession = ({ binding }: { readonly binding: BrowserChatBindingRow }) => {
+    const providerDefinition = browserChatProvider(binding.provider);
+    const isRenaming = renamingBindingId === binding.id;
+    return (
+      <div
+        key={binding.id}
+        className={cn(
+          'rounded-lg border px-2 py-2',
+          binding.chatId === chatId
+            ? 'border-accent-copper/35 bg-accent-copper/10'
+            : 'border-transparent hover:border-border hover:bg-muted/45',
+        )}
+      >
+        {isRenaming ? (
+          <div className="space-y-1.5">
+            <label className="sr-only" htmlFor={`browser-chat-title-${binding.id}`}>
+              Browser Chat title
+            </label>
+            <input
+              id={`browser-chat-title-${binding.id}`}
+              aria-label="Browser Chat title"
+              value={renameDraft}
+              maxLength={512}
+              autoFocus
+              onChange={(event) => setRenameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void saveBrowserSessionTitle(binding);
+                if (event.key === 'Escape') setRenamingBindingId(null);
+              }}
+              className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/50"
+            />
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                className="h-6 px-2 text-[9px]"
+                onClick={() => void saveBrowserSessionTitle(binding)}
+              >
+                Save Browser Chat title
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[9px]"
+                onClick={() => setRenamingBindingId(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              aria-label={`Open ${binding.localTitle}`}
+              onClick={() => openBrowserSession(binding)}
+              className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/50"
+            >
+              <span className="block truncate text-[11px] font-medium text-foreground">
+                {binding.localTitle}
+              </span>
+              <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                {providerDefinition.label} · {statusLabel(binding.bindingState)}
+              </span>
+            </button>
+            <div className="mt-1.5 flex items-center gap-0.5">
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="h-6 w-6"
+                aria-label={`${binding.pinned ? 'Unpin' : 'Pin'} ${binding.localTitle}`}
+                onClick={() =>
+                  void updateBrowserSession(
+                    binding,
+                    { pinned: !binding.pinned },
+                    {
+                      pinned: !binding.pinned,
+                      pinned_at: binding.pinned ? undefined : Date.now(),
+                    },
+                  )
+                }
+              >
+                {binding.pinned ? (
+                  <PinOff className="h-3 w-3" aria-hidden />
+                ) : (
+                  <Pin className="h-3 w-3" aria-hidden />
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="h-6 w-6"
+                aria-label={`Rename ${binding.localTitle}`}
+                onClick={() => {
+                  setRenamingBindingId(binding.id);
+                  setRenameDraft(binding.localTitle);
+                }}
+              >
+                <Pencil className="h-3 w-3" aria-hidden />
+              </Button>
+              <label className="sr-only" htmlFor={`browser-chat-project-${binding.id}`}>
+                Project for {binding.localTitle}
+              </label>
+              <select
+                id={`browser-chat-project-${binding.id}`}
+                aria-label={`Project for ${binding.localTitle}`}
+                value={binding.projectId ?? ''}
+                onChange={(event) => {
+                  const nextProjectId = event.target.value || undefined;
+                  void updateBrowserSession(
+                    binding,
+                    { projectId: nextProjectId },
+                    { project_id: nextProjectId as Chat['project_id'] },
+                  );
+                }}
+                className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0.5 text-[9px] text-muted-foreground"
+              >
+                <option value="">No project</option>
+                {projects.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="h-6 w-6 text-destructive"
+                aria-label={`Remove ${binding.localTitle}`}
+                onClick={() => void removeBrowserSession(binding)}
+              >
+                <Trash2 className="h-3 w-3" aria-hidden />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <section
@@ -459,26 +763,38 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
-          <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-auto">
-            {sessions?.length ? (
-              sessions.map((session) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => setActiveChat(session.id)}
-                  className={cn(
-                    'w-full rounded-lg border px-2.5 py-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/50',
-                    session.id === chatId
-                      ? 'border-accent-copper/35 bg-accent-copper/10'
-                      : 'border-transparent hover:border-border hover:bg-muted/45',
-                  )}
-                >
-                  <span className="block truncate text-[11px] font-medium text-foreground">
-                    {session.title}
-                  </span>
-                  <span className="mt-0.5 block text-[9px] text-muted-foreground">ChatGPT</span>
-                </button>
-              ))
+          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-auto">
+            {sessions.length ? (
+              <>
+                {pinnedSessions.length ? (
+                  <section aria-labelledby="browser-chat-pinned-heading">
+                    <h3
+                      id="browser-chat-pinned-heading"
+                      className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+                    >
+                      Pinned
+                    </h3>
+                    <div className="space-y-1">{pinnedSessions.map(renderBrowserSession)}</div>
+                  </section>
+                ) : null}
+                <section aria-labelledby="browser-chat-provider-sessions-heading">
+                  <h3
+                    id="browser-chat-provider-sessions-heading"
+                    className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    Provider sessions
+                  </h3>
+                  <div className="space-y-1">
+                    {providerSessions.length ? (
+                      providerSessions.map(renderBrowserSession)
+                    ) : (
+                      <p className="px-2 py-2 text-[10px] text-muted-foreground">
+                        All saved Browser Chats are pinned.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              </>
             ) : (
               <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
                 <p className="text-[11px] font-medium text-foreground">ChatGPT home</p>

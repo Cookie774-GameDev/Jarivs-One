@@ -3,11 +3,15 @@ import { persist, createJSONStorage, type StateStorage } from 'zustand/middlewar
 import { createStore } from 'zustand/vanilla';
 
 import {
+  browserChatProvider,
   isBrowserChatProviderId,
   type BrowserChatPageStatus,
   type BrowserChatProviderId,
   type BrowserChatToolBridgeStatus,
 } from './providerRegistry';
+import { createBrowserChatBindingRepository } from './browserChatRepository';
+import type { JarvisDexie } from '@/lib/db';
+import type { ChatId } from '@/types/common';
 
 export type VibeSpaceChatEngine = 'native' | 'browser';
 export type BrowserChatStorage = StateStorage;
@@ -44,6 +48,15 @@ const DEFAULT_STATE = Object.freeze({
 });
 
 const MAX_CHAT_PREFERENCES = 500;
+
+type LegacyBrowserChatMigrationInput = {
+  readonly database: JarvisDexie;
+  readonly accountId: string;
+  readonly workspaceId: string;
+  readonly preferences: Readonly<Record<string, BrowserChatPreference>>;
+  readonly clock?: () => number;
+  readonly idFactory?: () => string;
+};
 
 function validChatId(value: unknown): value is string {
   return (
@@ -91,6 +104,53 @@ function validatedPersistedState(value: unknown) {
     BrowserChatState,
     'engine' | 'providerId' | 'chatPreferences' | 'preferManagedSurface'
   >;
+}
+
+/**
+ * Materializes the old per-chat browser-mode flags into durable scoped rows.
+ * Missing chats, native chats, and chats outside the exact workspace are
+ * intentionally ignored. Existing bindings make repeat runs a no-op.
+ */
+export async function migrateLegacyBrowserChatPreferences({
+  database,
+  accountId,
+  workspaceId,
+  preferences,
+  clock,
+  idFactory,
+}: LegacyBrowserChatMigrationInput): Promise<number> {
+  const repository = createBrowserChatBindingRepository(database, clock, idFactory);
+  const browserPreferences = Object.entries(preferences).filter(
+    ([chatId, preference]) =>
+      validChatId(chatId) &&
+      preference.engine === 'browser' &&
+      isBrowserChatProviderId(preference.providerId),
+  );
+  const chats = await database.chats.bulkGet(
+    browserPreferences.map(([chatId]) => chatId as ChatId),
+  );
+  let migrated = 0;
+
+  for (const [[chatId, preference], chat] of browserPreferences.map(
+    (entry, index) => [entry, chats[index]] as const,
+  )) {
+    if (!chat || String(chat.workspace_id) !== workspaceId) continue;
+    if (await repository.findByChat({ accountId, workspaceId }, chatId)) continue;
+    const provider = browserChatProvider(preference.providerId);
+    await repository.create({
+      accountId,
+      workspaceId,
+      projectId: chat.project_id ? String(chat.project_id) : undefined,
+      chatId,
+      provider: provider.id,
+      providerProfileKey: provider.profileKey,
+      localTitle: chat.title,
+      pinned: chat.pinned ?? false,
+    });
+    migrated += 1;
+  }
+
+  return migrated;
 }
 
 export function createBrowserChatStore(storage: BrowserChatStorage = localStorage) {

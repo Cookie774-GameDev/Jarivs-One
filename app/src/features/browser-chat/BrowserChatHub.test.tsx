@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { browserChatStore } from './browserChatStore';
@@ -11,6 +12,11 @@ import { getBridgeWorkspaceGrant, setBridgeWorkspaceGrant } from '@/lib/bridge';
 import { projectStorageKey, ROOT_PREFIX } from '@/features/files/projectFiles';
 import type { ProjectId } from '@/types/common';
 import { browserChatWorkspaceGrantStore, revokeBrowserChatWorkspace } from './workspaceGrant';
+import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import { createBrowserChatBindingRepository } from './browserChatRepository';
+import type { ChatId, WorkspaceId } from '@/types/common';
+import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
+import type { Chat } from '@/types/chat';
 
 vi.mock('./BrowserProviderSurface', () => ({
   BrowserProviderSurface: ({ provider }: { provider: { label: string } }) => (
@@ -52,7 +58,9 @@ function mockSuccessfulMcpDiscovery() {
 }
 
 describe('BrowserChatHub', () => {
-  beforeEach(() => {
+  let testDatabase: JarvisDexie;
+
+  beforeEach(async () => {
     vi.restoreAllMocks();
     vi.stubEnv('VITE_PHONE_JARVIS_CLOUD_URL', 'https://vibespace-mcp.fly.dev');
     localStorage.clear();
@@ -60,6 +68,7 @@ describe('BrowserChatHub', () => {
     setBridgeWorkspaceGrant();
     bridge.resetBrowserChatRelayStatus();
     useAuthStore.setState({
+      workspaceId: 'workspace-1' as WorkspaceId,
       projectId: 'project-1' as ProjectId,
       localUserId: 'account-1',
       cloudSession: {
@@ -75,6 +84,8 @@ describe('BrowserChatHub', () => {
       preferManagedSurface: true,
       providerRuntime: {},
     });
+    testDatabase = createJarvisDb(uniqueTestDbName('browser-chat-hub'), TEST_INDEXED_DB);
+    await testDatabase.open();
   });
 
   it.each([
@@ -92,10 +103,37 @@ describe('BrowserChatHub', () => {
       expect(browserChatMcpStatusLabel(relayStatus, signedIn, setupState)).toBe(expected);
     },
   );
-  afterEach(cleanup);
+  afterEach(async () => {
+    cleanup();
+    testDatabase.close();
+    await testDatabase.delete();
+  });
+
+  const updateTestChat = async (id: ChatId, patch: Partial<Chat>): Promise<Chat> => {
+    await testDatabase.chats.update(id, patch);
+    const row = await testDatabase.chats.get(id);
+    if (!row) throw new Error('chat_not_found');
+    return row;
+  };
+
+  const renderHub = (
+    chatId?: string,
+    initialSessions?: ComponentProps<typeof BrowserChatHub>['initialSessions'],
+    initialProjects?: ComponentProps<typeof BrowserChatHub>['initialProjects'],
+  ) =>
+    render(
+      <BrowserChatHub
+        chatId={chatId}
+        database={testDatabase}
+        updateChat={updateTestChat}
+        bindingScope={{ accountId: 'account-1', workspaceId: 'workspace-1' }}
+        initialSessions={initialSessions}
+        initialProjects={initialProjects}
+      />,
+    );
 
   it('shows the three provider-owned surfaces with separate page and bridge status', () => {
-    render(<BrowserChatHub />);
+    renderHub();
 
     expect(screen.getByRole('tab', { name: 'ChatGPT' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByRole('tab', { name: /Claude/i })).toBeTruthy();
@@ -110,7 +148,7 @@ describe('BrowserChatHub', () => {
   });
 
   it('keeps Claude and Gemini gated as future providers without scraping remote history', () => {
-    render(<BrowserChatHub />);
+    renderHub();
 
     const claude = screen.getByRole('tab', { name: /Claude/i });
     const gemini = screen.getByRole('tab', { name: /Gemini/i });
@@ -123,12 +161,146 @@ describe('BrowserChatHub', () => {
     expect(document.body.textContent).not.toMatch(/sync remote history/i);
   });
 
+  it('renders durable pinned and provider sessions and persists their local actions', async () => {
+    await testDatabase.projects.bulkPut([
+      {
+        id: 'project-1' as ProjectId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        name: 'Project One',
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: 'project-2' as ProjectId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        name: 'Project Two',
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    await testDatabase.chats.bulkPut([
+      {
+        id: 'chat-pinned' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        project_id: 'project-1' as ProjectId,
+        title: 'Legacy pinned title',
+        mode: 'chat',
+        active_agent_ids: [],
+        pinned: false,
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: 'chat-regular' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        project_id: 'project-1' as ProjectId,
+        title: 'Legacy regular title',
+        mode: 'chat',
+        active_agent_ids: [],
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    let id = 0;
+    const repository = createBrowserChatBindingRepository(
+      testDatabase,
+      () => 100,
+      () => `binding-${++id}`,
+    );
+    const pinned = await repository.create({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-pinned',
+      provider: 'chatgpt',
+      providerProfileKey: 'browser-chat/chatgpt',
+      localTitle: 'Pinned architecture',
+      pinned: true,
+    });
+    const regular = await repository.create({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-regular',
+      provider: 'chatgpt',
+      providerProfileKey: 'browser-chat/chatgpt',
+      localTitle: 'Research notes',
+    });
+    expect(
+      await repository.list({ accountId: 'account-1', workspaceId: 'workspace-1' }),
+    ).toHaveLength(2);
+    const seededChats = await testDatabase.chats.bulkGet([
+      'chat-pinned',
+      'chat-regular',
+    ] as ChatId[]);
+    const seededProjects = await testDatabase.projects
+      .where('workspace_id')
+      .equals('workspace-1')
+      .sortBy('name');
+    expect(seededChats).toEqual([
+      expect.objectContaining({ id: 'chat-pinned' }),
+      expect.objectContaining({ id: 'chat-regular' }),
+    ]);
+    browserChatStore.getState().setEngine('browser', 'chat-regular');
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderHub(
+      'chat-regular',
+      [
+        { binding: pinned, chat: seededChats[0]! },
+        { binding: regular, chat: seededChats[1]! },
+      ],
+      seededProjects,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Pinned' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open Pinned architecture' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Open Research notes' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unpin Pinned architecture' }));
+    await waitFor(async () =>
+      expect((await testDatabase.browser_chat_bindings.get(pinned.id))?.pinned).toBe(false),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Research notes' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Browser Chat title' }), {
+      target: { value: 'Renamed research' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Browser Chat title' }));
+    await waitFor(async () => {
+      expect((await testDatabase.browser_chat_bindings.get(regular.id))?.localTitle).toBe(
+        'Renamed research',
+      );
+      expect((await testDatabase.chats.get('chat-regular' as ChatId))?.title).toBe(
+        'Renamed research',
+      );
+    });
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Project for Renamed research' }), {
+      target: { value: 'project-2' },
+    });
+    await waitFor(async () => {
+      expect((await testDatabase.browser_chat_bindings.get(regular.id))?.projectId).toBe(
+        'project-2',
+      );
+      expect((await testDatabase.chats.get('chat-regular' as ChatId))?.project_id).toBe(
+        'project-2',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Renamed research' }));
+    await waitFor(async () =>
+      expect(await testDatabase.browser_chat_bindings.get(regular.id)).toBeUndefined(),
+    );
+    expect(browserChatStore.getState().chatPreferences['chat-regular']?.engine).toBe('native');
+  });
+
   it('requires an explicit read-only project grant before arming the local relay', () => {
     localStorage.setItem(
       projectStorageKey(ROOT_PREFIX, 'project-1'),
       'C:\\Users\\viper\\Projects\\Safe',
     );
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /approve current project read-only/i }));
@@ -155,7 +327,7 @@ describe('BrowserChatHub', () => {
   it('starts the authenticated relay for a signed-in account before local project access is granted', () => {
     bridge.publishBrowserChatRelayStatus('connected');
 
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     expect(screen.getByText(/connected to this signed-in vibespace account/i)).toBeTruthy();
@@ -164,7 +336,7 @@ describe('BrowserChatHub', () => {
   it('shows a relay failure instead of falling back to a not-configured provider status', () => {
     bridge.publishBrowserChatRelayStatus('error');
 
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
 
     expect(screen.getAllByText(/connection error/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/^setup required$/i)).toBeNull();
@@ -179,7 +351,7 @@ describe('BrowserChatHub', () => {
     const fetcher = mockSuccessfulMcpDiscovery();
     const openPlugins = vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockResolvedValue();
 
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
 
     expect(screen.getByText('VibeSpace MCP')).toBeTruthy();
     expect(screen.getByText(/file reads/i)).toBeTruthy();
@@ -214,7 +386,7 @@ describe('BrowserChatHub', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 503 }));
     const openPlugins = vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockResolvedValue();
 
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
     fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
 
     expect(await screen.findByText(/health check failed/i)).toBeTruthy();
@@ -232,7 +404,7 @@ describe('BrowserChatHub', () => {
     mockSuccessfulMcpDiscovery();
     const openPlugins = vi.spyOn(browserChatSurface, 'openChatGptPlugins').mockResolvedValue();
 
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
     fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
 
     await waitFor(() => expect(openPlugins).toHaveBeenCalledOnce());
@@ -251,7 +423,7 @@ describe('BrowserChatHub', () => {
       new Error('OS browser unavailable'),
     );
 
-    render(<BrowserChatHub chatId="chat-1" />);
+    renderHub('chat-1');
     fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
 
     expect(await screen.findByText(/chatgpt apps could not be opened/i)).toBeTruthy();
