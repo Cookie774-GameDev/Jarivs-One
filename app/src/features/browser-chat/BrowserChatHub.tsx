@@ -880,6 +880,11 @@ export function BrowserChatHub({
   const activeBinding = sessions.find(
     ({ binding }) => binding.chatId === chatId && binding.provider === provider.id,
   )?.binding;
+  const presentationMode = activeBinding?.viewMode ?? 'vibespace';
+  const changePresentationMode = (viewMode: BrowserChatBindingRow['viewMode']) => {
+    if (!activeBinding || activeBinding.viewMode === viewMode) return;
+    void updateBrowserSession(activeBinding, { viewMode });
+  };
   const independentStatus = deriveBrowserChatStatusModel({
     provider: { id: provider.id, label: provider.label, pageStatus },
     account: cloudAccountId
@@ -1156,6 +1161,42 @@ export function BrowserChatHub({
         </div>
 
         <div className="flex items-center gap-2">
+          <div
+            role="group"
+            aria-label="Browser Chat presentation"
+            className="flex rounded-lg border border-border bg-background/60 p-0.5"
+          >
+            <button
+              type="button"
+              aria-label="Provider presentation mode"
+              aria-pressed={presentationMode === 'provider'}
+              disabled={!activeBinding}
+              onClick={() => changePresentationMode('provider')}
+              className={cn(
+                'min-h-7 rounded-md px-2 text-[10px] font-medium transition-colors disabled:opacity-40',
+                presentationMode === 'provider'
+                  ? 'bg-accent-copper/15 text-foreground'
+                  : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              Provider
+            </button>
+            <button
+              type="button"
+              aria-label="VibeSpace presentation mode"
+              aria-pressed={presentationMode === 'vibespace'}
+              disabled={!activeBinding}
+              onClick={() => changePresentationMode('vibespace')}
+              className={cn(
+                'min-h-7 rounded-md px-2 text-[10px] font-medium transition-colors disabled:opacity-40',
+                presentationMode === 'vibespace'
+                  ? 'bg-accent-copper/15 text-foreground'
+                  : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              VibeSpace
+            </button>
+          </div>
           <input
             ref={exportInputRef}
             className="sr-only"
@@ -1195,113 +1236,122 @@ export function BrowserChatHub({
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[13rem_minmax(22rem,1fr)_17rem] gap-3 p-3 max-[1050px]:grid-cols-[11rem_minmax(20rem,1fr)]">
-        <aside
-          aria-label="Browser Chat local sessions"
-          className="flex min-h-0 flex-col rounded-xl border border-border bg-panel/70 p-2.5"
-        >
-          <div className="flex items-center justify-between px-1">
-            <div>
-              <h2 className="text-xs font-semibold text-foreground">Provider sessions</h2>
-              <p className="text-[10px] text-muted-foreground">Saved per VibeSpace chat</p>
-            </div>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label="New provider chat"
-              onClick={() => void createBrowserChat()}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          {pendingProviderNavigation?.providerId === provider.id ? (
-            <div
-              role="status"
-              className="mt-2 rounded-lg border border-accent-copper/30 bg-accent-copper/10 p-2"
-            >
-              <p className="text-[10px] font-medium text-foreground">
-                Unmapped {provider.label} conversation
-              </p>
-              <p className="mt-0.5 text-[9px] leading-4 text-muted-foreground">
-                Save a new local wrapper. The previously mapped conversation stays unchanged.
-              </p>
-              <div className="mt-1.5 flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-6 flex-1 px-2 text-[9px]"
-                  disabled={savingProviderNavigation}
-                  onClick={() => void savePendingProviderConversation()}
-                >
-                  {savingProviderNavigation ? 'Saving…' : 'Save as Browser Chat'}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-[9px]"
-                  disabled={savingProviderNavigation}
-                  onClick={() => setPendingProviderNavigation(null)}
-                >
-                  Dismiss
-                </Button>
+      <div
+        className={cn(
+          'grid min-h-0 flex-1 gap-3 p-3',
+          presentationMode === 'vibespace'
+            ? 'grid-cols-[13rem_minmax(22rem,1fr)_17rem] max-[1050px]:grid-cols-[11rem_minmax(20rem,1fr)]'
+            : 'grid-cols-1',
+        )}
+      >
+        {presentationMode === 'vibespace' ? (
+          <aside
+            aria-label="Browser Chat local sessions"
+            className="flex min-h-0 flex-col rounded-xl border border-border bg-panel/70 p-2.5"
+          >
+            <div className="flex items-center justify-between px-1">
+              <div>
+                <h2 className="text-xs font-semibold text-foreground">Provider sessions</h2>
+                <p className="text-[10px] text-muted-foreground">Saved per VibeSpace chat</p>
               </div>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="New provider chat"
+                onClick={() => void createBrowserChat()}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
             </div>
-          ) : null}
-          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-auto">
-            {sessions.length ? (
-              <>
-                {pinnedSessions.length ? (
-                  <section aria-labelledby="browser-chat-pinned-heading">
+            {pendingProviderNavigation?.providerId === provider.id ? (
+              <div
+                role="status"
+                className="mt-2 rounded-lg border border-accent-copper/30 bg-accent-copper/10 p-2"
+              >
+                <p className="text-[10px] font-medium text-foreground">
+                  Unmapped {provider.label} conversation
+                </p>
+                <p className="mt-0.5 text-[9px] leading-4 text-muted-foreground">
+                  Save a new local wrapper. The previously mapped conversation stays unchanged.
+                </p>
+                <div className="mt-1.5 flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-6 flex-1 px-2 text-[9px]"
+                    disabled={savingProviderNavigation}
+                    onClick={() => void savePendingProviderConversation()}
+                  >
+                    {savingProviderNavigation ? 'Saving…' : 'Save as Browser Chat'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[9px]"
+                    disabled={savingProviderNavigation}
+                    onClick={() => setPendingProviderNavigation(null)}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-auto">
+              {sessions.length ? (
+                <>
+                  {pinnedSessions.length ? (
+                    <section aria-labelledby="browser-chat-pinned-heading">
+                      <h3
+                        id="browser-chat-pinned-heading"
+                        className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+                      >
+                        Pinned
+                      </h3>
+                      <div className="space-y-1">{pinnedSessions.map(renderBrowserSession)}</div>
+                    </section>
+                  ) : null}
+                  <section aria-labelledby="browser-chat-provider-sessions-heading">
                     <h3
-                      id="browser-chat-pinned-heading"
+                      id="browser-chat-provider-sessions-heading"
                       className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
                     >
-                      Pinned
+                      Provider sessions
                     </h3>
-                    <div className="space-y-1">{pinnedSessions.map(renderBrowserSession)}</div>
+                    <div className="space-y-1">
+                      {providerSessions.length ? (
+                        providerSessions.map(renderBrowserSession)
+                      ) : (
+                        <p className="px-2 py-2 text-[10px] text-muted-foreground">
+                          All saved Browser Chats are pinned.
+                        </p>
+                      )}
+                    </div>
                   </section>
-                ) : null}
-                <section aria-labelledby="browser-chat-provider-sessions-heading">
-                  <h3
-                    id="browser-chat-provider-sessions-heading"
-                    className="px-1 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
-                  >
-                    Provider sessions
-                  </h3>
-                  <div className="space-y-1">
-                    {providerSessions.length ? (
-                      providerSessions.map(renderBrowserSession)
-                    ) : (
-                      <p className="px-2 py-2 text-[10px] text-muted-foreground">
-                        All saved Browser Chats are pinned.
-                      </p>
-                    )}
-                  </div>
-                </section>
-              </>
-            ) : (
-              <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
-                <p className="text-[11px] font-medium text-foreground">ChatGPT home</p>
-                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                  Create a Browser Chat to keep its mode separate from native chats.
-                </p>
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center">
+                  <p className="text-[11px] font-medium text-foreground">ChatGPT home</p>
+                  <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                    Create a Browser Chat to keep its mode separate from native chats.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-auto space-y-2 border-t border-border/70 px-1 pt-3">
+              <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
+                <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-copper" />
+                Cookies stay in this provider’s isolated local profile.
               </div>
-            )}
-          </div>
-          <div className="mt-auto space-y-2 border-t border-border/70 px-1 pt-3">
-            <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
-              <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-copper" />
-              Cookies stay in this provider’s isolated local profile.
+              <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
+                <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-copper" />
+                Google and other external sign-in opens in your OS default browser. Its cookies are
+                never copied into VibeSpace.
+              </div>
             </div>
-            <div className="flex items-start gap-2 text-[10px] leading-4 text-muted-foreground">
-              <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-copper" />
-              Google and other external sign-in opens in your OS default browser. Its cookies are
-              never copied into VibeSpace.
-            </div>
-          </div>
-        </aside>
+          </aside>
+        ) : null}
 
         <BrowserProviderSurface
           key={provider.id}
@@ -1310,456 +1360,468 @@ export function BrowserChatHub({
           onNavigation={captureProviderNavigation}
         />
 
-        <aside
-          aria-label="Browser Chat connection inspector"
-          className="min-h-0 overflow-auto rounded-xl border border-border bg-panel/70 p-3 max-[1050px]:col-span-2"
-        >
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-foreground">Connection</h2>
-          </div>
+        {presentationMode === 'vibespace' ? (
+          <aside
+            aria-label="Browser Chat connection inspector"
+            className="min-h-0 overflow-auto rounded-xl border border-border bg-panel/70 p-3 max-[1050px]:col-span-2"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-foreground">Connection</h2>
+            </div>
 
-          <dl className="mt-3 space-y-3 text-[11px]">
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <MonitorUp className="h-3.5 w-3.5 text-accent-copper" />
-                Page status
-              </dt>
-              <dd className="mt-1 text-muted-foreground">{independentStatus.providerPage.label}</dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="font-medium text-foreground">Provider session</dt>
-              <dd className="mt-1 text-muted-foreground">
-                {independentStatus.providerSession.label}
-              </dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="font-medium text-foreground">VibeSpace account</dt>
-              <dd className="mt-1 text-muted-foreground">
-                {independentStatus.vibespaceAccount.label}
-              </dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="font-medium text-foreground">MCP authorization</dt>
-              <dd className="mt-1 text-muted-foreground">
-                {independentStatus.mcpAuthorization.label}
-              </dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="font-medium text-foreground">Desktop relay</dt>
-              <dd className="mt-1 text-muted-foreground">{independentStatus.desktopRelay.label}</dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <ShieldCheck className="h-3.5 w-3.5 text-accent-copper" />
-                Tool bridge
-              </dt>
-              <dd className="mt-1 capitalize text-muted-foreground">{statusLabel(bridgeStatus)}</dd>
-              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                {statusLabel(independentStatus.toolBridge.profile)} profile ·{' '}
-                {independentStatus.toolBridge.executableCount} executable now ·{' '}
-                {independentStatus.toolBridge.advertisedCount} advertised ·{' '}
-                {independentStatus.toolBridge.providerLimitedCount} provider-limited
-              </dd>
-              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                The provider page has no direct device authority. The official VibeSpace MCP app can
-                use only the project you approve below.
-              </dd>
-              <dd
-                aria-live="polite"
-                className="mt-2 rounded-md border border-border/70 bg-muted/25 p-2 text-[9px] leading-4 text-muted-foreground"
-              >
-                {accountToolActivity ? (
-                  <>
-                    <span className="block font-medium text-foreground">
-                      {accountToolActivity.advertisedTools.length} advertised
-                      {' · '}
-                      {accountToolActivity.activeCalls.length} running
-                    </span>
-                    {accountToolActivity.activeCalls.map((call) => (
-                      <span key={call.callId} className="block">
-                        {call.toolName} running
-                      </span>
-                    ))}
-                    {accountToolActivity.lastResult ? (
-                      <span className="block">
-                        Last: {accountToolActivity.lastResult.toolName}
-                        {' · '}
-                        {accountToolActivity.lastResult.ok
-                          ? 'completed'
-                          : statusLabel(
-                              accountToolActivity.lastResult.errorCode ?? 'runtime failure',
-                            )}
-                        {' · '}
-                        {accountToolActivity.lastResult.elapsedMs} ms
-                      </span>
-                    ) : (
-                      <span className="block">No tool result in this relay session.</span>
-                    )}
-                  </>
-                ) : (
-                  <span>No account-scoped relay catalog is active.</span>
-                )}
-              </dd>
-              {relayStatus === 'connected' ? (
+            <dl className="mt-3 space-y-3 text-[11px]">
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <MonitorUp className="h-3.5 w-3.5 text-accent-copper" />
+                  Page status
+                </dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {independentStatus.providerPage.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="font-medium text-foreground">Provider session</dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {independentStatus.providerSession.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="font-medium text-foreground">VibeSpace account</dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {independentStatus.vibespaceAccount.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="font-medium text-foreground">MCP authorization</dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {independentStatus.mcpAuthorization.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="font-medium text-foreground">Desktop relay</dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {independentStatus.desktopRelay.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <ShieldCheck className="h-3.5 w-3.5 text-accent-copper" />
+                  Tool bridge
+                </dt>
+                <dd className="mt-1 capitalize text-muted-foreground">
+                  {statusLabel(bridgeStatus)}
+                </dd>
                 <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                  Desktop relay connected to this signed-in VibeSpace account. ChatGPT app and
-                  provider-session status remain owned by ChatGPT.
+                  {statusLabel(independentStatus.toolBridge.profile)} profile ·{' '}
+                  {independentStatus.toolBridge.executableCount} executable now ·{' '}
+                  {independentStatus.toolBridge.advertisedCount} advertised ·{' '}
+                  {independentStatus.toolBridge.providerLimitedCount} provider-limited
                 </dd>
-              ) : null}
-              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                It is not auto-connected by page login. Approve a project, configure the public
-                VibeSpace MCP endpoint, then enable VibeSpace MCP in ChatGPT Settings → Apps.
-              </dd>
-              <dd className="mt-2 rounded-md border border-border/70 bg-muted/25 p-2">
-                <span className="flex items-center justify-between gap-2">
-                  <strong className="text-[11px] text-foreground">VibeSpace MCP</strong>
-                  <Badge variant={relayStatus === 'connected' ? 'success' : 'secondary'}>
-                    {mcpStatusLabel}
-                  </Badge>
-                </span>
-                {mcpUrl ? (
-                  <span className="mt-2 flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-background/55 p-1">
-                    <code
-                      className="min-w-0 flex-1 select-all truncate px-1 text-[9px] text-foreground"
-                      title={mcpUrl}
-                    >
-                      {mcpUrl}
-                    </code>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="Copy MCP endpoint"
-                      onClick={() => void copyMcpEndpoint()}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </span>
-                ) : null}
-                <ol className="mt-2 grid gap-1 text-[9px] leading-4 text-muted-foreground">
-                  <li>1. Enable Developer mode.</li>
-                  <li>2. Add VibeSpace MCP.</li>
-                  <li>3. Approve access.</li>
-                </ol>
-                {permissionProfile ? (
-                  <BrowserChatPermissionPanel
-                    profile={permissionProfile}
-                    workspaceGranted={Boolean(activeWorkspaceGrant)}
-                    providerBridgeAvailable={relayStatus === 'connected'}
-                    availableCapabilities={BROWSER_CHAT_EXECUTABLE_CAPABILITIES}
-                    disabled={permissionProfileSaving}
-                    onProfileChange={changePermissionProfile}
-                  />
-                ) : (
-                  <span className="mt-2 block text-[9px] text-muted-foreground">
-                    Loading the scoped permission plan…
-                  </span>
-                )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 w-full"
-                  disabled={!mcpUrl || mcpSetupBusy}
-                  onClick={() => void connectVibeSpaceMcp()}
-                >
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  {mcpSetupState === 'checking'
-                    ? 'Checking VibeSpace MCP'
-                    : mcpSetupState === 'opening'
-                      ? 'Opening ChatGPT Apps'
-                      : mcpSetupState === 'error'
-                        ? 'Retry VibeSpace MCP'
-                        : 'Connect VibeSpace MCP'}
-                </Button>
-                {mcpSetupError ? (
-                  <span role="alert" className="mt-1 block text-[9px] leading-4 text-destructive">
-                    <span className="block">{mcpSetupError}</span>
-                    <span className="block text-muted-foreground">
-                      Open manually:{' '}
-                      <code className="select-all text-foreground">{CHATGPT_APPS_URL}</code>
-                    </span>
-                  </span>
-                ) : null}
-                <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">
-                  In ChatGPT, open Settings → Apps → Advanced settings, enable Developer mode, then
-                  create or refresh the VibeSpace app with the MCP endpoint above. ChatGPT requires
-                  one-time OAuth approval; the desktop relay then reconnects automatically while
-                  this session grant is active.
-                </span>
-              </dd>
-              <dd className="mt-2 space-y-1">
-                {enabledConnections.length ? (
-                  enabledConnections.slice(0, 8).map((connection) => (
-                    <span
-                      key={connection.pluginId}
-                      className="flex items-center justify-between rounded-md bg-muted/45 px-2 py-1"
-                    >
-                      <span className="truncate">{connection.pluginId}</span>
-                      <span className="ml-2 inline-flex items-center gap-1 capitalize text-muted-foreground">
-                        {connection.state === 'connecting' ? (
-                          <span
-                            className="inline-flex gap-0.5 motion-safe:animate-pulse"
-                            aria-hidden
-                          >
-                            <i>·</i>
-                            <i>·</i>
-                            <i>·</i>
-                          </span>
-                        ) : null}
-                        {statusLabel(connection.state)}
-                      </span>
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">
-                    No enabled VibeSpace MCP or app connections.
-                  </span>
-                )}
-              </dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <FolderKey className="h-3.5 w-3.5 text-accent-copper" />
-                Local project grant
-              </dt>
-              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                {activeWorkspaceGrant
-                  ? `Local relay armed · ${activeWorkspaceGrant.displayName} · ${activeWorkspaceGrant.permissionProfile.plan.replaceAll('_', ' ')}`
-                  : projectRoot
-                    ? `${basename(projectRoot)} is available but not exposed.`
-                    : 'Choose a project folder in Files before enabling local reads.'}
-              </dd>
-              <dd className="mt-2">
-                {activeWorkspaceGrant ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={revokeProjectRead}
-                  >
-                    Revoke project access
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    disabled={!projectRoot || !cloudAccountId || !projectId}
-                    onClick={approveProjectRead}
-                  >
-                    Approve current project access
-                  </Button>
-                )}
-              </dd>
-              <dd className="mt-2 text-[9px] leading-4 text-muted-foreground">
-                Session-only. Absolute paths are never sent to ChatGPT or stored by the relay.
-              </dd>
-              <dd className="mt-1 text-[9px] leading-4 text-muted-foreground">
-                {independentStatus.localProject.label}
-              </dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <Bot className="h-3.5 w-3.5 text-accent-copper" />
-                Agent &amp; project context
-              </dt>
-              <dd className="mt-2 space-y-2">
-                <select
-                  aria-label="Browser Chat agent"
-                  value={selectedAgent?.id ?? ''}
-                  onChange={(event) => setSelectedAgentId(event.currentTarget.value)}
-                  className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px] text-foreground"
-                >
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="w-full justify-start"
-                  disabled={!agentPrompt}
-                  onClick={() => {
-                    void navigator.clipboard
-                      .writeText(agentPrompt)
-                      .then(() =>
-                        toast.success(
-                          'Agent prompt copied',
-                          'Paste it into ChatGPT. It includes the selected agent, project instructions, and current Context Map.',
-                        ),
-                      )
-                      .catch(() =>
-                        toast.error(
-                          'Could not copy agent prompt',
-                          'Clipboard access is unavailable.',
-                        ),
-                      );
-                  }}
-                >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  Copy agent + Context prompt
-                </Button>
-                <p className="text-[10px] leading-4 text-muted-foreground">
-                  Prepared locally and sent only when you paste it into ChatGPT. Direct VibeSpace
-                  tools and approvals remain inside VibeSpace.
-                </p>
-              </dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <Bot className="h-3.5 w-3.5 text-accent-copper" />
-                Model
-              </dt>
-              <dd className="mt-1 text-muted-foreground">{independentStatus.model.label}</dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <Activity className="h-3.5 w-3.5 text-accent-copper" />
-                ChatGPT usage
-              </dt>
-              <dd className="mt-1 text-muted-foreground">{independentStatus.chatGptUsage.label}</dd>
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center gap-2 font-medium text-foreground">
-                <Activity className="h-3.5 w-3.5 text-accent-copper" />
-                VibeSpace OpenAI API usage
-              </dt>
-              <dd className="mt-1 text-muted-foreground">
-                {usageText(
-                  openAiUsage?.usageValue ?? null,
-                  openAiUsage?.usageLimit ?? null,
-                  openAiUsage?.usageUnit ?? null,
-                )}
-              </dd>
-              {openAiUsage?.usagePercent !== null && openAiUsage?.usagePercent !== undefined ? (
-                <dd className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <span
-                    className="block h-full rounded-full bg-accent-copper transition-[width]"
-                    style={{ width: `${Math.min(100, openAiUsage.usagePercent)}%` }}
-                  />
+                <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  The provider page has no direct device authority. The official VibeSpace MCP app
+                  can use only the project you approve below.
                 </dd>
-              ) : null}
-            </div>
-            <div className="rounded-lg border border-border bg-background/55 p-2.5">
-              <dt className="flex items-center justify-between gap-2 font-medium text-foreground">
-                <span className="flex items-center gap-2">
-                  <FileUp className="h-3.5 w-3.5 text-accent-copper" />
-                  Files and outputs
-                </span>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label="Stage files for Browser Chat"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!chatId}
+                <dd
+                  aria-live="polite"
+                  className="mt-2 rounded-md border border-border/70 bg-muted/25 p-2 text-[9px] leading-4 text-muted-foreground"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </dt>
-              <input
-                ref={fileInputRef}
-                className="sr-only"
-                type="file"
-                multiple
-                onChange={(event) => {
-                  stageFiles(event.currentTarget.files);
-                  event.currentTarget.value = '';
-                }}
-              />
-              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                Stage files here, then drag them into ChatGPT or use ChatGPT’s attachment control.
-              </dd>
-              <dd className="mt-2 space-y-1">
-                {stagedFiles.map((file) => (
-                  <span
-                    key={`${file.name}:${file.size}:${file.lastModified}`}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = 'copy';
-                      event.dataTransfer.items.add(file);
-                    }}
-                    className="flex cursor-grab items-center gap-1.5 rounded-md bg-muted/45 px-2 py-1 text-[10px]"
-                  >
-                    <Download className="h-3 w-3 shrink-0 text-accent-copper" />
-                    <span className="truncate">{file.name}</span>
-                  </span>
-                ))}
-                {!stagedFiles.length ? (
-                  <span className="text-[10px] text-muted-foreground">No files staged.</span>
-                ) : null}
-              </dd>
-              <dd className="mt-3 border-t border-border/60 pt-2">
-                <span className="flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
-                  <strong className="font-medium text-foreground">Verified project activity</strong>
-                  <span>
-                    {outputFeed.runningCount} running · {outputFeed.failedCount} failed
-                  </span>
-                </span>
-                <span className="mt-2 grid gap-1.5">
-                  {outputFeed.runs.slice(0, 6).map((run) => (
-                    <span
-                      key={run.id}
-                      className="rounded-md border border-border/60 bg-muted/30 px-2 py-1.5"
-                    >
-                      <span className="block text-[9px] capitalize text-muted-foreground">
-                        {statusLabel(run.source)} · {statusLabel(run.status)}
+                  {accountToolActivity ? (
+                    <>
+                      <span className="block font-medium text-foreground">
+                        {accountToolActivity.advertisedTools.length} advertised
+                        {' · '}
+                        {accountToolActivity.activeCalls.length} running
                       </span>
-                      {run.outputs.map((output) => (
-                        <span key={output.id} className="mt-1 block text-[10px] text-foreground">
-                          <span className="block truncate">{output.title}</span>
-                          <span className="block text-[9px] capitalize text-muted-foreground">
-                            {statusLabel(output.kind)} · {statusLabel(output.state)}
-                            {output.sizeBytes === undefined
-                              ? ''
-                              : ` · ${output.sizeBytes.toLocaleString()} bytes`}
-                          </span>
+                      {accountToolActivity.activeCalls.map((call) => (
+                        <span key={call.callId} className="block">
+                          {call.toolName} running
                         </span>
                       ))}
-                      {!run.outputs.length ? (
-                        <span className="mt-1 block text-[9px] text-muted-foreground">
-                          No verified artifacts recorded.
+                      {accountToolActivity.lastResult ? (
+                        <span className="block">
+                          Last: {accountToolActivity.lastResult.toolName}
+                          {' · '}
+                          {accountToolActivity.lastResult.ok
+                            ? 'completed'
+                            : statusLabel(
+                                accountToolActivity.lastResult.errorCode ?? 'runtime failure',
+                              )}
+                          {' · '}
+                          {accountToolActivity.lastResult.elapsedMs} ms
                         </span>
-                      ) : null}
-                    </span>
-                  ))}
-                  {!outputFeed.runs.length ? (
-                    <span className="text-[10px] text-muted-foreground">
-                      No verified VibeSpace project activity.
+                      ) : (
+                        <span className="block">No tool result in this relay session.</span>
+                      )}
+                    </>
+                  ) : (
+                    <span>No account-scoped relay catalog is active.</span>
+                  )}
+                </dd>
+                {relayStatus === 'connected' ? (
+                  <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                    Desktop relay connected to this signed-in VibeSpace account. ChatGPT app and
+                    provider-session status remain owned by ChatGPT.
+                  </dd>
+                ) : null}
+                <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  It is not auto-connected by page login. Approve a project, configure the public
+                  VibeSpace MCP endpoint, then enable VibeSpace MCP in ChatGPT Settings → Apps.
+                </dd>
+                <dd className="mt-2 rounded-md border border-border/70 bg-muted/25 p-2">
+                  <span className="flex items-center justify-between gap-2">
+                    <strong className="text-[11px] text-foreground">VibeSpace MCP</strong>
+                    <Badge variant={relayStatus === 'connected' ? 'success' : 'secondary'}>
+                      {mcpStatusLabel}
+                    </Badge>
+                  </span>
+                  {mcpUrl ? (
+                    <span className="mt-2 flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-background/55 p-1">
+                      <code
+                        className="min-w-0 flex-1 select-all truncate px-1 text-[9px] text-foreground"
+                        title={mcpUrl}
+                      >
+                        {mcpUrl}
+                      </code>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="Copy MCP endpoint"
+                        onClick={() => void copyMcpEndpoint()}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
                     </span>
                   ) : null}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="mt-2 w-full"
-                  aria-label="Open verified outputs in History"
-                  onClick={() => setRoute('history')}
-                >
-                  Open in History
-                </Button>
-              </dd>
-            </div>
-          </dl>
+                  <ol className="mt-2 grid gap-1 text-[9px] leading-4 text-muted-foreground">
+                    <li>1. Enable Developer mode.</li>
+                    <li>2. Add VibeSpace MCP.</li>
+                    <li>3. Approve access.</li>
+                  </ol>
+                  {permissionProfile ? (
+                    <BrowserChatPermissionPanel
+                      profile={permissionProfile}
+                      workspaceGranted={Boolean(activeWorkspaceGrant)}
+                      providerBridgeAvailable={relayStatus === 'connected'}
+                      availableCapabilities={BROWSER_CHAT_EXECUTABLE_CAPABILITIES}
+                      disabled={permissionProfileSaving}
+                      onProfileChange={changePermissionProfile}
+                    />
+                  ) : (
+                    <span className="mt-2 block text-[9px] text-muted-foreground">
+                      Loading the scoped permission plan…
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    disabled={!mcpUrl || mcpSetupBusy}
+                    onClick={() => void connectVibeSpaceMcp()}
+                  >
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    {mcpSetupState === 'checking'
+                      ? 'Checking VibeSpace MCP'
+                      : mcpSetupState === 'opening'
+                        ? 'Opening ChatGPT Apps'
+                        : mcpSetupState === 'error'
+                          ? 'Retry VibeSpace MCP'
+                          : 'Connect VibeSpace MCP'}
+                  </Button>
+                  {mcpSetupError ? (
+                    <span role="alert" className="mt-1 block text-[9px] leading-4 text-destructive">
+                      <span className="block">{mcpSetupError}</span>
+                      <span className="block text-muted-foreground">
+                        Open manually:{' '}
+                        <code className="select-all text-foreground">{CHATGPT_APPS_URL}</code>
+                      </span>
+                    </span>
+                  ) : null}
+                  <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">
+                    In ChatGPT, open Settings → Apps → Advanced settings, enable Developer mode,
+                    then create or refresh the VibeSpace app with the MCP endpoint above. ChatGPT
+                    requires one-time OAuth approval; the desktop relay then reconnects
+                    automatically while this session grant is active.
+                  </span>
+                </dd>
+                <dd className="mt-2 space-y-1">
+                  {enabledConnections.length ? (
+                    enabledConnections.slice(0, 8).map((connection) => (
+                      <span
+                        key={connection.pluginId}
+                        className="flex items-center justify-between rounded-md bg-muted/45 px-2 py-1"
+                      >
+                        <span className="truncate">{connection.pluginId}</span>
+                        <span className="ml-2 inline-flex items-center gap-1 capitalize text-muted-foreground">
+                          {connection.state === 'connecting' ? (
+                            <span
+                              className="inline-flex gap-0.5 motion-safe:animate-pulse"
+                              aria-hidden
+                            >
+                              <i>·</i>
+                              <i>·</i>
+                              <i>·</i>
+                            </span>
+                          ) : null}
+                          {statusLabel(connection.state)}
+                        </span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">
+                      No enabled VibeSpace MCP or app connections.
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <FolderKey className="h-3.5 w-3.5 text-accent-copper" />
+                  Local project grant
+                </dt>
+                <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  {activeWorkspaceGrant
+                    ? `Local relay armed · ${activeWorkspaceGrant.displayName} · ${activeWorkspaceGrant.permissionProfile.plan.replaceAll('_', ' ')}`
+                    : projectRoot
+                      ? `${basename(projectRoot)} is available but not exposed.`
+                      : 'Choose a project folder in Files before enabling local reads.'}
+                </dd>
+                <dd className="mt-2">
+                  {activeWorkspaceGrant ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={revokeProjectRead}
+                    >
+                      Revoke project access
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      disabled={!projectRoot || !cloudAccountId || !projectId}
+                      onClick={approveProjectRead}
+                    >
+                      Approve current project access
+                    </Button>
+                  )}
+                </dd>
+                <dd className="mt-2 text-[9px] leading-4 text-muted-foreground">
+                  Session-only. Absolute paths are never sent to ChatGPT or stored by the relay.
+                </dd>
+                <dd className="mt-1 text-[9px] leading-4 text-muted-foreground">
+                  {independentStatus.localProject.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <Bot className="h-3.5 w-3.5 text-accent-copper" />
+                  Agent &amp; project context
+                </dt>
+                <dd className="mt-2 space-y-2">
+                  <select
+                    aria-label="Browser Chat agent"
+                    value={selectedAgent?.id ?? ''}
+                    onChange={(event) => setSelectedAgentId(event.currentTarget.value)}
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-[11px] text-foreground"
+                  >
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={!agentPrompt}
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(agentPrompt)
+                        .then(() =>
+                          toast.success(
+                            'Agent prompt copied',
+                            'Paste it into ChatGPT. It includes the selected agent, project instructions, and current Context Map.',
+                          ),
+                        )
+                        .catch(() =>
+                          toast.error(
+                            'Could not copy agent prompt',
+                            'Clipboard access is unavailable.',
+                          ),
+                        );
+                    }}
+                  >
+                    <Copy className="mr-1.5 h-3.5 w-3.5" />
+                    Copy agent + Context prompt
+                  </Button>
+                  <p className="text-[10px] leading-4 text-muted-foreground">
+                    Prepared locally and sent only when you paste it into ChatGPT. Direct VibeSpace
+                    tools and approvals remain inside VibeSpace.
+                  </p>
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <Bot className="h-3.5 w-3.5 text-accent-copper" />
+                  Model
+                </dt>
+                <dd className="mt-1 text-muted-foreground">{independentStatus.model.label}</dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <Activity className="h-3.5 w-3.5 text-accent-copper" />
+                  ChatGPT usage
+                </dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {independentStatus.chatGptUsage.label}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center gap-2 font-medium text-foreground">
+                  <Activity className="h-3.5 w-3.5 text-accent-copper" />
+                  VibeSpace OpenAI API usage
+                </dt>
+                <dd className="mt-1 text-muted-foreground">
+                  {usageText(
+                    openAiUsage?.usageValue ?? null,
+                    openAiUsage?.usageLimit ?? null,
+                    openAiUsage?.usageUnit ?? null,
+                  )}
+                </dd>
+                {openAiUsage?.usagePercent !== null && openAiUsage?.usagePercent !== undefined ? (
+                  <dd className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <span
+                      className="block h-full rounded-full bg-accent-copper transition-[width]"
+                      style={{ width: `${Math.min(100, openAiUsage.usagePercent)}%` }}
+                    />
+                  </dd>
+                ) : null}
+              </div>
+              <div className="rounded-lg border border-border bg-background/55 p-2.5">
+                <dt className="flex items-center justify-between gap-2 font-medium text-foreground">
+                  <span className="flex items-center gap-2">
+                    <FileUp className="h-3.5 w-3.5 text-accent-copper" />
+                    Files and outputs
+                  </span>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label="Stage files for Browser Chat"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!chatId}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </dt>
+                <input
+                  ref={fileInputRef}
+                  className="sr-only"
+                  type="file"
+                  multiple
+                  onChange={(event) => {
+                    stageFiles(event.currentTarget.files);
+                    event.currentTarget.value = '';
+                  }}
+                />
+                <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  Stage files here, then drag them into ChatGPT or use ChatGPT’s attachment control.
+                </dd>
+                <dd className="mt-2 space-y-1">
+                  {stagedFiles.map((file) => (
+                    <span
+                      key={`${file.name}:${file.size}:${file.lastModified}`}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = 'copy';
+                        event.dataTransfer.items.add(file);
+                      }}
+                      className="flex cursor-grab items-center gap-1.5 rounded-md bg-muted/45 px-2 py-1 text-[10px]"
+                    >
+                      <Download className="h-3 w-3 shrink-0 text-accent-copper" />
+                      <span className="truncate">{file.name}</span>
+                    </span>
+                  ))}
+                  {!stagedFiles.length ? (
+                    <span className="text-[10px] text-muted-foreground">No files staged.</span>
+                  ) : null}
+                </dd>
+                <dd className="mt-3 border-t border-border/60 pt-2">
+                  <span className="flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+                    <strong className="font-medium text-foreground">
+                      Verified project activity
+                    </strong>
+                    <span>
+                      {outputFeed.runningCount} running · {outputFeed.failedCount} failed
+                    </span>
+                  </span>
+                  <span className="mt-2 grid gap-1.5">
+                    {outputFeed.runs.slice(0, 6).map((run) => (
+                      <span
+                        key={run.id}
+                        className="rounded-md border border-border/60 bg-muted/30 px-2 py-1.5"
+                      >
+                        <span className="block text-[9px] capitalize text-muted-foreground">
+                          {statusLabel(run.source)} · {statusLabel(run.status)}
+                        </span>
+                        {run.outputs.map((output) => (
+                          <span key={output.id} className="mt-1 block text-[10px] text-foreground">
+                            <span className="block truncate">{output.title}</span>
+                            <span className="block text-[9px] capitalize text-muted-foreground">
+                              {statusLabel(output.kind)} · {statusLabel(output.state)}
+                              {output.sizeBytes === undefined
+                                ? ''
+                                : ` · ${output.sizeBytes.toLocaleString()} bytes`}
+                            </span>
+                          </span>
+                        ))}
+                        {!run.outputs.length ? (
+                          <span className="mt-1 block text-[9px] text-muted-foreground">
+                            No verified artifacts recorded.
+                          </span>
+                        ) : null}
+                      </span>
+                    ))}
+                    {!outputFeed.runs.length ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        No verified VibeSpace project activity.
+                      </span>
+                    ) : null}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="mt-2 w-full"
+                    aria-label="Open verified outputs in History"
+                    onClick={() => setRoute('history')}
+                  >
+                    Open in History
+                  </Button>
+                </dd>
+              </div>
+            </dl>
 
-          <div className="mt-4 space-y-2 border-t border-border/70 pt-3 text-[10px] leading-4 text-muted-foreground">
-            <p>{provider.serviceSummary}</p>
-            <p className="font-medium text-foreground">
-              Your provider subscription and limits still apply.
-            </p>
-            <p>
-              VibeSpace does not resell this subscription, read provider messages, or turn a web
-              subscription into an unofficial API.
-            </p>
-          </div>
-        </aside>
+            <div className="mt-4 space-y-2 border-t border-border/70 pt-3 text-[10px] leading-4 text-muted-foreground">
+              <p>{provider.serviceSummary}</p>
+              <p className="font-medium text-foreground">
+                Your provider subscription and limits still apply.
+              </p>
+              <p>
+                VibeSpace does not resell this subscription, read provider messages, or turn a web
+                subscription into an unofficial API.
+              </p>
+            </div>
+          </aside>
+        ) : null}
       </div>
     </section>
   );

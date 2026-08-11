@@ -524,7 +524,7 @@ describe('BrowserChatHub', () => {
           bindingState: 'new' as const,
           localTitle: title,
           pinned: index < 10,
-          viewMode: 'provider' as const,
+          viewMode: 'vibespace' as const,
           createdAt: index + 1,
           updatedAt: index + 1,
         },
@@ -549,6 +549,65 @@ describe('BrowserChatHub', () => {
     expect(screen.getByRole('heading', { name: 'Provider sessions', level: 3 })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Unpin Saved session 1' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Pin Saved session 50' })).toBeTruthy();
+  });
+
+  it('persists Provider and VibeSpace presentation modes without replacing the provider surface', async () => {
+    const binding = {
+      id: 'binding-presentation-mode',
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-presentation-mode',
+      provider: 'chatgpt' as const,
+      providerProfileKey: 'browser-chat/chatgpt',
+      providerConversationKey: 'presentation-conversation',
+      resumeUrl: 'https://chatgpt.com/c/presentation-conversation',
+      bindingState: 'bound' as const,
+      localTitle: 'Presentation mode chat',
+      pinned: false,
+      viewMode: 'vibespace' as const,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const chat = {
+      id: 'chat-presentation-mode' as ChatId,
+      workspace_id: 'workspace-1' as WorkspaceId,
+      project_id: 'project-1' as ProjectId,
+      title: 'Presentation mode chat',
+      mode: 'chat' as const,
+      active_agent_ids: [],
+      pinned: false,
+      created_at: 1,
+      updated_at: 1,
+    };
+    await testDatabase.chats.put(chat);
+    await testDatabase.browser_chat_bindings.put(binding);
+
+    renderHub('chat-presentation-mode', [{ binding, chat }]);
+
+    expect(screen.getByLabelText('Browser Chat local sessions')).toBeTruthy();
+    expect(screen.getByLabelText('Browser Chat connection inspector')).toBeTruthy();
+    const providerSurface = screen.getByLabelText('ChatGPT provider surface');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Provider presentation mode' }));
+
+    await waitFor(async () =>
+      expect((await testDatabase.browser_chat_bindings.get(binding.id))?.viewMode).toBe('provider'),
+    );
+    expect(screen.queryByLabelText('Browser Chat local sessions')).toBeNull();
+    expect(screen.queryByLabelText('Browser Chat connection inspector')).toBeNull();
+    expect(screen.getByLabelText('ChatGPT provider surface')).toBe(providerSurface);
+
+    fireEvent.click(screen.getByRole('button', { name: 'VibeSpace presentation mode' }));
+
+    await waitFor(async () =>
+      expect((await testDatabase.browser_chat_bindings.get(binding.id))?.viewMode).toBe(
+        'vibespace',
+      ),
+    );
+    expect(screen.getByLabelText('Browser Chat local sessions')).toBeTruthy();
+    expect(screen.getByLabelText('Browser Chat connection inspector')).toBeTruthy();
+    expect(screen.getByLabelText('ChatGPT provider surface')).toBe(providerSurface);
   });
 
   it('shows per-session evidence and opens a validated saved conversation from its action menu', async () => {
