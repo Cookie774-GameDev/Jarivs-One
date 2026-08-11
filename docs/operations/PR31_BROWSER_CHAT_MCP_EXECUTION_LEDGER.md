@@ -927,8 +927,11 @@ staged, restored, reformatted, or committed by this task.
   and adds a non-empty persisted-preference plus database-restart regression
   test. The full Browser Chat/bridge surface passes 33 files and 231/231
   tests; app TypeScript passes.
-- Fourth-review disposition: `PENDING` at this checkpoint. Completion is not
-  claimed until the mandatory independent reviewer evaluates `ad74d682`.
+- Fourth-review disposition at `b571d20e`: `READY` for the mandatory
+  independent-review closure gate. The reviewer closed the remaining P1,
+  reported no new P0/P1/P2 finding, and confirmed the preference-retirement,
+  same-run suppression, crash-safe ordering, restart-idempotence, and ledger
+  claims against the exact remediation range `ef4a9cec..b571d20e`.
 
 ## Final requirements and production-composition audit
 

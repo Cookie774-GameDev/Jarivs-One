@@ -118,7 +118,9 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 - [x] Serialize show/hide/provider-switch operations and coalesce geometry.
 - [x] Verify the remote provider receives no VibeSpace IPC capability.
 - [ ] Run focused Rust/frontend tests, Cargo check, and native Windows smoke
-      for drag/resize/maximize/mode/provider switching.
+      for drag/resize/maximize/mode/provider switching. The focused
+      Rust/frontend tests and no-default-features Cargo check pass; installed
+      Windows smoke remains `BLOCKED — OWNER ACTION REQUIRED`.
 - [x] Commit the verified slice.
 
 ### Task 4: History, project links, and official export snapshots
@@ -170,10 +172,10 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
       revocation, sign-out cancellation, wrong-account, replay, timeout, and
       unavailable-tool tests.
 - [x] Implement the permission registry before individual mutation tools.
-- [ ] Adapt existing approval-gated brokers one capability family at a time,
+- [x] Adapt existing approval-gated brokers one capability family at a time,
       with real fixture execution and structured results.
 - [x] Keep provider-plan limitations distinct from VibeSpace authorization.
-- [ ] Run app/Worker/native focused suites, Worker typecheck, and Wrangler dry
+- [x] Run app/Worker/native focused suites, Worker typecheck, and Wrangler dry
       run; commit each verified capability family separately.
 
 ### Task 6: Final status, performance, native acceptance, and review
@@ -191,16 +193,19 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
   states, provider-controlled model/quota unavailable states, performance
   evidence, requirement audit, and reviewer closure.
 
-- [ ] Verify status badges against their source stores and prove no fake
+- [x] Verify status badges against their source stores and prove no fake
       working/connected/authorized state.
-- [ ] Exercise 10/50 saved sessions, WebView reuse, relay idle/reconnect, and
+- [x] Exercise 10/50 saved sessions, WebView reuse, relay idle/reconnect, and
       bounded import/history behavior.
-- [ ] Run all focused suites and repository gates from the master goal.
+- [x] Run all focused suites and repository gates from the master goal;
+      retain the exact technical blockers in the execution ledger.
 - [ ] Run installed Windows/Tauri acceptance where the environment permits.
-- [ ] Dispatch the mandatory independent reviewer with the full bounded
+      This environment does not provide the required installed/provider
+      control plane, so the gate remains `BLOCKED — OWNER ACTION REQUIRED`.
+- [x] Dispatch the mandatory independent reviewer with the full bounded
       bootstrap, current head, goal, changed paths, migrations, tests, CI, and
       native evidence.
-- [ ] Fix all P0/P1 findings, rerun affected gates, and obtain bounded
+- [x] Fix all P0/P1 findings, rerun affected gates, and obtain bounded
       re-review.
-- [ ] Complete the requirement-by-requirement audit without narrowing the
+- [x] Complete the requirement-by-requirement audit without narrowing the
       original goal; leave PR31 draft.
