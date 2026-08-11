@@ -1,4 +1,5 @@
 use crate::harness::runtime::{OpenCodeRuntimeState, ResolvedTrustedRuntime, RuntimeSource};
+use crate::harness::tool_gateway::{ToolGatewayEndpoint, ToolGatewayState};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeSet, VecDeque};
@@ -72,6 +73,7 @@ struct ServerLaunchSpec {
     working_dir: PathBuf,
     config_content: String,
     provider_environment: Vec<(String, String)>,
+    tool_gateway_environment: [(String, String); 2],
 }
 
 impl fmt::Debug for ServerLaunchSpec {
@@ -94,6 +96,14 @@ impl fmt::Debug for ServerLaunchSpec {
                 "provider_environment",
                 &self
                     .provider_environment
+                    .iter()
+                    .map(|(name, _)| (name, "[REDACTED]"))
+                    .collect::<Vec<_>>(),
+            )
+            .field(
+                "tool_gateway_environment",
+                &self
+                    .tool_gateway_environment
                     .iter()
                     .map(|(name, _)| (name, "[REDACTED]"))
                     .collect::<Vec<_>>(),
@@ -403,12 +413,159 @@ fn scoped_provider_config(
         "server".to_string(),
         json!({ "hostname": LOOPBACK_HOST, "mdns": false }),
     );
+    root.insert(
+        "permission".to_string(),
+        json!({
+            "*": "ask",
+            "read": "allow",
+            "glob": "allow",
+            "grep": "allow",
+            "list": "allow",
+            "edit": "deny",
+            "bash": "deny",
+            "task": "deny",
+            "external_directory": "deny",
+            "terminal.list": "allow",
+            "terminal.read": "allow",
+            "command.list": "allow",
+            "profile.allAboutMe.read": "allow",
+            "memory.learning.read": "allow",
+            "context.list": "allow",
+            "context.read": "allow",
+            "skills.list": "allow",
+            "plugins.list": "allow",
+            "app.getState": "allow",
+            "terminal.open": "ask",
+            "terminal.focus": "ask",
+            "terminal.spawn": "ask",
+            "terminal.write": "ask",
+            "terminal.schedule": "ask",
+            "command.run": "ask",
+            "profile.allAboutMe.update": "ask",
+            "memory.learning.update": "ask",
+            "context.attach": "ask",
+            "context.update": "ask",
+            "skills.load": "ask",
+            "plugins.run": "ask",
+            "tasks.create": "ask",
+            "tasks.update": "ask",
+            "schedule.create": "ask",
+            "app.navigate": "ask"
+        }),
+    );
     if !providers.is_empty() {
         root.insert("provider".to_string(), Value::Object(providers));
     }
     let content = serde_json::to_string(&Value::Object(root))
         .map_err(|_| failure("OpenCode server config could not be generated."))?;
     Ok((content, environment))
+}
+
+const TOOL_GATEWAY_PLUGIN: &str = r#"import { tool } from "@opencode-ai/plugin"
+
+const text = (max = 4096) => tool.schema.string().min(1).max(max)
+const id = () => tool.schema.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/)
+const integer = (max = 1000) => tool.schema.number().int().min(0).max(max)
+const terminal = () => tool.schema.union([id(), integer(1000000)])
+
+async function call(name, args, context) {
+  const endpoint = process.env.VIBESPACE_TOOL_GATEWAY_URL
+  const token = process.env.VIBESPACE_TOOL_GATEWAY_TOKEN
+  if (!endpoint || !token) throw new Error("VibeSpace Tool Gateway is unavailable.")
+  const url = new URL(endpoint)
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || url.pathname !== "/v1/tool") {
+    throw new Error("VibeSpace Tool Gateway endpoint is invalid.")
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(30000),
+    headers: {
+      "authorization": `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      protocolVersion: 1,
+      requestId: crypto.randomUUID(),
+      sessionId: context.sessionID,
+      messageId: context.messageID,
+      tool: name,
+      args,
+      directory: context.directory,
+      worktree: context.worktree,
+    }),
+  })
+  if (!response.ok) throw new Error(`VibeSpace Tool Gateway failed (${response.status}).`)
+  const body = await response.text()
+  if (body.length > 131072) throw new Error("VibeSpace tool result exceeded the safe size limit.")
+  return body
+}
+
+const define = (name, description, args) => tool({
+  description,
+  args,
+  execute: (input, context) => call(name, input, context),
+})
+
+export const VibeSpaceToolGateway = async () => ({
+  tool: {
+    "terminal.list": define("terminal.list", "List visible VibeSpace terminals.", { limit: integer(100).optional() }),
+    "terminal.open": define("terminal.open", "Open a visible VibeSpace terminal.", { terminal: terminal() }),
+    "terminal.focus": define("terminal.focus", "Focus a visible VibeSpace terminal.", { terminal: terminal() }),
+    "terminal.spawn": define("terminal.spawn", "Create a visible VibeSpace terminal.", { directory: text(4096).optional(), name: text(128).optional() }),
+    "terminal.write": define("terminal.write", "Write a command to a visible VibeSpace terminal.", { terminal: terminal(), command: text(32768) }),
+    "terminal.read": define("terminal.read", "Read bounded output from a visible VibeSpace terminal.", { terminal: terminal(), maxChars: integer(50000).optional() }),
+    "terminal.schedule": define("terminal.schedule", "Schedule a command in a visible VibeSpace terminal.", { terminal: terminal(), command: text(32768), runAt: text(128) }),
+    "command.list": define("command.list", "List VibeSpace commands.", { limit: integer(100).optional() }),
+    "command.run": define("command.run", "Run one VibeSpace command.", { command: text(128), input: text(32768).optional() }),
+    "profile.allAboutMe.read": define("profile.allAboutMe.read", "Read the guarded All About Me profile.", {}),
+    "profile.allAboutMe.update": define("profile.allAboutMe.update", "Update the guarded All About Me profile.", { content: text(100000) }),
+    "memory.learning.read": define("memory.learning.read", "Read bounded Jarvis Learning entries.", { limit: integer(100).optional() }),
+    "memory.learning.update": define("memory.learning.update", "Add or update a Jarvis Learning entry.", { content: text(10000), source: text(256), confidence: tool.schema.number().min(0).max(1) }),
+    "context.list": define("context.list", "List available VibeSpace context.", { limit: integer(100).optional(), cursor: text(512).optional() }),
+    "context.read": define("context.read", "Read one bounded VibeSpace context item.", { contextId: id() }),
+    "context.attach": define("context.attach", "Attach VibeSpace context to this chat.", { contextId: id() }),
+    "context.update": define("context.update", "Update one VibeSpace context item.", { contextId: id(), content: text(100000) }),
+    "skills.list": define("skills.list", "List VibeSpace skills.", { limit: integer(100).optional() }),
+    "skills.load": define("skills.load", "Load one VibeSpace skill for this chat.", { skillId: id() }),
+    "plugins.list": define("plugins.list", "List connected VibeSpace plugins.", { limit: integer(100).optional() }),
+    "plugins.run": define("plugins.run", "Run one allowed VibeSpace plugin operation.", { pluginId: id(), operation: text(128), input: tool.schema.record(tool.schema.string(), tool.schema.unknown()).optional() }),
+    "tasks.create": define("tasks.create", "Create a VibeSpace task.", { title: text(512), notes: text(10000).optional(), dueAt: text(128).optional() }),
+    "tasks.update": define("tasks.update", "Update one VibeSpace task.", { taskId: id(), title: text(512).optional(), status: text(64).optional() }),
+    "schedule.create": define("schedule.create", "Create a VibeSpace schedule.", { title: text(512), schedule: text(512), action: text(32768) }),
+    "app.navigate": define("app.navigate", "Navigate the VibeSpace app.", { route: text(256) }),
+    "app.getState": define("app.getState", "Read bounded current VibeSpace app state.", {}),
+  },
+})
+"#;
+
+fn write_tool_gateway_plugin(config_dir: &Path) -> Result<(), ServerFailure> {
+    let plugin_dir = config_dir.join("plugins");
+    fs::create_dir_all(&plugin_dir)
+        .map_err(|_| failure("OpenCode tool plugin directory could not be created."))?;
+    let plugin_path = plugin_dir.join("vibespace-tool-gateway.ts");
+    let temporary = plugin_dir.join(format!(
+        ".vibespace-tool-gateway-{}.tmp",
+        nanoid::nanoid!(16)
+    ));
+    let mut temporary_guard = TemporaryFile {
+        path: temporary.clone(),
+        committed: false,
+    };
+    let mut output = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|_| failure("OpenCode tool plugin could not be created."))?;
+    output
+        .write_all(TOOL_GATEWAY_PLUGIN.as_bytes())
+        .and_then(|_| output.sync_all())
+        .map_err(|_| failure("OpenCode tool plugin could not be finalized."))?;
+    drop(output);
+    atomic_replace_file(&temporary, &plugin_path)
+        .map_err(|_| failure("OpenCode tool plugin could not be committed."))?;
+    temporary_guard.committed = true;
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -463,10 +620,12 @@ fn build_launch_spec_with(
     server_root: &Path,
     credentials: &dyn CredentialSource,
     local_models: &dyn LocalModelSource,
+    tool_gateway: &ToolGatewayEndpoint,
 ) -> Result<ServerLaunchSpec, ServerFailure> {
     let (config_content, provider_environment) =
         scoped_provider_config(credentials.load()?, local_models.load())?;
     let (config_path, config_dir, working_dir) = write_scoped_config(server_root, &config_content)?;
+    write_tool_gateway_plugin(&config_dir)?;
     Ok(ServerLaunchSpec {
         executable: runtime.path.clone(),
         port,
@@ -481,6 +640,16 @@ fn build_launch_spec_with(
         working_dir,
         config_content,
         provider_environment,
+        tool_gateway_environment: [
+            (
+                "VIBESPACE_TOOL_GATEWAY_URL".into(),
+                tool_gateway.url.clone(),
+            ),
+            (
+                "VIBESPACE_TOOL_GATEWAY_TOKEN".into(),
+                tool_gateway.token.clone(),
+            ),
+        ],
     })
 }
 
@@ -503,6 +672,11 @@ impl ProcessLauncher for ProductionLauncher {
             .env("OPENCODE_CONFIG_CONTENT", &spec.config_content)
             .envs(
                 spec.provider_environment
+                    .iter()
+                    .map(|(name, value)| (name, value)),
+            )
+            .envs(
+                spec.tool_gateway_environment
                     .iter()
                     .map(|(name, value)| (name, value)),
             )
@@ -616,9 +790,17 @@ fn start_server_attempt_with(
     health: &dyn HealthWaiter,
     credentials: &dyn CredentialSource,
     local_models: &dyn LocalModelSource,
+    tool_gateway: &ToolGatewayEndpoint,
 ) -> Result<(OpenCodeServerConnection, Box<dyn OwnedProcess>), ServerFailure> {
     let (reservation, port) = reserve_loopback_port()?;
-    let spec = build_launch_spec_with(runtime, port, server_root, credentials, local_models)?;
+    let spec = build_launch_spec_with(
+        runtime,
+        port,
+        server_root,
+        credentials,
+        local_models,
+        tool_gateway,
+    )?;
     drop(reservation);
     let mut process = launcher.launch(&spec)?;
     let connection = spec.connection();
@@ -632,6 +814,7 @@ fn start_server_attempt_with(
 fn start_server_attempt(
     runtime: &ResolvedTrustedRuntime,
     server_root: &Path,
+    tool_gateway: &ToolGatewayEndpoint,
 ) -> Result<(OpenCodeServerConnection, Box<dyn OwnedProcess>), ServerFailure> {
     start_server_attempt_with(
         runtime,
@@ -640,6 +823,7 @@ fn start_server_attempt(
         &ProductionHealthWaiter,
         &VaultCredentialSource,
         &LoopbackOllamaModelSource,
+        tool_gateway,
     )
 }
 
@@ -672,11 +856,15 @@ fn ensure_server_internal(
             .resolve_trusted_runtime(executable_id)
             .map_err(|_| failure("Trusted OpenCode runtime could not be resolved."))?;
         let root = server_root(app)?;
+        let tool_gateway = app
+            .state::<ToolGatewayState>()
+            .endpoint()
+            .map_err(|_| failure("VibeSpace Tool Gateway is unavailable."))?;
         fs::create_dir_all(&root)
             .map_err(|_| failure("OpenCode server storage could not be created."))?;
         let mut last_error = failure("OpenCode server could not be started.");
         for _ in 0..MAX_START_ATTEMPTS {
-            match start_server_attempt(&runtime, &root) {
+            match start_server_attempt(&runtime, &root, &tool_gateway) {
                 Ok((connection, process)) => {
                     return Ok(RunningServer {
                         executable_id: executable_id.to_string(),
@@ -1023,6 +1211,7 @@ mod tests {
         ProcessLauncher, ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure,
         ServerRuntimeEvent, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
     };
+    use crate::harness::tool_gateway::ToolGatewayEndpoint;
     use base64::Engine as _;
     use std::fs;
     use std::io::{Read, Write};
@@ -1034,6 +1223,13 @@ mod tests {
     use std::time::{Duration, Instant};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    fn gateway() -> ToolGatewayEndpoint {
+        ToolGatewayEndpoint {
+            url: "http://127.0.0.1:45678/v1/tool".into(),
+            token: "t".repeat(64),
+        }
+    }
 
     struct FixtureRoot(PathBuf);
 
@@ -1204,6 +1400,7 @@ mod tests {
             fixture.path(),
             &credentials,
             &FakeLocalModels(vec![]),
+            &gateway(),
         )
         .unwrap();
 
@@ -1263,6 +1460,7 @@ mod tests {
                 "private/unlisted:latest".into(),
                 "qwen3.5:4b".into(),
             ]),
+            &gateway(),
         )
         .unwrap();
         let config: serde_json::Value = serde_json::from_str(&spec.config_content).unwrap();
@@ -1280,6 +1478,70 @@ mod tests {
     }
 
     #[test]
+    fn generated_tool_gateway_is_exact_scoped_and_restricts_builtin_authority() {
+        let fixture = FixtureRoot::new("tool-gateway");
+        let endpoint = crate::harness::tool_gateway::ToolGatewayEndpoint {
+            url: "http://127.0.0.1:45678/v1/tool".into(),
+            token: "gateway-secret-that-must-stay-out-of-files".into(),
+        };
+        let spec = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_123,
+            fixture.path(),
+            &FakeCredentials(vec![]),
+            &FakeLocalModels(vec![]),
+            &endpoint,
+        )
+        .unwrap();
+
+        let config: serde_json::Value = serde_json::from_str(&spec.config_content).unwrap();
+        assert_eq!(config["permission"]["edit"], "deny");
+        assert_eq!(config["permission"]["bash"], "deny");
+        assert_eq!(config["permission"]["task"], "deny");
+        assert_eq!(config["permission"]["external_directory"], "deny");
+        assert_eq!(config["permission"]["terminal.list"], "allow");
+        assert_eq!(config["permission"]["terminal.write"], "ask");
+
+        let plugin = fs::read_to_string(
+            spec.config_dir
+                .join("plugins")
+                .join("vibespace-tool-gateway.ts"),
+        )
+        .unwrap();
+        for tool in [
+            "terminal.list",
+            "terminal.write",
+            "context.read",
+            "profile.allAboutMe.update",
+            "memory.learning.update",
+            "app.getState",
+        ] {
+            assert!(plugin.contains(&format!("\"{tool}\": define(\"{tool}\"")));
+        }
+        assert!(plugin.contains("context.sessionID"));
+        assert!(plugin.contains("context.messageID"));
+        assert!(plugin.contains("context.directory"));
+        assert!(plugin.contains("VIBESPACE_TOOL_GATEWAY_URL"));
+        assert!(plugin.contains("VIBESPACE_TOOL_GATEWAY_TOKEN"));
+        assert!(!plugin.contains(&endpoint.token));
+        assert!(!plugin.contains("tauri.invoke"));
+        assert!(!plugin.contains("nativeCommand"));
+        assert_eq!(
+            spec.tool_gateway_environment,
+            [
+                (
+                    "VIBESPACE_TOOL_GATEWAY_URL".to_string(),
+                    endpoint.url.clone()
+                ),
+                (
+                    "VIBESPACE_TOOL_GATEWAY_TOKEN".to_string(),
+                    endpoint.token.clone()
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn missing_ollama_or_invalid_model_names_do_not_create_a_local_provider() {
         let fixture = FixtureRoot::new("ollama-missing");
         let spec = build_launch_spec_with(
@@ -1292,6 +1554,7 @@ mod tests {
                 "bad model".into(),
                 "x".repeat(129),
             ]),
+            &gateway(),
         )
         .unwrap();
         let config: serde_json::Value = serde_json::from_str(&spec.config_content).unwrap();
@@ -1326,6 +1589,7 @@ mod tests {
             fixture.path(),
             &FakeCredentials(vec![("openai".into(), "first-secret".into())]),
             &FakeLocalModels(vec![]),
+            &gateway(),
         )
         .unwrap();
         assert!(first.config_content.contains("\"openai\""));
@@ -1337,6 +1601,7 @@ mod tests {
             fixture.path(),
             &FakeCredentials(vec![("openai".into(), "second-secret".into())]),
             &FakeLocalModels(vec![]),
+            &gateway(),
         )
         .unwrap();
         assert_eq!(
@@ -1351,6 +1616,7 @@ mod tests {
             fixture.path(),
             &FakeCredentials(vec![]),
             &FakeLocalModels(vec![]),
+            &gateway(),
         )
         .unwrap();
         assert!(!deleted.config_content.contains("\"openai\""));
@@ -1444,6 +1710,7 @@ mod tests {
             &FakeHealth(true),
             &FakeCredentials(vec![]),
             &FakeLocalModels(vec![]),
+            &gateway(),
         )
         .unwrap();
         assert_eq!(process.id(), 41);
@@ -1459,6 +1726,7 @@ mod tests {
             &FakeHealth(false),
             &FakeCredentials(vec![]),
             &FakeLocalModels(vec![]),
+            &gateway(),
         )
         .err()
         .expect("failed health");
