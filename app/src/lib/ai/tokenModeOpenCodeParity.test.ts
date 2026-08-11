@@ -46,7 +46,20 @@ function harnessFixture() {
 describe('Token mode OpenCode parity', () => {
   it('preserves all three VibeSpace mode contracts through one exact OpenCode model', async () => {
     const fixture = harnessFixture();
-    const adapter = createOpenCodeRunAgentAdapter(fixture.harness);
+    const authorityClaim = {
+      scope: {
+        accountId: 'account-a',
+        accountSource: 'local',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+      },
+      generation: 0,
+    } as const;
+    const adapter = createOpenCodeRunAgentAdapter(fixture.harness, {
+      capture: () => authorityClaim,
+      bind: (_sessionId, expected) => expected === authorityClaim,
+      release: () => undefined,
+    });
     const modes: readonly ReasoningMode[] = ['token-saver', 'normal', 'token-final-boss'];
     const expected = {
       'token-saver': { label: 'Token Saver', variant: 'low', maxOutputTokens: 2_048 },
