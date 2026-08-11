@@ -256,11 +256,13 @@ describe('OpenCodeHarness', () => {
       harness.send({
         ...request(),
         selection: { providerId: 'local', modelId: 'qwen3:4b' },
+        tools: { 'terminal.list': true, 'terminal.write': false },
       }),
     );
 
     expect(promptBody).toMatchObject({
       model: { providerID: 'ollama', modelID: 'qwen3:4b' },
+      tools: { 'terminal.list': true, 'terminal.write': false },
     });
   });
 

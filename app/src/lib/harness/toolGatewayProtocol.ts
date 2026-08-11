@@ -29,6 +29,25 @@ export const TOOL_GATEWAY_CATALOG = [
 
 export type ToolGatewayTool = (typeof TOOL_GATEWAY_CATALOG)[number];
 
+export const MUTATING_TOOL_GATEWAY_TOOLS: ReadonlySet<ToolGatewayTool> = new Set([
+  'terminal.open',
+  'terminal.focus',
+  'terminal.spawn',
+  'terminal.write',
+  'terminal.schedule',
+  'command.run',
+  'profile.allAboutMe.update',
+  'memory.learning.update',
+  'context.attach',
+  'context.update',
+  'skills.load',
+  'plugins.run',
+  'tasks.create',
+  'tasks.update',
+  'schedule.create',
+  'app.navigate',
+]);
+
 export interface ToolGatewayRequest {
   protocolVersion: 1;
   requestId: string;

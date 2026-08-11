@@ -6,6 +6,7 @@ import type {
   HarnessModelSelection,
   HarnessSession,
   NormalizedUsage,
+  VibeSpaceApproval,
   VibeSpaceHarness,
 } from '@/lib/harness/types';
 import type {
@@ -43,6 +44,8 @@ export interface OpenCodeRunAgentInput {
   compiledPrompt?: Readonly<CompiledJarvisPrompt>;
   onResponseObservation?: (observation: LLMResponseObservation) => void;
   onActionDispatch?: (input: { observedAt: number }) => void;
+  onApprovalRequested?: (approval: VibeSpaceApproval) => void | Promise<void>;
+  tools?: Readonly<Record<string, boolean>>;
 }
 
 export interface OpenCodeRunAgentAdapter {
@@ -237,6 +240,7 @@ export function createOpenCodeRunAgentAdapter(
         parts,
         ...(workingDirectory ? { workingDirectory } : {}),
         ...(input.signal ? { signal: input.signal } : {}),
+        ...(input.tools ? { tools: input.tools } : {}),
       })) {
         if (input.signal?.aborted) throw abortError();
         if (eventDispatchesAction(event)) {
@@ -247,6 +251,8 @@ export function createOpenCodeRunAgentAdapter(
           text += event.text;
           input.onChunk?.({ delta: event.text, ...(first ? { first: true } : {}) });
           first = false;
+        } else if (event.type === 'approval.requested') {
+          await input.onApprovalRequested?.(event.approval);
         } else if (event.type === 'usage.updated') {
           if (
             (event.usage.providerId && event.usage.providerId !== expectedProvider) ||

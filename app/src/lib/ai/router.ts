@@ -84,7 +84,7 @@ import {
   prepareFoundryAgentRequest,
   runFoundryWeightArtifact,
 } from '@/features/model-foundry/foundryRuntime';
-import { openCodeRunAgentAdapter } from './openCodeRunAgent';
+import { openCodeRunAgentAdapter, type OpenCodeRunAgentInput } from './openCodeRunAgent';
 import type { HarnessModelSelection } from '@/lib/harness/types';
 
 export class NoModelSelectedError extends Error {
@@ -477,6 +477,8 @@ export interface RunAgentRequest {
     requestId: string;
     attemptNumber: number;
   }>;
+  onApprovalRequested?: OpenCodeRunAgentInput['onApprovalRequested'];
+  tools?: Readonly<Record<string, boolean>>;
 }
 
 function resolveOpenCodeSelection(req: RunAgentRequest): HarnessModelSelection {
@@ -585,6 +587,8 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
       compiledPrompt: req.compiledPrompt,
       onResponseObservation: hooks?.onResponseObservation,
       onActionDispatch: hooks?.onActionDispatch,
+      onApprovalRequested: req.onApprovalRequested,
+      tools: req.tools,
     });
 
   let response: LLMResponse;

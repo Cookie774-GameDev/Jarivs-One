@@ -164,6 +164,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
             },
             parts: input.parts,
             ...(input.system ? { system: input.system } : {}),
+            ...(input.tools ? { tools: input.tools } : {}),
           },
           controller.signal,
           workingDirectory,

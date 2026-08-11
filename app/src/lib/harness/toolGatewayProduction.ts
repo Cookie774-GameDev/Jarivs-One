@@ -20,15 +20,47 @@ import type { TaskId } from '@/types/common';
 import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
 import type { ToolGatewayRequest } from './toolGatewayProtocol';
 
-const grants = new Map<string, { count: number; expiresAt: number }>();
-const GRANT_TTL_MS = 2 * 60_000;
+type MutationGrant = { mode: 'once' | 'always'; expiresAt: number };
+const grants = new Map<string, Map<string, MutationGrant>>();
+const ONCE_GRANT_TTL_MS = 2 * 60_000;
+const ALWAYS_GRANT_TTL_MS = 30 * 60_000;
+const MAX_GRANT_SESSIONS = 128;
+const MAX_GRANTS_PER_SESSION = 32;
 
 export function grantNextToolGatewayMutation(sessionId: string): void {
-  const current = grants.get(sessionId);
-  grants.set(sessionId, {
-    count: Math.min(8, (current?.count ?? 0) + 1),
-    expiresAt: Date.now() + GRANT_TTL_MS,
+  grantToolGatewayMutation(sessionId, '*', 'once');
+}
+
+export function grantToolGatewayMutation(
+  sessionId: string,
+  capability: string,
+  mode: 'once' | 'always',
+): () => void {
+  let session = grants.get(sessionId);
+  if (!session) {
+    session = new Map();
+    grants.set(sessionId, session);
+  }
+  session.delete(capability);
+  session.set(capability, {
+    mode,
+    expiresAt: Date.now() + (mode === 'always' ? ALWAYS_GRANT_TTL_MS : ONCE_GRANT_TTL_MS),
   });
+  while (session.size > MAX_GRANTS_PER_SESSION) {
+    const oldest = session.keys().next().value as string | undefined;
+    if (!oldest) break;
+    session.delete(oldest);
+  }
+  while (grants.size > MAX_GRANT_SESSIONS) {
+    const oldest = grants.keys().next().value as string | undefined;
+    if (!oldest) break;
+    grants.delete(oldest);
+  }
+  return () => {
+    const current = grants.get(sessionId);
+    current?.delete(capability);
+    if (current?.size === 0) grants.delete(sessionId);
+  };
 }
 
 export function clearToolGatewayMutationGrants(): void {
@@ -36,13 +68,22 @@ export function clearToolGatewayMutationGrants(): void {
 }
 
 function consumeMutationGrant(request: ToolGatewayRequest): boolean {
-  const grant = grants.get(request.sessionId);
-  if (!grant || grant.expiresAt < Date.now() || grant.count < 1) {
-    grants.delete(request.sessionId);
+  const session = grants.get(request.sessionId);
+  const capability = session?.has(request.tool) ? request.tool : '*';
+  const grant = session?.get(capability);
+  if (!session || !grant || grant.expiresAt < Date.now()) {
+    session?.delete(capability);
+    if (session?.size === 0) grants.delete(request.sessionId);
     return false;
   }
-  if (grant.count === 1) grants.delete(request.sessionId);
-  else grants.set(request.sessionId, { ...grant, count: grant.count - 1 });
+  if (grant.mode === 'once') {
+    session.delete(capability);
+  } else {
+    session.set(capability, { ...grant, expiresAt: Date.now() + ALWAYS_GRANT_TTL_MS });
+  }
+  if (session.size === 0) {
+    grants.delete(request.sessionId);
+  }
   return true;
 }
 

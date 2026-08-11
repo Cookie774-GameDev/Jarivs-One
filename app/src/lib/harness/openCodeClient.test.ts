@@ -63,6 +63,7 @@ describe('OpenCodeHttpClient', () => {
       {
         model: { providerID: 'anthropic', modelID: 'claude' },
         parts: [{ type: 'text', text: 'hello' }],
+        tools: { 'terminal.list': true, 'terminal.write': false },
       },
       undefined,
       'C:\\workspace',
@@ -81,6 +82,9 @@ describe('OpenCodeHttpClient', () => {
     expect(
       fetch.mock.calls.map(([url]) => new URL(String(url)).searchParams.get('directory')),
     ).toEqual(['C:\\workspace', 'C:\\workspace', 'C:\\workspace', 'C:\\workspace']);
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
+      tools: { 'terminal.list': true, 'terminal.write': false },
+    });
   });
 
   it('discovers provider auth, authorizes the exact dynamic method, and completes callbacks', async () => {

@@ -239,10 +239,14 @@ describe('AI provider routing', () => {
   });
 
   it('routes ordinary production chat only through OpenCode with a stable chat scope', async () => {
+    const onApprovalRequested = vi.fn();
+    const tools = { 'terminal.list': true, 'terminal.write': false } as const;
     const response = await runAgent({
       agent: openaiAgent,
       chatId: 'chat-production-1',
       messages: [{ role: 'user', content: 'hello' }],
+      onApprovalRequested,
+      tools,
     });
 
     expect(response.text).toBe('done');
@@ -250,6 +254,8 @@ describe('AI provider routing', () => {
       expect.objectContaining({
         scopeId: 'chat-production-1',
         purpose: 'chat',
+        onApprovalRequested,
+        tools,
         selection: {
           providerId: 'openai',
           modelId: 'gpt-protected',

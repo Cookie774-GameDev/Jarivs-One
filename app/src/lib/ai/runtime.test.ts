@@ -43,6 +43,10 @@ import {
   createPluginCredentialAccountGrantRepository,
 } from '@/features/plugins/credentialAuthorization';
 import type { CanonicalPluginArtifactCapability } from '@/features/plugins/runtime';
+import {
+  clearOpenCodeApprovalStatuses,
+  recordOpenCodeApprovalStatus,
+} from '@/lib/harness/openCodeApprovalState';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -178,6 +182,7 @@ import {
   executeInstalledJarvisRegisteredAction,
   handleInstalledJarvisKernelClientRequest,
   installJarvisKernelRuntimeHost,
+  openCodeToolsForInteractionMode,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
 import { selectionFromOption } from './modelSelection';
@@ -221,6 +226,7 @@ describe('startRuntimeListener agent routing', () => {
     mocks.buildRoutedMcpTaskContext.mockReset();
     mocks.kernelRuntimeInterceptor = null;
     mocks.voiceCanSpeak = true;
+    clearOpenCodeApprovalStatuses();
     try {
       localStorage.clear();
     } catch {
@@ -262,6 +268,96 @@ describe('startRuntimeListener agent routing', () => {
     mocks.retrieveApprovedLocalKnowledge.mockResolvedValue([]);
     mocks.chatGetById.mockResolvedValue(undefined);
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
+  });
+
+  it('uses read-only OpenCode tools in Ask and Plan and the exact catalog in Agent', () => {
+    for (const mode of ['ask', 'plan'] as const) {
+      const tools = openCodeToolsForInteractionMode(mode);
+      expect(tools['terminal.list']).toBe(true);
+      expect(tools['context.read']).toBe(true);
+      expect(tools['terminal.write']).toBe(false);
+      expect(tools['profile.allAboutMe.update']).toBe(false);
+      expect(tools['app.navigate']).toBe(false);
+    }
+    const agentTools = openCodeToolsForInteractionMode('agent');
+    expect(agentTools['terminal.write']).toBe(true);
+    expect(agentTools['app.navigate']).toBe(true);
+    expect(Object.keys(agentTools)).toHaveLength(26);
+  });
+
+  it('presents an OpenCode approval in the live placeholder and preserves its decision', async () => {
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_opencode_approval' as ChatId;
+    const placeholderId = 'msg_opencode_approval_assistant' as MessageId;
+    const updateMessage = vi.fn(async () => undefined);
+    const userMessage: Message = {
+      id: 'msg_opencode_approval_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'write to terminal 4' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.runAgent.mockImplementationOnce(async (input) => {
+      await input.onApprovalRequested?.({
+        id: 'approval-1',
+        sessionId: 'session-1',
+        title: 'Write to terminal',
+        capability: 'terminal.write',
+        pattern: ['terminal:4'],
+      });
+      recordOpenCodeApprovalStatus('session-1', 'approval-1', 'approved');
+      input.onChunk?.({ delta: 'Done.', first: true });
+      input.onChunk?.({ delta: '', done: true });
+      return {
+        text: 'Done.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai',
+        model: 'gpt-test',
+      };
+    });
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'write to terminal 4', interactionMode: 'agent' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      const writes = updateMessage.mock.calls as unknown as Array<[MessageId, { parts: Part[] }]>;
+      expect(
+        writes.some(([, update]) =>
+          update.parts.some(
+            (part) =>
+              part.kind === 'permission_request' &&
+              part.request.harness?.approvalId === 'approval-1' &&
+              part.request.status === 'approved',
+          ),
+        ),
+      ).toBe(true);
+    });
+    expect(mocks.runAgent.mock.calls[0]?.[0].tools).toEqual(
+      openCodeToolsForInteractionMode('agent'),
+    );
+
+    stop();
   });
 
   afterEach(async () => {

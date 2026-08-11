@@ -166,6 +166,7 @@ import {
 } from '@/features/jarvis-interaction/questionParser';
 import type {
   JarvisInteractionMode,
+  JarvisPermissionRequest,
   JarvisStructuredContext,
 } from '@/features/jarvis-interaction/types';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
@@ -238,6 +239,12 @@ import {
   pushStreamingPreviewChunk,
 } from '@/lib/jarvis/response/streamingPreviewGate';
 import { clearPreview, setPreview } from '@/features/chat/streamingPreviewStore';
+import type { VibeSpaceApproval } from '@/lib/harness/types';
+import {
+  MUTATING_TOOL_GATEWAY_TOOLS,
+  TOOL_GATEWAY_CATALOG,
+} from '@/lib/harness/toolGatewayProtocol';
+import { readOpenCodeApprovalStatus } from '@/lib/harness/openCodeApprovalState';
 import {
   optimizeChatMessages,
   optimizationModePolicy,
@@ -1580,6 +1587,53 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode, needsVisiblePlan
     'When the user wants subagents: emit real `agent.run` / `agent.run_many` actions (Approve required). Stay on the parent chat as supervisor; do not pretend agents exist without cards.',
     'For long orchestrated work, keep coordinating with `agent.status`, `agent.wait`, and `chat.send` until the user stops you. Prefer staying awake over declaring premature completion.',
   ].join('\n');
+}
+
+export function openCodeToolsForInteractionMode(
+  mode: JarvisInteractionMode,
+): Readonly<Record<string, boolean>> {
+  return Object.freeze(
+    Object.fromEntries(
+      TOOL_GATEWAY_CATALOG.map((tool) => [
+        tool,
+        mode === 'agent' || !MUTATING_TOOL_GATEWAY_TOOLS.has(tool),
+      ]),
+    ),
+  );
+}
+
+function openCodePermissionRequest(approval: VibeSpaceApproval): JarvisPermissionRequest {
+  const targets =
+    typeof approval.pattern === 'string'
+      ? [approval.pattern]
+      : approval.pattern
+        ? [...approval.pattern]
+        : undefined;
+  const action: JarvisPermissionRequest['action'] =
+    approval.capability.startsWith('terminal.') || approval.capability === 'command.run'
+      ? 'run_command'
+      : approval.capability === 'app.navigate'
+        ? 'change_project'
+        : 'apply_changes';
+  const risk: JarvisPermissionRequest['risk'] = approval.capability.includes('delete')
+    ? 'high'
+    : MUTATING_TOOL_GATEWAY_TOOLS.has(approval.capability as never)
+      ? 'medium'
+      : 'low';
+  return {
+    id: approval.id,
+    title: approval.title,
+    description: `OpenCode requests the ${approval.capability} VibeSpace capability.`,
+    risk,
+    action,
+    ...(targets?.length ? { targets: targets.slice(0, 32) } : {}),
+    status: 'pending',
+    harness: {
+      sessionId: approval.sessionId,
+      approvalId: approval.id,
+      capability: approval.capability,
+    },
+  };
 }
 
 function structuredContextBlock(context: JarvisStructuredContext | undefined): string {
@@ -3664,6 +3718,20 @@ export function startRuntimeListener(
     let activeKernelMode: JarvisKernelMode | null = null;
     let shadowCompilation: Extract<JarvisShadowCompilationResult, { ok: true }> | null = null;
     let activeShadowDeps: JarvisShadowCompilationDeps | null = null;
+    const liveOpenCodePermissions: Array<Extract<Part, { kind: 'permission_request' }>> = [];
+    const currentOpenCodePermissionParts = (): Part[] =>
+      liveOpenCodePermissions.map((part) => {
+        const harness = part.request.harness;
+        const status = harness
+          ? readOpenCodeApprovalStatus(harness.sessionId, harness.approvalId)
+          : undefined;
+        return status && status !== part.request.status
+          ? {
+              kind: 'permission_request',
+              request: { ...part.request, status },
+            }
+          : part;
+      });
 
     const mirrorShadowOutcome = async (
       status: 'completed' | 'failed' | 'cancelled',
@@ -3698,7 +3766,7 @@ export function startRuntimeListener(
         // store; the final awaited write below stamps the canonical version.
         const write = trackListenerOwnedTask(
           bindings.updateMessage(placeholderId, {
-            parts: [{ kind: 'text', text: acc }],
+            parts: [{ kind: 'text', text: acc }, ...currentOpenCodePermissionParts()],
           }),
         );
         pendingStreamingWrites.add(write);
@@ -4322,6 +4390,27 @@ export function startRuntimeListener(
           }
           if (chunk.done && !bufferExactLiteralStreaming) flushNow();
         },
+        tools: openCodeToolsForInteractionMode(interactionMode),
+        onApprovalRequested: async (approval: VibeSpaceApproval) => {
+          if (
+            liveOpenCodePermissions.some(
+              (part) =>
+                part.request.harness?.sessionId === approval.sessionId &&
+                part.request.harness.approvalId === approval.id,
+            )
+          ) {
+            return;
+          }
+          cancelPendingFlush();
+          await settleStreamingWrites();
+          liveOpenCodePermissions.push({
+            kind: 'permission_request',
+            request: openCodePermissionRequest(approval),
+          });
+          await bindings.updateMessage(placeholder.id, {
+            parts: [{ kind: 'text', text: acc }, ...currentOpenCodePermissionParts()],
+          });
+        },
       };
       const response = shouldRunLocalFinalBossRevision(
         reasoningPolicy?.mode,
@@ -4431,6 +4520,7 @@ export function startRuntimeListener(
         : responseTextParts;
       const finalParts: Part[] = [
         ...displayResponseParts,
+        ...currentOpenCodePermissionParts(),
         ...(responseInspector
           ? ([{ kind: 'context_inspector', inspector: responseInspector }] as const)
           : []),

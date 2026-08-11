@@ -5,6 +5,7 @@ import {
   clearToolGatewayMutationGrants,
   createProductionToolGatewayDependencies,
   grantNextToolGatewayMutation,
+  grantToolGatewayMutation,
 } from './toolGatewayProduction';
 import { parseToolGatewayRequest } from './toolGatewayProtocol';
 
@@ -33,6 +34,26 @@ describe('production tool gateway dependencies', () => {
     grantNextToolGatewayMutation('session-1');
     await expect(Promise.resolve(deps.authorizeMutation(mutation()))).resolves.toBe(true);
     await expect(Promise.resolve(deps.authorizeMutation(mutation()))).resolves.toBe(false);
+  });
+
+  it('binds once and always grants to the exact semantic capability', async () => {
+    const deps = createProductionToolGatewayDependencies();
+    const navigation = mutation();
+    const terminalWrite = parseToolGatewayRequest({
+      ...navigation,
+      requestId: 'request-2',
+      tool: 'terminal.write',
+      args: { terminal: 4, command: 'git status' },
+    });
+
+    grantToolGatewayMutation('session-1', 'app.navigate', 'once');
+    await expect(Promise.resolve(deps.authorizeMutation(terminalWrite))).resolves.toBe(false);
+    await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(true);
+    await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(false);
+
+    grantToolGatewayMutation('session-1', 'app.navigate', 'always');
+    await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(true);
+    await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(true);
   });
 
   it('reads bounded visible terminal and app state without mutation authority', async () => {

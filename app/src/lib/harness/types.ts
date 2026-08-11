@@ -126,6 +126,7 @@ export interface HarnessSendRequest {
   parts: readonly unknown[];
   signal?: AbortSignal;
   workingDirectory?: string;
+  tools?: Readonly<Record<string, boolean>>;
 }
 
 export interface HarnessApprovalResponse {

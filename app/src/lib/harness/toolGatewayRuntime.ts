@@ -3,6 +3,7 @@ import {
   type ToolGatewayRequest,
   type ToolGatewayResponse,
   type ToolGatewayTool,
+  MUTATING_TOOL_GATEWAY_TOOLS,
 } from './toolGatewayProtocol';
 
 export interface ToolGatewayExecutionContext {
@@ -45,25 +46,6 @@ export interface ToolGatewayDependencies {
   schedule: { create: SemanticMethod };
   app: { navigate: SemanticMethod; getState: SemanticMethod };
 }
-
-const MUTATION_TOOLS = new Set<ToolGatewayTool>([
-  'terminal.open',
-  'terminal.focus',
-  'terminal.spawn',
-  'terminal.write',
-  'terminal.schedule',
-  'command.run',
-  'profile.allAboutMe.update',
-  'memory.learning.update',
-  'context.attach',
-  'context.update',
-  'skills.load',
-  'plugins.run',
-  'tasks.create',
-  'tasks.update',
-  'schedule.create',
-  'app.navigate',
-]);
 
 function executionContext(
   request: ToolGatewayRequest,
@@ -113,7 +95,7 @@ export function createToolGatewayRuntime(deps: ToolGatewayDependencies): {
 
   return {
     async execute(request) {
-      const mutation = MUTATION_TOOLS.has(request.tool);
+      const mutation = MUTATING_TOOL_GATEWAY_TOOLS.has(request.tool);
       try {
         if (mutation && !(await deps.authorizeMutation(request))) {
           return {

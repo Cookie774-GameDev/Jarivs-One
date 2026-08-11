@@ -14,6 +14,7 @@ export interface OpenCodePrompt {
   model: { providerID: string; modelID: string };
   parts: readonly unknown[];
   system?: string;
+  tools?: Readonly<Record<string, boolean>>;
 }
 
 export type OpenCodeAuthPrompt =

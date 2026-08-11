@@ -261,4 +261,54 @@ describe('runAgent OpenCode adapter', () => {
     ).rejects.toThrow(/image attachment/i);
     expect(fake.createSession).not.toHaveBeenCalled();
   });
+
+  it('surfaces an exact approval request without auto-approving or ending the turn', async () => {
+    const approval = {
+      id: 'approval-1',
+      sessionId: 'session-1',
+      title: 'Write to terminal',
+      capability: 'terminal.write',
+      pattern: ['terminal:4'],
+    };
+    const fake = fakeHarness([
+      [
+        { type: 'approval.requested', approval },
+        { type: 'assistant.delta', text: 'continued' },
+        { type: 'done' },
+      ],
+    ]);
+    const onApprovalRequested = vi.fn(async () => undefined);
+
+    await expect(
+      createOpenCodeRunAgentAdapter(fake.harness).run({
+        agent,
+        scopeId: 'chat-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'write it' }],
+        onApprovalRequested,
+      }),
+    ).resolves.toMatchObject({ text: 'continued' });
+
+    expect(onApprovalRequested).toHaveBeenCalledWith(approval);
+    expect(fake.harness.respondToApproval).not.toHaveBeenCalled();
+  });
+
+  it('forwards the exact caller tool policy without adding a fallback', async () => {
+    const fake = fakeHarness([[{ type: 'done' }]]);
+    const tools = {
+      'terminal.list': true,
+      'terminal.write': false,
+      'app.getState': true,
+    } as const;
+
+    await createOpenCodeRunAgentAdapter(fake.harness).run({
+      agent,
+      scopeId: 'chat-1',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'inspect' }],
+      tools,
+    });
+
+    expect(fake.send).toHaveBeenCalledWith(expect.objectContaining({ tools }));
+  });
 });
