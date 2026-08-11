@@ -4,12 +4,23 @@ import {
   type HarnessRuntimeNativeAdapter,
   type NativeRuntimeDetection,
   type NativeRuntimeEvent,
+  type OpenCodeServerConnection,
 } from './runtimeManager';
 
 const readyDetection: NativeRuntimeDetection = {
   status: 'managedCompatible',
   source: 'managed',
   version: '1.18.16',
+  executableId: 'opencode-runtime-0123456789abcdef01234567',
+};
+
+const readyConnection: OpenCodeServerConnection = {
+  baseUrl: 'http://127.0.0.1:43123',
+  username: 'vibespace',
+  password: 'A'.repeat(64),
+  version: '1.18.16',
+  source: 'managed',
+  generation: 'opencode-server-safe-generation',
 };
 
 function deferred<T>() {
@@ -31,6 +42,8 @@ function adapter(
     detect: vi.fn().mockResolvedValue(readyDetection),
     install: vi.fn().mockResolvedValue(readyDetection),
     cancel: vi.fn().mockResolvedValue(true),
+    ensureServer: vi.fn().mockResolvedValue(readyConnection),
+    serverStatus: vi.fn().mockResolvedValue(readyConnection),
     listen: vi.fn(async (next) => {
       listener = next;
       return () => {
@@ -62,12 +75,33 @@ describe('harness runtime manager', () => {
 
     expect(native.listen).toHaveBeenCalledTimes(1);
     expect(native.detect).toHaveBeenCalledTimes(1);
+    expect(native.ensureServer).toHaveBeenCalledWith(readyDetection.executableId);
     expect(manager.getSnapshot()).toEqual({
       kind: 'ready',
       source: 'managed',
       version: '1.18.16',
     });
     unsubscribe();
+  });
+
+  it('stays starting until the authenticated native server is ready', async () => {
+    const server = deferred<OpenCodeServerConnection>();
+    const native = adapter({ ensureServer: vi.fn(() => server.promise) });
+    const manager = createHarnessRuntimeManager(native);
+
+    const refreshing = manager.refresh();
+    await settle();
+    expect(manager.getSnapshot()).toEqual({ kind: 'starting' });
+    expect(manager.getConnection()).toBeUndefined();
+
+    server.resolve(readyConnection);
+    await refreshing;
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+    });
+    expect(manager.getConnection()).toEqual(readyConnection);
   });
 
   it('maps missing, incompatible, and failed detection without exposing diagnostics', async () => {
@@ -77,6 +111,7 @@ describe('harness runtime manager', () => {
     const missingManager = createHarnessRuntimeManager(missing);
     await missingManager.refresh();
     expect(missingManager.getSnapshot()).toEqual({ kind: 'download_required' });
+    expect(missingManager.getConnection()).toBeUndefined();
 
     const incompatible = adapter({
       detect: vi.fn().mockResolvedValue({
@@ -110,7 +145,7 @@ describe('harness runtime manager', () => {
     }
   });
 
-  it('clamps progress events and maps verification, installation, and ready states', async () => {
+  it('clamps progress events and refreshes credentials for a server-ready generation', async () => {
     const native = adapter({
       detect: vi.fn().mockResolvedValue({ status: 'missing' }),
     });
@@ -127,6 +162,17 @@ describe('harness runtime manager', () => {
     native.emit({ kind: 'installing' });
     expect(manager.getSnapshot()).toEqual({ kind: 'installing' });
     native.emit({ kind: 'ready', source: 'managed', version: '1.18.16' });
+    expect(manager.getSnapshot()).toEqual({ kind: 'installing' });
+    native.emit({ kind: 'starting' });
+    expect(manager.getSnapshot()).toEqual({ kind: 'starting' });
+    native.emit({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+      generation: readyConnection.generation,
+    });
+    await settle();
+    expect(native.serverStatus).toHaveBeenCalledTimes(1);
     expect(manager.getSnapshot()).toEqual({
       kind: 'ready',
       source: 'managed',
@@ -141,6 +187,7 @@ describe('harness runtime manager', () => {
 
     await manager.download();
     expect(native.install).toHaveBeenCalledTimes(1);
+    expect(native.ensureServer).toHaveBeenCalledWith(readyDetection.executableId);
     expect(manager.getSnapshot()).toEqual({
       kind: 'ready',
       source: 'managed',
@@ -162,6 +209,60 @@ describe('harness runtime manager', () => {
       recoverable: true,
       message: 'Cancellation unavailable.',
     });
+  });
+
+  it('keeps ephemeral server credentials out of the public snapshot', async () => {
+    const native = adapter();
+    const manager = createHarnessRuntimeManager(native);
+
+    await manager.refresh();
+
+    expect(manager.getConnection()).toEqual(readyConnection);
+    expect(JSON.stringify(manager.getSnapshot())).not.toContain(readyConnection.password);
+  });
+
+  it('fails closed for a compatible detection without an opaque executable ID', async () => {
+    const native = adapter({
+      detect: vi.fn().mockResolvedValue({
+        status: 'systemCompatible',
+        source: 'system',
+        version: '1.18.16',
+      }),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    await manager.refresh();
+
+    expect(native.ensureServer).not.toHaveBeenCalled();
+    expect(manager.getConnection()).toBeUndefined();
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'failed',
+      recoverable: true,
+      message: 'Compatible OpenCode runtime has no trusted executable ID.',
+    });
+  });
+
+  it('rejects non-loopback or malformed native server connections', async () => {
+    for (const candidate of [
+      { ...readyConnection, baseUrl: 'http://0.0.0.0:43123' },
+      { ...readyConnection, baseUrl: 'https://127.0.0.1:43123' },
+      { ...readyConnection, password: 'short' },
+      { ...readyConnection, generation: '../unsafe' },
+    ]) {
+      const native = adapter({
+        ensureServer: vi.fn().mockResolvedValue(candidate),
+      });
+      const manager = createHarnessRuntimeManager(native);
+
+      await manager.refresh();
+
+      expect(manager.getConnection()).toBeUndefined();
+      expect(manager.getSnapshot()).toEqual({
+        kind: 'failed',
+        recoverable: true,
+        message: 'OpenCode server returned an invalid private connection.',
+      });
+    }
   });
 
   it('preserves the native failed event and supports retry after install rejection', async () => {
@@ -215,6 +316,7 @@ describe('harness runtime manager', () => {
 
     expect(native.listen).not.toHaveBeenCalled();
     expect(native.detect).not.toHaveBeenCalled();
+    expect(native.ensureServer).not.toHaveBeenCalled();
     expect(manager.getSnapshot()).toEqual({
       kind: 'ready',
       source: 'system',

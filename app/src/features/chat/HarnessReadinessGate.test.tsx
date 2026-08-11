@@ -17,6 +17,7 @@ function manager(initial: HarnessRuntimeState) {
       return () => subscribers.delete(listener);
     },
     getSnapshot: () => snapshot,
+    getConnection: () => undefined,
     refresh: vi.fn(async () => {}),
     download: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
