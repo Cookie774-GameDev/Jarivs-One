@@ -875,7 +875,11 @@ staged, restored, reformatted, or committed by this task.
   session-persisted profile key. Native child labels, WebView data
   directories, controller caches, binding profile keys, and navigation
   evidence are scoped by that key. Cross-account navigation is ignored.
-  Commit: `771c19c2`.
+  Existing exact-account/workspace bindings in the former unscoped namespace
+  are migrated transactionally; a mixed old/new conversation conflict keeps
+  the scoped row, preserves compatible local metadata, and removes only the
+  duplicate binding wrapper. The migration is restart-idempotent and leaves
+  foreign accounts untouched. Commits: `771c19c2`, `0bdf482d`.
 - Workspace authority: grants, permission profiles, bridge-client scope
   matching, runtime-host state, and relay lifecycle now carry the exact
   account/workspace/project triple. Workspace transitions revoke the old
@@ -899,12 +903,21 @@ staged, restored, reformatted, or committed by this task.
   provable leaf. Multiple leaves reject as ambiguous instead of merging
   alternate branches. Commit: `fb2e4ffd`.
 - Closure evidence after all remediations: 33 Browser Chat/bridge test files
-  and 229 tests pass; the production build passes with 4,815 modules; release
+  and 230 tests pass; the production build passes with 4,815 modules; release
   manifest passes 44/44; four focused native surface tests pass; Cargo
   no-default-features check and Rust formatting pass.
-- Second-review disposition: `PENDING` at this checkpoint. Completion is not
-  claimed until the mandatory independent reviewer evaluates the remediated
-  head.
+- Second-review disposition at `29480b69`: `NOT READY`. The reviewer closed
+  all eight original findings and identified one new P1: legacy/existing
+  bindings could remain in the old unscoped provider-profile namespace and
+  diverge from newly scoped navigation identity.
+- New P1 remediation: `0bdf482d` passes a validated account profile into the
+  legacy migration, rewrites exact-scope unscoped bindings, deterministically
+  collapses a mixed old/new duplicate, preserves compatible canonical
+  metadata, and proves idempotence after database restart. Four directly
+  affected files pass 50/50 tests, app TypeScript passes, and the full
+  Browser Chat/bridge surface passes 33 files and 230/230 tests.
+- Third-review disposition: `PENDING` at this checkpoint. Completion is not
+  claimed until the mandatory independent reviewer evaluates `0bdf482d`.
 
 ## Final requirements and production-composition audit
 
@@ -914,7 +927,7 @@ staged, restored, reformatted, or committed by this task.
   modules transformed. Existing chunk-size and mixed-import warnings remain.
 - Release manifest: `VERIFIED`; 44/44 Node tests pass.
 - Browser Chat focused suites: `VERIFIED`; the final Browser Chat and bridge
-  run passes 33 files and 229/229 tests.
+  run passes 33 files and 230/230 tests.
 - VibeSpace MCP Worker: `VERIFIED` read-only check only; its existing `check`
   command passed 29/29 tests, TypeScript, and Wrangler deployment dry-run. No
   deployment occurred and no Worker file was changed.
