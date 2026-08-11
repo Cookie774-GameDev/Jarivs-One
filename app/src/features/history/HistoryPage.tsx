@@ -19,6 +19,7 @@ import { useUIStore } from '@/stores/ui';
  */
 export function HistoryPage() {
   const [selectedChatId, setSelectedChatId] = React.useState<ChatId | null>(null);
+  const [selectedSnapshotId, setSelectedSnapshotId] = React.useState<string | null>(null);
   const setActiveChat = useUIStore((state) => state.setActiveChat);
   const setRoute = useUIStore((state) => state.setRoute);
   const openBrowserChat = (chatId: ChatId) => {
@@ -35,11 +36,19 @@ export function HistoryPage() {
     >
       <HistoryList
         selectedChatId={selectedChatId}
-        onSelectChat={setSelectedChatId}
+        selectedSnapshotId={selectedSnapshotId}
+        onSelectChat={(chatId) => {
+          setSelectedChatId(chatId);
+          if (chatId) setSelectedSnapshotId(null);
+        }}
+        onSelectSnapshot={(snapshotId) => {
+          setSelectedSnapshotId(snapshotId);
+          if (snapshotId) setSelectedChatId(null);
+        }}
         onOpenBrowserChat={openBrowserChat}
       />
       <div data-warm-surface="history-replay" className="min-w-0 flex-1">
-        <Replay chatId={selectedChatId} />
+        <Replay chatId={selectedChatId} snapshotId={selectedSnapshotId} />
       </div>
     </div>
   );

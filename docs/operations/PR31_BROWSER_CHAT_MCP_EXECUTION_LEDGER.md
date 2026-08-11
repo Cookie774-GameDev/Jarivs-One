@@ -185,6 +185,28 @@ staged, restored, reformatted, or committed by this task.
   normalized. Stable provider conversation keys update one snapshot with a
   revision bump, exact archive hashes deduplicate, search stays in exact scope,
   and delete removes only the selected local snapshot.
+- Commit: `fb8c7250`.
+
+### M4d — import and inert History replay UI
+
+- Status: `VERIFIED`
+- GREEN evidence: the broad Task 4 regression run passes 151/151 tests across
+  Browser Chat, History, Project Detail, and additive Dexie migration; app
+  TypeScript passes.
+- Behavior: Browser Chat exposes an explicit official-export ZIP picker and
+  reports added/updated/unchanged results. History renders imported snapshots
+  in a separately labeled section, searches their inert local text, replays
+  the normalized branch without provider access, and requires explicit
+  confirmation before deleting only the local snapshot.
+- Authority safety: imported rows never appear as native chats, replay states
+  that it does not fetch live provider content, React renders all imported
+  title/message data as text, and snapshot deletion states that the original
+  ChatGPT conversation and export file are unchanged.
+- Visual verification limitation: the existing local Vite server was ready on
+  `127.0.0.1:5173`, but the in-app browser runtime failed before tab creation
+  because its kernel-assets path was unavailable. No fallback browser was used;
+  this is recorded as a verification-environment limitation, not a product
+  capability claim.
 - Commit: pending exact-path commit.
 
 ## Completion labels

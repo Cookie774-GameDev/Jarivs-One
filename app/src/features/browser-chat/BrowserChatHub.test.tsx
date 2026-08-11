@@ -31,6 +31,14 @@ const providerSurfaceHarness = vi.hoisted(() => ({
     | undefined,
 }));
 
+const exportImportHarness = vi.hoisted(() => ({
+  importExport: vi.fn(),
+}));
+
+vi.mock('./chatGptExport', () => ({
+  importChatGptExport: exportImportHarness.importExport,
+}));
+
 vi.mock('./BrowserProviderSurface', () => ({
   BrowserProviderSurface: ({
     provider,
@@ -111,6 +119,14 @@ describe('BrowserChatHub', () => {
     });
     testDatabase = createJarvisDb(uniqueTestDbName('browser-chat-hub'), TEST_INDEXED_DB);
     await testDatabase.open();
+    exportImportHarness.importExport.mockReset();
+    exportImportHarness.importExport.mockResolvedValue({
+      importId: 'import-a',
+      added: 1,
+      updated: 0,
+      unchanged: 0,
+      reusedImport: false,
+    });
   });
 
   it.each([
@@ -170,6 +186,32 @@ describe('BrowserChatHub', () => {
     expect(screen.getByText(/not auto-connected/i)).toBeTruthy();
     expect(screen.getByText(/provider subscription and limits still apply/i)).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('imports only an explicitly selected official ChatGPT export ZIP', async () => {
+    renderHub();
+    const input = screen.getByLabelText('Choose official ChatGPT export ZIP');
+    const file = new File([new Uint8Array([1, 2, 3])], 'chatgpt-export.zip', {
+      type: 'application/zip',
+    });
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: async () => new Uint8Array([1, 2, 3]).buffer,
+    });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(exportImportHarness.importExport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          database: testDatabase,
+          accountId: 'account-1',
+          workspaceId: 'workspace-1',
+          fileName: 'chatgpt-export.zip',
+          archive: expect.any(ArrayBuffer),
+          signal: expect.any(AbortSignal),
+        }),
+      ),
+    );
   });
 
   it('keeps Claude and Gemini gated as future providers without scraping remote history', () => {

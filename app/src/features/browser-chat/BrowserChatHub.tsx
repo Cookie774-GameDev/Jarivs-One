@@ -63,6 +63,7 @@ import {
   type BrowserChatBindingUpdateInput,
   type BrowserChatScope,
 } from './browserChatRepository';
+import { importChatGptExport } from './chatGptExport';
 import type { BrowserChatBindingRow, Project } from '@/lib/db/schema';
 
 function statusLabel(value: string): string {
@@ -225,6 +226,17 @@ export function BrowserChatHub({
     [] as Project[],
   );
   const projects = initialProjects ?? liveProjects;
+  const importedSnapshotCount = useLiveQuery(
+    async () => {
+      if (!accountId || !bindingWorkspaceId) return 0;
+      return database.browser_chat_snapshots
+        .where('[accountId+workspaceId]')
+        .equals([accountId, bindingWorkspaceId])
+        .count();
+    },
+    [accountId, bindingWorkspaceId, database],
+    0,
+  );
   const connections = usePluginStore((state) =>
     selectPluginConnectionsForAccount(state, accountId),
   );
@@ -247,12 +259,56 @@ export function BrowserChatHub({
       snapshot.displayName.toLowerCase() === 'openai',
   );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const exportInputRef = React.useRef<HTMLInputElement>(null);
   const connectionAbortRef = React.useRef<AbortController | null>(null);
+  const exportAbortRef = React.useRef<AbortController | null>(null);
   const [mcpSetupState, setMcpSetupState] = React.useState<McpSetupState>('idle');
   const [mcpSetupError, setMcpSetupError] = React.useState('');
+  const [importingExport, setImportingExport] = React.useState(false);
   const [stagedFiles, setStagedFiles] = React.useState<File[]>(() =>
     chatId ? (stagedFilesByChat.get(chatId) ?? []) : [],
   );
+
+  React.useEffect(
+    () => () => {
+      exportAbortRef.current?.abort();
+    },
+    [],
+  );
+
+  const importOfficialExport = async (file: File | undefined) => {
+    if (!file || !accountId || !bindingWorkspaceId || importingExport) return;
+    const controller = new AbortController();
+    exportAbortRef.current?.abort();
+    exportAbortRef.current = controller;
+    setImportingExport(true);
+    try {
+      const result = await importChatGptExport({
+        database,
+        accountId,
+        workspaceId: bindingWorkspaceId,
+        fileName: file.name,
+        archive: await file.arrayBuffer(),
+        signal: controller.signal,
+      });
+      toast.success(
+        result.reusedImport ? 'Export already imported' : 'ChatGPT export imported',
+        result.reusedImport
+          ? `${result.unchanged} existing snapshot${result.unchanged === 1 ? '' : 's'} left unchanged.`
+          : `${result.added} added · ${result.updated} updated · ${result.unchanged} unchanged. View snapshots in History.`,
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        toast.error(
+          'Export import failed',
+          error instanceof Error ? error.message : 'The archive was rejected safely.',
+        );
+      }
+    } finally {
+      if (exportAbortRef.current === controller) exportAbortRef.current = null;
+      setImportingExport(false);
+    }
+  };
   const agents = useLiveQuery(() => database.agents.toArray(), [database], []);
   const project = useLiveQuery(
     async (): Promise<Project | undefined> =>
@@ -751,6 +807,30 @@ export function BrowserChatHub({
         </div>
 
         <div className="flex items-center gap-2">
+          <input
+            ref={exportInputRef}
+            className="sr-only"
+            type="file"
+            accept=".zip,application/zip"
+            aria-label="Choose official ChatGPT export ZIP"
+            onChange={(event) => {
+              void importOfficialExport(event.currentTarget.files?.[0]);
+              event.currentTarget.value = '';
+            }}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={importingExport || !accountId || !bindingWorkspaceId}
+            onClick={() => exportInputRef.current?.click()}
+          >
+            <FileUp className="mr-1.5 h-3.5 w-3.5" />
+            {importingExport ? 'Importing…' : 'Import export'}
+            {importedSnapshotCount ? (
+              <span className="ml-1 text-[9px] text-muted-foreground">{importedSnapshotCount}</span>
+            ) : null}
+          </Button>
           <Badge variant={pageStatus === 'ready' ? 'success' : 'secondary'}>
             Page · {statusLabel(pageStatus)}
           </Badge>

@@ -140,14 +140,14 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
   summary rows; cancellable defensive ZIP import with stable deduplication and
   separate provider-snapshot authority.
 
-- [ ] Write failing lifecycle, search, replay, dedupe, hostile archive, size,
+- [x] Write failing lifecycle, search, replay, dedupe, hostile archive, size,
       and cancellation tests.
 - [x] Implement local project linking without claiming remote membership.
 - [x] Implement history summary/open behavior for non-imported bindings.
 - [x] Implement snapshot import without HTML/script execution.
 - [x] Verify re-import updates rather than duplicates and delete affects only
       the local snapshot.
-- [ ] Commit the verified slice.
+- [x] Commit the verified slice.
 
 ### Task 5: Permission plans and executable local tool adapters
 
