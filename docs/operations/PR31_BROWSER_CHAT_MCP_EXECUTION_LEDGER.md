@@ -480,7 +480,7 @@ staged, restored, reformatted, or committed by this task.
   catalog is shown explicitly rather than inferred from page or relay state.
 - Boundary: current catalog truth remains read-only because mutation routing
   is still excluded at the Worker protocol boundary.
-- Commit: pending exact-path commit.
+- Commit: `7bcea1ca`.
 
 ## Completion labels
 
