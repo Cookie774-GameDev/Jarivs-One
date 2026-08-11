@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { capabilityCatalog } from '../src/catalog';
 
 describe('VibeSpace MCP capability catalog', () => {
-  it('exposes connected read tools and keeps mutations approval-gated', () => {
+  it('exposes connected read tools and labels unimplemented mutations truthfully', () => {
     const catalog = capabilityCatalog(true, ['fs.list', 'fs.read']);
     expect(catalog.find((tool) => tool.id === 'files.read')).toMatchObject({
       available: true,
@@ -12,10 +12,12 @@ describe('VibeSpace MCP capability catalog', () => {
     expect(catalog.find((tool) => tool.id === 'terminal.run')).toMatchObject({
       available: false,
       approval_required: true,
+      unavailable_reason: expect.stringMatching(/not implemented/i),
     });
     expect(catalog.find((tool) => tool.id === 'browser.playwright')).toMatchObject({
       available: false,
       approval_required: true,
+      unavailable_reason: expect.stringMatching(/not implemented/i),
     });
   });
 
