@@ -627,6 +627,49 @@ staged, restored, reformatted, or committed by this task.
   untouched.
 - Commit: `7234fd03`.
 
+### M5o — isolated Playwright browser policy/receipt adapter
+
+- Status: `VERIFIED`
+- RED evidence: Browser Chat had browser permission IDs and an existing
+  isolated Playwright worker, but no adapter joining its one-shot leases to
+  worker scopes and local browser authority. The initial suite failed on the
+  missing module; a hardening case then proved an unknown raw-script action
+  could reach the shared worker boundary before being rejected.
+- GREEN evidence: 26/26 focused Playwright adapter, isolated worker,
+  browser-action approval, approval-broker, and permission-registry tests
+  pass; app TypeScript passes.
+- Real fixture execution: tests drive the real
+  `createPlaywrightBrowserWorker` through an in-process isolated host port.
+  They verify a bounded DOM observation, semantic navigation, canonical
+  worker evidence, and cancellation of a pending host operation.
+- Dual authority: a Browser Chat capability lease is necessary but
+  insufficient. A local authority must also issue the exact isolated worker
+  scope and browser-action authorization bound to account, project, task,
+  session, request, action hash, timeout, and current operation signal.
+- Capability separation: observe, screenshot, and bounded pause require
+  `browser.read`; navigation and every interaction/session mutation require
+  `browser.mutate`. Permission revocation aborts the operation signal and
+  reaches the isolated host.
+- Script and target safety: the shared worker validator now rejects unknown
+  runtime action names before local authority is requested. The adapter
+  accepts only the canonical action union, whose interactions use semantic
+  role, label, or test-id targets; no raw script/evaluate action exists.
+- Isolation and evidence: the worker retains its ephemeral non-persistent
+  profile, allowed-origin/action, page-count, upload/download, timeout, and
+  receipt bounds. Public URLs omit credentials, query strings, and fragments;
+  screenshots, traces, downloads, hashes, and canonical result references
+  remain explicit.
+- Untrusted-content boundary: page title/text is evaluated as untrusted DOM
+  data. Safe content carries a data-only receipt; authority-like or
+  credential-requesting content is quarantined and the raw hostile text is
+  omitted from the public result.
+- Boundary: this adapter is not a way to connect ChatGPT to VibeSpace MCP and
+  does not inspect the provider-owned conversation surface. It is not
+  advertised as locally executable until a production isolated host, sealed
+  browser-authority issuer, and relay route are composed and verified. The
+  separately owned Worker remains untouched.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,
