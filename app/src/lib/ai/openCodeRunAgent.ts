@@ -28,6 +28,7 @@ interface SessionRecord {
   session: HarnessSession;
   messageCount: number;
   messageFingerprints: readonly string[];
+  parentScopeId?: string;
   workingDirectory?: string;
   touchedAt: number;
 }
@@ -210,6 +211,10 @@ export function createOpenCodeRunAgentAdapter(
       // Validate the complete caller payload before creating any server state.
       promptParts(input.messages);
       const messageFingerprints = await Promise.all(input.messages.map(fingerprintMessage));
+      const existing = sessions.get(scopeId);
+      if (existing && existing.parentScopeId !== parentScopeId) {
+        throw new Error('OpenCode session parent relationship cannot change.');
+      }
       let parentSessionId: string | undefined;
       if (parentScopeId) {
         let parent = sessions.get(parentScopeId);
@@ -235,7 +240,6 @@ export function createOpenCodeRunAgentAdapter(
         parent.touchedAt = Date.now();
         parentSessionId = parent.session.id;
       }
-      const existing = sessions.get(scopeId);
       const canReuse =
         existing &&
         existing.workingDirectory === workingDirectory &&
@@ -263,6 +267,7 @@ export function createOpenCodeRunAgentAdapter(
           session,
           messageCount: 0,
           messageFingerprints: [],
+          ...(parentScopeId ? { parentScopeId } : {}),
           ...(workingDirectory ? { workingDirectory } : {}),
           touchedAt: Date.now(),
         };

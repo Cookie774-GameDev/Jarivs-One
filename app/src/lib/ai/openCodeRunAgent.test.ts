@@ -272,6 +272,30 @@ describe('runAgent OpenCode adapter', () => {
     expect(fake.send).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects silently reparenting an established child scope', async () => {
+    const fake = fakeHarness([[{ type: 'assistant.delta', text: 'child' }, { type: 'done' }]]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+
+    await adapter.run({
+      agent,
+      scopeId: 'chat-child',
+      parentScopeId: 'chat-parent-a',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'child' }],
+    });
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-child',
+        parentScopeId: 'chat-parent-b',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'child again' }],
+      }),
+    ).rejects.toThrow(/parent relationship/i);
+    expect(fake.createSession).toHaveBeenCalledTimes(2);
+    expect(fake.send).toHaveBeenCalledTimes(1);
+  });
+
   it('replaces a scoped session when earlier conversation history changes', async () => {
     const fake = fakeHarness([
       [{ type: 'assistant.delta', text: 'one' }, { type: 'done' }],
