@@ -11,7 +11,7 @@ Master-goal SHA-256:
 
 ## Verdict
 
-The current PR31 implementation head `78d94728` is **VERIFIED** for the
+The current PR31 implementation head `871010c3` is **VERIFIED** for the
 credential-free automated and web-runtime scope exercised on 2026-08-11.
 Previously reported account-identity and benchmark failures are closed, all
 1,092 currently discovered frontend test files pass exactly once, TypeScript
@@ -45,7 +45,7 @@ global OpenCode mutation was performed.
 
 Starting head: `af404344`
 
-Implementation head before evidence: `78d94728`
+Implementation head before evidence: `871010c3`
 
 Verified corrections:
 
@@ -72,7 +72,16 @@ Verified corrections:
   `cargo test --no-default-features --lib` completed 361 tests with no
   failures.
 - Credential scanner: 14/14 security contract tests passed.
-- `git diff --check`: passed.
+- Tool Gateway requests are bound to an immutable
+  account/workspace/project authority tuple. Scope transitions synchronously
+  revoke reads and mutation grants, and a revoked session cannot regain access
+  by switching back. Focused result: 3 files and 54/54 tests; complete harness
+  result: 15 files and 145/145 tests.
+- The unimplemented `context.update` route is no longer advertised or accepted;
+  the gateway cannot report a successful context write without persistence.
+- `git diff --check` passes for the owned closure paths. The historical reviewed
+  range retains non-dispositive whitespace findings in unrelated plan/spec
+  files.
 
 The closure evidence was refreshed only after the current-head verification
 commands above returned success.
@@ -199,25 +208,26 @@ explicitly rather than falling back.
 
 ## E. Feature parity
 
-| Surface                                        | Evidence status                                                                                   |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Prompt Forge / Prompt Upgrade                  | Automated pass; runs through OpenCode and denies tools                                            |
-| Token modes / optimizer                        | Automated pass; exact verified provider/model variants preserved                                  |
-| Normal chat / streaming / cancellation / usage | Automated pass through OpenCode client and SSE normalization                                      |
-| Attachments / working directory                | Automated pass                                                                                    |
-| Slash commands                                 | Automated Section 20 execution matrix pass; aliases share canonical behavior                      |
-| Context / semantic search                      | Automated pass through narrow semantic gateway                                                    |
-| Files                                          | Read/write semantic tools are bounded to explicit roots and approval policy                       |
-| Memory / All About Me                          | Automated account-scoped parity pass                                                              |
-| AAM / Jarvis Learning                          | Automated parity pass                                                                             |
-| Plugins / MCP                                  | Registered read-only, never-approval plugin reads bridged; generic plugin writes remain forbidden |
-| Skills                                         | Automated account-scoped parity pass                                                              |
-| Terminals                                      | Semantic terminal actions and approval routing pass; no generic native invoke                     |
-| Model Foundry                                  | Automated local artifact/inference/training parity pass                                           |
-| Subagents / multitask                          | OpenCode child-session binding and activity tracking pass                                         |
-| Approval UX                                    | Native gateway requests are presented through existing VibeSpace approval flow                    |
+| Surface                                        | Evidence status                                                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Prompt Forge / Prompt Upgrade                  | Automated pass; runs through OpenCode and denies tools                                                                       |
+| Token modes / optimizer                        | Automated pass; exact verified provider/model variants preserved                                                             |
+| Normal chat / streaming / cancellation / usage | Automated pass through OpenCode client and SSE normalization                                                                 |
+| Attachments / working directory                | Automated pass                                                                                                               |
+| Slash commands                                 | Automated Section 20 execution matrix pass; aliases share canonical behavior                                                 |
+| Context / semantic search                      | Automated pass through narrow semantic gateway                                                                               |
+| Files                                          | Read-only semantic access is rooted and verified; semantic file write is not exposed, and OpenCode edit/write remains denied |
+| Memory / All About Me                          | Automated account-scoped parity pass                                                                                         |
+| AAM / Jarvis Learning                          | Automated parity pass                                                                                                        |
+| Plugins / MCP                                  | Registered read-only, never-approval plugin reads bridged; generic plugin writes remain forbidden                            |
+| Skills                                         | Automated account-scoped parity pass                                                                                         |
+| Terminals                                      | Semantic terminal actions and approval routing pass; no generic native invoke                                                |
+| Model Foundry                                  | Automated local artifact/inference/training parity pass                                                                      |
+| Subagents / multitask                          | OpenCode child-session binding and activity tracking pass                                                                    |
+| Approval UX                                    | Native gateway requests are presented through existing VibeSpace approval flow                                               |
 
-This table is an automated parity result. Manual desktop execution is not
+This table is an automated parity result. The Files row records the verified
+read-only boundary, not file-write parity. Manual desktop execution is not
 claimed because UI automation did not initialize.
 
 ## F. Phase 17 historical verification results
