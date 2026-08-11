@@ -72,9 +72,7 @@ const ROUTES = {
 
 export type Section20Command = keyof typeof ROUTES;
 
-export const SECTION_20_COMMANDS = Object.freeze(
-  Object.keys(ROUTES) as Section20Command[],
-);
+export const SECTION_20_COMMANDS = Object.freeze(Object.keys(ROUTES) as Section20Command[]);
 
 export interface ClassifiedSlashCommand {
   command: Section20Command;
@@ -96,4 +94,21 @@ export function classifySlashCommand(raw: string): ClassifiedSlashCommand | unde
   if (!Object.prototype.hasOwnProperty.call(ROUTES, command)) return undefined;
   const canonical = command as Section20Command;
   return { command: canonical, ...ROUTES[canonical] };
+}
+
+const REFERENCE_LABELS = {
+  terminals: 'Terminal surface',
+  kanban: 'Kanban',
+  history: 'History',
+  tools: 'Tools',
+  agents: 'Agents page/editor',
+  schedule: 'Schedule',
+} as const;
+
+type ReferenceCommand = keyof typeof REFERENCE_LABELS;
+
+export function buildVibeSpaceReferenceRequest(command: ReferenceCommand, request = ''): string {
+  const reference = `Context references: /${command} references ${REFERENCE_LABELS[command]}.`;
+  const boundedRequest = request.replace(/\s+/gu, ' ').trim();
+  return boundedRequest ? `${reference} User request: ${boundedRequest}` : reference;
 }

@@ -14,6 +14,7 @@ import {
   resolveMentionedAgentIdsForSend,
 } from './Composer';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
+import { buildVibeSpaceReferenceRequest } from './slashCommandRouting';
 import { compileCanvasAiContext } from '@/features/canvas/aiContext';
 import {
   clearActiveCanvasAiContextForTests,
@@ -70,6 +71,14 @@ describe('composer queued-run notice', () => {
 });
 
 describe('composer mention and slash confirmation helpers', () => {
+  it('turns a schedule request into bounded VibeSpace context instead of raw slash syntax', () => {
+    const request = buildVibeSpaceReferenceRequest('schedule', 'run npm test tomorrow');
+    expect(request).toBe(
+      'Context references: /schedule references Schedule. User request: run npm test tomorrow',
+    );
+    expect(request).not.toMatch(/^\/schedule\b/u);
+  });
+
   it('separates console profiles from the release-only global appearance picker', () => {
     expect(getThemeCommandHelp()).toBe(
       'Chat console themes: Paper White, Solar Sand, Sakura Mist, Icebound, VibeSpace Amber, Graphite, Midnight Blue, Monokai Ember, Matrix Moss, OLED Void. Use /theme <name>.',

@@ -175,8 +175,10 @@ import { InputToken, TokenList } from './InputToken';
 import {
   extractInlineUtilitySlashCommands,
   getInlineSlashContext,
+  isSafeAbsoluteAttachmentPath,
   listProjectFileOptions,
 } from './slashProjectFiles';
+import { buildVibeSpaceReferenceRequest, classifySlashCommand } from './slashCommandRouting';
 import {
   clearRedoStack,
   NOTHING_TO_REDO_TEXT,
@@ -208,6 +210,7 @@ import {
   MARKDOWN_DOCUMENT_OPTIONS,
   buildMarkdownCreationInstruction,
   isMarkdownDocumentKind,
+  parseMarkdownSlashArgument,
 } from './markdownCommand';
 import {
   cleanupExpiredOversizedMessageAttachments,
@@ -1798,7 +1801,8 @@ export function Composer({
   const handleSlashCommand = async (trimmed: string): Promise<boolean | string> => {
     if (!trimmed.startsWith('/')) return false;
     const [cmdRaw, ...restParts] = trimmed.slice(1).split(/\s+/);
-    const cmd = normalizeSlashCmd(cmdRaw ?? '');
+    const classification = classifySlashCommand(cmdRaw ?? '');
+    const cmd = classification?.command ?? normalizeSlashCmd(cmdRaw ?? '');
     const rest = restParts.join(' ').trim();
     const addSystem = async (msg: string) => {
       await messageRepo.create({
@@ -1808,6 +1812,10 @@ export function Composer({
       });
       setText('');
     };
+    if (!classification) {
+      await addSystem(`Unknown slash command: /${cmd}. Try /help.`);
+      return true;
+    }
     const openAttachPicker = (canonicalCmd: string) => {
       const def = findSlashCommandDef(canonicalCmd);
       if (!def) return false;
@@ -1891,7 +1899,7 @@ export function Composer({
       return true;
     }
     if (cmd === 'schedule' && rest) {
-      return `/${cmd} ${rest}`;
+      return buildVibeSpaceReferenceRequest('schedule', rest);
     }
     // /agent — live subagent selector (does not spawn; use /multitask or /subagents).
     if (cmd === 'agent') {
@@ -2048,6 +2056,23 @@ export function Composer({
       await addSystem('Switched chat model to Hive — the 5-model balanced ensemble.');
       return true;
     }
+    if (cmd === 'md') {
+      if (!rest) return openAttachPicker('md');
+      const parsed = parseMarkdownSlashArgument(rest);
+      if (!parsed) {
+        await addSystem(
+          `Markdown document types: ${MARKDOWN_DOCUMENT_OPTIONS.map(({ id }) => id).join(', ')}. Use /md <type> <brief>.`,
+        );
+        return true;
+      }
+      const option = MARKDOWN_DOCUMENT_OPTIONS.find(({ id }) => id === parsed.kind);
+      setConfirmedCommands((current) => [
+        ...current.filter((command) => command.cmd !== 'md'),
+        { cmd: 'md', value: parsed.kind, label: `/md: ${option?.label ?? parsed.kind}` },
+      ]);
+      setText('');
+      return parsed.brief || true;
+    }
     const routes: Record<string, string> = {
       kanban: 'kanban',
       canvas: 'canvas',
@@ -2110,7 +2135,32 @@ export function Composer({
       );
       return true;
     }
+    if (cmd === 'plug') {
+      openAttachPicker('plug');
+      return true;
+    }
     if (cmd === 'skills') {
+      if (rest) {
+        const target = rest.toLowerCase();
+        const matched = getAllCatalogSkills().find(
+          (skill) =>
+            skill.id.toLowerCase() === target ||
+            skill.name.toLowerCase() === target ||
+            skill.name.toLowerCase().includes(target),
+        );
+        if (!matched) {
+          await addSystem(`No skill matching '${rest}'. Use /skills to inspect the catalog.`);
+          return true;
+        }
+        setConfirmedCommands((current) => [
+          ...current.filter(
+            (command) => !(command.cmd === 'skills' && command.value === matched.id),
+          ),
+          { cmd: 'skills', value: matched.id, label: `/skills: ${matched.name}` },
+        ]);
+        setText('');
+        return true;
+      }
       const available = getAllCatalogSkills()
         .map((skill) => `- ${skill.name} (${skill.id}) - ${skill.description}`)
         .join('\n');
@@ -2139,7 +2189,11 @@ export function Composer({
       if (openAttachPicker('allaboutme')) return true;
       return true;
     }
-    if (cmd === 'attach' && rest) {
+    if (cmd === 'attach') {
+      if (!rest || !isSafeAbsoluteAttachmentPath(rest)) {
+        await addSystem('Use /attach <absolute path>. Relative paths and traversal are rejected.');
+        return true;
+      }
       setAttachedFiles((cur) => (cur.includes(rest) ? cur : [...cur, rest]).slice(0, 8));
       setText('');
       return true;
@@ -2277,7 +2331,7 @@ export function Composer({
       openAttachPicker('file');
       return true;
     }
-    await addSystem(`Unknown slash command: /${cmd}. Try /help.`);
+    await addSystem(`Command /${cmd} is registered but has no executable VibeSpace route.`);
     return true;
   };
 
