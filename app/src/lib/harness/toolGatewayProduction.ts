@@ -17,6 +17,7 @@ import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { TaskId } from '@/types/common';
+import type { ActionResult } from '@/lib/actions/types';
 import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
 import type { ToolGatewayRequest } from './toolGatewayProtocol';
 
@@ -26,6 +27,24 @@ const ONCE_GRANT_TTL_MS = 2 * 60_000;
 const ALWAYS_GRANT_TTL_MS = 30 * 60_000;
 const MAX_GRANT_SESSIONS = 128;
 const MAX_GRANTS_PER_SESSION = 32;
+
+type ToolGatewayPluginReadPort = Readonly<{
+  run(input: {
+    pluginId: string;
+    operation: string;
+    params: Readonly<Record<string, unknown>>;
+    context: ToolGatewayExecutionContext;
+  }): Promise<ActionResult>;
+}>;
+
+let pluginReadPort: ToolGatewayPluginReadPort | undefined;
+
+export function installToolGatewayPluginReadPort(port: ToolGatewayPluginReadPort): () => void {
+  pluginReadPort = port;
+  return () => {
+    if (pluginReadPort === port) pluginReadPort = undefined;
+  };
+}
 
 export function grantNextToolGatewayMutation(sessionId: string): void {
   grantToolGatewayMutation(sessionId, '*', 'once');
@@ -376,8 +395,26 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
           })),
         }));
       },
-      run: () => {
-        throw new Error('plugin_operation_unavailable');
+      run: async (args, context) => {
+        const port = pluginReadPort;
+        if (!port) throw new Error('plugin_operation_unavailable');
+        const parsed = args.input ? JSON.parse(stringArg(args, 'input')) : {};
+        if (
+          typeof parsed !== 'object' ||
+          parsed === null ||
+          Array.isArray(parsed) ||
+          Object.getPrototypeOf(parsed) !== Object.prototype
+        ) {
+          throw new Error('plugin_input_invalid');
+        }
+        const result = await port.run({
+          pluginId: stringArg(args, 'pluginId'),
+          operation: stringArg(args, 'operation'),
+          params: parsed as Record<string, unknown>,
+          context,
+        });
+        if (!result.ok) throw new Error('plugin_operation_failed');
+        return { summary: result.summary, data: result.data };
       },
     },
     tasks: {

@@ -1429,15 +1429,18 @@ function KernelBridgeBootstrap() {
     let disposeBoundary: (() => void | Promise<void>) | undefined;
     let accountInvalidator: ((accountId: string) => void) | undefined;
     let disposeKernelRuntimeHost: (() => void) | undefined;
+    let disposePluginReadPort: (() => void) | undefined;
     let securityRuntime:
       | {
           bindKernelActions: import('@/lib/jarvis/approvalEngine').JarvisApprovalActionBinder;
           pluginManagement: PluginManagementCapability;
+          runReadOnlyPlugin: import('@/lib/jarvis/jarvisSecurityRuntime').JarvisSecurityRuntime['runReadOnlyPlugin'];
           invalidateAccount(accountId: string): void;
           invalidateAll(): void;
         }
       | undefined;
     const invalidateSecurityRuntime = () => {
+      disposePluginReadPort?.();
       disposeKernelRuntimeHost?.();
       securityRuntime?.invalidateAll();
     };
@@ -1471,6 +1474,7 @@ function KernelBridgeBootstrap() {
               { createJarvisActionCatalog, DEFAULT_JARVIS_ACTION_REGISTRATIONS },
               { getBuiltinAction },
               { resolveLocalDevelopmentEntitlementSnapshot },
+              { installToolGatewayPluginReadPort },
             ] = await Promise.all([
               import('@/lib/jarvis/jarvisSecurityRuntime'),
               import('@/features/plugins/credentialAuthorization'),
@@ -1485,6 +1489,7 @@ function KernelBridgeBootstrap() {
               import('@/lib/jarvis/actions/catalog'),
               import('@/lib/actions/registry'),
               import('@/lib/entitlements'),
+              import('@/lib/harness/toolGatewayProduction'),
             ]);
             await openDb();
             if (disposed) return createUnavailableKernelHostRuntime();
@@ -1632,6 +1637,9 @@ function KernelBridgeBootstrap() {
               randomUUID,
               now,
             });
+            disposePluginReadPort = installToolGatewayPluginReadPort({
+              run: (request) => securityRuntime!.runReadOnlyPlugin(request),
+            });
             if (!kernelPluginArtifacts) {
               throw new Error('jarvis_plugin_artifact_authority_unavailable');
             }
@@ -1647,6 +1655,7 @@ function KernelBridgeBootstrap() {
               now,
             });
             if (disposed) {
+              disposePluginReadPort();
               disposeKernelRuntimeHost();
               securityRuntime.invalidateAll();
               return createUnavailableKernelHostRuntime();
@@ -1666,6 +1675,7 @@ function KernelBridgeBootstrap() {
               dispose() {
                 window.removeEventListener('pagehide', invalidateSecurityRuntime);
                 localDevelopmentEntitlementCache = undefined;
+                disposePluginReadPort?.();
                 disposeKernelRuntimeHost?.();
                 securityRuntime?.invalidateAll();
               },
@@ -1700,6 +1710,7 @@ function KernelBridgeBootstrap() {
     return () => {
       disposed = true;
       window.removeEventListener('pagehide', invalidateSecurityRuntime);
+      disposePluginReadPort?.();
       disposeKernelRuntimeHost?.();
       securityRuntime?.invalidateAll();
       if (accountInvalidator && invalidateActiveKernelAccount === accountInvalidator) {

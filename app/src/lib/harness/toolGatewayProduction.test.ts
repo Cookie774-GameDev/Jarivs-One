@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import { useUIStore } from '@/stores/ui';
 import {
@@ -6,6 +6,7 @@ import {
   createProductionToolGatewayDependencies,
   grantNextToolGatewayMutation,
   grantToolGatewayMutation,
+  installToolGatewayPluginReadPort,
 } from './toolGatewayProduction';
 import { parseToolGatewayRequest } from './toolGatewayProtocol';
 
@@ -73,5 +74,74 @@ describe('production tool gateway dependencies', () => {
     await expect(Promise.resolve(deps.app.getState({}, {} as never))).resolves.toEqual(
       expect.objectContaining({ route: 'chat', terminalCount: 1 }),
     );
+  });
+
+  it('delegates a fixed plugin operation through the live read-only security port', async () => {
+    const run = vi.fn(async () => ({
+      ok: true as const,
+      summary: 'Fixed plugin tool completed.',
+      data: { login: 'octocat' },
+    }));
+    const dispose = installToolGatewayPluginReadPort({ run });
+    const deps = createProductionToolGatewayDependencies();
+    const context = {
+      requestId: 'request-1',
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      mutationApproved: false,
+    };
+
+    await expect(
+      Promise.resolve(
+        deps.plugins.run(
+          {
+            pluginId: 'github',
+            operation: 'identity',
+            input: JSON.stringify({}),
+          },
+          context,
+        ),
+      ),
+    ).resolves.toEqual({
+      summary: 'Fixed plugin tool completed.',
+      data: { login: 'octocat' },
+    });
+    expect(run).toHaveBeenCalledWith({
+      pluginId: 'github',
+      operation: 'identity',
+      params: {},
+      context,
+    });
+    dispose();
+    await expect(
+      Promise.resolve(
+        deps.plugins.run({ pluginId: 'github', operation: 'identity', input: '{}' }, context),
+      ),
+    ).rejects.toThrow('plugin_operation_unavailable');
+  });
+
+  it('does not let a stale plugin-port disposer revoke a newer host', async () => {
+    const first = installToolGatewayPluginReadPort({
+      run: vi.fn(async () => ({ ok: true as const, data: 'first' })),
+    });
+    const secondRun = vi.fn(async () => ({ ok: true as const, data: 'second' }));
+    const second = installToolGatewayPluginReadPort({ run: secondRun });
+    first();
+
+    await expect(
+      Promise.resolve(
+        createProductionToolGatewayDependencies().plugins.run(
+          { pluginId: 'mock-connector', operation: 'ping', input: '{}' },
+          {
+            requestId: 'request-2',
+            sessionId: 'session-2',
+            messageId: 'message-2',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).resolves.toEqual({ summary: undefined, data: 'second' });
+    expect(secondRun).toHaveBeenCalledOnce();
+    second();
   });
 });

@@ -12,5 +12,8 @@ describe('ordinary app tool gateway host', () => {
     expect(source.lastIndexOf('<ToolGatewayHost />')).toBeGreaterThan(
       source.lastIndexOf('<KernelBridgeBootstrap />'),
     );
+    expect(source).toContain('installToolGatewayPluginReadPort');
+    expect(source).toContain('run: (request) => securityRuntime!.runReadOnlyPlugin(request)');
+    expect(source).toContain('disposePluginReadPort?.()');
   });
 });
