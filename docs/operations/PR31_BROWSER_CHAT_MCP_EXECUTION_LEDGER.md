@@ -355,7 +355,7 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: this broker does not advertise or route a new remote mutation tool.
   `workers/vibespace-mcp/**` remains excluded while its recorded owner is
   unresolved.
-- Commit: pending exact-path commit.
+- Commit: `9fecc188`.
 
 ## Completion labels
 
