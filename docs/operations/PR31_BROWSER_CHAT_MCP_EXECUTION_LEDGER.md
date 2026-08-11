@@ -842,7 +842,7 @@ staged, restored, reformatted, or committed by this task.
 - Authority boundary: reconciliation consumes only native top-level
   allowlisted metadata. It reads no provider DOM, title, message, cookie, or
   account state.
-- Commit: pending.
+- Commit: `afe64a78`.
 
 ## Completion labels
 
