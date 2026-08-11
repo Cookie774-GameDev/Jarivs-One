@@ -11,7 +11,7 @@ Master-goal SHA-256:
 
 ## Verdict
 
-The current PR31 implementation head `871010c3` is **VERIFIED** for the
+The current PR31 implementation head `b013fe79` is **VERIFIED** for the
 credential-free automated and web-runtime scope exercised on 2026-08-11.
 Previously reported account-identity and benchmark failures are closed, all
 1,092 currently discovered frontend test files pass exactly once, TypeScript
@@ -45,7 +45,7 @@ global OpenCode mutation was performed.
 
 Starting head: `af404344`
 
-Implementation head before evidence: `871010c3`
+Implementation head before evidence: `b013fe79`
 
 Verified corrections:
 
@@ -62,7 +62,7 @@ Verified corrections:
   files passed exactly once; runner unit result: 5/5.
 - Browser Chat/MCP post-review audit result: 33 files and 232/232 focused
   frontend tests, plus successful interactive web-runtime engine switching.
-- Production build: passed in 1 minute 4 seconds.
+- Production build: passed with 4,834 modules transformed in 1 minute 1 second.
 - Release manifest: 44/44.
 - PR31 OSS metadata: passed.
 - VibeSpace MCP Worker: 29/29, typecheck, Wrangler dry-run.
@@ -73,10 +73,15 @@ Verified corrections:
   failures.
 - Credential scanner: 14/14 security contract tests passed.
 - Tool Gateway requests are bound to an immutable
-  account/workspace/project authority tuple. Scope transitions synchronously
-  revoke reads and mutation grants, and a revoked session cannot regain access
-  by switching back. Focused result: 3 files and 54/54 tests; complete harness
-  result: 15 files and 145/145 tests.
+  account/workspace/project authority tuple captured before asynchronous
+  session creation. Unknown sessions are rejected, scope transitions
+  synchronously revoke reads and mutation grants, revoked sessions cannot
+  regain access by switching back, stale parent/descendant session trees are
+  retired, and authority is revalidated after callbacks immediately before
+  provider dispatch. OpenCode adapter result: 17/17 tests; complete harness
+  plus adapter result: 17 files and 166/166 tests.
+- Mandatory independent final review at `b013fe79`: **READY**, with no P0, P1,
+  P2, or P3 findings.
 - The unimplemented `context.update` route is no longer advertised or accepted;
   the gateway cannot report a successful context write without persistence.
 - `git diff --check` passes for the owned closure paths. The historical reviewed
