@@ -16,6 +16,7 @@
     "tauri:build": "npm --prefix app run tauri:build",
     "typecheck": "npm --prefix app run typecheck",
     "test:release-manifest": "node --test scripts/build-updater-manifest.test.mjs",
+    "test:full:sharded": "node scripts/run-vitest-shards.mjs",
     "verify:pr31-oss": "node scripts/pr31-oss-bundle.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1",
