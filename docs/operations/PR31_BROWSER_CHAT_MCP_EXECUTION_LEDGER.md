@@ -147,6 +147,22 @@ staged, restored, reformatted, or committed by this task.
 - Authority safety: History renders only local chat metadata and the durable
   binding summary. It does not display or imply access to provider-owned
   messages.
+- Commit: `f9a43756`.
+
+### M4b — local provider project pointers
+
+- Status: `VERIFIED`
+- RED evidence: Project Detail had no provider-project lifecycle controls and
+  no truthful local-vs-remote authority copy.
+- GREEN evidence: 3/3 focused Project Detail link tests, the existing
+  Project Detail appearance test, and 10/10 repository lifecycle/scope tests
+  pass; app TypeScript passes.
+- Behavior: Project Detail can save an exact allowlisted ChatGPT project URL,
+  open the normalized URL, and remove the local pointer.
+- Authority safety: the UI repeatedly identifies links as local bookmarks,
+  does not claim remote membership or verification, and states that unlinking
+  does not modify the provider project. Invalid or hostile URLs fail closed in
+  the existing scoped repository validator.
 - Commit: pending exact-path commit.
 
 ## Completion labels

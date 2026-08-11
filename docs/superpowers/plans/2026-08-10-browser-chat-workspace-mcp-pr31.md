@@ -142,7 +142,7 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 
 - [ ] Write failing lifecycle, search, replay, dedupe, hostile archive, size,
       and cancellation tests.
-- [ ] Implement local project linking without claiming remote membership.
+- [x] Implement local project linking without claiming remote membership.
 - [x] Implement history summary/open behavior for non-imported bindings.
 - [ ] Implement snapshot import without HTML/script execution.
 - [ ] Verify re-import updates rather than duplicates and delete affects only
