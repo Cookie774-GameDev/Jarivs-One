@@ -515,6 +515,36 @@ staged, restored, reformatted, or committed by this task.
   them end to end.
 - Commit: `dad47be0`.
 
+### M5l — account-scoped project context and output retrieval
+
+- Status: `VERIFIED`
+- RED evidence: the permission registry and local adapter surface had no
+  explicit authority for listing VibeSpace projects, retrieving approved
+  project context, or listing verified project outputs.
+- GREEN evidence: 40/40 focused project-context, permission-registry,
+  approval-broker, permission-panel, and Browser Chat hub tests pass against
+  real IndexedDB fixture rows; app TypeScript and Prettier pass.
+- Permission boundary: three non-mutating capabilities now distinguish
+  `project.list`, `project.context`, and `project.outputs`. Every call consumes
+  a capability-specific lease whose account/workspace must match the adapter
+  scope.
+- Project isolation: the adapter verifies the workspace owner, filters
+  projects by the exact workspace, verifies the active project belongs to that
+  workspace, and never returns foreign-workspace projects.
+- Context provenance: active Context Maps are filtered by exact account and
+  project. Repository search reuses the existing verified retrieval runtime,
+  accepts only the active scoped map, validates repository/source/entity/
+  provenance identities and content/AST hashes, applies the configured secret
+  policy, and caps both item count and returned content bytes.
+- Output provenance: artifacts are joined only through runs matching the exact
+  account, workspace, and project; quarantined artifacts and private backing
+  references are omitted. Returned output data is bounded to safe metadata,
+  content hash, size, state, timestamps, and app-verified trust.
+- Truth boundary: project/context/output capabilities remain unavailable in
+  the product status catalog until their local adapters are composed into the
+  relay and the separately owned Worker protocol can attest them end to end.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

@@ -15,6 +15,9 @@ export type BrowserChatCapabilityDefinition = {
     | 'git.status'
     | 'browser.read'
     | 'mcp.list'
+    | 'project.list'
+    | 'project.context'
+    | 'project.outputs'
     | 'files.create'
     | 'files.modify'
     | 'files.move'
@@ -24,7 +27,7 @@ export type BrowserChatCapabilityDefinition = {
     | 'browser.mutate'
     | 'mcp.invoke';
   readonly label: string;
-  readonly family: 'files' | 'git' | 'terminal' | 'browser' | 'mcp';
+  readonly family: 'files' | 'git' | 'terminal' | 'browser' | 'mcp' | 'project';
   readonly mutates: boolean;
   readonly criticalApproval: boolean;
 };
@@ -71,6 +74,27 @@ export const BROWSER_CHAT_CAPABILITIES: readonly BrowserChatCapabilityDefinition
     id: 'mcp.list',
     label: 'List approved downstream MCP tools',
     family: 'mcp',
+    mutates: false,
+    criticalApproval: false,
+  }),
+  Object.freeze({
+    id: 'project.list',
+    label: 'List approved VibeSpace projects',
+    family: 'project',
+    mutates: false,
+    criticalApproval: false,
+  }),
+  Object.freeze({
+    id: 'project.context',
+    label: 'Read approved project context',
+    family: 'project',
+    mutates: false,
+    criticalApproval: false,
+  }),
+  Object.freeze({
+    id: 'project.outputs',
+    label: 'List approved project outputs',
+    family: 'project',
     mutates: false,
     criticalApproval: false,
   }),
