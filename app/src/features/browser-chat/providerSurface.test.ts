@@ -158,13 +158,13 @@ describe('Browser Chat managed provider surface', () => {
     expect(fake.opened).toEqual(['https://chatgpt.com/']);
   });
 
-  it('opens the exact ChatGPT Plugins page in the OS default browser', async () => {
+  it('opens ChatGPT Apps setup in the OS default browser', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);
 
     await controller.openChatGptPlugins();
 
-    expect(fake.opened).toEqual(['https://chatgpt.com/plugins']);
+    expect(fake.opened).toEqual(['https://chatgpt.com/']);
   });
 
   it('rejects zero-sized or non-finite overlay bounds', async () => {

@@ -29,7 +29,8 @@ import {
   resolveBrowserChatCloudUrl,
   resolveBrowserChatMcpUrl,
   setBridgeWorkspaceGrant,
-  useBrowserChatRelay,
+  browserChatRelayStatusStore,
+  type BrowserChatRelayStatus,
 } from '@/lib/bridge';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
@@ -40,7 +41,7 @@ import { BROWSER_CHAT_PROVIDERS, browserChatProvider } from './providerRegistry'
 import { browserChatSurface } from './providerSurface';
 import { buildBrowserAgentPrompt } from './browserAgentPrompt';
 import {
-  CHATGPT_PLUGINS_URL,
+  CHATGPT_APPS_URL,
   McpConnectionPreflightError,
   preflightVibeSpaceMcp,
 } from './mcpConnection';
@@ -59,7 +60,7 @@ const stagedFilesByChat = new Map<string, File[]>();
 type McpSetupState = 'idle' | 'checking' | 'opening' | 'waiting' | 'error';
 
 export function browserChatMcpStatusLabel(
-  relayStatus: ReturnType<typeof useBrowserChatRelay>,
+  relayStatus: BrowserChatRelayStatus,
   signedIn: boolean,
   setupState: McpSetupState,
 ): string {
@@ -69,7 +70,7 @@ export function browserChatMcpStatusLabel(
   if (relayStatus === 'error') return 'Connection error';
   if (!signedIn) return 'VibeSpace sign-in required';
   if (setupState === 'checking') return 'Checking secure connection';
-  if (setupState === 'opening') return 'Opening ChatGPT Plugins';
+  if (setupState === 'opening') return 'Opening ChatGPT Apps';
   if (setupState === 'waiting') return 'Waiting for owner approval';
   return 'Setup required';
 }
@@ -105,10 +106,11 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     workspaceGrant?.accountId === cloudAccountId && workspaceGrant.projectId === projectId
       ? workspaceGrant
       : null;
-  const relayStatus = useBrowserChatRelay(Boolean(cloudAccountId), {
-    accountId: cloudAccountId,
-    projectId: projectId ? String(projectId) : null,
-  });
+  const relayStatus = React.useSyncExternalStore(
+    browserChatRelayStatusStore.subscribe,
+    browserChatRelayStatusStore.getSnapshot,
+    () => 'disabled' as const,
+  );
   const mcpUrl = resolveBrowserChatMcpUrl(
     resolveBrowserChatCloudUrl(import.meta.env as Record<string, string | undefined>),
   );
@@ -324,7 +326,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
         await browserChatSurface.openChatGptPlugins();
       } catch {
         throw new McpConnectionPreflightError(
-          'ChatGPT Plugins could not be opened. Use the visible endpoint to continue.',
+          'ChatGPT Apps could not be opened. Use the visible endpoint to continue.',
         );
       }
       if (controller.signal.aborted) return;
@@ -355,7 +357,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
     if (!mcpUrl) return;
     try {
       await navigator.clipboard.writeText(mcpUrl);
-      toast.success('VibeSpace MCP endpoint copied', 'Paste it into ChatGPT Plugins.');
+      toast.success('VibeSpace MCP endpoint copied', 'Paste it into ChatGPT Apps setup.');
     } catch {
       toast.error(
         'Could not copy the MCP endpoint',
@@ -602,7 +604,7 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                   {mcpSetupState === 'checking'
                     ? 'Checking VibeSpace MCP'
                     : mcpSetupState === 'opening'
-                      ? 'Opening ChatGPT Plugins'
+                      ? 'Opening ChatGPT Apps'
                       : mcpSetupState === 'error'
                         ? 'Retry VibeSpace MCP'
                         : 'Connect VibeSpace MCP'}
@@ -612,13 +614,15 @@ export function BrowserChatHub({ chatId }: { readonly chatId?: string | null }) 
                     <span className="block">{mcpSetupError}</span>
                     <span className="block text-muted-foreground">
                       Open manually:{' '}
-                      <code className="select-all text-foreground">{CHATGPT_PLUGINS_URL}</code>
+                      <code className="select-all text-foreground">{CHATGPT_APPS_URL}</code>
                     </span>
                   </span>
                 ) : null}
                 <span className="mt-1 block text-[9px] leading-4 text-muted-foreground">
-                  ChatGPT requires one-time OAuth approval. Later desktop relay reconnects are
-                  automatic while this session grant is active.
+                  In ChatGPT, open Settings → Apps → Advanced settings, enable Developer mode, then
+                  create or refresh the VibeSpace app with the MCP endpoint above. ChatGPT requires
+                  one-time OAuth approval; the desktop relay then reconnects automatically while
+                  this session grant is active.
                 </span>
               </dd>
               <dd className="mt-2 space-y-1">

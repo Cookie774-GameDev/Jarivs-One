@@ -1,4 +1,4 @@
-export const CHATGPT_PLUGINS_URL = 'https://chatgpt.com/plugins';
+export const CHATGPT_APPS_URL = 'https://chatgpt.com/';
 
 const DEFAULT_PREFLIGHT_TIMEOUT_MS = 5_000;
 
@@ -66,6 +66,20 @@ function authorizationMetadataUrl(issuer: URL): URL {
   const metadata = new URL(issuer.origin);
   metadata.pathname = `/.well-known/oauth-authorization-server${issuer.pathname.replace(/\/$/u, '')}`;
   return metadata;
+}
+
+function isSecureEndpoint(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+function includesString(value: unknown, expected: string): boolean {
+  return Array.isArray(value) && value.includes(expected);
 }
 
 async function requestJson(
@@ -139,6 +153,17 @@ export async function preflightVibeSpaceMcp(
       'VibeSpace MCP authorization metadata',
     );
     if (authorizationMetadata.issuer !== authorizationServer.toString()) {
+      throw new McpConnectionPreflightError('The VibeSpace MCP authorization metadata is invalid.');
+    }
+    if (
+      !isSecureEndpoint(authorizationMetadata.authorization_endpoint) ||
+      !isSecureEndpoint(authorizationMetadata.token_endpoint) ||
+      !isSecureEndpoint(authorizationMetadata.registration_endpoint) ||
+      !includesString(authorizationMetadata.scopes_supported, 'offline_access') ||
+      !includesString(authorizationMetadata.grant_types_supported, 'authorization_code') ||
+      !includesString(authorizationMetadata.grant_types_supported, 'refresh_token') ||
+      !includesString(authorizationMetadata.code_challenge_methods_supported, 'S256')
+    ) {
       throw new McpConnectionPreflightError('The VibeSpace MCP authorization metadata is invalid.');
     }
 

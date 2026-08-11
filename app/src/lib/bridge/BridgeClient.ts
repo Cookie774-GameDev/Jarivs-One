@@ -116,6 +116,10 @@ export interface BridgeClientOptions {
   platform?: string;
   /** Heartbeat interval ms (default 15s). */
   heartbeatMs?: number;
+  /** Registration acknowledgement timeout ms (default 10s). */
+  registrationTimeoutMs?: number;
+  /** Maximum age of the last heartbeat acknowledgement (default 45s). */
+  heartbeatTimeoutMs?: number;
   /** Max reconnect backoff ms (default 5000). */
   maxBackoffMs?: number;
   /** Called on every status change. */
@@ -403,6 +407,7 @@ export class BridgeClient {
   private status: BridgeStatus = 'idle';
   private opts: BridgeClientOptions;
   private heartbeatTimer: number | null = null;
+  private registrationTimer: number | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private wantsConnected = false;
@@ -413,6 +418,8 @@ export class BridgeClient {
   private advertisedTools = new Set<string>();
   private lastSequence = 0;
   private seenCallIds = new Set<string>();
+  private connectionEpoch = 0;
+  private lastHeartbeatAckAt = 0;
 
   constructor(opts: BridgeClientOptions) {
     this.opts = opts;
@@ -428,26 +435,31 @@ export class BridgeClient {
   /** Close the bridge cleanly. No reconnect after this. */
   async stop(): Promise<void> {
     this.wantsConnected = false;
+    this.connectionEpoch += 1;
     this.clearHeartbeat();
+    this.clearRegistrationTimeout();
     this.clearReconnect();
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    const ws = this.ws;
+    this.ws = null;
+    if (ws && ws.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify({ kind: 'deregister', reason: 'shutdown' }));
+        ws.send(JSON.stringify({ kind: 'deregister', reason: 'shutdown' }));
       } catch {
         // ignore
       }
       try {
-        this.ws.close(1000, 'shutdown');
+        ws.close(1000, 'shutdown');
       } catch {
         // ignore
       }
     }
-    this.ws = null;
+    this.rejectPendingRegistration(new Error('Bridge stopped.'));
     this.setStatus('closed');
   }
 
   /** Update the JWT (e.g. after Supabase auth refresh) and reconnect. */
   setJwt(jwt: string): void {
+    if (this.opts.jwt === jwt) return;
     this.opts.jwt = jwt;
     if (this.wantsConnected) {
       this.reconnect();
@@ -483,6 +495,11 @@ export class BridgeClient {
     return this.status === 'connected';
   }
 
+  /** Ask the singleton to establish a fresh, generation-owned connection. */
+  requestReconnect(): void {
+    if (this.wantsConnected) this.reconnect();
+  }
+
   // -- private --
 
   private setStatus(s: BridgeStatus): void {
@@ -496,11 +513,13 @@ export class BridgeClient {
 
     this.clearReconnect();
     this.setStatus(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
+    const epoch = ++this.connectionEpoch;
 
     try {
       const resolvedUrl = this.opts.resolveUrl
         ? await this.opts.resolveUrl(this.opts.jwt)
         : this.opts.url;
+      if (!this.wantsConnected || this.connectionEpoch !== epoch) return;
       if (!/^wss?:\/\//u.test(resolvedUrl)) {
         throw new Error('The bridge URL is invalid.');
       }
@@ -510,8 +529,19 @@ export class BridgeClient {
       const registerPromise = new Promise<void>((resolve, reject) => {
         this.registerPending = { resolve, reject };
       });
+      this.clearRegistrationTimeout();
+      this.registrationTimer = window.setTimeout(() => {
+        if (!this.isCurrentConnection(ws, epoch) || !this.registerPending) return;
+        this.rejectPendingRegistration(new Error('Bridge registration timed out.'));
+        try {
+          ws.close(4008, 'registration timeout');
+        } catch {
+          // The reconnect scheduler below remains authoritative.
+        }
+      }, this.opts.registrationTimeoutMs ?? 10_000);
 
       ws.onopen = () => {
+        if (!this.isCurrentConnection(ws, epoch)) return;
         const tools = toolRegistry.list();
         const registerFrame =
           this.opts.mode === 'browser_chat'
@@ -543,24 +573,29 @@ export class BridgeClient {
         try {
           ws.send(JSON.stringify(registerFrame));
         } catch (e) {
-          this.registerPending?.reject(new Error(`register send failed: ${e}`));
-          this.registerPending = null;
+          this.rejectPendingRegistration(new Error(`register send failed: ${e}`));
+          try {
+            ws.close(1011, 'register send failed');
+          } catch {
+            // onclose or the catch below schedules the next attempt.
+          }
         }
       };
 
-      ws.onmessage = (ev) => this.handleMessage(ev.data as string);
+      ws.onmessage = (ev) => {
+        if (this.isCurrentConnection(ws, epoch)) this.handleMessage(ev.data as string, ws);
+      };
       ws.onerror = () => {
         // onerror fires before onclose; let onclose handle the reconnect.
       };
       ws.onclose = (ev) => {
+        if (!this.isCurrentConnection(ws, epoch)) return;
         const wasConnected = this.status === 'connected';
         this.ws = null;
         this.clearHeartbeat();
+        this.clearRegistrationTimeout();
 
-        if (this.registerPending) {
-          this.registerPending.reject(new Error(`bridge closed before register: code=${ev.code}`));
-          this.registerPending = null;
-        }
+        this.rejectPendingRegistration(new Error(`bridge closed before register: code=${ev.code}`));
 
         if (this.wantsConnected) {
           this.scheduleReconnect(wasConnected);
@@ -571,6 +606,7 @@ export class BridgeClient {
 
       await registerPromise;
     } catch (e) {
+      if (this.connectionEpoch !== epoch) return;
       console.error('[BridgeClient] connect failed:', e);
       this.setStatus('error');
       if (this.wantsConnected) {
@@ -579,7 +615,7 @@ export class BridgeClient {
     }
   }
 
-  private handleMessage(data: string): void {
+  private handleMessage(data: string, ws: WebSocket): void {
     let frame: BridgeFrame;
     try {
       frame = JSON.parse(data) as BridgeFrame;
@@ -591,9 +627,8 @@ export class BridgeClient {
     switch (frame.kind) {
       case 'registered':
         if (typeof frame.session_id !== 'string' || !SAFE_IDENTIFIER.test(frame.session_id)) {
-          this.registerPending?.reject(new Error('Bridge registration response was invalid.'));
-          this.registerPending = null;
-          this.ws?.close(4002, 'invalid registration response');
+          this.rejectPendingRegistration(new Error('Bridge registration response was invalid.'));
+          ws.close(4002, 'invalid registration response');
           return;
         }
         if (
@@ -602,16 +637,16 @@ export class BridgeClient {
             typeof frame.server_nonce !== 'string' ||
             !SAFE_IDENTIFIER.test(frame.server_nonce))
         ) {
-          this.registerPending?.reject(new Error('Bridge registration response was invalid.'));
-          this.registerPending = null;
-          this.ws?.close(4002, 'invalid registration response');
+          this.rejectPendingRegistration(new Error('Bridge registration response was invalid.'));
+          ws.close(4002, 'invalid registration response');
           return;
         }
         this.sessionId = frame.session_id;
         this.lastSequence = 0;
         this.seenCallIds.clear();
         this.connectedAt = Date.now();
-        this.reconnectAttempt = 0;
+        this.lastHeartbeatAckAt = this.connectedAt;
+        this.clearRegistrationTimeout();
         this.setStatus('connected');
         this.startHeartbeat();
         this.registerPending?.resolve();
@@ -624,6 +659,10 @@ export class BridgeClient {
 
       case 'heartbeat':
         // server-initiated heartbeat; we'll respond on our own interval
+        break;
+
+      case 'heartbeat_ack':
+        this.lastHeartbeatAckAt = Date.now();
         break;
 
       default:
@@ -753,6 +792,11 @@ export class BridgeClient {
     const interval = this.opts.heartbeatMs ?? 15000;
     this.heartbeatTimer = window.setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const timeout = this.opts.heartbeatTimeoutMs ?? Math.max(interval * 3, 45_000);
+        if (Date.now() - this.lastHeartbeatAckAt > timeout) {
+          this.reconnect();
+          return;
+        }
         try {
           this.ws.send(JSON.stringify({ kind: 'heartbeat', ts: Date.now() }));
         } catch {
@@ -769,7 +813,25 @@ export class BridgeClient {
     }
   }
 
-  private scheduleReconnect(wasConnected: boolean): void {
+  private clearRegistrationTimeout(): void {
+    if (this.registrationTimer !== null) {
+      window.clearTimeout(this.registrationTimer);
+      this.registrationTimer = null;
+    }
+  }
+
+  private rejectPendingRegistration(error: Error): void {
+    if (!this.registerPending) return;
+    const pending = this.registerPending;
+    this.registerPending = null;
+    pending.reject(error);
+  }
+
+  private isCurrentConnection(ws: WebSocket, epoch: number): boolean {
+    return this.ws === ws && this.connectionEpoch === epoch;
+  }
+
+  private scheduleReconnect(wasConnected: boolean, forcedDelay?: number): void {
     if (!this.wantsConnected) return;
     this.clearReconnect();
 
@@ -779,7 +841,7 @@ export class BridgeClient {
     }
 
     const max = this.opts.maxBackoffMs ?? 5000;
-    const delay = Math.min(max, 250 * Math.pow(2, this.reconnectAttempt));
+    const delay = forcedDelay ?? Math.min(max, 250 * Math.pow(2, this.reconnectAttempt));
     this.reconnectAttempt++;
 
     this.reconnectTimer = window.setTimeout(() => {
@@ -795,14 +857,20 @@ export class BridgeClient {
   }
 
   private reconnect(): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    const ws = this.ws;
+    this.connectionEpoch += 1;
+    this.ws = null;
+    this.clearHeartbeat();
+    this.clearRegistrationTimeout();
+    this.rejectPendingRegistration(new Error('Bridge connection replaced.'));
+    if (ws && ws.readyState <= WebSocket.OPEN) {
       try {
-        this.ws.close(1000, 'reconnect');
+        ws.close(1000, 'reconnect');
       } catch {
         // ignore
       }
     }
-    void this.connect();
+    this.scheduleReconnect(this.status === 'connected', 0);
   }
 }
 
@@ -852,6 +920,10 @@ export function getBrowserChatBridgeClient(opts?: BridgeClientOptions): BridgeCl
 export function resetBrowserChatBridgeClient(): void {
   void browserChatSingleton?.stop();
   browserChatSingleton = null;
+}
+
+export function requestBrowserChatBridgeReconnect(): void {
+  browserChatSingleton?.requestReconnect();
 }
 
 export function setBridgeWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): void {

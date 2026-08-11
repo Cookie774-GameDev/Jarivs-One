@@ -7,7 +7,7 @@ import {
   type BrowserChatProviderDefinition,
   type BrowserChatProviderId,
 } from './providerRegistry';
-import { CHATGPT_PLUGINS_URL } from './mcpConnection';
+import { CHATGPT_APPS_URL } from './mcpConnection';
 
 export interface ProviderSurfaceBounds {
   readonly x: number;
@@ -183,7 +183,7 @@ export function createProviderSurfaceController(
     },
 
     async openChatGptPlugins() {
-      await platform.openExternal(CHATGPT_PLUGINS_URL);
+      await platform.openExternal(CHATGPT_APPS_URL);
     },
 
     async hideAll() {

@@ -65,6 +65,7 @@ import {
 } from '@/features/settings/ApiKeySaveBurst';
 import { CallModal, startOutboundTrigger } from '@/features/call';
 import { useBridgeLifecycle } from '@/lib/bridge/useBridgeLifecycle';
+import { VibeSpaceMcpRuntimeHost } from '@/lib/bridge/VibeSpaceMcpRuntimeHost';
 import { useIdleDetection, AmbientAudioHost } from '@/features/ambient';
 import { useLinkHotkeys } from '@/features/launcher';
 import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnalytics';
@@ -2099,6 +2100,7 @@ function WorkspaceRuntimeBoundary({ children }: React.PropsWithChildren) {
       {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? (
         <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
       ) : null}
+      {plan.lifecycleEnabled ? <VibeSpaceMcpRuntimeHost /> : null}
       {children}
     </JarvisCommandCenterProvider>
   );

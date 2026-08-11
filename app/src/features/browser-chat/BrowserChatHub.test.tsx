@@ -43,6 +43,10 @@ function mockSuccessfulMcpDiscovery() {
         issuer: 'https://auth.example/auth/v1',
         authorization_endpoint: 'https://auth.example/auth/v1/authorize',
         token_endpoint: 'https://auth.example/auth/v1/token',
+        registration_endpoint: 'https://auth.example/auth/v1/register',
+        scopes_supported: ['openid', 'offline_access'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
+        code_challenge_methods_supported: ['S256'],
       }),
     );
 }
@@ -54,6 +58,7 @@ describe('BrowserChatHub', () => {
     localStorage.clear();
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
+    bridge.resetBrowserChatRelayStatus();
     useAuthStore.setState({
       projectId: 'project-1' as ProjectId,
       localUserId: 'account-1',
@@ -148,20 +153,16 @@ describe('BrowserChatHub', () => {
   });
 
   it('starts the authenticated relay for a signed-in account before local project access is granted', () => {
-    const useRelay = vi.spyOn(bridge, 'useBrowserChatRelay').mockReturnValue('connected');
+    bridge.publishBrowserChatRelayStatus('connected');
 
     render(<BrowserChatHub chatId="chat-1" />);
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
-    expect(useRelay).toHaveBeenCalledWith(true, {
-      accountId: 'account-1',
-      projectId: 'project-1',
-    });
     expect(screen.getByText(/connected to this signed-in vibespace account/i)).toBeTruthy();
   });
 
   it('shows a relay failure instead of falling back to a not-configured provider status', () => {
-    vi.spyOn(bridge, 'useBrowserChatRelay').mockReturnValue('error');
+    bridge.publishBrowserChatRelayStatus('error');
 
     render(<BrowserChatHub chatId="chat-1" />);
 
@@ -187,7 +188,7 @@ describe('BrowserChatHub', () => {
     expect(screen.getByText(/installed mcp tools/i)).toBeTruthy();
     expect(screen.getAllByText(/approval required/i).length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();
-    expect(screen.getByText(/enable developer mode/i)).toBeTruthy();
+    expect(screen.getAllByText(/enable developer mode/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/add vibespace mcp/i)).toBeTruthy();
     expect(screen.getByText(/approve access/i)).toBeTruthy();
 
@@ -253,8 +254,8 @@ describe('BrowserChatHub', () => {
     render(<BrowserChatHub chatId="chat-1" />);
     fireEvent.click(screen.getByRole('button', { name: /connect vibespace mcp/i }));
 
-    expect(await screen.findByText(/chatgpt plugins could not be opened/i)).toBeTruthy();
+    expect(await screen.findByText(/chatgpt apps could not be opened/i)).toBeTruthy();
     expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();
-    expect(screen.getByText('https://chatgpt.com/plugins')).toBeTruthy();
+    expect(screen.getByText('https://chatgpt.com/')).toBeTruthy();
   });
 });

@@ -1,12 +1,47 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ToolDef } from '@/lib/mcp/registry';
 import {
   buildBridgeRegistrationFrame,
+  BridgeClient,
   getBridgeWorkspaceGrant,
   invokeBridgeReadTool,
   setBridgeWorkspaceGrant,
   validateBridgeToolCallFrame,
 } from './BridgeClient';
+
+class FakeWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+  static readonly instances: FakeWebSocket[] = [];
+
+  readyState = FakeWebSocket.CONNECTING;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: { code: number }) => void) | null = null;
+  readonly send = vi.fn();
+
+  constructor(readonly url: string) {
+    FakeWebSocket.instances.push(this);
+  }
+
+  open(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.onopen?.();
+  }
+
+  message(frame: Record<string, unknown>): void {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
+
+  close(code = 1000): void {
+    if (this.readyState === FakeWebSocket.CLOSED) return;
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.({ code });
+  }
+}
 
 const tools: ToolDef[] = [
   {
@@ -296,5 +331,86 @@ describe('Browser Chat read-only bridge protocol', () => {
         },
       ),
     ).rejects.toThrow('Local read request was denied.');
+  });
+});
+
+describe('BridgeClient connection ownership and liveness', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    FakeWebSocket.instances.length = 0;
+  });
+
+  it('abandons a socket that never acknowledges registration and schedules one replacement', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const statuses: string[] = [];
+    const client = new BridgeClient({
+      url: 'wss://relay.example/bridge',
+      jwt: 'jwt',
+      mode: 'browser_chat',
+      registrationTimeoutMs: 20,
+      maxBackoffMs: 10,
+      onStatus: (status) => statuses.push(status),
+    });
+
+    const start = client.start();
+    FakeWebSocket.instances[0]?.open();
+    await vi.advanceTimersByTimeAsync(21);
+    await start;
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(FakeWebSocket.instances[0]?.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(statuses).toContain('error');
+    await client.stop();
+  });
+
+  it('requires heartbeat acknowledgements and ignores the replaced socket generation', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const client = new BridgeClient({
+      url: 'wss://relay.example/bridge',
+      jwt: 'jwt',
+      mode: 'browser_chat',
+      heartbeatMs: 10,
+      heartbeatTimeoutMs: 25,
+      maxBackoffMs: 1,
+    });
+
+    const start = client.start();
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.message({
+      kind: 'registered',
+      protocol_version: 2,
+      session_id: 'session_1234567890abcdef',
+      server_nonce: 'nonce_1234567890123456',
+    });
+    await start;
+    await vi.advanceTimersByTimeAsync(20);
+    first.message({ kind: 'heartbeat_ack', ts: Date.now() });
+    await vi.advanceTimersByTimeAsync(20);
+    expect(first.readyState).toBe(FakeWebSocket.OPEN);
+
+    client.requestReconnect();
+    await vi.advanceTimersByTimeAsync(0);
+    const second = FakeWebSocket.instances[1]!;
+    first.message({
+      kind: 'registered',
+      protocol_version: 2,
+      session_id: 'session_stale123456789',
+      server_nonce: 'nonce_stale1234567890',
+    });
+    expect(client.isConnected()).toBe(false);
+    second.open();
+    second.message({
+      kind: 'registered',
+      protocol_version: 2,
+      session_id: 'session_abcdef1234567890',
+      server_nonce: 'nonce_abcdef1234567890',
+    });
+    expect(client.isConnected()).toBe(true);
+    await client.stop();
   });
 });
