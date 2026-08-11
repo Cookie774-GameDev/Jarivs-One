@@ -26,11 +26,10 @@ const browserSessionVault = new Map<ProviderId, string>();
 export type ApiKeySaveErrorCode =
   | 'credential-write-failed'
   | 'credential-read-failed'
-  | 'credential-verification-failed';
+  | 'credential-verification-failed'
+  | 'harness-refresh-failed';
 
-export type ApiKeySaveResult =
-  | { ok: true }
-  | { ok: false; code: ApiKeySaveErrorCode };
+export type ApiKeySaveResult = { ok: true } | { ok: false; code: ApiKeySaveErrorCode };
 
 export interface SecureApiKeyHydrationResult {
   keys: Partial<Record<ProviderId, string>>;
@@ -67,13 +66,55 @@ export async function secureGetApiKey(provider: ProviderId): Promise<string | un
   return browserSessionVault.get(provider);
 }
 
-export async function secureDeleteApiKey(provider: ProviderId): Promise<void> {
+async function deleteApiKeyFromVault(provider: ProviderId): Promise<void> {
   if (!isSecretApiKeyProvider(provider)) return;
   if (isTauri) {
     await invoke('credential_delete', { provider });
     return;
   }
   browserSessionVault.delete(provider);
+}
+
+interface CredentialRuntimeDependencies {
+  available(): boolean;
+  stop(): Promise<boolean>;
+  refresh(): Promise<void>;
+}
+
+export async function refreshOpenCodeCredentialRuntime(
+  dependencies: CredentialRuntimeDependencies = {
+    available: () => isTauri,
+    stop: () => invoke<boolean>('opencode_server_stop'),
+    refresh: async () => {
+      const { harnessRuntimeManager } = await import('@/lib/harness/runtimeManager');
+      await harnessRuntimeManager.refresh();
+    },
+  },
+): Promise<void> {
+  if (!dependencies.available()) return;
+  const stopped = await dependencies.stop();
+  if (stopped) await dependencies.refresh();
+}
+
+interface DeleteApiKeyDependencies {
+  delete: typeof deleteApiKeyFromVault;
+  refresh: typeof refreshOpenCodeCredentialRuntime;
+}
+
+export async function deleteApiKeySecurely(
+  provider: ProviderId,
+  dependencies: DeleteApiKeyDependencies = {
+    delete: deleteApiKeyFromVault,
+    refresh: refreshOpenCodeCredentialRuntime,
+  },
+): Promise<void> {
+  if (!isSecretApiKeyProvider(provider)) return;
+  await dependencies.delete(provider);
+  await dependencies.refresh();
+}
+
+export async function secureDeleteApiKey(provider: ProviderId): Promise<void> {
+  await deleteApiKeySecurely(provider);
 }
 
 function sameSecret(left: string | undefined, right: string): boolean {
@@ -88,6 +129,7 @@ function sameSecret(left: string | undefined, right: string): boolean {
 interface VerifiedSaveDependencies {
   set: typeof secureSetApiKey;
   get: typeof secureGetApiKey;
+  refresh?: typeof refreshOpenCodeCredentialRuntime;
 }
 
 export async function saveApiKeySecurely(
@@ -111,9 +153,15 @@ export async function saveApiKeySecurely(
   } catch {
     return { ok: false, code: 'credential-read-failed' };
   }
-  return sameSecret(stored, trimmed)
-    ? { ok: true }
-    : { ok: false, code: 'credential-verification-failed' };
+  if (!sameSecret(stored, trimmed)) {
+    return { ok: false, code: 'credential-verification-failed' };
+  }
+  try {
+    await (dependencies.refresh ?? refreshOpenCodeCredentialRuntime)();
+  } catch {
+    return { ok: false, code: 'harness-refresh-failed' };
+  }
+  return { ok: true };
 }
 
 export async function loadSecureApiKeysDetailed(): Promise<SecureApiKeyHydrationResult> {
