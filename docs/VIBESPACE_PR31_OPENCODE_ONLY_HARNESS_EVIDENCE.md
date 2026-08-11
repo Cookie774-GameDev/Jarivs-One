@@ -11,27 +11,69 @@ Master-goal SHA-256:
 
 ## Verdict
 
-The PR31 OpenCode-only architecture, native harness, provider/model bridge,
-semantic tool gateway, and parity surfaces have strong automated evidence.
-Typecheck, production build, Rust formatting/check, all 353 executed native
-tests, the PR31 OSS integrity gate, and 1,092 of 1,094 frontend test files pass.
+The current PR31 implementation head `78d94728` is **VERIFIED** for the
+credential-free automated and web-runtime scope exercised on 2026-08-11.
+Previously reported account-identity and benchmark failures are closed, all
+1,092 currently discovered frontend test files pass exactly once, TypeScript
+and the production build pass, and both Worker packages pass their applicable
+tests, typechecks, and Wrangler dry-runs.
 
-This checkout is **not fully verified or release-ready**:
+Browser Chat is **IMPLEMENTED — NATIVE VERIFICATION REQUIRED**. Its focused
+frontend/bridge suite passes, and a real browser interaction switched a seeded
+chat from VibeSpace Chat to Browser Chat and rendered the hub, provider tabs,
+connection status, and explicit MCP setup surface. The launched PR31 desktop
+process is responsive. Direct automation of the native child WebView remains
+blocked because the bundled browser/computer-control runtime cannot initialize
+its kernel assets.
 
-1. Four tests in `BenchmarksPage.warmSchemaB.test.tsx` fail against unrelated
-   dirty benchmark work.
-2. Twelve tests in `App.accountIdentity.test.tsx` fail reproducibly, involving
-   cloud-sync authority lifecycle and fail-closed subscription tier behavior.
-3. Manual desktop control is blocked before the first UI action because the
-   bundled Computer Use runtime cannot initialize its kernel assets.
-4. No account credentials were used, so live paid-provider calls and
-   subscription authorization were not exercised.
-5. The installed system OpenCode is `1.18.14`, below VibeSpace's minimum
-   `1.18.16`, and no managed runtime is currently installed in the ordinary
-   app-local-data root.
+Provider-authorized flows are **IMPLEMENTED — PROVIDER VERIFICATION REQUIRED**.
+No account credentials, paid-provider calls, custom-app installation, or
+provider authorization were used. The current Cloudflare AI News deployment
+does not yet advertise `/api/benchmarks`; the app now capability-checks that
+route and fails closed on the web instead of issuing a known-broken request or
+inventing scores. Deployment remains outside this plan.
+
+The current-head no-default Rust check and Rust formatting pass. A fresh
+default-feature Rust rebuild is **BLOCKED — TECHNICAL** by Windows Application
+Control rejecting newly generated Rust build executables in a short temporary
+target; the long worktree target independently hits Windows path limits, and
+the already-running short-target app keeps its successful target locked. No
+source defect was inferred from those environment failures.
 
 No merge, push, deploy, release, account mutation, managed-runtime install, or
 global OpenCode mutation was performed.
+
+## Phase 18 hardening closure
+
+Starting head: `af404344`
+
+Implementation head before evidence: `78d94728`
+
+Verified corrections:
+
+- The account-identity test harness now models concurrent Supabase auth
+  subscribers instead of replacing the prior listener. Focused result: 35/35.
+- Benchmark cards and source links distinguish verified official evidence from
+  unavailable independent ranking data; no fallback scores are fabricated.
+- Benchmark fetching preflights the deployed Worker capability manifest and
+  avoids direct sources in the web runtime when CORS-safe transport is
+  unavailable. Focused result: 7 files and 34/34 tests.
+- The deterministic full-suite runner discovers every current frontend test
+  recursively, partitions each file exactly once, bounds worker concurrency,
+  and gives concurrency-heavy tests a 15-second ceiling. Runner result: 1,092
+  files passed exactly once; runner unit result: 5/5.
+- Browser Chat/MCP post-review audit result: 33 files and 232/232 focused
+  frontend tests, plus successful interactive web-runtime engine switching.
+- Production build: passed in 1 minute 4 seconds.
+- Release manifest: 44/44.
+- PR31 OSS metadata: passed.
+- VibeSpace MCP Worker: 29/29, typecheck, Wrangler dry-run.
+- AI News Worker: 16/16, typecheck, Wrangler dry-run.
+- Rust: `cargo fmt --all -- --check` passed;
+  `cargo check --no-default-features --lib` passed with existing warnings.
+
+The mandatory final independent reviewer outcome is recorded in the closure
+entry appended after that review completes.
 
 ## A. Architecture: VibeSpace to OpenCode to provider/model
 
@@ -170,7 +212,10 @@ explicitly rather than falling back.
 This table is an automated parity result. Manual desktop execution is not
 claimed because UI automation did not initialize.
 
-## F. Exact verification results
+## F. Phase 17 historical verification results
+
+This section preserves the exact pre-hardening Phase 17 baseline. It is
+superseded by the Phase 18 closure results above.
 
 ### Frontend
 
@@ -227,23 +272,22 @@ budget, and cleanup tests.
 - Therefore no Phase 17 manual chat/provider/local-model matrix is marked
   passed.
 
-## G. Blockers and residual risk
+## G. Current blockers and residual risk
 
-1. Fix or intentionally reconcile the unrelated dirty benchmark page/tests,
-   then rerun that file and the full sharded suite.
-2. Diagnose the reproducible `App.accountIdentity.test.tsx` failures before
-   release.
-3. Repair the bundled Computer Use kernel-assets installation and complete the
-   manual desktop matrix.
-4. Install the pinned managed OpenCode `1.18.16` through the VibeSpace UI, or
-   install a compatible trusted system native runtime, then verify detection,
-   startup, authenticated health, chat, cancellation, and shutdown live.
-5. With explicit account authorization, test only the provider/subscription
-   flows intended for release. Until then, paid-provider results remain
-   fixture evidence.
-6. Run live VibeSpace → OpenCode → Ollama chat/tool/context checks for the two
-   observed local models. Hardware capability and tool-calling compatibility
-   remain unproven.
+1. Repair the bundled browser/computer-control kernel-assets installation and
+   complete the native child-WebView interaction matrix.
+2. With explicit account authorization, verify only the provider/subscription
+   flows intended for release. Until then, those flows retain
+   `IMPLEMENTED — PROVIDER VERIFICATION REQUIRED`.
+3. Deploy the already-tested AI News Worker change in a separately authorized
+   deployment task before claiming the Cloudflare benchmark snapshot route is
+   live. The current app behavior remains truthful while it is absent.
+4. A fresh default-feature Rust rebuild needs a machine policy/path environment
+   that allows generated build executables. The running default-feature app and
+   current no-default check provide useful but non-equivalent evidence.
+5. Install the pinned managed OpenCode `1.18.16` through the VibeSpace UI, or
+   install a compatible trusted native runtime, before live OpenCode/provider
+   dispatch verification.
 
 ## H. Security evidence
 
