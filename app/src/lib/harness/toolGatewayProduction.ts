@@ -14,6 +14,7 @@ import { createTask, completeTask, reopenTask, updateTask } from '@/features/tas
 import { enqueueTerminalCommand } from '@/features/terminals/terminalCommandQueue';
 import { useTerminalSchedulerStore } from '@/features/terminals/terminalScheduler';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { TaskId } from '@/types/common';
@@ -21,12 +22,81 @@ import type { ActionResult } from '@/lib/actions/types';
 import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
 import type { ToolGatewayRequest } from './toolGatewayProtocol';
 
-type MutationGrant = { mode: 'once' | 'always'; expiresAt: number };
+type AuthorityScope = Readonly<{
+  accountId: string;
+  accountSource: 'supabase' | 'local';
+  workspaceId: string;
+  projectId: string | null;
+}>;
+type MutationGrant = {
+  mode: 'once' | 'always';
+  expiresAt: number;
+  authority: AuthorityScope;
+};
 const grants = new Map<string, Map<string, MutationGrant>>();
+const sessionAuthorities = new Map<string, AuthorityScope>();
+const revokedSessions = new Set<string>();
 const ONCE_GRANT_TTL_MS = 2 * 60_000;
 const ALWAYS_GRANT_TTL_MS = 30 * 60_000;
 const MAX_GRANT_SESSIONS = 128;
 const MAX_GRANTS_PER_SESSION = 32;
+const MAX_REVOKED_SESSIONS = 256;
+
+function activeAuthority(): AuthorityScope | null {
+  const auth = useAuthStore.getState();
+  const identity = resolveAccountIdentity(auth);
+  if (!identity || !auth.workspaceId) return null;
+  return {
+    accountId: identity.accountId,
+    accountSource: identity.source,
+    workspaceId: String(auth.workspaceId),
+    projectId: auth.projectId ? String(auth.projectId) : null,
+  };
+}
+
+function sameAuthority(left: AuthorityScope, right: AuthorityScope): boolean {
+  return (
+    left.accountId === right.accountId &&
+    left.accountSource === right.accountSource &&
+    left.workspaceId === right.workspaceId &&
+    left.projectId === right.projectId
+  );
+}
+
+function revokeBoundSessions(): void {
+  for (const sessionId of sessionAuthorities.keys()) {
+    revokedSessions.add(sessionId);
+  }
+  while (revokedSessions.size > MAX_REVOKED_SESSIONS) {
+    const oldest = revokedSessions.values().next().value as string | undefined;
+    if (!oldest) break;
+    revokedSessions.delete(oldest);
+  }
+  sessionAuthorities.clear();
+  grants.clear();
+}
+
+let observedAuthority = activeAuthority();
+useAuthStore.subscribe(() => {
+  const next = activeAuthority();
+  if (
+    (observedAuthority === null) !== (next === null) ||
+    (observedAuthority !== null && next !== null && !sameAuthority(observedAuthority, next))
+  ) {
+    revokeBoundSessions();
+  }
+  observedAuthority = next;
+});
+
+function authorizeSession(request: ToolGatewayRequest): boolean {
+  if (revokedSessions.has(request.sessionId)) return false;
+  const current = activeAuthority();
+  if (!current) return false;
+  const bound = sessionAuthorities.get(request.sessionId);
+  if (bound) return sameAuthority(bound, current);
+  sessionAuthorities.set(request.sessionId, current);
+  return true;
+}
 
 type ToolGatewayPluginReadPort = Readonly<{
   run(input: {
@@ -55,6 +125,15 @@ export function grantToolGatewayMutation(
   capability: string,
   mode: 'once' | 'always',
 ): () => void {
+  const authority = activeAuthority();
+  if (!authority || revokedSessions.has(sessionId)) {
+    throw new Error('tool_gateway_authority_unavailable');
+  }
+  const bound = sessionAuthorities.get(sessionId);
+  if (bound && !sameAuthority(bound, authority)) {
+    throw new Error('tool_gateway_authority_changed');
+  }
+  sessionAuthorities.set(sessionId, authority);
   let session = grants.get(sessionId);
   if (!session) {
     session = new Map();
@@ -64,6 +143,7 @@ export function grantToolGatewayMutation(
   session.set(capability, {
     mode,
     expiresAt: Date.now() + (mode === 'always' ? ALWAYS_GRANT_TTL_MS : ONCE_GRANT_TTL_MS),
+    authority,
   });
   while (session.size > MAX_GRANTS_PER_SESSION) {
     const oldest = session.keys().next().value as string | undefined;
@@ -84,13 +164,27 @@ export function grantToolGatewayMutation(
 
 export function clearToolGatewayMutationGrants(): void {
   grants.clear();
+  sessionAuthorities.clear();
+  revokedSessions.clear();
+  observedAuthority = activeAuthority();
 }
 
 function consumeMutationGrant(request: ToolGatewayRequest): boolean {
   const session = grants.get(request.sessionId);
   const capability = session?.has(request.tool) ? request.tool : '*';
   const grant = session?.get(capability);
-  if (!session || !grant || grant.expiresAt < Date.now()) {
+  const current = activeAuthority();
+  const bound = sessionAuthorities.get(request.sessionId);
+  if (
+    !session ||
+    !grant ||
+    !current ||
+    !bound ||
+    revokedSessions.has(request.sessionId) ||
+    !sameAuthority(grant.authority, current) ||
+    !sameAuthority(bound, current) ||
+    grant.expiresAt < Date.now()
+  ) {
     session?.delete(capability);
     if (session?.size === 0) grants.delete(request.sessionId);
     return false;
@@ -217,6 +311,7 @@ async function runApprovedAction(
 
 export function createProductionToolGatewayDependencies(): ToolGatewayDependencies {
   return {
+    authorizeRequest: authorizeSession,
     authorizeMutation: consumeMutationGrant,
     terminal: {
       list: (args) => terminalSummary((args.limit as number | undefined) ?? 100),
@@ -351,17 +446,6 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
           })),
       read: (args) => readContext(stringArg(args, 'contextId')),
       attach: async (args) => ({ attached: await readContext(stringArg(args, 'contextId')) }),
-      update: async (args) => {
-        window.dispatchEvent(
-          new CustomEvent('vibespace:context-update', {
-            detail: {
-              contextId: stringArg(args, 'contextId'),
-              content: stringArg(args, 'content'),
-            },
-          }),
-        );
-        return { queued: true };
-      },
     },
     skills: {
       list: (args) =>

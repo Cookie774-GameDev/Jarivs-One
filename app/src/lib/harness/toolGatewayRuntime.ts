@@ -21,6 +21,7 @@ type SemanticMethod = (
 ) => unknown | Promise<unknown>;
 
 export interface ToolGatewayDependencies {
+  authorizeRequest(request: ToolGatewayRequest): boolean | Promise<boolean>;
   authorizeMutation(request: ToolGatewayRequest): boolean | Promise<boolean>;
   terminal: {
     list: SemanticMethod;
@@ -38,7 +39,6 @@ export interface ToolGatewayDependencies {
     list: SemanticMethod;
     read: SemanticMethod;
     attach: SemanticMethod;
-    update: SemanticMethod;
   };
   skills: { list: SemanticMethod; load: SemanticMethod };
   plugins: { list: SemanticMethod; run: SemanticMethod };
@@ -81,7 +81,6 @@ export function createToolGatewayRuntime(deps: ToolGatewayDependencies): {
     'context.list': deps.context.list,
     'context.read': deps.context.read,
     'context.attach': deps.context.attach,
-    'context.update': deps.context.update,
     'skills.list': deps.skills.list,
     'skills.load': deps.skills.load,
     'plugins.list': deps.plugins.list,
@@ -97,6 +96,14 @@ export function createToolGatewayRuntime(deps: ToolGatewayDependencies): {
     async execute(request) {
       const mutation = MUTATING_TOOL_GATEWAY_TOOLS.has(request.tool);
       try {
+        if (!(await deps.authorizeRequest(request))) {
+          return {
+            requestId: request.requestId,
+            ok: false,
+            code: 'authority_revoked',
+            message: 'The VibeSpace account or workspace authority changed.',
+          };
+        }
         if (mutation && !(await deps.authorizeMutation(request))) {
           return {
             requestId: request.requestId,

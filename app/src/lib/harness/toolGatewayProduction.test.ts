@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
+import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import type { ProjectId, WorkspaceId } from '@/types/common';
 import {
   clearToolGatewayMutationGrants,
   createProductionToolGatewayDependencies,
@@ -25,6 +27,12 @@ function mutation() {
 describe('production tool gateway dependencies', () => {
   beforeEach(() => {
     clearToolGatewayMutationGrants();
+    useAuthStore.setState({
+      localUserId: 'account-a',
+      cloudSession: null,
+      workspaceId: 'workspace-a' as WorkspaceId,
+      projectId: 'project-a' as ProjectId,
+    });
   });
 
   it('consumes an exact short-lived session grant once', async () => {
@@ -55,6 +63,37 @@ describe('production tool gateway dependencies', () => {
     grantToolGatewayMutation('session-1', 'app.navigate', 'always');
     await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(true);
     await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(true);
+  });
+
+  it.each([
+    ['account', () => useAuthStore.setState({ localUserId: 'account-b' })],
+    ['workspace', () => useAuthStore.setState({ workspaceId: 'workspace-b' as WorkspaceId })],
+    ['project', () => useAuthStore.setState({ projectId: 'project-b' as ProjectId })],
+  ])('revokes an approval when the %s authority changes', async (_label, transition) => {
+    const deps = createProductionToolGatewayDependencies();
+    const navigation = mutation();
+
+    grantToolGatewayMutation('session-1', 'app.navigate', 'always');
+    await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(true);
+
+    transition();
+    await expect(Promise.resolve(deps.authorizeMutation(navigation))).resolves.toBe(false);
+  });
+
+  it('binds reads to one scope and rejects the session after a scope transition', async () => {
+    const deps = createProductionToolGatewayDependencies();
+    const read = parseToolGatewayRequest({
+      ...mutation(),
+      requestId: 'request-read',
+      tool: 'app.getState',
+      args: {},
+    });
+
+    await expect(Promise.resolve(deps.authorizeRequest(read))).resolves.toBe(true);
+    useAuthStore.setState({ workspaceId: 'workspace-b' as WorkspaceId });
+    await expect(Promise.resolve(deps.authorizeRequest(read))).resolves.toBe(false);
+    useAuthStore.setState({ workspaceId: 'workspace-a' as WorkspaceId });
+    await expect(Promise.resolve(deps.authorizeRequest(read))).resolves.toBe(false);
   });
 
   it('reads bounded visible terminal and app state without mutation authority', async () => {

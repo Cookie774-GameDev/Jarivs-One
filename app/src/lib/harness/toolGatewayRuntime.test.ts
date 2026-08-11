@@ -5,6 +5,7 @@ import { parseToolGatewayRequest, type ToolGatewayTool } from './toolGatewayProt
 function dependencies(approved = true) {
   const call = vi.fn(async (args, context): Promise<unknown> => ({ args, context }));
   const deps: ToolGatewayDependencies = {
+    authorizeRequest: vi.fn(async () => true),
     authorizeMutation: vi.fn(async () => approved),
     terminal: {
       list: call,
@@ -18,7 +19,7 @@ function dependencies(approved = true) {
     command: { list: call, run: call },
     profile: { readAllAboutMe: call, updateAllAboutMe: call },
     learning: { read: call, update: call },
-    context: { list: call, read: call, attach: call, update: call },
+    context: { list: call, read: call, attach: call },
     skills: { list: call, load: call },
     plugins: { list: call, run: call },
     tasks: { create: call, update: call },
@@ -45,7 +46,6 @@ const argumentsByTool: Record<ToolGatewayTool, Record<string, unknown>> = {
   'context.list': {},
   'context.read': { contextId: 'c-1' },
   'context.attach': { contextId: 'c-1' },
-  'context.update': { contextId: 'c-1', content: 'new' },
   'skills.list': {},
   'skills.load': { skillId: 's-1' },
   'plugins.list': {},
@@ -88,14 +88,28 @@ describe('tool gateway semantic runtime', () => {
     },
   );
 
-  it('never asks for mutation permission on a read', async () => {
+  it('binds every read to session authority without asking for mutation permission', async () => {
     const { deps } = dependencies();
     await createToolGatewayRuntime(deps).execute(request('terminal.read'));
     await createToolGatewayRuntime(deps).execute(request('context.read'));
     await createToolGatewayRuntime(deps).execute(request('profile.allAboutMe.read'));
     await createToolGatewayRuntime(deps).execute(request('memory.learning.read'));
     await createToolGatewayRuntime(deps).execute(request('app.getState'));
+    expect(deps.authorizeRequest).toHaveBeenCalledTimes(5);
     expect(deps.authorizeMutation).not.toHaveBeenCalled();
+  });
+
+  it('fails every tool closed when its session authority was revoked', async () => {
+    const denied = dependencies();
+    denied.deps.authorizeRequest = vi.fn(async () => false);
+
+    const response = await createToolGatewayRuntime(denied.deps).execute(
+      request('profile.allAboutMe.read'),
+    );
+
+    expect(response).toMatchObject({ ok: false, code: 'authority_revoked' });
+    expect(denied.deps.authorizeMutation).not.toHaveBeenCalled();
+    expect(denied.call).not.toHaveBeenCalled();
   });
 
   it('passes a permission-confirmed context to mutations and blocks denial', async () => {
@@ -108,7 +122,7 @@ describe('tool gateway semantic runtime', () => {
     );
 
     const denied = dependencies(false);
-    const response = await createToolGatewayRuntime(denied.deps).execute(request('context.update'));
+    const response = await createToolGatewayRuntime(denied.deps).execute(request('tasks.create'));
     expect(response).toMatchObject({ ok: false, code: 'permission_denied' });
     expect(denied.call).not.toHaveBeenCalled();
   });

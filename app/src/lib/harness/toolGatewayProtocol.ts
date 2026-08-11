@@ -15,7 +15,6 @@ export const TOOL_GATEWAY_CATALOG = [
   'context.list',
   'context.read',
   'context.attach',
-  'context.update',
   'skills.list',
   'skills.load',
   'plugins.list',
@@ -39,7 +38,6 @@ export const MUTATING_TOOL_GATEWAY_TOOLS: ReadonlySet<ToolGatewayTool> = new Set
   'profile.allAboutMe.update',
   'memory.learning.update',
   'context.attach',
-  'context.update',
   'skills.load',
   'plugins.run',
   'tasks.create',
@@ -226,11 +224,6 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
     case 'context.attach':
       args = exactKeys(input, ['contextId']);
       stringField(args.contextId, 'contextId', 200, { id: true });
-      return args;
-    case 'context.update':
-      args = exactKeys(input, ['contextId', 'content']);
-      stringField(args.contextId, 'contextId', 200, { id: true });
-      stringField(args.content, 'content', 100_000);
       return args;
     case 'skills.load':
       args = exactKeys(input, ['skillId']);

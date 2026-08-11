@@ -18,6 +18,18 @@ const request = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('tool gateway protocol', () => {
+  it('does not advertise an unimplemented context mutation', () => {
+    expect(TOOL_GATEWAY_CATALOG).not.toContain('context.update');
+    expect(() =>
+      parseToolGatewayRequest(
+        request({
+          tool: 'context.update',
+          args: { contextId: 'context-1', content: 'updated' },
+        }),
+      ),
+    ).toThrow();
+  });
+
   it('accepts every exact catalog entry with its minimal valid arguments', () => {
     const argumentsByTool: Record<(typeof TOOL_GATEWAY_CATALOG)[number], object> = {
       'terminal.list': {},
@@ -40,7 +52,6 @@ describe('tool gateway protocol', () => {
       'context.list': {},
       'context.read': { contextId: 'context-1' },
       'context.attach': { contextId: 'context-1' },
-      'context.update': { contextId: 'context-1', content: 'updated' },
       'skills.list': {},
       'skills.load': { skillId: 'skill-1' },
       'plugins.list': {},
