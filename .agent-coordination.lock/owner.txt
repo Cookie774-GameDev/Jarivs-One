@@ -1,10 +1,8 @@
-task_id=VS-ROOT-20260811T235000Z-PROMPT-TOKEN-PARITY
-phase=VS-PR31-OPENCODE-HARNESS-PHASE13-20260811
+task_id=VS-ROOT-20260811T114606Z-SUBAGENT-CHILD-SESSIONS
+phase=VS-PR31-OPENCODE-HARNESS-PHASE14-20260811
 controller=/root
 branch=agent/pr30-fixes-and-updates
-starting_head=674883c2
-owned_paths=docs/superpowers/specs/2026-08-11-vibespace-prompt-token-parity-design.md;docs/superpowers/plans/2026-08-11-vibespace-prompt-token-parity.md;.agent-coordination.lock/owner.txt;app/src/features/prompt-forge/promptForgeExecutor.ts;app/src/features/prompt-forge/promptForgeExecutor.test.ts;app/src/features/prompt-forge/jobStore.test.ts;app/src/lib/ai/tokenModeOpenCodeParity.test.ts;app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/openCodeRunAgent.ts;app/src/lib/ai/openCodeRunAgent.test.ts;app/src/lib/harness/types.ts;app/src/lib/harness/openCodeHarness.ts;app/src/lib/harness/openCodeHarness.test.ts;app/src/lib/harness/openCodeClient.ts;app/src/lib/harness/openCodeClient.test.ts
-exclusions=unrelated dirty/untracked work;slash-command routing;tool gateway expansion;Prompt Forge system prompt changes;token optimization algorithm redesign;provider catalog changes;legacy-route removal;merge;push;deploy;release;subagents
-status=RELEASED
-commits=897b1a8b;f8072af4;e94ef907;46a553c4;36871ba3;ab46cfa0;8a7f3a98
-evidence=38 test files and 250 tests passed;focused runtime 4 passed;typecheck passed;production build passed;Prettier passed;git diff check passed;tool-policy and exact-model scans passed
+starting_head=7b5e21f6
+owned_paths=docs/superpowers/specs/2026-08-11-vibespace-opencode-child-session-parity-design.md;docs/superpowers/plans/2026-08-11-vibespace-opencode-child-session-parity.md;.agent-coordination.lock/owner.txt;app/src/features/jarvis-interaction/types.ts;app/src/features/jarvis-interaction/sessionStore.ts;app/src/features/jarvis-interaction/sessionStore.test.ts;app/src/features/jarvis-interaction/agents.test.ts;app/src/lib/ai/runtime.ts;app/src/lib/ai/runtime.test.ts;app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/openCodeRunAgent.ts;app/src/lib/ai/openCodeRunAgent.test.ts;app/src/lib/harness/types.ts;app/src/lib/harness/openCodeHarness.ts;app/src/lib/harness/openCodeHarness.test.ts
+exclusions=unrelated dirty/untracked work;child task decomposition redesign;Agent Activity Card visual redesign;OpenCode TUI;plugin/MCP/skills/context/memory parity;legacy-route removal;merge;push;deploy;release;implementation subagents
+status=ACTIVE
