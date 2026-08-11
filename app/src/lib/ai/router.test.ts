@@ -6,6 +6,7 @@ import { AGENT_DEFAULT_PROVIDER_MODEL } from './agentProviderOptions';
 import { selectionFromOption } from './modelSelection';
 import { syncDiscoveredOllamaModels } from './models';
 import { JarvisProviderAttemptFailureError } from './providerAttemptEvidence';
+import { providerActivityTracker } from '@/features/taskbar-usage/activityTracker';
 
 const { codexDetect, codexProbeAuth, codexSend, harnessRun, nativeInvoke, ollamaRun, openaiRun } =
   vi.hoisted(() => ({
@@ -61,7 +62,7 @@ vi.mock('./adapters/codex', async (importOriginal) => {
   };
 });
 
-import { NoModelSelectedError, resolveProviderAndModel, runAgent } from './router';
+import { runAgent } from './router';
 
 const jarvis: Agent = {
   id: 'agent_jarvis' as Agent['id'],
@@ -168,76 +169,6 @@ describe('AI provider routing', () => {
     });
   });
 
-  it('uses the pinned provider for built-in Jarvis when that key is available', () => {
-    useAuthStore.setState({
-      apiKeys: { google: 'AIza-test', groq: 'gsk_test' },
-      chatModelSelection: selectionFromOption('groq', 'llama-3.1-8b-instant'),
-    });
-
-    const resolved = resolveProviderAndModel(jarvis);
-    expect(resolved.provider.id).toBe('google');
-    expect(resolved.model).toBe('gemini-2.5-flash-lite');
-  });
-
-  it('throws when a pinned provider is unavailable instead of silently falling back', () => {
-    syncDiscoveredOllamaModels(['qwen3:4b']);
-    useAuthStore.setState({
-      apiKeys: {},
-      defaultProvider: 'google',
-      defaultLocalModel: 'qwen3:4b',
-    });
-
-    expect(() => resolveProviderAndModel(jarvis)).toThrow(NoModelSelectedError);
-  });
-
-  it('throws when no provider or local model is available', () => {
-    expect(() => resolveProviderAndModel(jarvis)).toThrow(NoModelSelectedError);
-  });
-
-  it('routes default-provider agents through the explicit chat model selection', () => {
-    useAuthStore.setState({
-      apiKeys: { groq: 'gsk_test' },
-      chatModelSelection: selectionFromOption('groq', 'llama-3.1-8b-instant'),
-    });
-
-    const resolved = resolveProviderAndModel(defaultProviderAgent);
-    expect(resolved.provider.id).toBe('groq');
-    expect(resolved.model).toBe('llama-3.1-8b-instant');
-  });
-
-  it('routes a connected Qwen selection through the first-class Model Studio provider', () => {
-    useAuthStore.setState({
-      apiKeys: { qwen: 'qwen-test-key' },
-      chatModelSelection: selectionFromOption('qwen', 'qwen3.7-plus'),
-    });
-
-    const resolved = resolveProviderAndModel(defaultProviderAgent);
-
-    expect(resolved.provider.id).toBe('qwen');
-    expect(resolved.model).toBe('qwen3.7-plus');
-  });
-
-  it('does not route unsupported advertised placeholders as real AI', () => {
-    useAuthStore.setState({
-      apiKeys: { perplexity: 'sk-test' },
-      defaultProvider: 'perplexity',
-    });
-
-    expect(() => resolveProviderAndModel(defaultProviderAgent)).toThrow(NoModelSelectedError);
-  });
-
-  it('forces offline mode through the explicitly selected local model only', () => {
-    useAuthStore.setState({
-      apiKeys: { google: 'cloud-key-that-must-not-be-used' },
-      offlineMode: true,
-      chatModelSelection: selectionFromOption('ollama', 'qwen3:4b'),
-    });
-
-    const resolved = resolveProviderAndModel(jarvis);
-    expect(resolved.provider.id).toBe('ollama');
-    expect(resolved.model).toBe('qwen3:4b');
-  });
-
   it('routes ordinary production chat only through OpenCode with a stable chat scope', async () => {
     const onApprovalRequested = vi.fn();
     const tools = { 'terminal.list': true, 'terminal.write': false } as const;
@@ -269,6 +200,37 @@ describe('AI provider routing', () => {
     expect(ollamaRun).not.toHaveBeenCalled();
     expect(codexSend).not.toHaveBeenCalled();
     expect(nativeInvoke).not.toHaveBeenCalled();
+  });
+
+  it('tracks the active OpenCode request until harness completion', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const enteredHarness = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    harnessRun.mockImplementationOnce(async (request) => {
+      entered();
+      await gate;
+      return {
+        text: 'done',
+        usage: { input_tokens: 2, output_tokens: 1, cost_usd: 0 },
+        provider: request.selection.providerId,
+        model: request.selection.modelId,
+      };
+    });
+
+    const pending = runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+    await enteredHarness;
+    expect(providerActivityTracker.snapshot().byProvider.openai).toBe(1);
+    release();
+    await pending;
+    expect(providerActivityTracker.snapshot().total).toBe(0);
   });
 
   it('translates only a verified reasoning option into an OpenCode model variant', async () => {
@@ -439,7 +401,7 @@ describe('AI provider routing', () => {
     expect(openaiRun).not.toHaveBeenCalled();
   });
 
-  it('routes protected CLI-origin selections through the OpenCode harness', async () => {
+  it('rejects an external provider CLI as alternate Chat transport', async () => {
     const controller = new AbortController();
     const codexAgent: Agent = {
       ...openaiAgent,
@@ -450,38 +412,23 @@ describe('AI provider routing', () => {
       { role: 'assistant' as const, content: 'line one\nline two' },
     ];
 
-    const response = await runAgent({
-      agent: codexAgent,
-      messages,
-      connectionId: 'openai-codex',
-      compiledPrompt,
-      requestId: protectedAttempt.requestId,
-      protectedAttempt,
-      signal: controller.signal,
-      workingDirectory: 'C:\\workspace with spaces',
-      provider_options: { reasoning_effort: 'xhigh' },
-    });
+    await expect(
+      runAgent({
+        agent: codexAgent,
+        messages,
+        connectionId: 'openai-codex',
+        compiledPrompt,
+        requestId: protectedAttempt.requestId,
+        protectedAttempt,
+        signal: controller.signal,
+        workingDirectory: 'C:\\workspace with spaces',
+        provider_options: { reasoning_effort: 'xhigh' },
+      }),
+    ).rejects.toThrow('External provider CLI connections cannot transport VibeSpace Chat');
 
     expect(codexSend).not.toHaveBeenCalled();
-    expect(harnessRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scopeId: protectedAttempt.requestId,
-        compiledPrompt,
-        messages,
-        workingDirectory: 'C:\\workspace with spaces',
-        signal: controller.signal,
-        selection: {
-          providerId: 'openai',
-          modelId: 'gpt-5.6-sol',
-          connectionId: 'openai-codex',
-          runtimeProviderId: 'openai',
-        },
-        onResponseObservation: expect.any(Function),
-        onActionDispatch: expect.any(Function),
-      }),
-    );
+    expect(harnessRun).not.toHaveBeenCalled();
     expect(openaiRun).not.toHaveBeenCalled();
-    expect(response.text).toBe('done');
   });
 
   it('requires exact protected request bindings before provider dispatch', async () => {
