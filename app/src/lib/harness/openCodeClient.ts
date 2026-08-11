@@ -43,6 +43,7 @@ interface ClientOptions {
 }
 
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
+const MAX_PROVIDER_JSON_BYTES = 32 * 1024 * 1024;
 const MAX_ERROR_BYTES = 2_048;
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -114,6 +115,7 @@ export function createOpenCodeHttpClient(
     path: string,
     init: RequestInit = {},
     expected: 'json' | 'void' = 'json',
+    maximumBytes = MAX_JSON_BYTES,
   ): Promise<unknown> => {
     let response: Response;
     try {
@@ -141,7 +143,7 @@ export function createOpenCodeHttpClient(
       throw new Error(`OpenCode request failed (${response.status})${detail ? `: ${detail}` : ''}`);
     }
     if (expected === 'void' || response.status === 204) return undefined;
-    const text = await readBounded(response, MAX_JSON_BYTES);
+    const text = await readBounded(response, maximumBytes);
     if (!text) return undefined;
     try {
       return JSON.parse(text) as unknown;
@@ -168,7 +170,7 @@ export function createOpenCodeHttpClient(
       }
       return { healthy: true, version: value.version };
     },
-    configProviders: () => request('/config/providers'),
+    configProviders: () => request('/config/providers', {}, 'json', MAX_PROVIDER_JSON_BYTES),
     async createSession(input) {
       return requireSession(
         await request('/session', { method: 'POST', body: JSON.stringify(input) }),

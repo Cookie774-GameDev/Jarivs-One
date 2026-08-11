@@ -6,6 +6,7 @@ import {
   type HarnessRuntimeManager,
   type OpenCodeServerConnection,
 } from './runtimeManager';
+import { parseOpenCodeProviderResponse, resolveOpenCodeSelection } from './providerReconciliation';
 import type { OpenCodeSseEvent } from './sseParser';
 import type {
   CreateHarnessSession,
@@ -27,10 +28,6 @@ interface OpenCodeHarnessOptions {
 
 const MAX_RECENT_EVENTS = 256;
 const MAX_ERROR_LENGTH = 2_048;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function safeError(error: unknown, connection?: OpenCodeServerConnection): string {
   let message = error instanceof Error ? error.message : 'OpenCode stream failed.';
@@ -139,6 +136,10 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     const recent = new RecentEventSet();
 
     try {
+      const resolvedSelection = resolveOpenCodeSelection(
+        input.selection,
+        await this.listProviders(),
+      );
       let iterator = client.events(controller.signal)[Symbol.asyncIterator]();
       let pending = nextEvent(iterator);
       if (!controller.signal.aborted) {
@@ -146,8 +147,8 @@ export class OpenCodeHarness implements VibeSpaceHarness {
           input.sessionId,
           {
             model: {
-              providerID: input.selection.providerId,
-              modelID: input.selection.modelId,
+              providerID: resolvedSelection.providerId,
+              modelID: resolvedSelection.modelId,
             },
             parts: input.parts,
             ...(input.system ? { system: input.system } : {}),
@@ -220,7 +221,12 @@ export class OpenCodeHarness implements VibeSpaceHarness {
       if (!controller.signal.aborted) {
         yield {
           type: 'error',
-          code: promptSubmitted ? 'HARNESS_CRASHED' : 'HARNESS_START_FAILED',
+          code:
+            error instanceof HarnessError
+              ? error.code
+              : promptSubmitted
+                ? 'HARNESS_CRASHED'
+                : 'HARNESS_START_FAILED',
           message: safeError(error, connection),
         };
       }
@@ -228,7 +234,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
       controller.abort();
       this.controllers.delete(controller);
       input.signal?.removeEventListener('abort', abort);
-      if ((!terminal || input.signal?.aborted) && !this.disposed) {
+      if (((promptSubmitted && !terminal) || input.signal?.aborted) && !this.disposed) {
         try {
           await client.abortSession(input.sessionId);
         } catch {
@@ -244,24 +250,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
   }
 
   async listProviders(): Promise<readonly HarnessProvider[]> {
-    const raw = await this.client().configProviders();
-    if (!isRecord(raw) || !Array.isArray(raw.providers)) return [];
-    return raw.providers.flatMap((candidate): HarnessProvider[] => {
-      if (!isRecord(candidate) || typeof candidate.id !== 'string') return [];
-      const models = isRecord(candidate.models)
-        ? Object.entries(candidate.models).map(([id, model]): HarnessModel => {
-            const record = isRecord(model) ? model : {};
-            return { id, name: typeof record.name === 'string' ? record.name : id };
-          })
-        : [];
-      return [
-        {
-          id: candidate.id,
-          name: typeof candidate.name === 'string' ? candidate.name : candidate.id,
-          models,
-        },
-      ];
-    });
+    return parseOpenCodeProviderResponse(await this.client().configProviders());
   }
 
   async listModels(providerId?: string): Promise<readonly HarnessModel[]> {

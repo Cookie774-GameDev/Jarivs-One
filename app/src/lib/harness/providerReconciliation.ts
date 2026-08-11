@@ -1,0 +1,203 @@
+import { HarnessError } from './errors';
+import type { HarnessModel, HarnessModelSelection, HarnessProvider } from './types';
+
+const MAX_PROVIDERS = 256;
+const MAX_MODELS_PER_PROVIDER = 4_096;
+const MAX_PROVIDER_ID = 256;
+const MAX_MODEL_ID = 512;
+const MAX_DISPLAY_NAME = 512;
+
+type UnknownRecord = Record<string, unknown>;
+
+export interface OpenCodeSelectionInput extends HarnessModelSelection {
+  connectionId?: string;
+  runtimeProviderId?: string;
+}
+
+export interface ReconciledHarnessModel extends HarnessModel {
+  available: boolean;
+  runtimeModelId?: string;
+  dynamic?: boolean;
+}
+
+export interface ReconciledHarnessProvider {
+  id: string;
+  name: string;
+  available: boolean;
+  runtimeProviderId?: string;
+  dynamic?: boolean;
+  models: readonly ReconciledHarnessModel[];
+}
+
+function asRecord(value: unknown): UnknownRecord | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : undefined;
+}
+
+function boundedIdentity(value: unknown, maximum: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const identity = value.trim();
+  if (!identity || identity.length > maximum || /[\u0000-\u001f\u007f]/.test(identity)) {
+    return undefined;
+  }
+  return identity;
+}
+
+function boundedName(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const name = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  return name ? name.slice(0, MAX_DISPLAY_NAME) : fallback;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+export function parseOpenCodeProviderResponse(value: unknown): readonly HarnessProvider[] {
+  const response = asRecord(value);
+  if (!response || !Array.isArray(response.providers)) return [];
+
+  const seenProviders = new Set<string>();
+  const providers: HarnessProvider[] = [];
+  for (const candidate of response.providers.slice(0, MAX_PROVIDERS)) {
+    const provider = asRecord(candidate);
+    const id = provider && boundedIdentity(provider.id, MAX_PROVIDER_ID);
+    const models = provider && asRecord(provider.models);
+    if (!provider || !id || !models || seenProviders.has(id)) continue;
+    seenProviders.add(id);
+
+    const seenModels = new Set<string>();
+    const parsedModels: HarnessModel[] = [];
+    for (const [rawId, rawModel] of Object.entries(models).slice(0, MAX_MODELS_PER_PROVIDER)) {
+      const modelId = boundedIdentity(rawId, MAX_MODEL_ID);
+      const model = asRecord(rawModel);
+      if (!modelId || !model || seenModels.has(modelId)) continue;
+      seenModels.add(modelId);
+
+      const limit = asRecord(model.limit);
+      const modalities = asRecord(model.modalities);
+      const inputModalities = Array.isArray(modalities?.input) ? modalities.input : undefined;
+      const contextWindowTokens = positiveInteger(limit?.context);
+      const supportsImages =
+        typeof model.attachment === 'boolean'
+          ? model.attachment
+          : inputModalities
+            ? inputModalities.includes('image')
+            : undefined;
+      const supportsTools = typeof model.tool_call === 'boolean' ? model.tool_call : undefined;
+      parsedModels.push({
+        id: modelId,
+        name: boundedName(model.name, modelId),
+        ...(contextWindowTokens ? { contextWindowTokens } : {}),
+        ...(typeof supportsImages === 'boolean' ? { supportsImages } : {}),
+        ...(typeof supportsTools === 'boolean' ? { supportsTools } : {}),
+      });
+    }
+
+    providers.push({
+      id,
+      name: boundedName(provider.name, id),
+      models: parsedModels,
+      connected: true,
+    });
+  }
+  return providers;
+}
+
+function runtimeProviderId(input: {
+  providerId: string;
+  connectionId?: string;
+  runtimeProviderId?: string;
+}): string {
+  if (input.runtimeProviderId) return input.runtimeProviderId;
+  if (input.connectionId === 'google-vertex') return 'google-vertex';
+  if (input.providerId === 'local') return 'ollama';
+  if (input.providerId === 'bedrock') return 'amazon-bedrock';
+  return input.providerId;
+}
+
+export function resolveOpenCodeSelection(
+  input: OpenCodeSelectionInput,
+  providers: readonly HarnessProvider[],
+): HarnessModelSelection {
+  const resolvedProviderId = runtimeProviderId(input);
+  const provider = providers.find((candidate) => candidate.id === resolvedProviderId);
+  if (!provider) {
+    throw new HarnessError({
+      code: 'PROVIDER_NOT_CONFIGURED',
+      message: `Provider "${input.providerId}" is not available through OpenCode.`,
+      repair: 'Connect this provider or select an available provider.',
+      recoverable: true,
+    });
+  }
+  if (!provider.models.some((model) => model.id === input.modelId)) {
+    throw new HarnessError({
+      code: 'MODEL_NOT_AVAILABLE',
+      message: `Model "${input.modelId}" is not available for "${provider.id}".`,
+      repair: 'Refresh models or select an available model.',
+      recoverable: true,
+    });
+  }
+  return { providerId: provider.id, modelId: input.modelId };
+}
+
+export function reconcileHarnessProviderCatalog(
+  catalog: readonly HarnessProvider[],
+  runtime: readonly HarnessProvider[],
+): readonly ReconciledHarnessProvider[] {
+  const reconciled: ReconciledHarnessProvider[] = catalog.map((productProvider) => {
+    const runtimeId = runtimeProviderId({ providerId: productProvider.id });
+    const liveProvider = runtime.find((candidate) => candidate.id === runtimeId);
+    const liveModels = new Map(
+      liveProvider?.models.map((model) => [model.id, model] as const) ?? [],
+    );
+    const productModelIds = new Set(productProvider.models.map((model) => model.id));
+    const models: ReconciledHarnessModel[] = productProvider.models.map((productModel) => {
+      const liveModel = liveModels.get(productModel.id);
+      return {
+        ...(liveModel ?? {}),
+        ...productModel,
+        available: Boolean(liveModel),
+        ...(liveModel ? { runtimeModelId: liveModel.id } : {}),
+      };
+    });
+    for (const liveModel of liveProvider?.models ?? []) {
+      if (productModelIds.has(liveModel.id)) continue;
+      models.push({
+        ...liveModel,
+        available: true,
+        runtimeModelId: liveModel.id,
+        dynamic: true,
+      });
+    }
+    return {
+      id: productProvider.id,
+      name: productProvider.name,
+      available: Boolean(liveProvider),
+      ...(liveProvider ? { runtimeProviderId: liveProvider.id } : {}),
+      models,
+    };
+  });
+
+  const catalogRuntimeIds = new Set(
+    catalog.map((provider) => runtimeProviderId({ providerId: provider.id })),
+  );
+  for (const liveProvider of runtime) {
+    if (catalogRuntimeIds.has(liveProvider.id)) continue;
+    reconciled.push({
+      id: liveProvider.id,
+      name: liveProvider.name,
+      available: true,
+      runtimeProviderId: liveProvider.id,
+      dynamic: true,
+      models: liveProvider.models.map((model) => ({
+        ...model,
+        available: true,
+        runtimeModelId: model.id,
+        dynamic: true,
+      })),
+    });
+  }
+  return reconciled;
+}

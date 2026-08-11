@@ -39,6 +39,20 @@ function sse(...values: unknown[]): Response {
   );
 }
 
+function providerResponse(providerId = 'anthropic', modelId = 'claude'): Response {
+  return new Response(
+    JSON.stringify({
+      providers: [
+        {
+          id: providerId,
+          name: providerId,
+          models: { [modelId]: { name: modelId } },
+        },
+      ],
+    }),
+  );
+}
+
 function request(signal?: AbortSignal): HarnessSendRequest {
   return {
     sessionId: 'session-1',
@@ -72,6 +86,7 @@ describe('OpenCodeHarness', () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url, init) => {
       const path = new URL(String(url)).pathname;
       calls.push(`${init?.method ?? 'GET'} ${path}`);
+      if (path === '/config/providers') return providerResponse();
       if (path === '/event') {
         return sse(
           {
@@ -93,7 +108,11 @@ describe('OpenCodeHarness', () => {
       { type: 'assistant.delta', text: 'Hello' },
       { type: 'done', finishReason: 'idle' },
     ]);
-    expect(calls.slice(0, 2)).toEqual(['GET /event', 'POST /session/session-1/prompt_async']);
+    expect(calls.slice(0, 3)).toEqual([
+      'GET /config/providers',
+      'GET /event',
+      'POST /session/session-1/prompt_async',
+    ]);
   });
 
   it('reconnects, suppresses duplicates, and ignores malformed or cross-session events', async () => {
@@ -108,6 +127,7 @@ describe('OpenCodeHarness', () => {
     };
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
       const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') return providerResponse();
       if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
       if (path === '/session/session-1') {
         return new Response(JSON.stringify({ id: 'session-1' }), { status: 200 });
@@ -148,6 +168,7 @@ describe('OpenCodeHarness', () => {
     const controller = new AbortController();
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
       const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') return providerResponse();
       if (path === '/event') {
         controller.abort();
         return sse();
@@ -168,6 +189,7 @@ describe('OpenCodeHarness', () => {
     const secretFailure = `server ${connection.password} died`;
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
       const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') return providerResponse();
       if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
       if (path === '/event') {
         return new Response(
@@ -194,6 +216,56 @@ describe('OpenCodeHarness', () => {
     const message = events[0]?.type === 'error' ? events[0].message : '';
     expect(message).toContain('retry the active turn');
     expect(message).not.toContain(connection.password);
+  });
+
+  it('submits only the exact reconciled OpenCode provider and model identity', async () => {
+    let promptBody: unknown;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') return providerResponse('ollama', 'qwen3:4b');
+      if (path === '/event') {
+        return sse({ type: 'session.idle', properties: { sessionID: 'session-1' } });
+      }
+      if (path.endsWith('/prompt_async')) {
+        promptBody = JSON.parse(String(init?.body));
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), { fetch });
+
+    await collect(
+      harness.send({
+        ...request(),
+        selection: { providerId: 'local', modelId: 'qwen3:4b' },
+      }),
+    );
+
+    expect(promptBody).toMatchObject({
+      model: { providerID: 'ollama', modelID: 'qwen3:4b' },
+    });
+  });
+
+  it('surfaces an exact unavailable-model error before opening a stream or prompt', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(providerResponse());
+    const harness = new OpenCodeHarness(runtime(), { fetch });
+
+    await expect(
+      collect(
+        harness.send({
+          ...request(),
+          selection: { providerId: 'anthropic', modelId: 'not-available' },
+        }),
+      ),
+    ).resolves.toEqual([
+      {
+        type: 'error',
+        code: 'MODEL_NOT_AVAILABLE',
+        message: 'Model "not-available" is not available for "anthropic".',
+      },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetch.mock.calls[0]?.[0])).pathname).toBe('/config/providers');
   });
 
   it('disposes active streams and the scoped server instance', async () => {

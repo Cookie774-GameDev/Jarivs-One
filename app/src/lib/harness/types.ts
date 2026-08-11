@@ -56,6 +56,8 @@ export interface HarnessProvider {
 export interface HarnessModelSelection {
   providerId: string;
   modelId: string;
+  connectionId?: string;
+  runtimeProviderId?: string;
 }
 
 export interface NormalizedUsage {
