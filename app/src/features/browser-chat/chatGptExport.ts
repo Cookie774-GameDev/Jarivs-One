@@ -381,35 +381,38 @@ function parseConversation(
   const messages: BrowserChatSnapshotMessage[] = [];
   const currentNode = typeof source.current_node === 'string' ? source.current_node : undefined;
   const orderedNodes: Record<string, unknown>[] = [];
+  const mappedNodes = Object.entries(mapping)
+    .map(([id, value]) => [id, record(value)] as const)
+    .filter((entry): entry is readonly [string, Record<string, unknown>] => entry[1] !== undefined);
+  const parentIds = new Set(
+    mappedNodes.flatMap(([, node]) =>
+      typeof node.parent === 'string' && mapping[node.parent] ? [node.parent] : [],
+    ),
+  );
+  const leafIds = mappedNodes.map(([id]) => id).filter((id) => !parentIds.has(id));
+  const selectedNode =
+    currentNode && record(mapping[currentNode])
+      ? currentNode
+      : leafIds.length === 1
+        ? leafIds[0]
+        : undefined;
+  if (!selectedNode) fail('chatgpt_export_conversation_branch_ambiguous');
 
-  if (currentNode && mapping[currentNode]) {
-    const seen = new Set<string>();
-    let nodeId: string | undefined = currentNode;
-    while (nodeId) {
-      checkCancelled(signal);
-      if (seen.has(nodeId)) fail('chatgpt_export_mapping_cycle');
-      seen.add(nodeId);
-      const node = record(mapping[nodeId]);
-      if (!node) fail('chatgpt_export_mapping_invalid');
-      orderedNodes.push(node);
-      nodeId = typeof node.parent === 'string' ? node.parent : undefined;
-      if (orderedNodes.length > limits.maxMessagesPerConversation * 2) {
-        fail('chatgpt_export_mapping_too_large');
-      }
+  const seen = new Set<string>();
+  let nodeId: string | undefined = selectedNode;
+  while (nodeId) {
+    checkCancelled(signal);
+    if (seen.has(nodeId)) fail('chatgpt_export_mapping_cycle');
+    seen.add(nodeId);
+    const node = record(mapping[nodeId]);
+    if (!node) fail('chatgpt_export_mapping_invalid');
+    orderedNodes.push(node);
+    nodeId = typeof node.parent === 'string' ? node.parent : undefined;
+    if (orderedNodes.length > limits.maxMessagesPerConversation * 2) {
+      fail('chatgpt_export_mapping_too_large');
     }
-    orderedNodes.reverse();
-  } else {
-    orderedNodes.push(
-      ...Object.values(mapping)
-        .map(record)
-        .filter((node): node is Record<string, unknown> => node !== undefined),
-    );
-    orderedNodes.sort(
-      (left, right) =>
-        (optionalTimestamp(record(left.message)?.create_time) ?? 0) -
-        (optionalTimestamp(record(right.message)?.create_time) ?? 0),
-    );
   }
+  orderedNodes.reverse();
 
   for (const [index, node] of orderedNodes.entries()) {
     checkCancelled(signal);

@@ -333,4 +333,43 @@ describe('official ChatGPT export snapshots', () => {
     await expect(database.browser_chat_imports.count()).resolves.toBe(0);
     await expect(database.browser_chat_snapshots.count()).resolves.toBe(0);
   });
+
+  it('rejects an ambiguous branched conversation when current_node is unavailable', async () => {
+    const branched = structuredClone(conversation()) as unknown as {
+      current_node?: string;
+      mapping: Record<
+        string,
+        {
+          id: string;
+          parent: string | null;
+          children: string[];
+          message?: unknown;
+        }
+      >;
+    };
+    delete branched.current_node;
+    branched.mapping['alternate-assistant'] = {
+      id: 'alternate-assistant',
+      parent: 'user-node',
+      children: [],
+      message: {
+        id: 'message-alternate',
+        author: { role: 'assistant' },
+        create_time: 13,
+        content: { content_type: 'text', parts: ['Alternate branch'] },
+      },
+    };
+    branched.mapping['user-node']!.children = ['assistant-node', 'alternate-assistant'];
+
+    await expect(
+      importChatGptExport({
+        database,
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        fileName: 'ambiguous.zip',
+        archive: exportZip([branched], 'store'),
+      }),
+    ).rejects.toThrow('chatgpt_export_conversation_branch_ambiguous');
+    await expect(database.browser_chat_snapshots.count()).resolves.toBe(0);
+  });
 });
