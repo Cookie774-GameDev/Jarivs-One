@@ -413,7 +413,7 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: this native primitive is not itself a remotely advertised tool.
   Browser Chat approval, preview, apply, rollback, and relay routing remain
   separate layers.
-- Commit: pending exact-path commit.
+- Commit: `f9221dde`.
 
 ## Completion labels
 
