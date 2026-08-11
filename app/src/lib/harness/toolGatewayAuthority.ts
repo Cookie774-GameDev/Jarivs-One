@@ -48,19 +48,27 @@ function sameScope(left: AuthorityScope, right: AuthorityScope): boolean {
   );
 }
 
-let observedScope = activeScope();
-useAuthStore.subscribe(() => {
-  const next = activeScope();
-  if (
-    (observedScope === null) !== (next === null) ||
-    (observedScope !== null && next !== null && !sameScope(observedScope, next))
-  ) {
-    generation += 1;
-  }
-  observedScope = next;
-});
+let observerInstalled = false;
+let observedScope: AuthorityScope | null = null;
+
+function ensureScopeObserver(): void {
+  if (observerInstalled) return;
+  observerInstalled = true;
+  observedScope = activeScope();
+  useAuthStore.subscribe(() => {
+    const next = activeScope();
+    if (
+      (observedScope === null) !== (next === null) ||
+      (observedScope !== null && next !== null && !sameScope(observedScope, next))
+    ) {
+      generation += 1;
+    }
+    observedScope = next;
+  });
+}
 
 function currentAuthority(): SessionAuthority | null {
+  ensureScopeObserver();
   const scope = activeScope();
   return scope ? { scope, generation } : null;
 }
@@ -166,6 +174,7 @@ export function authorizeToolGatewayMutation(request: ToolGatewayRequest): boole
 }
 
 export function clearToolGatewayAuthorityForTests(): void {
+  ensureScopeObserver();
   sessionAuthorities.clear();
   grants.clear();
   generation = 0;
