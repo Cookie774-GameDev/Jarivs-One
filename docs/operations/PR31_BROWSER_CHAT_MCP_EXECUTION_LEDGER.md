@@ -543,7 +543,7 @@ staged, restored, reformatted, or committed by this task.
 - Truth boundary: project/context/output capabilities remain unavailable in
   the product status catalog until their local adapters are composed into the
   relay and the separately owned Worker protocol can attest them end to end.
-- Commit: pending exact-path commit.
+- Commit: `db37f308`.
 
 ## Completion labels
 
