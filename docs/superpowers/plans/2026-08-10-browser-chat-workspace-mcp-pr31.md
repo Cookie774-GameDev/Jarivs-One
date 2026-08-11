@@ -144,8 +144,8 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
       and cancellation tests.
 - [x] Implement local project linking without claiming remote membership.
 - [x] Implement history summary/open behavior for non-imported bindings.
-- [ ] Implement snapshot import without HTML/script execution.
-- [ ] Verify re-import updates rather than duplicates and delete affects only
+- [x] Implement snapshot import without HTML/script execution.
+- [x] Verify re-import updates rather than duplicates and delete affects only
       the local snapshot.
 - [ ] Commit the verified slice.
 

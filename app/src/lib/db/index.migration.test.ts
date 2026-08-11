@@ -47,7 +47,10 @@ import {
   STORES_V8,
   STORES_V9,
   STORES_V10,
+  STORES_V11,
   type BrowserChatBindingRow,
+  type BrowserChatImportRow,
+  type BrowserChatSnapshotRow,
   type CanvasAssetRow,
   type CanvasCameraRow,
   type CanvasDocumentRow,
@@ -191,6 +194,14 @@ const EXPECTED_STORES_V10 = {
     'id, accountId, workspaceId, projectId, chatId, provider, bindingState, pinned, updatedAt, &[accountId+workspaceId+chatId], &[accountId+workspaceId+provider+providerProfileKey+providerConversationKey], [accountId+workspaceId], [accountId+workspaceId+projectId], [accountId+workspaceId+pinned], [accountId+workspaceId+updatedAt]',
   provider_project_links:
     'id, accountId, workspaceId, projectId, provider, state, updatedAt, &[accountId+workspaceId+projectId+provider], [accountId+workspaceId], [accountId+workspaceId+projectId]',
+} as const;
+
+const EXPECTED_STORES_V11 = {
+  ...EXPECTED_STORES_V10,
+  browser_chat_imports:
+    'id, accountId, workspaceId, provider, fileHash, status, importedAt, &[accountId+workspaceId+provider+fileHash], [accountId+workspaceId], [accountId+workspaceId+importedAt]',
+  browser_chat_snapshots:
+    'id, accountId, workspaceId, provider, providerConversationKey, importId, updatedAt, &[accountId+workspaceId+provider+providerConversationKey], [accountId+workspaceId], [accountId+workspaceId+updatedAt], [accountId+workspaceId+importId]',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -610,7 +621,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V10 additive migration', () => {
+describe('Jarvis Dexie V11 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -623,30 +634,38 @@ describe('Jarvis Dexie V10 additive migration', () => {
     expect(STORES_V8).toEqual(EXPECTED_STORES_V8);
     expect(STORES_V9).toEqual(EXPECTED_STORES_V9);
     expect(STORES_V10).toEqual(EXPECTED_STORES_V10);
+    expect(STORES_V11).toEqual(EXPECTED_STORES_V11);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(10);
+    expect(DB_VERSION).toBe(11);
   });
 
-  it('opens durable Browser Chat binding stores on a fresh V10 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v10-browser-chat-fresh'));
+  it('opens durable Browser Chat workspace and import stores on a fresh V11 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v11-browser-chat-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name)).toEqual(
-      expect.arrayContaining(['browser_chat_bindings', 'provider_project_links']),
+      expect.arrayContaining([
+        'browser_chat_bindings',
+        'provider_project_links',
+        'browser_chat_imports',
+        'browser_chat_snapshots',
+      ]),
     );
     expect(database.table('browser_chat_bindings').schema.primKey.name).toBe('id');
     expect(database.table('provider_project_links').schema.primKey.name).toBe('id');
+    expect(database.table('browser_chat_imports').schema.primKey.name).toBe('id');
+    expect(database.table('browser_chat_snapshots').schema.primKey.name).toBe('id');
   });
 
-  it('opens every legacy, kernel, Context, Prompt Forge, Canvas, and memory-evidence store on a fresh V10 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v10-fresh'));
+  it('opens every prior store plus Browser Chat snapshots on a fresh V11 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v11-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V10).sort(),
+      Object.keys(STORES_V11).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -676,6 +695,12 @@ describe('Jarvis Dexie V10 additive migration', () => {
     >();
     expectTypeOf<JarvisDexie['provider_project_links']>().toEqualTypeOf<
       EntityTable<ProviderProjectLinkRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['browser_chat_imports']>().toEqualTypeOf<
+      EntityTable<BrowserChatImportRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['browser_chat_snapshots']>().toEqualTypeOf<
+      EntityTable<BrowserChatSnapshotRow, 'id'>
     >();
     expectTypeOf<JarvisDexie['chats']>().toEqualTypeOf<EntityTable<Chat, 'id'>>();
     expectTypeOf<JarvisDexie['messages']>().toEqualTypeOf<EntityTable<Message, 'id'>>();
@@ -821,6 +846,37 @@ describe('Jarvis Dexie V10 additive migration', () => {
     await expect(upgraded.memory_evidence_history.toArray()).resolves.toEqual([preserved]);
     await expect(upgraded.browser_chat_bindings.toArray()).resolves.toEqual([]);
     await expect(upgraded.provider_project_links.toArray()).resolves.toEqual([]);
+  });
+
+  it('preserves V10 Browser Chat rows when V11 adds empty import snapshot stores', async () => {
+    const name = testDbName('jarvis-v10-to-v11-browser-chat-imports');
+    const legacy = new Dexie(name, TEST_INDEXED_DB);
+    openedDatabases.add(legacy);
+    legacy.version(10).stores(STORES_V10);
+    await legacy.open();
+    const preserved = {
+      id: 'binding-v10',
+      accountId: 'account-a',
+      workspaceId: 'workspace-a',
+      chatId: 'chat-a',
+      provider: 'chatgpt',
+      providerProfileKey: 'browser-chat/chatgpt',
+      bindingState: 'new',
+      localTitle: 'Preserve me',
+      pinned: false,
+      viewMode: 'provider',
+      createdAt: 10,
+      updatedAt: 10,
+    };
+    await legacy.table('browser_chat_bindings').add(preserved);
+    legacy.close();
+
+    const upgraded = createTestJarvisDb(name);
+    await upgraded.open();
+
+    await expect(upgraded.browser_chat_bindings.toArray()).resolves.toEqual([preserved]);
+    await expect(upgraded.browser_chat_imports.toArray()).resolves.toEqual([]);
+    await expect(upgraded.browser_chat_snapshots.toArray()).resolves.toEqual([]);
   });
 
   it('preserves every inserted V1 row byte-for-byte when opening V5', async () => {
@@ -1293,7 +1349,7 @@ describe('Jarvis Dexie V10 additive migration', () => {
     database.close();
   });
 
-  it('declares V10 additively without a destructive upgrade callback', () => {
+  it('declares V11 additively without a destructive upgrade callback', () => {
     const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
@@ -1306,5 +1362,6 @@ describe('Jarvis Dexie V10 additive migration', () => {
     expect(source).toContain('this.version(8).stores(STORES_V8)');
     expect(source).toContain('this.version(9).stores(STORES_V9)');
     expect(source).toContain('this.version(10).stores(STORES_V10)');
+    expect(source).toContain('this.version(11).stores(STORES_V11)');
   });
 });

@@ -163,6 +163,28 @@ staged, restored, reformatted, or committed by this task.
   does not claim remote membership or verification, and states that unlinking
   does not modify the provider project. Invalid or hostile URLs fail closed in
   the existing scoped repository validator.
+- Commit: `49fe02f2`.
+
+### M4c — defensive official ChatGPT export snapshots
+
+- Status: `VERIFIED`
+- RED evidence: schema V10 had no provider-snapshot authority and no official
+  export ZIP parser, dedupe, cancellation, or local snapshot lifecycle.
+- GREEN evidence: 5/5 focused import lifecycle/security tests, 16/16 additive
+  migration tests, and 10/10 existing Browser Chat repository tests pass; app
+  TypeScript passes.
+- Storage: additive Dexie V11 keeps imports and normalized conversation
+  snapshots in dedicated account/workspace-scoped stores. Provider messages
+  never enter the native `messages` table.
+- Import safety: the bounded parser accepts stored or deflated
+  `conversations.json`, rejects traversal, encrypted/multi-disk/duplicate,
+  unsupported, oversized, extreme-ratio, malformed, and checksum-invalid
+  archives, enforces expanded-byte limits while streaming, and performs the
+  final write atomically with cancellation checks.
+- Data safety: content remains inert text; only the current exported branch is
+  normalized. Stable provider conversation keys update one snapshot with a
+  revision bump, exact archive hashes deduplicate, search stays in exact scope,
+  and delete removes only the selected local snapshot.
 - Commit: pending exact-path commit.
 
 ## Completion labels

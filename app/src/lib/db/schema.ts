@@ -629,9 +629,48 @@ export type ProviderProjectLinkRow = {
   lastVerifiedAt?: number;
 };
 
+export type BrowserChatSnapshotMessage = {
+  id: string;
+  parentId?: string;
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'unknown';
+  createdAt?: number;
+  text: string;
+};
+
+export type BrowserChatImportRow = {
+  id: string;
+  accountId: string;
+  workspaceId: string;
+  provider: 'chatgpt';
+  fileName: string;
+  fileSize: number;
+  fileHash: string;
+  status: 'complete';
+  conversationCount: number;
+  importedAt: number;
+};
+
+export type BrowserChatSnapshotRow = {
+  id: string;
+  accountId: string;
+  workspaceId: string;
+  provider: 'chatgpt';
+  providerConversationKey: string;
+  importId: string;
+  title: string;
+  providerCreatedAt?: number;
+  providerUpdatedAt?: number;
+  messageCount: number;
+  contentHash: string;
+  revision: number;
+  messages: BrowserChatSnapshotMessage[];
+  createdAt: number;
+  updatedAt: number;
+};
+
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 10 for durable Browser Chat workspace records. */
-export const DB_VERSION = 10;
+/** Current schema version — bumped to 11 for separate Browser Chat import snapshots. */
+export const DB_VERSION = 11;
 
 /**
  * Dexie store schema strings.
@@ -808,6 +847,16 @@ export const STORES_V10 = {
     'id, accountId, workspaceId, projectId, provider, state, updatedAt, &[accountId+workspaceId+projectId+provider], [accountId+workspaceId], [accountId+workspaceId+projectId]',
 } as const;
 
-export const STORES = STORES_V10;
+/** V11 adds provider-owned export snapshots without entering native message authority. */
+// prettier-ignore
+export const STORES_V11 = {
+  ...STORES_V10,
+  browser_chat_imports:
+    'id, accountId, workspaceId, provider, fileHash, status, importedAt, &[accountId+workspaceId+provider+fileHash], [accountId+workspaceId], [accountId+workspaceId+importedAt]',
+  browser_chat_snapshots:
+    'id, accountId, workspaceId, provider, providerConversationKey, importId, updatedAt, &[accountId+workspaceId+provider+providerConversationKey], [accountId+workspaceId], [accountId+workspaceId+updatedAt], [accountId+workspaceId+importId]',
+} as const;
+
+export const STORES = STORES_V11;
 
 export type StoreName = keyof typeof STORES;

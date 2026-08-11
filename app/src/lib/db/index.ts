@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V10 migrations preserve every existing row. Dexie replays each version's store
+ * V1 → V11 migrations preserve every existing row. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V10.
+ * New installs open directly on V11.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -40,7 +40,10 @@ import {
   STORES_V8,
   STORES_V9,
   STORES_V10,
+  STORES_V11,
   type BrowserChatBindingRow,
+  type BrowserChatImportRow,
+  type BrowserChatSnapshotRow,
   type CanvasAssetRow,
   type CanvasCameraRow,
   type CanvasDocumentRow,
@@ -162,6 +165,10 @@ export class JarvisDexie extends Dexie {
   browser_chat_bindings!: EntityTable<BrowserChatBindingRow, 'id'>;
   provider_project_links!: EntityTable<ProviderProjectLinkRow, 'id'>;
 
+  // V11 official provider export snapshots (separate from native messages)
+  browser_chat_imports!: EntityTable<BrowserChatImportRow, 'id'>;
+  browser_chat_snapshots!: EntityTable<BrowserChatSnapshotRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -175,6 +182,7 @@ export class JarvisDexie extends Dexie {
     this.version(8).stores(STORES_V8);
     this.version(9).stores(STORES_V9);
     this.version(10).stores(STORES_V10);
+    this.version(11).stores(STORES_V11);
   }
 }
 
@@ -248,6 +256,9 @@ export type {
   CanvasTombstoneRow,
   CanvasRecoveryRow,
   BrowserChatBindingRow,
+  BrowserChatImportRow,
+  BrowserChatSnapshotMessage,
+  BrowserChatSnapshotRow,
   BrowserChatProvider,
   ProviderProjectLinkRow,
 } from './schema';
