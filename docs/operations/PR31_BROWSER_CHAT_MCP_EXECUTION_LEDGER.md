@@ -584,6 +584,49 @@ staged, restored, reformatted, or committed by this task.
   separately owned Worker/relay protocol advertises and routes it end to end.
 - Commit: `a5c82c72`.
 
+### M5n — terminal and Git policy/receipt adapter
+
+- Status: `VERIFIED`
+- RED evidence: Browser Chat had permission IDs for terminal and Git but no
+  adapter that joined one-shot Browser Chat leases to the existing canonical
+  terminal/Git broker. The initial suite failed on the missing module; a later
+  hardening case proved unsafe Git paths reached local execution authority
+  before the broker rejected them.
+- GREEN evidence: 21/21 focused terminal/Git adapter, canonical broker,
+  approval-broker, and permission-registry tests pass; app TypeScript and
+  Browser Chat adapter Prettier checks pass.
+- Real fixture execution: tests drive the real
+  `createNativeTerminalGitCapabilityBroker` through a bounded execution port.
+  They verify a typed terminal command, read-only Git status, an observable
+  Git commit checkpoint, and cancellation of a pending native call.
+- Dual authority: a Browser Chat capability lease is necessary but
+  insufficient. A sealed local authority must also issue the exact
+  `JarvisIssuedActionExecution` and native scope bound to account, project,
+  task, approved root, parameter hash, and current operation signal. Remote
+  callers cannot construct or pass that execution object.
+- Git separation: status/diff require `git.status`; worktree patch, index,
+  commit, and ref creation require `git.checkpoint`. Fetch and push remain
+  rejected as `operation_unsupported` because no dedicated Browser Chat
+  network/remote capability exists.
+- Terminal safety: commands remain typed executable/argument arrays, not
+  shell strings; shells and Git-as-terminal are rejected by the canonical
+  broker. Browser Chat further caps timeout at 120 seconds, captured output at
+  64 KiB, memory at 2 GiB, and process count at 32.
+- Pre-approval validation: Browser Chat reuses the canonical terminal command
+  and Git intent validators before requesting local execution authority, so
+  traversal, secret environment, shell, refspec, force, hook, and credential
+  helper violations do not reach the authority issuer.
+- Cancellation and evidence: permission revocation aborts the signal used by
+  the sealed Jarvis execution and reaches the native port. Command/intent
+  hashes and bounded native receipts are rechecked after execution; public
+  receipts contain no approved absolute root.
+- Boundary: this policy/receipt adapter is not advertised as locally
+  executable in the product catalog until a production
+  `NativeTerminalGitExecutionPort`, sealed execution-authority issuer, and
+  relay route are composed and verified. The separately owned Worker remains
+  untouched.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,
