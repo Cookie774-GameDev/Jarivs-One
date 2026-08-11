@@ -13,6 +13,7 @@
  */
 import type { ProviderId } from '@/types/common';
 import { nativeFetch } from '@/lib/nativeFetch';
+import { isTauri } from '@/lib/utils';
 
 export interface BenchmarkRow {
   model: string;
@@ -186,6 +187,7 @@ export function isSupportedProvider(p: string): p is ProviderId {
 
 const WULONG_TEXT_LEADERBOARD =
   'https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name=text';
+const CLOUDFLARE_WORKER_ROOT = 'https://vibespace-ai-news.vibespace-viper.workers.dev/';
 const CLOUDFLARE_BENCHMARK_ENDPOINT =
   'https://vibespace-ai-news.vibespace-viper.workers.dev/api/benchmarks';
 const LMARENA_ENDPOINTS = [
@@ -415,37 +417,57 @@ async function fetchLiveRows(now: number): Promise<StructuredBenchmarkFeed> {
   const errors: string[] = [];
 
   try {
-    const res = await nativeFetch(CLOUDFLARE_BENCHMARK_ENDPOINT, {
+    const capabilityResponse = await nativeFetch(CLOUDFLARE_WORKER_ROOT, {
       timeoutMs: FETCH_TIMEOUT_MS,
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) throw new Error(`cloudflare: HTTP ${res.status}`);
-    const data = (await res.json()) as {
-      benchmarkDate?: string;
-      ingestedAt?: string;
-      source?: { name?: string; url?: string };
-      rows?: unknown[];
-    };
-    const rows = normalizeWulong(
-      {
-        meta: { fetched_at: data.benchmarkDate },
-        models: data.rows,
-      },
-      now,
-    );
-    if (rows.length < MIN_STRUCTURED_MODEL_COUNT) {
-      throw new Error(
-        `cloudflare: incomplete leaderboard (${rows.length}/${MIN_STRUCTURED_MODEL_COUNT} minimum models)`,
-      );
+    if (!capabilityResponse.ok) {
+      throw new Error(`cloudflare capability: HTTP ${capabilityResponse.status}`);
     }
-    return {
-      rows,
-      sourceName: data.source?.name?.trim() || 'Arena via VibeSpace Cloud',
-      sourceUrl: data.source?.url?.trim() || CLOUDFLARE_BENCHMARK_ENDPOINT,
-      ingestedAt: data.ingestedAt ? Date.parse(data.ingestedAt) || now : now,
-    };
+    const capability = (await capabilityResponse.json()) as { endpoints?: unknown };
+    const endpoints = Array.isArray(capability.endpoints) ? capability.endpoints : [];
+    if (endpoints.includes('/api/benchmarks')) {
+      const res = await nativeFetch(CLOUDFLARE_BENCHMARK_ENDPOINT, {
+        timeoutMs: FETCH_TIMEOUT_MS,
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`cloudflare: HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        benchmarkDate?: string;
+        ingestedAt?: string;
+        source?: { name?: string; url?: string };
+        rows?: unknown[];
+      };
+      const rows = normalizeWulong(
+        {
+          meta: { fetched_at: data.benchmarkDate },
+          models: data.rows,
+        },
+        now,
+      );
+      if (rows.length < MIN_STRUCTURED_MODEL_COUNT) {
+        throw new Error(
+          `cloudflare: incomplete leaderboard (${rows.length}/${MIN_STRUCTURED_MODEL_COUNT} minimum models)`,
+        );
+      }
+      return {
+        rows,
+        sourceName: data.source?.name?.trim() || 'Arena via VibeSpace Cloud',
+        sourceUrl: data.source?.url?.trim() || CLOUDFLARE_BENCHMARK_ENDPOINT,
+        ingestedAt: data.ingestedAt ? Date.parse(data.ingestedAt) || now : now,
+      };
+    }
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
+  }
+
+  if (!isTauri) {
+    throw new Error(
+      [
+        ...errors,
+        'Direct Arena sources require the desktop HTTP bridge when the cloud snapshot is unavailable.',
+      ].join(' | '),
+    );
   }
 
   try {

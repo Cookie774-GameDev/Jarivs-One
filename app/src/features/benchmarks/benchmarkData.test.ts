@@ -1,8 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const runtime = vi.hoisted(() => ({ tauri: true }));
+
 vi.mock('@/lib/nativeFetch', () => ({
   nativeFetch: vi.fn(),
 }));
+
+vi.mock('@/lib/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/utils')>();
+  return {
+    ...actual,
+    get isTauri() {
+      return runtime.tauri;
+    },
+  };
+});
 
 import { nativeFetch } from '@/lib/nativeFetch';
 import {
@@ -15,6 +27,7 @@ import {
 const mockedFetch = vi.mocked(nativeFetch);
 
 beforeEach(() => {
+  runtime.tauri = true;
   clearBenchmarkCache();
   mockedFetch.mockReset();
 });
@@ -114,39 +127,97 @@ describe('benchmarkData live sources', () => {
   });
 
   it('prefers the hourly Cloudflare benchmark snapshot before direct upstream fallbacks', async () => {
-    mockedFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        freeOnly: true,
-        source: {
-          kind: 'independent-preference',
-          name: 'Arena',
-          url: 'https://arena.ai/leaderboard/text',
-        },
-        benchmarkDate: '2026-08-10T18:00:00.000Z',
-        ingestedAt: '2026-08-10T18:07:00.000Z',
-        metric: 'Arena rating',
-        rows: Array.from({ length: 20 }, (_, index) => ({
-          rank: index + 1,
-          model: `worker-model-${index + 1}`,
-          vendor: 'OpenAI',
-          license: 'proprietary',
-          score: 1500 - index,
-          ci: 4,
-          votes: 500 + index,
-        })),
-      }),
-      headers: { get: () => 'application/json' },
-    } as unknown as Response);
+    mockedFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ endpoints: ['/api/news', '/api/benchmarks'] }),
+        headers: { get: () => 'application/json' },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          freeOnly: true,
+          source: {
+            kind: 'independent-preference',
+            name: 'Arena',
+            url: 'https://arena.ai/leaderboard/text',
+          },
+          benchmarkDate: '2026-08-10T18:00:00.000Z',
+          ingestedAt: '2026-08-10T18:07:00.000Z',
+          metric: 'Arena rating',
+          rows: Array.from({ length: 20 }, (_, index) => ({
+            rank: index + 1,
+            model: `worker-model-${index + 1}`,
+            vendor: 'OpenAI',
+            license: 'proprietary',
+            score: 1500 - index,
+            ci: 4,
+            votes: 500 + index,
+          })),
+        }),
+        headers: { get: () => 'application/json' },
+      } as unknown as Response);
 
     const result = await fetchBenchmarks({ force: true });
 
     expect(result.rows).toHaveLength(20);
     expect(result.rows[0]?.model).toBe('worker-model-1');
     expect(String(mockedFetch.mock.calls[0]?.[0])).toBe(
+      'https://vibespace-ai-news.vibespace-viper.workers.dev/',
+    );
+    expect(String(mockedFetch.mock.calls[1]?.[0])).toBe(
       'https://vibespace-ai-news.vibespace-viper.workers.dev/api/benchmarks',
     );
-    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(mockedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips the Worker benchmark route until the deployed service advertises it', async () => {
+    mockedFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ endpoints: ['/api/news', '/api/news.json'] }),
+        headers: { get: () => 'application/json' },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          meta: { fetched_at: new Date().toISOString() },
+          models: Array.from({ length: 20 }, (_, index) => ({
+            model: `direct-model-${index + 1}`,
+            vendor: 'OpenAI',
+            score: 1500 - index,
+            ci: 4,
+            votes: 500 + index,
+          })),
+        }),
+        headers: { get: () => 'application/json' },
+      } as unknown as Response);
+
+    const result = await fetchBenchmarks({ force: true });
+
+    expect(result.rows).toHaveLength(20);
+    expect(result.rows[0]?.model).toBe('direct-model-1');
+    expect(mockedFetch.mock.calls.map((call) => String(call[0]))).toEqual([
+      'https://vibespace-ai-news.vibespace-viper.workers.dev/',
+      'https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name=text',
+    ]);
+  });
+
+  it('does not issue known-CORS-blocked direct requests from the web runtime', async () => {
+    runtime.tauri = false;
+    mockedFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ endpoints: ['/api/news', '/api/news.json'] }),
+      headers: { get: () => 'application/json' },
+    } as unknown as Response);
+
+    const result = await fetchBenchmarks({ force: true });
+
+    expect(result.unavailable).toBe(true);
+    expect(result.rows).toEqual([]);
+    expect(mockedFetch.mock.calls.map((call) => String(call[0]))).toEqual([
+      'https://vibespace-ai-news.vibespace-viper.workers.dev/',
+    ]);
   });
 
   it('accepts a valid structured leaderboard without requiring exactly fifty rows', async () => {
