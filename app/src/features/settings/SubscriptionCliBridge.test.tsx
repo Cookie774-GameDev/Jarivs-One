@@ -6,6 +6,7 @@ import {
 } from './sections/SubscriptionCliBridge';
 import { writeConnectionMetadata } from '@/lib/ai/connectionState';
 import { useAuthStore } from '@/stores/auth';
+import type { OpenCodeSubscriptionClient } from '@/lib/harness/subscriptionBridge';
 
 vi.mock('@/lib/ai/adapters/autoDetectConnections', () => ({
   ensureExternalConnectionAutoDetection: vi.fn(async () => ({})),
@@ -50,6 +51,80 @@ describe('SubscriptionCliBridge', () => {
     expect(screen.getByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
   });
 
+  it('uses OpenCode-owned OAuth for supported subscriptions and refreshes connected state', async () => {
+    let connected = false;
+    const subscriptionClient: OpenCodeSubscriptionClient = {
+      providerAuthMethods: async () => ({
+        openai: [{ type: 'oauth', label: 'ChatGPT Plus/Pro' }],
+      }),
+      providerStatus: async () => ({ connected: connected ? ['openai'] : [] }),
+      authorizeProvider: async () => ({
+        url: 'https://auth.example.test/',
+        method: 'auto',
+        instructions: 'Approve ChatGPT access in your browser.',
+      }),
+      callbackProvider: async () => {
+        connected = true;
+        return true;
+      },
+      configProviders: async () => ({}),
+    };
+
+    render(
+      <SubscriptionCliBridge
+        autoDetect={false}
+        records={{}}
+        subscriptionClient={subscriptionClient}
+      />,
+    );
+    const connect = await screen.findByRole('button', {
+      name: 'Connect OpenAI with ChatGPT Plus/Pro',
+    });
+    fireEvent.click(connect);
+    expect(await screen.findByText('Subscription connected this session')).toBeTruthy();
+    expect(screen.getByText('Approve ChatGPT access in your browser.')).toBeTruthy();
+  });
+
+  it('requires an explicit callback code and labels Anthropic Pro/Max truthfully', async () => {
+    const callbackProvider = vi.fn(async () => true);
+    const subscriptionClient: OpenCodeSubscriptionClient = {
+      providerAuthMethods: async () => ({
+        xai: [{ type: 'oauth', label: 'SuperGrok subscription' }],
+        anthropic: [{ type: 'oauth', label: 'Claude Pro/Max plugin' }],
+      }),
+      providerStatus: async () => ({ connected: [] }),
+      authorizeProvider: async () => ({
+        url: 'https://x.ai/device',
+        method: 'code',
+        instructions: 'Paste the authorization code from xAI.',
+      }),
+      callbackProvider,
+      configProviders: async () => ({}),
+    };
+
+    render(
+      <SubscriptionCliBridge
+        autoDetect={false}
+        records={{}}
+        subscriptionClient={subscriptionClient}
+      />,
+    );
+    expect(
+      await screen.findByText(/Claude Pro\/Max subscription bridge is not offered/i),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Claude Pro\/Max plugin/ })).toBeNull();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Connect xAI with SuperGrok subscription',
+      }),
+    );
+    const code = await screen.findByLabelText('xAI authorization code');
+    fireEvent.change(code, { target: { value: 'device-code' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Complete xAI sign-in' }));
+    expect(callbackProvider).toHaveBeenCalledWith('xai', 0, 'device-code');
+  });
+
   it('shows bold product hierarchy with logos and clear status badges', () => {
     render(
       <SubscriptionCliBridge
@@ -68,9 +143,9 @@ describe('SubscriptionCliBridge', () => {
     const card = screen.getByText('Codex').closest('article');
     expect(card).not.toBeNull();
     expect(within(card!).getByRole('heading', { name: 'OpenAI' })).toBeTruthy();
-    expect(within(card!).getByText('Signed in (subscription)')).toBeTruthy();
+    expect(within(card!).getByText('Legacy session detected')).toBeTruthy();
     expect(
-      within(card!).getByRole('tab', { name: 'CLI subscription bridge', selected: true }),
+      within(card!).getByRole('tab', { name: 'Legacy CLI status', selected: true }),
     ).toBeTruthy();
     expect(within(card!).getByText('C:\\Tools\\codex.exe')).toBeTruthy();
     expect(within(card!).getByRole('button', { name: 'Refresh Codex CLI' })).toBeTruthy();
@@ -205,7 +280,7 @@ describe('SubscriptionCliBridge', () => {
     expect(within(codexCard!).queryByText(/Signed in/i)).toBeNull();
   });
 
-  it('exposes Last check, Refresh, Sign in, Configure, and Disable on every CLI connector', () => {
+  it('retains read-only legacy CLI status without offering it as a sign-in route', () => {
     render(
       <SubscriptionCliBridge
         autoDetect={false}
@@ -221,7 +296,7 @@ describe('SubscriptionCliBridge', () => {
     const card = screen.getByText('Codex').closest('article')!;
     expect(within(card).getByTestId('last-check-openai-codex').textContent).not.toBe('Never');
     expect(within(card).getByRole('button', { name: 'Refresh Codex CLI' })).toBeTruthy();
-    expect(within(card).getByRole('button', { name: 'Sign in to Codex CLI' })).toBeTruthy();
+    expect(within(card).queryByRole('button', { name: 'Sign in to Codex CLI' })).toBeNull();
     expect(within(card).getByRole('button', { name: 'Configure Codex CLI' })).toBeTruthy();
     expect(within(card).getByRole('button', { name: 'Disable Codex CLI' })).toBeTruthy();
   });
