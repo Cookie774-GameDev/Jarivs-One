@@ -844,6 +844,104 @@ staged, restored, reformatted, or committed by this task.
   account state.
 - Commit: `afe64a78`.
 
+### M6e — native-evidenced provider readiness
+
+- Status: `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`
+- Root cause: the React surface marked a managed provider page `ready` as soon
+  as the native open command returned. That result proves that the guarded
+  operation was accepted, not that the child WebView completed a supported
+  top-level navigation.
+- RED evidence: the new component test observed `ready` before its mocked
+  native navigation listener emitted any evidence.
+- GREEN evidence: 22/22 provider component/controller/status tests pass and
+  app TypeScript passes.
+- Truth boundary: a managed provider remains `opening` until an allowlisted
+  native top-level navigation event for the exact mounted provider arrives.
+  System-browser fallback and native errors retain their independent states.
+  Geometry-only updates do not erase an already evidenced `ready` state.
+- Remaining native acceptance: the installed Windows app must prove that
+  initial loads, exact saved-conversation navigation, cached child reuse, and
+  provider-side rejection all produce the expected native events and states.
+- Commit: `9185eb09`.
+
+## Final requirements and production-composition audit
+
+### Automated gate evidence
+
+- App production build: `VERIFIED`; `tsc -b` and Vite completed with 4,814
+  modules transformed. Existing chunk-size and mixed-import warnings remain.
+- Release manifest: `VERIFIED`; 44/44 Node tests pass.
+- Browser Chat focused suites: `VERIFIED`; the latest provider
+  component/controller/status run passes 22/22. Earlier milestone entries
+  retain the larger focused-suite evidence for each slice.
+- VibeSpace MCP Worker: `VERIFIED` read-only check only; its existing `check`
+  command passed 29/29 tests, TypeScript, and Wrangler deployment dry-run. No
+  deployment occurred and no Worker file was changed.
+- Full app suite: `BLOCKED — TECHNICAL`; the unsharded run exceeded ten
+  minutes without a final summary. Four deterministic shards completed:
+  9,877/9,894 tests passed. The 17 reproducible failures are confined to
+  `App.accountIdentity.test.tsx` (12), Prompt Forge `jobStore.test.ts` (1),
+  and the concurrently dirty Benchmarks Warm Schema B suite (4). None is in
+  the Browser Chat/MCP changed-file set; no failing test was deleted or
+  weakened.
+- Rust: `VERIFIED` for `cargo check --no-default-features` and the focused
+  Browser Chat native tests recorded in M6a/M6c. Default-feature `cargo check`
+  remains `BLOCKED — TECHNICAL` in the pre-existing `espeak-rs-sys` Windows
+  CMake build: MSBuild cannot create/run the deeply nested linker tracking
+  path. A preceding zero-disk-space attempt was remediated by `cargo clean`,
+  which removed only 5.2 GiB of regenerable worktree Cargo artifacts.
+- AI-boundary workflow: `BLOCKED — TECHNICAL`; the pinned
+  `promptfoo@0.121.20` executable is not installed locally and
+  `npx --no-install` correctly refused to fetch it. Dependency installation
+  was outside this run's authority.
+- Browser/visual smoke: `BLOCKED — TECHNICAL`; the required in-app browser
+  failed before creating a tab with `failed to write kernel assets: The
+  system cannot find the path specified`. No fallback browser was used and no
+  visual result is claimed.
+
+### Definition-of-done disposition
+
+- `VERIFIED`: one main Browser Chat entry; durable account/workspace-scoped
+  binding repository and migration; internal session rail; pin, rename,
+  project move, remove-local-binding, and safe external-open actions; new
+  local Browser Chat creation; duplicate-safe native navigation
+  reconciliation; History summaries; defensive official-export snapshots and
+  inert replay; local provider-project links; permission-profile persistence
+  and UI; fail-closed capability calculation; scoped approval leases; bounded
+  file, structure, context, output, terminal/Git, Playwright, and downstream
+  MCP adapters against real local fixtures; independent status derivation;
+  verified-output feed; provider URL and native caller/allowlist defenses.
+- `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`: true child-WebView lifecycle,
+  exact saved resume navigation, restart restore against real provider
+  sessions, provider/profile reuse across presentation modes, navigation
+  readiness events, geometry/resize behavior, and installed Windows
+  performance.
+- `IMPLEMENTED — PROVIDER VERIFICATION REQUIRED`: explicit ChatGPT MCP
+  connection UX, real OAuth/authorization evidence, provider-plan write
+  support, provider login persistence, and provider rejection/recovery.
+- `BLOCKED — PROVIDER CAPABILITY`: live personal ChatGPT conversation/project
+  synchronization. Current official OpenAI documentation supports data export
+  and the documented MCP/app surfaces but does not document a live personal
+  consumer chat/project synchronization API. This absence is an evidence-based
+  inference, not a claim that no private or future provider surface can exist.
+- `NOT STARTED`: production remote composition for file mutation,
+  terminal/Git, Playwright/browser automation, project/context, output, and
+  downstream MCP adapters. These adapters are implemented and fixture-tested,
+  but no production module imports them. `BridgeClient` deliberately
+  advertises and dispatches only `fs.list` and `fs.read`, and continues to
+  register `writable: false` and `shell_enabled: false`; therefore no remote
+  write capability is claimed.
+- `BLOCKED — TECHNICAL`: the matching cloud Worker routing/catalog changes
+  are in `workers/vibespace-mcp/**`, which remains excluded by the active
+  coordination owner
+  `VS-ROOT-20260811T013121Z-MCP-PERSISTENCE-CHAT-ART`. Expanding the desktop
+  catalog before the cloud route supports and enforces the same capability
+  contract would create a false advertised-tool surface.
+- `BLOCKED — OWNER ACTION REQUIRED`: installed Windows/Tauri A/B/C/restart
+  acceptance, real provider sign-in, ChatGPT MCP OAuth connection, plan-aware
+  write calls, revoke/sign-out calls, and performance measurements require the
+  owner-accessible installed/provider environment.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,
