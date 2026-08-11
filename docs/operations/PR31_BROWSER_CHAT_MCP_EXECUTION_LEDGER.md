@@ -513,7 +513,7 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: these adapters are locally executable but are not remotely
   advertised until the separately owned Worker protocol can route and attest
   them end to end.
-- Commit: pending exact-path commit.
+- Commit: `dad47be0`.
 
 ## Completion labels
 
