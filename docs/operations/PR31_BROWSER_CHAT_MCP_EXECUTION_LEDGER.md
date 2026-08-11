@@ -328,6 +328,33 @@ staged, restored, reformatted, or committed by this task.
   grant, permission-plan denial, and local runtime unavailability. The UI
   reports provider-limited, locally unavailable, grant-required, and
   plan-blocked totals separately.
+- Commit: `92c6dde3`.
+
+### M5f — scoped approval broker
+
+- Status: `VERIFIED`
+- RED evidence: the permission registry could calculate `ask` and
+  `always_ask`, but no local authority boundary converted those modes into
+  bounded approval requests and single-use execution leases.
+- GREEN evidence: 12/12 focused approval-broker and permission-registry tests
+  pass; app TypeScript passes; both new files pass Prettier.
+- Approval semantics: `auto` issues a scoped lease immediately, `ask` remembers
+  approval only for the current broker session, and `always_ask` creates a new
+  request for every operation. Unanswered requests expire after a bounded
+  timeout.
+- Execution safety: approved leases remain account/workspace scoped,
+  short-lived, capability-specific, single-use, and immediately revocable.
+  Profile changes and sign-out clear pending/session approvals and abort active
+  operations.
+- Validation: malformed replacement profiles are rejected before valid active
+  authority is revoked. Provider, grant, plan, and local-runtime denials remain
+  structured and distinct.
+- Privacy: approval records contain only request ID, capability, approval mode,
+  local scope IDs, and timestamps; tool arguments, absolute roots, file
+  contents, and credentials are not retained.
+- Boundary: this broker does not advertise or route a new remote mutation tool.
+  `workers/vibespace-mcp/**` remains excluded while its recorded owner is
+  unresolved.
 - Commit: pending exact-path commit.
 
 ## Completion labels
