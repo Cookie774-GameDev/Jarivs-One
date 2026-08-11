@@ -119,10 +119,9 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 - [x] Verify the remote provider receives no VibeSpace IPC capability.
 - [ ] Run focused Rust/frontend tests, Cargo check, and native Windows smoke
       for drag/resize/maximize/mode/provider switching. The focused
-      Rust/frontend tests and no-default-features Cargo check pass; installed
-      Windows smoke remains `BLOCKED — OWNER ACTION REQUIRED`, while a
-      short-target default-feature retry remains `BLOCKED — TECHNICAL` by
-      current disk capacity after its generated artifacts were cleaned.
+      Rust/frontend tests plus default-feature and no-default-features Cargo
+      checks pass; installed Windows smoke remains
+      `BLOCKED — OWNER ACTION REQUIRED`.
 - [x] Commit the verified slice.
 
 ### Task 4: History, project links, and official export snapshots

@@ -952,17 +952,15 @@ staged, restored, reformatted, or committed by this task.
   and the concurrently dirty Benchmarks Warm Schema B suite (4). None is in
   the Browser Chat/MCP changed-file set; no failing test was deleted or
   weakened.
-- Rust: `VERIFIED` for `cargo check --no-default-features`, Rust formatting,
-  and 4/4 focused Browser Chat native tests. Default-feature `cargo check`
-  remains `BLOCKED — TECHNICAL` in the pre-existing `espeak-rs-sys` Windows
-  CMake build: MSBuild cannot create/run the deeply nested linker tracking
-  path. A preceding zero-disk-space attempt was remediated by `cargo clean`,
-  which removed only 5.2 GiB of regenerable worktree Cargo artifacts.
-  A later retry with the deliberately short generated target
-  `C:\ct\pr31` could not reach the eSpeak build because C: had only about
-  129 MiB free and Rust exhausted it during dependency compilation. An exact
-  `cargo clean` removed the entire retry target (597 files, 165.1 MiB); no
-  short-target success is claimed.
+- Rust: `VERIFIED` for default-feature and no-default-features Cargo checks,
+  Rust formatting, and 4/4 focused Browser Chat native tests. The successful
+  default-feature command used the deliberately short generated target
+  `C:\ct\pr31`, disabled incremental output/debug info to fit the available
+  disk, compiled `espeak-rs-sys`, and finished in 3m27s with only 11 existing
+  dead-code warnings. Cargo then removed the exact temporary target (10,435
+  files, 1.6 GiB). An earlier low-disk attempt and 5.2 GiB worktree-target
+  cleanup remain recorded as recovered environmental setup, not test
+  failures.
 - AI-boundary workflow: `BLOCKED — TECHNICAL`; the pinned
   `promptfoo@0.121.20` executable is not installed locally and
   `npx --no-install` correctly refused to fetch it. Dependency installation
