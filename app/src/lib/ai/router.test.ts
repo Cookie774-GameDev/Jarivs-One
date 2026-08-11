@@ -269,6 +269,33 @@ describe('AI provider routing', () => {
     expect(nativeInvoke).not.toHaveBeenCalled();
   });
 
+  it('translates only a verified reasoning option into an OpenCode model variant', async () => {
+    await runAgent({
+      agent: openaiAgent,
+      chatId: 'chat-variant-1',
+      messages: [{ role: 'user', content: 'verify deeply' }],
+      provider_options: { reasoning_effort: 'xhigh' },
+    });
+
+    expect(harnessRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: 'xhigh',
+        selection: expect.objectContaining({
+          providerId: 'openai',
+          modelId: 'gpt-protected',
+        }),
+      }),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        messages: [{ role: 'user', content: 'unsafe option' }],
+        provider_options: { reasoning_effort: 'arbitrary', unsafe_extra: 'ignored' },
+      }),
+    ).rejects.toThrow(/OpenCode model variant/i);
+  });
+
   it('routes an exact local feature connection independently from the chat model', async () => {
     syncDiscoveredOllamaModels(['qwen3:8b']);
     useAuthStore.setState({

@@ -91,6 +91,7 @@ describe('runAgent OpenCode adapter', () => {
           },
         ],
         workingDirectory: 'C:\\workspace',
+        variant: 'xhigh',
         onChunk: (chunk) => chunks.push(chunk),
       }),
     ).resolves.toEqual({
@@ -112,6 +113,7 @@ describe('runAgent OpenCode adapter', () => {
         selection: { providerId: 'openai', modelId: 'gpt-exact' },
         system: 'SYSTEM',
         workingDirectory: 'C:\\workspace',
+        variant: 'xhigh',
         parts: [
           { type: 'text', text: 'Assistant: Earlier\n\nUser: Look at this' },
           {

@@ -162,6 +162,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
               providerID: resolvedSelection.providerId,
               modelID: resolvedSelection.modelId,
             },
+            ...(input.variant ? { variant: input.variant } : {}),
             parts: input.parts,
             ...(input.system ? { system: input.system } : {}),
             ...(input.tools ? { tools: input.tools } : {}),

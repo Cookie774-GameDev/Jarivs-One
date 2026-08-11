@@ -36,6 +36,7 @@ export interface OpenCodeRunAgentInput {
   agent: Agent;
   messages: readonly LLMMessage[];
   selection: HarnessModelSelection;
+  variant?: string;
   scopeId: string;
   purpose?: AiPurpose;
   signal?: AbortSignal;
@@ -236,6 +237,7 @@ export function createOpenCodeRunAgentAdapter(
       for await (const event of harness.send({
         sessionId: record.session.id,
         selection: input.selection,
+        ...(input.variant ? { variant: input.variant } : {}),
         system: input.compiledPrompt?.systemText ?? input.agent.system_prompt,
         parts,
         ...(workingDirectory ? { workingDirectory } : {}),

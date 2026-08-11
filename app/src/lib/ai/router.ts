@@ -453,6 +453,31 @@ function classifyLocalFailure(error: unknown): LocalInferenceFailure {
     : 'inference_failed';
 }
 
+const OPEN_CODE_MODEL_VARIANTS = new Set([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+]);
+
+function resolveOpenCodeVariant(
+  options: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  if (!options) return undefined;
+  const candidates = [options.reasoning_effort, options.thinking_level].filter(
+    (value): value is string => typeof value === 'string',
+  );
+  if (candidates.length === 0) return undefined;
+  const unique = [...new Set(candidates)];
+  if (unique.length !== 1 || !OPEN_CODE_MODEL_VARIANTS.has(unique[0]!)) {
+    throw new Error('OpenCode model variant is invalid or ambiguous.');
+  }
+  return unique[0];
+}
+
 export interface RunAgentRequest {
   agent: Agent;
   messages: LLMMessage[];
@@ -568,6 +593,7 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
   }
 
   const selection = resolveOpenCodeSelection(req);
+  const variant = resolveOpenCodeVariant(req.provider_options);
   const scopeId =
     req.chatId ??
     req.requestId ??
@@ -579,6 +605,7 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
       agent: req.agent,
       messages: req.messages,
       selection,
+      variant,
       scopeId,
       purpose: req.purpose ?? 'chat',
       signal: req.signal,
