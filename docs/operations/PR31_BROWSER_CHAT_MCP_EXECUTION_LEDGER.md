@@ -1021,3 +1021,22 @@ Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,
 `IMPLEMENTED — PROVIDER VERIFICATION REQUIRED`,
 `BLOCKED — PROVIDER CAPABILITY`, `BLOCKED — OWNER ACTION REQUIRED`,
 `BLOCKED — TECHNICAL`, and `NOT STARTED` are used.
+
+## 2026-08-11 post-review hardening audit
+
+- Browser Chat production paths remain unchanged after the mandatory-review
+  closure commit `b571d20e`. The later OpenCode harness work adds ordinary
+  Tauri-builder commands and a read-only plugin gateway, but does not change
+  Browser Chat repositories, relay ownership, permission profiles, provider
+  surfaces, migration, or native child-WebView lifecycle code.
+- The current Browser Chat/bridge focused gate passes 33 files and 232/232
+  tests. This is one additional passing relay test compared with the earlier
+  231-test closure record.
+- App TypeScript passes against the combined Browser Chat and OpenCode
+  composition.
+- A fresh no-default-features Rust test attempt reached dependency compilation
+  and then failed because the C: volume had no free space. The exact generated
+  `C:\ct\pr31-audit` target was cleaned with `cargo clean` (4,692 files,
+  1.9 GiB). This is an environmental verification block, not a test failure;
+  the earlier verified default/no-default Browser Chat native results remain
+  the latest completed native evidence.
