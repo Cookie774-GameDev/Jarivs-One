@@ -864,16 +864,57 @@ staged, restored, reformatted, or committed by this task.
   provider-side rejection all produce the expected native events and states.
 - Commit: `9185eb09`.
 
+### Mandatory independent-review remediation
+
+- First-review disposition: `NOT READY`; the independent reviewer reported
+  six P1 and two P2 findings. No finding was waived.
+- Presentation modes: Provider and VibeSpace modes are now persisted per
+  binding while retaining the same keyed provider child surface. Commit:
+  `141ce6bc`.
+- Account isolation: each VibeSpace account receives a random opaque
+  session-persisted profile key. Native child labels, WebView data
+  directories, controller caches, binding profile keys, and navigation
+  evidence are scoped by that key. Cross-account navigation is ignored.
+  Commit: `771c19c2`.
+- Workspace authority: grants, permission profiles, bridge-client scope
+  matching, runtime-host state, and relay lifecycle now carry the exact
+  account/workspace/project triple. Workspace transitions revoke the old
+  grant before replacement. Commit: `45c7c40b`.
+- Ordered native operations: open/hide commands now use one FIFO native
+  operation worker and resolve only after the operation completes. Native
+  create, navigate, focus, geometry, and hide failures reject to the existing
+  Browser Chat error/fallback UI. Commit: `a84c14ad`.
+- Provider-project composition: the durable exact-scope link supplies the
+  landing URL and provider project key for new/unbound sessions and drives
+  the local project status. Commit: `63ea176e`.
+- Import safety: file size is rejected before allocation; supported File
+  streams report bounded read progress and honor cancellation; the UI exposes
+  phase/percentage and Cancel; default limits are 64 MiB archive and 24 MiB
+  conversations entry; the importer no longer clones the whole input buffer.
+  Commit: `f33680a4`.
+- Concurrent updates: binding patches now read the latest row inside the
+  Dexie write transaction, preserving simultaneous independent mutations.
+  Commit: `d3078675`.
+- Export branches: absent/invalid `current_node` falls back only to one
+  provable leaf. Multiple leaves reject as ambiguous instead of merging
+  alternate branches. Commit: `fb2e4ffd`.
+- Closure evidence after all remediations: 33 Browser Chat/bridge test files
+  and 229 tests pass; the production build passes with 4,815 modules; release
+  manifest passes 44/44; four focused native surface tests pass; Cargo
+  no-default-features check and Rust formatting pass.
+- Second-review disposition: `PENDING` at this checkpoint. Completion is not
+  claimed until the mandatory independent reviewer evaluates the remediated
+  head.
+
 ## Final requirements and production-composition audit
 
 ### Automated gate evidence
 
-- App production build: `VERIFIED`; `tsc -b` and Vite completed with 4,814
+- App production build: `VERIFIED`; `tsc -b` and Vite completed with 4,815
   modules transformed. Existing chunk-size and mixed-import warnings remain.
 - Release manifest: `VERIFIED`; 44/44 Node tests pass.
-- Browser Chat focused suites: `VERIFIED`; the latest provider
-  component/controller/status run passes 22/22. Earlier milestone entries
-  retain the larger focused-suite evidence for each slice.
+- Browser Chat focused suites: `VERIFIED`; the final Browser Chat and bridge
+  run passes 33 files and 229/229 tests.
 - VibeSpace MCP Worker: `VERIFIED` read-only check only; its existing `check`
   command passed 29/29 tests, TypeScript, and Wrangler deployment dry-run. No
   deployment occurred and no Worker file was changed.
@@ -884,8 +925,8 @@ staged, restored, reformatted, or committed by this task.
   and the concurrently dirty Benchmarks Warm Schema B suite (4). None is in
   the Browser Chat/MCP changed-file set; no failing test was deleted or
   weakened.
-- Rust: `VERIFIED` for `cargo check --no-default-features` and the focused
-  Browser Chat native tests recorded in M6a/M6c. Default-feature `cargo check`
+- Rust: `VERIFIED` for `cargo check --no-default-features`, Rust formatting,
+  and 4/4 focused Browser Chat native tests. Default-feature `cargo check`
   remains `BLOCKED — TECHNICAL` in the pre-existing `espeak-rs-sys` Windows
   CMake build: MSBuild cannot create/run the deeply nested linker tracking
   path. A preceding zero-disk-space attempt was remediated by `cargo clean`,
