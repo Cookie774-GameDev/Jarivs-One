@@ -703,7 +703,7 @@ staged, restored, reformatted, or committed by this task.
 - Visual boundary: the in-app browser visual smoke remains unavailable in
   this environment because its kernel asset bootstrap failed before a tab
   could be created; no visual result is claimed from that failed attempt.
-- Commit: pending.
+- Commit: `0d1e135d`.
 
 ## Completion labels
 
