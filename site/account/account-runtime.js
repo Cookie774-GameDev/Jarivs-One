@@ -113,6 +113,7 @@ async function initialize() {
       },
     });
     vibeSupabase.auth.onAuthStateChange((_event, session) => {
+      if (recoverySessionLocked && session?.user) return;
       queueMicrotask(() => void transitionToSession(session));
     });
     const { data, error } = await vibeSupabase.auth.getSession();
@@ -149,6 +150,7 @@ nodes.resendCodeButton.addEventListener('click', resendCode);
 nodes.codeBackButton.addEventListener('click', () => selectAuthMode(authMode, { preserveEmail: true }));
 nodes.newPasswordForm.addEventListener('submit', submitNewPassword);
 nodes.passwordBackButton.addEventListener('click', async () => {
+  recoverySessionLocked = false;
   recoveryVerified = false;
   pendingVerification = null;
   clearSecretInputs();
