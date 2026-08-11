@@ -170,6 +170,7 @@ export function BrowserChatHub({
   const setProvider = useBrowserChatStore((state) => state.setProvider);
   const setEngine = useBrowserChatStore((state) => state.setEngine);
   const legacyChatPreferences = useBrowserChatStore((state) => state.chatPreferences);
+  const clearLegacyChatPreferences = useBrowserChatStore((state) => state.clearChatPreferences);
   const runtime = useBrowserChatStore((state) => state.providerRuntime[providerId]);
   const provider = browserChatProvider(providerId);
   const pageStatus = runtime?.pageStatus ?? provider.pageStatus;
@@ -267,6 +268,7 @@ export function BrowserChatHub({
       accountId,
       workspaceId: bindingWorkspaceId,
       accountProfileKey,
+      clearCollapsedChatPreferences: clearLegacyChatPreferences,
       preferences: legacyChatPreferences,
     }).catch((cause) => {
       toast.error(
@@ -280,6 +282,7 @@ export function BrowserChatHub({
     accountId,
     accountProfileKey,
     bindingWorkspaceId,
+    clearLegacyChatPreferences,
     database,
     initialSessions,
     legacyChatPreferences,

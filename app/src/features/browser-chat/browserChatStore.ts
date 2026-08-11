@@ -41,6 +41,7 @@ export interface BrowserChatState {
   readonly providerRuntime: Partial<Record<BrowserChatProviderId, ProviderRuntimeState>>;
   setEngine(engine: VibeSpaceChatEngine, chatId?: string | null): void;
   setProvider(providerId: BrowserChatProviderId, chatId?: string | null): void;
+  clearChatPreferences(chatIds: readonly string[]): void;
   setPreferManagedSurface(preferManagedSurface: boolean): void;
   setProviderRuntime(providerId: BrowserChatProviderId, state: ProviderRuntimeState): void;
 }
@@ -58,6 +59,7 @@ type LegacyBrowserChatMigrationInput = {
   readonly accountId: string;
   readonly workspaceId: string;
   readonly accountProfileKey: BrowserChatAccountProfileKey;
+  readonly clearCollapsedChatPreferences: (chatIds: readonly string[]) => void;
   readonly preferences: Readonly<Record<string, BrowserChatPreference>>;
   readonly clock?: () => number;
   readonly idFactory?: () => string;
@@ -121,11 +123,13 @@ export async function migrateLegacyBrowserChatPreferences({
   accountId,
   workspaceId,
   accountProfileKey,
+  clearCollapsedChatPreferences,
   preferences,
   clock,
   idFactory,
 }: LegacyBrowserChatMigrationInput): Promise<number> {
   const repository = createBrowserChatBindingRepository(database, clock, idFactory);
+  const collapsedChatIds = new Set<string>();
   let migrated = await database.transaction(
     'rw',
     database.browser_chat_bindings,
@@ -153,6 +157,8 @@ export async function migrateLegacyBrowserChatPreferences({
           : undefined;
 
         if (conflict && conflict.id !== binding.id) {
+          clearCollapsedChatPreferences([binding.chatId]);
+          collapsedChatIds.add(binding.chatId);
           await database.browser_chat_bindings.put({
             ...conflict,
             projectId: conflict.projectId ?? binding.projectId,
@@ -183,6 +189,7 @@ export async function migrateLegacyBrowserChatPreferences({
   const browserPreferences = Object.entries(preferences).filter(
     ([chatId, preference]) =>
       validChatId(chatId) &&
+      !collapsedChatIds.has(chatId) &&
       preference.engine === 'browser' &&
       isBrowserChatProviderId(preference.providerId),
   );
@@ -246,6 +253,14 @@ export function createBrowserChatStore(storage: BrowserChatStorage = localStorag
                 }
               : { providerId },
           ),
+        clearChatPreferences: (chatIds) =>
+          set((current) => {
+            const chatPreferences = { ...current.chatPreferences };
+            for (const chatId of chatIds) {
+              if (validChatId(chatId)) delete chatPreferences[chatId];
+            }
+            return { chatPreferences };
+          }),
         setPreferManagedSurface: (preferManagedSurface) => set({ preferManagedSurface }),
         setProviderRuntime: (providerId, state) =>
           set((current) => ({

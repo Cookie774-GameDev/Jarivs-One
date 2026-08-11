@@ -60,6 +60,19 @@ describe('Browser Chat engine state', () => {
     expect(storage.getItem(BROWSER_CHAT_STORAGE_KEY)).toContain('"chat-native"');
   });
 
+  it('persistently retires collapsed legacy browser preferences', () => {
+    const storage = memoryStorage();
+    const store = createBrowserChatStore(storage);
+    store.getState().setEngine('browser', 'collapsed-chat');
+    store.getState().setEngine('browser', 'retained-chat');
+
+    store.getState().clearChatPreferences(['collapsed-chat']);
+
+    expect(store.getState().chatPreferences).not.toHaveProperty('collapsed-chat');
+    expect(store.getState().chatPreferences).toHaveProperty('retained-chat');
+    expect(storage.getItem(BROWSER_CHAT_STORAGE_KEY)).not.toContain('collapsed-chat');
+  });
+
   it('defaults every unconfigured new conversation to native without changing explicit Browser chats', () => {
     const store = createBrowserChatStore(memoryStorage());
     store.getState().setEngine('browser');
@@ -166,6 +179,7 @@ describe('legacy Browser Chat preference migration', () => {
       workspaceId: 'workspace-1',
       accountProfileKey:
         'profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const,
+      clearCollapsedChatPreferences: () => undefined,
       preferences,
       clock: () => 100,
       idFactory: () => `migrated-${++id}`,
@@ -259,12 +273,27 @@ describe('legacy Browser Chat preference migration', () => {
         updatedAt: 51,
       },
     ]);
+    await database.chats.add({
+      id: 'legacy-duplicate-chat' as ChatId,
+      workspace_id: 'workspace-1' as WorkspaceId,
+      title: 'Legacy duplicate',
+      mode: 'chat',
+      active_agent_ids: [],
+      created_at: 1,
+      updated_at: 2,
+    });
+    const preferences: Record<string, BrowserChatPreference> = {
+      'legacy-duplicate-chat': { engine: 'browser', providerId: 'chatgpt' },
+    };
     const input = {
       database,
       accountId: 'account-1',
       workspaceId: 'workspace-1',
       accountProfileKey,
-      preferences: {},
+      preferences,
+      clearCollapsedChatPreferences: (chatIds: readonly string[]) => {
+        for (const chatId of chatIds) delete preferences[chatId];
+      },
       clock: () => 100,
     };
 
@@ -286,6 +315,13 @@ describe('legacy Browser Chat preference migration', () => {
     expect(await database.browser_chat_bindings.get('foreign-account')).toMatchObject({
       providerProfileKey: 'browser-chat/chatgpt',
     });
+    expect(preferences).not.toHaveProperty('legacy-duplicate-chat');
+    await expect(
+      database.browser_chat_bindings
+        .where('[accountId+workspaceId]')
+        .equals(['account-1', 'workspace-1'])
+        .count(),
+    ).resolves.toBe(2);
 
     database.close();
     await database.open();
