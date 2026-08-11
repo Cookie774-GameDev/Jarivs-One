@@ -61,7 +61,7 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 - [x] Implement repositories with constructor-injected database, clock, and ID
       factory; validate scope and immutable identity fields at every mutation.
 - [x] Run the focused tests until GREEN, then run the adjacent migration suite.
-- [ ] Format, inspect the exact diff, scan added lines for credentials, and
+- [x] Format, inspect the exact diff, scan added lines for credentials, and
       commit the verified slice.
 
 ### Task 2: Provider navigation adapters and durable session rail
@@ -83,9 +83,9 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
   allowlisted provider/conversation/project keys; Browser Chat rail actions
   for new, reopen, rename, pin, project move, remove binding, and mode switch.
 
-- [ ] Reproduce localStorage-only session inference and missing durable rail
+- [x] Reproduce localStorage-only session inference and missing durable rail
       operations with focused failing tests.
-- [ ] Implement provider adapters without DOM inspection.
+- [x] Implement provider adapters without DOM inspection.
 - [ ] Migrate Browser Chat list selection to the durable binding repository
       while retaining per-chat engine/provider compatibility.
 - [ ] Implement keyboard-accessible pinned and provider-session sections.

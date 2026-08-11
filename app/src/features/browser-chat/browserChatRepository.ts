@@ -4,6 +4,7 @@ import type {
   BrowserChatProvider,
   ProviderProjectLinkRow,
 } from '@/lib/db/schema';
+import { validateProviderNavigationUrl, type ProviderNavigationKind } from './providerNavigation';
 
 export type BrowserChatScope = {
   readonly accountId: string;
@@ -61,23 +62,6 @@ export type ProviderProjectLinkUpdateInput = Partial<
 type Clock = () => number;
 type IdFactory = () => string;
 
-const URL_RULES: Readonly<
-  Record<BrowserChatProvider, { readonly host: string; readonly path: RegExp }>
-> = {
-  chatgpt: {
-    host: 'chatgpt.com',
-    path: /^\/(?:c\/[\w-]+|g\/[\w-]+(?:\/(?:c\/[\w-]+|project))?|project\/[\w-]+)\/?$/,
-  },
-  claude: {
-    host: 'claude.ai',
-    path: /^\/(?:chat|project)\/[\w-]+\/?$/,
-  },
-  gemini: {
-    host: 'gemini.google.com',
-    path: /^\/app(?:\/[\w-]+)?\/?$/,
-  },
-};
-
 function requiredString(value: string, errorCode: string, maxLength = 512): string {
   const normalized = value.trim();
   if (!normalized || normalized.length > maxLength) throw new Error(errorCode);
@@ -102,28 +86,15 @@ function normalizeScope(scope: BrowserChatScope): BrowserChatScope {
 function normalizeProviderUrl(
   provider: BrowserChatProvider,
   value: string | undefined,
+  requiredKind: ProviderNavigationKind,
   errorCode: string,
 ): string | undefined {
   if (value === undefined) return undefined;
-  let url: URL;
   try {
-    url = new URL(value);
+    return validateProviderNavigationUrl(provider, value, requiredKind);
   } catch {
     throw new Error(errorCode);
   }
-  const rule = URL_RULES[provider];
-  if (
-    url.protocol !== 'https:' ||
-    url.hostname !== rule.host ||
-    url.port !== '' ||
-    url.username !== '' ||
-    url.password !== '' ||
-    !rule.path.test(url.pathname)
-  ) {
-    throw new Error(errorCode);
-  }
-  url.hash = '';
-  return url.toString();
 }
 
 function scoped<T extends BrowserChatScope>(row: T | undefined, scope: BrowserChatScope): row is T {
@@ -163,6 +134,7 @@ export function createBrowserChatBindingRepository(
       const resumeUrl = normalizeProviderUrl(
         input.provider,
         input.resumeUrl,
+        'conversation',
         'browser_chat_resume_url_invalid',
       );
       if (resumeUrl && !providerConversationKey) {
@@ -311,6 +283,7 @@ export function createBrowserChatBindingRepository(
           : normalizeProviderUrl(
               current.provider,
               patch.resumeUrl,
+              'conversation',
               'browser_chat_resume_url_invalid',
             );
       if (resumeUrl && !providerConversationKey) {
@@ -414,6 +387,7 @@ export function createProviderProjectLinkRepository(
       const providerProjectUrl = normalizeProviderUrl(
         input.provider,
         input.providerProjectUrl,
+        'project',
         'provider_project_url_invalid',
       );
       const timestamp = clock();
@@ -490,6 +464,7 @@ export function createProviderProjectLinkRepository(
             : normalizeProviderUrl(
                 current.provider,
                 patch.providerProjectUrl,
+                'project',
                 'provider_project_url_invalid',
               ),
         state: patch.state ?? current.state,

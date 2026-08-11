@@ -66,6 +66,22 @@ staged, restored, reformatted, or committed by this task.
 - TypeScript: `npm run typecheck` in `app` passed after the final GREEN run.
 - Formatting and diff hygiene: exact owned paths pass Prettier and
   `git diff --check`.
+- Commit: `1be90cbf`.
+
+### M2a — provider top-level navigation adapters
+
+- Status: `VERIFIED`
+- RED evidence: the new adapter suite first failed to resolve the missing
+  module, then failed 9 behavior cases against an explicit null/deny stub.
+- GREEN evidence: 15/15 provider-navigation cases pass; the combined
+  navigation, repository, and migration gate passes 40/40; app TypeScript
+  passes.
+- Behavior: adapters accept only exact provider HTTPS origins and supported
+  home/conversation/project paths, strip query/fragment metadata, extract only
+  opaque conversation/project keys, and reject spoofed origins, credentials,
+  non-default ports, and unsupported paths.
+- Repository integration: binding and provider-project URL validation now
+  consumes the shared adapter instead of duplicating provider URL assumptions.
 - Commit: pending exact-path commit.
 
 ## Completion labels
