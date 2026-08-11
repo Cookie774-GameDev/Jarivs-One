@@ -668,7 +668,7 @@ staged, restored, reformatted, or committed by this task.
   advertised as locally executable until a production isolated host, sealed
   browser-authority issuer, and relay route are composed and verified. The
   separately owned Worker remains untouched.
-- Commit: pending.
+- Commit: `552bcf7b`.
 
 ## Completion labels
 
