@@ -9,16 +9,16 @@ type AuthorityScope = Readonly<{
   projectId: string | null;
 }>;
 
-type SessionAuthority = Readonly<{
+export type ToolGatewayAuthorityClaim = Readonly<{
   scope: AuthorityScope;
   generation: number;
 }>;
 
-const sessionAuthorities = new Map<string, SessionAuthority>();
+const sessionAuthorities = new Map<string, ToolGatewayAuthorityClaim>();
 type MutationGrant = {
   mode: 'once' | 'always';
   expiresAt: number;
-  authority: SessionAuthority;
+  authority: ToolGatewayAuthorityClaim;
 };
 const grants = new Map<string, Map<string, MutationGrant>>();
 const ONCE_GRANT_TTL_MS = 2 * 60_000;
@@ -67,20 +67,31 @@ function ensureScopeObserver(): void {
   });
 }
 
-function currentAuthority(): SessionAuthority | null {
+function currentAuthority(): ToolGatewayAuthorityClaim | null {
   ensureScopeObserver();
   const scope = activeScope();
   return scope ? { scope, generation } : null;
 }
 
-export function bindToolGatewaySessionAuthority(sessionId: string): boolean {
+function sameAuthority(left: ToolGatewayAuthorityClaim, right: ToolGatewayAuthorityClaim): boolean {
+  return left.generation === right.generation && sameScope(left.scope, right.scope);
+}
+
+export function captureToolGatewayAuthorityClaim(): ToolGatewayAuthorityClaim | null {
+  return currentAuthority();
+}
+
+export function bindToolGatewaySessionAuthority(
+  sessionId: string,
+  expected: ToolGatewayAuthorityClaim,
+): boolean {
   const current = currentAuthority();
-  if (!current) return false;
+  if (!current || !sameAuthority(expected, current)) return false;
   const existing = sessionAuthorities.get(sessionId);
   if (existing) {
-    return existing.generation === current.generation && sameScope(existing.scope, current.scope);
+    return sameAuthority(existing, expected);
   }
-  sessionAuthorities.set(sessionId, current);
+  sessionAuthorities.set(sessionId, expected);
   return true;
 }
 
@@ -92,12 +103,7 @@ export function releaseToolGatewaySessionAuthority(sessionId: string): void {
 export function authorizeToolGatewayRequest(request: ToolGatewayRequest): boolean {
   const current = currentAuthority();
   const bound = sessionAuthorities.get(request.sessionId);
-  return Boolean(
-    current &&
-    bound &&
-    bound.generation === current.generation &&
-    sameScope(bound.scope, current.scope),
-  );
+  return Boolean(current && bound && sameAuthority(bound, current));
 }
 
 export function grantToolGatewayMutation(
@@ -107,12 +113,7 @@ export function grantToolGatewayMutation(
 ): () => void {
   const current = currentAuthority();
   const bound = sessionAuthorities.get(sessionId);
-  if (
-    !current ||
-    !bound ||
-    bound.generation !== current.generation ||
-    !sameScope(bound.scope, current.scope)
-  ) {
+  if (!current || !bound || !sameAuthority(bound, current)) {
     throw new Error('tool_gateway_authority_unavailable');
   }
   let session = grants.get(sessionId);
@@ -154,10 +155,8 @@ export function authorizeToolGatewayMutation(request: ToolGatewayRequest): boole
     !grant ||
     !current ||
     !bound ||
-    grant.authority.generation !== current.generation ||
-    !sameScope(grant.authority.scope, current.scope) ||
-    grant.authority.generation !== bound.generation ||
-    !sameScope(grant.authority.scope, bound.scope) ||
+    !sameAuthority(grant.authority, current) ||
+    !sameAuthority(grant.authority, bound) ||
     grant.expiresAt < Date.now()
   ) {
     session?.delete(capability);

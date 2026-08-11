@@ -10,7 +10,10 @@ import {
   grantToolGatewayMutation,
   installToolGatewayPluginReadPort,
 } from './toolGatewayProduction';
-import { bindToolGatewaySessionAuthority } from './toolGatewayAuthority';
+import {
+  bindToolGatewaySessionAuthority,
+  captureToolGatewayAuthorityClaim,
+} from './toolGatewayAuthority';
 import { parseToolGatewayRequest } from './toolGatewayProtocol';
 
 function mutation() {
@@ -34,8 +37,9 @@ describe('production tool gateway dependencies', () => {
       workspaceId: 'workspace-a' as WorkspaceId,
       projectId: 'project-a' as ProjectId,
     });
-    bindToolGatewaySessionAuthority('session-1');
-    bindToolGatewaySessionAuthority('different-session');
+    const authority = captureToolGatewayAuthorityClaim()!;
+    bindToolGatewaySessionAuthority('session-1', authority);
+    bindToolGatewaySessionAuthority('different-session', authority);
   });
 
   it('consumes an exact short-lived session grant once', async () => {

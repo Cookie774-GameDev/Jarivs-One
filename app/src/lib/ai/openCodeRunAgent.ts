@@ -11,7 +11,9 @@ import type {
 } from '@/lib/harness/types';
 import {
   bindToolGatewaySessionAuthority,
+  captureToolGatewayAuthorityClaim,
   releaseToolGatewaySessionAuthority,
+  type ToolGatewayAuthorityClaim,
 } from '@/lib/harness/toolGatewayAuthority';
 import type {
   AiPurpose,
@@ -65,11 +67,13 @@ export interface OpenCodeRunAgentAdapter {
 }
 
 export interface OpenCodeSessionAuthorityPort {
-  bind(sessionId: string): boolean;
+  capture(): ToolGatewayAuthorityClaim | null;
+  bind(sessionId: string, expected: ToolGatewayAuthorityClaim): boolean;
   release(sessionId: string): void;
 }
 
 const productionSessionAuthority: OpenCodeSessionAuthorityPort = {
+  capture: captureToolGatewayAuthorityClaim,
   bind: bindToolGatewaySessionAuthority,
   release: releaseToolGatewaySessionAuthority,
 };
@@ -217,6 +221,8 @@ export function createOpenCodeRunAgentAdapter(
   return {
     async run(input) {
       if (input.signal?.aborted) throw abortError();
+      const authorityClaim = authority.capture();
+      if (!authorityClaim) throw new Error('OpenCode session authority is unavailable.');
       const scopeId = normalizeScopeId(input.scopeId);
       const parentScopeId =
         input.parentScopeId === undefined ? undefined : normalizeScopeId(input.parentScopeId);
@@ -244,7 +250,7 @@ export function createOpenCodeRunAgentAdapter(
             title: input.agent.name.slice(0, 256),
             ...(workingDirectory ? { workingDirectory } : {}),
           });
-          if (!authority.bind(session.id)) {
+          if (!authority.bind(session.id, authorityClaim)) {
             await harness.deleteSession?.(session.id, workingDirectory).catch(() => undefined);
             throw new Error('OpenCode session authority is unavailable.');
           }
@@ -284,7 +290,7 @@ export function createOpenCodeRunAgentAdapter(
           ...(parentSessionId ? { parentSessionId } : {}),
           ...(workingDirectory ? { workingDirectory } : {}),
         });
-        if (!authority.bind(session.id)) {
+        if (!authority.bind(session.id, authorityClaim)) {
           await harness.deleteSession?.(session.id, workingDirectory).catch(() => undefined);
           throw new Error('OpenCode session authority is unavailable.');
         }
@@ -298,7 +304,7 @@ export function createOpenCodeRunAgentAdapter(
         };
         sessions.set(scopeId, record);
       }
-      if (!authority.bind(record.session.id)) {
+      if (!authority.bind(record.session.id, authorityClaim)) {
         throw new Error('OpenCode session authority changed.');
       }
       await input.onSessionBound?.({

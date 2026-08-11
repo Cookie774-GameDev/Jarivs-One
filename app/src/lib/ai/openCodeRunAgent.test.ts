@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Agent } from '@/types';
 import type { ProjectId, WorkspaceId } from '@/types/common';
 import { clearToolGatewayAuthorityForTests } from '@/lib/harness/toolGatewayAuthority';
+import type { ToolGatewayAuthorityClaim } from '@/lib/harness/toolGatewayAuthority';
 import type {
   CreateHarnessSession,
   HarnessEvent,
@@ -24,6 +25,18 @@ const agent: Agent = {
   created_at: 1,
   updated_at: 1,
 };
+
+function authorityClaim(generation: number): ToolGatewayAuthorityClaim {
+  return {
+    scope: {
+      accountId: 'account-a',
+      accountSource: 'local',
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+    },
+    generation,
+  };
+}
 
 function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
   const createSession = vi.fn(async (input: CreateHarnessSession) => ({
@@ -55,8 +68,10 @@ function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
 describe('runAgent OpenCode adapter', () => {
   it('binds a newly created OpenCode session before it can send tools', async () => {
     const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    const claim = authorityClaim(1);
     const authority = {
-      bind: vi.fn(() => true),
+      capture: vi.fn(() => claim),
+      bind: vi.fn((_sessionId: string, _claim: unknown) => true),
       release: vi.fn(),
     };
     const adapter = createOpenCodeRunAgentAdapter(fake.harness, authority);
@@ -68,10 +83,44 @@ describe('runAgent OpenCode adapter', () => {
       scopeId: 'scope-authority',
     });
 
-    expect(authority.bind).toHaveBeenCalledWith('session-1');
+    expect(authority.bind).toHaveBeenCalledWith('session-1', claim);
     expect(authority.bind.mock.invocationCallOrder[0]).toBeLessThan(
       fake.send.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('deletes a session and never sends when authority changes during creation', async () => {
+    const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    let resolveCreation: ((session: { id: string; chatId: string }) => void) | undefined;
+    fake.createSession.mockImplementationOnce(
+      (input) =>
+        new Promise((resolve) => {
+          resolveCreation = resolve;
+        }),
+    );
+    const initialAuthority = authorityClaim(1);
+    let currentAuthority = initialAuthority;
+    const authority = {
+      capture: vi.fn(() => currentAuthority),
+      bind: vi.fn((_sessionId: string, claim: unknown) => claim === currentAuthority),
+      release: vi.fn(),
+    };
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness, authority);
+
+    const result = adapter.run({
+      agent,
+      messages: [{ role: 'user', content: 'hello' }],
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      scopeId: 'scope-transition',
+    });
+    await vi.waitFor(() => expect(fake.createSession).toHaveBeenCalledOnce());
+    currentAuthority = authorityClaim(2);
+    resolveCreation?.({ id: 'session-late', chatId: 'scope-transition' });
+
+    await expect(result).rejects.toThrow(/authority is unavailable/i);
+    expect(authority.bind).toHaveBeenCalledWith('session-late', initialAuthority);
+    expect(fake.deleteSession).toHaveBeenCalledWith('session-late', undefined);
+    expect(fake.send).not.toHaveBeenCalled();
   });
 
   beforeEach(() => {
