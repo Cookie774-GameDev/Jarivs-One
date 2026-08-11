@@ -153,6 +153,22 @@ describe('Browser Chat permission registry', () => {
     });
   });
 
+  it('reports a provider-plan limit separately from local runtime availability', () => {
+    const catalog = calculateCapabilityCatalog({
+      profile: profile('project_developer'),
+      grantedCapabilities: new Set(BROWSER_CHAT_CAPABILITIES.map((entry) => entry.id)),
+      providerCapabilities: new Set(['files.list', 'files.read', 'files.search']),
+      availableCapabilities: new Set(BROWSER_CHAT_CAPABILITIES.map((entry) => entry.id)),
+      providerBridgeAvailable: true,
+    });
+    expect(catalog.find((entry) => entry.id === 'files.modify')).toMatchObject({
+      denial: { source: 'provider', code: 'provider_capability_unsupported' },
+    });
+    expect(catalog.find((entry) => entry.id === 'files.read')).toMatchObject({
+      available: true,
+    });
+  });
+
   it('revokes active work immediately and rejects stale, wrong-account, replayed, and unavailable leases', () => {
     let nextLease = 0;
     const runtime = new BrowserChatPermissionRuntime({

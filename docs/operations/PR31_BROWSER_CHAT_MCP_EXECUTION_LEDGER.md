@@ -303,6 +303,31 @@ staged, restored, reformatted, or committed by this task.
 - Design: the existing VibeSpace inspector palette and typography are
   preserved; one copper “capability circuit” rule carries the live authority
   summary, with dense controls limited to Custom mode.
+- Commit: `080ff3c9`.
+
+### M5e — provider capability truth boundary
+
+- Status: `VERIFIED`
+- Current-source check (2026-08-10): OpenAI’s official
+  [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt)
+  says full modify/write MCP is a beta for Business, Enterprise, and Edu on
+  ChatGPT web, while Pro custom MCP remains read/fetch-only. ChatGPT can still
+  require confirmation or block risky actions, and published app action
+  changes are not automatically enabled.
+- RED evidence: the catalog had one coarse provider-connected boolean, so a
+  VibeSpace developer plan could not distinguish provider-plan rejection from
+  a missing local adapter.
+- GREEN evidence: 32/32 focused provider-tier, permission registry, permission
+  panel, and Browser Chat hub tests pass; app TypeScript passes.
+- Fail-closed model: an unknown or read/fetch-only ChatGPT workspace permits
+  only non-mutating capabilities. The full catalog is provider-eligible only
+  for an explicitly verified full-MCP-beta tier; no provider-page scraping or
+  subscription inference is used.
+- Denial clarity: catalog entries now distinguish
+  `provider_capability_unsupported` from relay disconnection, missing root
+  grant, permission-plan denial, and local runtime unavailability. The UI
+  reports provider-limited, locally unavailable, grant-required, and
+  plan-blocked totals separately.
 - Commit: pending exact-path commit.
 
 ## Completion labels

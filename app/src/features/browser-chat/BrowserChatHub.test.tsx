@@ -474,7 +474,7 @@ describe('BrowserChatHub', () => {
     expect(screen.getByText('VibeSpace MCP')).toBeTruthy();
     const permissionPlan = await screen.findByLabelText('VibeSpace permission plan');
     expect((permissionPlan as HTMLSelectElement).value).toBe('read');
-    expect(screen.getByText(/unavailable in this build or provider/i)).toBeTruthy();
+    expect(screen.getByText(/write support not verified/i)).toBeTruthy();
     expect(screen.queryByText(/^file writes$/i)).toBeNull();
     expect(screen.getByText(/blocked by plan/i)).toBeTruthy();
     expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();

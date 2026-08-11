@@ -182,6 +182,7 @@ export type BrowserChatCapabilityDenial = {
     | 'capability_disabled'
     | 'workspace_grant_missing'
     | 'provider_bridge_unavailable'
+    | 'provider_capability_unsupported'
     | 'capability_unavailable';
 };
 
@@ -287,6 +288,7 @@ export function calculateCapabilityCatalog(input: {
   readonly profile: BrowserChatPermissionProfile;
   readonly grantedCapabilities: ReadonlySet<BrowserChatCapabilityId>;
   readonly availableCapabilities: ReadonlySet<BrowserChatCapabilityId>;
+  readonly providerCapabilities?: ReadonlySet<BrowserChatCapabilityId>;
   readonly providerBridgeAvailable: boolean;
 }): BrowserChatCapabilityCatalogEntry[] {
   return BROWSER_CHAT_CAPABILITIES.map((capability) => {
@@ -298,6 +300,8 @@ export function calculateCapabilityCatalog(input: {
       denial = { source: 'workspace_grant', code: 'workspace_grant_missing' };
     } else if (!input.providerBridgeAvailable) {
       denial = { source: 'provider', code: 'provider_bridge_unavailable' };
+    } else if (input.providerCapabilities && !input.providerCapabilities.has(capability.id)) {
+      denial = { source: 'provider', code: 'provider_capability_unsupported' };
     } else if (!input.availableCapabilities.has(capability.id)) {
       denial = { source: 'runtime', code: 'capability_unavailable' };
     }

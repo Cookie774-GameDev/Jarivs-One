@@ -172,7 +172,7 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
 - [x] Implement the permission registry before individual mutation tools.
 - [ ] Adapt existing approval-gated brokers one capability family at a time,
       with real fixture execution and structured results.
-- [ ] Keep provider-plan limitations distinct from VibeSpace authorization.
+- [x] Keep provider-plan limitations distinct from VibeSpace authorization.
 - [ ] Run app/Worker/native focused suites, Worker typecheck, and Wrangler dry
       run; commit each verified capability family separately.
 

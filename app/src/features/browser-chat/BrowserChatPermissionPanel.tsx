@@ -7,6 +7,11 @@ import {
   type BrowserChatPermissionPlan,
   type BrowserChatPermissionProfile,
 } from './permissionRegistry';
+import {
+  CHATGPT_PROVIDER_CAPABILITY_LABELS,
+  providerCapabilitiesForTier,
+  type ChatGptProviderCapabilityTier,
+} from './providerCapability';
 
 const PLAN_OPTIONS: readonly {
   value: BrowserChatPermissionPlan;
@@ -46,6 +51,7 @@ type Props = {
   readonly profile: BrowserChatPermissionProfile;
   readonly workspaceGranted: boolean;
   readonly providerBridgeAvailable: boolean;
+  readonly providerCapabilityTier?: ChatGptProviderCapabilityTier;
   readonly availableCapabilities: ReadonlySet<BrowserChatCapabilityId>;
   readonly disabled?: boolean;
   readonly onProfileChange: (profile: BrowserChatPermissionProfile) => void;
@@ -55,6 +61,7 @@ export function BrowserChatPermissionPanel({
   profile,
   workspaceGranted,
   providerBridgeAvailable,
+  providerCapabilityTier = 'unknown',
   availableCapabilities,
   disabled = false,
   onProfileChange,
@@ -66,11 +73,20 @@ export function BrowserChatPermissionPanel({
     profile,
     grantedCapabilities,
     availableCapabilities,
+    providerCapabilities: new Set(providerCapabilitiesForTier(providerCapabilityTier)),
     providerBridgeAvailable,
   });
   const enabled = catalog.filter((entry) => entry.approvalMode !== 'deny');
   const executable = enabled.filter((entry) => entry.available);
-  const unavailable = enabled.length - executable.length;
+  const providerLimited = enabled.filter(
+    (entry) =>
+      entry.denial?.source === 'provider' &&
+      entry.denial.code === 'provider_capability_unsupported',
+  ).length;
+  const locallyUnavailable = enabled.filter((entry) => entry.denial?.source === 'runtime').length;
+  const grantRequired = enabled.filter(
+    (entry) => entry.denial?.source === 'workspace_grant',
+  ).length;
   const activePlan = PLAN_OPTIONS.find((option) => option.value === profile.plan)!;
 
   const selectPlan = (plan: BrowserChatPermissionPlan) => {
@@ -119,13 +135,20 @@ export function BrowserChatPermissionPanel({
         </select>
       </label>
       <p className="mt-1 text-[9px] leading-4 text-muted-foreground">{activePlan.description}</p>
+      <p className="mt-1 text-[9px] leading-4 text-muted-foreground">
+        Provider support: {CHATGPT_PROVIDER_CAPABILITY_LABELS[providerCapabilityTier]}.
+      </p>
       <p
         aria-live="polite"
         className="mt-2 border-l-2 border-accent-copper/70 pl-2 text-[9px] leading-4 text-muted-foreground"
       >
         <strong className="font-medium text-foreground">{executable.length} executable now</strong>
         {' · '}
-        {unavailable} unavailable in this build or provider
+        {providerLimited} limited by provider
+        {' · '}
+        {locallyUnavailable} unavailable locally
+        {' · '}
+        {grantRequired} need a project grant
         {' · '}
         {catalog.length - enabled.length} blocked by plan
       </p>

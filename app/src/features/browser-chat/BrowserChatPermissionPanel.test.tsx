@@ -37,7 +37,8 @@ describe('BrowserChatPermissionPanel', () => {
       'Custom',
     ]);
     expect(screen.getByText(/2 executable now/i)).toBeTruthy();
-    expect(screen.getByText(/4 unavailable in this build or provider/i)).toBeTruthy();
+    expect(screen.getByText(/4 unavailable locally/i)).toBeTruthy();
+    expect(screen.getByText(/write support not verified/i)).toBeTruthy();
   });
 
   it('emits a scoped preset profile without carrying stale custom overrides', () => {
