@@ -515,6 +515,7 @@ export function BrowserChatHub({
         projectId: grant.projectId,
         root: grant.canonicalRoot,
         displayName: grant.displayName,
+        permissionProfile: grant.permissionProfile,
       });
       toast.success(
         'Read-only project approved',

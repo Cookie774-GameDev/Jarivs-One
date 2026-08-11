@@ -232,6 +232,28 @@ staged, restored, reformatted, or committed by this task.
 - Coordination limitation: the recorded `workers/vibespace-mcp/**` owner is
   still marked implementing in the root coordination ledger, so this slice
   intentionally changes only the newly owned frontend registry files.
+- Commit: `cf845024`.
+
+### M5b — permission-derived read registration
+
+- Status: `VERIFIED`
+- RED evidence: an `off` or restrictive `custom` profile still advertised
+  every fixed read tool, a profile scoped to another account/workspace was not
+  rejected, and changing only the profile did not reconnect the relay.
+- GREEN evidence: 45/45 focused permission, workspace-grant, bridge, and hub
+  tests pass; app TypeScript passes.
+- Compatibility: session grants now carry an explicit versioned `read`
+  profile. Legacy bridge callers without a profile retain the already-tested
+  read-only catalog; no mutation or terminal capability is added.
+- Dynamic registration: `fs.list` and `fs.read` are advertised only when the
+  active scoped profile enables their matching capabilities. `off`, malformed,
+  and wrong-scope profiles fail closed, and a profile-only change reconnects
+  immediately so the remote catalog cannot remain stale.
+- Privacy: registration still transmits neither the absolute workspace root,
+  account token, nor permission profile. Only the bounded tool schemas and
+  non-sensitive grant display metadata leave the device.
+- Coordination limitation: `workers/vibespace-mcp/**` remains excluded while
+  its recorded owner is unresolved.
 - Commit: pending exact-path commit.
 
 ## Completion labels

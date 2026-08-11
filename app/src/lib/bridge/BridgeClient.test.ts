@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ToolDef } from '@/lib/mcp/registry';
+import type { BrowserChatPermissionProfile } from '@/features/browser-chat/permissionRegistry';
 import {
   buildBridgeRegistrationFrame,
   BridgeClient,
@@ -63,6 +64,19 @@ const tools: ToolDef[] = [
     invoke: vi.fn(),
   },
 ];
+
+function permissionProfile(
+  plan: BrowserChatPermissionProfile['plan'],
+): BrowserChatPermissionProfile {
+  return {
+    version: 1,
+    accountId: 'account-a',
+    workspaceId: 'project-a',
+    plan,
+    overrides: {},
+    updatedAt: 1,
+  };
+}
 
 describe('Browser Chat read-only bridge protocol', () => {
   it('keeps an explicit workspace grant in session memory and revokes it', () => {
@@ -130,6 +144,42 @@ describe('Browser Chat read-only bridge protocol', () => {
       clientNonce: 'nonce_1234567890123456',
     });
     expect(frame.tools).toEqual([]);
+  });
+
+  it('derives the read catalog from the active permission profile and fails closed', () => {
+    const makeFrame = (profile: BrowserChatPermissionProfile) =>
+      buildBridgeRegistrationFrame({
+        jwt: 'jwt-test-value',
+        tools,
+        workspaceRoot: 'C:\\Users\\viper\\Projects\\Safe',
+        workspaceGrant: {
+          id: 'grant_1234567890abcdef',
+          displayName: 'Safe',
+          accountId: 'account-a',
+          projectId: 'project-a',
+          permissionProfile: profile,
+        },
+        clientNonce: 'nonce_1234567890123456',
+      });
+
+    expect(makeFrame(permissionProfile('off')).tools).toEqual([]);
+    expect(
+      makeFrame(permissionProfile('read')).tools.map(
+        (entry) => (entry.function as Record<string, unknown>).name,
+      ),
+    ).toEqual(['fs.list', 'fs.read']);
+    expect(
+      makeFrame({
+        ...permissionProfile('custom'),
+        overrides: { 'files.read': 'auto' },
+      }).tools.map((entry) => (entry.function as Record<string, unknown>).name),
+    ).toEqual(['fs.read']);
+    expect(
+      makeFrame({
+        ...permissionProfile('read'),
+        accountId: 'wrong-account',
+      }).tools,
+    ).toEqual([]);
   });
 
   it('accepts one current session-bound call and rejects replay, expiry, and unadvertised tools', () => {
@@ -411,6 +461,51 @@ describe('BridgeClient connection ownership and liveness', () => {
       server_nonce: 'nonce_abcdef1234567890',
     });
     expect(client.isConnected()).toBe(true);
+    await client.stop();
+  });
+
+  it('re-registers immediately when only the permission profile changes', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const baseGrant = {
+      id: 'grant_1234567890abcdef',
+      accountId: 'account-a',
+      projectId: 'project-a',
+      root: 'C:\\Users\\viper\\Projects\\Safe',
+      displayName: 'Safe',
+    };
+    const client = new BridgeClient({
+      url: 'wss://relay.example/bridge',
+      jwt: 'jwt',
+      mode: 'browser_chat',
+      accountId: 'account-a',
+      projectId: 'project-a',
+      workspaceGrant: {
+        ...baseGrant,
+        permissionProfile: permissionProfile('read'),
+      },
+      maxBackoffMs: 1,
+    });
+
+    const start = client.start();
+    const first = FakeWebSocket.instances[0]!;
+    first.open();
+    first.message({
+      kind: 'registered',
+      protocol_version: 2,
+      session_id: 'session_1234567890abcdef',
+      server_nonce: 'nonce_1234567890123456',
+    });
+    await start;
+
+    client.setWorkspaceGrant({
+      ...baseGrant,
+      permissionProfile: permissionProfile('off'),
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances).toHaveLength(2);
     await client.stop();
   });
 });

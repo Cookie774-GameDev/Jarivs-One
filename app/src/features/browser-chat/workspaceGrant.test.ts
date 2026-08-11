@@ -27,6 +27,13 @@ describe('Browser Chat workspace grant', () => {
       deleteAllowed: false,
       terminalAllowed: false,
       secretPolicy: 'block',
+      permissionProfile: {
+        version: 1,
+        accountId: 'account-1',
+        workspaceId: 'project-1',
+        plan: 'read',
+        overrides: {},
+      },
     });
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toEqual(grant);
   });

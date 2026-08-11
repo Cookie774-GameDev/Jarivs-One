@@ -1,4 +1,5 @@
 import { normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
+import type { BrowserChatPermissionProfile } from './permissionRegistry';
 
 export interface BrowserChatWorkspaceGrant {
   readonly id: string;
@@ -12,6 +13,7 @@ export interface BrowserChatWorkspaceGrant {
   readonly deleteAllowed: false;
   readonly terminalAllowed: false;
   readonly secretPolicy: 'block';
+  readonly permissionProfile: BrowserChatPermissionProfile;
   readonly createdAt: number;
 }
 
@@ -93,6 +95,14 @@ export function grantBrowserChatWorkspace(input: GrantInput): BrowserChatWorkspa
     deleteAllowed: false,
     terminalAllowed: false,
     secretPolicy: 'block',
+    permissionProfile: Object.freeze({
+      version: 1,
+      accountId: input.accountId,
+      workspaceId: input.projectId,
+      plan: 'read',
+      overrides: Object.freeze({}),
+      updatedAt: Date.now(),
+    }),
     createdAt: Date.now(),
   });
   publish();

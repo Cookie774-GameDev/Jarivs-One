@@ -22,6 +22,12 @@ import { toolRegistry, type ToolDef } from '@/lib/mcp/registry';
 import { listDirectory, readTextFileSample, type FsListResult, type FsReadResult } from '@/lib/fs';
 import { isPathInsideRoot, normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
+import {
+  deserializePermissionProfile,
+  permissionModeFor,
+  serializePermissionProfile,
+  type BrowserChatPermissionProfile,
+} from '@/features/browser-chat/permissionRegistry';
 
 const BRIDGE_PROTOCOL_VERSION = 2;
 const SAFE_READ_TOOLS = new Set(['fs.list', 'fs.read']);
@@ -47,6 +53,9 @@ interface BridgeRegistrationOptions {
 export interface BridgeWorkspaceGrantMetadata {
   id: string;
   displayName: string;
+  accountId?: string;
+  projectId?: string;
+  permissionProfile?: BrowserChatPermissionProfile;
 }
 
 export interface BridgeWorkspaceGrant extends BridgeWorkspaceGrantMetadata {
@@ -158,6 +167,7 @@ function safeWorkspaceRoot(root: string | undefined): string | null {
 function safeWorkspaceGrant(
   grant: BridgeWorkspaceGrant | undefined,
 ): BridgeWorkspaceGrant | undefined {
+  if (!grant) return undefined;
   const root = safeWorkspaceRoot(grant?.root);
   const id = grant?.id.trim() ?? '';
   const accountId = grant?.accountId.trim() ?? '';
@@ -174,7 +184,42 @@ function safeWorkspaceGrant(
   ) {
     return undefined;
   }
-  return { id, accountId, projectId, root, displayName };
+  const permissionProfile = safePermissionProfile(grant.permissionProfile, accountId, projectId);
+  if (grant.permissionProfile && !permissionProfile) return undefined;
+  return {
+    id,
+    accountId,
+    projectId,
+    root,
+    displayName,
+    ...(permissionProfile ? { permissionProfile } : {}),
+  };
+}
+
+function safePermissionProfile(
+  profile: BrowserChatPermissionProfile | undefined,
+  accountId: string | undefined,
+  projectId: string | undefined,
+): BrowserChatPermissionProfile | undefined {
+  if (!profile) return undefined;
+  try {
+    const validated = deserializePermissionProfile(serializePermissionProfile(profile));
+    return validated.accountId === accountId && validated.workspaceId === projectId
+      ? validated
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readToolAllowed(
+  toolName: string,
+  profile: BrowserChatPermissionProfile | undefined,
+): boolean {
+  if (!profile) return SAFE_READ_TOOLS.has(toolName);
+  const capability =
+    toolName === 'fs.list' ? 'files.list' : toolName === 'fs.read' ? 'files.read' : undefined;
+  return capability ? permissionModeFor(profile, capability) !== 'deny' : false;
 }
 
 function grantMatchesScope(
@@ -267,6 +312,13 @@ function makeNonce(): string {
 
 export function buildBridgeRegistrationFrame(options: BridgeRegistrationOptions) {
   const workspaceRoot = safeWorkspaceRoot(options.workspaceRoot);
+  const permissionProfile = safePermissionProfile(
+    options.workspaceGrant?.permissionProfile,
+    options.workspaceGrant?.accountId,
+    options.workspaceGrant?.projectId,
+  );
+  const permissionProfileInvalid =
+    Boolean(options.workspaceGrant?.permissionProfile) && !permissionProfile;
   const workspaceGrant =
     workspaceRoot &&
     options.workspaceGrant &&
@@ -280,9 +332,9 @@ export function buildBridgeRegistrationFrame(options: BridgeRegistrationOptions)
         }
       : undefined;
   const safeTools =
-    workspaceRoot && workspaceGrant
+    workspaceRoot && workspaceGrant && !permissionProfileInvalid
       ? options.tools
-          .filter((tool) => SAFE_READ_TOOLS.has(tool.name))
+          .filter((tool) => readToolAllowed(tool.name, permissionProfile))
           .sort((left, right) => left.name.localeCompare(right.name))
       : [];
   return {
@@ -475,7 +527,9 @@ export class BridgeClient {
     if (
       this.opts.workspaceGrant?.id === scoped?.id &&
       this.opts.workspaceGrant?.root === scoped?.root &&
-      this.opts.workspaceGrant?.displayName === scoped?.displayName
+      this.opts.workspaceGrant?.displayName === scoped?.displayName &&
+      JSON.stringify(this.opts.workspaceGrant?.permissionProfile) ===
+        JSON.stringify(scoped?.permissionProfile)
     ) {
       return;
     }

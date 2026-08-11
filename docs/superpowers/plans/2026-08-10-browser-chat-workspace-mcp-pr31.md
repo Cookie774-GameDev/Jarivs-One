@@ -165,8 +165,8 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
   catalogs; structured denial source; immediate revocation; bounded file,
   terminal, Git, browser, and downstream-MCP execution.
 
-- [ ] Freeze current read-tool behavior with focused tests.
-- [ ] Add failing serialization, capability calculation, catalog-diff,
+- [x] Freeze current read-tool behavior with focused tests.
+- [x] Add failing serialization, capability calculation, catalog-diff,
       revocation, sign-out cancellation, wrong-account, replay, timeout, and
       unavailable-tool tests.
 - [x] Implement the permission registry before individual mutation tools.
