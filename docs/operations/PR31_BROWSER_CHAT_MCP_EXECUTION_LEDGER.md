@@ -785,7 +785,7 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: this external action does not prove that the managed child WebView
   reopens a saved resume URL; that production-composition gap remains a
   separate checkpoint.
-- Commit: pending.
+- Commit: `a66c45fd`.
 
 ## Completion labels
 
