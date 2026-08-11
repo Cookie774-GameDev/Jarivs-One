@@ -582,7 +582,7 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: the adapter is locally executable through the existing production
   gateway but remains absent from remote Browser Chat registration until the
   separately owned Worker/relay protocol advertises and routes it end to end.
-- Commit: pending exact-path commit.
+- Commit: `a5c82c72`.
 
 ## Completion labels
 
