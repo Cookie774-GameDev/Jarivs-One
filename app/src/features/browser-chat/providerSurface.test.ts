@@ -133,6 +133,52 @@ describe('Browser Chat managed provider surface', () => {
     expect(fake.created).toHaveLength(1);
   });
 
+  it('forwards only normalized registry-owned top-level navigation metadata', async () => {
+    const fake = platform();
+    let nativeListener:
+      | ((event: {
+          providerId: string;
+          surfaceId: string;
+          url: string;
+          timestamp: number;
+          kind: string;
+        }) => void)
+      | undefined;
+    fake.implementation.subscribeNavigation = async (listener) => {
+      nativeListener = listener;
+      return () => undefined;
+    };
+    const controller = createProviderSurfaceController(fake.implementation);
+    const received: unknown[] = [];
+    await controller.subscribeNavigation?.((navigation) => received.push(navigation));
+
+    nativeListener?.({
+      providerId: 'chatgpt',
+      surfaceId: 'browser-chat-chatgpt',
+      url: 'https://chatgpt.com/c/conversation-1?temporary=true#fragment',
+      timestamp: 123,
+      kind: 'conversation',
+    });
+    nativeListener?.({
+      providerId: 'chatgpt',
+      surfaceId: 'browser-chat-chatgpt',
+      url: 'https://chatgpt.com.evil.example/c/stolen',
+      timestamp: 124,
+      kind: 'conversation',
+    });
+
+    expect(received).toEqual([
+      {
+        providerId: 'chatgpt',
+        surfaceId: 'browser-chat-chatgpt',
+        url: 'https://chatgpt.com/c/conversation-1',
+        timestamp: 123,
+        kind: 'conversation',
+        providerConversationKey: 'conversation-1',
+      },
+    ]);
+  });
+
   it('uses a truthful system-browser fallback outside the desktop shell', async () => {
     const fake = platform(false);
     const controller = createProviderSurfaceController(fake.implementation);

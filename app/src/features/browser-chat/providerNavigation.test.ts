@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { normalizeProviderNavigation, validateProviderNavigationUrl } from './providerNavigation';
 
 describe('Browser Chat provider navigation adapters', () => {
+  it('treats the registry-owned Claude new-chat URL as home navigation', () => {
+    expect(normalizeProviderNavigation('claude', 'https://claude.ai/new')).toEqual({
+      provider: 'claude',
+      kind: 'home',
+      normalizedUrl: 'https://claude.ai/new',
+    });
+  });
+
   it.each([
     [
       'chatgpt',

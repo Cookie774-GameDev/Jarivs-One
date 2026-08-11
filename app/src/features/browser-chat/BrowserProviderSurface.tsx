@@ -6,6 +6,7 @@ import { useBrowserChatStore } from './browserChatStore';
 import type { BrowserChatProviderDefinition } from './providerRegistry';
 import {
   browserChatSurface,
+  type ProviderSurfaceNavigation,
   type ProviderSurfaceController,
   type ProviderSurfaceBounds,
 } from './providerSurface';
@@ -13,15 +14,42 @@ import {
 interface BrowserProviderSurfaceProps {
   readonly provider: BrowserChatProviderDefinition;
   readonly runtime?: ProviderSurfaceController;
+  readonly onNavigation?: (navigation: ProviderSurfaceNavigation) => void;
 }
 
 export function BrowserProviderSurface({
   provider,
   runtime = browserChatSurface,
+  onNavigation,
 }: BrowserProviderSurfaceProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const [error, setError] = React.useState<string | null>(null);
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
+  const onNavigationRef = React.useRef(onNavigation);
+  onNavigationRef.current = onNavigation;
+
+  React.useEffect(() => {
+    if (!runtime.subscribeNavigation) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void runtime
+      .subscribeNavigation((navigation) => {
+        if (!disposed && navigation.providerId === provider.id) {
+          onNavigationRef.current?.(navigation);
+        }
+      })
+      .then((nextUnsubscribe) => {
+        if (disposed) {
+          nextUnsubscribe();
+        } else {
+          unsubscribe = nextUnsubscribe;
+        }
+      });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, [provider.id, runtime]);
 
   React.useEffect(() => {
     const host = hostRef.current;

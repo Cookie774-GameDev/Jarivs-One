@@ -4,10 +4,12 @@ import { isTauri } from '@/lib/utils';
 import { openExternal } from '@/lib/tauri';
 import {
   BROWSER_CHAT_PROVIDERS,
+  isBrowserChatProviderId,
   type BrowserChatProviderDefinition,
   type BrowserChatProviderId,
 } from './providerRegistry';
 import { CHATGPT_APPS_URL } from './mcpConnection';
+import { normalizeProviderNavigation, type ProviderNavigationKind } from './providerNavigation';
 
 export interface ProviderSurfaceBounds {
   readonly x: number;
@@ -25,6 +27,24 @@ export interface ManagedProviderSurface {
   setSize(size: { width: number; height: number }): Promise<void>;
 }
 
+export interface NativeProviderSurfaceNavigation {
+  readonly providerId: string;
+  readonly surfaceId: string;
+  readonly url: string;
+  readonly timestamp: number;
+  readonly kind: string;
+}
+
+export interface ProviderSurfaceNavigation {
+  readonly providerId: BrowserChatProviderId;
+  readonly surfaceId: string;
+  readonly url: string;
+  readonly timestamp: number;
+  readonly kind: ProviderNavigationKind;
+  readonly providerConversationKey?: string;
+  readonly providerProjectKey?: string;
+}
+
 export interface ProviderSurfacePlatform {
   readonly desktop: boolean;
   getSurface(label: string): Promise<ManagedProviderSurface | null>;
@@ -34,6 +54,9 @@ export interface ProviderSurfacePlatform {
   ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
   openExternal(url: string): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
+  subscribeNavigation?(
+    listener: (navigation: NativeProviderSurfaceNavigation) => void,
+  ): Promise<() => void>;
 }
 
 export interface ProviderSurfaceController {
@@ -48,6 +71,9 @@ export interface ProviderSurfaceController {
   openChatGptPlugins(): Promise<void>;
   hideAll(): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
+  subscribeNavigation?(
+    listener: (navigation: ProviderSurfaceNavigation) => void,
+  ): Promise<() => void>;
 }
 
 export type NativeBrowserChatInvoke = (
@@ -193,6 +219,35 @@ export function createProviderSurfaceController(
     async subscribeHostGeometry(listener) {
       return platform.subscribeHostGeometry?.(listener) ?? (() => undefined);
     },
+
+    async subscribeNavigation(listener) {
+      return (
+        (await platform.subscribeNavigation?.((event) => {
+          if (
+            !isBrowserChatProviderId(event.providerId) ||
+            !Number.isFinite(event.timestamp) ||
+            event.timestamp < 0
+          ) {
+            return;
+          }
+          const provider = BROWSER_CHAT_PROVIDERS.find(
+            (candidate) => candidate.id === event.providerId,
+          );
+          if (!provider || event.surfaceId !== provider.windowLabel) return;
+          const normalized = normalizeProviderNavigation(event.providerId, event.url);
+          if (!normalized || normalized.kind !== event.kind) return;
+          listener({
+            providerId: event.providerId,
+            surfaceId: event.surfaceId,
+            url: normalized.normalizedUrl,
+            timestamp: event.timestamp,
+            kind: normalized.kind,
+            providerConversationKey: normalized.conversationKey,
+            providerProjectKey: normalized.projectKey,
+          });
+        })) ?? (() => undefined)
+      );
+    },
   };
 }
 
@@ -210,9 +265,10 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
     };
   }
 
-  const [{ invoke }, { getCurrentWindow }] = await Promise.all([
+  const [{ invoke }, { getCurrentWindow }, { listen }] = await Promise.all([
     import('@tauri-apps/api/core'),
     import('@tauri-apps/api/window'),
+    import('@tauri-apps/api/event'),
   ]);
   const currentWindow = getCurrentWindow();
   const nativeInvoke: NativeBrowserChatInvoke = (command, args) => invoke(command, args);
@@ -239,6 +295,11 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
         unlistenScale();
       };
     },
+    async subscribeNavigation(listener) {
+      return listen<NativeProviderSurfaceNavigation>('browser-chat://navigation', (event) => {
+        listener(event.payload);
+      });
+    },
   };
 }
 
@@ -264,5 +325,8 @@ export const browserChatSurface: ProviderSurfaceController = {
   },
   async subscribeHostGeometry(listener) {
     return (await controller()).subscribeHostGeometry?.(listener) ?? (() => undefined);
+  },
+  async subscribeNavigation(listener) {
+    return (await controller()).subscribeNavigation?.(listener) ?? (() => undefined);
   },
 };

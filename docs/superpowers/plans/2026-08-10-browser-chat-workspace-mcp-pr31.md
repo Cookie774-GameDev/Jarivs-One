@@ -111,15 +111,15 @@ Rust, Cloudflare Workers, Durable Objects, MCP Streamable HTTP.
   bounded top-level navigation event containing provider, surface ID,
   normalized allowlisted URL, timestamp, and navigation kind.
 
-- [ ] Write failing Rust/frontend tests proving the current separate
+- [x] Write failing Rust/frontend tests proving the current separate
       `WebviewWindow` path and missing navigation metadata.
-- [ ] Replace the supported path with a main-window child WebView using the
+- [x] Replace the supported path with a main-window child WebView using the
       repository-compatible Tauri API; retain the external-browser fallback.
-- [ ] Serialize show/hide/provider-switch operations and coalesce geometry.
-- [ ] Verify the remote provider receives no VibeSpace IPC capability.
+- [x] Serialize show/hide/provider-switch operations and coalesce geometry.
+- [x] Verify the remote provider receives no VibeSpace IPC capability.
 - [ ] Run focused Rust/frontend tests, Cargo check, and native Windows smoke
       for drag/resize/maximize/mode/provider switching.
-- [ ] Commit the verified slice.
+- [x] Commit the verified slice.
 
 ### Task 4: History, project links, and official export snapshots
 

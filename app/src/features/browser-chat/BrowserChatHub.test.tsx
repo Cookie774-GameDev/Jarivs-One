@@ -18,10 +18,34 @@ import type { ChatId, WorkspaceId } from '@/types/common';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Chat } from '@/types/chat';
 
+const providerSurfaceHarness = vi.hoisted(() => ({
+  onNavigation: undefined as
+    | ((navigation: {
+        providerId: 'chatgpt';
+        surfaceId: string;
+        url: string;
+        timestamp: number;
+        kind: 'conversation';
+        providerConversationKey: string;
+      }) => void)
+    | undefined,
+}));
+
 vi.mock('./BrowserProviderSurface', () => ({
-  BrowserProviderSurface: ({ provider }: { provider: { label: string } }) => (
-    <div aria-label={`${provider.label} provider surface`}>{provider.label} real provider page</div>
-  ),
+  BrowserProviderSurface: ({
+    provider,
+    onNavigation,
+  }: {
+    provider: { label: string };
+    onNavigation?: typeof providerSurfaceHarness.onNavigation;
+  }) => {
+    providerSurfaceHarness.onNavigation = onNavigation;
+    return (
+      <div aria-label={`${provider.label} provider surface`}>
+        {provider.label} real provider page
+      </div>
+    );
+  },
 }));
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -63,6 +87,7 @@ describe('BrowserChatHub', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.stubEnv('VITE_PHONE_JARVIS_CLOUD_URL', 'https://vibespace-mcp.fly.dev');
+    providerSurfaceHarness.onNavigation = undefined;
     localStorage.clear();
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
@@ -256,6 +281,26 @@ describe('BrowserChatHub', () => {
     expect(screen.getByRole('heading', { name: 'Pinned' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open Pinned architecture' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open Research notes' })).toBeTruthy();
+
+    providerSurfaceHarness.onNavigation?.({
+      providerId: 'chatgpt',
+      surfaceId: 'browser-chat-chatgpt',
+      url: 'https://chatgpt.com/c/conversation-1',
+      timestamp: 101,
+      kind: 'conversation',
+      providerConversationKey: 'conversation-1',
+    });
+    await waitFor(async () =>
+      expect(await testDatabase.browser_chat_bindings.get(regular.id)).toMatchObject({
+        providerConversationKey: 'conversation-1',
+        resumeUrl: 'https://chatgpt.com/c/conversation-1',
+        bindingState: 'bound',
+        lastOpenedAt: 101,
+      }),
+    );
+    expect(
+      (await testDatabase.browser_chat_bindings.get(pinned.id))?.providerConversationKey,
+    ).toBeUndefined();
 
     fireEvent.click(screen.getByRole('button', { name: 'Unpin Pinned architecture' }));
     await waitFor(async () =>

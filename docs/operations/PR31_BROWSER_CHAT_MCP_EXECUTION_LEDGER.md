@@ -104,6 +104,33 @@ staged, restored, reformatted, or committed by this task.
   repeat migration creates zero rows.
 - Safety: removing a binding never deletes the provider conversation and
   returns the local VibeSpace chat to native mode.
+- Commit: `b2ea3b92`.
+
+### M3 — child WebView and bounded navigation bridge
+
+- Status: `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`
+- RED evidence: the capability contract failed on the existing
+  `WebviewWindowBuilder` implementation, and the frontend navigation test
+  received no event. The Claude registry-home test also failed because
+  `/new` was not recognized as a safe home path.
+- GREEN evidence: 72/72 focused Browser Chat and capability tests pass; app
+  TypeScript passes; `cargo check --lib --no-default-features` passes; and
+  three focused Rust surface tests pass.
+- Behavior: provider pages are reusable child `Webview`s of the main Tauri
+  window. Native show/hide/provider-switch operations are serialized, repeated
+  geometry updates do not steal focus, and frontend geometry bursts remain
+  coalesced.
+- Navigation safety: Tauri injects no provider script and emits only exact
+  allowlisted HTTPS provider paths, stripped of query and fragment, to the
+  local `main` target. Frontend validation independently rejects wrong
+  provider/surface pairs, spoofed origins, invalid timestamps, and kind
+  mismatches before updating only the active durable binding.
+- Capability safety: `browser-chat-host` still grants permissions only to the
+  local `main` webview and grants no remote authority.
+- Native limitation: the default-feature Cargo build reached the unrelated
+  optional eSpeak CMake dependency and failed on Windows path length. The
+  Browser Chat surface itself compiles and tests with voice disabled. Installed
+  drag/resize/maximize/provider-switch smoke remains required.
 - Commit: pending exact-path commit.
 
 ## Completion labels

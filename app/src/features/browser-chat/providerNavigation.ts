@@ -42,7 +42,7 @@ const ADAPTERS: Readonly<Record<BrowserChatProviderId, ProviderNavigationAdapter
   claude: {
     hostname: 'claude.ai',
     parse(pathname) {
-      if (pathname === '/') return { kind: 'home' };
+      if (pathname === '/' || pathname === '/new') return { kind: 'home' };
       const match = new RegExp(`^/(chat|project)/(${SAFE_KEY})/?$`).exec(pathname);
       if (!match) return null;
       return match[1] === 'chat'

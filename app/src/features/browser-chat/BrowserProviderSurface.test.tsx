@@ -111,4 +111,61 @@ describe('BrowserProviderSurface', () => {
     expect(await screen.findByText(/managed provider surface is unavailable/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /open claude in system browser/i })).toBeTruthy();
   });
+
+  it('forwards navigation metadata only for the mounted provider', async () => {
+    let navigationListener:
+      | ((navigation: {
+          providerId: 'chatgpt' | 'claude';
+          surfaceId: string;
+          url: string;
+          timestamp: number;
+          kind: 'conversation';
+          providerConversationKey: string;
+        }) => void)
+      | undefined;
+    const onNavigation = vi.fn();
+    const runtime = {
+      openManaged: vi.fn(async () => ({
+        kind: 'managed' as const,
+        providerId: 'chatgpt' as const,
+      })),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+      subscribeNavigation: vi.fn(async (listener: typeof navigationListener) => {
+        navigationListener = listener;
+        return () => undefined;
+      }),
+    };
+    render(
+      <BrowserProviderSurface
+        provider={browserChatProvider('chatgpt')}
+        runtime={runtime}
+        onNavigation={onNavigation}
+      />,
+    );
+    await waitFor(() => expect(runtime.subscribeNavigation).toHaveBeenCalledOnce());
+
+    navigationListener?.({
+      providerId: 'claude',
+      surfaceId: 'browser-chat-claude',
+      url: 'https://claude.ai/chat/other',
+      timestamp: 1,
+      kind: 'conversation',
+      providerConversationKey: 'other',
+    });
+    navigationListener?.({
+      providerId: 'chatgpt',
+      surfaceId: 'browser-chat-chatgpt',
+      url: 'https://chatgpt.com/c/current',
+      timestamp: 2,
+      kind: 'conversation',
+      providerConversationKey: 'current',
+    });
+
+    expect(onNavigation).toHaveBeenCalledOnce();
+    expect(onNavigation).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: 'chatgpt', providerConversationKey: 'current' }),
+    );
+  });
 });

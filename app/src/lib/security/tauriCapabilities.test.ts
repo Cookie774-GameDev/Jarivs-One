@@ -48,6 +48,14 @@ function readTauriCargoManifest(): string {
   return fs.readFileSync(path.resolve(here, '../../../src-tauri/Cargo.toml'), 'utf8');
 }
 
+function readBrowserChatNativeSurface(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return fs.readFileSync(
+    path.resolve(here, '../../../src-tauri/src/browser_chat_surface.rs'),
+    'utf8',
+  );
+}
+
 function readHttpAllowUrls(capability = readDefaultCapability()): string[] {
   const httpPermission = capability.permissions?.find(
     (permission) =>
@@ -119,5 +127,16 @@ describe('Tauri capability hardening', () => {
     expect(readTauriCargoManifest()).toMatch(
       /tauri\s*=\s*\{[^}\r\n]*features\s*=\s*\[[^\]\r\n]*"unstable"/u,
     );
+  });
+
+  it('hosts providers as child webviews and emits bounded navigation metadata to main only', () => {
+    const source = readBrowserChatNativeSurface();
+
+    expect(source).toMatch(/\bWebviewBuilder\b/u);
+    expect(source).toMatch(/\.add_child\s*\(/u);
+    expect(source).not.toMatch(/\bWebviewWindowBuilder\b/u);
+    expect(source).toMatch(/emit_to\s*\(\s*"main"/u);
+    expect(source).toMatch(/browser-chat:\/\/navigation/u);
+    expect(source).not.toMatch(/initialization_script/u);
   });
 });

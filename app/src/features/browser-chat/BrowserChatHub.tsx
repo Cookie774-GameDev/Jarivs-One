@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
+import type { ProviderSurfaceNavigation } from './providerSurface';
 import { migrateLegacyBrowserChatPreferences, useBrowserChatStore } from './browserChatStore';
 import { BROWSER_CHAT_PROVIDERS, browserChatProvider } from './providerRegistry';
 import { browserChatSurface } from './providerSurface';
@@ -412,6 +413,28 @@ export function BrowserChatHub({
         'Browser Chat removal failed',
         cause instanceof Error ? cause.message : 'The local binding could not be removed.',
       );
+    }
+  };
+
+  const captureProviderNavigation = (navigation: ProviderSurfaceNavigation) => {
+    const activeBinding = sessions.find(
+      (session) =>
+        session.binding.chatId === chatId && session.binding.provider === navigation.providerId,
+    )?.binding;
+    if (!activeBinding) return;
+    const commonPatch = {
+      lastOpenedAt: navigation.timestamp,
+      providerProjectKey: navigation.providerProjectKey,
+    };
+    if (navigation.kind === 'conversation' && navigation.providerConversationKey) {
+      void updateBrowserSession(activeBinding, {
+        ...commonPatch,
+        providerConversationKey: navigation.providerConversationKey,
+        resumeUrl: navigation.url,
+        bindingState: 'bound',
+      });
+    } else {
+      void updateBrowserSession(activeBinding, commonPatch);
     }
   };
 
@@ -817,7 +840,11 @@ export function BrowserChatHub({
           </div>
         </aside>
 
-        <BrowserProviderSurface key={provider.id} provider={provider} />
+        <BrowserProviderSurface
+          key={provider.id}
+          provider={provider}
+          onNavigation={captureProviderNavigation}
+        />
 
         <aside
           aria-label="Browser Chat connection inspector"
