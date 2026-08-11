@@ -203,7 +203,15 @@ export function createHarnessRuntimeManager(
     },
     async cancel() {
       if (native.available()) {
-        await native.cancel();
+        try {
+          await native.cancel();
+        } catch (error) {
+          publish({
+            kind: 'failed',
+            recoverable: true,
+            message: boundedCopy(error, 'Harness cancellation failed.'),
+          });
+        }
       }
     },
   };

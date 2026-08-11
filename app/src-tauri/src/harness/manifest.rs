@@ -80,12 +80,13 @@ fn validate_release(release: &OpenCodeRelease) -> Result<(), String> {
 
     let parsed =
         Url::parse(&release.url).map_err(|_| "OpenCode release URL is invalid.".to_string())?;
+    let expected_path = format!(
+        "/anomalyco/opencode/releases/download/v{}/{}",
+        release.version, release.asset
+    );
     if parsed.scheme() != "https"
         || parsed.host_str() != Some("github.com")
-        || !parsed
-            .path()
-            .starts_with("/anomalyco/opencode/releases/download/")
-        || !parsed.path().ends_with(&format!("/{}", release.asset))
+        || parsed.path() != expected_path
         || parsed.username() != ""
         || parsed.password().is_some()
         || parsed.query().is_some()
@@ -181,6 +182,7 @@ mod tests {
             "http://github.com/anomalyco/opencode/releases/download/v1.18.16/opencode-windows-x64.zip",
             "https://example.com/opencode-windows-x64.zip",
             "file:///C:/opencode-windows-x64.zip",
+            "https://github.com/anomalyco/opencode/releases/download/v9.9.9/opencode-windows-x64.zip",
         ] {
             let mut manifest = valid_manifest();
             manifest["releases"][0]["url"] = json!(url);

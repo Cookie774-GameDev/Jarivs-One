@@ -288,6 +288,18 @@ fn validate_archive_entries(
                 "Harness archive could not be inspected.",
             )
         })?;
+        let entry_name = entry.name();
+        if entry_name.contains('\\')
+            || entry_name.contains(':')
+            || entry_name
+                .split('/')
+                .any(|component| component.ends_with(['.', ' ']))
+        {
+            return Err(failure(
+                DownloadFailureKind::Archive,
+                "Harness archive contains an unsafe Windows path.",
+            ));
+        }
         let relative_path = entry.enclosed_name().ok_or_else(|| {
             failure(
                 DownloadFailureKind::Archive,
@@ -473,7 +485,13 @@ fn existing_runtime(
     if !version_root.exists() {
         return Ok(None);
     }
-    if !version_root.is_dir() {
+    let version_metadata = fs::symlink_metadata(version_root).map_err(|_| {
+        failure(
+            DownloadFailureKind::Archive,
+            "Managed harness destination could not be inspected.",
+        )
+    })?;
+    if !version_metadata.is_dir() || version_metadata.file_type().is_symlink() {
         return Err(failure(
             DownloadFailureKind::Archive,
             "Managed harness destination is not a directory.",
@@ -557,12 +575,16 @@ fn write_active_manifest(
             "Harness active manifest could not be serialized.",
         )
     })?;
-    let mut output = File::create(&temporary).map_err(|_| {
-        failure(
-            DownloadFailureKind::Disk,
-            "Harness active manifest could not be created.",
-        )
-    })?;
+    let mut output = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|_| {
+            failure(
+                DownloadFailureKind::Disk,
+                "Harness active manifest could not be created.",
+            )
+        })?;
     output.write_all(&bytes).map_err(|_| {
         failure(
             DownloadFailureKind::Disk,
@@ -699,12 +721,16 @@ fn download_and_install(
     })?;
     let archive_path = root.join(format!(".download-{}.zip", nanoid::nanoid!(20)));
     let _archive_cleanup = CleanupPath::armed(archive_path.clone());
-    let mut archive_file = File::create(&archive_path).map_err(|_| {
-        failure(
-            DownloadFailureKind::Disk,
-            "Harness download file could not be created.",
-        )
-    })?;
+    let mut archive_file = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&archive_path)
+        .map_err(|_| {
+            failure(
+                DownloadFailureKind::Disk,
+                "Harness download file could not be created.",
+            )
+        })?;
 
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
@@ -1156,6 +1182,46 @@ mod tests {
             &AtomicBool::new(false),
         )
         .expect_err("case-insensitive duplicate");
+        assert_eq!(error.kind, DownloadFailureKind::Archive);
+    }
+
+    #[test]
+    fn archive_extraction_rejects_windows_alternate_stream_and_ambiguous_names() {
+        for unsafe_name in ["opencode.exe:payload", "nested\\payload", "payload."] {
+            let fixture = FixtureRoot::new("extract-windows-path");
+            let archive = fixture.path().join("runtime.zip");
+            write_zip(
+                &archive,
+                &[
+                    ("opencode.exe", b"native", 0o100755),
+                    (unsafe_name, b"unsafe", 0o100644),
+                ],
+            );
+
+            let error = extract_verified_archive(
+                &archive,
+                &fixture.path().join("extracted"),
+                &release(1_024, 8),
+                &AtomicBool::new(false),
+            )
+            .expect_err("unsafe Windows path");
+            assert_eq!(error.kind, DownloadFailureKind::Archive);
+        }
+    }
+
+    #[test]
+    fn archive_extraction_rejects_corrupt_zip_bytes() {
+        let fixture = FixtureRoot::new("extract-corrupt");
+        let archive = fixture.path().join("runtime.zip");
+        fs::write(&archive, b"not a zip archive").unwrap();
+
+        let error = extract_verified_archive(
+            &archive,
+            &fixture.path().join("extracted"),
+            &release(1_024, 8),
+            &AtomicBool::new(false),
+        )
+        .expect_err("corrupt archive");
         assert_eq!(error.kind, DownloadFailureKind::Archive);
     }
 

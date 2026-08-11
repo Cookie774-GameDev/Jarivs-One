@@ -150,6 +150,20 @@ describe('harness runtime manager', () => {
     expect(native.cancel).toHaveBeenCalledTimes(1);
   });
 
+  it('maps cancellation failures without an unhandled rejection', async () => {
+    const native = adapter({
+      cancel: vi.fn().mockRejectedValue(new Error('Cancellation unavailable.')),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    await expect(manager.cancel()).resolves.toBeUndefined();
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'failed',
+      recoverable: true,
+      message: 'Cancellation unavailable.',
+    });
+  });
+
   it('preserves the native failed event and supports retry after install rejection', async () => {
     const first = deferred<NativeRuntimeDetection>();
     const native = adapter({ install: vi.fn(() => first.promise) });
