@@ -79,6 +79,12 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function optionalHarnessSessionId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const id = value.trim();
+  return id && id.length <= 512 && !/[\u0000-\u001f\u007f]/.test(id) ? id : undefined;
+}
+
 function sanitizeModelSelection(value: unknown): JarvisChatAgent['modelSelection'] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
@@ -133,8 +139,14 @@ function sanitizeJarvisChatAgent(value: unknown): JarvisChatAgent | null {
   const currentStep = optionalString(agent.currentStep);
   const summary = optionalString(agent.summary);
   const error = optionalString(agent.error);
+  const harnessSessionId = optionalHarnessSessionId(agent.harnessSessionId);
+  const harnessParentSessionId = optionalHarnessSessionId(agent.harnessParentSessionId);
   const modelSelection = sanitizeModelSelection(agent.modelSelection);
   if (modelSelection !== undefined) sanitized.modelSelection = modelSelection;
+  if (harnessSessionId !== undefined) sanitized.harnessSessionId = harnessSessionId;
+  if (harnessParentSessionId !== undefined) {
+    sanitized.harnessParentSessionId = harnessParentSessionId;
+  }
   if (currentStep !== undefined) sanitized.currentStep = currentStep;
   if (Array.isArray(agent.filesRead)) sanitized.filesRead = asStringArray(agent.filesRead);
   if (Array.isArray(agent.filesEditing)) sanitized.filesEditing = asStringArray(agent.filesEditing);

@@ -4937,6 +4937,17 @@ describe('startRuntimeListener agent routing', () => {
       }),
     );
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    expect(providerInput.parentChatId).toBe('parent_chat');
+    expect(providerInput.onHarnessSessionBound).toEqual(expect.any(Function));
+    await providerInput.onHarnessSessionBound?.({
+      sessionId: 'oc-child',
+      parentSessionId: 'oc-parent',
+    });
+    expect(useJarvisInteractionStore.getState().agentsForChat('parent_chat')[0]).toMatchObject({
+      harnessSessionId: 'oc-child',
+      harnessParentSessionId: 'oc-parent',
+      status: 'thinking',
+    });
 
     const chatUpdatesAtAbort = mocks.chatUpdate.mock.calls.length;
     stop();

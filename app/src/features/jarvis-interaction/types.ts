@@ -93,6 +93,10 @@ export interface JarvisChatAgent {
   name: string;
   parentChatId: ChatId | string;
   childChatId: ChatId | string;
+  /** Opaque OpenCode session bound to this VibeSpace child chat. */
+  harnessSessionId?: string;
+  /** Opaque OpenCode parent session bound to the supervising VibeSpace chat. */
+  harnessParentSessionId?: string;
   task: string;
   modelLabel: string;
   modelSelection?: ChatModelSelection;

@@ -1739,19 +1739,55 @@ function sanitizeUnsupportedActionMacros(text: string): string {
   );
 }
 
+function structuredAgentTarget(
+  context: JarvisStructuredContext | undefined,
+): { parentChatId: string; agentId: string } | null {
+  if (!context || (context.kind !== 'multitask' && context.kind !== 'subagents')) return null;
+  if (!context.payload || typeof context.payload !== 'object' || Array.isArray(context.payload)) {
+    return null;
+  }
+  const payload = context.payload as Record<string, unknown>;
+  const parentChatId =
+    typeof payload.parentChatId === 'string' ? payload.parentChatId.trim() : undefined;
+  const agentId = typeof payload.agentId === 'string' ? payload.agentId.trim() : undefined;
+  if (
+    !parentChatId ||
+    !agentId ||
+    parentChatId.length > 512 ||
+    agentId.length > 512 ||
+    /[\u0000-\u001f\u007f]/.test(parentChatId) ||
+    /[\u0000-\u001f\u007f]/.test(agentId)
+  ) {
+    return null;
+  }
+  return { parentChatId, agentId };
+}
+
 function updateStructuredAgentStatus(
   context: JarvisStructuredContext | undefined,
   status: 'done' | 'failed' | 'cancelled',
   currentStep: string,
 ): void {
-  if (!context || (context.kind !== 'multitask' && context.kind !== 'subagents')) return;
-  const payload = context.payload as { parentChatId?: string; agentId?: string } | undefined;
-  if (!payload?.parentChatId || !payload.agentId) return;
-  useJarvisInteractionStore.getState().updateAgent(payload.parentChatId, payload.agentId, {
+  const target = structuredAgentTarget(context);
+  if (!target) return;
+  useJarvisInteractionStore.getState().updateAgent(target.parentChatId, target.agentId, {
     status,
     currentStep,
     // Short handoff line for parent supervisor / agent.run_many collection.
     summary: currentStep.slice(0, 280),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function updateStructuredAgentHarnessBinding(
+  context: JarvisStructuredContext | undefined,
+  binding: { sessionId: string; parentSessionId?: string },
+): void {
+  const target = structuredAgentTarget(context);
+  if (!target) return;
+  useJarvisInteractionStore.getState().updateAgent(target.parentChatId, target.agentId, {
+    harnessSessionId: binding.sessionId,
+    ...(binding.parentSessionId ? { harnessParentSessionId: binding.parentSessionId } : {}),
     updatedAt: new Date().toISOString(),
   });
 }
@@ -4346,9 +4382,11 @@ export function startRuntimeListener(
       await persistRouteDisclosureBeforeProviderUse();
       controller.signal.throwIfAborted();
       let responseCompositionVisible = false;
+      const structuredAgent = structuredAgentTarget(detail.structuredContext);
       const providerRequest = {
         agent: runnable,
         chatId: String(chatId),
+        ...(structuredAgent ? { parentChatId: structuredAgent.parentChatId } : {}),
         messages: requestMessages,
         max_output_tokens: optimizedOutputTokenLimit,
         provider_options: reasoningPolicy?.providerOptions,
@@ -4391,6 +4429,12 @@ export function startRuntimeListener(
           if (chunk.done && !bufferExactLiteralStreaming) flushNow();
         },
         tools: openCodeToolsForInteractionMode(interactionMode),
+        ...(structuredAgent
+          ? {
+              onHarnessSessionBound: (binding: { sessionId: string; parentSessionId?: string }) =>
+                updateStructuredAgentHarnessBinding(detail.structuredContext, binding),
+            }
+          : {}),
         onApprovalRequested: async (approval: VibeSpaceApproval) => {
           if (
             liveOpenCodePermissions.some(

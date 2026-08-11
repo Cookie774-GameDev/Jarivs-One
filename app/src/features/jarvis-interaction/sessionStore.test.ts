@@ -216,4 +216,30 @@ describe('Jarvis interaction restart persistence', () => {
     expect(merged.agentsByChat.chat_parent?.[2]).not.toHaveProperty('modelSelection');
     expect(merged.agentsByChat.chat_parent?.[3]).not.toHaveProperty('modelSelection');
   });
+
+  it('preserves only string OpenCode session bindings on persisted agent cards', () => {
+    const current = useJarvisInteractionStore.getInitialState();
+    const valid = {
+      ...agent('valid-harness', 'done'),
+      harnessSessionId: 'oc-child',
+      harnessParentSessionId: 'oc-parent',
+    };
+    const malformed = {
+      ...agent('malformed-harness', 'failed'),
+      harnessSessionId: { id: 'oc-child' },
+      harnessParentSessionId: ['oc-parent'],
+    };
+
+    const merged = mergeJarvisInteractionState(
+      { agentsByChat: { chat_parent: [valid, malformed] } },
+      current,
+    );
+
+    expect(merged.agentsByChat.chat_parent?.[0]).toMatchObject({
+      harnessSessionId: 'oc-child',
+      harnessParentSessionId: 'oc-parent',
+    });
+    expect(merged.agentsByChat.chat_parent?.[1]).not.toHaveProperty('harnessSessionId');
+    expect(merged.agentsByChat.chat_parent?.[1]).not.toHaveProperty('harnessParentSessionId');
+  });
 });
