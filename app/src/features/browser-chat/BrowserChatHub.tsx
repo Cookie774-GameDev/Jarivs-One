@@ -76,6 +76,10 @@ import {
 } from './permissionRegistry';
 import { BrowserChatPermissionPanel } from './BrowserChatPermissionPanel';
 import { browserChatToolActivityStore } from './browserChatToolActivity';
+import {
+  deriveBrowserChatStatusModel,
+  type BrowserChatMcpSetupState,
+} from './browserChatStatusModel';
 
 const BROWSER_CHAT_EXECUTABLE_CAPABILITIES = new Set<BrowserChatCapabilityId>([
   'files.list',
@@ -88,12 +92,10 @@ function statusLabel(value: string): string {
 
 const stagedFilesByChat = new Map<string, File[]>();
 
-type McpSetupState = 'idle' | 'checking' | 'opening' | 'waiting' | 'error';
-
 export function browserChatMcpStatusLabel(
   relayStatus: BrowserChatRelayStatus,
   signedIn: boolean,
-  setupState: McpSetupState,
+  setupState: BrowserChatMcpSetupState,
 ): string {
   if (relayStatus === 'connected') return 'Desktop connected';
   if (relayStatus === 'connecting') return 'Connecting desktop relay';
@@ -108,7 +110,7 @@ export function browserChatMcpStatusLabel(
 
 function usageText(value: number | null, limit: number | null, unit: string | null): string {
   if (value === null || limit === null || !unit) {
-    return 'ChatGPT web quota is not exposed to VibeSpace.';
+    return 'No VibeSpace OpenAI API usage snapshot.';
   }
   return `${value.toLocaleString()} of ${limit.toLocaleString()} ${unit}`;
 }
@@ -146,6 +148,9 @@ export function BrowserChatHub({
   const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
   const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? '');
+  const cloudAccountLabel = useAuthStore(
+    (state) => state.cloudSession?.email ?? state.cloudSession?.user_id ?? '',
+  );
   const authenticatedAccountId = useAuthStore(
     (state) => state.cloudSession?.user_id ?? state.localUserId ?? '',
   );
@@ -302,9 +307,10 @@ export function BrowserChatHub({
   const exportInputRef = React.useRef<HTMLInputElement>(null);
   const connectionAbortRef = React.useRef<AbortController | null>(null);
   const exportAbortRef = React.useRef<AbortController | null>(null);
-  const [mcpSetupState, setMcpSetupState] = React.useState<McpSetupState>('idle');
+  const [mcpSetupState, setMcpSetupState] = React.useState<BrowserChatMcpSetupState>('idle');
   const [mcpSetupError, setMcpSetupError] = React.useState('');
   const [importingExport, setImportingExport] = React.useState(false);
+  const [projectGrantRevoked, setProjectGrantRevoked] = React.useState(false);
   const [stagedFiles, setStagedFiles] = React.useState<File[]>(() =>
     chatId ? (stagedFilesByChat.get(chatId) ?? []) : [],
   );
@@ -393,6 +399,10 @@ export function BrowserChatHub({
     setStagedFiles(chatId ? (stagedFilesByChat.get(chatId) ?? []) : []);
   }, [chatId]);
 
+  React.useEffect(() => {
+    setProjectGrantRevoked(false);
+  }, [cloudAccountId, projectId]);
+
   React.useEffect(
     () => () => {
       connectionAbortRef.current?.abort();
@@ -454,6 +464,7 @@ export function BrowserChatHub({
         displayName: grant.displayName,
         permissionProfile: grant.permissionProfile,
       });
+      setProjectGrantRevoked(false);
     },
     [activeWorkspaceGrant],
   );
@@ -638,6 +649,7 @@ export function BrowserChatHub({
         displayName: grant.displayName,
         permissionProfile: grant.permissionProfile,
       });
+      setProjectGrantRevoked(false);
       toast.success(
         'Project access approved',
         'The local relay can use only capabilities enabled by the selected plan and available in this build.',
@@ -653,6 +665,7 @@ export function BrowserChatHub({
   const revokeProjectRead = () => {
     revokeBrowserChatWorkspace();
     setBridgeWorkspaceGrant();
+    setProjectGrantRevoked(true);
     toast.success('Project access revoked', 'The local relay no longer exposes project tools.');
   };
 
@@ -733,6 +746,32 @@ export function BrowserChatHub({
   const mcpSetupBusy = mcpSetupState === 'checking' || mcpSetupState === 'opening';
   const pinnedSessions = sessions.filter(({ binding }) => binding.pinned);
   const providerSessions = sessions.filter(({ binding }) => !binding.pinned);
+  const activeBinding = sessions.find(
+    ({ binding }) => binding.chatId === chatId && binding.provider === provider.id,
+  )?.binding;
+  const independentStatus = deriveBrowserChatStatusModel({
+    provider: { id: provider.id, label: provider.label, pageStatus },
+    account: cloudAccountId
+      ? { id: cloudAccountId, label: cloudAccountLabel || cloudAccountId }
+      : null,
+    relayStatus,
+    mcpSetupState,
+    permissionProfile,
+    workspaceGrant: activeWorkspaceGrant ? { displayName: activeWorkspaceGrant.displayName } : null,
+    providerCapabilityTier: 'unknown',
+    availableCapabilities: BROWSER_CHAT_EXECUTABLE_CAPABILITIES,
+    toolActivity: accountToolActivity,
+    project: projectId
+      ? {
+          name: project?.name ?? (projectRoot ? basename(projectRoot) : String(projectId)),
+          linkedProviderProjectId: activeBinding?.providerProjectKey ?? null,
+        }
+      : null,
+    contextAvailable: Boolean(
+      contextMap || (!project?.no_context_mode && project?.system_prompt_context),
+    ),
+    grantRevoked: projectGrantRevoked,
+  });
 
   const renderBrowserSession = ({ binding }: { readonly binding: BrowserChatBindingRow }) => {
     const providerDefinition = browserChatProvider(binding.provider);
@@ -1062,7 +1101,29 @@ export function BrowserChatHub({
                 <MonitorUp className="h-3.5 w-3.5 text-accent-copper" />
                 Page status
               </dt>
-              <dd className="mt-1 capitalize text-muted-foreground">{statusLabel(pageStatus)}</dd>
+              <dd className="mt-1 text-muted-foreground">{independentStatus.providerPage.label}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-background/55 p-2.5">
+              <dt className="font-medium text-foreground">Provider session</dt>
+              <dd className="mt-1 text-muted-foreground">
+                {independentStatus.providerSession.label}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-background/55 p-2.5">
+              <dt className="font-medium text-foreground">VibeSpace account</dt>
+              <dd className="mt-1 text-muted-foreground">
+                {independentStatus.vibespaceAccount.label}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-background/55 p-2.5">
+              <dt className="font-medium text-foreground">MCP authorization</dt>
+              <dd className="mt-1 text-muted-foreground">
+                {independentStatus.mcpAuthorization.label}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-background/55 p-2.5">
+              <dt className="font-medium text-foreground">Desktop relay</dt>
+              <dd className="mt-1 text-muted-foreground">{independentStatus.desktopRelay.label}</dd>
             </div>
             <div className="rounded-lg border border-border bg-background/55 p-2.5">
               <dt className="flex items-center gap-2 font-medium text-foreground">
@@ -1070,6 +1131,12 @@ export function BrowserChatHub({
                 Tool bridge
               </dt>
               <dd className="mt-1 capitalize text-muted-foreground">{statusLabel(bridgeStatus)}</dd>
+              <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                {statusLabel(independentStatus.toolBridge.profile)} profile ·{' '}
+                {independentStatus.toolBridge.executableCount} executable now ·{' '}
+                {independentStatus.toolBridge.advertisedCount} advertised ·{' '}
+                {independentStatus.toolBridge.providerLimitedCount} provider-limited
+              </dd>
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
                 The provider page has no direct device authority. The official VibeSpace MCP app can
                 use only the project you approve below.
@@ -1267,6 +1334,9 @@ export function BrowserChatHub({
               <dd className="mt-2 text-[9px] leading-4 text-muted-foreground">
                 Session-only. Absolute paths are never sent to ChatGPT or stored by the relay.
               </dd>
+              <dd className="mt-1 text-[9px] leading-4 text-muted-foreground">
+                {independentStatus.localProject.label}
+              </dd>
             </div>
             <div className="rounded-lg border border-border bg-background/55 p-2.5">
               <dt className="flex items-center gap-2 font-medium text-foreground">
@@ -1323,14 +1393,19 @@ export function BrowserChatHub({
                 <Bot className="h-3.5 w-3.5 text-accent-copper" />
                 Model
               </dt>
-              <dd className="mt-1 text-muted-foreground">
-                Choose the model in ChatGPT’s own model selector.
-              </dd>
+              <dd className="mt-1 text-muted-foreground">{independentStatus.model.label}</dd>
             </div>
             <div className="rounded-lg border border-border bg-background/55 p-2.5">
               <dt className="flex items-center gap-2 font-medium text-foreground">
                 <Activity className="h-3.5 w-3.5 text-accent-copper" />
-                OpenAI usage
+                ChatGPT usage
+              </dt>
+              <dd className="mt-1 text-muted-foreground">{independentStatus.chatGptUsage.label}</dd>
+            </div>
+            <div className="rounded-lg border border-border bg-background/55 p-2.5">
+              <dt className="flex items-center gap-2 font-medium text-foreground">
+                <Activity className="h-3.5 w-3.5 text-accent-copper" />
+                VibeSpace OpenAI API usage
               </dt>
               <dd className="mt-1 text-muted-foreground">
                 {usageText(

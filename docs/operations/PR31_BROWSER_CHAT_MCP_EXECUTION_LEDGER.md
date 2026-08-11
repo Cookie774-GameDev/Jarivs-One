@@ -670,6 +670,41 @@ staged, restored, reformatted, or committed by this task.
   separately owned Worker remains untouched.
 - Commit: `552bcf7b`.
 
+### M5p — independent Browser Chat status truth model
+
+- Status: `VERIFIED`
+- RED evidence: the connection inspector combined provider-page, desktop
+  relay, tool bridge, and MCP setup labels. It had no independent
+  provider-session, VibeSpace-account, OAuth-authorization, relay,
+  executable/advertised/provider-limited, project-revocation, model, or
+  ChatGPT-usage states.
+- GREEN evidence: 35/35 focused status-model, Browser Chat hub,
+  permission-panel, tool-activity, and provider-capability tests pass; app
+  TypeScript passes.
+- Provider truth: page readiness remains separate from provider account
+  state. Because no supported provider account API is present, the UI says
+  `Provider-managed · sign-in state not exposed`; a ready ChatGPT page never
+  becomes evidence of sign-in.
+- Authorization truth: a connected desktop relay does not become OAuth
+  authorization. Without account-matching gateway evidence the UI reports
+  `Unknown · no OAuth authorization evidence`; setup-in-progress, stale,
+  signed-out, and future evidence-backed authorized/last-used states are
+  distinct.
+- Tool truth: permission profile, executable count, registered/advertised
+  count, provider-limited count, current calls, and last result remain
+  independent. Provider limitations are calculated independently of relay
+  and project-grant availability, so one denial source cannot mask another.
+- Project truth: the active project, local grant, context availability,
+  provider-project link, and explicit session revocation action are reported
+  independently. No provider project membership is inferred.
+- Model/usage truth: the model is explicitly provider-controlled and not
+  exposed to VibeSpace. ChatGPT web quota is reported unavailable, while
+  VibeSpace-owned OpenAI API usage has a separate label and source.
+- Visual boundary: the in-app browser visual smoke remains unavailable in
+  this environment because its kernel asset bootstrap failed before a tab
+  could be created; no visual result is claimed from that failed attempt.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

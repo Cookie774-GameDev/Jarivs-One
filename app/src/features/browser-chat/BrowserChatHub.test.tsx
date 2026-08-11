@@ -195,6 +195,23 @@ describe('BrowserChatHub', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
+  it('renders provider, account, authorization, relay, model, and usage states independently', () => {
+    bridge.publishBrowserChatRelayStatus('connected');
+
+    renderHub();
+
+    expect(screen.getByText('Provider session')).toBeTruthy();
+    expect(screen.getByText('Provider-managed · sign-in state not exposed')).toBeTruthy();
+    expect(screen.getByText('VibeSpace account')).toBeTruthy();
+    expect(screen.getByText('account-1@example.test')).toBeTruthy();
+    expect(screen.getByText('MCP authorization')).toBeTruthy();
+    expect(screen.getByText('Unknown · no OAuth authorization evidence')).toBeTruthy();
+    expect(screen.getByText('Desktop relay')).toBeTruthy();
+    expect(screen.getByText('Provider-controlled · not exposed to VibeSpace')).toBeTruthy();
+    expect(screen.getByText('ChatGPT web quota is not exposed to VibeSpace')).toBeTruthy();
+    expect(screen.queryByText(/^authorized$/i)).toBeNull();
+  });
+
   it('imports only an explicitly selected official ChatGPT export ZIP', async () => {
     renderHub();
     const input = screen.getByLabelText('Choose official ChatGPT export ZIP');
@@ -416,6 +433,7 @@ describe('BrowserChatHub', () => {
     fireEvent.click(screen.getByRole('button', { name: /revoke project access/i }));
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     expect(getBridgeWorkspaceGrant()).toBeUndefined();
+    expect(screen.getByText(/grant revoked/i)).toBeTruthy();
   });
 
   it('persists the selected permission plan by account/project and applies it to a live grant', async () => {
