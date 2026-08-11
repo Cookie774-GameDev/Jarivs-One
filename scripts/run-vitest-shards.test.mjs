@@ -53,10 +53,18 @@ test('rejects invalid shard sizes', () => {
 });
 
 test('bounds worker concurrency for every shard', () => {
+  assert.deepEqual(buildVitestArgs(['src/default.test.ts']), [
+    'run',
+    '--reporter=dot',
+    '--maxWorkers=4',
+    '--testTimeout=15000',
+    'src/default.test.ts',
+  ]);
   assert.deepEqual(buildVitestArgs(['src/a.test.ts'], 4), [
     'run',
     '--reporter=dot',
     '--maxWorkers=4',
+    '--testTimeout=15000',
     'src/a.test.ts',
   ]);
   assert.throws(() => buildVitestArgs(['src/a.test.ts'], 0), /positive integer/i);

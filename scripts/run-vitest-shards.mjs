@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/u;
 const DEFAULT_SHARD_SIZE = 50;
 const DEFAULT_MAX_WORKERS = 4;
+const DEFAULT_TEST_TIMEOUT_MS = 15_000;
 
 function toPosixPath(value) {
   return value.split(path.sep).join('/');
@@ -103,7 +104,13 @@ function parseMaxWorkers(args) {
 
 export function buildVitestArgs(shard, maxWorkers = DEFAULT_MAX_WORKERS) {
   const boundedWorkers = parsePositiveInteger(maxWorkers, 'Max workers', DEFAULT_MAX_WORKERS);
-  return ['run', '--reporter=dot', `--maxWorkers=${boundedWorkers}`, ...shard];
+  return [
+    'run',
+    '--reporter=dot',
+    `--maxWorkers=${boundedWorkers}`,
+    `--testTimeout=${DEFAULT_TEST_TIMEOUT_MS}`,
+    ...shard,
+  ];
 }
 
 export async function runVitestShards({
