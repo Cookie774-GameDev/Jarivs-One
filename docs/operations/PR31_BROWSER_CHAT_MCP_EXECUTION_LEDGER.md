@@ -877,9 +877,11 @@ staged, restored, reformatted, or committed by this task.
   evidence are scoped by that key. Cross-account navigation is ignored.
   Existing exact-account/workspace bindings in the former unscoped namespace
   are migrated transactionally; a mixed old/new conversation conflict keeps
-  the scoped row, preserves compatible local metadata, and removes only the
-  duplicate binding wrapper. The migration is restart-idempotent and leaves
-  foreign accounts untouched. Commits: `771c19c2`, `0bdf482d`.
+  the scoped row, preserves compatible local metadata, persistently retires
+  the old chat preference before removing only the duplicate binding wrapper,
+  and cannot recreate that wrapper during preference materialization or after
+  restart. The migration is restart-idempotent and leaves foreign accounts
+  untouched. Commits: `771c19c2`, `0bdf482d`, `ad74d682`.
 - Workspace authority: grants, permission profiles, bridge-client scope
   matching, runtime-host state, and relay lifecycle now carry the exact
   account/workspace/project triple. Workspace transitions revoke the old
@@ -903,7 +905,7 @@ staged, restored, reformatted, or committed by this task.
   provable leaf. Multiple leaves reject as ambiguous instead of merging
   alternate branches. Commit: `fb2e4ffd`.
 - Closure evidence after all remediations: 33 Browser Chat/bridge test files
-  and 230 tests pass; the production build passes with 4,815 modules; release
+  and 231 tests pass; the production build passes with 4,815 modules; release
   manifest passes 44/44; four focused native surface tests pass; Cargo
   no-default-features check and Rust formatting pass.
 - Second-review disposition at `29480b69`: `NOT READY`. The reviewer closed
@@ -916,8 +918,17 @@ staged, restored, reformatted, or committed by this task.
   metadata, and proves idempotence after database restart. Four directly
   affected files pass 50/50 tests, app TypeScript passes, and the full
   Browser Chat/bridge surface passes 33 files and 230/230 tests.
-- Third-review disposition: `PENDING` at this checkpoint. Completion is not
-  claimed until the mandatory independent reviewer evaluates `0bdf482d`.
+- Third-review disposition at `ef4a9cec`: `NOT READY`. The reviewer proved
+  that a collapsed binding with a still-persisted browser preference could be
+  recreated as a new unbound wrapper during the same run and survive restart.
+- Preference-retirement remediation: `ad74d682` retires each collapsed
+  preference through the persisted Browser Chat store before deleting its old
+  binding, excludes the captured preference from same-run materialization,
+  and adds a non-empty persisted-preference plus database-restart regression
+  test. The full Browser Chat/bridge surface passes 33 files and 231/231
+  tests; app TypeScript passes.
+- Fourth-review disposition: `PENDING` at this checkpoint. Completion is not
+  claimed until the mandatory independent reviewer evaluates `ad74d682`.
 
 ## Final requirements and production-composition audit
 
@@ -927,7 +938,7 @@ staged, restored, reformatted, or committed by this task.
   modules transformed. Existing chunk-size and mixed-import warnings remain.
 - Release manifest: `VERIFIED`; 44/44 Node tests pass.
 - Browser Chat focused suites: `VERIFIED`; the final Browser Chat and bridge
-  run passes 33 files and 230/230 tests.
+  run passes 33 files and 231/231 tests.
 - VibeSpace MCP Worker: `VERIFIED` read-only check only; its existing `check`
   command passed 29/29 tests, TypeScript, and Wrangler deployment dry-run. No
   deployment occurred and no Worker file was changed.
