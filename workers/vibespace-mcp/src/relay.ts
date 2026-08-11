@@ -348,7 +348,15 @@ export class UserRelay extends DurableObject<Env> {
       );
       return;
     }
-    if (frame.kind === 'heartbeat') return;
+    if (frame.kind === 'heartbeat') {
+      ws.send(
+        JSON.stringify({
+          kind: 'heartbeat_ack',
+          ts: Number.isSafeInteger(frame.ts) ? frame.ts : Date.now(),
+        }),
+      );
+      return;
+    }
     if (frame.kind === 'deregister') {
       ws.close(1000, 'shutdown');
       return;
