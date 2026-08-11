@@ -761,7 +761,7 @@ staged, restored, reformatted, or committed by this task.
   create a tab in this environment.
 - Boundary: no Worker/relay route or remotely advertised MCP capability is
   inferred from these local UI and native-surface checks.
-- Commit: pending.
+- Commit: `6d98b425`.
 
 ## Completion labels
 
