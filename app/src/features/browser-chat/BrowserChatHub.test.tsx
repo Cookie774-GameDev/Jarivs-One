@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +7,7 @@ import { browserChatStore } from './browserChatStore';
 import { BrowserChatHub, browserChatMcpStatusLabel } from './BrowserChatHub';
 import { browserChatSurface } from './providerSurface';
 import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
 import * as bridge from '@/lib/bridge';
 import { getBridgeWorkspaceGrant, setBridgeWorkspaceGrant } from '@/lib/bridge';
 import { projectStorageKey, ROOT_PREFIX } from '@/features/files/projectFiles';
@@ -175,6 +176,7 @@ describe('BrowserChatHub', () => {
     initialSessions?: ComponentProps<typeof BrowserChatHub>['initialSessions'],
     initialProjects?: ComponentProps<typeof BrowserChatHub>['initialProjects'],
     initialOutputFeed?: ComponentProps<typeof BrowserChatHub>['initialOutputFeed'],
+    createChat?: ComponentProps<typeof BrowserChatHub>['createChat'],
   ) =>
     render(
       <BrowserChatHub
@@ -185,6 +187,7 @@ describe('BrowserChatHub', () => {
         initialSessions={initialSessions}
         initialProjects={initialProjects}
         initialOutputFeed={initialOutputFeed}
+        createChat={createChat}
       />,
     );
 
@@ -626,6 +629,177 @@ describe('BrowserChatHub', () => {
         'https://chatgpt.com/c/conversation-1',
       ),
     );
+  });
+
+  it('selects an existing saved row when provider navigation reaches its conversation', async () => {
+    let bindingSequence = 0;
+    const repository = createBrowserChatBindingRepository(
+      testDatabase,
+      () => 200,
+      () => `binding-navigation-${++bindingSequence}`,
+    );
+    const chats: Chat[] = [
+      {
+        id: 'chat-conversation-a' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        project_id: 'project-1' as ProjectId,
+        title: 'Conversation A',
+        mode: 'chat',
+        active_agent_ids: [],
+        pinned: false,
+        created_at: 1,
+        updated_at: 1,
+      },
+      {
+        id: 'chat-conversation-b' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        project_id: 'project-1' as ProjectId,
+        title: 'Conversation B',
+        mode: 'chat',
+        active_agent_ids: [],
+        pinned: false,
+        created_at: 2,
+        updated_at: 2,
+      },
+    ];
+    await testDatabase.chats.bulkPut(chats);
+    const bindingA = await repository.create({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-conversation-a',
+      provider: 'chatgpt',
+      providerProfileKey: 'browser-chat/chatgpt',
+      providerConversationKey: 'conversation-a',
+      resumeUrl: 'https://chatgpt.com/c/conversation-a',
+      bindingState: 'bound',
+      localTitle: 'Conversation A',
+    });
+    const bindingB = await repository.create({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-conversation-b',
+      provider: 'chatgpt',
+      providerProfileKey: 'browser-chat/chatgpt',
+      providerConversationKey: 'conversation-b',
+      resumeUrl: 'https://chatgpt.com/c/conversation-b',
+      bindingState: 'bound',
+      localTitle: 'Conversation B',
+    });
+
+    renderHub('chat-conversation-a', [
+      { binding: bindingA, chat: chats[0]! },
+      { binding: bindingB, chat: chats[1]! },
+    ]);
+    await act(async () => {
+      providerSurfaceHarness.onNavigation?.({
+        providerId: 'chatgpt',
+        surfaceId: 'browser-chat-chatgpt',
+        url: 'https://chatgpt.com/c/conversation-b',
+        timestamp: 220,
+        kind: 'conversation',
+        providerConversationKey: 'conversation-b',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    await waitFor(() => expect(useUIStore.getState().activeChatId).toBe('chat-conversation-b'));
+    expect(await testDatabase.browser_chat_bindings.get(bindingA.id)).toMatchObject({
+      providerConversationKey: 'conversation-a',
+      resumeUrl: 'https://chatgpt.com/c/conversation-a',
+    });
+    expect(await testDatabase.browser_chat_bindings.get(bindingB.id)).toMatchObject({
+      providerConversationKey: 'conversation-b',
+      lastOpenedAt: 220,
+    });
+  });
+
+  it('offers a new local wrapper instead of overwriting a bound session on manual navigation', async () => {
+    const repository = createBrowserChatBindingRepository(
+      testDatabase,
+      () => 300,
+      () => 'binding-original',
+    );
+    const originalChat: Chat = {
+      id: 'chat-original' as ChatId,
+      workspace_id: 'workspace-1' as WorkspaceId,
+      project_id: 'project-1' as ProjectId,
+      title: 'Original conversation',
+      mode: 'chat',
+      active_agent_ids: [],
+      pinned: false,
+      created_at: 1,
+      updated_at: 1,
+    };
+    await testDatabase.chats.put(originalChat);
+    const originalBinding = await repository.create({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-original',
+      provider: 'chatgpt',
+      providerProfileKey: 'browser-chat/chatgpt',
+      providerConversationKey: 'conversation-original',
+      resumeUrl: 'https://chatgpt.com/c/conversation-original',
+      bindingState: 'bound',
+      localTitle: originalChat.title,
+    });
+    const createChat = vi.fn(async () => {
+      const nextChat: Chat = {
+        ...originalChat,
+        id: 'chat-manual-new' as ChatId,
+        title: 'ChatGPT conversation',
+        created_at: 2,
+        updated_at: 2,
+      };
+      await testDatabase.chats.put(nextChat);
+      return nextChat.id;
+    });
+
+    renderHub(
+      'chat-original',
+      [{ binding: originalBinding, chat: originalChat }],
+      undefined,
+      undefined,
+      createChat,
+    );
+    await act(async () => {
+      providerSurfaceHarness.onNavigation?.({
+        providerId: 'chatgpt',
+        surfaceId: 'browser-chat-chatgpt',
+        url: 'https://chatgpt.com/c/conversation-new',
+        timestamp: 320,
+        kind: 'conversation',
+        providerConversationKey: 'conversation-new',
+      });
+    });
+
+    expect(screen.getByText(/Unmapped ChatGPT conversation/i)).toBeTruthy();
+    expect(await testDatabase.browser_chat_bindings.get(originalBinding.id)).toMatchObject({
+      providerConversationKey: 'conversation-original',
+      resumeUrl: 'https://chatgpt.com/c/conversation-original',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Save as Browser Chat/i }));
+    await waitFor(async () =>
+      expect(
+        await repository.findByProviderConversation(
+          { accountId: 'account-1', workspaceId: 'workspace-1' },
+          {
+            provider: 'chatgpt',
+            providerProfileKey: 'browser-chat/chatgpt',
+            providerConversationKey: 'conversation-new',
+          },
+        ),
+      ).toMatchObject({
+        chatId: 'chat-manual-new',
+        resumeUrl: 'https://chatgpt.com/c/conversation-new',
+        bindingState: 'bound',
+        lastOpenedAt: 320,
+      }),
+    );
+    expect(useUIStore.getState().activeChatId).toBe('chat-manual-new');
   });
 
   it('requires an explicit project grant before arming the local relay', () => {

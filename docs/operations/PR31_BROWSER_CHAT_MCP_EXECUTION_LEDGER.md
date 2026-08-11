@@ -817,6 +817,33 @@ staged, restored, reformatted, or committed by this task.
   provider-verification outcomes.
 - Commit: `96a8ed90`.
 
+### M6d — duplicate-safe provider navigation reconciliation
+
+- Status: `VERIFIED`
+- Root cause: when top-level provider navigation reached a conversation already
+  mapped to another saved row, the Hub attempted to overwrite the active
+  binding. A manually reached new conversation could likewise replace the
+  previous mapping instead of preserving it.
+- RED evidence: the focused reconciliation test left the existing target row
+  unselected. The manual-navigation case had no explicit local-wrapper offer.
+- GREEN evidence: 70/70 focused Hub, binding repository, provider navigation,
+  provider controller, and provider component tests pass; app TypeScript
+  passes.
+- Existing mappings: exact provider/profile/conversation identity selects the
+  existing local row, refreshes only its normalized resume metadata and
+  last-opened time, and leaves the previously active mapping unchanged.
+- New manual conversations: a bound session is never silently repointed.
+  VibeSpace shows an explicit `Save as Browser Chat` offer; acceptance creates
+  a normal local Chat plus a new bound wrapper with a generated placeholder
+  title, exact account/workspace/project scope, and normalized navigation
+  metadata. Dismissal changes no binding.
+- Unbound creation flow: a `new` wrapper may still bind to its first stable
+  provider conversation, preserving the intended new-chat lifecycle.
+- Authority boundary: reconciliation consumes only native top-level
+  allowlisted metadata. It reads no provider DOM, title, message, cookie, or
+  account state.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

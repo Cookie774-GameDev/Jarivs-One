@@ -142,6 +142,7 @@ type BrowserChatHubProps = {
   }>;
   readonly initialProjects?: ReadonlyArray<Project>;
   readonly initialOutputFeed?: BrowserChatOutputFeed;
+  readonly createChat?: typeof ensureActiveChat;
 };
 
 export function BrowserChatHub({
@@ -152,6 +153,7 @@ export function BrowserChatHub({
   initialSessions,
   initialProjects,
   initialOutputFeed,
+  createChat = ensureActiveChat,
 }: BrowserChatHubProps) {
   const providerId = useBrowserChatStore(
     (state) => state.chatPreferences[chatId ?? '']?.providerId ?? state.providerId,
@@ -230,6 +232,9 @@ export function BrowserChatHub({
     React.useState<BrowserChatPermissionProfile | null>(null);
   const [permissionProfileSaving, setPermissionProfileSaving] = React.useState(false);
   const [actionMenuBindingId, setActionMenuBindingId] = React.useState<string | null>(null);
+  const [pendingProviderNavigation, setPendingProviderNavigation] =
+    React.useState<ProviderSurfaceNavigation | null>(null);
+  const [savingProviderNavigation, setSavingProviderNavigation] = React.useState(false);
   const [sessions, setSessions] = React.useState<
     Array<{ readonly binding: BrowserChatBindingRow; readonly chat: Chat }>
   >(() => [...(initialSessions ?? [])]);
@@ -555,7 +560,7 @@ export function BrowserChatHub({
   };
 
   const createBrowserChat = async () => {
-    const nextId = await ensureActiveChat({
+    const nextId = await createChat({
       forceNew: true,
       title: `${provider.label} browser chat`,
     });
@@ -571,6 +576,59 @@ export function BrowserChatHub({
     });
     setEngine('browser', nextId);
     setProvider(provider.id, nextId);
+  };
+
+  const savePendingProviderConversation = async () => {
+    const navigation = pendingProviderNavigation;
+    if (
+      !navigation?.providerConversationKey ||
+      !accountId ||
+      !bindingWorkspaceId ||
+      savingProviderNavigation
+    ) {
+      return;
+    }
+    setSavingProviderNavigation(true);
+    try {
+      const providerDefinition = browserChatProvider(navigation.providerId);
+      const nextId = await createChat({
+        forceNew: true,
+        title: `${providerDefinition.label} conversation`,
+      });
+      if (!nextId) throw new Error('The local Browser Chat wrapper could not be created.');
+      const chat = await database.chats.get(nextId);
+      if (!chat) throw new Error('The local Browser Chat row was not persisted.');
+      const binding = await bindingRepository.create({
+        accountId,
+        workspaceId: bindingWorkspaceId,
+        projectId: projectId ? String(projectId) : undefined,
+        chatId: String(nextId),
+        provider: navigation.providerId,
+        providerProfileKey: providerDefinition.profileKey,
+        providerConversationKey: navigation.providerConversationKey,
+        resumeUrl: navigation.url,
+        providerProjectKey: navigation.providerProjectKey,
+        bindingState: 'bound',
+        localTitle: `${providerDefinition.label} conversation`,
+        lastOpenedAt: navigation.timestamp,
+      });
+      setSessions((current) => [...current, { binding, chat }]);
+      setProvider(navigation.providerId, nextId);
+      setEngine('browser', nextId);
+      setActiveChat(nextId);
+      setPendingProviderNavigation(null);
+      toast.success(
+        'Browser Chat saved',
+        'The provider conversation now has its own local VibeSpace wrapper.',
+      );
+    } catch (cause) {
+      toast.error(
+        'Browser Chat could not be saved',
+        cause instanceof Error ? cause.message : 'The local wrapper could not be created.',
+      );
+    } finally {
+      setSavingProviderNavigation(false);
+    }
   };
 
   const updateBrowserSession = async (
@@ -657,19 +715,43 @@ export function BrowserChatHub({
       (session) =>
         session.binding.chatId === chatId && session.binding.provider === navigation.providerId,
     )?.binding;
-    if (!activeBinding) return;
     const commonPatch = {
       lastOpenedAt: navigation.timestamp,
       providerProjectKey: navigation.providerProjectKey,
     };
     if (navigation.kind === 'conversation' && navigation.providerConversationKey) {
+      const existingSession = sessions.find(
+        ({ binding }) =>
+          binding.provider === navigation.providerId &&
+          binding.providerProfileKey === browserChatProvider(navigation.providerId).profileKey &&
+          binding.providerConversationKey === navigation.providerConversationKey,
+      );
+      if (existingSession) {
+        if (existingSession.binding.id !== activeBinding?.id) {
+          openBrowserSession(existingSession.binding);
+        }
+        void updateBrowserSession(existingSession.binding, {
+          ...commonPatch,
+          resumeUrl: navigation.url,
+          bindingState: 'bound',
+        });
+        return;
+      }
+      if (
+        !activeBinding ||
+        (activeBinding.providerConversationKey &&
+          activeBinding.providerConversationKey !== navigation.providerConversationKey)
+      ) {
+        setPendingProviderNavigation(navigation);
+        return;
+      }
       void updateBrowserSession(activeBinding, {
         ...commonPatch,
         providerConversationKey: navigation.providerConversationKey,
         resumeUrl: navigation.url,
         bindingState: 'bound',
       });
-    } else {
+    } else if (activeBinding) {
       void updateBrowserSession(activeBinding, commonPatch);
     }
   };
@@ -1133,6 +1215,40 @@ export function BrowserChatHub({
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
+          {pendingProviderNavigation?.providerId === provider.id ? (
+            <div
+              role="status"
+              className="mt-2 rounded-lg border border-accent-copper/30 bg-accent-copper/10 p-2"
+            >
+              <p className="text-[10px] font-medium text-foreground">
+                Unmapped {provider.label} conversation
+              </p>
+              <p className="mt-0.5 text-[9px] leading-4 text-muted-foreground">
+                Save a new local wrapper. The previously mapped conversation stays unchanged.
+              </p>
+              <div className="mt-1.5 flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-6 flex-1 px-2 text-[9px]"
+                  disabled={savingProviderNavigation}
+                  onClick={() => void savePendingProviderConversation()}
+                >
+                  {savingProviderNavigation ? 'Saving…' : 'Save as Browser Chat'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[9px]"
+                  disabled={savingProviderNavigation}
+                  onClick={() => setPendingProviderNavigation(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-auto">
             {sessions.length ? (
               <>
