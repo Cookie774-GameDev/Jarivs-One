@@ -123,6 +123,56 @@ describe('runAgent OpenCode adapter', () => {
     expect(fake.send).not.toHaveBeenCalled();
   });
 
+  it('retires a stale cached parent tree before creating a child in a new authority', async () => {
+    const fake = fakeHarness([
+      [{ type: 'done', finishReason: 'stop' }],
+      [{ type: 'done', finishReason: 'stop' }],
+    ]);
+    let currentAuthority = authorityClaim(1);
+    const bindings = new Map<string, ToolGatewayAuthorityClaim>();
+    const authority = {
+      capture: vi.fn(() => currentAuthority),
+      bind: vi.fn((sessionId: string, claim: ToolGatewayAuthorityClaim) => {
+        if (claim !== currentAuthority) return false;
+        const existing = bindings.get(sessionId);
+        if (existing && existing !== claim) return false;
+        bindings.set(sessionId, claim);
+        return true;
+      }),
+      release: vi.fn((sessionId: string) => {
+        bindings.delete(sessionId);
+      }),
+    };
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness, authority);
+    const childInput = {
+      agent,
+      messages: [{ role: 'user' as const, content: 'child turn' }],
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      scopeId: 'child-scope',
+      parentScopeId: 'parent-scope',
+    };
+
+    await adapter.run(childInput);
+    currentAuthority = authorityClaim(2);
+    await adapter.run(childInput);
+
+    expect(fake.deleteSession).toHaveBeenCalledWith('session-1', undefined);
+    expect(fake.deleteSession).toHaveBeenCalledWith('session-2', undefined);
+    expect(fake.createSession).toHaveBeenNthCalledWith(3, {
+      chatId: 'parent-scope',
+      title: 'Test',
+    });
+    expect(fake.createSession).toHaveBeenNthCalledWith(4, {
+      chatId: 'child-scope',
+      title: 'Test',
+      parentSessionId: 'session-3',
+    });
+    expect(fake.send).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ sessionId: 'session-4' }),
+    );
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     useAuthStore.setState({

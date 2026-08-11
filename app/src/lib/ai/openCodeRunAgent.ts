@@ -194,6 +194,32 @@ export function createOpenCodeRunAgentAdapter(
 ): OpenCodeRunAgentAdapter {
   const sessions = new Map<string, SessionRecord>();
 
+  const retireScopeTree = async (rootScopeId: string): Promise<void> => {
+    const retiredScopes = new Set([rootScopeId]);
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const [scope, record] of sessions) {
+        if (record.parentScopeId && retiredScopes.has(record.parentScopeId)) {
+          if (!retiredScopes.has(scope)) {
+            retiredScopes.add(scope);
+            expanded = true;
+          }
+        }
+      }
+    }
+    const retired = [...sessions.entries()].filter(([scope]) => retiredScopes.has(scope));
+    for (const [scope, record] of retired) {
+      sessions.delete(scope);
+      authority.release(record.session.id);
+    }
+    await Promise.all(
+      retired.map(([, record]) =>
+        harness.deleteSession?.(record.session.id, record.workingDirectory).catch(() => undefined),
+      ),
+    );
+  };
+
   const evictIfNeeded = async (protectedScopes: ReadonlySet<string> = new Set()) => {
     while (sessions.size >= MAX_SESSIONS) {
       const referencedParentIds = new Set(
@@ -233,13 +259,18 @@ export function createOpenCodeRunAgentAdapter(
       // Validate the complete caller payload before creating any server state.
       promptParts(input.messages);
       const messageFingerprints = await Promise.all(input.messages.map(fingerprintMessage));
-      const existing = sessions.get(scopeId);
+      let existing = sessions.get(scopeId);
       if (existing && existing.parentScopeId !== parentScopeId) {
         throw new Error('OpenCode session parent relationship cannot change.');
       }
       let parentSessionId: string | undefined;
       if (parentScopeId) {
         let parent = sessions.get(parentScopeId);
+        if (parent && !authority.bind(parent.session.id, authorityClaim)) {
+          await retireScopeTree(parentScopeId);
+          parent = undefined;
+          existing = sessions.get(scopeId);
+        }
         if (parent && parent.workingDirectory !== workingDirectory) {
           throw new Error('OpenCode child session working directory does not match its parent.');
         }
@@ -265,6 +296,10 @@ export function createOpenCodeRunAgentAdapter(
         }
         parent.touchedAt = Date.now();
         parentSessionId = parent.session.id;
+      }
+      if (existing && !authority.bind(existing.session.id, authorityClaim)) {
+        await retireScopeTree(scopeId);
+        existing = undefined;
       }
       const canReuse =
         existing &&
@@ -303,9 +338,6 @@ export function createOpenCodeRunAgentAdapter(
           touchedAt: Date.now(),
         };
         sessions.set(scopeId, record);
-      }
-      if (!authority.bind(record.session.id, authorityClaim)) {
-        throw new Error('OpenCode session authority changed.');
       }
       await input.onSessionBound?.({
         sessionId: record.session.id,
