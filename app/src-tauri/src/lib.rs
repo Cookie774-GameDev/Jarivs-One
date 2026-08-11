@@ -376,6 +376,7 @@ fn run_ordinary(
                 .build(),
         )
         .manage(harness::runtime::OpenCodeRuntimeState::default())
+        .manage(harness::download::OpenCodeDownloadState::default())
         .manage(cli_bridge::CliBridgeState::default())
         .manage(kernel_host::KernelHostState::default())
         .manage(terminal::TerminalState::default())
@@ -543,6 +544,8 @@ fn run_ordinary(
             cli_bridge::cli_bridge_start,
             cli_bridge::cli_bridge_cancel,
             harness::runtime::opencode_runtime_detect,
+            harness::download::opencode_runtime_install,
+            harness::download::opencode_runtime_install_cancel,
             command_center_tool::command_center_tool,
             context_search::context_search_replace_documents,
             context_search::context_search_delete_documents,
@@ -771,6 +774,8 @@ cli_bridge::cli_bridge_probe
 cli_bridge::cli_bridge_start
 cli_bridge::cli_bridge_cancel
 harness::runtime::opencode_runtime_detect
+harness::download::opencode_runtime_install
+harness::download::opencode_runtime_install_cancel
 command_center_tool::command_center_tool
 context_search::context_search_replace_documents
 context_search::context_search_delete_documents
@@ -915,9 +920,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "fe6c1f43c98409e112796cfcb4f63933a00c901c742b110a7b888efebe6fd107";
+        "20c4cb0247a2ce157984613109fbed954501a884467eb29272eac01e9336c507";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "1b42399366267ca7982c616fbfd3545cbc5143f9308be6629e1e43a4cb4ee32a";
+        "aacff047bea44cc24ea388ada9167eb11bb7854f78797de6adcb2e90a36b1a49";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1045,16 +1050,21 @@ wallpaper_master::wallpaper_full_cache_path";
     }
 
     #[test]
-    fn opencode_runtime_detection_is_registered_only_on_the_ordinary_builder() {
+    fn opencode_runtime_commands_are_registered_only_on_the_ordinary_builder() {
         let source = include_str!("lib.rs");
         let visual_test =
             function_source(source, "fn run_monochrome_visual_test(", "fn run_ordinary(");
         let ordinary = function_source(source, "fn run_ordinary(", "#[cfg(test)]");
 
         assert!(!visual_test.contains("OpenCodeRuntimeState"));
+        assert!(!visual_test.contains("OpenCodeDownloadState"));
         assert!(!visual_test.contains("opencode_runtime_detect"));
+        assert!(!visual_test.contains("opencode_runtime_install"));
         assert!(ordinary.contains(".manage(harness::runtime::OpenCodeRuntimeState::default())"));
+        assert!(ordinary.contains(".manage(harness::download::OpenCodeDownloadState::default())"));
         assert!(ordinary.contains("harness::runtime::opencode_runtime_detect,"));
+        assert!(ordinary.contains("harness::download::opencode_runtime_install,"));
+        assert!(ordinary.contains("harness::download::opencode_runtime_install_cancel,"));
     }
 
     #[test]

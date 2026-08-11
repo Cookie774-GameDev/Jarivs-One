@@ -424,6 +424,13 @@ pub fn opencode_runtime_detect(
     app: AppHandle,
     state: State<'_, OpenCodeRuntimeState>,
 ) -> Result<OpenCodeRuntimeDetection, String> {
+    detect_opencode_runtime(&app, &state)
+}
+
+pub fn detect_opencode_runtime(
+    app: &AppHandle,
+    state: &OpenCodeRuntimeState,
+) -> Result<OpenCodeRuntimeDetection, String> {
     let managed_root = app
         .path()
         .app_local_data_dir()
@@ -431,7 +438,7 @@ pub fn opencode_runtime_detect(
         .join("runtimes")
         .join("opencode");
     detect_with_probe(
-        &state,
+        state,
         &production_context(managed_root),
         probe_native_version,
     )
