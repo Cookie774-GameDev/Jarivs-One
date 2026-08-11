@@ -1,7 +1,7 @@
 use crate::harness::runtime::{OpenCodeRuntimeState, ResolvedTrustedRuntime, RuntimeSource};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -301,6 +301,28 @@ impl CredentialSource for VaultCredentialSource {
     }
 }
 
+trait LocalModelSource {
+    fn load(&self) -> Vec<String>;
+}
+
+struct LoopbackOllamaModelSource;
+
+impl LocalModelSource for LoopbackOllamaModelSource {
+    fn load(&self) -> Vec<String> {
+        crate::ollama_http::harness_model_names()
+    }
+}
+
+fn valid_local_model_name(name: &str) -> bool {
+    let trimmed = name.trim();
+    !trimmed.is_empty()
+        && trimmed.len() <= 128
+        && !trimmed.contains("..")
+        && trimmed
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_./:-".contains(character))
+}
+
 fn credential_environment_name(provider: &str) -> Option<&'static str> {
     match provider {
         "anthropic" => Some("VIBESPACE_OC_ANTHROPIC_API_KEY"),
@@ -326,6 +348,7 @@ fn credential_environment_name(provider: &str) -> Option<&'static str> {
 
 fn scoped_provider_config(
     credentials: Vec<(String, String)>,
+    local_models: Vec<String>,
 ) -> Result<(String, Vec<(String, String)>), ServerFailure> {
     let mut providers = Map::new();
     let mut environment = Vec::new();
@@ -349,6 +372,31 @@ fn scoped_provider_config(
             }),
         );
         environment.push((environment_name.to_string(), value));
+    }
+    let local_models = local_models
+        .into_iter()
+        .map(|model| model.trim().to_string())
+        .filter(|model| valid_local_model_name(model))
+        .collect::<BTreeSet<_>>();
+    if !local_models.is_empty() {
+        let models = local_models
+            .into_iter()
+            .map(|model| {
+                let name = model.clone();
+                (model, json!({ "name": name }))
+            })
+            .collect::<Map<_, _>>();
+        providers.insert(
+            "ollama".to_string(),
+            json!({
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Ollama (local)",
+                "options": {
+                    "baseURL": "http://127.0.0.1:11434/v1"
+                },
+                "models": models
+            }),
+        );
     }
     let mut root = Map::new();
     root.insert(
@@ -414,8 +462,10 @@ fn build_launch_spec_with(
     port: u16,
     server_root: &Path,
     credentials: &dyn CredentialSource,
+    local_models: &dyn LocalModelSource,
 ) -> Result<ServerLaunchSpec, ServerFailure> {
-    let (config_content, provider_environment) = scoped_provider_config(credentials.load()?)?;
+    let (config_content, provider_environment) =
+        scoped_provider_config(credentials.load()?, local_models.load())?;
     let (config_path, config_dir, working_dir) = write_scoped_config(server_root, &config_content)?;
     Ok(ServerLaunchSpec {
         executable: runtime.path.clone(),
@@ -565,9 +615,10 @@ fn start_server_attempt_with(
     launcher: &dyn ProcessLauncher,
     health: &dyn HealthWaiter,
     credentials: &dyn CredentialSource,
+    local_models: &dyn LocalModelSource,
 ) -> Result<(OpenCodeServerConnection, Box<dyn OwnedProcess>), ServerFailure> {
     let (reservation, port) = reserve_loopback_port()?;
-    let spec = build_launch_spec_with(runtime, port, server_root, credentials)?;
+    let spec = build_launch_spec_with(runtime, port, server_root, credentials, local_models)?;
     drop(reservation);
     let mut process = launcher.launch(&spec)?;
     let connection = spec.connection();
@@ -588,6 +639,7 @@ fn start_server_attempt(
         &ProductionLauncher,
         &ProductionHealthWaiter,
         &VaultCredentialSource,
+        &LoopbackOllamaModelSource,
     )
 }
 
@@ -967,9 +1019,9 @@ mod tests {
         build_launch_spec_with, claim_start, failure, probe_health_once, reserve_loopback_port,
         reuse_or_stop_existing, server_status, start_server_attempt_with, stop_server,
         take_crashed_runtime, write_scoped_config, CredentialSource, HealthWaiter,
-        OpenCodeServerConnection, OpenCodeServerState, OwnedProcess, ProcessLauncher,
-        ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure, ServerRuntimeEvent,
-        CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
+        LocalModelSource, OpenCodeServerConnection, OpenCodeServerState, OwnedProcess,
+        ProcessLauncher, ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure,
+        ServerRuntimeEvent, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
     };
     use base64::Engine as _;
     use std::fs;
@@ -1020,6 +1072,14 @@ mod tests {
     impl CredentialSource for FakeCredentials {
         fn load(&self) -> Result<Vec<(String, String)>, ServerFailure> {
             Ok(self.0.clone())
+        }
+    }
+
+    struct FakeLocalModels(Vec<String>);
+
+    impl LocalModelSource for FakeLocalModels {
+        fn load(&self) -> Vec<String> {
+            self.0.clone()
         }
     }
 
@@ -1143,6 +1203,7 @@ mod tests {
             42_123,
             fixture.path(),
             &credentials,
+            &FakeLocalModels(vec![]),
         )
         .unwrap();
 
@@ -1188,6 +1249,57 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_ollama_config_contains_every_installed_model_and_no_catalog_phantoms() {
+        let fixture = FixtureRoot::new("ollama-dynamic");
+        let spec = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_123,
+            fixture.path(),
+            &FakeCredentials(vec![]),
+            &FakeLocalModels(vec![
+                "llama3.2".into(),
+                "qwen3.5:4b".into(),
+                "gpt-oss:20b".into(),
+                "private/unlisted:latest".into(),
+                "qwen3.5:4b".into(),
+            ]),
+        )
+        .unwrap();
+        let config: serde_json::Value = serde_json::from_str(&spec.config_content).unwrap();
+        let ollama = &config["provider"]["ollama"];
+
+        assert_eq!(ollama["npm"], "@ai-sdk/openai-compatible");
+        assert_eq!(ollama["name"], "Ollama (local)");
+        assert_eq!(ollama["options"]["baseURL"], "http://127.0.0.1:11434/v1");
+        assert_eq!(ollama["models"].as_object().unwrap().len(), 4);
+        assert_eq!(
+            ollama["models"]["private/unlisted:latest"]["name"],
+            "private/unlisted:latest"
+        );
+        assert!(ollama["models"].get("gemma3").is_none());
+    }
+
+    #[test]
+    fn missing_ollama_or_invalid_model_names_do_not_create_a_local_provider() {
+        let fixture = FixtureRoot::new("ollama-missing");
+        let spec = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_123,
+            fixture.path(),
+            &FakeCredentials(vec![]),
+            &FakeLocalModels(vec![
+                "../escape".into(),
+                "bad model".into(),
+                "x".repeat(129),
+            ]),
+        )
+        .unwrap();
+        let config: serde_json::Value = serde_json::from_str(&spec.config_content).unwrap();
+
+        assert!(config.get("provider").is_none());
+    }
+
+    #[test]
     fn scoped_config_uses_only_owned_paths_and_atomic_file() {
         let fixture = FixtureRoot::new("config");
         let (config, directory, workspace) =
@@ -1213,6 +1325,7 @@ mod tests {
             42_123,
             fixture.path(),
             &FakeCredentials(vec![("openai".into(), "first-secret".into())]),
+            &FakeLocalModels(vec![]),
         )
         .unwrap();
         assert!(first.config_content.contains("\"openai\""));
@@ -1223,6 +1336,7 @@ mod tests {
             42_124,
             fixture.path(),
             &FakeCredentials(vec![("openai".into(), "second-secret".into())]),
+            &FakeLocalModels(vec![]),
         )
         .unwrap();
         assert_eq!(
@@ -1236,6 +1350,7 @@ mod tests {
             42_125,
             fixture.path(),
             &FakeCredentials(vec![]),
+            &FakeLocalModels(vec![]),
         )
         .unwrap();
         assert!(!deleted.config_content.contains("\"openai\""));
@@ -1328,6 +1443,7 @@ mod tests {
             &launcher,
             &FakeHealth(true),
             &FakeCredentials(vec![]),
+            &FakeLocalModels(vec![]),
         )
         .unwrap();
         assert_eq!(process.id(), 41);
@@ -1342,6 +1458,7 @@ mod tests {
             &launcher,
             &FakeHealth(false),
             &FakeCredentials(vec![]),
+            &FakeLocalModels(vec![]),
         )
         .err()
         .expect("failed health");

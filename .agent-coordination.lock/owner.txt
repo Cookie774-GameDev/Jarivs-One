@@ -3,6 +3,6 @@ phase=VS-PR31-OPENCODE-HARNESS-PHASE9-20260811
 controller=/root
 branch=agent/pr30-fixes-and-updates
 starting_head=d9d5f622
-owned_paths=app/src-tauri/src/harness/server.rs;app/src-tauri/src/ollama_http.rs;app/src-tauri/src/lib.rs;app/src/lib/ai/providers/ollama.ts;app/src/lib/ai/ollamaCompatibility.ts;app/src/lib/ai/ollamaCompatibility.test.ts;app/src/lib/ai/index.ts;app/src/features/settings/sections/LocalModels.tsx;app/src/features/settings/sections/LocalModels.runtime.test.tsx;app/src/lib/harness/providerReconciliation.test.ts;docs/superpowers/plans/2026-08-11-vibespace-opencode-ollama-bridge.md;.agent-coordination.lock/owner.txt
+owned_paths=app/src-tauri/src/harness/server.rs;app/src-tauri/src/ollama_http.rs;app/src-tauri/src/lib.rs;app/src/lib/ai/providers/ollama.ts;app/src/lib/ai/providers/ollama.test.ts;app/src/lib/ai/ollamaCompatibility.ts;app/src/lib/ai/ollamaCompatibility.test.ts;app/src/lib/ai/index.ts;app/src/features/settings/sections/LocalModels.tsx;app/src/features/settings/sections/LocalModels.runtime.test.tsx;app/src/lib/harness/localModelRuntimeRefresh.ts;app/src/lib/harness/localModelRuntimeRefresh.test.ts;app/src/lib/harness/providerReconciliation.test.ts;docs/superpowers/plans/2026-08-11-vibespace-opencode-ollama-bridge.md;.agent-coordination.lock/owner.txt
 exclusions=unrelated dirty/untracked work;Model Foundry runtime changes;production runAgent switch;automatic model downloads;remote Ollama;merge;push;deploy;release;subagents
 status=ACTIVE

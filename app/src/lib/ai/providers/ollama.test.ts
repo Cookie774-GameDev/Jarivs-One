@@ -5,10 +5,12 @@ import { _resetNativeFetchForTests } from '@/lib/nativeFetch';
 import { writeLocalAgentPreferences } from '../localAgentRuntime';
 import {
   buildOllamaRequestBody,
+  inspectOllamaModel,
   listOllamaModelInfo,
   pullOllamaModel,
   isOllamaReachable,
   ollamaProvider,
+  probeOllamaToolCalling,
   removeOllamaModel,
   runLegacyNativeOllamaChat,
   runNativeOllamaChat,
@@ -71,6 +73,56 @@ describe('ollama provider utilities', () => {
       'http://127.0.0.1:11434/api/version',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  it('reads capability and context metadata from the bounded model-details endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        capabilities: ['completion', 'tools'],
+        model_info: {
+          'llama.context_length': 65_536,
+          'llama.embedding_length': 4_096,
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(inspectOllamaModel('llama3.2')).resolves.toEqual({
+      digest: expect.stringMatching(/^metadata:[a-f0-9]{8}$/),
+      capabilities: ['completion', 'tools'],
+      contextWindowTokens: 65_536,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:11434/api/show',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ model: 'llama3.2', verbose: false }),
+      }),
+    );
+  });
+
+  it('uses a side-effect-free tool schema for the local compatibility roundtrip', async () => {
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.tools).toEqual([
+        expect.objectContaining({
+          function: expect.objectContaining({ name: 'compatibility_check' }),
+        }),
+      ]);
+      expect(JSON.stringify(body)).not.toMatch(/workspace|shell|file|write/i);
+      return Promise.resolve(
+        jsonResponse({
+          message: {
+            tool_calls: [{ function: { name: 'compatibility_check', arguments: { ok: true } } }],
+          },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(probeOllamaToolCalling('qwen3.5:4b')).resolves.toEqual({
+      supported: true,
+    });
   });
 
   it('retries reachability before giving up', async () => {

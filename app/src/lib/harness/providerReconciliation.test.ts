@@ -213,6 +213,48 @@ describe('OpenCode provider reconciliation', () => {
       },
     ]);
   });
+
+  it('preserves curated local entries and appends an unlisted installed Ollama model', () => {
+    const reconciled = reconcileHarnessProviderCatalog(
+      [
+        {
+          id: 'local',
+          name: 'Local',
+          models: [
+            { id: 'llama3.2', name: 'Llama 3.2' },
+            { id: 'gpt-oss:20b', name: 'GPT-OSS 20B' },
+          ],
+        },
+      ],
+      [
+        {
+          id: 'ollama',
+          name: 'Ollama (local)',
+          connected: true,
+          models: [
+            { id: 'llama3.2', name: 'llama3.2' },
+            { id: 'private/unlisted:latest', name: 'private/unlisted:latest' },
+          ],
+        },
+      ],
+    );
+
+    expect(reconciled[0]).toEqual(
+      expect.objectContaining({
+        id: 'local',
+        runtimeProviderId: 'ollama',
+        models: [
+          expect.objectContaining({ id: 'llama3.2', available: true }),
+          expect.objectContaining({ id: 'gpt-oss:20b', available: false }),
+          expect.objectContaining({
+            id: 'private/unlisted:latest',
+            available: true,
+            dynamic: true,
+          }),
+        ],
+      }),
+    );
+  });
 });
 
 describe('exact OpenCode selection mapping', () => {
@@ -267,6 +309,11 @@ describe('exact OpenCode selection mapping', () => {
     expect(() =>
       resolveOpenCodeSelection({ providerId: 'openai', modelId: 'missing' }, [
         provider('openai', 'gpt'),
+      ]),
+    ).toThrowError(expect.objectContaining({ code: 'MODEL_NOT_AVAILABLE' }));
+    expect(() =>
+      resolveOpenCodeSelection({ providerId: 'local', modelId: 'removed:model' }, [
+        provider('ollama', 'qwen3.5:4b'),
       ]),
     ).toThrowError(expect.objectContaining({ code: 'MODEL_NOT_AVAILABLE' }));
   });

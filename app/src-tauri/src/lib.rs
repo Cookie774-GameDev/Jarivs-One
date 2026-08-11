@@ -670,6 +670,8 @@ fn run_ordinary(
             jarvis_voice::jarvis_voice_stop,
             ollama_http::ollama_ping,
             ollama_http::ollama_list_models,
+            ollama_http::ollama_show_model,
+            ollama_http::ollama_probe_tools,
             ollama_http::ollama_pull_model,
             ollama_http::ollama_chat,
             ollama_http::ollama_chat_stream,
@@ -902,6 +904,8 @@ jarvis_voice::jarvis_voice_speak
 jarvis_voice::jarvis_voice_stop
 ollama_http::ollama_ping
 ollama_http::ollama_list_models
+ollama_http::ollama_show_model
+ollama_http::ollama_probe_tools
 ollama_http::ollama_pull_model
 ollama_http::ollama_chat
 ollama_http::ollama_chat_stream
@@ -928,9 +932,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "23a72854b6a382e2ec5a9f7e832eece90c17f3e179a210993c475c607d67080f";
+        "2e14fcf038b4dd841756ff935b476ea5ecfa671c505e7b0528c573d6bb41b981";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "f0d448f04d167e469cd08bd144a34d11315f19da8561447ae59d387ff51151a2";
+        "669550cf1179f26122ed9f8065862f7461df23ec5713efdfda73c64245463c72";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {

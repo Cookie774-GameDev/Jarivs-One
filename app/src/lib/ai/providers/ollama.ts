@@ -493,8 +493,20 @@ const SANE_MODEL_RE = /^[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*(?::[a-zA-Z0-9_.-]+
 
 export interface OllamaModelInfo {
   name: string;
+  digest?: string;
   size?: number;
   modifiedAt?: string;
+}
+
+export interface OllamaModelDetails {
+  digest: string;
+  capabilities: string[];
+  contextWindowTokens?: number;
+}
+
+export interface OllamaToolProbe {
+  supported: boolean;
+  reason?: string;
 }
 
 export interface OllamaPullProgress {
@@ -613,10 +625,11 @@ export async function listOllamaModels(signal?: AbortSignal): Promise<string[]> 
 }
 
 function mapInvokeModels(
-  models: Array<{ name: string; size?: number; modifiedAt?: string }>,
+  models: Array<{ name: string; digest?: string; size?: number; modifiedAt?: string }>,
 ): OllamaModelInfo[] {
   return (models ?? []).map((m) => ({
     name: m.name,
+    digest: typeof m.digest === 'string' ? m.digest : undefined,
     size: typeof m.size === 'number' ? m.size : undefined,
     modifiedAt: typeof m.modifiedAt === 'string' ? m.modifiedAt : undefined,
   }));
@@ -625,10 +638,9 @@ function mapInvokeModels(
 async function listOllamaModelsViaInvoke(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
   if (signal?.aborted) return [];
   const { invoke } = await import('@tauri-apps/api/core');
-  const models = await invoke<Array<{ name: string; size?: number; modifiedAt?: string }>>(
-    'ollama_list_models',
-    { baseUrl: resolvedOllamaBaseUrl() },
-  );
+  const models = await invoke<
+    Array<{ name: string; digest?: string; size?: number; modifiedAt?: string }>
+  >('ollama_list_models', { baseUrl: resolvedOllamaBaseUrl() });
   return mapInvokeModels(models);
 }
 
@@ -678,17 +690,169 @@ export async function listOllamaModelInfo(signal?: AbortSignal): Promise<OllamaM
     const models = data?.models;
     if (!Array.isArray(models)) return [];
     return models
-      .map((m: { name?: string; size?: number; modified_at?: string }): OllamaModelInfo | null => {
-        if (!m?.name || typeof m.name !== 'string') return null;
-        return {
-          name: m.name,
-          size: typeof m.size === 'number' ? m.size : undefined,
-          modifiedAt: typeof m.modified_at === 'string' ? m.modified_at : undefined,
-        };
-      })
+      .map(
+        (m: {
+          name?: string;
+          digest?: string;
+          size?: number;
+          modified_at?: string;
+        }): OllamaModelInfo | null => {
+          if (!m?.name || typeof m.name !== 'string') return null;
+          return {
+            name: m.name,
+            digest: typeof m.digest === 'string' ? m.digest : undefined,
+            size: typeof m.size === 'number' ? m.size : undefined,
+            modifiedAt: typeof m.modified_at === 'string' ? m.modified_at : undefined,
+          };
+        },
+      )
       .filter((model: OllamaModelInfo | null): model is OllamaModelInfo => Boolean(model));
   } catch {
     return [];
+  }
+}
+
+function parseModelDetails(value: unknown): OllamaModelDetails | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.digest !== 'string' || !record.digest.trim()) return null;
+  const capabilities = Array.isArray(record.capabilities)
+    ? record.capabilities
+        .filter((item): item is string => typeof item === 'string')
+        .slice(0, 32)
+        .map((item) => item.slice(0, 64))
+    : [];
+  const contextWindowTokens =
+    typeof record.contextWindowTokens === 'number' &&
+    Number.isFinite(record.contextWindowTokens) &&
+    record.contextWindowTokens > 0
+      ? Math.floor(record.contextWindowTokens)
+      : undefined;
+  return {
+    digest: record.digest.slice(0, 160),
+    capabilities,
+    ...(contextWindowTokens ? { contextWindowTokens } : {}),
+  };
+}
+
+/** Inspect bounded model metadata without starting or downloading a model. */
+export async function inspectOllamaModel(model: string): Promise<OllamaModelDetails | null> {
+  validateModelName(model);
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      return parseModelDetails(
+        await invoke<unknown>('ollama_show_model', {
+          model,
+          baseUrl: resolvedOllamaBaseUrl(),
+        }),
+      );
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const response = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/show`, {
+      method: 'POST',
+      headers: ollamaHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ model, verbose: false }),
+      timeoutMs: 15_000,
+    });
+    if (!response.ok) return null;
+    const raw = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!raw) return null;
+    const encoded = JSON.stringify(raw);
+    let hash = 2_166_136_261;
+    for (let index = 0; index < encoded.length; index += 1) {
+      hash = Math.imul(hash ^ encoded.charCodeAt(index), 16_777_619) >>> 0;
+    }
+    const modelInfo =
+      raw.model_info && typeof raw.model_info === 'object'
+        ? (raw.model_info as Record<string, unknown>)
+        : {};
+    const contextWindowTokens = Object.entries(modelInfo)
+      .filter(([key, value]) => key.endsWith('.context_length') && typeof value === 'number')
+      .reduce<number | undefined>(
+        (largest, [, value]) =>
+          largest === undefined || (value as number) > largest ? (value as number) : largest,
+        undefined,
+      );
+    return parseModelDetails({
+      digest: `metadata:${hash.toString(16).padStart(8, '0')}`,
+      capabilities: raw.capabilities,
+      contextWindowTokens,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Run the native side-effect-free tool-schema roundtrip for one installed model. */
+export async function probeOllamaToolCalling(model: string): Promise<OllamaToolProbe> {
+  validateModelName(model);
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result = await invoke<unknown>('ollama_probe_tools', {
+        model,
+        baseUrl: resolvedOllamaBaseUrl(),
+      });
+      if (!result || typeof result !== 'object') {
+        return { supported: false, reason: 'The tool probe returned an invalid response.' };
+      }
+      const record = result as Record<string, unknown>;
+      return {
+        supported: record.supported === true,
+        ...(typeof record.reason === 'string' ? { reason: record.reason.slice(0, 256) } : {}),
+      };
+    } catch {
+      return { supported: false, reason: 'The safe tool probe could not be completed.' };
+    }
+  }
+  try {
+    const response = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/chat`, {
+      method: 'POST',
+      headers: ollamaHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          {
+            role: 'user',
+            content: 'Call compatibility_check exactly once with ok set to true.',
+          },
+        ],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'compatibility_check',
+              description: 'Side-effect-free local compatibility check.',
+              parameters: {
+                type: 'object',
+                properties: { ok: { type: 'boolean' } },
+                required: ['ok'],
+              },
+            },
+          },
+        ],
+        options: { temperature: 0, num_predict: 32 },
+      }),
+      timeoutMs: 30_000,
+    });
+    if (!response.ok) {
+      return { supported: false, reason: 'Ollama rejected the safe tool probe.' };
+    }
+    const value = (await response.json().catch(() => null)) as {
+      message?: { tool_calls?: unknown[] };
+    } | null;
+    const supported = Boolean(value?.message?.tool_calls?.length);
+    return {
+      supported,
+      ...(!supported ? { reason: 'No tool call was returned.' } : {}),
+    };
+  } catch {
+    return { supported: false, reason: 'The safe tool probe could not be completed.' };
   }
 }
 
@@ -1170,6 +1334,9 @@ export async function pullOllamaModel(
         `Download completed but "${name}" was not found in the installed list. Try re-scanning or re-downloading.`,
       );
     }
+    const { refreshOpenCodeLocalModelRuntime } =
+      await import('@/lib/harness/localModelRuntimeRefresh');
+    await refreshOpenCodeLocalModelRuntime();
     return;
   }
 
@@ -1344,6 +1511,9 @@ export async function pullOllamaModel(
       throw err;
     }
   }
+  const { refreshOpenCodeLocalModelRuntime } =
+    await import('@/lib/harness/localModelRuntimeRefresh');
+  await refreshOpenCodeLocalModelRuntime();
 }
 
 /** Remove an installed Ollama model and verify that the tag is no longer listed. */
@@ -1383,6 +1553,9 @@ export async function removeOllamaModel(model: string, signal?: AbortSignal): Pr
   ) {
     throw new Error(`Ollama reported success but "${name}" is still installed.`);
   }
+  const { refreshOpenCodeLocalModelRuntime } =
+    await import('@/lib/harness/localModelRuntimeRefresh');
+  await refreshOpenCodeLocalModelRuntime();
 }
 
 /** Run a tiny real inference to prove an installed tag can produce a local chat response. */
