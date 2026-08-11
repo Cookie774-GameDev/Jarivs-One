@@ -1,5 +1,9 @@
 import { normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
-import type { BrowserChatPermissionProfile } from './permissionRegistry';
+import {
+  deserializePermissionProfile,
+  serializePermissionProfile,
+  type BrowserChatPermissionProfile,
+} from './permissionRegistry';
 
 export interface BrowserChatWorkspaceGrant {
   readonly id: string;
@@ -22,6 +26,7 @@ interface GrantInput {
   readonly projectId: string;
   readonly root: string;
   readonly displayName: string;
+  readonly permissionProfile?: BrowserChatPermissionProfile;
 }
 
 const SAFE_ID = /^[A-Za-z0-9_.:@/-]{1,160}$/u;
@@ -83,6 +88,28 @@ export function grantBrowserChatWorkspace(input: GrantInput): BrowserChatWorkspa
   }
   const displayName = input.displayName.trim().slice(0, 120);
   if (!displayName) throw new Error('This folder cannot be granted to Browser Chat.');
+  const timestamp = Date.now();
+  let permissionProfile: BrowserChatPermissionProfile;
+  try {
+    permissionProfile = input.permissionProfile
+      ? deserializePermissionProfile(serializePermissionProfile(input.permissionProfile))
+      : {
+          version: 1,
+          accountId: input.accountId,
+          workspaceId: input.projectId,
+          plan: 'read',
+          overrides: {},
+          updatedAt: timestamp,
+        };
+  } catch {
+    throw new Error('This Browser Chat permission profile is invalid.');
+  }
+  if (
+    permissionProfile.accountId !== input.accountId ||
+    permissionProfile.workspaceId !== input.projectId
+  ) {
+    throw new Error('This Browser Chat permission profile scope does not match the project.');
+  }
   currentGrant = Object.freeze({
     id: grantId(),
     accountId: input.accountId,
@@ -95,15 +122,8 @@ export function grantBrowserChatWorkspace(input: GrantInput): BrowserChatWorkspa
     deleteAllowed: false,
     terminalAllowed: false,
     secretPolicy: 'block',
-    permissionProfile: Object.freeze({
-      version: 1,
-      accountId: input.accountId,
-      workspaceId: input.projectId,
-      plan: 'read',
-      overrides: Object.freeze({}),
-      updatedAt: Date.now(),
-    }),
-    createdAt: Date.now(),
+    permissionProfile,
+    createdAt: timestamp,
   });
   publish();
   return currentGrant;
@@ -113,4 +133,34 @@ export function revokeBrowserChatWorkspace(): void {
   if (!currentGrant) return;
   currentGrant = null;
   publish();
+}
+
+export function updateBrowserChatWorkspacePermissionProfile(
+  profile: BrowserChatPermissionProfile,
+): BrowserChatWorkspaceGrant {
+  if (!currentGrant) throw new Error('Browser Chat workspace grant is missing.');
+  let validated: BrowserChatPermissionProfile;
+  try {
+    validated = deserializePermissionProfile(serializePermissionProfile(profile));
+  } catch {
+    throw new Error('Browser Chat permission profile is invalid.');
+  }
+  if (
+    validated.accountId !== currentGrant.accountId ||
+    validated.workspaceId !== currentGrant.projectId
+  ) {
+    throw new Error('Browser Chat permission profile scope does not match the workspace grant.');
+  }
+  if (
+    serializePermissionProfile(validated) ===
+    serializePermissionProfile(currentGrant.permissionProfile)
+  ) {
+    return currentGrant;
+  }
+  currentGrant = Object.freeze({
+    ...currentGrant,
+    permissionProfile: validated,
+  });
+  publish();
+  return currentGrant;
 }

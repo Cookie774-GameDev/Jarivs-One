@@ -382,7 +382,7 @@ describe('BrowserChatHub', () => {
     expect(browserChatStore.getState().chatPreferences['chat-regular']?.engine).toBe('native');
   });
 
-  it('requires an explicit read-only project grant before arming the local relay', () => {
+  it('requires an explicit project grant before arming the local relay', () => {
     localStorage.setItem(
       projectStorageKey(ROOT_PREFIX, 'project-1'),
       'C:\\Users\\viper\\Projects\\Safe',
@@ -390,7 +390,7 @@ describe('BrowserChatHub', () => {
     renderHub('chat-1');
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /approve current project read-only/i }));
+    fireEvent.click(screen.getByRole('button', { name: /approve current project access/i }));
 
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toMatchObject({
       accountId: 'account-1',
@@ -409,6 +409,37 @@ describe('BrowserChatHub', () => {
     fireEvent.click(screen.getByRole('button', { name: /revoke project access/i }));
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     expect(getBridgeWorkspaceGrant()).toBeUndefined();
+  });
+
+  it('persists the selected permission plan by account/project and applies it to a live grant', async () => {
+    localStorage.setItem(
+      projectStorageKey(ROOT_PREFIX, 'project-1'),
+      'C:\\Users\\viper\\Projects\\Safe',
+    );
+    const first = renderHub('chat-1');
+    const selector = await screen.findByLabelText('VibeSpace permission plan');
+
+    fireEvent.change(selector, { target: { value: 'project_developer' } });
+    await waitFor(async () =>
+      expect(
+        await testDatabase.browser_chat_permission_profiles
+          .where('[accountId+workspaceId+projectId]')
+          .equals(['account-1', 'workspace-1', 'project-1'])
+          .first(),
+      ).toMatchObject({ plan: 'project_developer' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /approve current project access/i }));
+    expect(getBridgeWorkspaceGrant()).toMatchObject({
+      permissionProfile: { plan: 'project_developer' },
+    });
+
+    first.unmount();
+    renderHub('chat-1');
+    await waitFor(() =>
+      expect((screen.getByLabelText('VibeSpace permission plan') as HTMLSelectElement).value).toBe(
+        'project_developer',
+      ),
+    );
   });
 
   it('starts the authenticated relay for a signed-in account before local project access is granted', () => {
@@ -441,11 +472,11 @@ describe('BrowserChatHub', () => {
     renderHub('chat-1');
 
     expect(screen.getByText('VibeSpace MCP')).toBeTruthy();
-    expect(screen.getByText(/file reads/i)).toBeTruthy();
-    expect(screen.getByText(/file writes/i)).toBeTruthy();
-    expect(screen.getByText(/playwright browser/i)).toBeTruthy();
-    expect(screen.getByText(/installed mcp tools/i)).toBeTruthy();
-    expect(screen.getAllByText(/approval required/i).length).toBeGreaterThanOrEqual(3);
+    const permissionPlan = await screen.findByLabelText('VibeSpace permission plan');
+    expect((permissionPlan as HTMLSelectElement).value).toBe('read');
+    expect(screen.getByText(/unavailable in this build or provider/i)).toBeTruthy();
+    expect(screen.queryByText(/^file writes$/i)).toBeNull();
+    expect(screen.getByText(/blocked by plan/i)).toBeTruthy();
     expect(screen.getByText('https://vibespace-mcp.fly.dev/mcp')).toBeTruthy();
     expect(screen.getAllByText(/enable developer mode/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/add vibespace mcp/i)).toBeTruthy();

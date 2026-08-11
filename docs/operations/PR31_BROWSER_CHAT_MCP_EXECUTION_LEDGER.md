@@ -275,6 +275,34 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: the durable record stores permission intent only. Absolute roots
   and executable grants remain session-only and must still be approved after
   restart.
+- Commit: `34895b31`.
+
+### M5d — visible plan selector and custom approvals
+
+- Status: `VERIFIED`
+- RED evidence: the Connection inspector had fixed read-only copy and static
+  “approval required” claims, no selectable plans, no granular Custom modes,
+  and no path from a saved profile into an already-active local grant.
+- GREEN evidence: 54/54 focused hub, permission panel, workspace grant,
+  permission repository/registry, and bridge tests pass; app TypeScript passes.
+- UX: the inspector exposes Off, Read, Project Developer, Full Local
+  Developer, and Custom. Custom provides a per-capability approval selector;
+  critical delete, terminal, browser-mutation, and downstream-MCP actions
+  expose only Always block or Ask every time.
+- Truthfulness: the capability circuit reports executable, locally/provider
+  unavailable, and plan-blocked totals from the real catalog. Only bounded
+  `files.list` and `files.read` are currently marked executable; the UI no
+  longer claims unavailable mutation families merely need approval.
+- Runtime: changing a plan persists the exact account/workspace/project
+  profile, updates a matching session grant without changing its root or ID,
+  and forces bridge re-registration through the prior M5b path. A newly
+  approved root inherits the saved profile.
+- Safety: durable permission intent remains separate from session-only
+  filesystem authority. Profile save failures roll back the live plan, and
+  scope mismatch is rejected before a grant changes.
+- Design: the existing VibeSpace inspector palette and typography are
+  preserved; one copper “capability circuit” rule carries the live authority
+  summary, with dense controls limited to Custom mode.
 - Commit: pending exact-path commit.
 
 ## Completion labels

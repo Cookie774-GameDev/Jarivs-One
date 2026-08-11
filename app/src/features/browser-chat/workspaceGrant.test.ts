@@ -3,6 +3,7 @@ import {
   browserChatWorkspaceGrantStore,
   grantBrowserChatWorkspace,
   revokeBrowserChatWorkspace,
+  updateBrowserChatWorkspacePermissionProfile,
 } from './workspaceGrant';
 
 describe('Browser Chat workspace grant', () => {
@@ -71,5 +72,31 @@ describe('Browser Chat workspace grant', () => {
     expect(listener).toHaveBeenCalledTimes(2);
     expect(browserChatWorkspaceGrantStore.getSnapshot()).toBeNull();
     unsubscribe();
+  });
+
+  it('updates only a matching grant profile and preserves the approved root and grant id', () => {
+    const grant = grantBrowserChatWorkspace({
+      accountId: 'account-1',
+      projectId: 'project-1',
+      root: 'C:\\Users\\viper\\Projects\\Safe',
+      displayName: 'Safe',
+    });
+    const updated = updateBrowserChatWorkspacePermissionProfile({
+      ...grant.permissionProfile,
+      plan: 'project_developer',
+      updatedAt: grant.permissionProfile.updatedAt + 1,
+    });
+
+    expect(updated).toMatchObject({
+      id: grant.id,
+      canonicalRoot: grant.canonicalRoot,
+      permissionProfile: { plan: 'project_developer' },
+    });
+    expect(() =>
+      updateBrowserChatWorkspacePermissionProfile({
+        ...grant.permissionProfile,
+        accountId: 'account-2',
+      }),
+    ).toThrow(/scope/i);
   });
 });

@@ -57,6 +57,7 @@ import {
   browserChatWorkspaceGrantStore,
   grantBrowserChatWorkspace,
   revokeBrowserChatWorkspace,
+  updateBrowserChatWorkspacePermissionProfile,
 } from './workspaceGrant';
 import {
   createBrowserChatBindingRepository,
@@ -65,6 +66,20 @@ import {
 } from './browserChatRepository';
 import { importChatGptExport } from './chatGptExport';
 import type { BrowserChatBindingRow, Project } from '@/lib/db/schema';
+import {
+  createBrowserChatPermissionProfileRepository,
+  type BrowserChatPermissionProfileScope,
+} from './permissionProfileRepository';
+import {
+  type BrowserChatCapabilityId,
+  type BrowserChatPermissionProfile,
+} from './permissionRegistry';
+import { BrowserChatPermissionPanel } from './BrowserChatPermissionPanel';
+
+const BROWSER_CHAT_EXECUTABLE_CAPABILITIES = new Set<BrowserChatCapabilityId>([
+  'files.list',
+  'files.read',
+]);
 
 function statusLabel(value: string): string {
   return value.replaceAll('_', ' ');
@@ -165,6 +180,24 @@ export function BrowserChatHub({
     () => createBrowserChatBindingRepository(database),
     [database],
   );
+  const permissionProfileRepository = React.useMemo(
+    () => createBrowserChatPermissionProfileRepository(database),
+    [database],
+  );
+  const permissionScope = React.useMemo<BrowserChatPermissionProfileScope | null>(
+    () =>
+      cloudAccountId && bindingWorkspaceId && projectId
+        ? {
+            accountId: cloudAccountId,
+            workspaceId: bindingWorkspaceId,
+            projectId: String(projectId),
+          }
+        : null,
+    [bindingWorkspaceId, cloudAccountId, projectId],
+  );
+  const [permissionProfile, setPermissionProfile] =
+    React.useState<BrowserChatPermissionProfile | null>(null);
+  const [permissionProfileSaving, setPermissionProfileSaving] = React.useState(false);
   const [sessions, setSessions] = React.useState<
     Array<{ readonly binding: BrowserChatBindingRow; readonly chat: Chat }>
   >(() => [...(initialSessions ?? [])]);
@@ -370,6 +403,86 @@ export function BrowserChatHub({
     }
   }, [cloudAccountId, projectId, workspaceGrant]);
 
+  React.useEffect(() => {
+    let active = true;
+    if (!permissionScope) {
+      setPermissionProfile(null);
+      return () => {
+        active = false;
+      };
+    }
+    setPermissionProfile(null);
+    void permissionProfileRepository
+      .get(permissionScope)
+      .then((stored) => {
+        if (!active) return;
+        setPermissionProfile(
+          stored ?? {
+            version: 1,
+            accountId: permissionScope.accountId,
+            workspaceId: permissionScope.projectId,
+            plan: 'read',
+            overrides: {},
+            updatedAt: Date.now(),
+          },
+        );
+      })
+      .catch(() => {
+        if (active) setPermissionProfile(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [permissionProfileRepository, permissionScope]);
+
+  const applyProfileToActiveGrant = React.useCallback(
+    (profile: BrowserChatPermissionProfile) => {
+      if (!activeWorkspaceGrant) return;
+      const grant = updateBrowserChatWorkspacePermissionProfile(profile);
+      setBridgeWorkspaceGrant({
+        id: grant.id,
+        accountId: grant.accountId,
+        projectId: grant.projectId,
+        root: grant.canonicalRoot,
+        displayName: grant.displayName,
+        permissionProfile: grant.permissionProfile,
+      });
+    },
+    [activeWorkspaceGrant],
+  );
+
+  React.useEffect(() => {
+    if (!permissionProfile || !activeWorkspaceGrant) return;
+    applyProfileToActiveGrant(permissionProfile);
+  }, [activeWorkspaceGrant, applyProfileToActiveGrant, permissionProfile]);
+
+  const changePermissionProfile = (next: BrowserChatPermissionProfile) => {
+    if (!permissionScope || permissionProfileSaving) return;
+    const previous = permissionProfile;
+    setPermissionProfile(next);
+    applyProfileToActiveGrant(next);
+    setPermissionProfileSaving(true);
+    void permissionProfileRepository
+      .save(permissionScope, next)
+      .then(() => {
+        toast.success(
+          'Permission plan updated',
+          'The desktop relay catalog now reflects this VibeSpace permission plan.',
+        );
+      })
+      .catch((cause) => {
+        if (previous) {
+          setPermissionProfile(previous);
+          applyProfileToActiveGrant(previous);
+        }
+        toast.error(
+          'Permission plan was not saved',
+          cause instanceof Error ? cause.message : 'The local permission profile is invalid.',
+        );
+      })
+      .finally(() => setPermissionProfileSaving(false));
+  };
+
   const stageFiles = (files: FileList | null) => {
     if (!chatId || !files) return;
     const next = [
@@ -508,6 +621,7 @@ export function BrowserChatHub({
         projectId,
         root: projectRoot,
         displayName: basename(projectRoot),
+        ...(permissionProfile ? { permissionProfile } : {}),
       });
       setBridgeWorkspaceGrant({
         id: grant.id,
@@ -518,8 +632,8 @@ export function BrowserChatHub({
         permissionProfile: grant.permissionProfile,
       });
       toast.success(
-        'Read-only project approved',
-        'The local relay can read this project for this app session. Writes and terminal access remain blocked.',
+        'Project access approved',
+        'The local relay can use only capabilities enabled by the selected plan and available in this build.',
       );
     } catch (cause) {
       toast.error(
@@ -994,28 +1108,20 @@ export function BrowserChatHub({
                   <li>2. Add VibeSpace MCP.</li>
                   <li>3. Approve access.</li>
                 </ol>
-                <span className="mt-2 grid gap-1 text-[9px] leading-4 text-muted-foreground">
-                  <span className="flex justify-between gap-2">
-                    <span>File reads</span>
-                    <span>{activeWorkspaceGrant ? 'Available' : 'Project grant required'}</span>
+                {permissionProfile ? (
+                  <BrowserChatPermissionPanel
+                    profile={permissionProfile}
+                    workspaceGranted={Boolean(activeWorkspaceGrant)}
+                    providerBridgeAvailable={relayStatus === 'connected'}
+                    availableCapabilities={BROWSER_CHAT_EXECUTABLE_CAPABILITIES}
+                    disabled={permissionProfileSaving}
+                    onProfileChange={changePermissionProfile}
+                  />
+                ) : (
+                  <span className="mt-2 block text-[9px] text-muted-foreground">
+                    Loading the scoped permission plan…
                   </span>
-                  <span className="flex justify-between gap-2">
-                    <span>File writes</span>
-                    <span>Approval required</span>
-                  </span>
-                  <span className="flex justify-between gap-2">
-                    <span>Playwright browser</span>
-                    <span>Approval required</span>
-                  </span>
-                  <span className="flex justify-between gap-2">
-                    <span>Terminal commands</span>
-                    <span>Approval required</span>
-                  </span>
-                  <span className="flex justify-between gap-2">
-                    <span>Installed MCP tools</span>
-                    <span>Approval required</span>
-                  </span>
-                </span>
+                )}
                 <Button
                   type="button"
                   size="sm"
@@ -1086,7 +1192,7 @@ export function BrowserChatHub({
               </dt>
               <dd className="mt-1 text-[10px] leading-4 text-muted-foreground">
                 {activeWorkspaceGrant
-                  ? `Local relay armed · ${activeWorkspaceGrant.displayName} · read-only`
+                  ? `Local relay armed · ${activeWorkspaceGrant.displayName} · ${activeWorkspaceGrant.permissionProfile.plan.replaceAll('_', ' ')}`
                   : projectRoot
                     ? `${basename(projectRoot)} is available but not exposed.`
                     : 'Choose a project folder in Files before enabling local reads.'}
@@ -1111,7 +1217,7 @@ export function BrowserChatHub({
                     disabled={!projectRoot || !cloudAccountId || !projectId}
                     onClick={approveProjectRead}
                   >
-                    Approve current project read-only
+                    Approve current project access
                   </Button>
                 )}
               </dd>
