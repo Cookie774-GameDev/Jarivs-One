@@ -71,6 +71,88 @@ describe('OpenCodeHttpClient', () => {
     ]);
   });
 
+  it('discovers provider auth, authorizes the exact dynamic method, and completes callbacks', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/provider/auth') {
+        return new Response(
+          JSON.stringify({
+            openai: [{ type: 'oauth', label: 'ChatGPT Plus/Pro' }],
+            anthropic: [{ type: 'api', label: 'API key' }],
+          }),
+          { status: 200 },
+        );
+      }
+      if (path === '/provider') {
+        return new Response(JSON.stringify({ all: [], default: {}, connected: ['openai'] }), {
+          status: 200,
+        });
+      }
+      if (path.endsWith('/oauth/authorize')) {
+        return new Response(
+          JSON.stringify({
+            url: 'https://auth.example.test/device',
+            method: 'auto',
+            instructions: 'Open the browser and approve.',
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('true', { status: 200 });
+    });
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await expect(client.providerAuthMethods()).resolves.toEqual({
+      openai: [{ type: 'oauth', label: 'ChatGPT Plus/Pro' }],
+      anthropic: [{ type: 'api', label: 'API key' }],
+    });
+    await expect(client.providerStatus()).resolves.toEqual({ connected: ['openai'] });
+    await expect(
+      client.authorizeProvider('github/copilot', 2, { host: 'github.com' }),
+    ).resolves.toEqual({
+      url: 'https://auth.example.test/device',
+      method: 'auto',
+      instructions: 'Open the browser and approve.',
+    });
+    await expect(client.callbackProvider('github/copilot', 2)).resolves.toBe(true);
+
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      '/provider/auth',
+      '/provider',
+      '/provider/github%2Fcopilot/oauth/authorize',
+      '/provider/github%2Fcopilot/oauth/callback',
+    ]);
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toEqual({
+      method: 2,
+      inputs: { host: 'github.com' },
+    });
+    expect(JSON.parse(String(fetch.mock.calls[3]?.[1]?.body))).toEqual({ method: 2 });
+  });
+
+  it('rejects malformed or oversized provider auth schemas', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ openai: [{ type: 'cookie', label: 'Scrape browser' }] }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            url: `https://example.test/${'x'.repeat(3_000)}`,
+            method: 'auto',
+            instructions: 'approve',
+          }),
+          { status: 200 },
+        ),
+      );
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await expect(client.providerAuthMethods()).rejects.toThrow('invalid provider auth');
+    await expect(client.authorizeProvider('openai', 0)).rejects.toThrow('invalid authorization');
+  });
+
   it('rejects redirects and redacts credentials from bounded server errors', async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
