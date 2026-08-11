@@ -5,7 +5,6 @@
 //! and provider URLs are selected from this fixed registry rather than supplied
 //! by renderer input.
 
-use std::collections::HashSet;
 use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -16,8 +15,7 @@ const PROVIDER_LABELS: [&str; 3] = [
     "browser-chat-claude",
     "browser-chat-gemini",
 ];
-static IN_FLIGHT: LazyLock<Mutex<HashSet<&'static str>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+static OPEN_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -206,7 +204,7 @@ fn open_provider(
 }
 
 #[tauri::command]
-pub fn browser_chat_surface_open(
+pub async fn browser_chat_surface_open(
     app: AppHandle,
     caller: WebviewWindow,
     provider_id: String,
@@ -216,31 +214,19 @@ pub fn browser_chat_surface_open(
     validate_bounds(&bounds)?;
     let provider = provider_config(&provider_id)?;
     let created = app.get_window(provider.label).is_none();
+    let status_provider_id = provider.id.to_string();
 
-    {
-        let mut in_flight = IN_FLIGHT
+    tauri::async_runtime::spawn_blocking(move || {
+        let _open_guard = OPEN_LOCK
             .lock()
             .map_err(|_| "browser_chat_state_unavailable".to_string())?;
-        if !in_flight.insert(provider.id) {
-            return Ok(BrowserChatSurfaceStatus {
-                provider_id: provider.id.to_string(),
-                created,
-            });
-        }
-    }
-
-    let provider_id_for_cleanup = provider.id;
-    std::thread::spawn(move || {
-        if let Err(error) = open_provider(app, caller, provider, bounds) {
-            eprintln!("[browser-chat] provider surface failed: {error}");
-        }
-        if let Ok(mut in_flight) = IN_FLIGHT.lock() {
-            in_flight.remove(provider_id_for_cleanup);
-        }
-    });
+        open_provider(app, caller, provider, bounds)
+    })
+    .await
+    .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
 
     Ok(BrowserChatSurfaceStatus {
-        provider_id,
+        provider_id: status_provider_id,
         created,
     })
 }
