@@ -357,6 +357,36 @@ staged, restored, reformatted, or committed by this task.
   unresolved.
 - Commit: `9fecc188`.
 
+### M5g — bounded file discovery adapter
+
+- Status: `VERIFIED`
+- RED evidence: Browser Chat had no capability-scoped local adapter for
+  project search, and its existing read dispatcher did not expose a reusable
+  approval-lease boundary for list/read/search execution.
+- GREEN evidence: 17/17 focused file-adapter, approval-broker, and
+  permission-registry tests pass; app TypeScript passes; both new files pass
+  Prettier.
+- Root safety: every request accepts only a bounded project-relative path,
+  resolves it beneath one normalized approved root, rejects traversal,
+  absolute paths, URI schemes, control characters, and sensitive path
+  segments by default, and invokes native reads with strict project-boundary
+  enforcement.
+- Result safety: native entry paths must match their reported immediate child,
+  absolute roots never appear in returned list/read/search records, reads are
+  capped at 48 KiB, lists at 500 entries, and searches have explicit depth,
+  entry, file, match, query, and snippet limits.
+- Authority: list, read, and search each require a matching account/workspace
+  scoped one-shot lease. Lease expiry or revocation cancels the caller-visible
+  operation; replay and cross-capability lease use are rejected.
+- Privacy: sensitive file paths are excluded by default. Content passes the
+  shared secret detector with configurable exclude/redact/ask behavior, and
+  thrown native errors are normalized without reflecting private paths.
+- Boundary: this adapter is production-backed by the existing Tauri filesystem
+  wrappers but is not added to relay registration yet. The unresolved Worker
+  ownership means the end-to-end catalog remains truthfully limited to its
+  existing executable read routes.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,
