@@ -1,9 +1,9 @@
-task_id=VS-ROOT-20260811T115949Z-FEATURE-PARITY
-phase=VS-PR31-OPENCODE-HARNESS-PHASE15-20260811
+task_id=VS-ROOT-20260811T121600Z-LEGACY-ROUTES
+phase=VS-PR31-OPENCODE-HARNESS-PHASE16-20260811
 controller=/root
 branch=agent/pr30-fixes-and-updates
-starting_head=3b9784b4
-owned_paths=docs/superpowers/specs/2026-08-11-vibespace-opencode-feature-parity-design.md;docs/superpowers/plans/2026-08-11-vibespace-opencode-feature-parity.md;.agent-coordination.lock/owner.txt;app/src/App.tsx;app/src/App.toolGateway.test.tsx;app/src/lib/harness/toolGatewayProduction.ts;app/src/lib/harness/toolGatewayProduction.test.ts;app/src/lib/jarvis/jarvisSecurityRuntime.ts;app/src/lib/jarvis/jarvisSecurityRuntime.test.ts;app/src/lib/ai/runtime.test.ts;app/src/lib/ai/featureOpenCodeParity.test.ts
-exclusions=unrelated dirty/untracked work;skillsStore and SkillEditor dirty work;plugin catalog redesign;credential storage redesign;generic plugin action registration;deployment/external app installation;legacy-route removal;merge;push;deploy;release;subagents
+starting_head=a087d263
+owned_paths=docs/superpowers/specs/2026-08-11-vibespace-opencode-only-production-routes-design.md;docs/superpowers/plans/2026-08-11-vibespace-opencode-only-production-routes.md;.agent-coordination.lock/owner.txt;app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/router.connection.test.ts;app/src/lib/ai/router.taskbarUsage.test.ts;app/src/lib/ai/openCodeOnlyArchitecture.test.ts;app/src/lib/actions/registryModelSelection.ts;app/src/lib/actions/registryModelSelection.test.ts
+exclusions=unrelated dirty/untracked work;provider metadata and migrations;provider settings and credential management;taskbar usage adapters;kernel smoke transport;OpenCode harness transport;native installer/runtime;merge;push;deploy;release;subagents
 status=RELEASED
-completed_head=aa10f804
+completed_head=d1780fa4
