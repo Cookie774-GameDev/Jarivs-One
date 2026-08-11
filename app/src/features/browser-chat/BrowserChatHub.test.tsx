@@ -14,7 +14,10 @@ import { projectStorageKey, ROOT_PREFIX } from '@/features/files/projectFiles';
 import type { ProjectId } from '@/types/common';
 import { browserChatWorkspaceGrantStore, revokeBrowserChatWorkspace } from './workspaceGrant';
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
-import { createBrowserChatBindingRepository } from './browserChatRepository';
+import {
+  createBrowserChatBindingRepository,
+  createProviderProjectLinkRepository,
+} from './browserChatRepository';
 import type { ChatId, WorkspaceId } from '@/types/common';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Chat } from '@/types/chat';
@@ -210,6 +213,70 @@ describe('BrowserChatHub', () => {
     expect(screen.getByText(/not auto-connected/i)).toBeTruthy();
     expect(screen.getByText(/provider subscription and limits still apply/i)).toBeTruthy();
     expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('opens and labels the durable provider-project link for new local sessions', async () => {
+    const providerProjectRepository = createProviderProjectLinkRepository(
+      testDatabase,
+      () => 100,
+      () => 'provider-project-link-1',
+    );
+    await providerProjectRepository.create({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      provider: 'chatgpt',
+      providerProjectKey: 'project-linked',
+      providerProjectUrl: 'https://chatgpt.com/g/project-linked/project',
+    });
+    await expect(
+      providerProjectRepository.getForProject(
+        { accountId: 'account-1', workspaceId: 'workspace-1' },
+        'project-1',
+        'chatgpt',
+      ),
+    ).resolves.toMatchObject({
+      state: 'linked',
+      providerProjectKey: 'project-linked',
+      providerProjectUrl: 'https://chatgpt.com/g/project-linked/project',
+    });
+    const createChat = vi.fn(async () => {
+      const chat: Chat = {
+        id: 'chat-linked' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        project_id: 'project-1' as ProjectId,
+        title: 'ChatGPT browser chat',
+        mode: 'chat',
+        active_agent_ids: [],
+        pinned: false,
+        created_at: 1,
+        updated_at: 1,
+      };
+      await testDatabase.chats.put(chat);
+      return chat.id;
+    });
+
+    renderHub(undefined, undefined, undefined, undefined, createChat);
+
+    await waitFor(() =>
+      expect(providerSurfaceHarness.navigationUrl).toBe(
+        'https://chatgpt.com/g/project-linked/project',
+      ),
+    );
+    expect(screen.getByText(/provider project linked/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /new provider chat/i }));
+    await waitFor(async () =>
+      expect(
+        await testDatabase.browser_chat_bindings
+          .where('[accountId+workspaceId]')
+          .equals(['account-1', 'workspace-1'])
+          .first(),
+      ).toMatchObject({
+        chatId: 'chat-linked',
+        projectId: 'project-1',
+        providerProjectKey: 'project-linked',
+      }),
+    );
   });
 
   it('renders provider, account, authorization, relay, model, and usage states independently', () => {

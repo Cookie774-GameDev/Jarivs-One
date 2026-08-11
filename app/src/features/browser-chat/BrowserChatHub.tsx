@@ -66,7 +66,7 @@ import {
   type BrowserChatScope,
 } from './browserChatRepository';
 import { importChatGptExport } from './chatGptExport';
-import type { BrowserChatBindingRow, Project } from '@/lib/db/schema';
+import type { BrowserChatBindingRow, Project, ProviderProjectLinkRow } from '@/lib/db/schema';
 import {
   createBrowserChatPermissionProfileRepository,
   type BrowserChatPermissionProfileScope,
@@ -404,6 +404,26 @@ export function BrowserChatHub({
     [database, projectId],
     undefined as Project | undefined,
   );
+  const [linkedProviderProject, setLinkedProviderProject] =
+    React.useState<ProviderProjectLinkRow>();
+  React.useEffect(() => {
+    let active = true;
+    setLinkedProviderProject(undefined);
+    if (!accountId || !bindingWorkspaceId || !projectId) return;
+    void database.provider_project_links
+      .where('[accountId+workspaceId+projectId+provider]')
+      .equals([accountId, bindingWorkspaceId, String(projectId), provider.id])
+      .first()
+      .then((link) => {
+        if (active) setLinkedProviderProject(link);
+      })
+      .catch(() => {
+        if (active) setLinkedProviderProject(undefined);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, bindingWorkspaceId, database, projectId, provider.id]);
   const liveOutputFeed = useLiveQuery(
     async (): Promise<BrowserChatOutputFeed> =>
       cloudAccountId && bindingWorkspaceId && projectId
@@ -592,6 +612,10 @@ export function BrowserChatHub({
       chatId: String(nextId),
       provider: provider.id,
       providerProfileKey: currentProviderProfileKey,
+      providerProjectKey:
+        linkedProviderProject?.state === 'linked'
+          ? linkedProviderProject.providerProjectKey
+          : undefined,
       localTitle: `${provider.label} browser chat`,
     });
     setEngine('browser', nextId);
@@ -631,7 +655,11 @@ export function BrowserChatHub({
         ),
         providerConversationKey: navigation.providerConversationKey,
         resumeUrl: navigation.url,
-        providerProjectKey: navigation.providerProjectKey,
+        providerProjectKey:
+          navigation.providerProjectKey ??
+          (linkedProviderProject?.state === 'linked'
+            ? linkedProviderProject.providerProjectKey
+            : undefined),
         bindingState: 'bound',
         localTitle: `${providerDefinition.label} conversation`,
         lastOpenedAt: navigation.timestamp,
@@ -927,7 +955,12 @@ export function BrowserChatHub({
     project: projectId
       ? {
           name: project?.name ?? (projectRoot ? basename(projectRoot) : String(projectId)),
-          linkedProviderProjectId: activeBinding?.providerProjectKey ?? null,
+          linkedProviderProjectId:
+            (linkedProviderProject?.state === 'linked'
+              ? linkedProviderProject.providerProjectKey
+              : undefined) ??
+            activeBinding?.providerProjectKey ??
+            null,
         }
       : null,
     contextAvailable: Boolean(
@@ -1385,7 +1418,13 @@ export function BrowserChatHub({
             key={`${provider.id}:${accountProfileKey}`}
             provider={provider}
             accountProfileKey={accountProfileKey}
-            navigationUrl={activeBinding?.resumeUrl ?? provider.homeUrl}
+            navigationUrl={
+              activeBinding?.resumeUrl ??
+              (linkedProviderProject?.state === 'linked'
+                ? linkedProviderProject.providerProjectUrl
+                : undefined) ??
+              provider.homeUrl
+            }
             onNavigation={captureProviderNavigation}
           />
         ) : (
