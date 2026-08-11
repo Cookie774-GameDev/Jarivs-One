@@ -87,20 +87,25 @@ describe('benchmarkData live sources', () => {
   });
 
   it('returns live Wu Long rows when the API succeeds', async () => {
-    mockedFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        meta: { fetched_at: new Date().toISOString() },
-        models: Array.from({ length: 50 }, (_, index) => ({
-          model: index === 0 ? 'claude-opus-4-6' : `live-model-${index + 1}`,
-          vendor: index === 0 ? 'Anthropic' : 'OpenAI',
-          score: 1499 - index,
-          ci: 4,
-          votes: 1,
-        })),
-      }),
-      headers: { get: () => 'application/json' },
-    } as unknown as Response);
+    mockedFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          meta: { fetched_at: new Date().toISOString() },
+          models: Array.from({ length: 50 }, (_, index) => ({
+            model: index === 0 ? 'claude-opus-4-6' : `live-model-${index + 1}`,
+            vendor: index === 0 ? 'Anthropic' : 'OpenAI',
+            score: 1499 - index,
+            ci: 4,
+            votes: 1,
+          })),
+        }),
+        headers: { get: () => 'application/json' },
+      } as unknown as Response);
 
     const result = await fetchBenchmarks({ force: true });
     expect(result.fromSnapshot).toBe(false);
@@ -108,7 +113,43 @@ describe('benchmarkData live sources', () => {
     expect(result.rows[0]?.model).toBe('claude-opus-4-6');
   });
 
-  it('keeps the complete Top 50 when a live source returns a partial leaderboard', async () => {
+  it('prefers the hourly Cloudflare benchmark snapshot before direct upstream fallbacks', async () => {
+    mockedFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        freeOnly: true,
+        source: {
+          kind: 'independent-preference',
+          name: 'Arena',
+          url: 'https://arena.ai/leaderboard/text',
+        },
+        benchmarkDate: '2026-08-10T18:00:00.000Z',
+        ingestedAt: '2026-08-10T18:07:00.000Z',
+        metric: 'Arena rating',
+        rows: Array.from({ length: 20 }, (_, index) => ({
+          rank: index + 1,
+          model: `worker-model-${index + 1}`,
+          vendor: 'OpenAI',
+          license: 'proprietary',
+          score: 1500 - index,
+          ci: 4,
+          votes: 500 + index,
+        })),
+      }),
+      headers: { get: () => 'application/json' },
+    } as unknown as Response);
+
+    const result = await fetchBenchmarks({ force: true });
+
+    expect(result.rows).toHaveLength(20);
+    expect(result.rows[0]?.model).toBe('worker-model-1');
+    expect(String(mockedFetch.mock.calls[0]?.[0])).toBe(
+      'https://vibespace-ai-news.vibespace-viper.workers.dev/api/benchmarks',
+    );
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a valid structured leaderboard without requiring exactly fifty rows', async () => {
     mockedFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -122,37 +163,28 @@ describe('benchmarkData live sources', () => {
     } as unknown as Response);
 
     const result = await fetchBenchmarks({ force: true });
-    expect(result.fromSnapshot).toBe(true);
-    expect(result.rows).toHaveLength(50);
-    expect(result.reason).toContain('incomplete leaderboard (20/50 models)');
+    expect(result.fromSnapshot).toBe(false);
+    expect(result.rows).toHaveLength(20);
+    expect(result.rows[0]?.model).toBe('partial-model-1');
   });
 
-  it('falls back to snapshot when every live source fails', async () => {
+  it('does not invent benchmark rows when every live source fails', async () => {
     mockedFetch.mockRejectedValue(new Error('network down'));
     const result = await fetchBenchmarks({ force: true });
-    expect(result.fromSnapshot).toBe(true);
-    expect(result.rows).toHaveLength(50);
-    expect(result.rows[0]?.model).toBe('Claude Fable 5');
-    expect(result.rows[0]?.arena_score).toBe(68);
-    expect(result.rows[0]?.cost_per_1m_input_usd).toBe(10);
-    expect(result.rows[0]?.source).toBe('snapshot');
+    expect(result.fromSnapshot).toBe(false);
+    expect(result.unavailable).toBe(true);
+    expect(result.rows).toEqual([]);
+    expect(result.reason).toContain('network down');
+    expect(result.dataset.metricLabel).toBe('Arena rating');
   });
 
-  it('attempts a structured refresh before using the embedded cold-start fallback', async () => {
+  it('attempts every structured source before returning an honest unavailable state', async () => {
     mockedFetch.mockRejectedValue(new Error('offline'));
     const result = await fetchBenchmarks();
-    expect(result.fromSnapshot).toBe(true);
-    expect(result.rows).toHaveLength(50);
-    expect(result.rows[0]?.model).toBe('Claude Fable 5');
-    expect(result.rows[1]?.model).toBe('GPT-5.6 Sol');
-    expect(result.rows[5]?.model).toBe('Grok 4.5');
-    expect(result.rows[9]?.model).toBe('Gemini 2.5 Pro');
-    expect(result.rows[9]?.arena_score).toBe(49.6);
-    expect(result.rows[49]?.model).toBe('GPT-OSS 20B');
-    // One unique model per row — no reasoning-variant duplicates.
-    const names = result.rows.map((r) => r.model);
-    expect(new Set(names).size).toBe(50);
-    expect(mockedFetch).toHaveBeenCalled();
+    expect(result.unavailable).toBe(true);
+    expect(result.rows).toEqual([]);
+    expect(result.dataset.sourceName).toBe('Arena');
+    expect(mockedFetch.mock.calls.length).toBeGreaterThan(1);
   });
 
   it('keeps a stale last-known-good live dataset when the hourly refresh fails', async () => {
@@ -185,23 +217,9 @@ describe('benchmarkData live sources', () => {
     expect(result.reason).toContain('upstream unavailable');
   });
 
-  it('keeps OpenRouter list prices and modalities on snapshot rows', async () => {
-    const result = await fetchBenchmarks();
-    const withPrice = result.rows.filter(
-      (r) => r.cost_per_1m_input_usd != null && r.cost_per_1m_output_usd != null,
-    );
-    expect(withPrice.length).toBe(50);
-    const sol = result.rows.find((r) => r.model === 'GPT-5.6 Sol');
-    expect(sol?.cost_per_1m_input_usd).toBe(5);
-    expect(sol?.cost_per_1m_output_usd).toBe(30);
-    expect(sol?.context_window).toBe(1_050_000);
-    expect(sol?.supports_image).toBe(true);
-    const gemini = result.rows.find((r) => r.model === 'Gemini 3.5 Flash');
-    expect(gemini?.cost_per_1m_input_usd).toBe(1.5);
-    expect(gemini?.cost_per_1m_output_usd).toBe(9);
-    expect(gemini?.supports_video).toBe(true);
-    const oss = result.rows.find((r) => r.model === 'GPT-OSS 20B');
-    expect(oss?.arena_score).toBe(14.9);
-    expect(oss?.open_source).toBe(true);
+  it('never writes a synthetic snapshot into the live cache', async () => {
+    mockedFetch.mockRejectedValue(new Error('offline'));
+    await fetchBenchmarks({ force: true });
+    expect(localStorage.getItem('jarvis-benchmark-cache-v5')).toBeNull();
   });
 });

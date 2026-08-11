@@ -233,10 +233,10 @@ function PositionCard({
         {row ? (
           <>
             <span className="rounded-full border border-border px-2 py-1 text-metadata text-foreground">
-              Leaderboard score {row.arena_score}
+              Arena rating {row.arena_score}
             </span>
             <span className="rounded-full border border-border px-2 py-1 text-metadata text-muted-foreground">
-              {row.source === 'snapshot' ? 'Curated snapshot' : 'Live Arena'}
+              Structured Arena
             </span>
           </>
         ) : (

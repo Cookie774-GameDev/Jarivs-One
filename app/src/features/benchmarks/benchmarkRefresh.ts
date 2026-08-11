@@ -30,16 +30,7 @@ export const BENCHMARK_SOURCE_REGISTRY: readonly BenchmarkSourceDescriptor[] = [
     url: 'https://lmarena.ai/leaderboard',
     confidence: 'high',
     use: 'ranking',
-    note: 'Structured Arena scores; kept separate from Artificial Analysis Intelligence Index.',
-  },
-  {
-    id: 'artificial-analysis',
-    name: 'Artificial Analysis',
-    kind: 'benchmark',
-    url: 'https://artificialanalysis.ai/leaderboards/models',
-    confidence: 'high',
-    use: 'ranking',
-    note: 'Curated fallback snapshot and methodology; never merged numerically with Arena ELO.',
+    note: 'Structured Arena ratings; provider-published evaluations remain separate.',
   },
   {
     id: 'provider-announcements',
@@ -233,7 +224,7 @@ export async function refreshBenchmarkDataset(
     const result = await fetchBenchmarks({ force: true });
     const deduped = deduplicateBenchmarkRows(result.rows);
     const finishedAt = Date.now();
-    const status = result.fromSnapshot ? 'fallback' : 'success';
+    const status = result.stale || result.unavailable ? 'fallback' : 'success';
     const audit: BenchmarkRefreshAuditEntry = {
       id: `${startedAt.toString(36)}-${finishedAt.toString(36)}`,
       startedAt,
@@ -244,9 +235,11 @@ export async function refreshBenchmarkDataset(
       duplicateCount: deduped.duplicateCount,
       message:
         result.reason ??
-        (result.fromSnapshot
-          ? 'Structured live sources unavailable; retained snapshot.'
-          : 'Structured leaderboard refreshed.'),
+        (result.unavailable
+          ? 'No verified structured leaderboard is available; no fallback scores were invented.'
+          : result.stale
+            ? 'Structured sources unavailable; retained last-known-good Arena rows.'
+            : 'Structured leaderboard refreshed.'),
     };
     appendAudit(audit);
     return {
