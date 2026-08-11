@@ -76,6 +76,24 @@ describe('normalizeOpenCodeEvent', () => {
     expect(
       normalizeOpenCodeEvent(
         {
+          type: 'session.status',
+          properties: { sessionID: 'session-1', status: { type: 'idle' } },
+        },
+        'session-1',
+      ),
+    ).toEqual([{ type: 'done', finishReason: 'idle' }]);
+    expect(
+      normalizeOpenCodeEvent(
+        {
+          type: 'session.updated',
+          properties: { info: { id: 'session-1', title: 'Chat' } },
+        },
+        'session-1',
+      ),
+    ).toEqual([{ type: 'session.updated', sessionId: 'session-1' }]);
+    expect(
+      normalizeOpenCodeEvent(
+        {
           type: 'session.error',
           properties: {
             sessionID: 'session-1',
@@ -105,6 +123,107 @@ describe('normalizeOpenCodeEvent', () => {
         path: 'a'.repeat(2_048),
         operation: 'edited',
       },
+    ]);
+    expect(
+      normalizeOpenCodeEvent(
+        {
+          type: 'session.diff',
+          properties: {
+            sessionID: 'session-1',
+            diff: [{ file: 'src/app.ts', before: '', after: 'new' }],
+          },
+        },
+        'session-1',
+      ),
+    ).toEqual([{ type: 'file.changed', path: 'src/app.ts', operation: 'diff' }]);
+  });
+
+  it('normalizes permission and usage events', () => {
+    expect(
+      normalizeOpenCodeEvent(
+        {
+          type: 'permission.updated',
+          properties: {
+            id: 'permission-1',
+            sessionID: 'session-1',
+            type: 'bash',
+            pattern: ['npm test'],
+            title: 'Run tests',
+            metadata: {},
+          },
+        },
+        'session-1',
+      ),
+    ).toEqual([
+      {
+        type: 'approval.requested',
+        approval: {
+          id: 'permission-1',
+          sessionId: 'session-1',
+          title: 'Run tests',
+          capability: 'bash',
+          pattern: ['npm test'],
+        },
+      },
+    ]);
+    expect(
+      normalizeOpenCodeEvent(
+        {
+          type: 'message.updated',
+          properties: {
+            info: {
+              sessionID: 'session-1',
+              role: 'assistant',
+              cost: 0.25,
+              tokens: { input: 10, output: 20, reasoning: 3, cache: { read: 4 } },
+              providerID: 'anthropic',
+              modelID: 'claude',
+            },
+          },
+        },
+        'session-1',
+      ),
+    ).toEqual([
+      {
+        type: 'usage.updated',
+        usage: {
+          inputTokens: 10,
+          outputTokens: 20,
+          cachedTokens: 4,
+          reasoningTokens: 3,
+          costUsd: 0.25,
+          providerId: 'anthropic',
+          modelId: 'claude',
+        },
+      },
+    ]);
+  });
+
+  it('maps OpenCode tool parts into specialized VibeSpace events', () => {
+    expect(
+      normalizeOpenCodeEvent(
+        {
+          type: 'message.part.updated',
+          properties: {
+            sessionID: 'session-1',
+            part: {
+              type: 'tool',
+              tool: 'bash',
+              callID: 'call-1',
+              state: {
+                status: 'completed',
+                input: { command: 'npm test' },
+                output: '2 passed',
+                metadata: { exit: 0 },
+              },
+            },
+          },
+        },
+        'session-1',
+      ),
+    ).toEqual([
+      { type: 'shell.output', id: 'call-1', text: '2 passed' },
+      { type: 'shell.completed', id: 'call-1', exitCode: 0 },
     ]);
   });
 });
