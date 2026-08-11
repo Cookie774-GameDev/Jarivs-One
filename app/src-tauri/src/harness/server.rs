@@ -1,0 +1,1264 @@
+use crate::harness::runtime::{OpenCodeRuntimeState, ResolvedTrustedRuntime, RuntimeSource};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::fmt;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use std::thread;
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+const RUNTIME_STATE_EVENT: &str = "vibespace://opencode-runtime-state";
+const LOOPBACK_HOST: &str = "127.0.0.1";
+const SERVER_USERNAME: &str = "vibespace";
+const MAX_HEALTH_BODY_BYTES: u64 = 4_096;
+const HEALTH_ATTEMPTS: usize = 60;
+const HEALTH_RETRY_DELAY: Duration = Duration::from_millis(100);
+const MAX_START_ATTEMPTS: usize = 3;
+const MAX_AUTOMATIC_RESTARTS: usize = 2;
+const CRASH_WINDOW: Duration = Duration::from_secs(5 * 60);
+const WATCH_INTERVAL: Duration = Duration::from_millis(500);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ServerFailure {
+    message: &'static str,
+}
+
+fn failure(message: &'static str) -> ServerFailure {
+    ServerFailure { message }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenCodeServerConnection {
+    pub base_url: String,
+    pub username: String,
+    pub password: String,
+    pub version: String,
+    pub source: RuntimeSource,
+    pub generation: String,
+}
+
+impl fmt::Debug for OpenCodeServerConnection {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OpenCodeServerConnection")
+            .field("base_url", &self.base_url)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("version", &self.version)
+            .field("source", &self.source)
+            .field("generation", &self.generation)
+            .finish()
+    }
+}
+
+struct ServerLaunchSpec {
+    executable: PathBuf,
+    port: u16,
+    base_url: String,
+    username: String,
+    password: String,
+    version: String,
+    source: RuntimeSource,
+    generation: String,
+    config_path: PathBuf,
+    config_dir: PathBuf,
+    working_dir: PathBuf,
+}
+
+impl fmt::Debug for ServerLaunchSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ServerLaunchSpec")
+            .field("executable", &self.executable)
+            .field("port", &self.port)
+            .field("base_url", &self.base_url)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("version", &self.version)
+            .field("source", &self.source)
+            .field("generation", &self.generation)
+            .field("config_path", &self.config_path)
+            .field("config_dir", &self.config_dir)
+            .field("working_dir", &self.working_dir)
+            .finish()
+    }
+}
+
+impl ServerLaunchSpec {
+    fn connection(&self) -> OpenCodeServerConnection {
+        OpenCodeServerConnection {
+            base_url: self.base_url.clone(),
+            username: self.username.clone(),
+            password: self.password.clone(),
+            version: self.version.clone(),
+            source: self.source,
+            generation: self.generation.clone(),
+        }
+    }
+
+    fn arguments(&self) -> [String; 5] {
+        [
+            "serve".to_string(),
+            "--hostname".to_string(),
+            LOOPBACK_HOST.to_string(),
+            "--port".to_string(),
+            self.port.to_string(),
+        ]
+    }
+}
+
+impl fmt::Display for ServerFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.message)
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ServerRuntimeEvent {
+    Starting,
+    Ready {
+        source: RuntimeSource,
+        version: String,
+        generation: String,
+    },
+    Failed {
+        recoverable: bool,
+        message: &'static str,
+    },
+}
+
+trait OwnedProcess: Send {
+    fn id(&self) -> u32;
+    fn has_exited(&mut self) -> Result<bool, ServerFailure>;
+    fn terminate(&mut self) -> Result<(), ServerFailure>;
+}
+
+struct ProductionProcess {
+    child: Child,
+    #[cfg(windows)]
+    job: windows_process_tree::KillOnCloseJob,
+    terminated: bool,
+}
+
+impl OwnedProcess for ProductionProcess {
+    fn id(&self) -> u32 {
+        self.child.id()
+    }
+
+    fn has_exited(&mut self) -> Result<bool, ServerFailure> {
+        self.child
+            .try_wait()
+            .map(|status| status.is_some())
+            .map_err(|_| failure("Owned OpenCode server status could not be read."))
+    }
+
+    fn terminate(&mut self) -> Result<(), ServerFailure> {
+        if self.terminated {
+            return Ok(());
+        }
+        #[cfg(windows)]
+        self.job.terminate()?;
+        #[cfg(not(windows))]
+        self.child
+            .kill()
+            .map_err(|_| failure("Owned OpenCode server could not be terminated."))?;
+        let _ = self.child.wait();
+        self.terminated = true;
+        Ok(())
+    }
+}
+
+impl Drop for ProductionProcess {
+    fn drop(&mut self) {
+        let _ = self.terminate();
+    }
+}
+
+struct RunningServer {
+    executable_id: String,
+    connection: OpenCodeServerConnection,
+    process: Box<dyn OwnedProcess>,
+}
+
+impl fmt::Debug for RunningServer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RunningServer")
+            .field("executable_id", &self.executable_id)
+            .field("connection", &self.connection)
+            .field("pid", &self.process.id())
+            .finish()
+    }
+}
+
+#[derive(Default)]
+struct ServerInner {
+    running: Option<RunningServer>,
+    starting: bool,
+    recent_crashes: VecDeque<Instant>,
+}
+
+#[derive(Default)]
+pub struct OpenCodeServerState {
+    inner: Mutex<ServerInner>,
+}
+
+struct TemporaryFile {
+    path: PathBuf,
+    committed: bool,
+}
+
+impl Drop for TemporaryFile {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+impl OpenCodeServerState {
+    fn record_crash(&self, now: Instant) -> Result<bool, ServerFailure> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| failure("OpenCode server state is unavailable."))?;
+        while inner
+            .recent_crashes
+            .front()
+            .map(|crash| now.saturating_duration_since(*crash) > CRASH_WINDOW)
+            .unwrap_or(false)
+        {
+            inner.recent_crashes.pop_front();
+        }
+        inner.recent_crashes.push_back(now);
+        Ok(inner.recent_crashes.len() <= MAX_AUTOMATIC_RESTARTS)
+    }
+}
+
+fn emit_state(app: &AppHandle, event: ServerRuntimeEvent) {
+    let _ = app.emit(RUNTIME_STATE_EVENT, event);
+}
+
+fn write_scoped_config(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf), ServerFailure> {
+    let config_dir = root.join("config");
+    let working_dir = root.join("workspace");
+    fs::create_dir_all(&config_dir)
+        .and_then(|_| fs::create_dir_all(&working_dir))
+        .map_err(|_| failure("OpenCode server directories could not be created."))?;
+    let config_path = root.join("opencode.json");
+    let temporary = root.join(format!(".config-{}.tmp", nanoid::nanoid!(16)));
+    let mut temporary_guard = TemporaryFile {
+        path: temporary.clone(),
+        committed: false,
+    };
+    let bytes = br#"{"server":{"hostname":"127.0.0.1","mdns":false}}"#;
+    let mut output = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|_| failure("OpenCode server config could not be created."))?;
+    output
+        .write_all(bytes)
+        .and_then(|_| output.sync_all())
+        .map_err(|_| failure("OpenCode server config could not be finalized."))?;
+    drop(output);
+    atomic_replace_file(&temporary, &config_path)?;
+    temporary_guard.committed = true;
+    Ok((config_path, config_dir, working_dir))
+}
+
+#[cfg(target_os = "windows")]
+fn atomic_replace_file(temporary: &Path, destination: &Path) -> Result<(), ServerFailure> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let temporary_wide = temporary
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let destination_wide = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    unsafe {
+        MoveFileExW(
+            PCWSTR(temporary_wide.as_ptr()),
+            PCWSTR(destination_wide.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    }
+    .map_err(|_| failure("OpenCode server config could not be committed."))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn atomic_replace_file(temporary: &Path, destination: &Path) -> Result<(), ServerFailure> {
+    fs::rename(temporary, destination)
+        .map_err(|_| failure("OpenCode server config could not be committed."))
+}
+
+fn reserve_loopback_port() -> Result<(TcpListener, u16), ServerFailure> {
+    let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+        .map_err(|_| failure("A loopback port could not be reserved for OpenCode."))?;
+    let address = listener
+        .local_addr()
+        .map_err(|_| failure("The reserved OpenCode port could not be read."))?;
+    if !address.ip().is_loopback() {
+        return Err(failure("OpenCode port reservation was not loopback-only."));
+    }
+    Ok((listener, address.port()))
+}
+
+fn build_launch_spec(
+    runtime: &ResolvedTrustedRuntime,
+    port: u16,
+    server_root: &Path,
+) -> Result<ServerLaunchSpec, ServerFailure> {
+    let (config_path, config_dir, working_dir) = write_scoped_config(server_root)?;
+    Ok(ServerLaunchSpec {
+        executable: runtime.path.clone(),
+        port,
+        base_url: format!("http://{LOOPBACK_HOST}:{port}"),
+        username: SERVER_USERNAME.to_string(),
+        password: nanoid::nanoid!(64),
+        version: runtime.version.clone(),
+        source: runtime.source,
+        generation: format!("opencode-server-{}", nanoid::nanoid!(20)),
+        config_path,
+        config_dir,
+        working_dir,
+    })
+}
+
+trait ProcessLauncher {
+    fn launch(&self, spec: &ServerLaunchSpec) -> Result<Box<dyn OwnedProcess>, ServerFailure>;
+}
+
+struct ProductionLauncher;
+
+impl ProcessLauncher for ProductionLauncher {
+    fn launch(&self, spec: &ServerLaunchSpec) -> Result<Box<dyn OwnedProcess>, ServerFailure> {
+        let mut command = Command::new(&spec.executable);
+        command
+            .args(spec.arguments())
+            .current_dir(&spec.working_dir)
+            .env("OPENCODE_SERVER_USERNAME", &spec.username)
+            .env("OPENCODE_SERVER_PASSWORD", &spec.password)
+            .env("OPENCODE_CONFIG", &spec.config_path)
+            .env("OPENCODE_CONFIG_DIR", &spec.config_dir)
+            .env(
+                "OPENCODE_CONFIG_CONTENT",
+                r#"{"server":{"hostname":"127.0.0.1","mdns":false}}"#,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+
+        #[cfg(windows)]
+        {
+            let job = windows_process_tree::KillOnCloseJob::create()?;
+            let child = windows_process_tree::spawn_contained(&mut command, &job)?;
+            Ok(Box::new(ProductionProcess {
+                child,
+                job,
+                terminated: false,
+            }))
+        }
+        #[cfg(not(windows))]
+        {
+            let child = command
+                .spawn()
+                .map_err(|_| failure("OpenCode server process could not be started."))?;
+            Ok(Box::new(ProductionProcess {
+                child,
+                terminated: false,
+            }))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct HealthResponse {
+    healthy: bool,
+    version: String,
+}
+
+fn probe_health_once(
+    client: &reqwest::blocking::Client,
+    connection: &OpenCodeServerConnection,
+) -> Result<bool, ServerFailure> {
+    let response = client
+        .get(format!("{}/global/health", connection.base_url))
+        .basic_auth(&connection.username, Some(&connection.password))
+        .send()
+        .map_err(|_| failure("OpenCode server health request failed."))?;
+    if !response.status().is_success() {
+        return Ok(false);
+    }
+    let mut bounded = response.take(MAX_HEALTH_BODY_BYTES + 1);
+    let mut body = Vec::new();
+    bounded
+        .read_to_end(&mut body)
+        .map_err(|_| failure("OpenCode server health response could not be read."))?;
+    if body.len() as u64 > MAX_HEALTH_BODY_BYTES {
+        return Err(failure("OpenCode server health response was too large."));
+    }
+    let health: HealthResponse = serde_json::from_slice(&body)
+        .map_err(|_| failure("OpenCode server health response was invalid."))?;
+    Ok(health.healthy && health.version == connection.version)
+}
+
+fn await_healthy(
+    process: &mut dyn OwnedProcess,
+    connection: &OpenCodeServerConnection,
+) -> Result<(), ServerFailure> {
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_millis(250))
+        .timeout(Duration::from_millis(500))
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .build()
+        .map_err(|_| failure("OpenCode health client could not be created."))?;
+    for _ in 0..HEALTH_ATTEMPTS {
+        if process.has_exited()? {
+            return Err(failure("OpenCode server exited before becoming healthy."));
+        }
+        match probe_health_once(&client, connection) {
+            Ok(true) => return Ok(()),
+            Ok(false) | Err(_) => thread::sleep(HEALTH_RETRY_DELAY),
+        }
+    }
+    Err(failure(
+        "OpenCode server did not become healthy before the startup deadline.",
+    ))
+}
+
+trait HealthWaiter {
+    fn wait(
+        &self,
+        process: &mut dyn OwnedProcess,
+        connection: &OpenCodeServerConnection,
+    ) -> Result<(), ServerFailure>;
+}
+
+struct ProductionHealthWaiter;
+
+impl HealthWaiter for ProductionHealthWaiter {
+    fn wait(
+        &self,
+        process: &mut dyn OwnedProcess,
+        connection: &OpenCodeServerConnection,
+    ) -> Result<(), ServerFailure> {
+        await_healthy(process, connection)
+    }
+}
+
+fn start_server_attempt_with(
+    runtime: &ResolvedTrustedRuntime,
+    server_root: &Path,
+    launcher: &dyn ProcessLauncher,
+    health: &dyn HealthWaiter,
+) -> Result<(OpenCodeServerConnection, Box<dyn OwnedProcess>), ServerFailure> {
+    let (reservation, port) = reserve_loopback_port()?;
+    let spec = build_launch_spec(runtime, port, server_root)?;
+    drop(reservation);
+    let mut process = launcher.launch(&spec)?;
+    let connection = spec.connection();
+    if let Err(error) = health.wait(process.as_mut(), &connection) {
+        let _ = process.terminate();
+        return Err(error);
+    }
+    Ok((connection, process))
+}
+
+fn start_server_attempt(
+    runtime: &ResolvedTrustedRuntime,
+    server_root: &Path,
+) -> Result<(OpenCodeServerConnection, Box<dyn OwnedProcess>), ServerFailure> {
+    start_server_attempt_with(
+        runtime,
+        server_root,
+        &ProductionLauncher,
+        &ProductionHealthWaiter,
+    )
+}
+
+fn server_root(app: &AppHandle) -> Result<PathBuf, ServerFailure> {
+    app.path()
+        .app_local_data_dir()
+        .map(|path| path.join("harness").join("opencode-server"))
+        .map_err(|_| failure("VibeSpace server storage is unavailable."))
+}
+
+fn ensure_server_internal(
+    app: &AppHandle,
+    executable_id: &str,
+) -> Result<OpenCodeServerConnection, ServerFailure> {
+    let server_state = app.state::<OpenCodeServerState>();
+    {
+        let mut inner = server_state
+            .inner
+            .lock()
+            .map_err(|_| failure("OpenCode server state is unavailable."))?;
+        if let Some(connection) = reuse_or_stop_existing(&mut inner, executable_id)? {
+            return Ok(connection);
+        }
+        claim_start(&mut inner)?;
+    }
+
+    let result = (|| {
+        let runtime = app
+            .state::<OpenCodeRuntimeState>()
+            .resolve_trusted_runtime(executable_id)
+            .map_err(|_| failure("Trusted OpenCode runtime could not be resolved."))?;
+        let root = server_root(app)?;
+        fs::create_dir_all(&root)
+            .map_err(|_| failure("OpenCode server storage could not be created."))?;
+        let mut last_error = failure("OpenCode server could not be started.");
+        for _ in 0..MAX_START_ATTEMPTS {
+            match start_server_attempt(&runtime, &root) {
+                Ok((connection, process)) => {
+                    return Ok(RunningServer {
+                        executable_id: executable_id.to_string(),
+                        connection,
+                        process,
+                    });
+                }
+                Err(error) => last_error = error,
+            }
+        }
+        Err(last_error)
+    })();
+
+    let mut inner = server_state
+        .inner
+        .lock()
+        .map_err(|_| failure("OpenCode server state is unavailable."))?;
+    inner.starting = false;
+    match result {
+        Ok(running) => {
+            let connection = running.connection.clone();
+            let generation = connection.generation.clone();
+            inner.running = Some(running);
+            drop(inner);
+            spawn_crash_watcher(app.clone(), generation);
+            Ok(connection)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn reuse_or_stop_existing(
+    inner: &mut ServerInner,
+    executable_id: &str,
+) -> Result<Option<OpenCodeServerConnection>, ServerFailure> {
+    if let Some(running) = inner.running.as_mut() {
+        if !running.process.has_exited()? && running.executable_id == executable_id {
+            return Ok(Some(running.connection.clone()));
+        }
+    }
+    if let Some(mut previous) = inner.running.take() {
+        previous.process.terminate()?;
+    }
+    Ok(None)
+}
+
+fn claim_start(inner: &mut ServerInner) -> Result<(), ServerFailure> {
+    if inner.starting {
+        return Err(failure("OpenCode server startup is already running."));
+    }
+    inner.starting = true;
+    Ok(())
+}
+
+fn spawn_crash_watcher(app: AppHandle, generation: String) {
+    thread::spawn(move || loop {
+        thread::sleep(WATCH_INTERVAL);
+        let server_state = app.state::<OpenCodeServerState>();
+        let crashed_runtime = {
+            let mut inner = match server_state.inner.lock() {
+                Ok(inner) => inner,
+                Err(_) => return,
+            };
+            if inner
+                .running
+                .as_ref()
+                .map(|running| running.connection.generation.as_str())
+                != Some(generation.as_str())
+            {
+                return;
+            }
+            match take_crashed_runtime(&mut inner, &generation) {
+                Ok(runtime) => runtime,
+                Err(_) => return,
+            }
+        };
+        let Some(executable_id) = crashed_runtime else {
+            continue;
+        };
+        emit_state(
+            &app,
+            ServerRuntimeEvent::Failed {
+                recoverable: true,
+                message: "OpenCode server exited unexpectedly.",
+            },
+        );
+        if !server_state.record_crash(Instant::now()).unwrap_or(false) {
+            return;
+        }
+        emit_state(&app, ServerRuntimeEvent::Starting);
+        match ensure_server_internal(&app, &executable_id) {
+            Ok(connection) => emit_state(
+                &app,
+                ServerRuntimeEvent::Ready {
+                    source: connection.source,
+                    version: connection.version,
+                    generation: connection.generation,
+                },
+            ),
+            Err(_) => emit_state(
+                &app,
+                ServerRuntimeEvent::Failed {
+                    recoverable: true,
+                    message: "OpenCode server restart failed.",
+                },
+            ),
+        }
+        return;
+    });
+}
+
+fn take_crashed_runtime(
+    inner: &mut ServerInner,
+    generation: &str,
+) -> Result<Option<String>, ServerFailure> {
+    let Some(running) = inner.running.as_mut() else {
+        return Ok(None);
+    };
+    if running.connection.generation != generation {
+        return Ok(None);
+    }
+    if running.process.has_exited()? {
+        return Ok(inner.running.take().map(|server| server.executable_id));
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+pub async fn opencode_server_ensure(
+    app: AppHandle,
+    executable_id: String,
+) -> Result<OpenCodeServerConnection, String> {
+    emit_state(&app, ServerRuntimeEvent::Starting);
+    let worker_app = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        ensure_server_internal(&worker_app, &executable_id)
+    })
+    .await
+    .map_err(|_| "OpenCode server worker failed.".to_string())?;
+    match result {
+        Ok(connection) => {
+            emit_state(
+                &app,
+                ServerRuntimeEvent::Ready {
+                    source: connection.source,
+                    version: connection.version.clone(),
+                    generation: connection.generation.clone(),
+                },
+            );
+            Ok(connection)
+        }
+        Err(error) => {
+            emit_state(
+                &app,
+                ServerRuntimeEvent::Failed {
+                    recoverable: true,
+                    message: error.message,
+                },
+            );
+            Err(error.message.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn opencode_server_status(
+    state: State<'_, OpenCodeServerState>,
+) -> Result<Option<OpenCodeServerConnection>, String> {
+    server_status(&state).map_err(|error| error.message.to_string())
+}
+
+fn server_status(
+    state: &OpenCodeServerState,
+) -> Result<Option<OpenCodeServerConnection>, ServerFailure> {
+    let mut inner = state
+        .inner
+        .lock()
+        .map_err(|_| failure("OpenCode server state is unavailable."))?;
+    let alive = match inner.running.as_mut() {
+        Some(running) => running.process.has_exited()? == false,
+        None => false,
+    };
+    if alive {
+        Ok(inner
+            .running
+            .as_ref()
+            .map(|running| running.connection.clone()))
+    } else {
+        inner.running.take();
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub fn opencode_server_stop(state: State<'_, OpenCodeServerState>) -> Result<bool, String> {
+    stop_server(&state).map_err(|error| error.message.to_string())
+}
+
+fn stop_server(state: &OpenCodeServerState) -> Result<bool, ServerFailure> {
+    let running = state
+        .inner
+        .lock()
+        .map_err(|_| failure("OpenCode server state is unavailable."))?
+        .running
+        .take();
+    let Some(mut running) = running else {
+        return Ok(false);
+    };
+    running.process.terminate()?;
+    Ok(true)
+}
+
+pub fn shutdown_owned_server(app: &AppHandle) {
+    let state = app.state::<OpenCodeServerState>();
+    let running = state
+        .inner
+        .lock()
+        .ok()
+        .and_then(|mut inner| inner.running.take());
+    if let Some(mut running) = running {
+        let _ = running.process.terminate();
+    }
+}
+
+#[cfg(windows)]
+mod windows_process_tree {
+    use super::{failure, Child, Command, ServerFailure};
+    use std::ffi::c_void;
+    use std::mem::size_of;
+    use std::os::windows::io::AsRawHandle;
+    use std::os::windows::process::CommandExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const CREATE_SUSPENDED: u32 = 0x0000_0004;
+
+    struct OwnedKernelHandle(HANDLE);
+
+    // SAFETY: The wrapper has unique ownership of the Win32 handle, performs
+    // only thread-safe kernel operations, and closes the handle exactly once.
+    unsafe impl Send for OwnedKernelHandle {}
+
+    impl Drop for OwnedKernelHandle {
+        fn drop(&mut self) {
+            let _ = unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    pub(super) struct KillOnCloseJob(OwnedKernelHandle);
+
+    impl KillOnCloseJob {
+        pub(super) fn create() -> Result<Self, ServerFailure> {
+            let handle = unsafe { CreateJobObjectW(None, PCWSTR::null()) }
+                .map_err(|_| failure("OpenCode process job could not be created."))?;
+            let job = Self(OwnedKernelHandle(handle));
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            unsafe {
+                SetInformationJobObject(
+                    job.0 .0,
+                    JobObjectExtendedLimitInformation,
+                    (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast::<c_void>(),
+                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                )
+            }
+            .map_err(|_| failure("OpenCode process job could not be configured."))?;
+            Ok(job)
+        }
+
+        pub(super) fn assign_and_resume(&self, child: &Child) -> Result<(), ServerFailure> {
+            unsafe { AssignProcessToJobObject(self.0 .0, HANDLE(child.as_raw_handle())) }
+                .map_err(|_| failure("OpenCode process could not be contained."))?;
+            let thread_id = suspended_primary_thread_id(child.id())?;
+            let thread = OwnedKernelHandle(
+                unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, thread_id) }
+                    .map_err(|_| failure("OpenCode process thread could not be opened."))?,
+            );
+            if unsafe { ResumeThread(thread.0) } != 1 {
+                return Err(failure("OpenCode process could not be resumed safely."));
+            }
+            Ok(())
+        }
+
+        pub(super) fn terminate(&self) -> Result<(), ServerFailure> {
+            unsafe { TerminateJobObject(self.0 .0, 1) }
+                .map_err(|_| failure("Owned OpenCode server could not be terminated."))
+        }
+    }
+
+    pub(super) fn spawn_contained(
+        command: &mut Command,
+        job: &KillOnCloseJob,
+    ) -> Result<Child, ServerFailure> {
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED);
+        let mut child = command
+            .spawn()
+            .map_err(|_| failure("OpenCode server process could not be started."))?;
+        if let Err(error) = job.assign_and_resume(&child) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+        Ok(child)
+    }
+
+    fn suspended_primary_thread_id(process_id: u32) -> Result<u32, ServerFailure> {
+        let snapshot = OwnedKernelHandle(
+            unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }
+                .map_err(|_| failure("OpenCode process threads could not be inspected."))?,
+        );
+        let mut entry = THREADENTRY32 {
+            dwSize: size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+        let mut found = unsafe { Thread32First(snapshot.0, &mut entry).is_ok() };
+        while found {
+            if entry.th32OwnerProcessID == process_id {
+                return Ok(entry.th32ThreadID);
+            }
+            found = unsafe { Thread32Next(snapshot.0, &mut entry).is_ok() };
+        }
+        Err(failure("OpenCode process primary thread was not found."))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_launch_spec, claim_start, failure, probe_health_once, reserve_loopback_port,
+        reuse_or_stop_existing, server_status, start_server_attempt_with, stop_server,
+        take_crashed_runtime, write_scoped_config, HealthWaiter, OpenCodeServerConnection,
+        OpenCodeServerState, OwnedProcess, ProcessLauncher, ResolvedTrustedRuntime, RunningServer,
+        RuntimeSource, ServerFailure, ServerRuntimeEvent, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
+    };
+    use base64::Engine as _;
+    use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    struct FixtureRoot(PathBuf);
+
+    impl FixtureRoot {
+        fn new(name: &str) -> Self {
+            let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "vibespace-opencode-server-{name}-{}-{sequence}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for FixtureRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn runtime(path: &Path) -> ResolvedTrustedRuntime {
+        ResolvedTrustedRuntime {
+            path: path.join("opencode.exe"),
+            version: "1.18.16".to_string(),
+            source: RuntimeSource::Managed,
+        }
+    }
+
+    fn mock_health_response(expected_authorization: String, status: &str, body: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let status = status.to_string();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4_096];
+            let read = stream.read(&mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /global/health HTTP/1.1"));
+            assert!(
+                request
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case(&expected_authorization)),
+                "missing expected Basic authorization"
+            );
+            write!(
+                stream,
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(&body).unwrap();
+        });
+        format!("http://{address}")
+    }
+
+    fn connection(base_url: String) -> OpenCodeServerConnection {
+        OpenCodeServerConnection {
+            base_url,
+            username: "vibespace".to_string(),
+            password: "secret-value".to_string(),
+            version: "1.18.16".to_string(),
+            source: RuntimeSource::Managed,
+            generation: "generation".to_string(),
+        }
+    }
+
+    struct FakeProcess {
+        id: u32,
+        exited: Arc<AtomicBool>,
+        terminated: Arc<AtomicBool>,
+    }
+
+    impl OwnedProcess for FakeProcess {
+        fn id(&self) -> u32 {
+            self.id
+        }
+
+        fn has_exited(&mut self) -> Result<bool, ServerFailure> {
+            Ok(self.exited.load(Ordering::Acquire))
+        }
+
+        fn terminate(&mut self) -> Result<(), ServerFailure> {
+            self.terminated.store(true, Ordering::Release);
+            self.exited.store(true, Ordering::Release);
+            Ok(())
+        }
+    }
+
+    struct FakeLauncher {
+        launches: Arc<AtomicUsize>,
+        exited: Arc<AtomicBool>,
+        terminated: Arc<AtomicBool>,
+    }
+
+    impl ProcessLauncher for FakeLauncher {
+        fn launch(
+            &self,
+            _spec: &super::ServerLaunchSpec,
+        ) -> Result<Box<dyn OwnedProcess>, ServerFailure> {
+            self.launches.fetch_add(1, Ordering::Relaxed);
+            Ok(Box::new(FakeProcess {
+                id: 41,
+                exited: self.exited.clone(),
+                terminated: self.terminated.clone(),
+            }))
+        }
+    }
+
+    struct FakeHealth(bool);
+
+    impl HealthWaiter for FakeHealth {
+        fn wait(
+            &self,
+            _process: &mut dyn OwnedProcess,
+            _connection: &OpenCodeServerConnection,
+        ) -> Result<(), ServerFailure> {
+            if self.0 {
+                Ok(())
+            } else {
+                Err(failure("Synthetic health failure."))
+            }
+        }
+    }
+
+    fn fake_process(
+        id: u32,
+        exited: Arc<AtomicBool>,
+        terminated: Arc<AtomicBool>,
+    ) -> Box<dyn OwnedProcess> {
+        Box::new(FakeProcess {
+            id,
+            exited,
+            terminated,
+        })
+    }
+
+    #[test]
+    fn launch_contract_is_loopback_authenticated_scoped_and_redacted() {
+        let fixture = FixtureRoot::new("launch-contract");
+        let spec = build_launch_spec(&runtime(fixture.path()), 42_123, fixture.path()).unwrap();
+
+        assert_eq!(
+            spec.arguments(),
+            ["serve", "--hostname", "127.0.0.1", "--port", "42123"]
+        );
+        assert_eq!(spec.username, "vibespace");
+        assert_eq!(spec.password.len(), 64);
+        assert!(!spec.password.chars().any(char::is_whitespace));
+        assert_eq!(spec.base_url, "http://127.0.0.1:42123");
+        assert_eq!(
+            fs::read_to_string(&spec.config_path).unwrap(),
+            r#"{"server":{"hostname":"127.0.0.1","mdns":false}}"#
+        );
+        let debug = format!("{:?}", spec.connection());
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains(&spec.password));
+        let spec_debug = format!("{spec:?}");
+        assert!(spec_debug.contains("[REDACTED]"));
+        assert!(!spec_debug.contains(&spec.password));
+        let event = serde_json::to_string(&ServerRuntimeEvent::Ready {
+            source: RuntimeSource::Managed,
+            version: "1.18.16".to_string(),
+            generation: "safe-generation".to_string(),
+        })
+        .unwrap();
+        assert!(!event.contains(&spec.password));
+    }
+
+    #[test]
+    fn scoped_config_uses_only_owned_paths_and_atomic_file() {
+        let fixture = FixtureRoot::new("config");
+        let (config, directory, workspace) = write_scoped_config(fixture.path()).unwrap();
+
+        assert!(config.starts_with(fixture.path()));
+        assert!(directory.is_dir());
+        assert!(workspace.is_dir());
+        assert!(fs::read_dir(fixture.path()).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".config-")
+        }));
+    }
+
+    #[test]
+    fn port_reservation_is_ephemeral_and_loopback_only() {
+        let (reservation, port) = reserve_loopback_port().unwrap();
+        let address = reservation.local_addr().unwrap();
+
+        assert!(address.ip().is_loopback());
+        assert_eq!(address.port(), port);
+        assert_ne!(port, 0);
+    }
+
+    #[test]
+    fn authenticated_health_accepts_only_healthy_matching_bounded_json() {
+        let credentials =
+            base64::engine::general_purpose::STANDARD.encode("vibespace:secret-value");
+        let authorization = format!("Authorization: Basic {credentials}");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .unwrap();
+
+        for (status, body, accepted) in [
+            (
+                "200 OK",
+                br#"{"healthy":true,"version":"1.18.16"}"#.to_vec(),
+                true,
+            ),
+            (
+                "200 OK",
+                br#"{"healthy":false,"version":"1.18.16"}"#.to_vec(),
+                false,
+            ),
+            (
+                "200 OK",
+                br#"{"healthy":true,"version":"9.9.9"}"#.to_vec(),
+                false,
+            ),
+            ("401 Unauthorized", b"unauthorized".to_vec(), false),
+        ] {
+            let base_url = mock_health_response(authorization.clone(), status, body);
+            assert_eq!(
+                probe_health_once(&client, &connection(base_url)).unwrap(),
+                accepted
+            );
+        }
+
+        let base_url = mock_health_response(
+            authorization.clone(),
+            "200 OK",
+            vec![b'x'; super::MAX_HEALTH_BODY_BYTES as usize + 1],
+        );
+        assert!(probe_health_once(&client, &connection(base_url)).is_err());
+        let base_url = mock_health_response(authorization, "200 OK", b"not json".to_vec());
+        assert!(probe_health_once(&client, &connection(base_url)).is_err());
+    }
+
+    #[test]
+    fn crash_budget_allows_only_two_restarts_inside_the_window_and_recovers_later() {
+        let state = OpenCodeServerState::default();
+        let start = Instant::now();
+        for index in 0..MAX_AUTOMATIC_RESTARTS {
+            assert!(state
+                .record_crash(start + Duration::from_secs(index as u64))
+                .unwrap());
+        }
+        assert!(!state.record_crash(start + Duration::from_secs(2)).unwrap());
+        assert!(state.record_crash(start + CRASH_WINDOW * 2).unwrap());
+    }
+
+    #[test]
+    fn injected_start_owns_a_healthy_child_and_cleans_a_failed_child() {
+        let fixture = FixtureRoot::new("injected-start");
+        let launches = Arc::new(AtomicUsize::new(0));
+        let exited = Arc::new(AtomicBool::new(false));
+        let terminated = Arc::new(AtomicBool::new(false));
+        let launcher = FakeLauncher {
+            launches: launches.clone(),
+            exited: exited.clone(),
+            terminated: terminated.clone(),
+        };
+
+        let (started, process) = start_server_attempt_with(
+            &runtime(fixture.path()),
+            fixture.path(),
+            &launcher,
+            &FakeHealth(true),
+        )
+        .unwrap();
+        assert_eq!(process.id(), 41);
+        assert_eq!(started.source, RuntimeSource::Managed);
+        assert_eq!(launches.load(Ordering::Relaxed), 1);
+        assert!(!terminated.load(Ordering::Acquire));
+        drop(process);
+
+        let error = start_server_attempt_with(
+            &runtime(fixture.path()),
+            fixture.path(),
+            &launcher,
+            &FakeHealth(false),
+        )
+        .err()
+        .expect("failed health");
+        assert_eq!(error.message, "Synthetic health failure.");
+        assert!(terminated.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn status_and_stop_touch_only_the_exact_owned_process() {
+        let state = OpenCodeServerState::default();
+        let owned_exited = Arc::new(AtomicBool::new(false));
+        let owned_terminated = Arc::new(AtomicBool::new(false));
+        let unrelated_exited = Arc::new(AtomicBool::new(false));
+        let unrelated_terminated = Arc::new(AtomicBool::new(false));
+        let unrelated = fake_process(999, unrelated_exited.clone(), unrelated_terminated.clone());
+        state.inner.lock().unwrap().running = Some(RunningServer {
+            executable_id: "runtime-id".to_string(),
+            connection: connection("http://127.0.0.1:43123".to_string()),
+            process: fake_process(42, owned_exited, owned_terminated.clone()),
+        });
+
+        assert_eq!(
+            server_status(&state).unwrap().unwrap().generation,
+            "generation"
+        );
+        assert!(stop_server(&state).unwrap());
+        assert!(owned_terminated.load(Ordering::Acquire));
+        assert!(!unrelated_terminated.load(Ordering::Acquire));
+        assert_eq!(unrelated.id(), 999);
+        assert!(server_status(&state).unwrap().is_none());
+        assert!(!stop_server(&state).unwrap());
+    }
+
+    #[test]
+    fn crash_detection_clears_only_the_matching_exited_generation() {
+        let state = OpenCodeServerState::default();
+        let exited = Arc::new(AtomicBool::new(true));
+        let terminated = Arc::new(AtomicBool::new(false));
+        state.inner.lock().unwrap().running = Some(RunningServer {
+            executable_id: "runtime-id".to_string(),
+            connection: connection("http://127.0.0.1:43123".to_string()),
+            process: fake_process(42, exited, terminated),
+        });
+
+        assert!(
+            take_crashed_runtime(&mut state.inner.lock().unwrap(), "stale")
+                .unwrap()
+                .is_none()
+        );
+        assert!(state.inner.lock().unwrap().running.is_some());
+        assert_eq!(
+            take_crashed_runtime(&mut state.inner.lock().unwrap(), "generation").unwrap(),
+            Some("runtime-id".to_string())
+        );
+        assert!(state.inner.lock().unwrap().running.is_none());
+    }
+
+    #[test]
+    fn live_runtime_is_reused_changed_runtime_is_stopped_and_start_is_single_flight() {
+        let state = OpenCodeServerState::default();
+        let first_exited = Arc::new(AtomicBool::new(false));
+        let first_terminated = Arc::new(AtomicBool::new(false));
+        let mut inner = state.inner.lock().unwrap();
+        inner.running = Some(RunningServer {
+            executable_id: "runtime-a".to_string(),
+            connection: connection("http://127.0.0.1:43123".to_string()),
+            process: fake_process(42, first_exited, first_terminated.clone()),
+        });
+
+        assert_eq!(
+            reuse_or_stop_existing(&mut inner, "runtime-a")
+                .unwrap()
+                .unwrap()
+                .generation,
+            "generation"
+        );
+        assert!(!first_terminated.load(Ordering::Acquire));
+        assert!(reuse_or_stop_existing(&mut inner, "runtime-b")
+            .unwrap()
+            .is_none());
+        assert!(first_terminated.load(Ordering::Acquire));
+        assert!(inner.running.is_none());
+
+        claim_start(&mut inner).unwrap();
+        assert_eq!(
+            claim_start(&mut inner).unwrap_err().message,
+            "OpenCode server startup is already running."
+        );
+    }
+}

@@ -101,6 +101,15 @@ pub struct OpenCodeRuntimeDetection {
 struct TrustedRuntime {
     canonical_path: PathBuf,
     fingerprint_sha256: String,
+    version: String,
+    source: RuntimeSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedTrustedRuntime {
+    pub path: PathBuf,
+    pub version: String,
+    pub source: RuntimeSource,
 }
 
 #[derive(Default)]
@@ -109,7 +118,12 @@ pub struct OpenCodeRuntimeState {
 }
 
 impl OpenCodeRuntimeState {
-    fn register(&self, path: &Path) -> Result<(String, String), String> {
+    fn register(
+        &self,
+        path: &Path,
+        version: String,
+        source: RuntimeSource,
+    ) -> Result<(String, String), String> {
         let canonical = canonical_native_file(path).ok_or_else(|| {
             "OpenCode executable is no longer a canonical native file.".to_string()
         })?;
@@ -128,6 +142,8 @@ impl OpenCodeRuntimeState {
                 TrustedRuntime {
                     canonical_path: canonical,
                     fingerprint_sha256: fingerprint_sha256.clone(),
+                    version,
+                    source,
                 },
             );
 
@@ -135,6 +151,14 @@ impl OpenCodeRuntimeState {
     }
 
     pub(crate) fn resolve_trusted(&self, executable_id: &str) -> Result<PathBuf, String> {
+        self.resolve_trusted_runtime(executable_id)
+            .map(|runtime| runtime.path)
+    }
+
+    pub(crate) fn resolve_trusted_runtime(
+        &self,
+        executable_id: &str,
+    ) -> Result<ResolvedTrustedRuntime, String> {
         let trusted = self
             .trusted
             .lock()
@@ -148,7 +172,11 @@ impl OpenCodeRuntimeState {
         if canonical != trusted.canonical_path || fingerprint != trusted.fingerprint_sha256 {
             return Err("Trusted OpenCode executable was replaced after discovery.".to_string());
         }
-        Ok(canonical)
+        Ok(ResolvedTrustedRuntime {
+            path: canonical,
+            version: trusted.version,
+            source: trusted.source,
+        })
     }
 }
 
@@ -272,13 +300,15 @@ where
             continue;
         }
 
-        let (executable_id, fingerprint_sha256) = match state.register(&candidate.path) {
-            Ok(registration) => registration,
-            Err(error) => {
-                diagnostics.push(error);
-                continue;
-            }
-        };
+        let version = version.display();
+        let (executable_id, fingerprint_sha256) =
+            match state.register(&candidate.path, version.clone(), candidate.source) {
+                Ok(registration) => registration,
+                Err(error) => {
+                    diagnostics.push(error);
+                    continue;
+                }
+            };
         if let Err(error) = state.resolve_trusted(&executable_id) {
             diagnostics.push(error);
             continue;
@@ -290,7 +320,7 @@ where
         return Ok(OpenCodeRuntimeDetection {
             status,
             source: Some(candidate.source),
-            version: Some(version.display()),
+            version: Some(version),
             executable_id: Some(executable_id),
             executable_path: Some(candidate.path.to_string_lossy().into_owned()),
             fingerprint_sha256: Some(fingerprint_sha256),
@@ -955,7 +985,9 @@ mod tests {
         let canonical = fs::canonicalize(&executable).unwrap();
         let state = OpenCodeRuntimeState::default();
 
-        let (executable_id, fingerprint) = state.register(&canonical).expect("registration");
+        let (executable_id, fingerprint) = state
+            .register(&canonical, "1.18.16".to_string(), RuntimeSource::System)
+            .expect("registration");
 
         assert_ne!(executable_id, canonical.to_string_lossy());
         assert!(executable_id.starts_with("opencode-runtime-"));
@@ -964,6 +996,20 @@ mod tests {
             state.resolve_trusted(&executable_id).expect("resolution"),
             canonical
         );
+        assert_eq!(
+            state
+                .resolve_trusted_runtime(&executable_id)
+                .expect("runtime metadata")
+                .version,
+            "1.18.16"
+        );
+        assert_eq!(
+            state
+                .resolve_trusted_runtime(&executable_id)
+                .expect("runtime source")
+                .source,
+            RuntimeSource::System
+        );
     }
 
     #[test]
@@ -971,7 +1017,9 @@ mod tests {
         let fixture = FixtureRoot::new("registry-replaced");
         let executable = fixture.native("bin/opencode.exe");
         let state = OpenCodeRuntimeState::default();
-        let (executable_id, _) = state.register(&executable).expect("registration");
+        let (executable_id, _) = state
+            .register(&executable, "1.18.16".to_string(), RuntimeSource::System)
+            .expect("registration");
 
         fs::write(&executable, b"replacement bytes").unwrap();
         assert!(state
@@ -980,7 +1028,9 @@ mod tests {
             .contains("replaced"));
 
         let deleted = fixture.native("deleted/opencode.exe");
-        let (deleted_id, _) = state.register(&deleted).expect("deleted registration");
+        let (deleted_id, _) = state
+            .register(&deleted, "1.18.16".to_string(), RuntimeSource::System)
+            .expect("deleted registration");
         fs::remove_file(deleted).unwrap();
         assert!(state.resolve_trusted(&deleted_id).is_err());
     }
@@ -992,8 +1042,14 @@ mod tests {
         let arbitrary = fixture.native("bin/not-opencode.exe");
         let state = OpenCodeRuntimeState::default();
 
-        assert!(state.register(fixture.path()).is_err());
-        assert!(state.register(&shim).is_err());
-        assert!(state.register(&arbitrary).is_err());
+        assert!(state
+            .register(fixture.path(), "1.18.16".to_string(), RuntimeSource::System,)
+            .is_err());
+        assert!(state
+            .register(&shim, "1.18.16".to_string(), RuntimeSource::System)
+            .is_err());
+        assert!(state
+            .register(&arbitrary, "1.18.16".to_string(), RuntimeSource::System,)
+            .is_err());
     }
 }

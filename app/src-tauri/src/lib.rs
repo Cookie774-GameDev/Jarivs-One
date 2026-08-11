@@ -377,6 +377,7 @@ fn run_ordinary(
         )
         .manage(harness::runtime::OpenCodeRuntimeState::default())
         .manage(harness::download::OpenCodeDownloadState::default())
+        .manage(harness::server::OpenCodeServerState::default())
         .manage(cli_bridge::CliBridgeState::default())
         .manage(kernel_host::KernelHostState::default())
         .manage(terminal::TerminalState::default())
@@ -546,6 +547,9 @@ fn run_ordinary(
             harness::runtime::opencode_runtime_detect,
             harness::download::opencode_runtime_install,
             harness::download::opencode_runtime_install_cancel,
+            harness::server::opencode_server_ensure,
+            harness::server::opencode_server_status,
+            harness::server::opencode_server_stop,
             command_center_tool::command_center_tool,
             context_search::context_search_replace_documents,
             context_search::context_search_delete_documents,
@@ -697,6 +701,7 @@ fn run_ordinary(
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                harness::server::shutdown_owned_server(app_handle);
                 kernel_host::release_on_process_exit(app_handle);
                 return;
             }
@@ -776,6 +781,9 @@ cli_bridge::cli_bridge_cancel
 harness::runtime::opencode_runtime_detect
 harness::download::opencode_runtime_install
 harness::download::opencode_runtime_install_cancel
+harness::server::opencode_server_ensure
+harness::server::opencode_server_status
+harness::server::opencode_server_stop
 command_center_tool::command_center_tool
 context_search::context_search_replace_documents
 context_search::context_search_delete_documents
@@ -920,9 +928,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "20c4cb0247a2ce157984613109fbed954501a884467eb29272eac01e9336c507";
+        "23a72854b6a382e2ec5a9f7e832eece90c17f3e179a210993c475c607d67080f";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "aacff047bea44cc24ea388ada9167eb11bb7854f78797de6adcb2e90a36b1a49";
+        "f0d448f04d167e469cd08bd144a34d11315f19da8561447ae59d387ff51151a2";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1058,13 +1066,20 @@ wallpaper_master::wallpaper_full_cache_path";
 
         assert!(!visual_test.contains("OpenCodeRuntimeState"));
         assert!(!visual_test.contains("OpenCodeDownloadState"));
+        assert!(!visual_test.contains("OpenCodeServerState"));
         assert!(!visual_test.contains("opencode_runtime_detect"));
         assert!(!visual_test.contains("opencode_runtime_install"));
+        assert!(!visual_test.contains("opencode_server_ensure"));
         assert!(ordinary.contains(".manage(harness::runtime::OpenCodeRuntimeState::default())"));
         assert!(ordinary.contains(".manage(harness::download::OpenCodeDownloadState::default())"));
+        assert!(ordinary.contains(".manage(harness::server::OpenCodeServerState::default())"));
         assert!(ordinary.contains("harness::runtime::opencode_runtime_detect,"));
         assert!(ordinary.contains("harness::download::opencode_runtime_install,"));
         assert!(ordinary.contains("harness::download::opencode_runtime_install_cancel,"));
+        assert!(ordinary.contains("harness::server::opencode_server_ensure,"));
+        assert!(ordinary.contains("harness::server::opencode_server_status,"));
+        assert!(ordinary.contains("harness::server::opencode_server_stop,"));
+        assert!(ordinary.contains("harness::server::shutdown_owned_server(app_handle);"));
     }
 
     #[test]
