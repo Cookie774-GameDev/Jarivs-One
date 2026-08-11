@@ -37,7 +37,7 @@ describe('BrowserChatPermissionPanel', () => {
       'Custom',
     ]);
     expect(screen.getByText(/2 executable now/i)).toBeTruthy();
-    expect(screen.getByText(/7 unavailable locally/i)).toBeTruthy();
+    expect(screen.getByText(/8 unavailable locally/i)).toBeTruthy();
     expect(screen.getByText(/write support not verified/i)).toBeTruthy();
   });
 

@@ -43,6 +43,7 @@ describe('Browser Chat permission registry', () => {
       'git.status',
       'browser.read',
       'mcp.list',
+      'mcp.read',
       'project.list',
       'project.context',
       'project.outputs',
@@ -57,6 +58,8 @@ describe('Browser Chat permission registry', () => {
     ]);
     expect(permissionModeFor(profile('off'), 'files.read')).toBe('deny');
     expect(permissionModeFor(profile('read'), 'files.read')).toBe('auto');
+    expect(permissionModeFor(profile('read'), 'mcp.read')).toBe('auto');
+    expect(permissionModeFor(profile('read'), 'mcp.invoke')).toBe('deny');
     expect(permissionModeFor(profile('read'), 'files.modify')).toBe('deny');
     expect(permissionModeFor(profile('project_developer'), 'files.modify')).toBe('ask');
     expect(permissionModeFor(profile('full_local_developer'), 'files.modify')).toBe('auto');

@@ -545,6 +545,45 @@ staged, restored, reformatted, or committed by this task.
   relay and the separately owned Worker protocol can attest them end to end.
 - Commit: `db37f308`.
 
+### M5m — account-scoped downstream MCP execution
+
+- Status: `VERIFIED`
+- RED evidence: Browser Chat had no adapter for the existing VibeSpace MCP
+  gateway. The initial suite failed on the missing module; an identity
+  hardening case then proved a conflicting server identity could otherwise be
+  surfaced, and read-profile tests proved that one mutation-classified
+  `mcp.invoke` capability would incorrectly block read-only downstream tools.
+- GREEN evidence: 53/53 focused downstream-adapter, gateway,
+  permission-registry, approval-broker, provider-capability, permission-panel,
+  and Browser Chat hub tests pass; app TypeScript and Prettier pass.
+- Real fixture execution: the adapter drives a real scoped
+  `VibeSpaceMcpGateway` instance backed by an in-process MCP runtime fixture.
+  Tests execute one read tool, one observable mutation tool, and one pending
+  tool cancelled through permission revocation. Gateway success/cancellation
+  receipts are asserted rather than mocked.
+- Permission boundary: `mcp.read` is a distinct non-mutating capability
+  available to the Read plan and provider read/fetch surfaces. Write and
+  mutation classifications require `mcp.invoke`, which remains critical and
+  always asks. Classification is derived from the live approved catalog, not
+  caller input.
+- Scope and catalog truth: gateway account/project identity must match the
+  adapter; workspace identity is enforced by the one-shot Browser Chat lease.
+  Only approved, exposed, connected `external_mcp` tools with matching
+  connection/server identities and live health evidence are listed.
+- Invocation safety: task/connection/tool identities and JSON arguments are
+  bounded, accessors and non-plain records fail closed, the exact tool is
+  passed as the gateway task allowlist, and returned receipts are revalidated
+  against exact account/project/task/tool/classification identity. Endpoints
+  and credentials never enter the public catalog result.
+- Cancellation: profile revocation aborts the Browser Chat operation signal,
+  the gateway cancels the in-flight downstream invocation, and the public
+  adapter returns `operation_cancelled` while the gateway retains a bounded
+  cancelled receipt.
+- Boundary: the adapter is locally executable through the existing production
+  gateway but remains absent from remote Browser Chat registration until the
+  separately owned Worker/relay protocol advertises and routes it end to end.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

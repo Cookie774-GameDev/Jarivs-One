@@ -15,6 +15,7 @@ export type BrowserChatCapabilityDefinition = {
     | 'git.status'
     | 'browser.read'
     | 'mcp.list'
+    | 'mcp.read'
     | 'project.list'
     | 'project.context'
     | 'project.outputs'
@@ -73,6 +74,13 @@ export const BROWSER_CHAT_CAPABILITIES: readonly BrowserChatCapabilityDefinition
   Object.freeze({
     id: 'mcp.list',
     label: 'List approved downstream MCP tools',
+    family: 'mcp',
+    mutates: false,
+    criticalApproval: false,
+  }),
+  Object.freeze({
+    id: 'mcp.read',
+    label: 'Invoke an approved read-only downstream MCP tool',
     family: 'mcp',
     mutates: false,
     criticalApproval: false,
