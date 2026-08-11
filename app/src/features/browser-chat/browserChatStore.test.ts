@@ -164,6 +164,8 @@ describe('legacy Browser Chat preference migration', () => {
       database,
       accountId: 'account-1',
       workspaceId: 'workspace-1',
+      accountProfileKey:
+        'profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const,
       preferences,
       clock: () => 100,
       idFactory: () => `migrated-${++id}`,
@@ -180,10 +182,119 @@ describe('legacy Browser Chat preference migration', () => {
         workspaceId: 'workspace-1',
         chatId: 'browser-chat',
         provider: 'chatgpt',
-        providerProfileKey: 'browser-chat/chatgpt',
+        providerProfileKey:
+          'browser-chat/chatgpt/profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         localTitle: 'Legacy browser chat',
         pinned: true,
       }),
     ]);
+  });
+
+  it('idempotently scopes existing bindings and collapses a mixed legacy duplicate', async () => {
+    const accountProfileKey =
+      'profile_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const;
+    const scopedProfileKey = `browser-chat/chatgpt/${accountProfileKey}`;
+    await database.browser_chat_bindings.bulkAdd([
+      {
+        id: 'legacy-only',
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        chatId: 'legacy-chat',
+        provider: 'chatgpt',
+        providerProfileKey: 'browser-chat/chatgpt',
+        bindingState: 'new',
+        localTitle: 'Legacy only',
+        pinned: false,
+        viewMode: 'vibespace',
+        createdAt: 10,
+        updatedAt: 11,
+      },
+      {
+        id: 'legacy-duplicate',
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        projectId: 'legacy-project',
+        chatId: 'legacy-duplicate-chat',
+        provider: 'chatgpt',
+        providerProfileKey: 'browser-chat/chatgpt',
+        providerConversationKey: 'conversation-1',
+        resumeUrl: 'https://chatgpt.com/c/conversation-1',
+        bindingState: 'bound',
+        localTitle: 'Legacy duplicate',
+        pinned: true,
+        viewMode: 'provider',
+        createdAt: 20,
+        updatedAt: 21,
+        lastOpenedAt: 80,
+      },
+      {
+        id: 'scoped-canonical',
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        chatId: 'scoped-chat',
+        provider: 'chatgpt',
+        providerProfileKey: scopedProfileKey,
+        providerConversationKey: 'conversation-1',
+        resumeUrl: 'https://chatgpt.com/c/conversation-1',
+        bindingState: 'bound',
+        localTitle: 'Scoped canonical',
+        pinned: false,
+        viewMode: 'vibespace',
+        createdAt: 30,
+        updatedAt: 31,
+        lastOpenedAt: 40,
+      },
+      {
+        id: 'foreign-account',
+        accountId: 'account-2',
+        workspaceId: 'workspace-1',
+        chatId: 'foreign-chat',
+        provider: 'chatgpt',
+        providerProfileKey: 'browser-chat/chatgpt',
+        bindingState: 'new',
+        localTitle: 'Foreign',
+        pinned: false,
+        viewMode: 'vibespace',
+        createdAt: 50,
+        updatedAt: 51,
+      },
+    ]);
+    const input = {
+      database,
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      accountProfileKey,
+      preferences: {},
+      clock: () => 100,
+    };
+
+    await expect(migrateLegacyBrowserChatPreferences(input)).resolves.toBe(2);
+    await expect(migrateLegacyBrowserChatPreferences(input)).resolves.toBe(0);
+
+    expect(await database.browser_chat_bindings.get('legacy-only')).toMatchObject({
+      providerProfileKey: scopedProfileKey,
+    });
+    expect(await database.browser_chat_bindings.get('legacy-duplicate')).toBeUndefined();
+    expect(await database.browser_chat_bindings.get('scoped-canonical')).toMatchObject({
+      providerProfileKey: scopedProfileKey,
+      providerConversationKey: 'conversation-1',
+      localTitle: 'Scoped canonical',
+      pinned: true,
+      lastOpenedAt: 80,
+      projectId: 'legacy-project',
+    });
+    expect(await database.browser_chat_bindings.get('foreign-account')).toMatchObject({
+      providerProfileKey: 'browser-chat/chatgpt',
+    });
+
+    database.close();
+    await database.open();
+    await expect(migrateLegacyBrowserChatPreferences(input)).resolves.toBe(0);
+    await expect(
+      database.browser_chat_bindings
+        .where('[accountId+workspaceId+provider+providerProfileKey+providerConversationKey]')
+        .equals(['account-1', 'workspace-1', 'chatgpt', scopedProfileKey, 'conversation-1'])
+        .count(),
+    ).resolves.toBe(1);
   });
 });

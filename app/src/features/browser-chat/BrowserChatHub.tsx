@@ -261,11 +261,12 @@ export function BrowserChatHub({
     Array<{ readonly binding: BrowserChatBindingRow; readonly chat: Chat }>
   >(() => [...(initialSessions ?? [])]);
   React.useEffect(() => {
-    if (initialSessions || !accountId || !bindingWorkspaceId) return;
+    if (initialSessions || !accountId || !bindingWorkspaceId || !accountProfileKey) return;
     void migrateLegacyBrowserChatPreferences({
       database,
       accountId,
       workspaceId: bindingWorkspaceId,
+      accountProfileKey,
       preferences: legacyChatPreferences,
     }).catch((cause) => {
       toast.error(
@@ -275,7 +276,14 @@ export function BrowserChatHub({
           : 'Some legacy Browser Chat preferences could not be migrated.',
       );
     });
-  }, [accountId, bindingWorkspaceId, database, initialSessions, legacyChatPreferences]);
+  }, [
+    accountId,
+    accountProfileKey,
+    bindingWorkspaceId,
+    database,
+    initialSessions,
+    legacyChatPreferences,
+  ]);
   React.useEffect(() => {
     if (initialSessions) {
       setSessions([...initialSessions]);

@@ -10,6 +10,10 @@ import {
   type BrowserChatToolBridgeStatus,
 } from './providerRegistry';
 import { createBrowserChatBindingRepository } from './browserChatRepository';
+import {
+  scopedProviderProfileKey,
+  type BrowserChatAccountProfileKey,
+} from './providerProfileScope';
 import type { JarvisDexie } from '@/lib/db';
 import type { ChatId } from '@/types/common';
 
@@ -53,6 +57,7 @@ type LegacyBrowserChatMigrationInput = {
   readonly database: JarvisDexie;
   readonly accountId: string;
   readonly workspaceId: string;
+  readonly accountProfileKey: BrowserChatAccountProfileKey;
   readonly preferences: Readonly<Record<string, BrowserChatPreference>>;
   readonly clock?: () => number;
   readonly idFactory?: () => string;
@@ -115,11 +120,66 @@ export async function migrateLegacyBrowserChatPreferences({
   database,
   accountId,
   workspaceId,
+  accountProfileKey,
   preferences,
   clock,
   idFactory,
 }: LegacyBrowserChatMigrationInput): Promise<number> {
   const repository = createBrowserChatBindingRepository(database, clock, idFactory);
+  let migrated = await database.transaction(
+    'rw',
+    database.browser_chat_bindings,
+    async (): Promise<number> => {
+      const bindings = await database.browser_chat_bindings
+        .where('[accountId+workspaceId]')
+        .equals([accountId, workspaceId])
+        .toArray();
+      let scoped = 0;
+      for (const binding of bindings) {
+        const legacyProfileKey = browserChatProvider(binding.provider).profileKey;
+        if (binding.providerProfileKey !== legacyProfileKey) continue;
+        const providerProfileKey = scopedProviderProfileKey(legacyProfileKey, accountProfileKey);
+        const conflict = binding.providerConversationKey
+          ? await database.browser_chat_bindings
+              .where('[accountId+workspaceId+provider+providerProfileKey+providerConversationKey]')
+              .equals([
+                accountId,
+                workspaceId,
+                binding.provider,
+                providerProfileKey,
+                binding.providerConversationKey,
+              ])
+              .first()
+          : undefined;
+
+        if (conflict && conflict.id !== binding.id) {
+          await database.browser_chat_bindings.put({
+            ...conflict,
+            projectId: conflict.projectId ?? binding.projectId,
+            providerProjectKey: conflict.providerProjectKey ?? binding.providerProjectKey,
+            permissionProfileId: conflict.permissionProfileId ?? binding.permissionProfileId,
+            pinned: conflict.pinned || binding.pinned,
+            createdAt: Math.min(conflict.createdAt, binding.createdAt),
+            updatedAt: Math.max(conflict.updatedAt, binding.updatedAt),
+            lastOpenedAt:
+              conflict.lastOpenedAt === undefined
+                ? binding.lastOpenedAt
+                : binding.lastOpenedAt === undefined
+                  ? conflict.lastOpenedAt
+                  : Math.max(conflict.lastOpenedAt, binding.lastOpenedAt),
+          });
+          await database.browser_chat_bindings.delete(binding.id);
+        } else {
+          await database.browser_chat_bindings.put({
+            ...binding,
+            providerProfileKey,
+          });
+        }
+        scoped += 1;
+      }
+      return scoped;
+    },
+  );
   const browserPreferences = Object.entries(preferences).filter(
     ([chatId, preference]) =>
       validChatId(chatId) &&
@@ -129,8 +189,6 @@ export async function migrateLegacyBrowserChatPreferences({
   const chats = await database.chats.bulkGet(
     browserPreferences.map(([chatId]) => chatId as ChatId),
   );
-  let migrated = 0;
-
   for (const [[chatId, preference], chat] of browserPreferences.map(
     (entry, index) => [entry, chats[index]] as const,
   )) {
@@ -143,7 +201,7 @@ export async function migrateLegacyBrowserChatPreferences({
       projectId: chat.project_id ? String(chat.project_id) : undefined,
       chatId,
       provider: provider.id,
-      providerProfileKey: provider.profileKey,
+      providerProfileKey: scopedProviderProfileKey(provider.profileKey, accountProfileKey),
       localTitle: chat.title,
       pinned: chat.pinned ?? false,
     });
