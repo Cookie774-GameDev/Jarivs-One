@@ -451,7 +451,7 @@ staged, restored, reformatted, or committed by this task.
 - Boundary: create/modify/delete are locally executable but remain absent from
   remote registration until the excluded Worker protocol can route and attest
   them end to end.
-- Commit: pending exact-path commit.
+- Commit: `01c49e2e`.
 
 ## Completion labels
 
