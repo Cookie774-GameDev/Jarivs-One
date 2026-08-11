@@ -9,7 +9,7 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V11 migrations preserve every existing row. Dexie replays each version's store
+ * V1 → V12 migrations preserve every existing row. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
  * New installs open directly on V11.
  */
@@ -41,8 +41,10 @@ import {
   STORES_V9,
   STORES_V10,
   STORES_V11,
+  STORES_V12,
   type BrowserChatBindingRow,
   type BrowserChatImportRow,
+  type BrowserChatPermissionProfileRow,
   type BrowserChatSnapshotRow,
   type CanvasAssetRow,
   type CanvasCameraRow,
@@ -169,6 +171,9 @@ export class JarvisDexie extends Dexie {
   browser_chat_imports!: EntityTable<BrowserChatImportRow, 'id'>;
   browser_chat_snapshots!: EntityTable<BrowserChatSnapshotRow, 'id'>;
 
+  // V12 durable Browser Chat permission profiles
+  browser_chat_permission_profiles!: EntityTable<BrowserChatPermissionProfileRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -183,6 +188,7 @@ export class JarvisDexie extends Dexie {
     this.version(9).stores(STORES_V9);
     this.version(10).stores(STORES_V10);
     this.version(11).stores(STORES_V11);
+    this.version(12).stores(STORES_V12);
   }
 }
 
@@ -257,6 +263,7 @@ export type {
   CanvasRecoveryRow,
   BrowserChatBindingRow,
   BrowserChatImportRow,
+  BrowserChatPermissionProfileRow,
   BrowserChatSnapshotMessage,
   BrowserChatSnapshotRow,
   BrowserChatProvider,

@@ -254,6 +254,27 @@ staged, restored, reformatted, or committed by this task.
   non-sensitive grant display metadata leave the device.
 - Coordination limitation: `workers/vibespace-mcp/**` remains excluded while
   its recorded owner is unresolved.
+- Commit: `af4ec351`.
+
+### M5c — durable scoped permission profiles
+
+- Status: `VERIFIED`
+- RED evidence: no durable authority record existed for a selected Browser
+  Chat permission plan; session grants always reconstructed the Read preset.
+  The first additive-schema test also caught and rejected a duplicate compound
+  index before the migration was committed.
+- GREEN evidence: 36/36 focused schema migration, permission repository,
+  permission registry, and existing Browser Chat repository tests pass; app
+  TypeScript passes.
+- Storage: Dexie V12 adds one unique local profile row per exact
+  account/workspace/project scope. Existing V1–V11 declarations remain frozen
+  and migration tests preserve prior rows byte-for-byte.
+- Validation: repository writes round-trip through the permission profile
+  parser, reject wrong account/project scope and unsafe critical overrides,
+  update the existing scoped row atomically, and revoke only the exact scope.
+- Boundary: the durable record stores permission intent only. Absolute roots
+  and executable grants remain session-only and must still be approved after
+  restart.
 - Commit: pending exact-path commit.
 
 ## Completion labels

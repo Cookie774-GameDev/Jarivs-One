@@ -668,9 +668,20 @@ export type BrowserChatSnapshotRow = {
   updatedAt: number;
 };
 
+export type BrowserChatPermissionProfileRow = {
+  id: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  plan: 'off' | 'read' | 'project_developer' | 'full_local_developer' | 'custom';
+  serializedProfile: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 11 for separate Browser Chat import snapshots. */
-export const DB_VERSION = 11;
+/** Current schema version — bumped to 12 for durable Browser Chat permission profiles. */
+export const DB_VERSION = 12;
 
 /**
  * Dexie store schema strings.
@@ -857,6 +868,14 @@ export const STORES_V11 = {
     'id, accountId, workspaceId, provider, providerConversationKey, importId, updatedAt, &[accountId+workspaceId+provider+providerConversationKey], [accountId+workspaceId], [accountId+workspaceId+updatedAt], [accountId+workspaceId+importId]',
 } as const;
 
-export const STORES = STORES_V11;
+/** V12 adds one durable permission profile per account/workspace/project scope. */
+// prettier-ignore
+export const STORES_V12 = {
+  ...STORES_V11,
+  browser_chat_permission_profiles:
+    'id, accountId, workspaceId, projectId, plan, updatedAt, &[accountId+workspaceId+projectId], [accountId+workspaceId]',
+} as const;
+
+export const STORES = STORES_V12;
 
 export type StoreName = keyof typeof STORES;
