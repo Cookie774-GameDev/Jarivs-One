@@ -63,6 +63,32 @@ export type FsWriteResult =
   | { ok: true; path: string }
   | { ok: false; error: FsReadError; path: string };
 
+export type FsPathStatResult =
+  | {
+      ok: true;
+      path: string;
+      kind: 'file' | 'directory';
+      size?: number;
+      createdMs?: number;
+      modifiedMs?: number;
+      sha256?: `sha256:${string}`;
+    }
+  | { ok: false; error: FsReadError; path: string };
+
+export type FsFileTransferResult =
+  | {
+      ok: true;
+      path: string;
+      sourcePath: string;
+      bytes: number;
+      sha256: `sha256:${string}`;
+    }
+  | { ok: false; error: FsReadError; path: string; sourcePath: string };
+
+export type FsDirectoryResult =
+  | { ok: true; path: string; created: boolean }
+  | { ok: false; error: FsReadError; path: string };
+
 export type FsTextMutationResult =
   | {
       ok: true;
@@ -350,6 +376,83 @@ function normalizeTextMutationReceipt(raw: unknown, path: string): FsTextMutatio
   };
 }
 
+function optionalSafeInteger(value: unknown): number | undefined | null {
+  if (value === null || value === undefined) return undefined;
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : null;
+}
+
+function normalizePathStat(raw: unknown, path: string): FsPathStatResult {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: { code: 'unknown' }, path };
+  }
+  const record = raw as Record<string, unknown>;
+  const kind = record.kind;
+  const size = optionalSafeInteger(record.size);
+  const createdMs = optionalSafeInteger(record.createdMs);
+  const modifiedMs = optionalSafeInteger(record.modifiedMs);
+  const sha256 = record.sha256;
+  if (
+    (kind !== 'file' && kind !== 'directory') ||
+    size === null ||
+    createdMs === null ||
+    modifiedMs === null ||
+    (sha256 !== null &&
+      sha256 !== undefined &&
+      (typeof sha256 !== 'string' || !SHA256.test(sha256))) ||
+    (kind === 'file' && size === undefined) ||
+    (kind === 'directory' && (size !== undefined || (sha256 !== null && sha256 !== undefined)))
+  ) {
+    return { ok: false, error: { code: 'unknown' }, path };
+  }
+  return {
+    ok: true,
+    path,
+    kind,
+    ...(size === undefined ? {} : { size }),
+    ...(createdMs === undefined ? {} : { createdMs }),
+    ...(modifiedMs === undefined ? {} : { modifiedMs }),
+    ...(typeof sha256 === 'string' ? { sha256: sha256 as `sha256:${string}` } : {}),
+  };
+}
+
+function normalizeFileTransfer(
+  raw: unknown,
+  sourcePath: string,
+  path: string,
+): FsFileTransferResult {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: { code: 'unknown' }, sourcePath, path };
+  }
+  const record = raw as Record<string, unknown>;
+  if (
+    !Number.isSafeInteger(record.bytes) ||
+    (record.bytes as number) < 0 ||
+    typeof record.sha256 !== 'string' ||
+    !SHA256.test(record.sha256)
+  ) {
+    return { ok: false, error: { code: 'unknown' }, sourcePath, path };
+  }
+  return {
+    ok: true,
+    sourcePath,
+    path,
+    bytes: record.bytes as number,
+    sha256: record.sha256 as `sha256:${string}`,
+  };
+}
+
+function normalizeDirectoryReceipt(raw: unknown, path: string): FsDirectoryResult {
+  if (
+    !raw ||
+    typeof raw !== 'object' ||
+    Array.isArray(raw) ||
+    typeof (raw as Record<string, unknown>).created !== 'boolean'
+  ) {
+    return { ok: false, error: { code: 'unknown' }, path };
+  }
+  return { ok: true, path, created: (raw as { created: boolean }).created };
+}
+
 /** Exact-base create/modify/delete for bounded UTF-8 project files. */
 export async function compareAndSwapTextFile(
   path: string,
@@ -367,6 +470,72 @@ export async function compareAndSwapTextFile(
     return normalizeTextMutationReceipt(raw, path);
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+export async function statProjectPath(
+  path: string,
+  includeSha256: boolean,
+  options: FsAccessOptions = {},
+): Promise<FsPathStatResult> {
+  try {
+    const raw = await invoke<unknown>('fs_stat_path', {
+      path,
+      includeSha256,
+      root: options.root ?? undefined,
+    });
+    return normalizePathStat(raw, path);
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+export async function createDirectoryWithReceipt(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsDirectoryResult> {
+  try {
+    const raw = await invoke<unknown>('fs_create_dir_all_strict', {
+      path,
+      root: options.root ?? undefined,
+    });
+    return normalizeDirectoryReceipt(raw, path);
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+export async function copyProjectFile(
+  sourcePath: string,
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsFileTransferResult> {
+  try {
+    const raw = await invoke<unknown>('fs_copy_file', {
+      path: sourcePath,
+      newPath: path,
+      root: options.root ?? undefined,
+    });
+    return normalizeFileTransfer(raw, sourcePath, path);
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), sourcePath, path };
+  }
+}
+
+export async function moveProjectFileWithReceipt(
+  sourcePath: string,
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsFileTransferResult> {
+  try {
+    const raw = await invoke<unknown>('fs_move_file_with_receipt', {
+      path: sourcePath,
+      newPath: path,
+      root: options.root ?? undefined,
+    });
+    return normalizeFileTransfer(raw, sourcePath, path);
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), sourcePath, path };
   }
 }
 

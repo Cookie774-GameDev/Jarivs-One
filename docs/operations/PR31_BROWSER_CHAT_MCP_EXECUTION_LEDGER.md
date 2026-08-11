@@ -482,6 +482,39 @@ staged, restored, reformatted, or committed by this task.
   is still excluded at the Worker protocol boundary.
 - Commit: `7bcea1ca`.
 
+### M5k — strict metadata, directory, copy, and move adapters
+
+- Status: `VERIFIED`
+- RED evidence: Browser Chat had bounded list/read/search and exact-base text
+  mutation, but no capability-scoped stat/hash, directory creation, copy, or
+  move adapter with native result evidence.
+- GREEN evidence: 13/13 focused Browser Chat structure, filesystem wrapper,
+  and existing Files-page compatibility tests pass; all 20 native filesystem
+  tests pass against real temporary directories; the frozen native handler
+  authority test and app TypeScript pass; Rustfmt and Prettier are clean.
+- Native boundary: metadata and optional SHA-256 come from the same strict,
+  no-follow capability-relative file handle. Directory creation walks and
+  opens every component without following links and reports whether anything
+  was actually created.
+- Transfer truth: copy is create-new, capped at 16 MiB, fsynced, removes a
+  partial destination on failure, and returns the hash of the bytes written.
+  The Browser Chat move command preserves create-new/no-overwrite behavior,
+  verifies source and destination hashes before deleting the source, and
+  returns bounded native byte/hash evidence. The existing general Files-page
+  rename command remains compatible and does not inherit the evidence cap.
+- Authorization: stat/hash requires a one-shot `files.read` lease; directory
+  creation requires `files.create`; copy independently consumes read and
+  create leases; move consumes `files.move`. Revoked operations are rejected
+  before native invocation.
+- Scope and privacy: all paths are relative to the normalized approved root,
+  traversal and sensitive paths remain blocked by default, forged absolute
+  paths/receipts fail closed, and public receipts contain only relative paths,
+  byte counts, hashes, timestamps, and file kind.
+- Boundary: these adapters are locally executable but are not remotely
+  advertised until the separately owned Worker protocol can route and attest
+  them end to end.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

@@ -47,6 +47,7 @@ const MAX_DIR_ENTRIES: usize = 500;
 const MAX_SAMPLE_BYTES: u64 = 512 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TEXT_MUTATION_BYTES: usize = 256 * 1024;
+const MAX_COPY_BYTES: u64 = 16 * 1024 * 1024;
 static TEXT_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Serialize)]
@@ -75,6 +76,29 @@ pub struct FsTextMutationReceipt {
     pub after_sha256: Option<String>,
     pub before_bytes: usize,
     pub after_bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsPathMetadata {
+    pub kind: String,
+    pub size: Option<u64>,
+    pub created_ms: Option<u128>,
+    pub modified_ms: Option<u128>,
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsFileTransferReceipt {
+    pub bytes: u64,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsDirectoryReceipt {
+    pub created: bool,
 }
 
 fn require_absolute(path: &str) -> Result<PathBuf, String> {
@@ -337,6 +361,88 @@ impl StrictProjectRoot {
         let parent = relative.parent().unwrap_or_else(|| Path::new(""));
         Ok((self.open_dir(parent)?, PathBuf::from(name)))
     }
+
+    fn create_directory_path(&self, path: &str) -> Result<bool, String> {
+        let relative = self.relative(path)?;
+        if relative.as_os_str().is_empty() {
+            return Ok(false);
+        }
+        let mut dir = Dir::reopen_dir(&self.dir).map_err(|error| format!("io: {error}"))?;
+        let mut created = false;
+        for component in relative.components() {
+            let Component::Normal(name) = component else {
+                return Err("outside_root".to_string());
+            };
+            let component_path = Path::new(name);
+            match dir.symlink_metadata(component_path) {
+                Ok(metadata) if metadata.is_symlink() => {
+                    return Err("symlink_blocked".to_string());
+                }
+                Ok(metadata) if !metadata.is_dir() => return Err("not_a_dir".to_string()),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    dir.create_dir(component_path).map_err(|create_error| {
+                        if create_error.kind() == std::io::ErrorKind::AlreadyExists {
+                            "already_exists".to_string()
+                        } else {
+                            format!("io: {create_error}")
+                        }
+                    })?;
+                    created = true;
+                }
+                Err(error) => return Err(format!("io: {error}")),
+            }
+            dir = dir.open_dir_nofollow(component_path).map_err(|error| {
+                if cap_entry_is_link(&dir, component_path) {
+                    "symlink_blocked".to_string()
+                } else if error.kind() == std::io::ErrorKind::NotFound {
+                    "not_found".to_string()
+                } else {
+                    format!("io: {error}")
+                }
+            })?;
+        }
+        Ok(created)
+    }
+}
+
+fn cap_time_ms(value: std::io::Result<cap_std::time::SystemTime>) -> Option<u128> {
+    value
+        .ok()
+        .and_then(|time| time.into_std().duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis())
+}
+
+fn hash_open_file(
+    mut file: cap_std::fs::File,
+    maximum_bytes: u64,
+) -> Result<(String, u64), String> {
+    let metadata = file.metadata().map_err(|error| format!("io: {error}"))?;
+    if !metadata.is_file() {
+        return Err("not_a_file".to_string());
+    }
+    if metadata.len() > maximum_bytes {
+        return Err("too_large".to_string());
+    }
+    let mut digest = Sha256::new();
+    let mut bytes = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("io: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        bytes = bytes
+            .checked_add(read as u64)
+            .ok_or_else(|| "too_large".to_string())?;
+        if bytes > maximum_bytes {
+            return Err("too_large".to_string());
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok((format!("sha256:{:x}", digest.finalize()), bytes))
 }
 
 fn canonical_root(root: Option<&str>) -> Result<Option<PathBuf>, String> {
@@ -879,8 +985,218 @@ pub fn fs_create_dir_all(path: String, root: Option<String>) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn fs_rename_file(path: String, new_path: String, root: Option<String>) -> Result<(), String> {
+pub fn fs_create_dir_all_strict(
+    path: String,
+    root: Option<String>,
+) -> Result<FsDirectoryReceipt, String> {
+    let _guard = TEXT_MUTATION_LOCK
+        .lock()
+        .map_err(|_| "runtime_failure".to_string())?;
+    StrictProjectRoot::open(root.as_deref())?
+        .create_directory_path(&path)
+        .map(|created| FsDirectoryReceipt { created })
+}
+
+#[tauri::command]
+pub fn fs_stat_path(
+    path: String,
+    include_sha256: bool,
+    root: Option<String>,
+) -> Result<FsPathMetadata, String> {
     let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let relative = strict_root.relative(&path)?;
+    if relative.as_os_str().is_empty() {
+        let metadata = strict_root
+            .dir
+            .dir_metadata()
+            .map_err(|error| format!("io: {error}"))?;
+        return Ok(FsPathMetadata {
+            kind: "directory".to_string(),
+            size: None,
+            created_ms: cap_time_ms(metadata.created()),
+            modified_ms: cap_time_ms(metadata.modified()),
+            sha256: None,
+        });
+    }
+
+    let (parent, name) = strict_root.file_parent_and_name(&path)?;
+    if cap_entry_is_link(&parent, &name) {
+        return Err("symlink_blocked".to_string());
+    }
+    let metadata = parent
+        .symlink_metadata(&name)
+        .map_err(|error| map_cap_open_error(&parent, &name, error))?;
+    if metadata.is_dir() {
+        let directory = strict_root.open_dir(&relative)?;
+        let metadata = directory
+            .dir_metadata()
+            .map_err(|error| format!("io: {error}"))?;
+        return Ok(FsPathMetadata {
+            kind: "directory".to_string(),
+            size: None,
+            created_ms: cap_time_ms(metadata.created()),
+            modified_ms: cap_time_ms(metadata.modified()),
+            sha256: None,
+        });
+    }
+    if !metadata.is_file() {
+        return Err("unsupported_type".to_string());
+    }
+    let file = strict_root.open_file(&relative)?;
+    let metadata = file.metadata().map_err(|error| format!("io: {error}"))?;
+    let sha256 = if include_sha256 {
+        Some(hash_open_file(file, MAX_FILE_BYTES)?.0)
+    } else {
+        None
+    };
+    Ok(FsPathMetadata {
+        kind: "file".to_string(),
+        size: Some(metadata.len()),
+        created_ms: cap_time_ms(metadata.created()),
+        modified_ms: cap_time_ms(metadata.modified()),
+        sha256,
+    })
+}
+
+#[tauri::command]
+pub fn fs_copy_file(
+    path: String,
+    new_path: String,
+    root: Option<String>,
+) -> Result<FsFileTransferReceipt, String> {
+    let _guard = TEXT_MUTATION_LOCK
+        .lock()
+        .map_err(|_| "runtime_failure".to_string())?;
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let source_relative = strict_root.relative(&path)?;
+    let mut source = strict_root.open_file(&source_relative)?;
+    let source_metadata = source.metadata().map_err(|error| format!("io: {error}"))?;
+    if source_metadata.len() > MAX_COPY_BYTES {
+        return Err("too_large".to_string());
+    }
+    let (destination_dir, destination_name) = strict_root.file_parent_and_name(&new_path)?;
+    match destination_dir.symlink_metadata(&destination_name) {
+        Ok(_) => return Err("already_exists".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("io: {error}")),
+    }
+    let mut options = OpenOptions::new();
+    options
+        .write(true)
+        .create_new(true)
+        .follow(FollowSymlinks::No);
+    let mut destination = destination_dir
+        .open_with(&destination_name, &options)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "already_exists".to_string()
+            } else if cap_entry_is_link(&destination_dir, &destination_name) {
+                "symlink_blocked".to_string()
+            } else {
+                format!("io: {error}")
+            }
+        })?;
+
+    let copied = (|| -> Result<FsFileTransferReceipt, String> {
+        let mut digest = Sha256::new();
+        let mut bytes = 0_u64;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let read = source
+                .read(&mut buffer)
+                .map_err(|error| format!("io: {error}"))?;
+            if read == 0 {
+                break;
+            }
+            bytes = bytes
+                .checked_add(read as u64)
+                .ok_or_else(|| "too_large".to_string())?;
+            if bytes > MAX_COPY_BYTES {
+                return Err("too_large".to_string());
+            }
+            destination
+                .write_all(&buffer[..read])
+                .map_err(|error| format!("io: {error}"))?;
+            digest.update(&buffer[..read]);
+        }
+        destination
+            .flush()
+            .map_err(|error| format!("io: {error}"))?;
+        destination
+            .sync_all()
+            .map_err(|error| format!("io: {error}"))?;
+        Ok(FsFileTransferReceipt {
+            bytes,
+            sha256: format!("sha256:{:x}", digest.finalize()),
+        })
+    })();
+    if copied.is_err() {
+        drop(destination);
+        let _ = destination_dir.remove_file(&destination_name);
+    }
+    copied
+}
+
+#[tauri::command]
+pub fn fs_rename_file(path: String, new_path: String, root: Option<String>) -> Result<(), String> {
+    let _guard = TEXT_MUTATION_LOCK
+        .lock()
+        .map_err(|_| "runtime_failure".to_string())?;
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let (source_dir, source_name) = strict_root.file_parent_and_name(&path)?;
+    let (destination_dir, destination_name) = strict_root.file_parent_and_name(&new_path)?;
+
+    if cap_entry_is_link(&source_dir, &source_name) {
+        return Err("symlink_blocked".to_string());
+    }
+    let source_metadata = source_dir
+        .symlink_metadata(&source_name)
+        .map_err(|error| map_cap_open_error(&source_dir, &source_name, error))?;
+    if !source_metadata.is_file() {
+        return Err("not_a_file".to_string());
+    }
+    match destination_dir.symlink_metadata(&destination_name) {
+        Ok(_) => return Err("already_exists".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("io: {error}")),
+    }
+    source_dir
+        .hard_link(&source_name, &destination_dir, &destination_name)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "already_exists".to_string()
+            } else {
+                format!("io: {error}")
+            }
+        })?;
+    if cap_entry_is_link(&destination_dir, &destination_name) {
+        let _ = destination_dir.remove_file(&destination_name);
+        return Err("symlink_blocked".to_string());
+    }
+    if let Err(error) = source_dir.remove_file(&source_name) {
+        let _ = destination_dir.remove_file(&destination_name);
+        return Err(if error.kind() == std::io::ErrorKind::NotFound {
+            "not_found".to_string()
+        } else {
+            format!("io: {error}")
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn fs_move_file_with_receipt(
+    path: String,
+    new_path: String,
+    root: Option<String>,
+) -> Result<FsFileTransferReceipt, String> {
+    let _guard = TEXT_MUTATION_LOCK
+        .lock()
+        .map_err(|_| "runtime_failure".to_string())?;
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let source_relative = strict_root.relative(&path)?;
+    let (source_sha256, source_bytes) =
+        hash_open_file(strict_root.open_file(&source_relative)?, MAX_FILE_BYTES)?;
     let (source_dir, source_name) = strict_root.file_parent_and_name(&path)?;
     let (destination_dir, destination_name) = strict_root.file_parent_and_name(&new_path)?;
 
@@ -917,6 +1233,21 @@ pub fn fs_rename_file(path: String, new_path: String, root: Option<String>) -> R
         let _ = destination_dir.remove_file(&destination_name);
         return Err("symlink_blocked".to_string());
     }
+    let destination_relative = strict_root.relative(&new_path)?;
+    let (destination_sha256, destination_bytes) = match hash_open_file(
+        strict_root.open_file(&destination_relative)?,
+        MAX_FILE_BYTES,
+    ) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            let _ = destination_dir.remove_file(&destination_name);
+            return Err(error);
+        }
+    };
+    if destination_sha256 != source_sha256 || destination_bytes != source_bytes {
+        let _ = destination_dir.remove_file(&destination_name);
+        return Err("runtime_failure".to_string());
+    }
 
     if let Err(error) = source_dir.remove_file(&source_name) {
         let _ = destination_dir.remove_file(&destination_name);
@@ -926,11 +1257,17 @@ pub fn fs_rename_file(path: String, new_path: String, root: Option<String>) -> R
             format!("io: {error}")
         });
     }
-    Ok(())
+    Ok(FsFileTransferReceipt {
+        bytes: destination_bytes,
+        sha256: destination_sha256,
+    })
 }
 
 #[tauri::command]
 pub fn fs_delete_file(path: String, root: Option<String>) -> Result<(), String> {
+    let _guard = TEXT_MUTATION_LOCK
+        .lock()
+        .map_err(|_| "runtime_failure".to_string())?;
     let strict_root = StrictProjectRoot::open(root.as_deref())?;
     let (parent, name) = strict_root.file_parent_and_name(&path)?;
     if cap_entry_is_link(&parent, &name) {
@@ -1367,16 +1704,25 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let nested = root.join("Projects").join("FarmLife");
         let root_text = root.to_string_lossy().to_string();
-        fs_create_dir_all(
+        let receipt = fs_create_dir_all_strict(
             nested.to_string_lossy().to_string(),
             Some(root_text.clone()),
         )
         .unwrap();
+        assert!(receipt.created);
+        assert!(
+            !fs_create_dir_all_strict(
+                nested.to_string_lossy().to_string(),
+                Some(root_text.clone()),
+            )
+            .unwrap()
+            .created
+        );
         assert!(nested.is_dir());
         let collision = root.join("Projects").join("not-a-folder");
         std::fs::write(&collision, b"file").unwrap();
         assert_eq!(
-            fs_create_dir_all(collision.to_string_lossy().to_string(), Some(root_text)),
+            fs_create_dir_all_strict(collision.to_string_lossy().to_string(), Some(root_text)),
             Err("not_a_dir".to_string())
         );
         std::fs::remove_dir_all(root).unwrap();
@@ -1565,6 +1911,88 @@ mod tests {
         assert_eq!(deleted.after_sha256, None);
         assert_eq!(deleted.after_bytes, 0);
         assert!(!file.exists());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stats_and_hashes_files_and_directories_from_strict_handles() {
+        let root = test_root("strict-stat");
+        let nested = root.join("nested");
+        let file = nested.join("notes.bin");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(&file, b"bounded binary fixture").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+
+        let directory = fs_stat_path(
+            nested.to_string_lossy().to_string(),
+            true,
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert_eq!(directory.kind, "directory");
+        assert_eq!(directory.size, None);
+        assert_eq!(directory.sha256, None);
+
+        let metadata = fs_stat_path(
+            file.to_string_lossy().to_string(),
+            true,
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert_eq!(metadata.kind, "file");
+        assert_eq!(metadata.size, Some(22));
+        assert_eq!(
+            metadata.sha256,
+            Some(text_sha256(b"bounded binary fixture"))
+        );
+
+        assert_eq!(
+            fs_stat_path(file.to_string_lossy().to_string(), false, None),
+            Err("outside_root".to_string())
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn copies_and_moves_files_without_overwrite_and_returns_hash_evidence() {
+        let root = test_root("strict-transfer");
+        let nested = root.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        let source = root.join("source.bin");
+        let copied = nested.join("copied.bin");
+        let moved = root.join("moved.bin");
+        std::fs::write(&source, b"copy fixture").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+
+        let copy_receipt = fs_copy_file(
+            source.to_string_lossy().to_string(),
+            copied.to_string_lossy().to_string(),
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert_eq!(copy_receipt.bytes, 12);
+        assert_eq!(copy_receipt.sha256, text_sha256(b"copy fixture"));
+        assert_eq!(std::fs::read(&copied).unwrap(), b"copy fixture");
+        assert_eq!(
+            fs_copy_file(
+                source.to_string_lossy().to_string(),
+                copied.to_string_lossy().to_string(),
+                Some(root_text.clone()),
+            ),
+            Err("already_exists".to_string())
+        );
+
+        let move_receipt = fs_move_file_with_receipt(
+            copied.to_string_lossy().to_string(),
+            moved.to_string_lossy().to_string(),
+            Some(root_text),
+        )
+        .unwrap();
+        assert_eq!(move_receipt.bytes, 12);
+        assert_eq!(move_receipt.sha256, copy_receipt.sha256);
+        assert!(!copied.exists());
+        assert_eq!(std::fs::read(&moved).unwrap(), b"copy fixture");
 
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -547,6 +547,10 @@ fn run_ordinary(
             context_search::context_search_status,
             context_search::context_search_acknowledge_rebuild,
             fsread::fs_create_dir_all,
+            fsread::fs_create_dir_all_strict,
+            fsread::fs_stat_path,
+            fsread::fs_copy_file,
+            fsread::fs_move_file_with_receipt,
             pets::pet_show_overlay,
             pets::pet_hide_overlay,
             pets::pet_is_overlay_visible,
@@ -770,6 +774,10 @@ context_search::context_search_query
 context_search::context_search_status
 context_search::context_search_acknowledge_rebuild
 fsread::fs_create_dir_all
+fsread::fs_create_dir_all_strict
+fsread::fs_stat_path
+fsread::fs_copy_file
+fsread::fs_move_file_with_receipt
 pets::pet_show_overlay
 pets::pet_hide_overlay
 pets::pet_is_overlay_visible
@@ -903,9 +911,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "fa876e008013733b2ffa0d6624db9445d0d98b5017b99028faabf9b75cb3e20f";
+        "17720dab64f8deb8c9cc2bf7279e1569aa0492716df98c8eff9216f6cc92c85d";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "1b13fc1e8409d8172f7e33bf621f4ac745e9c0edb6e30e40c8edd7d7d5247610";
+        "cca05ccb44896304689bb004a6f4a1678adadb4b532a9e7626d26344520cf2d9";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
