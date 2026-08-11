@@ -1,5 +1,6 @@
 use crate::harness::runtime::{OpenCodeRuntimeState, ResolvedTrustedRuntime, RuntimeSource};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 use std::collections::VecDeque;
 use std::fmt;
 use std::fs::{self, File};
@@ -69,6 +70,8 @@ struct ServerLaunchSpec {
     config_path: PathBuf,
     config_dir: PathBuf,
     working_dir: PathBuf,
+    config_content: String,
+    provider_environment: Vec<(String, String)>,
 }
 
 impl fmt::Debug for ServerLaunchSpec {
@@ -86,6 +89,15 @@ impl fmt::Debug for ServerLaunchSpec {
             .field("config_path", &self.config_path)
             .field("config_dir", &self.config_dir)
             .field("working_dir", &self.working_dir)
+            .field("config_content", &self.config_content)
+            .field(
+                "provider_environment",
+                &self
+                    .provider_environment
+                    .iter()
+                    .map(|(name, _)| (name, "[REDACTED]"))
+                    .collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -246,7 +258,10 @@ fn emit_state(app: &AppHandle, event: ServerRuntimeEvent) {
     let _ = app.emit(RUNTIME_STATE_EVENT, event);
 }
 
-fn write_scoped_config(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf), ServerFailure> {
+fn write_scoped_config(
+    root: &Path,
+    config_content: &str,
+) -> Result<(PathBuf, PathBuf, PathBuf), ServerFailure> {
     let config_dir = root.join("config");
     let working_dir = root.join("workspace");
     fs::create_dir_all(&config_dir)
@@ -258,20 +273,94 @@ fn write_scoped_config(root: &Path) -> Result<(PathBuf, PathBuf, PathBuf), Serve
         path: temporary.clone(),
         committed: false,
     };
-    let bytes = br#"{"server":{"hostname":"127.0.0.1","mdns":false}}"#;
     let mut output = File::options()
         .write(true)
         .create_new(true)
         .open(&temporary)
         .map_err(|_| failure("OpenCode server config could not be created."))?;
     output
-        .write_all(bytes)
+        .write_all(config_content.as_bytes())
         .and_then(|_| output.sync_all())
         .map_err(|_| failure("OpenCode server config could not be finalized."))?;
     drop(output);
     atomic_replace_file(&temporary, &config_path)?;
     temporary_guard.committed = true;
     Ok((config_path, config_dir, working_dir))
+}
+
+trait CredentialSource {
+    fn load(&self) -> Result<Vec<(String, String)>, ServerFailure>;
+}
+
+struct VaultCredentialSource;
+
+impl CredentialSource for VaultCredentialSource {
+    fn load(&self) -> Result<Vec<(String, String)>, ServerFailure> {
+        crate::credentials::harness_api_keys()
+            .map_err(|_| failure("VibeSpace provider credentials could not be loaded."))
+    }
+}
+
+fn credential_environment_name(provider: &str) -> Option<&'static str> {
+    match provider {
+        "anthropic" => Some("VIBESPACE_OC_ANTHROPIC_API_KEY"),
+        "openai" => Some("VIBESPACE_OC_OPENAI_API_KEY"),
+        "google" => Some("VIBESPACE_OC_GOOGLE_API_KEY"),
+        "xai" => Some("VIBESPACE_OC_XAI_API_KEY"),
+        "openrouter" => Some("VIBESPACE_OC_OPENROUTER_API_KEY"),
+        "groq" => Some("VIBESPACE_OC_GROQ_API_KEY"),
+        "deepseek" => Some("VIBESPACE_OC_DEEPSEEK_API_KEY"),
+        "mistral" => Some("VIBESPACE_OC_MISTRAL_API_KEY"),
+        "together" => Some("VIBESPACE_OC_TOGETHER_API_KEY"),
+        "qwen" => Some("VIBESPACE_OC_QWEN_API_KEY"),
+        "cohere" => Some("VIBESPACE_OC_COHERE_API_KEY"),
+        "perplexity" => Some("VIBESPACE_OC_PERPLEXITY_API_KEY"),
+        "fireworks" => Some("VIBESPACE_OC_FIREWORKS_API_KEY"),
+        "replicate" => Some("VIBESPACE_OC_REPLICATE_API_KEY"),
+        "hyperbolic" => Some("VIBESPACE_OC_HYPERBOLIC_API_KEY"),
+        "novita" => Some("VIBESPACE_OC_NOVITA_API_KEY"),
+        "lambda" => Some("VIBESPACE_OC_LAMBDA_API_KEY"),
+        _ => None,
+    }
+}
+
+fn scoped_provider_config(
+    credentials: Vec<(String, String)>,
+) -> Result<(String, Vec<(String, String)>), ServerFailure> {
+    let mut providers = Map::new();
+    let mut environment = Vec::new();
+    for (provider, value) in credentials {
+        let Some(environment_name) = credential_environment_name(&provider) else {
+            return Err(failure(
+                "VibeSpace returned an unsupported provider credential.",
+            ));
+        };
+        if providers.contains_key(&provider) {
+            return Err(failure(
+                "VibeSpace returned duplicate provider credentials.",
+            ));
+        }
+        providers.insert(
+            provider,
+            json!({
+                "options": {
+                    "apiKey": format!("{{env:{environment_name}}}")
+                }
+            }),
+        );
+        environment.push((environment_name.to_string(), value));
+    }
+    let mut root = Map::new();
+    root.insert(
+        "server".to_string(),
+        json!({ "hostname": LOOPBACK_HOST, "mdns": false }),
+    );
+    if !providers.is_empty() {
+        root.insert("provider".to_string(), Value::Object(providers));
+    }
+    let content = serde_json::to_string(&Value::Object(root))
+        .map_err(|_| failure("OpenCode server config could not be generated."))?;
+    Ok((content, environment))
 }
 
 #[cfg(target_os = "windows")]
@@ -320,12 +409,14 @@ fn reserve_loopback_port() -> Result<(TcpListener, u16), ServerFailure> {
     Ok((listener, address.port()))
 }
 
-fn build_launch_spec(
+fn build_launch_spec_with(
     runtime: &ResolvedTrustedRuntime,
     port: u16,
     server_root: &Path,
+    credentials: &dyn CredentialSource,
 ) -> Result<ServerLaunchSpec, ServerFailure> {
-    let (config_path, config_dir, working_dir) = write_scoped_config(server_root)?;
+    let (config_content, provider_environment) = scoped_provider_config(credentials.load()?)?;
+    let (config_path, config_dir, working_dir) = write_scoped_config(server_root, &config_content)?;
     Ok(ServerLaunchSpec {
         executable: runtime.path.clone(),
         port,
@@ -338,6 +429,8 @@ fn build_launch_spec(
         config_path,
         config_dir,
         working_dir,
+        config_content,
+        provider_environment,
     })
 }
 
@@ -357,9 +450,11 @@ impl ProcessLauncher for ProductionLauncher {
             .env("OPENCODE_SERVER_PASSWORD", &spec.password)
             .env("OPENCODE_CONFIG", &spec.config_path)
             .env("OPENCODE_CONFIG_DIR", &spec.config_dir)
-            .env(
-                "OPENCODE_CONFIG_CONTENT",
-                r#"{"server":{"hostname":"127.0.0.1","mdns":false}}"#,
+            .env("OPENCODE_CONFIG_CONTENT", &spec.config_content)
+            .envs(
+                spec.provider_environment
+                    .iter()
+                    .map(|(name, value)| (name, value)),
             )
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -469,9 +564,10 @@ fn start_server_attempt_with(
     server_root: &Path,
     launcher: &dyn ProcessLauncher,
     health: &dyn HealthWaiter,
+    credentials: &dyn CredentialSource,
 ) -> Result<(OpenCodeServerConnection, Box<dyn OwnedProcess>), ServerFailure> {
     let (reservation, port) = reserve_loopback_port()?;
-    let spec = build_launch_spec(runtime, port, server_root)?;
+    let spec = build_launch_spec_with(runtime, port, server_root, credentials)?;
     drop(reservation);
     let mut process = launcher.launch(&spec)?;
     let connection = spec.connection();
@@ -491,6 +587,7 @@ fn start_server_attempt(
         server_root,
         &ProductionLauncher,
         &ProductionHealthWaiter,
+        &VaultCredentialSource,
     )
 }
 
@@ -867,11 +964,12 @@ mod windows_process_tree {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_launch_spec, claim_start, failure, probe_health_once, reserve_loopback_port,
+        build_launch_spec_with, claim_start, failure, probe_health_once, reserve_loopback_port,
         reuse_or_stop_existing, server_status, start_server_attempt_with, stop_server,
-        take_crashed_runtime, write_scoped_config, HealthWaiter, OpenCodeServerConnection,
-        OpenCodeServerState, OwnedProcess, ProcessLauncher, ResolvedTrustedRuntime, RunningServer,
-        RuntimeSource, ServerFailure, ServerRuntimeEvent, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
+        take_crashed_runtime, write_scoped_config, CredentialSource, HealthWaiter,
+        OpenCodeServerConnection, OpenCodeServerState, OwnedProcess, ProcessLauncher,
+        ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure, ServerRuntimeEvent,
+        CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
     };
     use base64::Engine as _;
     use std::fs;
@@ -914,6 +1012,14 @@ mod tests {
             path: path.join("opencode.exe"),
             version: "1.18.16".to_string(),
             source: RuntimeSource::Managed,
+        }
+    }
+
+    struct FakeCredentials(Vec<(String, String)>);
+
+    impl CredentialSource for FakeCredentials {
+        fn load(&self) -> Result<Vec<(String, String)>, ServerFailure> {
+            Ok(self.0.clone())
         }
     }
 
@@ -1028,7 +1134,17 @@ mod tests {
     #[test]
     fn launch_contract_is_loopback_authenticated_scoped_and_redacted() {
         let fixture = FixtureRoot::new("launch-contract");
-        let spec = build_launch_spec(&runtime(fixture.path()), 42_123, fixture.path()).unwrap();
+        let credentials = FakeCredentials(vec![
+            ("openai".into(), "openai-secret".into()),
+            ("qwen".into(), "qwen-secret".into()),
+        ]);
+        let spec = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_123,
+            fixture.path(),
+            &credentials,
+        )
+        .unwrap();
 
         assert_eq!(
             spec.arguments(),
@@ -1038,16 +1154,30 @@ mod tests {
         assert_eq!(spec.password.len(), 64);
         assert!(!spec.password.chars().any(char::is_whitespace));
         assert_eq!(spec.base_url, "http://127.0.0.1:42123");
-        assert_eq!(
-            fs::read_to_string(&spec.config_path).unwrap(),
-            r#"{"server":{"hostname":"127.0.0.1","mdns":false}}"#
-        );
         let debug = format!("{:?}", spec.connection());
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains(&spec.password));
         let spec_debug = format!("{spec:?}");
         assert!(spec_debug.contains("[REDACTED]"));
         assert!(!spec_debug.contains(&spec.password));
+        assert!(!spec_debug.contains("openai-secret"));
+        assert!(!spec_debug.contains("qwen-secret"));
+        assert_eq!(
+            spec.provider_environment
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("VIBESPACE_OC_OPENAI_API_KEY", "openai-secret"),
+                ("VIBESPACE_OC_QWEN_API_KEY", "qwen-secret"),
+            ]
+        );
+        let config = fs::read_to_string(&spec.config_path).unwrap();
+        assert_eq!(config, spec.config_content);
+        assert!(config.contains("{env:VIBESPACE_OC_OPENAI_API_KEY}"));
+        assert!(config.contains("{env:VIBESPACE_OC_QWEN_API_KEY}"));
+        assert!(!config.contains("openai-secret"));
+        assert!(!config.contains("qwen-secret"));
         let event = serde_json::to_string(&ServerRuntimeEvent::Ready {
             source: RuntimeSource::Managed,
             version: "1.18.16".to_string(),
@@ -1060,7 +1190,8 @@ mod tests {
     #[test]
     fn scoped_config_uses_only_owned_paths_and_atomic_file() {
         let fixture = FixtureRoot::new("config");
-        let (config, directory, workspace) = write_scoped_config(fixture.path()).unwrap();
+        let (config, directory, workspace) =
+            write_scoped_config(fixture.path(), r#"{"server":{"mdns":false}}"#).unwrap();
 
         assert!(config.starts_with(fixture.path()));
         assert!(directory.is_dir());
@@ -1072,6 +1203,43 @@ mod tests {
                 .to_string_lossy()
                 .starts_with(".config-")
         }));
+    }
+
+    #[test]
+    fn regenerated_config_truthfully_adds_updates_and_removes_vault_providers() {
+        let fixture = FixtureRoot::new("credential-regeneration");
+        let first = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_123,
+            fixture.path(),
+            &FakeCredentials(vec![("openai".into(), "first-secret".into())]),
+        )
+        .unwrap();
+        assert!(first.config_content.contains("\"openai\""));
+        assert!(!first.config_content.contains("first-secret"));
+
+        let updated = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_124,
+            fixture.path(),
+            &FakeCredentials(vec![("openai".into(), "second-secret".into())]),
+        )
+        .unwrap();
+        assert_eq!(
+            updated.provider_environment[0].1, "second-secret",
+            "the restarted process must receive the updated vault value"
+        );
+        assert!(!updated.config_content.contains("second-secret"));
+
+        let deleted = build_launch_spec_with(
+            &runtime(fixture.path()),
+            42_125,
+            fixture.path(),
+            &FakeCredentials(vec![]),
+        )
+        .unwrap();
+        assert!(!deleted.config_content.contains("\"openai\""));
+        assert!(deleted.provider_environment.is_empty());
     }
 
     #[test]
@@ -1159,6 +1327,7 @@ mod tests {
             fixture.path(),
             &launcher,
             &FakeHealth(true),
+            &FakeCredentials(vec![]),
         )
         .unwrap();
         assert_eq!(process.id(), 41);
@@ -1172,6 +1341,7 @@ mod tests {
             fixture.path(),
             &launcher,
             &FakeHealth(false),
+            &FakeCredentials(vec![]),
         )
         .err()
         .expect("failed health");
