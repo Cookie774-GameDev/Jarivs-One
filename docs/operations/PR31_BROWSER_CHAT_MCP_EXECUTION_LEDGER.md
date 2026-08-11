@@ -415,6 +415,44 @@ staged, restored, reformatted, or committed by this task.
   separate layers.
 - Commit: `f9221dde`.
 
+### M5i — previewed file mutation and rollback adapter
+
+- Status: `VERIFIED`
+- RED evidence: the exact-base native primitive had no Browser Chat adapter
+  enforcing capability-specific approval, content-opaque previews, one-use
+  apply, or separately authorized rollback.
+- GREEN evidence: 28/28 focused mutation-adapter, discovery-adapter,
+  approval-broker, permission-registry, and filesystem-wrapper tests pass; app
+  TypeScript passes; all touched frontend files pass Prettier.
+- Preview authority: create/modify/delete previews require a separate
+  `files.read` lease before inspecting existence or content. Custom profiles
+  therefore cannot enable mutation while silently bypassing denied read
+  authority.
+- Apply authority: create, modify, and delete require matching
+  `files.create`, `files.modify`, and `files.delete` one-shot leases. Forged,
+  replayed, expired, wrong-capability, and revoked previews fail before native
+  mutation.
+- Change safety: public previews include only relative path, operation,
+  before/after hashes and byte counts, bounded changed-line counts, and expiry.
+  Previous/next content remains in a private in-memory record and is never
+  serialized in the preview or receipt.
+- Concurrency and evidence: apply calls the native compare-and-swap authority
+  with the preview’s exact base hash and rejects stale bases without fake
+  success. The adapter independently verifies every returned path, hash, and
+  byte count.
+- Rollback: each successful apply creates a private, single-use, fifteen-minute
+  undo record. Undo itself requires the capability implied by the reverse
+  operation: delete for undo-create, modify for undo-modify, and create for
+  undo-delete. Concurrent changes make rollback fail closed.
+- Retention: previews expire after five minutes; undo records expire after
+  fifteen minutes; explicit adapter revocation clears all retained rollback
+  content immediately. Sensitive paths/content are conservative by default and
+  require explicit adapter configuration.
+- Boundary: create/modify/delete are locally executable but remain absent from
+  remote registration until the excluded Worker protocol can route and attest
+  them end to end.
+- Commit: pending exact-path commit.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

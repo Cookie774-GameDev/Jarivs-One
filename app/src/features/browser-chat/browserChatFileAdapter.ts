@@ -146,7 +146,10 @@ type AdapterOptions = Readonly<{
   allowSensitivePaths?: boolean;
 }>;
 
-type ResolvedPath = Readonly<{ absolute: string; relative: string }>;
+export type BrowserChatResolvedFilePath = Readonly<{
+  absolute: string;
+  relative: string;
+}>;
 
 function sensitiveSegment(segment: string): boolean {
   const name = segment.toLocaleLowerCase('en-US');
@@ -180,11 +183,11 @@ function samePortableAbsolutePath(left: string, right: string): boolean {
     : left === right;
 }
 
-function resolveRelativePath(
+export function resolveBrowserChatFilePath(
   rawPath: string,
   root: string,
   allowSensitivePaths: boolean,
-): ResolvedPath {
+): BrowserChatResolvedFilePath {
   if (
     typeof rawPath !== 'string' ||
     rawPath.length < 1 ||
@@ -232,10 +235,10 @@ function resolveRelativePath(
 function resolveListedChild(
   entryPath: string,
   entryName: string,
-  parent: ResolvedPath,
+  parent: BrowserChatResolvedFilePath,
   root: string,
   allowSensitivePaths: boolean,
-): ResolvedPath | null {
+): BrowserChatResolvedFilePath | null {
   if (
     !entryName ||
     entryName === '.' ||
@@ -247,7 +250,7 @@ function resolveListedChild(
     return null;
   }
   try {
-    const expected = resolveRelativePath(
+    const expected = resolveBrowserChatFilePath(
       parent.relative === '.' ? entryName : `${parent.relative}/${entryName}`,
       root,
       allowSensitivePaths,
@@ -338,7 +341,7 @@ export function createBrowserChatFileAdapter(options: AdapterOptions): BrowserCh
   }
 
   async function readSafeText(
-    path: ResolvedPath,
+    path: BrowserChatResolvedFilePath,
     signal: AbortSignal,
   ): Promise<BrowserChatFileReadResult> {
     const result = await callNative(() =>
@@ -370,7 +373,7 @@ export function createBrowserChatFileAdapter(options: AdapterOptions): BrowserCh
 
   const adapter: BrowserChatFileAdapter = {
     async list(input) {
-      const path = resolveRelativePath(input.path, root, allowSensitivePaths);
+      const path = resolveBrowserChatFilePath(input.path, root, allowSensitivePaths);
       return execute('files.list', input.lease, input.now, async (signal) => {
         const result = await callNative(() =>
           dependencies.listDirectory(path.absolute, strictOptions, signal),
@@ -411,12 +414,12 @@ export function createBrowserChatFileAdapter(options: AdapterOptions): BrowserCh
     },
 
     async read(input) {
-      const path = resolveRelativePath(input.path, root, allowSensitivePaths);
+      const path = resolveBrowserChatFilePath(input.path, root, allowSensitivePaths);
       return execute('files.read', input.lease, input.now, (signal) => readSafeText(path, signal));
     },
 
     async search(input) {
-      const start = resolveRelativePath(input.path, root, allowSensitivePaths);
+      const start = resolveBrowserChatFilePath(input.path, root, allowSensitivePaths);
       const query = typeof input.query === 'string' ? input.query.trim().normalize('NFKC') : '';
       if (
         query.length < 2 ||
@@ -426,7 +429,9 @@ export function createBrowserChatFileAdapter(options: AdapterOptions): BrowserCh
         throw new BrowserChatFileAdapterError('query_invalid');
       }
       return execute('files.search', input.lease, input.now, async (signal) => {
-        const queue: Array<ResolvedPath & { depth: number }> = [{ ...start, depth: 0 }];
+        const queue: Array<BrowserChatResolvedFilePath & { depth: number }> = [
+          { ...start, depth: 0 },
+        ];
         const matches: Array<{ path: string; line: number; snippet: string }> = [];
         let inspectedEntries = 0;
         let searchedFiles = 0;
