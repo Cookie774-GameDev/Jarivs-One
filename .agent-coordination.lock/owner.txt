@@ -5,4 +5,6 @@ branch=agent/pr30-fixes-and-updates
 starting_head=7b5e21f6
 owned_paths=docs/superpowers/specs/2026-08-11-vibespace-opencode-child-session-parity-design.md;docs/superpowers/plans/2026-08-11-vibespace-opencode-child-session-parity.md;.agent-coordination.lock/owner.txt;app/src/features/jarvis-interaction/types.ts;app/src/features/jarvis-interaction/sessionStore.ts;app/src/features/jarvis-interaction/sessionStore.test.ts;app/src/features/jarvis-interaction/agents.test.ts;app/src/lib/ai/runtime.ts;app/src/lib/ai/runtime.test.ts;app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/openCodeRunAgent.ts;app/src/lib/ai/openCodeRunAgent.test.ts;app/src/lib/harness/types.ts;app/src/lib/harness/openCodeHarness.ts;app/src/lib/harness/openCodeHarness.test.ts
 exclusions=unrelated dirty/untracked work;child task decomposition redesign;Agent Activity Card visual redesign;OpenCode TUI;plugin/MCP/skills/context/memory parity;legacy-route removal;merge;push;deploy;release;implementation subagents
-status=ACTIVE
+status=RELEASED
+commits=083d693d;6276dfc5;38162aa9;9b9c8a03;da38fcec
+evidence=16 test files and 184 tests passed;typecheck passed;production build passed;Prettier passed;git diff check passed;child-parent and exact-model scans passed
