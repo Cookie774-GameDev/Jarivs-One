@@ -625,7 +625,7 @@ staged, restored, reformatted, or committed by this task.
   `NativeTerminalGitExecutionPort`, sealed execution-authority issuer, and
   relay route are composed and verified. The separately owned Worker remains
   untouched.
-- Commit: pending exact-path commit.
+- Commit: `7234fd03`.
 
 ## Completion labels
 
