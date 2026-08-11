@@ -1,9 +1,11 @@
-task_id=VS-ROOT-20260811T122400Z-FINAL-EVIDENCE
-phase=VS-PR31-OPENCODE-HARNESS-PHASE17-20260811
+task_id=VS-ROOT-20260811T203155Z-ZERO-DEFECT-HARDENING
+phase=VS-PR31-ZERO-KNOWN-DEFECT-HARDENING-20260811
 controller=/root
 branch=agent/pr30-fixes-and-updates
-starting_head=7b817a79
-owned_paths=docs/superpowers/plans/2026-08-11-vibespace-opencode-final-verification.md;docs/VIBESPACE_PR31_OPENCODE_ONLY_HARNESS_EVIDENCE.md;.agent-coordination.lock/owner.txt
-exclusions=unrelated dirty/untracked work;new product implementation unless a PR31 regression is proven;account-specific live credentials;global OpenCode mutation;merge;push;deploy;release;subagents
+starting_head=af404344
+owned_paths=.agent-coordination.lock/owner.txt;app/src/App.tsx;app/src/App.accountIdentity.test.tsx;app/src/features/agents/AgentManager.jarvisCreator.test.tsx;app/src/features/appearance/MonochromeWorkbench.test.tsx;app/src/features/benchmarks/BenchmarksPage.warmSchemaB.test.tsx;app/src/features/benchmarks/BenchmarksPage.monochromeAppearance.test.tsx;app/src/features/benchmarks/BenchmarksPage.tsx;app/src/features/benchmarks/BarChart.tsx;app/src/features/benchmarks/BarChart.monochromeAppearance.test.tsx;app/src/features/benchmarks/benchmarkData.ts;app/src/features/benchmarks/benchmarkData.test.ts;app/src/features/benchmarks/benchmarkRefresh.ts;app/src/features/benchmarks/NewsModelBenchmarkLane.tsx;app/src/features/benchmarks/officialBenchmarkData.ts;app/src/features/benchmarks/officialBenchmarkData.test.ts;app/src/features/benchmarks/leaderboardSnapshot20260711.ts;app/src/features/benchmarks/index.ts;app/src/lib/harness/toolGatewayProduction.ts;app/src/lib/harness/toolGatewayProduction.test.ts;app/src/lib/harness/toolGatewayRuntime.ts;app/src/lib/harness/toolGatewayRuntime.test.ts;app/src/lib/harness/toolGatewayProtocol.ts;app/src/lib/harness/toolGatewayProtocol.test.ts;package.json;scripts/run-vitest-shards.mjs;scripts/run-vitest-shards.test.mjs;docs/VIBESPACE_PR31_OPENCODE_ONLY_HARNESS_EVIDENCE.md
+exclusions=all other dirty/untracked work;account-specific paid credentials;global OpenCode mutation;merge;push;deploy;release;subagents
 status=RELEASED
-completed_head=5eaed924
+completed_head=1707154d
+evidence=docs/VIBESPACE_PR31_OPENCODE_ONLY_HARNESS_EVIDENCE.md
+remaining_blocker=computer-use kernel assets unavailable; managed OpenCode 1.18.16 not installed
