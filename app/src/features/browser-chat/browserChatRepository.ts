@@ -268,65 +268,65 @@ export function createBrowserChatBindingRepository(
       patch: BrowserChatBindingUpdateInput,
     ): Promise<BrowserChatBindingRow> {
       const scope = normalizeScope(scopeInput);
-      const current = await getRequired(scope, idInput);
-      const providerConversationKey =
-        patch.providerConversationKey === undefined
-          ? current.providerConversationKey
-          : optionalString(
-              patch.providerConversationKey,
-              'browser_chat_provider_conversation_invalid',
-              1024,
-            );
-      const resumeUrl =
-        patch.resumeUrl === undefined
-          ? current.resumeUrl
-          : normalizeProviderUrl(
-              current.provider,
-              patch.resumeUrl,
-              'conversation',
-              'browser_chat_resume_url_invalid',
-            );
-      if (resumeUrl && !providerConversationKey) {
-        throw new Error('browser_chat_provider_conversation_required');
-      }
-      const next: BrowserChatBindingRow = {
-        ...current,
-        projectId:
-          patch.projectId === undefined
-            ? current.projectId
-            : optionalString(patch.projectId, 'browser_chat_project_id_invalid', 256),
-        providerConversationKey,
-        resumeUrl,
-        providerProjectKey:
-          patch.providerProjectKey === undefined
-            ? current.providerProjectKey
-            : optionalString(
-                patch.providerProjectKey,
-                'browser_chat_provider_project_invalid',
-                1024,
-              ),
-        bindingState: patch.bindingState ?? current.bindingState,
-        localTitle:
-          patch.localTitle === undefined
-            ? current.localTitle
-            : requiredString(patch.localTitle, 'browser_chat_title_invalid', 512),
-        pinned: patch.pinned ?? current.pinned,
-        viewMode: patch.viewMode ?? current.viewMode,
-        permissionProfileId:
-          patch.permissionProfileId === undefined
-            ? current.permissionProfileId
-            : optionalString(
-                patch.permissionProfileId,
-                'browser_chat_permission_profile_invalid',
-                256,
-              ),
-        lastOpenedAt: patch.lastOpenedAt ?? current.lastOpenedAt,
-        updatedAt: clock(),
-      };
+      const id = requiredString(idInput, 'browser_chat_binding_id_invalid', 256);
 
       return database.transaction('rw', database.browser_chat_bindings, async () => {
-        const owned = await database.browser_chat_bindings.get(current.id);
-        if (!scoped(owned, scope)) throw new Error('browser_chat_binding_not_found');
+        const current = await database.browser_chat_bindings.get(id);
+        if (!scoped(current, scope)) throw new Error('browser_chat_binding_not_found');
+        const providerConversationKey =
+          patch.providerConversationKey === undefined
+            ? current.providerConversationKey
+            : optionalString(
+                patch.providerConversationKey,
+                'browser_chat_provider_conversation_invalid',
+                1024,
+              );
+        const resumeUrl =
+          patch.resumeUrl === undefined
+            ? current.resumeUrl
+            : normalizeProviderUrl(
+                current.provider,
+                patch.resumeUrl,
+                'conversation',
+                'browser_chat_resume_url_invalid',
+              );
+        if (resumeUrl && !providerConversationKey) {
+          throw new Error('browser_chat_provider_conversation_required');
+        }
+        const next: BrowserChatBindingRow = {
+          ...current,
+          projectId:
+            patch.projectId === undefined
+              ? current.projectId
+              : optionalString(patch.projectId, 'browser_chat_project_id_invalid', 256),
+          providerConversationKey,
+          resumeUrl,
+          providerProjectKey:
+            patch.providerProjectKey === undefined
+              ? current.providerProjectKey
+              : optionalString(
+                  patch.providerProjectKey,
+                  'browser_chat_provider_project_invalid',
+                  1024,
+                ),
+          bindingState: patch.bindingState ?? current.bindingState,
+          localTitle:
+            patch.localTitle === undefined
+              ? current.localTitle
+              : requiredString(patch.localTitle, 'browser_chat_title_invalid', 512),
+          pinned: patch.pinned ?? current.pinned,
+          viewMode: patch.viewMode ?? current.viewMode,
+          permissionProfileId:
+            patch.permissionProfileId === undefined
+              ? current.permissionProfileId
+              : optionalString(
+                  patch.permissionProfileId,
+                  'browser_chat_permission_profile_invalid',
+                  256,
+                ),
+          lastOpenedAt: patch.lastOpenedAt ?? current.lastOpenedAt,
+          updatedAt: clock(),
+        };
         if (providerConversationKey) {
           const conversationConflict = await database.browser_chat_bindings
             .where('[accountId+workspaceId+provider+providerProfileKey+providerConversationKey]')

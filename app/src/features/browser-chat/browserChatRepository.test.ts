@@ -214,6 +214,34 @@ describe('Browser Chat durable repositories', () => {
     ).resolves.toEqual(expect.objectContaining({ localTitle: 'Renamed' }));
   });
 
+  it('merges concurrent independent patches from the latest transactional row', async () => {
+    const repo = bindingRepo();
+    const row = await repo.create({
+      accountId: ACCOUNT_A,
+      workspaceId: WORKSPACE_A,
+      chatId: 'chat-concurrent',
+      provider: 'chatgpt',
+      providerProfileKey: 'profile-a',
+      localTitle: 'Original',
+    });
+
+    await Promise.all([
+      repo.update({ accountId: ACCOUNT_A, workspaceId: WORKSPACE_A }, row.id, {
+        localTitle: 'Renamed concurrently',
+      }),
+      repo.update({ accountId: ACCOUNT_A, workspaceId: WORKSPACE_A }, row.id, {
+        pinned: true,
+      }),
+    ]);
+
+    await expect(
+      repo.get({ accountId: ACCOUNT_A, workspaceId: WORKSPACE_A }, row.id),
+    ).resolves.toMatchObject({
+      localTitle: 'Renamed concurrently',
+      pinned: true,
+    });
+  });
+
   it('removes only a binding owned by the exact account and workspace', async () => {
     const repo = bindingRepo();
     const row = await repo.create({
