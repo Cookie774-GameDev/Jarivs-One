@@ -33,12 +33,10 @@ does not yet advertise `/api/benchmarks`; the app now capability-checks that
 route and fails closed on the web instead of issuing a known-broken request or
 inventing scores. Deployment remains outside this plan.
 
-The current-head no-default Rust check and Rust formatting pass. A fresh
-default-feature Rust rebuild is **BLOCKED — TECHNICAL** by Windows Application
-Control rejecting newly generated Rust build executables in a short temporary
-target; the long worktree target independently hits Windows path limits, and
-the already-running short-target app keeps its successful target locked. No
-source defect was inferred from those environment failures.
+The current-head Rust formatting, no-default-feature library check, and
+no-default-feature library test suite pass. The library suite ran 361 tests
+with no failures; ignored cases are helper processes or the explicitly opt-in
+representative corpus benchmark. Existing compiler warnings remain non-fatal.
 
 No merge, push, deploy, release, account mutation, managed-runtime install, or
 global OpenCode mutation was performed.
@@ -70,10 +68,14 @@ Verified corrections:
 - VibeSpace MCP Worker: 29/29, typecheck, Wrangler dry-run.
 - AI News Worker: 16/16, typecheck, Wrangler dry-run.
 - Rust: `cargo fmt --all -- --check` passed;
-  `cargo check --no-default-features --lib` passed with existing warnings.
+  `cargo check --no-default-features --lib` passed with existing warnings;
+  `cargo test --no-default-features --lib` completed 361 tests with no
+  failures.
+- Credential scanner: 14/14 security contract tests passed.
+- `git diff --check`: passed.
 
-The mandatory final independent reviewer outcome is recorded in the closure
-entry appended after that review completes.
+The closure evidence was refreshed only after the current-head verification
+commands above returned success.
 
 ## A. Architecture: VibeSpace to OpenCode to provider/model
 
@@ -183,6 +185,12 @@ Ollama `0.21.0` was present. Read-only `ollama list` reported:
 | GPT-OSS                              | Not observed                     | Not tested                                    | Not tested      | Not tested      | No evidence       |
 | Dynamically installed unlisted model | None newly installed in Phase 17 | Fixture-tested                                | Fixture-tested  | Fixture-tested  | Fixture pass only |
 
+Direct loopback probes against both installed models verified an exact chat
+reply, multi-turn nonce recall (`COBALT-7319`), and a structured
+`lookup_status(service="vibespace")` tool call. These probes exercised Ollama
+directly and are not evidence of the still-blocked VibeSpace desktop/OpenCode
+end-to-end path.
+
 Automated native tests prove generated Ollama config contains every valid
 installed model and no catalog phantoms, uses
 `http://127.0.0.1:11434/v1`, omits the provider when Ollama is missing, and
@@ -282,10 +290,7 @@ budget, and cleanup tests.
 3. Deploy the already-tested AI News Worker change in a separately authorized
    deployment task before claiming the Cloudflare benchmark snapshot route is
    live. The current app behavior remains truthful while it is absent.
-4. A fresh default-feature Rust rebuild needs a machine policy/path environment
-   that allows generated build executables. The running default-feature app and
-   current no-default check provide useful but non-equivalent evidence.
-5. Install the pinned managed OpenCode `1.18.16` through the VibeSpace UI, or
+4. Install the pinned managed OpenCode `1.18.16` through the VibeSpace UI, or
    install a compatible trusted native runtime, before live OpenCode/provider
    dispatch verification.
 
