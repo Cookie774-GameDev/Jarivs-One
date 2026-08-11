@@ -705,6 +705,35 @@ staged, restored, reformatted, or committed by this task.
   could be created; no visual result is claimed from that failed attempt.
 - Commit: `0d1e135d`.
 
+### M5q — live verified project output feed
+
+- Status: `VERIFIED`
+- RED evidence: the Browser Chat files/outputs panel showed only manually
+  staged browser `File` objects even when verified project runs and artifacts
+  existed in the local database.
+- GREEN evidence: 34/34 focused output-feed, Browser Chat hub, status-model,
+  and project-context adapter tests pass against real IndexedDB fixtures; app
+  TypeScript passes.
+- Scope: the feed queries the bounded account/update index, then filters exact
+  workspace and project identity before joining artifacts by selected run ID.
+  Foreign account, workspace, and project fixtures are absent from results.
+- Bounds and cancellation: callers may request 1–50 recent runs; the UI uses
+  12 and renders at most 6. Artifact metadata is capped at 100, truncation is
+  explicit, and cancellation is checked before and after database reads.
+- Artifact safety: quarantined artifacts, invalid records, raw artifact URIs,
+  local paths, blob keys, and message-part backing references are omitted.
+  The public feed contains only verified IDs, run state/source, safe title and
+  summary, content hash, byte size, timestamps, and `app_verified` trust.
+- Live UI: the panel independently reports running/failed project activity,
+  run source/state, verified output titles/kinds/states/sizes, and provides a
+  bounded route to History. Manually staged provider attachments remain a
+  separate user-driven list.
+- Boundary: this feed reports artifacts already committed by VibeSpace. It
+  does not claim that Browser Chat remote tools produced them unless their
+  source/run records say so, and it does not expose a backing file as a
+  downloadable link without a separate verified materialization authority.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

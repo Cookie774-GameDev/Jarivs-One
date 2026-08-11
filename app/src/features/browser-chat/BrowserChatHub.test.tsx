@@ -23,6 +23,7 @@ import {
   finishBrowserChatToolCall,
   publishBrowserChatToolCatalog,
 } from './browserChatToolActivity';
+import * as outputFeedModule from './browserChatOutputFeed';
 
 const providerSurfaceHarness = vi.hoisted(() => ({
   onNavigation: undefined as
@@ -168,6 +169,7 @@ describe('BrowserChatHub', () => {
     chatId?: string,
     initialSessions?: ComponentProps<typeof BrowserChatHub>['initialSessions'],
     initialProjects?: ComponentProps<typeof BrowserChatHub>['initialProjects'],
+    initialOutputFeed?: ComponentProps<typeof BrowserChatHub>['initialOutputFeed'],
   ) =>
     render(
       <BrowserChatHub
@@ -177,6 +179,7 @@ describe('BrowserChatHub', () => {
         bindingScope={{ accountId: 'account-1', workspaceId: 'workspace-1' }}
         initialSessions={initialSessions}
         initialProjects={initialProjects}
+        initialOutputFeed={initialOutputFeed}
       />,
     );
 
@@ -210,6 +213,96 @@ describe('BrowserChatHub', () => {
     expect(screen.getByText('Provider-controlled · not exposed to VibeSpace')).toBeTruthy();
     expect(screen.getByText('ChatGPT web quota is not exposed to VibeSpace')).toBeTruthy();
     expect(screen.queryByText(/^authorized$/i)).toBeNull();
+  });
+
+  it('renders only verified account-project output metadata from the live feed', async () => {
+    await testDatabase.jarvis_runs.bulkAdd([
+      {
+        id: 'run-output',
+        account_id: 'account-1',
+        workspace_id: 'workspace-1',
+        project_id: 'project-1',
+        source: 'browser_chat',
+        status: 'completed',
+        agent_id: 'jarvis',
+        identity_version: 1,
+        profile_revision_id: 'revision-output',
+        model: {
+          provider_id: 'local',
+          model_id: 'fixture',
+          connection_mode: 'local',
+          capabilities: {},
+          captured_at: 1,
+        },
+        created_at: 1,
+        updated_at: 30,
+        completed_at: 30,
+      },
+      {
+        id: 'run-output-foreign',
+        account_id: 'account-2',
+        workspace_id: 'workspace-1',
+        project_id: 'project-1',
+        source: 'browser_chat',
+        status: 'completed',
+        agent_id: 'jarvis',
+        identity_version: 1,
+        profile_revision_id: 'revision-foreign',
+        model: {
+          provider_id: 'local',
+          model_id: 'fixture',
+          connection_mode: 'local',
+          capabilities: {},
+          captured_at: 1,
+        },
+        created_at: 1,
+        updated_at: 40,
+        completed_at: 40,
+      },
+    ]);
+    await testDatabase.jarvis_artifacts.bulkAdd([
+      {
+        schema_version: 1,
+        id: 'artifact-output',
+        run_id: 'run-output',
+        request_id: 'request-output',
+        attempt_number: 1,
+        state: 'ready',
+        kind: 'code',
+        title: 'Generated browser output',
+        safe_summary: 'Verified output metadata.',
+        source_refs: [],
+        created_at: 30,
+      },
+      {
+        schema_version: 1,
+        id: 'artifact-output-foreign',
+        run_id: 'run-output-foreign',
+        request_id: 'request-output-foreign',
+        attempt_number: 1,
+        state: 'ready',
+        kind: 'text',
+        title: 'Foreign browser output',
+        source_refs: [],
+        created_at: 40,
+      },
+    ]);
+    const outputFeed = await outputFeedModule.listBrowserChatOutputFeed({
+      database: testDatabase,
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+    });
+    expect(outputFeed).toMatchObject({
+      runs: [{ id: 'run-output', outputs: [{ title: 'Generated browser output' }] }],
+    });
+
+    renderHub(undefined, undefined, undefined, outputFeed);
+
+    expect(await screen.findByText('Generated browser output')).toBeTruthy();
+    expect(screen.getByText(/browser chat · completed/i)).toBeTruthy();
+    expect(screen.queryByText('Foreign browser output')).toBeNull();
+    expect(screen.getByRole('button', { name: /open verified outputs in history/i })).toBeTruthy();
   });
 
   it('imports only an explicitly selected official ChatGPT export ZIP', async () => {

@@ -80,6 +80,7 @@ import {
   deriveBrowserChatStatusModel,
   type BrowserChatMcpSetupState,
 } from './browserChatStatusModel';
+import { listBrowserChatOutputFeed, type BrowserChatOutputFeed } from './browserChatOutputFeed';
 
 const BROWSER_CHAT_EXECUTABLE_CAPABILITIES = new Set<BrowserChatCapabilityId>([
   'files.list',
@@ -91,6 +92,12 @@ function statusLabel(value: string): string {
 }
 
 const stagedFilesByChat = new Map<string, File[]>();
+const EMPTY_OUTPUT_FEED: BrowserChatOutputFeed = Object.freeze({
+  runs: Object.freeze([]),
+  runningCount: 0,
+  failedCount: 0,
+  truncated: false,
+});
 
 export function browserChatMcpStatusLabel(
   relayStatus: BrowserChatRelayStatus,
@@ -125,6 +132,7 @@ type BrowserChatHubProps = {
     readonly chat: Chat;
   }>;
   readonly initialProjects?: ReadonlyArray<Project>;
+  readonly initialOutputFeed?: BrowserChatOutputFeed;
 };
 
 export function BrowserChatHub({
@@ -134,6 +142,7 @@ export function BrowserChatHub({
   bindingScope,
   initialSessions,
   initialProjects,
+  initialOutputFeed,
 }: BrowserChatHubProps) {
   const providerId = useBrowserChatStore(
     (state) => state.chatPreferences[chatId ?? '']?.providerId ?? state.providerId,
@@ -188,6 +197,7 @@ export function BrowserChatHub({
       ? relayStatus
       : providerBridgeStatus;
   const setActiveChat = useUIStore((state) => state.setActiveChat);
+  const setRoute = useUIStore((state) => state.setRoute);
   const bindingRepository = React.useMemo(
     () => createBrowserChatBindingRepository(database),
     [database],
@@ -362,6 +372,21 @@ export function BrowserChatHub({
     [database, projectId],
     undefined as Project | undefined,
   );
+  const liveOutputFeed = useLiveQuery(
+    async (): Promise<BrowserChatOutputFeed> =>
+      cloudAccountId && bindingWorkspaceId && projectId
+        ? await listBrowserChatOutputFeed({
+            database,
+            accountId: cloudAccountId,
+            workspaceId: bindingWorkspaceId,
+            projectId: String(projectId),
+            limit: 12,
+          })
+        : EMPTY_OUTPUT_FEED,
+    [bindingWorkspaceId, cloudAccountId, database, projectId],
+    EMPTY_OUTPUT_FEED,
+  );
+  const outputFeed = initialOutputFeed ?? liveOutputFeed;
   const [selectedAgentId, setSelectedAgentId] = React.useState('');
   const [contextRevision, setContextRevision] = React.useState(0);
   const [renamingBindingId, setRenamingBindingId] = React.useState<string | null>(null);
@@ -1471,6 +1496,57 @@ export function BrowserChatHub({
                 {!stagedFiles.length ? (
                   <span className="text-[10px] text-muted-foreground">No files staged.</span>
                 ) : null}
+              </dd>
+              <dd className="mt-3 border-t border-border/60 pt-2">
+                <span className="flex items-center justify-between gap-2 text-[9px] text-muted-foreground">
+                  <strong className="font-medium text-foreground">Verified project activity</strong>
+                  <span>
+                    {outputFeed.runningCount} running · {outputFeed.failedCount} failed
+                  </span>
+                </span>
+                <span className="mt-2 grid gap-1.5">
+                  {outputFeed.runs.slice(0, 6).map((run) => (
+                    <span
+                      key={run.id}
+                      className="rounded-md border border-border/60 bg-muted/30 px-2 py-1.5"
+                    >
+                      <span className="block text-[9px] capitalize text-muted-foreground">
+                        {statusLabel(run.source)} · {statusLabel(run.status)}
+                      </span>
+                      {run.outputs.map((output) => (
+                        <span key={output.id} className="mt-1 block text-[10px] text-foreground">
+                          <span className="block truncate">{output.title}</span>
+                          <span className="block text-[9px] capitalize text-muted-foreground">
+                            {statusLabel(output.kind)} · {statusLabel(output.state)}
+                            {output.sizeBytes === undefined
+                              ? ''
+                              : ` · ${output.sizeBytes.toLocaleString()} bytes`}
+                          </span>
+                        </span>
+                      ))}
+                      {!run.outputs.length ? (
+                        <span className="mt-1 block text-[9px] text-muted-foreground">
+                          No verified artifacts recorded.
+                        </span>
+                      ) : null}
+                    </span>
+                  ))}
+                  {!outputFeed.runs.length ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      No verified VibeSpace project activity.
+                    </span>
+                  ) : null}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="mt-2 w-full"
+                  aria-label="Open verified outputs in History"
+                  onClick={() => setRoute('history')}
+                >
+                  Open in History
+                </Button>
               </dd>
             </div>
           </dl>
