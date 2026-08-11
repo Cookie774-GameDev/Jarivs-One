@@ -499,6 +499,49 @@ describe('BrowserChatHub', () => {
     expect(browserChatStore.getState().chatPreferences['chat-regular']?.engine).toBe('native');
   });
 
+  it('renders a 50-session rail with 10 pinned sessions without truncating local actions', () => {
+    const sessions = Array.from({ length: 50 }, (_, index) => {
+      const chatId = `chat-scale-${index}`;
+      const title = `Saved session ${index + 1}`;
+      return {
+        binding: {
+          id: `binding-scale-${index}`,
+          accountId: 'account-1',
+          workspaceId: 'workspace-1',
+          projectId: 'project-1',
+          chatId,
+          provider: 'chatgpt' as const,
+          providerProfileKey: 'browser-chat/chatgpt',
+          bindingState: 'new' as const,
+          localTitle: title,
+          pinned: index < 10,
+          viewMode: 'provider' as const,
+          createdAt: index + 1,
+          updatedAt: index + 1,
+        },
+        chat: {
+          id: chatId as ChatId,
+          workspace_id: 'workspace-1' as WorkspaceId,
+          project_id: 'project-1' as ProjectId,
+          title,
+          mode: 'chat' as const,
+          active_agent_ids: [],
+          pinned: index < 10,
+          created_at: index + 1,
+          updated_at: index + 1,
+        },
+      };
+    });
+
+    renderHub('chat-scale-49', sessions);
+
+    expect(screen.getAllByRole('button', { name: /^Open Saved session \d+$/i })).toHaveLength(50);
+    expect(screen.getByRole('heading', { name: 'Pinned' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Provider sessions', level: 3 })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Unpin Saved session 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Pin Saved session 50' })).toBeTruthy();
+  });
+
   it('requires an explicit project grant before arming the local relay', () => {
     localStorage.setItem(
       projectStorageKey(ROOT_PREFIX, 'project-1'),

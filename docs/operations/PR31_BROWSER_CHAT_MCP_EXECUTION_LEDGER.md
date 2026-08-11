@@ -734,6 +734,35 @@ staged, restored, reformatted, or committed by this task.
   downloadable link without a separate verified materialization authority.
 - Commit: `1854a2c8`.
 
+### M6a — bounded session-scale and native-surface acceptance
+
+- Status: `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`
+- Session-scale evidence: the Browser Chat hub renders 50 exact-scope saved
+  sessions, including 10 pinned sessions, without truncating open or pin/unpin
+  actions. The focused jsdom case completes in under one second on this
+  development machine; this is functional regression evidence, not a
+  production performance benchmark.
+- Combined acceptance evidence: 83/83 Browser Chat hub, provider-surface,
+  relay-host, bridge-liveness, import, and repository tests pass. This covers
+  concurrent provider-open coalescing, provider switching, relay replacement,
+  app-lifetime runtime hosting, bounded export parsing, and durable scoped
+  session operations.
+- Native evidence: all 3 focused Rust Browser Chat surface tests pass under
+  `cargo test --lib --no-default-features browser_chat_surface`. They verify
+  the provider allowlist, local-main caller and geometry guards, and
+  query/fragment-free navigation events. The implementation reuses an
+  existing child WebView by label before creating a new one.
+- Type and format evidence: app TypeScript passes; the changed scale test
+  passes Prettier and diff hygiene.
+- Remaining native acceptance: an installed Windows build must still exercise
+  drag, resize, maximize/restore, rapid provider switching, retained provider
+  login/profile state, and repeated surface open/hide cycles. No visual or
+  installed-app result is claimed because the in-app browser kernel could not
+  create a tab in this environment.
+- Boundary: no Worker/relay route or remotely advertised MCP capability is
+  inferred from these local UI and native-surface checks.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,
