@@ -15,7 +15,7 @@ const PROVIDER_LABELS: [&str; 3] = [
     "browser-chat-claude",
     "browser-chat-gemini",
 ];
-static OPEN_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static SURFACE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,7 +137,7 @@ fn open_provider(
     caller: WebviewWindow,
     provider: ProviderConfig,
     bounds: BrowserChatBounds,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     hide_other_providers(&app, Some(provider.label));
 
     if let Some(existing) = app.get_window(provider.label) {
@@ -153,7 +153,7 @@ fn open_provider(
                 .set_focus()
                 .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
         }
-        return Ok(());
+        return Ok(false);
     }
 
     let (position, size) = absolute_bounds(&caller, &bounds)?;
@@ -200,7 +200,7 @@ fn open_provider(
         .set_focus()
         .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
 
-    Ok(())
+    Ok(true)
 }
 
 #[tauri::command]
@@ -213,11 +213,10 @@ pub async fn browser_chat_surface_open(
     ensure_main_caller(caller.label())?;
     validate_bounds(&bounds)?;
     let provider = provider_config(&provider_id)?;
-    let created = app.get_window(provider.label).is_none();
     let status_provider_id = provider.id.to_string();
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let _open_guard = OPEN_LOCK
+    let created = tauri::async_runtime::spawn_blocking(move || {
+        let _surface_guard = SURFACE_LOCK
             .lock()
             .map_err(|_| "browser_chat_state_unavailable".to_string())?;
         open_provider(app, caller, provider, bounds)
@@ -232,27 +231,44 @@ pub async fn browser_chat_surface_open(
 }
 
 #[tauri::command]
-pub fn browser_chat_surface_hide_all(app: AppHandle, caller: WebviewWindow) -> Result<(), String> {
+pub async fn browser_chat_surface_hide_all(
+    app: AppHandle,
+    caller: WebviewWindow,
+) -> Result<(), String> {
     ensure_main_caller(caller.label())?;
-    std::thread::spawn(move || hide_other_providers(&app, None));
+    tauri::async_runtime::spawn_blocking(move || {
+        let _surface_guard = SURFACE_LOCK
+            .lock()
+            .map_err(|_| "browser_chat_state_unavailable".to_string())?;
+        hide_other_providers(&app, None);
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
     Ok(())
 }
 
 #[tauri::command]
-pub fn browser_chat_surface_hide(
+pub async fn browser_chat_surface_hide(
     app: AppHandle,
     caller: WebviewWindow,
     provider_id: String,
 ) -> Result<(), String> {
     ensure_main_caller(caller.label())?;
     let provider = provider_config(&provider_id)?;
-    std::thread::spawn(move || {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _surface_guard = SURFACE_LOCK
+            .lock()
+            .map_err(|_| "browser_chat_state_unavailable".to_string())?;
         if let Some(window) = app.get_window(provider.label) {
-            if let Err(error) = window.hide() {
-                eprintln!("[browser-chat] provider hide failed: {error}");
-            }
+            window
+                .hide()
+                .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
         }
-    });
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
     Ok(())
 }
 
