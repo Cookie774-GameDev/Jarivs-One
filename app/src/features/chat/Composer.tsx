@@ -64,7 +64,7 @@ export function getThemeCommandHelp(): string {
 }
 
 export function getAppearanceCommandHelp(): string {
-  return `Available appearances: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /themes or /appearance to choose.`;
+  return `Available appearances: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /appearance to choose.`;
 }
 import {
   cleanupAudioRecorder,
@@ -1978,7 +1978,7 @@ export function Composer({
       setText('');
       return true;
     }
-    if (cmd === 'themes' || cmd === 'appearance') {
+    if (cmd === 'appearance') {
       if (!rest) return openAttachPicker(cmd);
       const nextTheme = parseThemeCommandArgument(rest);
       if (!nextTheme) {
@@ -4767,7 +4767,7 @@ export function Composer({
             {themePickerActive && optionPickerCtx !== null ? (
               <ThemeSlashPicker
                 ref={themePickerRef}
-                commandLabel={optionPickerCtx.cmd.cmd as 'themes' | 'appearance'}
+                commandLabel={optionPickerCtx.cmd.cmd as 'appearance'}
                 initialTheme={useUIStore.getState().theme}
                 onCommit={(theme) => {
                   useUIStore.getState().setTheme(theme);

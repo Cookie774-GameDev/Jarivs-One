@@ -145,13 +145,7 @@ describe('orderSlashCommandsForDisplay', () => {
       argPlaceholder: 'paper white | sakura mist | graphite | oled void',
     });
     expect(findSlashCommandDef('theme')?.hasOptions).toBe(true);
-    expect(findSlashCommandDef('themes')).toMatchObject({
-      cmd: 'themes',
-      category: 'utility',
-      takesArg: true,
-      hasOptions: true,
-      description: 'Choose the global VibeSpace appearance',
-    });
+    expect(findSlashCommandDef('themes')).toBeUndefined();
     expect(findSlashCommandDef('appearance')).toMatchObject({
       cmd: 'appearance',
       category: 'utility',

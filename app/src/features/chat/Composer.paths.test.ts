@@ -75,7 +75,7 @@ describe('composer mention and slash confirmation helpers', () => {
       'Chat console themes: Paper White, Solar Sand, Sakura Mist, Icebound, VibeSpace Amber, Graphite, Midnight Blue, Monokai Ember, Matrix Moss, OLED Void. Use /theme <name>.',
     );
     expect(getAppearanceCommandHelp()).toBe(
-      'Available appearances: Jarvis One, Default, MonoChrome, Warm. Use /themes or /appearance to choose.',
+      'Available appearances: Jarvis One, Default, MonoChrome, Warm. Use /appearance to choose.',
     );
   });
 

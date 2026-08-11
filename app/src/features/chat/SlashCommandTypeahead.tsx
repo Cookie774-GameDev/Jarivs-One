@@ -333,15 +333,6 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     hasOptions: true,
   },
   {
-    cmd: 'themes',
-    description: 'Choose the global VibeSpace appearance',
-    icon: Palette,
-    category: 'utility',
-    takesArg: true,
-    argPlaceholder: 'jarvis one | default | monochrome | warm',
-    hasOptions: true,
-  },
-  {
     cmd: 'appearance',
     description: 'Switch the global VibeSpace appearance',
     icon: Palette,

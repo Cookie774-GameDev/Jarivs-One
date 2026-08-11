@@ -205,7 +205,7 @@ const THEME_PREVIEW_PALETTES: Readonly<Record<string, ThemePreviewPalette>> = {
 };
 
 export function isGlobalThemePickerCommand(command: string): boolean {
-  return command === 'themes' || command === 'appearance';
+  return command === 'appearance';
 }
 
 function paletteFor(themeId: string): ThemePreviewPalette {
@@ -333,7 +333,7 @@ export interface ThemeSlashPickerRef {
 }
 
 interface ThemeSlashPickerProps {
-  commandLabel: 'themes' | 'appearance';
+  commandLabel: 'appearance';
   initialTheme: SelectableTheme;
   onCommit: (theme: SelectableTheme) => void;
   onCancel: () => void;
