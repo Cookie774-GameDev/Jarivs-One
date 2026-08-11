@@ -58,6 +58,7 @@ import { createDeepgramDictationSession } from '@/features/global-dictation/deep
 import { MicWaveform } from './MicWaveform';
 import { formatComposerVoiceFailure } from './composerVoiceFailures';
 import { formatComposerSendFailure } from './composerSendFailures';
+import { HarnessReadinessGate, useHarnessRuntimeState } from './HarnessReadinessGate';
 
 export function getThemeCommandHelp(): string {
   return `Chat console themes: ${CONSOLE_PROFILES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`;
@@ -756,6 +757,8 @@ export function Composer({
   const [confirmedCommands, setConfirmedCommands] = useState<ConfirmedCommand[]>([]);
   const [confirmedAgentMentions, setConfirmedAgentMentions] = useState<ConfirmedAgentMention[]>([]);
   const [sending, setSending] = useState(false);
+  const harnessRuntimeState = useHarnessRuntimeState();
+  const harnessBlocked = harnessRuntimeState.kind !== 'ready';
   const [jarvisRunning, setJarvisRunning] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
   const escapeCancelRef = useRef<EscapeCancelState>(createEscapeCancelState());
@@ -2286,6 +2289,7 @@ export function Composer({
       promptForgeApproved?: boolean;
     } = {},
   ): Promise<boolean> => {
+    if (harnessBlocked) return false;
     const draftText = overrideText ?? text;
     const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
@@ -3439,7 +3443,8 @@ export function Composer({
       attachedContexts.length > 0 ||
       confirmedCommands.length > 0 ||
       confirmedAgentMentions.length > 0) &&
-    !sending;
+    !sending &&
+    !harnessBlocked;
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
   const kernelSmokeHivePrepared =
     kernelSmokeHiveBound &&
@@ -4301,6 +4306,7 @@ export function Composer({
         />
       )}
       <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
+        <HarnessReadinessGate />
         {promptForge.recoverableJob ? (
           <PromptForgeRecovery
             job={promptForge.recoverableJob}
@@ -4405,6 +4411,7 @@ export function Composer({
               <textarea
                 ref={textareaRef}
                 value={text}
+                disabled={harnessBlocked}
                 rows={1}
                 onChange={(e) => {
                   const nextDraft = e.target.value;
