@@ -4,7 +4,7 @@
 //! authority. The native navigation callback emits only allowlisted top-level
 //! URL metadata to the local `main` webview.
 
-use std::sync::{LazyLock, Mutex};
+use std::sync::{mpsc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,50 @@ struct SurfaceState {
 
 static SURFACE_STATE: LazyLock<Mutex<SurfaceState>> =
     LazyLock::new(|| Mutex::new(SurfaceState::default()));
+
+type SurfaceOperation = Box<dyn FnOnce() + Send + 'static>;
+
+static SURFACE_OPERATION_QUEUE: LazyLock<mpsc::Sender<SurfaceOperation>> = LazyLock::new(|| {
+    let (sender, receiver) = mpsc::channel::<SurfaceOperation>();
+    std::thread::Builder::new()
+        .name("browser-chat-surface".to_string())
+        .spawn(move || {
+            while let Ok(operation) = receiver.recv() {
+                operation();
+            }
+        })
+        .expect("browser chat surface operation worker must start");
+    sender
+});
+
+fn queue_surface_operation<T, F>(operation: F) -> Result<mpsc::Receiver<Result<T, String>>, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let (result_sender, result_receiver) = mpsc::sync_channel(1);
+    SURFACE_OPERATION_QUEUE
+        .send(Box::new(move || {
+            let _ = result_sender.send(operation());
+        }))
+        .map_err(|_| "browser_chat_surface_queue_unavailable".to_string())?;
+    Ok(result_receiver)
+}
+
+async fn execute_surface_operation<T, F>(operation: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let receiver = queue_surface_operation(operation)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        receiver
+            .recv()
+            .map_err(|_| "browser_chat_surface_result_unavailable".to_string())?
+    })
+    .await
+    .map_err(|error| format!("browser_chat_surface_worker_failed:{error}"))?
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -330,7 +374,7 @@ fn open_provider(
 }
 
 #[tauri::command]
-pub fn browser_chat_surface_open(
+pub async fn browser_chat_surface_open(
     app: AppHandle,
     caller: WebviewWindow,
     provider_id: String,
@@ -349,22 +393,22 @@ pub fn browser_chat_surface_open(
                 .ok_or_else(|| "browser_chat_navigation_not_allowed".to_string())
         })
         .transpose()?;
-    let created = app.get_webview(&surface_label).is_none();
-
-    std::thread::spawn(move || {
-        let Ok(mut state) = SURFACE_STATE.lock() else {
-            eprintln!("[browser-chat] surface state unavailable");
-            return;
-        };
+    execute_surface_operation(move || {
+        let mut state = SURFACE_STATE
+            .lock()
+            .map_err(|_| "browser_chat_surface_state_unavailable".to_string())?;
+        let created = app.get_webview(&surface_label).is_none();
         let activate = state.active_surface.as_deref() != Some(surface_label.as_str());
         if activate {
             if let Some(previous) = state.active_surface.as_deref() {
                 if let Some(webview) = app.get_webview(previous) {
-                    let _ = webview.hide();
+                    webview
+                        .hide()
+                        .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
                 }
             }
         }
-        match open_provider(
+        open_provider(
             &app,
             &caller,
             &provider,
@@ -373,36 +417,40 @@ pub fn browser_chat_surface_open(
             navigation_url.as_ref(),
             &bounds,
             activate,
-        ) {
-            Ok(()) => state.active_surface = Some(surface_label),
-            Err(error) => eprintln!("[browser-chat] provider surface failed: {error}"),
-        }
-    });
-
-    Ok(BrowserChatSurfaceStatus {
-        provider_id,
-        created,
+        )?;
+        state.active_surface = Some(surface_label);
+        Ok(BrowserChatSurfaceStatus {
+            provider_id,
+            created,
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn browser_chat_surface_hide_all(app: AppHandle, caller: WebviewWindow) -> Result<(), String> {
+pub async fn browser_chat_surface_hide_all(
+    app: AppHandle,
+    caller: WebviewWindow,
+) -> Result<(), String> {
     ensure_main_caller(caller.label())?;
-    std::thread::spawn(move || {
-        let Ok(mut state) = SURFACE_STATE.lock() else {
-            return;
-        };
+    execute_surface_operation(move || {
+        let mut state = SURFACE_STATE
+            .lock()
+            .map_err(|_| "browser_chat_surface_state_unavailable".to_string())?;
         if let Some(surface_label) = state.active_surface.take() {
             if let Some(webview) = app.get_webview(&surface_label) {
-                let _ = webview.hide();
+                webview
+                    .hide()
+                    .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
             }
         }
-    });
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn browser_chat_surface_hide(
+pub async fn browser_chat_surface_hide(
     app: AppHandle,
     caller: WebviewWindow,
     provider_id: String,
@@ -411,25 +459,27 @@ pub fn browser_chat_surface_hide(
     ensure_main_caller(caller.label())?;
     let provider = provider_config(&provider_id)?;
     let surface_label = scoped_surface_label(&provider, &account_profile_key)?;
-    std::thread::spawn(move || {
-        let Ok(mut state) = SURFACE_STATE.lock() else {
-            return;
-        };
+    execute_surface_operation(move || {
+        let mut state = SURFACE_STATE
+            .lock()
+            .map_err(|_| "browser_chat_surface_state_unavailable".to_string())?;
         if let Some(webview) = app.get_webview(&surface_label) {
-            if let Err(error) = webview.hide() {
-                eprintln!("[browser-chat] provider hide failed: {error}");
-            }
+            webview
+                .hide()
+                .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
         }
         if state.active_surface.as_deref() == Some(surface_label.as_str()) {
             state.active_surface = None;
         }
-    });
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn accepts_only_registry_owned_provider_ids() {
@@ -519,5 +569,29 @@ mod tests {
             normalized_provider_url(&provider, "https://chatgpt.com.evil.example/c/stolen")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn surface_operation_queue_is_fifo_and_returns_failures() {
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let first_observations = Arc::clone(&observations);
+        let first = queue_surface_operation(move || {
+            first_observations.lock().expect("observations").push(1);
+            Ok(1)
+        })
+        .expect("first queued");
+        let second_observations = Arc::clone(&observations);
+        let second = queue_surface_operation(move || {
+            second_observations.lock().expect("observations").push(2);
+            Err::<u8, _>("native_failure".to_string())
+        })
+        .expect("second queued");
+
+        assert_eq!(first.recv().expect("first result"), Ok(1));
+        assert_eq!(
+            second.recv().expect("second result"),
+            Err("native_failure".to_string())
+        );
+        assert_eq!(*observations.lock().expect("observations"), vec![1, 2]);
     }
 }

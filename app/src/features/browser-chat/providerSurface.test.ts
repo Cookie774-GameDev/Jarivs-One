@@ -70,6 +70,20 @@ describe('Browser Chat managed provider surface', () => {
     });
   });
 
+  it('propagates a completed native open failure to the managed surface caller', async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error('browser_chat_create_failed:native');
+    });
+    const surface = createNativeManagedProviderSurface(
+      `browser-chat-chatgpt:${ACCOUNT_PROFILE_KEY}`,
+      invoke,
+    );
+    await surface.setPosition({ x: 10, y: 20 });
+    await surface.setSize({ width: 800, height: 600 });
+
+    await expect(surface.show()).rejects.toThrow('browser_chat_create_failed:native');
+  });
+
   it('sends a saved navigation only once and retains geometry-only surface updates', async () => {
     const invoke = vi.fn(async () => undefined);
     const surface = createNativeManagedProviderSurface(
