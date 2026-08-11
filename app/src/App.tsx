@@ -146,6 +146,7 @@ import { FullscreenHost } from '@/features/fullscreen';
 import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
 import { TerminalCliRuntimeHost } from '@/features/terminals';
+import { ToolGatewayHost } from '@/lib/harness/ToolGatewayHost';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
 import { BenchmarkRefreshHost } from '@/features/benchmarks/BenchmarkRefreshHost';
@@ -3163,6 +3164,7 @@ function AppContent({ plan }: { plan: RuntimePlan }) {
       <ThemeHost />
       {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? <KernelSmokeBindingHost /> : null}
       <KernelBridgeBootstrap />
+      <ToolGatewayHost />
       {plan.terminalCliEnabled ? <TerminalCliRuntimeHost /> : null}
       {plan.devConsoleEnabled ? <DevConsoleHost /> : null}
     </ErrorBoundary>
