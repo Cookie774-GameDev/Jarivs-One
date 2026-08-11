@@ -1,0 +1,264 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Agent } from '@/types';
+import type {
+  CreateHarnessSession,
+  HarnessEvent,
+  HarnessSendRequest,
+  VibeSpaceHarness,
+} from '@/lib/harness/types';
+import { createOpenCodeRunAgentAdapter } from './openCodeRunAgent';
+
+const agent: Agent = {
+  id: 'agent_test' as Agent['id'],
+  slug: 'test',
+  name: 'Test',
+  description: '',
+  system_prompt: 'SYSTEM',
+  model: { provider: 'openai', model: 'gpt-exact' },
+  tools_allowed: [],
+  memory_scope: 'workspace',
+  capabilities: [],
+  created_at: 1,
+  updated_at: 1,
+};
+
+function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
+  const createSession = vi.fn(async (input: CreateHarnessSession) => ({
+    id: `session-${createSession.mock.calls.length}`,
+    chatId: input.chatId,
+  }));
+  const send = vi.fn((input: HarnessSendRequest) => {
+    const events = eventRuns[send.mock.calls.length - 1] ?? [];
+    return (async function* () {
+      for (const event of events) yield event;
+    })();
+  });
+  const deleteSession = vi.fn(async () => undefined);
+  const harness: VibeSpaceHarness = {
+    ensureReady: vi.fn(async () => ({ source: 'managed' as const, version: '1.18.16' })),
+    createSession,
+    deleteSession,
+    send,
+    cancel: vi.fn(async () => undefined),
+    listProviders: vi.fn(async () => []),
+    listModels: vi.fn(async () => []),
+    respondToApproval: vi.fn(async () => undefined),
+    dispose: vi.fn(async () => undefined),
+  };
+  return { harness, createSession, deleteSession, send };
+}
+
+describe('runAgent OpenCode adapter', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('preserves streaming, exact model identity, usage, attachments, and working directory', async () => {
+    const fake = fakeHarness([
+      [
+        { type: 'assistant.delta', text: 'Hel' },
+        { type: 'assistant.delta', text: 'lo' },
+        {
+          type: 'usage.updated',
+          usage: {
+            inputTokens: 12,
+            outputTokens: 2,
+            cachedTokens: 4,
+            costUsd: 0.25,
+            providerId: 'openai',
+            modelId: 'gpt-exact',
+          },
+        },
+        { type: 'done', finishReason: 'stop' },
+      ],
+    ]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    const chunks: unknown[] = [];
+
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [
+          { role: 'assistant', content: 'Earlier' },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Look at this' },
+              { type: 'image', data: 'aGVsbG8=', mimeType: 'image/png', name: 'tiny.png' },
+            ],
+          },
+        ],
+        workingDirectory: 'C:\\workspace',
+        onChunk: (chunk) => chunks.push(chunk),
+      }),
+    ).resolves.toEqual({
+      text: 'Hello',
+      usage: { input_tokens: 12, output_tokens: 2, cost_usd: 0.25 },
+      provider: 'openai',
+      model: 'gpt-exact',
+      finish_reason: 'stop',
+    });
+
+    expect(fake.createSession).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      title: 'Test',
+      workingDirectory: 'C:\\workspace',
+    });
+    expect(fake.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        system: 'SYSTEM',
+        workingDirectory: 'C:\\workspace',
+        parts: [
+          { type: 'text', text: 'Assistant: Earlier\n\nUser: Look at this' },
+          {
+            type: 'file',
+            mime: 'image/png',
+            filename: 'tiny.png',
+            url: 'data:image/png;base64,aGVsbG8=',
+          },
+        ],
+      }),
+    );
+    expect(chunks).toEqual([
+      { delta: 'Hel', first: true },
+      { delta: 'lo' },
+      { delta: '', done: true },
+    ]);
+  });
+
+  it('reuses a scoped session and sends only newly appended conversation messages', async () => {
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'one' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'two' }, { type: 'done' }],
+    ]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    const base = {
+      agent,
+      scopeId: 'chat-1',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+    } as const;
+
+    await adapter.run({ ...base, messages: [{ role: 'user', content: 'first' }] });
+    await adapter.run({
+      ...base,
+      messages: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'one' },
+        { role: 'user', content: 'second' },
+      ],
+    });
+
+    expect(fake.createSession).toHaveBeenCalledTimes(1);
+    expect(fake.send.mock.calls[1]?.[0].parts).toEqual([
+      { type: 'text', text: 'Assistant: one\n\nUser: second' },
+    ]);
+  });
+
+  it('replaces a scoped session when earlier conversation history changes', async () => {
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'one' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'two' }, { type: 'done' }],
+    ]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    const base = {
+      agent,
+      scopeId: 'chat-1',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+    } as const;
+
+    await adapter.run({ ...base, messages: [{ role: 'user', content: 'first' }] });
+    await adapter.run({ ...base, messages: [{ role: 'user', content: 'edited' }] });
+
+    expect(fake.deleteSession).toHaveBeenCalledWith('session-1', undefined);
+    expect(fake.createSession).toHaveBeenCalledTimes(2);
+    expect(fake.send.mock.calls[1]?.[0]).toMatchObject({
+      sessionId: 'session-2',
+      parts: [{ type: 'text', text: 'User: edited' }],
+    });
+  });
+
+  it('rejects model substitution reported by the harness', async () => {
+    const fake = fakeHarness([
+      [
+        {
+          type: 'usage.updated',
+          usage: { providerId: 'openai', modelId: 'gpt-fallback' },
+        },
+        { type: 'done' },
+      ],
+    ]);
+
+    await expect(
+      createOpenCodeRunAgentAdapter(fake.harness).run({
+        agent,
+        scopeId: 'chat-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    ).rejects.toThrow(/model identity/i);
+  });
+
+  it('honors cancellation before and during streaming', async () => {
+    const before = new AbortController();
+    before.abort();
+    const fake = fakeHarness([]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+        signal: before.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fake.createSession).not.toHaveBeenCalled();
+
+    const during = new AbortController();
+    const streaming = fakeHarness([
+      [{ type: 'assistant.delta', text: 'partial' }, { type: 'done' }],
+    ]);
+    await expect(
+      createOpenCodeRunAgentAdapter(streaming.harness).run({
+        agent,
+        scopeId: 'chat-2',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+        signal: during.signal,
+        onChunk: () => during.abort(),
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('rejects relative working directories and malformed image payloads before dispatch', async () => {
+    const fake = fakeHarness([]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+        workingDirectory: '..\\relative',
+      }),
+    ).rejects.toThrow(/absolute working directory/i);
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-1',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [
+          {
+            role: 'user',
+            content: [{ type: 'image', data: 'not base64!', mimeType: 'image/png' }],
+          },
+        ],
+      }),
+    ).rejects.toThrow(/image attachment/i);
+    expect(fake.createSession).not.toHaveBeenCalled();
+  });
+});

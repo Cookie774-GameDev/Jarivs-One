@@ -3,6 +3,6 @@ phase=VS-PR31-OPENCODE-HARNESS-PHASE10-20260811
 controller=/root
 branch=agent/pr30-fixes-and-updates
 starting_head=bb58a322
-owned_paths=app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/openCodeRunAgent.ts;app/src/lib/ai/openCodeRunAgent.test.ts;app/src/lib/ai/runtime.ts;app/src/lib/ai/runtime.test.ts;app/src/lib/harness/types.ts;app/src/lib/harness/openCodeClient.ts;app/src/lib/harness/openCodeClient.test.ts;app/src/lib/harness/openCodeHarness.ts;app/src/lib/harness/openCodeHarness.test.ts;docs/superpowers/plans/2026-08-11-vibespace-runagent-opencode-switch.md;.agent-coordination.lock/owner.txt
+owned_paths=app/src/lib/ai/router.ts;app/src/lib/ai/router.test.ts;app/src/lib/ai/router.localAgentRuntime.test.ts;app/src/lib/ai/openCodeRunAgent.ts;app/src/lib/ai/openCodeRunAgent.test.ts;app/src/lib/ai/runtime.ts;app/src/lib/ai/runtime.test.ts;app/src/lib/harness/types.ts;app/src/lib/harness/openCodeClient.ts;app/src/lib/harness/openCodeClient.test.ts;app/src/lib/harness/openCodeHarness.ts;app/src/lib/harness/openCodeHarness.test.ts;docs/superpowers/plans/2026-08-11-vibespace-runagent-opencode-switch.md;.agent-coordination.lock/owner.txt
 exclusions=unrelated dirty/untracked work;Phase11 tool gateway implementation;command migration;permission UX redesign;merge;push;deploy;release;subagents
 status=ACTIVE

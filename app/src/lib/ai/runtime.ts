@@ -4280,6 +4280,7 @@ export function startRuntimeListener(
       let responseCompositionVisible = false;
       const providerRequest = {
         agent: runnable,
+        chatId: String(chatId),
         messages: requestMessages,
         max_output_tokens: optimizedOutputTokenLimit,
         provider_options: reasoningPolicy?.providerOptions,

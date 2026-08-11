@@ -7,18 +7,25 @@ import { selectionFromOption } from './modelSelection';
 import { syncDiscoveredOllamaModels } from './models';
 import { JarvisProviderAttemptFailureError } from './providerAttemptEvidence';
 
-const { codexDetect, codexProbeAuth, codexSend, nativeInvoke, ollamaRun, openaiRun } = vi.hoisted(
-  () => ({
+const { codexDetect, codexProbeAuth, codexSend, harnessRun, nativeInvoke, ollamaRun, openaiRun } =
+  vi.hoisted(() => ({
     codexDetect: vi.fn(),
     codexProbeAuth: vi.fn(),
     codexSend: vi.fn(),
+    harnessRun: vi.fn(),
     nativeInvoke: vi.fn(),
     ollamaRun: vi.fn(),
     openaiRun: vi.fn(),
-  }),
-);
+  }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: nativeInvoke }));
+
+vi.mock('./openCodeRunAgent', () => ({
+  openCodeRunAgentAdapter: {
+    run: harnessRun,
+    clear: vi.fn(),
+  },
+}));
 
 vi.mock('./providers/openai', () => ({
   OPENAI_DEFAULT_MODEL: 'gpt-4o-mini',
@@ -129,6 +136,13 @@ describe('AI provider routing', () => {
     );
     openaiRun.mockReset();
     openaiRun.mockResolvedValue(successfulResponse);
+    harnessRun.mockReset();
+    harnessRun.mockImplementation(async (request) => ({
+      text: request.selection.providerId === 'ollama' ? 'local result' : 'done',
+      usage: { input_tokens: 2, output_tokens: 1, cost_usd: 0 },
+      provider: request.selection.runtimeProviderId ?? request.selection.providerId,
+      model: request.selection.modelId,
+    }));
     nativeInvoke.mockReset();
     ollamaRun.mockReset();
     ollamaRun.mockResolvedValue({
@@ -224,6 +238,31 @@ describe('AI provider routing', () => {
     expect(resolved.model).toBe('qwen3:4b');
   });
 
+  it('routes ordinary production chat only through OpenCode with a stable chat scope', async () => {
+    const response = await runAgent({
+      agent: openaiAgent,
+      chatId: 'chat-production-1',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(response.text).toBe('done');
+    expect(harnessRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scopeId: 'chat-production-1',
+        purpose: 'chat',
+        selection: {
+          providerId: 'openai',
+          modelId: 'gpt-protected',
+          runtimeProviderId: 'openai',
+        },
+      }),
+    );
+    expect(openaiRun).not.toHaveBeenCalled();
+    expect(ollamaRun).not.toHaveBeenCalled();
+    expect(codexSend).not.toHaveBeenCalled();
+    expect(nativeInvoke).not.toHaveBeenCalled();
+  });
+
   it('routes an exact local feature connection independently from the chat model', async () => {
     syncDiscoveredOllamaModels(['qwen3:8b']);
     useAuthStore.setState({
@@ -245,17 +284,21 @@ describe('AI provider routing', () => {
     });
 
     expect(response.text).toBe('local result');
-    expect(ollamaRun).toHaveBeenCalledWith(
+    expect(harnessRun).toHaveBeenCalledWith(
       expect.objectContaining({
         purpose: 'prompt_forge',
-        agent: expect.objectContaining({
-          model: { provider: 'ollama', model: 'qwen3:8b' },
-        }),
+        selection: {
+          providerId: 'ollama',
+          modelId: 'qwen3:8b',
+          connectionId: 'ollama-local',
+          runtimeProviderId: 'ollama',
+        },
       }),
     );
+    expect(ollamaRun).not.toHaveBeenCalled();
   });
 
-  it('runs verified Model Foundry weights through the native local boundary', async () => {
+  it('routes Model Foundry selections through OpenCode without a native bypass', async () => {
     const chunks: Array<{ delta: string; first?: boolean; done?: boolean }> = [];
     const foundryAgent: Agent = {
       ...jarvis,
@@ -263,24 +306,6 @@ describe('AI provider routing', () => {
       slug: 'release-adapter',
       model: { provider: 'ollama', model: 'foundry:job_12345' },
     };
-    nativeInvoke
-      .mockResolvedValueOnce({
-        kind: 'weight',
-        artifactId: 'job_12345',
-        modelName: 'Release adapter',
-        version: 2,
-        method: 'lora',
-      })
-      .mockResolvedValueOnce({
-        artifactId: 'job_12345',
-        modelName: 'Release adapter',
-        version: 2,
-        method: 'lora',
-        text: 'Verified local response',
-        inputTokens: 11,
-        outputTokens: 3,
-      });
-
     const response = await runAgent({
       agent: foundryAgent,
       messages: [{ role: 'user', content: 'Review this release.' }],
@@ -288,47 +313,38 @@ describe('AI provider routing', () => {
       onChunk: (chunk) => chunks.push(chunk),
     });
 
-    expect(nativeInvoke).toHaveBeenNthCalledWith(2, 'model_foundry_chat', {
-      requestId: expect.stringMatching(/^infer_[A-Za-z0-9_-]+$/),
-      artifactId: 'job_12345',
-      messages: [
-        { role: 'system', content: 'You are Jarvis.' },
-        { role: 'user', content: 'Review this release.' },
-      ],
-      maxOutputTokens: 300,
-    });
+    expect(nativeInvoke).not.toHaveBeenCalled();
+    expect(harnessRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: {
+          providerId: 'ollama',
+          modelId: 'foundry:job_12345',
+          runtimeProviderId: 'ollama',
+        },
+      }),
+    );
     expect(response).toEqual({
-      text: 'Verified local response',
-      usage: { input_tokens: 11, output_tokens: 3, cost_usd: 0 },
+      text: 'local result',
+      usage: { input_tokens: 2, output_tokens: 1, cost_usd: 0 },
       provider: 'ollama',
       model: 'foundry:job_12345',
-      finish_reason: 'stop',
     });
-    expect(chunks).toEqual([
-      { delta: 'Verified local response', first: true },
-      { delta: '', done: true },
-    ]);
+    expect(chunks).toEqual([]);
     expect(ollamaRun).not.toHaveBeenCalled();
   });
 
-  it('cancels the exact native Model Foundry request when the caller aborts', async () => {
+  it('passes Model Foundry cancellation through the OpenCode boundary', async () => {
     const controller = new AbortController();
-    let rejectInference: ((error: Error) => void) | undefined;
-    nativeInvoke
-      .mockResolvedValueOnce({
-        kind: 'weight',
-        artifactId: 'job_12345',
-        modelName: 'Release adapter',
-        version: 2,
-        method: 'lora',
-      })
-      .mockImplementationOnce(
-        () =>
-          new Promise((_, reject) => {
-            rejectInference = reject;
-          }),
-      )
-      .mockResolvedValueOnce(true);
+    harnessRun.mockImplementationOnce(
+      ({ signal }) =>
+        new Promise((_, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted by user', 'AbortError')),
+            { once: true },
+          ),
+        ),
+    );
     const foundryAgent: Agent = {
       ...jarvis,
       id: 'agent_foundry' as Agent['id'],
@@ -341,16 +357,11 @@ describe('AI provider routing', () => {
       messages: [{ role: 'user', content: 'Review this release.' }],
       signal: controller.signal,
     });
-    await vi.waitFor(() => expect(rejectInference).toBeTypeOf('function'));
+    await vi.waitFor(() => expect(harnessRun).toHaveBeenCalledOnce());
     controller.abort();
-    await vi.waitFor(() =>
-      expect(nativeInvoke).toHaveBeenCalledWith('model_foundry_cancel_chat', {
-        requestId: expect.stringMatching(/^infer_[A-Za-z0-9_-]+$/),
-      }),
-    );
-    rejectInference?.(new Error('native process stopped'));
 
     await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    expect(nativeInvoke).not.toHaveBeenCalled();
   });
 
   it('preserves exact protected native transport inputs and the caller signal', async () => {
@@ -374,25 +385,26 @@ describe('AI provider routing', () => {
       provider_options: { reasoning_effort: 'high' },
     });
 
-    expect(openaiRun).toHaveBeenCalledOnce();
-    const request = openaiRun.mock.calls[0]![0];
+    expect(harnessRun).toHaveBeenCalledOnce();
+    const request = harnessRun.mock.calls[0]![0];
     expect(request).toMatchObject({
       purpose: 'chat',
-      systemPrompt: compiledPrompt.systemText,
+      compiledPrompt,
       messages,
       signal: controller.signal,
-      temperature: 0.2,
-      max_output_tokens: 321,
-      provider_options: { reasoning_effort: 'high' },
+      selection: {
+        providerId: 'openai',
+        modelId: 'gpt-protected',
+        connectionId: 'openai-api',
+        runtimeProviderId: 'openai',
+      },
     });
-    expect(request.messages).not.toBe(messages);
-    expect(request.agent.model).toEqual(openaiAgent.model);
-    expect(request.systemPrompt).not.toContain(openaiAgent.system_prompt);
     expect(request.onResponseObservation).toEqual(expect.any(Function));
     expect(request.onActionDispatch).toEqual(expect.any(Function));
+    expect(openaiRun).not.toHaveBeenCalled();
   });
 
-  it('sends one exact protected preamble through the selected CLI connection', async () => {
+  it('routes protected CLI-origin selections through the OpenCode harness', async () => {
     const controller = new AbortController();
     const codexAgent: Agent = {
       ...openaiAgent,
@@ -415,31 +427,26 @@ describe('AI provider routing', () => {
       provider_options: { reasoning_effort: 'xhigh' },
     });
 
-    const expectedPrompt = [
-      `<VIBESPACE_SYSTEM_CONTRACT schema="1" sha256="${compiledPrompt.promptHash}">`,
-      compiledPrompt.systemText,
-      '</VIBESPACE_SYSTEM_CONTRACT>',
-      '<VIBESPACE_MESSAGES>',
-      JSON.stringify(messages),
-      '</VIBESPACE_MESSAGES>',
-    ].join('\n');
-    expect(codexSend).toHaveBeenCalledOnce();
-    expect(codexSend).toHaveBeenCalledWith(
+    expect(codexSend).not.toHaveBeenCalled();
+    expect(harnessRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        requestId: protectedAttempt.requestId,
-        connection: expect.objectContaining({ id: 'openai-codex', providerId: 'openai' }),
-        prompt: expectedPrompt,
-        modelId: codexAgent.model.model,
-        reasoningEffort: 'xhigh',
-        systemPrompt: undefined,
+        scopeId: protectedAttempt.requestId,
+        compiledPrompt,
+        messages,
         workingDirectory: 'C:\\workspace with spaces',
         signal: controller.signal,
+        selection: {
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          connectionId: 'openai-codex',
+          runtimeProviderId: 'openai',
+        },
         onResponseObservation: expect.any(Function),
         onActionDispatch: expect.any(Function),
       }),
     );
     expect(openaiRun).not.toHaveBeenCalled();
-    expect(response.text).toBe('cli response');
+    expect(response.text).toBe('done');
   });
 
   it('requires exact protected request bindings before provider dispatch', async () => {
@@ -465,7 +472,7 @@ describe('AI provider routing', () => {
   });
 
   it('classifies a zero-observation provider failure with exact durable binding', async () => {
-    openaiRun.mockRejectedValueOnce(new Error('raw provider detail must not become evidence'));
+    harnessRun.mockRejectedValueOnce(new Error('raw provider detail must not become evidence'));
 
     let failure: unknown;
     try {
@@ -498,7 +505,7 @@ describe('AI provider routing', () => {
   });
 
   it('denies retry evidence after a provider response observation', async () => {
-    openaiRun.mockImplementationOnce(async (request) => {
+    harnessRun.mockImplementationOnce(async (request) => {
       request.onResponseObservation?.({ kind: 'sdk_chunk', observedAt: 100 });
       throw new Error('stream interrupted');
     });
@@ -539,7 +546,7 @@ describe('AI provider routing', () => {
     expect(openaiRun).not.toHaveBeenCalled();
 
     const midstreamAbort = new DOMException('Aborted by user', 'AbortError');
-    openaiRun.mockRejectedValueOnce(midstreamAbort);
+    harnessRun.mockRejectedValueOnce(midstreamAbort);
     let failure: unknown;
     try {
       await runAgent({

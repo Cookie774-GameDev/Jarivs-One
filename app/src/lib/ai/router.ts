@@ -84,6 +84,8 @@ import {
   prepareFoundryAgentRequest,
   runFoundryWeightArtifact,
 } from '@/features/model-foundry/foundryRuntime';
+import { openCodeRunAgentAdapter } from './openCodeRunAgent';
+import type { HarnessModelSelection } from '@/lib/harness/types';
 
 export class NoModelSelectedError extends Error {
   constructor() {
@@ -463,6 +465,8 @@ export interface RunAgentRequest {
   provider_options?: Record<string, unknown>;
   /** Exact local connection selected for this call. Never inferred or substituted. */
   connectionId?: string;
+  /** Stable chat scope used to reuse exactly one OpenCode session. */
+  chatId?: string;
   connectionRequirements?: ConnectionRequirements;
   workingDirectory?: string;
   compiledPrompt?: Readonly<CompiledJarvisPrompt>;
@@ -475,12 +479,190 @@ export interface RunAgentRequest {
   }>;
 }
 
+function resolveOpenCodeSelection(req: RunAgentRequest): HarnessModelSelection {
+  const auth = useAuthStore.getState();
+  if (req.connectionId) {
+    const connection = getProviderConnectionDescriptor(req.connectionId);
+    if (!connection.enabled) {
+      throw new Error(`Provider connection is disabled: ${req.connectionId}`);
+    }
+    if (auth.offlineMode && connection.mode !== 'local') throw new NoModelSelectedError();
+    assertConnectionCapabilities(connection, req.connectionRequirements);
+    const providerId = connection.mode === 'local' ? 'ollama' : connection.providerId;
+    if (
+      req.agent.model.provider !== providerId &&
+      !(providerId === 'ollama' && req.agent.model.provider === 'local')
+    ) {
+      throw new Error(`Selected model does not match provider connection: ${req.connectionId}`);
+    }
+    const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
+    if (exactModels && !exactModels.some((option) => option.id === req.agent.model.model)) {
+      throw new Error(`${req.agent.model.model} is unavailable for ${connection.displayName}`);
+    }
+    return {
+      providerId,
+      modelId: req.agent.model.model,
+      connectionId: connection.id,
+      runtimeProviderId: providerId === 'bedrock' ? 'amazon-bedrock' : providerId,
+    };
+  }
+
+  if (auth.offlineMode) {
+    const selection = auth.chatModelSelection ?? EMPTY_CHAT_MODEL_SELECTION;
+    if (
+      selection.mode !== 'single' ||
+      (selection.providerId !== 'ollama' && selection.providerId !== 'local')
+    ) {
+      throw new NoModelSelectedError();
+    }
+    return {
+      providerId: 'ollama',
+      runtimeProviderId: 'ollama',
+      modelId: selection.modelId,
+    };
+  }
+
+  const usesDefault =
+    agentUsesDefaultProvider(req.agent.model.provider, req.agent.model.model) ||
+    (req.agent.builtin &&
+      req.agent.model.provider === 'mock' &&
+      req.agent.model.model === 'mock-default');
+  if (usesDefault) {
+    const selection = auth.chatModelSelection ?? EMPTY_CHAT_MODEL_SELECTION;
+    if (selection.mode !== 'single') throw new NoModelSelectedError();
+    return {
+      providerId: selection.providerId,
+      modelId: selection.modelId,
+      runtimeProviderId:
+        selection.providerId === 'local'
+          ? 'ollama'
+          : selection.providerId === 'bedrock'
+            ? 'amazon-bedrock'
+            : selection.providerId,
+    };
+  }
+
+  return {
+    providerId: req.agent.model.provider,
+    modelId: req.agent.model.model,
+    runtimeProviderId:
+      req.agent.model.provider === 'local'
+        ? 'ollama'
+        : req.agent.model.provider === 'bedrock'
+          ? 'amazon-bedrock'
+          : req.agent.model.provider,
+  };
+}
+
+async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMResponse> {
+  const protectedDispatch = req.compiledPrompt !== undefined;
+  if (protectedDispatch) {
+    if (!req.connectionId || !req.requestId || !req.protectedAttempt) {
+      throw new Error('Protected provider dispatch requires exact connection and attempt binding.');
+    }
+    if (req.requestId !== req.protectedAttempt.requestId) {
+      throw new Error('Protected provider request IDs do not match.');
+    }
+  }
+
+  const selection = resolveOpenCodeSelection(req);
+  const scopeId =
+    req.chatId ??
+    req.requestId ??
+    req.protectedAttempt?.requestId ??
+    globalThis.crypto?.randomUUID?.() ??
+    `request-${Date.now()}`;
+  const dispatch = (hooks?: ProtectedAttemptHooks) =>
+    openCodeRunAgentAdapter.run({
+      agent: req.agent,
+      messages: req.messages,
+      selection,
+      scopeId,
+      purpose: req.purpose ?? 'chat',
+      signal: req.signal,
+      onChunk: req.onChunk,
+      workingDirectory: req.workingDirectory,
+      compiledPrompt: req.compiledPrompt,
+      onResponseObservation: hooks?.onResponseObservation,
+      onActionDispatch: hooks?.onActionDispatch,
+    });
+
+  let response: LLMResponse;
+  try {
+    response = protectedDispatch
+      ? await runProtectedProviderAttempt(
+          {
+            ...req.protectedAttempt!,
+            providerId: selection.runtimeProviderId ?? selection.providerId,
+            modelId: selection.modelId,
+          },
+          dispatch,
+        )
+      : await dispatch();
+  } catch (error) {
+    if (
+      !protectedDispatch &&
+      (selection.providerId === 'ollama' || selection.providerId === 'local') &&
+      !isAbortError(error)
+    ) {
+      const auth = useAuthStore.getState();
+      const preferences = readLocalAgentPreferences();
+      const target = configuredCloudEscalationTarget(auth);
+      if (target) {
+        const messageChars = req.messages.reduce(
+          (total, message) => total + llmContentToText(message.content).length,
+          0,
+        );
+        const proposal = planLocalCloudEscalation({
+          offlineMode: auth.offlineMode,
+          enabled: preferences.cloudEscalationEnabled,
+          failure: classifyLocalFailure(error),
+          providerId: target.providerId,
+          modelId: target.modelId,
+          data: {
+            messageChars,
+            contextChars: 0,
+            categories: ['prompt'],
+          },
+        });
+        if (proposal.status === 'approval_required') {
+          throw new LocalCloudEscalationRequiredError(proposal);
+        }
+      }
+    }
+    throw error;
+  }
+
+  useAgentStore
+    .getState()
+    .addTokens(
+      req.agent.id,
+      response.usage.input_tokens,
+      response.usage.output_tokens,
+      response.usage.cost_usd,
+    );
+  recordConnectionUsage({
+    connectionId: selection.connectionId ?? selection.providerId,
+    providerId: response.provider,
+    modelId: response.model,
+    timestamp: Date.now(),
+    inputTokens: response.usage.input_tokens,
+    cachedInputTokens: 0,
+    outputTokens: response.usage.output_tokens,
+    costUsd: response.usage.cost_usd,
+  });
+  return response;
+}
+
 /**
  * Public entry point used by the runtime and any caller that wants a one-shot
  * agent invocation. The agent object is treated as immutable input; the router
  * may construct a derived agent for the call but never mutates the original.
  */
-async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
+async function runKernelSmokeDispatch(req: RunAgentRequest): Promise<LLMResponse> {
+  if (!KERNEL_SMOKE_ENABLED || req.agent.model.provider !== KERNEL_SMOKE_PROVIDER_ID) {
+    throw new Error('The debug-only kernel smoke dispatch is unavailable.');
+  }
   if (req.signal?.aborted) {
     throw new DOMException('The request was aborted.', 'AbortError');
   }
@@ -799,6 +981,16 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
   });
 
   return response;
+}
+
+async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
+  if (req.signal?.aborted) {
+    throw new DOMException('The request was aborted.', 'AbortError');
+  }
+  if (KERNEL_SMOKE_ENABLED && req.agent.model.provider === KERNEL_SMOKE_PROVIDER_ID) {
+    return runKernelSmokeDispatch(req);
+  }
+  return dispatchThroughOpenCode(req);
 }
 
 export async function runAgent(req: RunAgentRequest): Promise<LLMResponse> {

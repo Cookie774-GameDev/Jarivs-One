@@ -69,6 +69,7 @@ function nextEvent(
 
 export class OpenCodeHarness implements VibeSpaceHarness {
   private readonly controllers = new Set<AbortController>();
+  private readonly sessionDirectories = new Map<string, string>();
   private readonly maxReconnectAttempts: number;
   private readonly reconnectDelay: (attempt: number) => Promise<void>;
   private disposed = false;
@@ -109,15 +110,25 @@ export class OpenCodeHarness implements VibeSpaceHarness {
 
   async createSession(input: CreateHarnessSession): Promise<HarnessSession> {
     await this.ensureReady();
-    const session = await this.client().createSession({
-      ...(input.title ? { title: input.title } : {}),
-      ...(input.parentSessionId ? { parentID: input.parentSessionId } : {}),
-    });
+    const session = await this.client().createSession(
+      {
+        ...(input.title ? { title: input.title } : {}),
+        ...(input.parentSessionId ? { parentID: input.parentSessionId } : {}),
+      },
+      input.workingDirectory,
+    );
+    if (input.workingDirectory) this.sessionDirectories.set(session.id, input.workingDirectory);
     return {
       id: session.id,
       chatId: input.chatId,
       ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
     };
+  }
+
+  async deleteSession(sessionId: string, workingDirectory?: string): Promise<void> {
+    const directory = workingDirectory ?? this.sessionDirectories.get(sessionId);
+    await this.client().deleteSession(sessionId, directory);
+    this.sessionDirectories.delete(sessionId);
   }
 
   async *send(input: HarnessSendRequest): AsyncIterable<HarnessEvent> {
@@ -134,13 +145,14 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     let terminal = false;
     let reconnects = 0;
     const recent = new RecentEventSet();
+    const workingDirectory = input.workingDirectory ?? this.sessionDirectories.get(input.sessionId);
 
     try {
       const resolvedSelection = resolveOpenCodeSelection(
         input.selection,
         await this.listProviders(),
       );
-      let iterator = client.events(controller.signal)[Symbol.asyncIterator]();
+      let iterator = client.events(controller.signal, workingDirectory)[Symbol.asyncIterator]();
       let pending = nextEvent(iterator);
       if (!controller.signal.aborted) {
         await client.promptAsync(
@@ -154,6 +166,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
             ...(input.system ? { system: input.system } : {}),
           },
           controller.signal,
+          workingDirectory,
         );
         promptSubmitted = true;
       }
@@ -199,8 +212,8 @@ export class OpenCodeHarness implements VibeSpaceHarness {
             await this.runtime.refresh();
             connection = this.connection();
             client = this.client(connection);
-            await client.getSession(input.sessionId);
-            iterator = client.events(controller.signal)[Symbol.asyncIterator]();
+            await client.getSession(input.sessionId, workingDirectory);
+            iterator = client.events(controller.signal, workingDirectory)[Symbol.asyncIterator]();
             pending = nextEvent(iterator);
           } catch (recoveryError) {
             if (reconnects >= this.maxReconnectAttempts) {
@@ -236,7 +249,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
       input.signal?.removeEventListener('abort', abort);
       if (((promptSubmitted && !terminal) || input.signal?.aborted) && !this.disposed) {
         try {
-          await client.abortSession(input.sessionId);
+          await client.abortSession(input.sessionId, workingDirectory);
         } catch {
           // Best effort: the server may be the reason the stream ended.
         }
@@ -246,7 +259,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
 
   async cancel(sessionId: string): Promise<void> {
     this.controllers.forEach((controller) => controller.abort());
-    await this.client().abortSession(sessionId);
+    await this.client().abortSession(sessionId, this.sessionDirectories.get(sessionId));
   }
 
   async listProviders(): Promise<readonly HarnessProvider[]> {
@@ -261,7 +274,12 @@ export class OpenCodeHarness implements VibeSpaceHarness {
   }
 
   async respondToApproval(input: HarnessApprovalResponse): Promise<void> {
-    await this.client().replyPermission(input.sessionId, input.approvalId, input.response);
+    await this.client().replyPermission(
+      input.sessionId,
+      input.approvalId,
+      input.response,
+      this.sessionDirectories.get(input.sessionId),
+    );
   }
 
   async dispose(): Promise<void> {
@@ -269,6 +287,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     this.disposed = true;
     this.controllers.forEach((controller) => controller.abort());
     this.controllers.clear();
+    this.sessionDirectories.clear();
     const connection = this.runtime.getConnection();
     if (connection) await this.client(connection).disposeInstance();
   }

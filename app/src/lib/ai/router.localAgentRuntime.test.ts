@@ -4,9 +4,17 @@ import { useAuthStore } from '@/stores/auth';
 import { selectionFromOption } from './modelSelection';
 import { LocalCloudEscalationRequiredError, writeLocalAgentPreferences } from './localAgentRuntime';
 
-const { googleRun, ollamaRun } = vi.hoisted(() => ({
+const { googleRun, harnessRun, ollamaRun } = vi.hoisted(() => ({
   googleRun: vi.fn(),
+  harnessRun: vi.fn(),
   ollamaRun: vi.fn(),
+}));
+
+vi.mock('./openCodeRunAgent', () => ({
+  openCodeRunAgentAdapter: {
+    run: harnessRun,
+    clear: vi.fn(),
+  },
 }));
 
 vi.mock('./providers/google', async (importOriginal) => {
@@ -53,6 +61,8 @@ describe('local runtime cloud escalation boundary', () => {
   beforeEach(() => {
     window.localStorage.clear();
     googleRun.mockReset();
+    harnessRun.mockReset();
+    harnessRun.mockRejectedValue(new Error('local inference failed'));
     ollamaRun.mockReset();
     ollamaRun.mockRejectedValue(new Error('local inference failed'));
     useAuthStore.setState({
@@ -82,6 +92,15 @@ describe('local runtime cloud escalation boundary', () => {
         data: { messageChars: 15, contextChars: 0, categories: ['prompt'] },
       },
     } satisfies Partial<LocalCloudEscalationRequiredError>);
+    expect(harnessRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          providerId: 'ollama',
+          modelId: 'qwen3.5:4b',
+        }),
+      }),
+    );
+    expect(ollamaRun).not.toHaveBeenCalled();
     expect(googleRun).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,302 @@
+import type { Agent, ProviderId } from '@/types';
+import type { CompiledJarvisPrompt } from '@/lib/jarvis/contracts';
+import { openCodeHarness } from '@/lib/harness/openCodeHarness';
+import type {
+  HarnessEvent,
+  HarnessModelSelection,
+  HarnessSession,
+  NormalizedUsage,
+  VibeSpaceHarness,
+} from '@/lib/harness/types';
+import type {
+  AiPurpose,
+  LLMMessage,
+  LLMResponse,
+  LLMResponseObservation,
+  LLMStreamChunk,
+} from './types';
+
+const MAX_SESSIONS = 128;
+const MAX_SCOPE_ID = 512;
+const MAX_PROMPT_TEXT = 1_500_000;
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const IMAGE_MIME_RE = /^image\/[a-z0-9.+-]{1,64}$/;
+
+interface SessionRecord {
+  session: HarnessSession;
+  messageCount: number;
+  messageFingerprints: readonly string[];
+  workingDirectory?: string;
+  touchedAt: number;
+}
+
+export interface OpenCodeRunAgentInput {
+  agent: Agent;
+  messages: readonly LLMMessage[];
+  selection: HarnessModelSelection;
+  scopeId: string;
+  purpose?: AiPurpose;
+  signal?: AbortSignal;
+  onChunk?: (chunk: LLMStreamChunk) => void;
+  workingDirectory?: string;
+  compiledPrompt?: Readonly<CompiledJarvisPrompt>;
+  onResponseObservation?: (observation: LLMResponseObservation) => void;
+  onActionDispatch?: (input: { observedAt: number }) => void;
+}
+
+export interface OpenCodeRunAgentAdapter {
+  run(input: OpenCodeRunAgentInput): Promise<LLMResponse>;
+  clear(): Promise<void>;
+}
+
+function abortError(): DOMException {
+  return new DOMException('The request was aborted.', 'AbortError');
+}
+
+function normalizeScopeId(value: string): string {
+  const scope = value.trim();
+  if (!scope || scope.length > MAX_SCOPE_ID || /[\u0000-\u001f\u007f]/.test(scope)) {
+    throw new Error('OpenCode session scope is invalid.');
+  }
+  return scope;
+}
+
+function validateWorkingDirectory(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const directory = value.trim();
+  const absoluteWindows = /^[A-Za-z]:[\\/]/.test(directory);
+  const absoluteUnc = /^\\\\[^\\]+\\[^\\]+/.test(directory);
+  const absolutePosix = directory.startsWith('/');
+  if (
+    !directory ||
+    directory.length > 4_096 ||
+    directory.includes('\u0000') ||
+    (!absoluteWindows && !absoluteUnc && !absolutePosix)
+  ) {
+    throw new Error('OpenCode requires a safe absolute working directory.');
+  }
+  return directory;
+}
+
+function roleLabel(role: LLMMessage['role']): string {
+  if (role === 'assistant') return 'Assistant';
+  if (role === 'system') return 'System';
+  return 'User';
+}
+
+function promptParts(messages: readonly LLMMessage[]): readonly unknown[] {
+  const textSegments: string[] = [];
+  const files: Array<{ type: 'file'; mime: string; url: string; filename?: string }> = [];
+
+  for (const message of messages) {
+    const textParts: string[] = [];
+    if (typeof message.content === 'string') {
+      textParts.push(message.content);
+    } else {
+      for (const part of message.content) {
+        if (part.type === 'text') {
+          textParts.push(part.text);
+          continue;
+        }
+        const data = part.data.trim();
+        const mime = part.mimeType.trim().toLowerCase();
+        const approximateBytes = Math.floor((data.length * 3) / 4);
+        if (
+          !data ||
+          data.length % 4 !== 0 ||
+          !BASE64_RE.test(data) ||
+          approximateBytes > MAX_IMAGE_BYTES ||
+          !IMAGE_MIME_RE.test(mime)
+        ) {
+          throw new Error('The image attachment is invalid or exceeds the safe size limit.');
+        }
+        const filename = part.name
+          ?.replace(/[\u0000-\u001f\u007f]/g, ' ')
+          .trim()
+          .slice(0, 512);
+        files.push({
+          type: 'file',
+          mime,
+          url: `data:${mime};base64,${data}`,
+          ...(filename ? { filename } : {}),
+        });
+      }
+    }
+    if (textParts.length) textSegments.push(`${roleLabel(message.role)}: ${textParts.join('\n')}`);
+  }
+
+  const text = textSegments.join('\n\n');
+  if (text.length > MAX_PROMPT_TEXT) {
+    throw new Error('The OpenCode prompt exceeds the safe transport size limit.');
+  }
+  return [...(text ? [{ type: 'text', text }] : []), ...files];
+}
+
+function runtimeProviderId(providerId: string): string {
+  if (providerId === 'local') return 'ollama';
+  if (providerId === 'bedrock') return 'amazon-bedrock';
+  return providerId;
+}
+
+async function fingerprintMessage(message: LLMMessage): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify([message.role, message.content]));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function eventDispatchesAction(event: HarnessEvent): boolean {
+  return (
+    event.type === 'file.read' ||
+    event.type === 'file.changed' ||
+    event.type === 'search.started' ||
+    event.type === 'shell.started' ||
+    event.type === 'tool.started' ||
+    event.type === 'subagent.started'
+  );
+}
+
+function usageValue(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export function createOpenCodeRunAgentAdapter(
+  harness: VibeSpaceHarness = openCodeHarness,
+): OpenCodeRunAgentAdapter {
+  const sessions = new Map<string, SessionRecord>();
+
+  const evictIfNeeded = async () => {
+    while (sessions.size >= MAX_SESSIONS) {
+      const oldest = [...sessions.entries()].sort(
+        (left, right) => left[1].touchedAt - right[1].touchedAt,
+      )[0];
+      if (!oldest) return;
+      sessions.delete(oldest[0]);
+      await harness
+        .deleteSession?.(oldest[1].session.id, oldest[1].workingDirectory)
+        .catch(() => undefined);
+    }
+  };
+
+  return {
+    async run(input) {
+      if (input.signal?.aborted) throw abortError();
+      const scopeId = normalizeScopeId(input.scopeId);
+      const workingDirectory = validateWorkingDirectory(input.workingDirectory);
+      // Validate the complete caller payload before creating any server state.
+      promptParts(input.messages);
+      const messageFingerprints = await Promise.all(input.messages.map(fingerprintMessage));
+      const existing = sessions.get(scopeId);
+      const canReuse =
+        existing &&
+        existing.workingDirectory === workingDirectory &&
+        input.messages.length >= existing.messageCount &&
+        existing.messageFingerprints.every(
+          (fingerprint, index) => messageFingerprints[index] === fingerprint,
+        );
+      let record = canReuse ? existing : undefined;
+      if (!record) {
+        if (existing) {
+          sessions.delete(scopeId);
+          await harness
+            .deleteSession?.(existing.session.id, existing.workingDirectory)
+            .catch(() => undefined);
+        }
+        await evictIfNeeded();
+        const session = await harness.createSession({
+          chatId: scopeId,
+          title: input.agent.name.slice(0, 256),
+          ...(workingDirectory ? { workingDirectory } : {}),
+        });
+        record = {
+          session,
+          messageCount: 0,
+          messageFingerprints: [],
+          ...(workingDirectory ? { workingDirectory } : {}),
+          touchedAt: Date.now(),
+        };
+        sessions.set(scopeId, record);
+      }
+
+      const pendingMessages = input.messages.slice(record.messageCount);
+      const parts = promptParts(pendingMessages);
+      if (parts.length === 0) throw new Error('OpenCode requires prompt content.');
+
+      let text = '';
+      let first = true;
+      let usage: NormalizedUsage = {};
+      let finishReason: string | undefined;
+      let done = false;
+      const expectedProvider =
+        input.selection.runtimeProviderId ?? runtimeProviderId(input.selection.providerId);
+
+      for await (const event of harness.send({
+        sessionId: record.session.id,
+        selection: input.selection,
+        system: input.compiledPrompt?.systemText ?? input.agent.system_prompt,
+        parts,
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
+      })) {
+        if (input.signal?.aborted) throw abortError();
+        if (eventDispatchesAction(event)) {
+          input.onActionDispatch?.({ observedAt: Date.now() });
+        }
+        if (event.type === 'assistant.delta') {
+          input.onResponseObservation?.({ kind: 'sdk_chunk', observedAt: Date.now() });
+          text += event.text;
+          input.onChunk?.({ delta: event.text, ...(first ? { first: true } : {}) });
+          first = false;
+        } else if (event.type === 'usage.updated') {
+          if (
+            (event.usage.providerId && event.usage.providerId !== expectedProvider) ||
+            (event.usage.modelId && event.usage.modelId !== input.selection.modelId)
+          ) {
+            throw new Error(
+              'OpenCode reported a model identity different from the exact selection.',
+            );
+          }
+          usage = { ...usage, ...event.usage };
+        } else if (event.type === 'done') {
+          finishReason = event.finishReason;
+          done = true;
+          break;
+        } else if (event.type === 'error') {
+          throw new Error(event.message);
+        }
+      }
+
+      if (input.signal?.aborted) throw abortError();
+      if (!done) throw new Error('OpenCode ended without a terminal completion event.');
+      record.messageCount = input.messages.length;
+      record.messageFingerprints = messageFingerprints;
+      record.touchedAt = Date.now();
+      input.onChunk?.({ delta: '', done: true });
+
+      return {
+        text,
+        usage: {
+          input_tokens: usageValue(usage.inputTokens),
+          output_tokens: usageValue(usage.outputTokens),
+          cost_usd: usageValue(usage.costUsd),
+        },
+        provider: expectedProvider as ProviderId,
+        model: input.selection.modelId,
+        ...(finishReason ? { finish_reason: finishReason } : {}),
+      };
+    },
+    async clear() {
+      const records = [...sessions.values()];
+      sessions.clear();
+      await Promise.all(
+        records.map((record) =>
+          harness
+            .deleteSession?.(record.session.id, record.workingDirectory)
+            .catch(() => undefined),
+        ),
+      );
+    },
+  };
+}
+
+export const openCodeRunAgentAdapter = createOpenCodeRunAgentAdapter();

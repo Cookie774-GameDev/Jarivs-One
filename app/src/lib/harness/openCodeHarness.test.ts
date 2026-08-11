@@ -75,10 +75,19 @@ describe('OpenCodeHarness', () => {
       .mockResolvedValue(new Response(JSON.stringify({ id: 'oc-1', title: 'Chat', extra: true })));
     const harness = new OpenCodeHarness(runtime(), { fetch });
 
-    await expect(harness.createSession({ chatId: 'chat-1', title: 'Chat' })).resolves.toEqual({
+    await expect(
+      harness.createSession({
+        chatId: 'chat-1',
+        title: 'Chat',
+        workingDirectory: 'C:\\workspace',
+      }),
+    ).resolves.toEqual({
       id: 'oc-1',
       chatId: 'chat-1',
     });
+    expect(new URL(String(fetch.mock.calls[0]?.[0])).searchParams.get('directory')).toBe(
+      'C:\\workspace',
+    );
   });
 
   it('subscribes before prompting and streams normalized session events', async () => {
@@ -104,7 +113,9 @@ describe('OpenCodeHarness', () => {
     });
     const harness = new OpenCodeHarness(runtime(), { fetch });
 
-    await expect(collect(harness.send(request()))).resolves.toEqual([
+    await expect(
+      collect(harness.send({ ...request(), workingDirectory: 'C:\\workspace' })),
+    ).resolves.toEqual([
       { type: 'assistant.delta', text: 'Hello' },
       { type: 'done', finishReason: 'idle' },
     ]);
@@ -113,6 +124,13 @@ describe('OpenCodeHarness', () => {
       'GET /event',
       'POST /session/session-1/prompt_async',
     ]);
+    expect(
+      fetch.mock.calls
+        .filter(([url]) =>
+          ['/event', '/session/session-1/prompt_async'].includes(new URL(String(url)).pathname),
+        )
+        .map(([url]) => new URL(String(url)).searchParams.get('directory')),
+    ).toEqual(['C:\\workspace', 'C:\\workspace']);
   });
 
   it('reconnects, suppresses duplicates, and ignores malformed or cross-session events', async () => {

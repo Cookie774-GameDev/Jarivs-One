@@ -55,13 +55,22 @@ describe('OpenCodeHttpClient', () => {
     });
     const client = createOpenCodeHttpClient(connection, { fetch });
 
-    await expect(client.createSession({ title: 'Chat' })).resolves.toEqual({ id: 'session-1' });
-    await client.promptAsync('session-1', {
-      model: { providerID: 'anthropic', modelID: 'claude' },
-      parts: [{ type: 'text', text: 'hello' }],
+    await expect(client.createSession({ title: 'Chat' }, 'C:\\workspace')).resolves.toEqual({
+      id: 'session-1',
     });
-    await expect(client.abortSession('session-1')).resolves.toBe(true);
-    await expect(client.replyPermission('session-1', 'approval/1', 'once')).resolves.toBe(true);
+    await client.promptAsync(
+      'session-1',
+      {
+        model: { providerID: 'anthropic', modelID: 'claude' },
+        parts: [{ type: 'text', text: 'hello' }],
+      },
+      undefined,
+      'C:\\workspace',
+    );
+    await expect(client.abortSession('session-1', 'C:\\workspace')).resolves.toBe(true);
+    await expect(
+      client.replyPermission('session-1', 'approval/1', 'once', 'C:\\workspace'),
+    ).resolves.toBe(true);
 
     expect(fetch.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
       '/session',
@@ -69,6 +78,9 @@ describe('OpenCodeHttpClient', () => {
       '/session/session-1/abort',
       '/session/session-1/permissions/approval%2F1',
     ]);
+    expect(
+      fetch.mock.calls.map(([url]) => new URL(String(url)).searchParams.get('directory')),
+    ).toEqual(['C:\\workspace', 'C:\\workspace', 'C:\\workspace', 'C:\\workspace']);
   });
 
   it('discovers provider auth, authorizes the exact dynamic method, and completes callbacks', async () => {

@@ -55,22 +55,31 @@ export interface OpenCodeHttpClient {
     inputs?: Readonly<Record<string, string>>,
   ): Promise<OpenCodeProviderAuthorization>;
   callbackProvider(providerId: string, method: number, code?: string): Promise<boolean>;
-  createSession(input: { title?: string; parentID?: string }): Promise<OpenCodeSession>;
-  getSession(sessionId: string): Promise<OpenCodeSession>;
-  deleteSession(sessionId: string): Promise<boolean>;
-  children(sessionId: string): Promise<readonly unknown[]>;
-  messages(sessionId: string): Promise<readonly unknown[]>;
-  diff(sessionId: string): Promise<readonly unknown[]>;
-  promptAsync(sessionId: string, input: OpenCodePrompt, signal?: AbortSignal): Promise<void>;
-  command(sessionId: string, input: unknown): Promise<unknown>;
-  shell(sessionId: string, input: unknown): Promise<unknown>;
-  abortSession(sessionId: string): Promise<boolean>;
+  createSession(
+    input: { title?: string; parentID?: string },
+    directory?: string,
+  ): Promise<OpenCodeSession>;
+  getSession(sessionId: string, directory?: string): Promise<OpenCodeSession>;
+  deleteSession(sessionId: string, directory?: string): Promise<boolean>;
+  children(sessionId: string, directory?: string): Promise<readonly unknown[]>;
+  messages(sessionId: string, directory?: string): Promise<readonly unknown[]>;
+  diff(sessionId: string, directory?: string): Promise<readonly unknown[]>;
+  promptAsync(
+    sessionId: string,
+    input: OpenCodePrompt,
+    signal?: AbortSignal,
+    directory?: string,
+  ): Promise<void>;
+  command(sessionId: string, input: unknown, directory?: string): Promise<unknown>;
+  shell(sessionId: string, input: unknown, directory?: string): Promise<unknown>;
+  abortSession(sessionId: string, directory?: string): Promise<boolean>;
   replyPermission(
     sessionId: string,
     permissionId: string,
     response: 'once' | 'always' | 'reject',
+    directory?: string,
   ): Promise<boolean>;
-  events(signal?: AbortSignal): AsyncIterable<OpenCodeSseEvent>;
+  events(signal?: AbortSignal, directory?: string): AsyncIterable<OpenCodeSseEvent>;
   disposeInstance(): Promise<boolean>;
 }
 
@@ -273,15 +282,32 @@ export function createOpenCodeHttpClient(
       MAX_ERROR_BYTES,
     );
 
+  const requestUrl = (path: string, directory?: string): string => {
+    const url = new URL(path, baseUrl);
+    if (directory !== undefined) {
+      if (
+        !directory ||
+        directory.length > 4_096 ||
+        directory.includes('\u0000') ||
+        /[\r\n]/.test(directory)
+      ) {
+        throw new Error('OpenCode working directory is invalid.');
+      }
+      url.searchParams.set('directory', directory);
+    }
+    return url.toString();
+  };
+
   const request = async (
     path: string,
     init: RequestInit = {},
     expected: 'json' | 'void' = 'json',
     maximumBytes = MAX_JSON_BYTES,
+    directory?: string,
   ): Promise<unknown> => {
     let response: Response;
     try {
-      response = await fetchImpl(new URL(path, baseUrl).toString(), {
+      response = await fetchImpl(requestUrl(path, directory), {
         ...init,
         credentials: 'omit',
         redirect: 'error',
@@ -316,8 +342,11 @@ export function createOpenCodeHttpClient(
 
   const sessionPath = (sessionId: string, suffix = '') =>
     `/session/${encodeURIComponent(sessionId)}${suffix}`;
-  const booleanRequest = async (path: string, init: RequestInit): Promise<boolean> =>
-    (await request(path, init)) === true;
+  const booleanRequest = async (
+    path: string,
+    init: RequestInit,
+    directory?: string,
+  ): Promise<boolean> => (await request(path, init, 'json', MAX_JSON_BYTES, directory)) === true;
 
   return {
     async health() {
@@ -352,58 +381,103 @@ export function createOpenCodeHttpClient(
         method: 'POST',
         body: JSON.stringify({ method, ...(code ? { code } : {}) }),
       }),
-    async createSession(input) {
+    async createSession(input, directory) {
       return requireSession(
-        await request('/session', { method: 'POST', body: JSON.stringify(input) }),
+        await request(
+          '/session',
+          { method: 'POST', body: JSON.stringify(input) },
+          'json',
+          MAX_JSON_BYTES,
+          directory,
+        ),
       );
     },
-    async getSession(sessionId) {
-      return requireSession(await request(sessionPath(sessionId)));
+    async getSession(sessionId, directory) {
+      return requireSession(
+        await request(sessionPath(sessionId), {}, 'json', MAX_JSON_BYTES, directory),
+      );
     },
-    deleteSession: (sessionId) => booleanRequest(sessionPath(sessionId), { method: 'DELETE' }),
-    async children(sessionId) {
-      const value = await request(sessionPath(sessionId, '/children'));
+    deleteSession: (sessionId, directory) =>
+      booleanRequest(sessionPath(sessionId), { method: 'DELETE' }, directory),
+    async children(sessionId, directory) {
+      const value = await request(
+        sessionPath(sessionId, '/children'),
+        {},
+        'json',
+        MAX_JSON_BYTES,
+        directory,
+      );
       if (!Array.isArray(value)) throw new Error('OpenCode returned invalid child sessions.');
       return value;
     },
-    async messages(sessionId) {
-      const value = await request(sessionPath(sessionId, '/message'));
+    async messages(sessionId, directory) {
+      const value = await request(
+        sessionPath(sessionId, '/message'),
+        {},
+        'json',
+        MAX_JSON_BYTES,
+        directory,
+      );
       if (!Array.isArray(value)) throw new Error('OpenCode returned invalid messages.');
       return value;
     },
-    async diff(sessionId) {
-      const value = await request(sessionPath(sessionId, '/diff'));
+    async diff(sessionId, directory) {
+      const value = await request(
+        sessionPath(sessionId, '/diff'),
+        {},
+        'json',
+        MAX_JSON_BYTES,
+        directory,
+      );
       if (!Array.isArray(value)) throw new Error('OpenCode returned an invalid session diff.');
       return value;
     },
-    async promptAsync(sessionId, input, signal) {
+    async promptAsync(sessionId, input, signal, directory) {
       await request(
         sessionPath(sessionId, '/prompt_async'),
         { method: 'POST', body: JSON.stringify(input), signal },
         'void',
+        MAX_JSON_BYTES,
+        directory,
       );
     },
-    command: (sessionId, input) =>
-      request(sessionPath(sessionId, '/command'), {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
-    shell: (sessionId, input) =>
-      request(sessionPath(sessionId, '/shell'), {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
-    abortSession: (sessionId) =>
-      booleanRequest(sessionPath(sessionId, '/abort'), { method: 'POST' }),
-    replyPermission: (sessionId, permissionId, response) =>
-      booleanRequest(`${sessionPath(sessionId)}/permissions/${encodeURIComponent(permissionId)}`, {
-        method: 'POST',
-        body: JSON.stringify({ response }),
-      }),
-    async *events(signal) {
+    command: (sessionId, input, directory) =>
+      request(
+        sessionPath(sessionId, '/command'),
+        {
+          method: 'POST',
+          body: JSON.stringify(input),
+        },
+        'json',
+        MAX_JSON_BYTES,
+        directory,
+      ),
+    shell: (sessionId, input, directory) =>
+      request(
+        sessionPath(sessionId, '/shell'),
+        {
+          method: 'POST',
+          body: JSON.stringify(input),
+        },
+        'json',
+        MAX_JSON_BYTES,
+        directory,
+      ),
+    abortSession: (sessionId, directory) =>
+      booleanRequest(sessionPath(sessionId, '/abort'), { method: 'POST' }, directory),
+    replyPermission: (sessionId, permissionId, response, directory) =>
+      booleanRequest(
+        `${sessionPath(sessionId)}/permissions/${encodeURIComponent(permissionId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ response }),
+        },
+        directory,
+      ),
+    async *events(signal, directory) {
       let response: Response;
       try {
-        response = await fetchImpl(new URL('/event', baseUrl).toString(), {
+        response = await fetchImpl(requestUrl('/event', directory), {
           method: 'GET',
           credentials: 'omit',
           redirect: 'error',

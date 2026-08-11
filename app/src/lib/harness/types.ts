@@ -110,6 +110,7 @@ export interface CreateHarnessSession {
   chatId: string;
   title?: string;
   parentSessionId?: string;
+  workingDirectory?: string;
 }
 
 export interface HarnessSession {
@@ -124,6 +125,7 @@ export interface HarnessSendRequest {
   system?: string;
   parts: readonly unknown[];
   signal?: AbortSignal;
+  workingDirectory?: string;
 }
 
 export interface HarnessApprovalResponse {
@@ -135,6 +137,7 @@ export interface HarnessApprovalResponse {
 export interface VibeSpaceHarness {
   ensureReady(): Promise<HarnessReady>;
   createSession(input: CreateHarnessSession): Promise<HarnessSession>;
+  deleteSession?(sessionId: string, workingDirectory?: string): Promise<void>;
   send(input: HarnessSendRequest): AsyncIterable<HarnessEvent>;
   cancel(sessionId: string, turnId?: string): Promise<void>;
   listProviders(): Promise<readonly HarnessProvider[]>;
