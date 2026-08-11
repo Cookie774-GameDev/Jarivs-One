@@ -492,6 +492,8 @@ export interface RunAgentRequest {
   connectionId?: string;
   /** Stable chat scope used to reuse exactly one OpenCode session. */
   chatId?: string;
+  /** Parent VibeSpace chat scope for user-facing multitask/subagent children. */
+  parentChatId?: string;
   connectionRequirements?: ConnectionRequirements;
   workingDirectory?: string;
   compiledPrompt?: Readonly<CompiledJarvisPrompt>;
@@ -503,6 +505,7 @@ export interface RunAgentRequest {
     attemptNumber: number;
   }>;
   onApprovalRequested?: OpenCodeRunAgentInput['onApprovalRequested'];
+  onHarnessSessionBound?: OpenCodeRunAgentInput['onSessionBound'];
   tools?: Readonly<Record<string, boolean>>;
 }
 
@@ -607,6 +610,7 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
       selection,
       variant,
       scopeId,
+      parentScopeId: req.parentChatId,
       purpose: req.purpose ?? 'chat',
       signal: req.signal,
       onChunk: req.onChunk,
@@ -615,6 +619,7 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
       onResponseObservation: hooks?.onResponseObservation,
       onActionDispatch: hooks?.onActionDispatch,
       onApprovalRequested: req.onApprovalRequested,
+      onSessionBound: req.onHarnessSessionBound,
       tools: req.tools,
     });
 

@@ -244,6 +244,7 @@ describe('AI provider routing', () => {
     const response = await runAgent({
       agent: openaiAgent,
       chatId: 'chat-production-1',
+      parentChatId: 'chat-parent-1',
       messages: [{ role: 'user', content: 'hello' }],
       onApprovalRequested,
       tools,
@@ -253,6 +254,7 @@ describe('AI provider routing', () => {
     expect(harnessRun).toHaveBeenCalledWith(
       expect.objectContaining({
         scopeId: 'chat-production-1',
+        parentScopeId: 'chat-parent-1',
         purpose: 'chat',
         onApprovalRequested,
         tools,

@@ -26,6 +26,7 @@ function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
   const createSession = vi.fn(async (input: CreateHarnessSession) => ({
     id: `session-${createSession.mock.calls.length}`,
     chatId: input.chatId,
+    ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
   }));
   const send = vi.fn((input: HarnessSendRequest) => {
     const events = eventRuns[send.mock.calls.length - 1] ?? [];
@@ -158,6 +159,117 @@ describe('runAgent OpenCode adapter', () => {
     expect(fake.send.mock.calls[1]?.[0].parts).toEqual([
       { type: 'text', text: 'Assistant: one\n\nUser: second' },
     ]);
+  });
+
+  it('binds a child scope to its existing OpenCode parent session', async () => {
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'parent' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'child' }, { type: 'done' }],
+    ]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    const onSessionBound = vi.fn();
+
+    await adapter.run({
+      agent,
+      scopeId: 'chat-parent',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'parent turn' }],
+    });
+    await adapter.run({
+      agent,
+      scopeId: 'chat-child',
+      parentScopeId: 'chat-parent',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'child task' }],
+      onSessionBound,
+    });
+
+    expect(fake.createSession).toHaveBeenNthCalledWith(2, {
+      chatId: 'chat-child',
+      title: 'Test',
+      parentSessionId: 'session-1',
+    });
+    expect(onSessionBound).toHaveBeenCalledWith({
+      sessionId: 'session-2',
+      parentSessionId: 'session-1',
+    });
+  });
+
+  it('creates a dormant OpenCode parent before a child and reuses it for a later parent turn', async () => {
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'child' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'parent' }, { type: 'done' }],
+    ]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+
+    await adapter.run({
+      agent,
+      scopeId: 'chat-child',
+      parentScopeId: 'chat-parent',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'child task' }],
+    });
+    await adapter.run({
+      agent,
+      scopeId: 'chat-parent',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'parent later' }],
+    });
+
+    expect(fake.createSession).toHaveBeenCalledTimes(2);
+    expect(fake.createSession).toHaveBeenNthCalledWith(1, {
+      chatId: 'chat-parent',
+      title: 'Test',
+    });
+    expect(fake.createSession).toHaveBeenNthCalledWith(2, {
+      chatId: 'chat-child',
+      title: 'Test',
+      parentSessionId: 'session-1',
+    });
+    expect(fake.send.mock.calls[0]?.[0].sessionId).toBe('session-2');
+    expect(fake.send.mock.calls[1]?.[0].sessionId).toBe('session-1');
+  });
+
+  it('rejects invalid child relationships before creating or prompting', async () => {
+    const fake = fakeHarness([]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-self',
+        parentScopeId: 'chat-self',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'self parent' }],
+      }),
+    ).rejects.toThrow(/parent/i);
+    expect(fake.createSession).not.toHaveBeenCalled();
+    expect(fake.send).not.toHaveBeenCalled();
+  });
+
+  it('rejects a child working directory that differs from its mapped parent', async () => {
+    const fake = fakeHarness([[{ type: 'assistant.delta', text: 'parent' }, { type: 'done' }]]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+
+    await adapter.run({
+      agent,
+      scopeId: 'chat-parent',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'parent' }],
+      workingDirectory: 'C:\\parent',
+    });
+    await expect(
+      adapter.run({
+        agent,
+        scopeId: 'chat-child',
+        parentScopeId: 'chat-parent',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'child' }],
+        workingDirectory: 'C:\\different',
+      }),
+    ).rejects.toThrow(/working directory/i);
+    expect(fake.createSession).toHaveBeenCalledTimes(1);
+    expect(fake.send).toHaveBeenCalledTimes(1);
   });
 
   it('replaces a scoped session when earlier conversation history changes', async () => {

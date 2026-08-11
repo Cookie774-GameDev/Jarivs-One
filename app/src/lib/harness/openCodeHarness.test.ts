@@ -79,15 +79,21 @@ describe('OpenCodeHarness', () => {
       harness.createSession({
         chatId: 'chat-1',
         title: 'Chat',
+        parentSessionId: 'oc-parent',
         workingDirectory: 'C:\\workspace',
       }),
     ).resolves.toEqual({
       id: 'oc-1',
       chatId: 'chat-1',
+      parentSessionId: 'oc-parent',
     });
     expect(new URL(String(fetch.mock.calls[0]?.[0])).searchParams.get('directory')).toBe(
       'C:\\workspace',
     );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      title: 'Chat',
+      parentID: 'oc-parent',
+    });
   });
 
   it('subscribes before prompting and streams normalized session events', async () => {

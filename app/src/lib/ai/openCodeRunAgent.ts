@@ -38,6 +38,7 @@ export interface OpenCodeRunAgentInput {
   selection: HarnessModelSelection;
   variant?: string;
   scopeId: string;
+  parentScopeId?: string;
   purpose?: AiPurpose;
   signal?: AbortSignal;
   onChunk?: (chunk: LLMStreamChunk) => void;
@@ -46,6 +47,10 @@ export interface OpenCodeRunAgentInput {
   onResponseObservation?: (observation: LLMResponseObservation) => void;
   onActionDispatch?: (input: { observedAt: number }) => void;
   onApprovalRequested?: (approval: VibeSpaceApproval) => void | Promise<void>;
+  onSessionBound?: (binding: {
+    sessionId: string;
+    parentSessionId?: string;
+  }) => void | Promise<void>;
   tools?: Readonly<Record<string, boolean>>;
 }
 
@@ -169,12 +174,22 @@ export function createOpenCodeRunAgentAdapter(
 ): OpenCodeRunAgentAdapter {
   const sessions = new Map<string, SessionRecord>();
 
-  const evictIfNeeded = async () => {
+  const evictIfNeeded = async (protectedScopes: ReadonlySet<string> = new Set()) => {
     while (sessions.size >= MAX_SESSIONS) {
-      const oldest = [...sessions.entries()].sort(
-        (left, right) => left[1].touchedAt - right[1].touchedAt,
-      )[0];
-      if (!oldest) return;
+      const referencedParentIds = new Set(
+        [...sessions.values()]
+          .map((record) => record.session.parentSessionId)
+          .filter((id): id is string => Boolean(id)),
+      );
+      const oldest = [...sessions.entries()]
+        .sort((left, right) => left[1].touchedAt - right[1].touchedAt)
+        .find(
+          ([scope, record]) =>
+            !protectedScopes.has(scope) && !referencedParentIds.has(record.session.id),
+        );
+      if (!oldest) {
+        throw new Error('OpenCode session capacity is reserved by active child relationships.');
+      }
       sessions.delete(oldest[0]);
       await harness
         .deleteSession?.(oldest[1].session.id, oldest[1].workingDirectory)
@@ -186,14 +201,45 @@ export function createOpenCodeRunAgentAdapter(
     async run(input) {
       if (input.signal?.aborted) throw abortError();
       const scopeId = normalizeScopeId(input.scopeId);
+      const parentScopeId =
+        input.parentScopeId === undefined ? undefined : normalizeScopeId(input.parentScopeId);
+      if (parentScopeId === scopeId) {
+        throw new Error('OpenCode child session cannot use itself as its parent.');
+      }
       const workingDirectory = validateWorkingDirectory(input.workingDirectory);
       // Validate the complete caller payload before creating any server state.
       promptParts(input.messages);
       const messageFingerprints = await Promise.all(input.messages.map(fingerprintMessage));
+      let parentSessionId: string | undefined;
+      if (parentScopeId) {
+        let parent = sessions.get(parentScopeId);
+        if (parent && parent.workingDirectory !== workingDirectory) {
+          throw new Error('OpenCode child session working directory does not match its parent.');
+        }
+        if (!parent) {
+          await evictIfNeeded(new Set([scopeId, parentScopeId]));
+          const session = await harness.createSession({
+            chatId: parentScopeId,
+            title: input.agent.name.slice(0, 256),
+            ...(workingDirectory ? { workingDirectory } : {}),
+          });
+          parent = {
+            session,
+            messageCount: 0,
+            messageFingerprints: [],
+            ...(workingDirectory ? { workingDirectory } : {}),
+            touchedAt: Date.now(),
+          };
+          sessions.set(parentScopeId, parent);
+        }
+        parent.touchedAt = Date.now();
+        parentSessionId = parent.session.id;
+      }
       const existing = sessions.get(scopeId);
       const canReuse =
         existing &&
         existing.workingDirectory === workingDirectory &&
+        existing.session.parentSessionId === parentSessionId &&
         input.messages.length >= existing.messageCount &&
         existing.messageFingerprints.every(
           (fingerprint, index) => messageFingerprints[index] === fingerprint,
@@ -206,10 +252,11 @@ export function createOpenCodeRunAgentAdapter(
             .deleteSession?.(existing.session.id, existing.workingDirectory)
             .catch(() => undefined);
         }
-        await evictIfNeeded();
+        await evictIfNeeded(new Set([...(parentScopeId ? [parentScopeId] : []), scopeId]));
         const session = await harness.createSession({
           chatId: scopeId,
           title: input.agent.name.slice(0, 256),
+          ...(parentSessionId ? { parentSessionId } : {}),
           ...(workingDirectory ? { workingDirectory } : {}),
         });
         record = {
@@ -221,6 +268,12 @@ export function createOpenCodeRunAgentAdapter(
         };
         sessions.set(scopeId, record);
       }
+      await input.onSessionBound?.({
+        sessionId: record.session.id,
+        ...(record.session.parentSessionId
+          ? { parentSessionId: record.session.parentSessionId }
+          : {}),
+      });
 
       const pendingMessages = input.messages.slice(record.messageCount);
       const parts = promptParts(pendingMessages);
