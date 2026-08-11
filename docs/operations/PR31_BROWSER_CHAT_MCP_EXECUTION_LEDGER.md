@@ -763,6 +763,30 @@ staged, restored, reformatted, or committed by this task.
   inferred from these local UI and native-surface checks.
 - Commit: `6d98b425`.
 
+### M6b — truthful session-row evidence and actions
+
+- Status: `VERIFIED`
+- RED evidence: session rows exposed title/provider/binding state and direct
+  local actions, but omitted project/last-opened evidence, verified active
+  status, a compact action menu, and an exact saved-conversation external
+  action. The new tests failed on the absent external-navigation contract and
+  row evidence.
+- GREEN evidence: 39/39 focused Hub, provider-controller, and provider-surface
+  tests pass; app TypeScript passes.
+- Row truth: each saved row reports its local project, persisted last-opened
+  time, binding errors, and either exact active page/tool evidence or the
+  explicit statement that inactive provider activity is not exposed.
+- External safety: the action menu opens only a provider-adapter-normalized
+  HTTPS location. Query/fragment metadata is stripped and spoofed origins fail
+  closed without opening a browser target.
+- Accessibility: pin, rename, project selection, and the labelled action menu
+  remain keyboard-addressable. Removing a binding remains an explicit local
+  action and never claims to delete the provider conversation.
+- Boundary: this external action does not prove that the managed child WebView
+  reopens a saved resume URL; that production-composition gap remains a
+  separate checkpoint.
+- Commit: pending.
+
 ## Completion labels
 
 Only `VERIFIED`, `IMPLEMENTED — NATIVE VERIFICATION REQUIRED`,

@@ -12,6 +12,7 @@ import {
   Globe2,
   KeyRound,
   LockKeyhole,
+  MoreHorizontal,
   MonitorUp,
   Pencil,
   Pin,
@@ -122,6 +123,14 @@ function usageText(value: number | null, limit: number | null, unit: string | nu
   return `${value.toLocaleString()} of ${limit.toLocaleString()} ${unit}`;
 }
 
+function lastOpenedLabel(timestamp: number | undefined): string {
+  if (!timestamp || !Number.isFinite(timestamp) || timestamp < 0) return 'Never opened';
+  return `Last opened ${new Date(timestamp).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })}`;
+}
+
 type BrowserChatHubProps = {
   readonly chatId?: string | null;
   readonly database?: JarvisDexie;
@@ -220,6 +229,7 @@ export function BrowserChatHub({
   const [permissionProfile, setPermissionProfile] =
     React.useState<BrowserChatPermissionProfile | null>(null);
   const [permissionProfileSaving, setPermissionProfileSaving] = React.useState(false);
+  const [actionMenuBindingId, setActionMenuBindingId] = React.useState<string | null>(null);
   const [sessions, setSessions] = React.useState<
     Array<{ readonly binding: BrowserChatBindingRow; readonly chat: Chat }>
   >(() => [...(initialSessions ?? [])]);
@@ -628,6 +638,20 @@ export function BrowserChatHub({
     }
   };
 
+  const openBrowserSessionExternally = async (binding: BrowserChatBindingRow) => {
+    const providerDefinition = browserChatProvider(binding.provider);
+    const location = binding.resumeUrl ?? providerDefinition.homeUrl;
+    try {
+      await browserChatSurface.openExternalNavigation(providerDefinition, location);
+      setActionMenuBindingId(null);
+    } catch (cause) {
+      toast.error(
+        'Provider session could not be opened',
+        cause instanceof Error ? cause.message : 'The saved provider location is unavailable.',
+      );
+    }
+  };
+
   const captureProviderNavigation = (navigation: ProviderSurfaceNavigation) => {
     const activeBinding = sessions.find(
       (session) =>
@@ -801,12 +825,23 @@ export function BrowserChatHub({
   const renderBrowserSession = ({ binding }: { readonly binding: BrowserChatBindingRow }) => {
     const providerDefinition = browserChatProvider(binding.provider);
     const isRenaming = renamingBindingId === binding.id;
+    const isActive = binding.chatId === chatId;
+    const projectName =
+      projects.find((candidate) => String(candidate.id) === binding.projectId)?.name ??
+      (binding.projectId ? 'Unavailable project' : 'No project');
+    const runningTool = isActive ? accountToolActivity?.activeCalls[0]?.toolName : undefined;
+    const evidenceLabel =
+      binding.bindingState === 'stale' || binding.bindingState === 'unavailable'
+        ? `Needs attention · ${statusLabel(binding.bindingState)}`
+        : isActive
+          ? `Active · page ${statusLabel(pageStatus)}${runningTool ? ` · ${runningTool} running` : ''}`
+          : 'Saved locally · provider activity not exposed';
     return (
       <div
         key={binding.id}
         className={cn(
-          'rounded-lg border px-2 py-2',
-          binding.chatId === chatId
+          'relative rounded-lg border px-2 py-2',
+          isActive
             ? 'border-accent-copper/35 bg-accent-copper/10'
             : 'border-transparent hover:border-border hover:bg-muted/45',
         )}
@@ -862,6 +897,19 @@ export function BrowserChatHub({
               </span>
               <span className="mt-0.5 block text-[9px] text-muted-foreground">
                 {providerDefinition.label} · {statusLabel(binding.bindingState)}
+              </span>
+              <span className="mt-0.5 block truncate text-[9px] text-muted-foreground">
+                {projectName} · {lastOpenedLabel(binding.lastOpenedAt)}
+              </span>
+              <span
+                className={cn(
+                  'mt-0.5 block truncate text-[9px]',
+                  binding.bindingState === 'stale' || binding.bindingState === 'unavailable'
+                    ? 'text-destructive'
+                    : 'text-muted-foreground',
+                )}
+              >
+                {evidenceLabel}
               </span>
             </button>
             <div className="mt-1.5 flex items-center gap-0.5">
@@ -929,13 +977,46 @@ export function BrowserChatHub({
                 type="button"
                 size="icon-sm"
                 variant="ghost"
-                className="h-6 w-6 text-destructive"
-                aria-label={`Remove ${binding.localTitle}`}
-                onClick={() => void removeBrowserSession(binding)}
+                className="h-6 w-6"
+                aria-label={`Actions for ${binding.localTitle}`}
+                aria-haspopup="menu"
+                aria-expanded={actionMenuBindingId === binding.id}
+                onClick={() =>
+                  setActionMenuBindingId((current) => (current === binding.id ? null : binding.id))
+                }
               >
-                <Trash2 className="h-3 w-3" aria-hidden />
+                <MoreHorizontal className="h-3 w-3" aria-hidden />
               </Button>
             </div>
+            {actionMenuBindingId === binding.id ? (
+              <div
+                role="menu"
+                aria-label={`Actions for ${binding.localTitle}`}
+                className="absolute right-2 top-full z-20 min-w-36 rounded-md border border-border bg-popover p-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[10px] text-foreground hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/50"
+                  onClick={() => void openBrowserSessionExternally(binding)}
+                >
+                  <ExternalLink className="h-3 w-3" aria-hidden />
+                  Open {binding.localTitle} externally
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[10px] text-destructive hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/50"
+                  onClick={() => {
+                    setActionMenuBindingId(null);
+                    void removeBrowserSession(binding);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden />
+                  Remove {binding.localTitle}
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </div>

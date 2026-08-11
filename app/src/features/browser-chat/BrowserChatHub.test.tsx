@@ -492,7 +492,8 @@ describe('BrowserChatHub', () => {
       );
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Renamed research' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Renamed research' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove Renamed research' }));
     await waitFor(async () =>
       expect(await testDatabase.browser_chat_bindings.get(regular.id)).toBeUndefined(),
     );
@@ -540,6 +541,85 @@ describe('BrowserChatHub', () => {
     expect(screen.getByRole('heading', { name: 'Provider sessions', level: 3 })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Unpin Saved session 1' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Pin Saved session 50' })).toBeTruthy();
+  });
+
+  it('shows per-session evidence and opens a validated saved conversation from its action menu', async () => {
+    const openExternalNavigation = vi
+      .spyOn(browserChatSurface, 'openExternalNavigation')
+      .mockResolvedValue();
+    publishBrowserChatToolCatalog({
+      accountId: 'account-1',
+      toolNames: ['fs.read'],
+      now: 100,
+    });
+    beginBrowserChatToolCall({
+      accountId: 'account-1',
+      callId: 'call_session_running',
+      toolName: 'fs.read',
+      now: 110,
+    });
+    browserChatStore.getState().setProviderRuntime('chatgpt', {
+      pageStatus: 'ready',
+      toolBridgeStatus: 'connected_read_only',
+    });
+    const title = 'Mapped provider session';
+    const session = {
+      binding: {
+        id: 'binding-session-evidence',
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        chatId: 'chat-session-evidence',
+        provider: 'chatgpt' as const,
+        providerProfileKey: 'browser-chat/chatgpt',
+        providerConversationKey: 'conversation-1',
+        resumeUrl: 'https://chatgpt.com/c/conversation-1',
+        bindingState: 'bound' as const,
+        localTitle: title,
+        pinned: false,
+        viewMode: 'vibespace' as const,
+        createdAt: 1,
+        updatedAt: 2,
+        lastOpenedAt: Date.UTC(2026, 7, 10, 15, 30),
+      },
+      chat: {
+        id: 'chat-session-evidence' as ChatId,
+        workspace_id: 'workspace-1' as WorkspaceId,
+        project_id: 'project-1' as ProjectId,
+        title,
+        mode: 'chat' as const,
+        active_agent_ids: [],
+        pinned: false,
+        created_at: 1,
+        updated_at: 2,
+      },
+    };
+
+    renderHub(
+      'chat-session-evidence',
+      [session],
+      [
+        {
+          id: 'project-1' as ProjectId,
+          workspace_id: 'workspace-1' as WorkspaceId,
+          name: 'Project Alpha',
+          created_at: 1,
+          updated_at: 1,
+        },
+      ],
+    );
+
+    expect(screen.getByText(/Project Alpha · Last opened/i)).toBeTruthy();
+    expect(screen.getByText(/Active · page ready · fs\.read running/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: `Actions for ${title}` }));
+    fireEvent.click(screen.getByRole('menuitem', { name: `Open ${title} externally` }));
+
+    await waitFor(() =>
+      expect(openExternalNavigation).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'chatgpt' }),
+        'https://chatgpt.com/c/conversation-1',
+      ),
+    );
   });
 
   it('requires an explicit project grant before arming the local relay', () => {

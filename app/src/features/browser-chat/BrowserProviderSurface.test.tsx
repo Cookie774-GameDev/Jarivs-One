@@ -34,6 +34,7 @@ describe('BrowserProviderSurface', () => {
       })),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openExternalNavigation: vi.fn(async () => undefined),
       openChatGptPlugins: vi.fn(async () => undefined),
       subscribeHostGeometry: vi.fn(async (listener: () => void) => {
         hostGeometryListener = listener;
@@ -75,6 +76,7 @@ describe('BrowserProviderSurface', () => {
         }),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openExternalNavigation: vi.fn(async () => undefined),
       openChatGptPlugins: vi.fn(async () => undefined),
       subscribeHostGeometry: vi.fn(async (listener: () => void) => {
         hostGeometryListener = listener;
@@ -104,6 +106,7 @@ describe('BrowserProviderSurface', () => {
       }),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openExternalNavigation: vi.fn(async () => undefined),
       openChatGptPlugins: vi.fn(async () => undefined),
     };
     render(<BrowserProviderSurface provider={browserChatProvider('claude')} runtime={runtime} />);
@@ -131,6 +134,7 @@ describe('BrowserProviderSurface', () => {
       })),
       hideAll: vi.fn(async () => undefined),
       openSystemBrowser: vi.fn(async () => undefined),
+      openExternalNavigation: vi.fn(async () => undefined),
       openChatGptPlugins: vi.fn(async () => undefined),
       subscribeNavigation: vi.fn(async (listener: typeof navigationListener) => {
         navigationListener = listener;

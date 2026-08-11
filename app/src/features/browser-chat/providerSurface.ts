@@ -68,6 +68,7 @@ export interface ProviderSurfaceController {
     | { kind: 'system_browser'; providerId: BrowserChatProviderId }
   >;
   openSystemBrowser(provider: BrowserChatProviderDefinition): Promise<void>;
+  openExternalNavigation(provider: BrowserChatProviderDefinition, url: string): Promise<void>;
   openChatGptPlugins(): Promise<void>;
   hideAll(): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
@@ -208,6 +209,17 @@ export function createProviderSurfaceController(
       await platform.openExternal(provider.homeUrl);
     },
 
+    async openExternalNavigation(provider, url) {
+      if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
+        throw new Error('Unsupported Browser Chat provider definition.');
+      }
+      const normalized = normalizeProviderNavigation(provider.id, url);
+      if (!normalized) {
+        throw new Error('Unsupported Browser Chat provider location.');
+      }
+      await platform.openExternal(normalized.normalizedUrl);
+    },
+
     async openChatGptPlugins() {
       await platform.openExternal(CHATGPT_APPS_URL);
     },
@@ -316,6 +328,9 @@ export const browserChatSurface: ProviderSurfaceController = {
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);
+  },
+  async openExternalNavigation(provider, url) {
+    return (await controller()).openExternalNavigation(provider, url);
   },
   async openChatGptPlugins() {
     return (await controller()).openChatGptPlugins();

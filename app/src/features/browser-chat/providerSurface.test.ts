@@ -204,6 +204,25 @@ describe('Browser Chat managed provider surface', () => {
     expect(fake.opened).toEqual(['https://chatgpt.com/']);
   });
 
+  it('opens only normalized provider-owned resume locations externally', async () => {
+    const fake = platform();
+    const controller = createProviderSurfaceController(fake.implementation);
+
+    await controller.openExternalNavigation(
+      browserChatProvider('chatgpt'),
+      'https://chatgpt.com/c/conversation-1?temporary=true#private',
+    );
+
+    expect(fake.opened).toEqual(['https://chatgpt.com/c/conversation-1']);
+    await expect(
+      controller.openExternalNavigation(
+        browserChatProvider('chatgpt'),
+        'https://chatgpt.com.evil.example/c/stolen',
+      ),
+    ).rejects.toThrow('Unsupported Browser Chat provider location.');
+    expect(fake.opened).toHaveLength(1);
+  });
+
   it('opens ChatGPT Apps setup in the OS default browser', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);
