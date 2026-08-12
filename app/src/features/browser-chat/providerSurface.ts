@@ -163,6 +163,7 @@ export function createProviderSurfaceController(
   const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
   const lastRequestedNavigation = new Map<string, string>();
   const knownSurfaceKeys = new Set<string>();
+  let visibilityRevision = 0;
   const hideExcept = async (selectedSurfaceKey?: string) => {
     await Promise.all(
       [...knownSurfaceKeys]
@@ -193,6 +194,7 @@ export function createProviderSurfaceController(
         return { kind: 'system_browser', providerId: provider.id };
       }
 
+      const requestedVisibilityRevision = visibilityRevision;
       const surfaceKey = `${provider.windowLabel}:${accountProfileKey}`;
       await hideExcept(surfaceKey);
       const relative = {
@@ -204,7 +206,7 @@ export function createProviderSurfaceController(
       let surface = await platform.getSurface(surfaceKey);
       let created = false;
       if (!surface) {
-          let pending = pendingCreations.get(surfaceKey);
+        let pending = pendingCreations.get(surfaceKey);
         if (!pending) {
           pending = Promise.resolve(
             platform.createSurface(surfaceKey, {
@@ -237,6 +239,10 @@ export function createProviderSurfaceController(
       }
       await surface.setPosition({ x: relative.x, y: relative.y });
       await surface.setSize({ width: relative.width, height: relative.height });
+      if (requestedVisibilityRevision !== visibilityRevision) {
+        await surface.hide();
+        return { kind: 'managed', providerId: provider.id };
+      }
       await surface.show();
       await surface.setFocus();
       return { kind: 'managed', providerId: provider.id };
@@ -265,6 +271,7 @@ export function createProviderSurfaceController(
     },
 
     async hideAll() {
+      visibilityRevision += 1;
       await hideExcept();
     },
 
@@ -380,12 +387,7 @@ async function controller(): Promise<ProviderSurfaceController> {
 
 export const browserChatSurface: ProviderSurfaceController = {
   async openManaged(provider, bounds, navigationUrl, accountProfileKey) {
-    return (await controller()).openManaged(
-      provider,
-      bounds,
-      navigationUrl,
-      accountProfileKey,
-    );
+    return (await controller()).openManaged(provider, bounds, navigationUrl, accountProfileKey);
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);

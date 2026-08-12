@@ -202,6 +202,35 @@ describe('Browser Chat managed provider surface', () => {
     expect(fake.created).toHaveLength(1);
   });
 
+  it('does not show an in-flight child surface after the host hides all surfaces', async () => {
+    const fake = platform();
+    const originalCreate = fake.implementation.createSurface;
+    let releaseCreation: (() => void) | undefined;
+    const creationGate = new Promise<void>((resolve) => {
+      releaseCreation = resolve;
+    });
+    fake.implementation.createSurface = async (label, options) => {
+      await creationGate;
+      return originalCreate(label, options);
+    };
+    const controller = createProviderSurfaceController(fake.implementation);
+    const opening = controller.openManaged(
+      browserChatProvider('chatgpt'),
+      { x: 20, y: 30, width: 800, height: 600 },
+      undefined,
+      ACCOUNT_PROFILE_KEY,
+    );
+    await Promise.resolve();
+
+    await controller.hideAll();
+    releaseCreation?.();
+    await opening;
+
+    const surface = fake.windows.get(`browser-chat-chatgpt:${ACCOUNT_PROFILE_KEY}`)!;
+    expect(surface.show).not.toHaveBeenCalled();
+    expect(surface.hide).toHaveBeenCalledOnce();
+  });
+
   it('uses distinct child surfaces and hides the former surface across account profiles', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);
