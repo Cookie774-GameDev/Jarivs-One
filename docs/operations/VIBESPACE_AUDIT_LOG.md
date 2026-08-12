@@ -6,7 +6,7 @@ This file is the operational record for recurring **read-only** audits of VibeSp
 
 ## Current status
 
-Last completed audit: **2026-08-12 13:00 UTC**
+Last completed audit: **2026-08-12 21:00 UTC**
 
 | Severity | Open findings |
 |---|---:|
@@ -28,25 +28,24 @@ Last completed audit: **2026-08-12 13:00 UTC**
 6. **VS-AUDIT-003 — High:** The user-specified Supabase target `vbkkimvedmklebghtkzs` remains AccessRevamp-oriented, while PR #31 identifies `tipeobvisjqvpbzcpckh` as the repository-pinned VibeSpace issuer. Authoritative VibeSpace backend coverage remains unresolved.
 7. **VS-AUDIT-004 — High:** The Stripe connector is authenticated to a different sandbox account than the requested target, and the requested target cannot be read with the current OAuth permission set. The connected Supabase target also retains one unresolved historical webhook-failure warning.
 8. **VS-AUDIT-005 — High:** A historical GitHub push-protection bypass for a Stripe-key pattern remains unverified because direct secret-scanning alert inventory is inaccessible.
-9. **VS-AUDIT-013 — High:** PR #31 remains a very large security-sensitive draft. Current head `eda462daab1f8c6a36a6f5965f831f2fc568a5d4` is **201 commits ahead / 18 behind** current `main`; exact-head frontend CI remains red because Vitest fails and release-manifest validation is skipped.
+9. **VS-AUDIT-013 — High:** PR #31 remains a very large security-sensitive draft. Current head `eda462daab1f8c6a36a6f5965f831f2fc568a5d4` is **201 commits ahead / 19 behind** current `main`; exact-head frontend CI remains red because Vitest fails and release-manifest validation is skipped.
 
 ## Current run summary
 
 ### Checks completed
 
-- **GitHub/default branch:** fetched this audit log before work and again immediately before the only write. Pre-audit `main` was `9d4ecc6bb7fa6ba27e1a7305d88d14663bae7b5e`, the prior audit-log-only commit. No application-code commit reached `main` after the previous audit. Exact CI run `31565734702` is green: install, TypeScript, Vite, Vitest, release-manifest validation, and Rust `cargo check` all passed.
-- **GitHub/governance/security monitoring:** `main` still reports `protected: false`, required-status enforcement is off, and repository rulesets remain empty. Dependabot alerts remain explicitly disabled. Direct secret-scanning alerts, code-scanning alerts, and default Actions workflow-permission configuration remain inaccessible to the integration. Current indexed searches returned no literal `sk_live_`, `whsec_`, `SUPABASE_SERVICE_ROLE_KEY`, `dangerouslySetInnerHTML`, or `Access-Control-Allow-Origin` match; current-index absence does not clear Git history, forks, other branches, caches, or non-indexed content.
-- **GitHub/PR #31:** head remains `eda462daab1f8c6a36a6f5965f831f2fc568a5d4`, open/draft, with 1,569 changed files, 187,511 additions, 10,621 deletions, and 201 commits. It is now **201 ahead / 18 behind** current `main`. Exact-head CI `31449158283` still fails in Vitest after install/typecheck/Vite pass; release-manifest validation is skipped; Rust `cargo check` succeeds. AI-boundary run `31449158290` is green. `install/install.ps1` still returns 404 at this head.
-- **GitHub/collaboration:** no issues, issue comments, inline PR review comments, or PR reviews were updated after the previous cutoff. GitHub Discussions remain disabled.
-- **Updater/release:** `main` still reports app version `1.5.0`, with the raw `releases/channel.json` endpoint first; that manifest still advertises `0.1.48`, Windows x64 only, without a signature field. The release workflow still uses mutable `dtolnay/rust-toolchain@stable`, `swatinem/rust-cache@v2`, and `tauri-apps/tauri-action@v0` references while receiving signing material; its post-build updater-signature verification remains a positive control.
-- **Gmail:** merged-inbox metadata is **INBOX 2,099 total / 1,519 unread**, **SPAM 144 / 97 unread**, **TRASH 260 / 219 unread**. Relative to the prior run: +7 inbox/+7 unread, +2 spam/+2 unread, trash unchanged. Targeted VibeSpace/support/bug/crash/error/security/login/recovery/GitHub/Supabase/Stripe/payment/refund/dispute/webhook/invoice/subscription/billing searches, including relevant spam/trash, found no clear new VibeSpace customer-support, billing, payment, webhook, confirmed unauthorized-access, or application incident after the prior cutoff. The broad matches were unrelated promotions/model notices; the previously recorded Google sign-in/Hostinger notices predate this cutoff. No email, label, read state, or inbox state was changed.
-- **Supabase/environment identity:** management-project listing currently returns `tipeobvisjqvpbzcpckh` as `ACTIVE_HEALTHY`; PR #31 also names that project as the repository-pinned VibeSpace issuer. Direct read-only operations against the user-specified `vbkkimvedmklebghtkzs` continue to work and it is also `ACTIVE_HEALTHY`, but its schema, migrations, cron jobs, tables, and Edge Function remain AccessRevamp-oriented.
-- **Supabase/advisors:** Security Advisor on `vbkkimvedmklebghtkzs` still reports only leaked-password protection disabled at warning severity. Performance Advisor returns informational unused-index candidates; no higher-severity performance item was returned.
-- **Supabase/RLS/policies:** all listed public tables on the specified target have RLS enabled. Sampled critical tables retain owner-bound policies with RESTRICTIVE verified-session gates where applicable; `payment_disputes` has a restrictive browser-deny policy. Authenticated direct profile UPDATE/INSERT/DELETE table privileges are absent, while owner-scoped SELECT remains available. A metadata query returned zero public-schema SECURITY DEFINER functions executable by `anon` or `authenticated`. No cross-account read or mutation test was performed.
-- **Supabase/storage/functions:** all three listed storage buckets are private and have per-object size limits. The only listed active Edge Function remains `accessrevamp-runtime-health`, version 4, with JWT verification enabled; source accepts bounded GET/HEAD health requests, uses server-side environment credentials, applies a four-second upstream timeout, and returns only a readiness boolean.
-- **Supabase/database/migrations/logs:** migration history still ends at `20260729223249 expand_project_intake_to_seven_pages`. API, Auth, Edge Function, Storage, Realtime, and branch-action log queries returned no entries in the current window. PostgreSQL logs show routine checkpoints and recurring AccessRevamp payment-anomaly/webhook-liveness/preview-expiry cron jobs completing; no ERROR/FATAL/PANIC entry was returned in the sampled output. Branch listing still returns `Project not found` despite successful reads against the same target, so branch coverage remains incomplete.
-- **Supabase/payment-control state:** checkout remains enabled, expected live mode enabled, live payment approved, refunds disabled, and two-person refunds required. One `warning`-severity open `webhook_failure` incident remains, first/last seen 2026-07-28. Last successful webhook remains 2026-07-25; later event/fulfillment markers remain unset. Aggregate checks returned **1 open payment incident, 0 disputes, 0 open refund requests, 0 open refund authorizations, 0 unprocessed Stripe events, and 0 non-final refunds**.
-- **Stripe:** the connected account is still a different sandbox account (`acct_1TgcFB…`) from the requested target (`acct_1TgcEx…`). A fresh direct requested-target account read was denied because the OAuth connection lacks the required account-retrieve permission. The audit deliberately did not inspect payment/customer/subscription data from the unrelated connected account. No Stripe write was invoked.
+- **GitHub/default branch:** fetched this audit log before work and again immediately before the only write. Pre-audit `main` was `83a29aa86fe73fefec890254a8bec69478860e97`, the prior audit-log-only commit. No application-code commit reached `main` after the previous audit. Exact CI run `31601513456` is green: install, TypeScript, Vite, Vitest, release-manifest validation, and Rust `cargo check` all passed.
+- **GitHub/governance/security monitoring:** `main` remains unprotected with required-status enforcement off and no repository rulesets. Dependabot alerts remain disabled. Direct secret-scanning and code-scanning alert inventories remain inaccessible to the integration. Current indexed searches returned no literal `sk_live_`, `whsec_`, `SUPABASE_SERVICE_ROLE_KEY`, or `dangerouslySetInnerHTML` result; current-index absence does not clear Git history, forks, other branches, caches, or non-indexed content.
+- **GitHub/PR #31:** head remains `eda462daab1f8c6a36a6f5965f831f2fc568a5d4`, open/draft, with 1,569 changed files, 187,511 additions, 10,621 deletions, and 201 commits. It is now **201 ahead / 19 behind** current `main`. Exact-head CI `31449158283` remains red: dependency install, TypeScript, Vite, and Rust `cargo check` pass; Vitest fails and release-manifest validation is skipped. The AI-boundary workflow remains green. `install/install.ps1` is still absent at this head.
+- **GitHub/collaboration:** no new operational issue, issue-comment, or inline PR-review-comment activity was found after the previous cutoff. Discussions remain unavailable/disabled through the repository surface reviewed.
+- **Updater/release:** `main` still reports app version `1.5.0`, with the raw `releases/channel.json` endpoint first; that manifest still advertises `0.1.48`, Windows x64 only, without a signature field. The signed release workflow still uses mutable `dtolnay/rust-toolchain@stable`, `swatinem/rust-cache@v2`, and `tauri-apps/tauri-action@v0` references while receiving signing material; post-build updater-signature verification remains a positive control.
+- **Gmail:** merged-inbox metadata is **INBOX 2,110 total / 1,530 unread**, **SPAM 145 / 98 unread**, **TRASH 260 / 219 unread**. Relative to the prior run: +11 inbox/+11 unread, +1 spam/+1 unread, trash unchanged. Targeted VibeSpace/support/bug/crash/error/security/login/recovery/GitHub/Supabase/Stripe/payment/refund/dispute/webhook/invoice/subscription/billing searches, including `in:anywhere` coverage for relevant spam/trash, found no clear new VibeSpace customer-support, billing, payment, webhook, confirmed unauthorized-access, or application incident after the prior cutoff. No email, label, read state, or inbox state was changed.
+- **Supabase/environment identity:** direct read-only advisor/table/migration/function/log/SQL operations against `vbkkimvedmklebghtkzs` succeeded, but its schema/functions/migrations remain AccessRevamp-oriented while the repository evidence identifies `tipeobvisjqvpbzcpckh` as the pinned VibeSpace issuer. Authoritative VibeSpace backend coverage therefore remains unresolved.
+- **Supabase/advisors:** Security Advisor on `vbkkimvedmklebghtkzs` still reports leaked-password protection disabled. Performance Advisor returns informational unused-index candidates; no higher-severity performance advisory was returned.
+- **Supabase/RLS/grants:** all listed public tables on the specified target have RLS enabled. Sampled `profiles`, `orders`, `customer_projects`, `refund_requests`, and `payment_disputes` policies remain owner-bound/restrictive as previously recorded. `anon` has no SELECT/INSERT/UPDATE/DELETE table privilege on those sampled sensitive tables. `authenticated` can SELECT owner-scoped `profiles`, `orders`, `customer_projects`, and `refund_requests`; can INSERT `refund_requests` subject to RLS; and has no direct UPDATE/DELETE on the sampled tables. A metadata query returned zero public-schema SECURITY DEFINER functions executable by `anon` or `authenticated`. No cross-account read or mutation test was performed.
+- **Supabase/storage/functions/logs:** all three listed storage buckets remain private. The listed active Edge Function remains `accessrevamp-runtime-health`; no new vulnerability was established in the reviewed source. API/Auth/Edge Function/Storage/Realtime log windows returned no material new incident, and sampled PostgreSQL output showed routine monitoring/checkpoint activity without a returned ERROR/FATAL/PANIC event.
+- **Supabase/payment-control state:** aggregate read-only checks returned **1 open payment security incident, 0 open disputes, 0 open refund requests, 0 open refund authorizations, 0 unprocessed Stripe events, and 0 non-final refunds**. The one incident remains the previously recorded historical warning-level webhook failure; no new payment incident was established.
+- **Stripe:** the connected Stripe session still belongs to a different sandbox account than the requested `acct_1TgcEx…` target. A fresh direct requested-target retrieval was denied because the OAuth connection lacks the required account-retrieve permission. The audit deliberately did not inspect payment/customer/subscription data from the unrelated connected account. No Stripe write was invoked.
 
 ### New findings
 
@@ -54,12 +53,11 @@ Last completed audit: **2026-08-12 13:00 UTC**
 
 ### Changed/revalidated findings
 
-- **VS-AUDIT-013 / VS-AUDIT-028:** PR #31 is unchanged at the same head, but comparison drift increased to **201 ahead / 18 behind** current `main`; exact-head frontend CI remains red and AI-boundary/Rust checks remain green.
-- **VS-AUDIT-007:** Gmail volume changed to 2,099 inbox / 1,519 unread, 144 spam / 97 unread, 260 trash / 219 unread; targeted searches found no clear new VibeSpace customer incident.
-- **VS-AUDIT-003:** revalidated. The repository-pinned `tipeob…` project is visible/healthy while the specified `vbkk…` target is separately healthy but remains AccessRevamp-oriented.
-- **VS-AUDIT-004:** revalidated. Requested Stripe target remains inaccessible; the connected Supabase payment-control state still contains one open historical webhook warning and no open dispute/refund/unprocessed-event aggregate.
+- **VS-AUDIT-013 / VS-AUDIT-028:** PR #31 remains at the same immutable head, while comparison drift increased to **201 ahead / 19 behind** current `main`; exact-head frontend CI remains red and AI-boundary/Rust compile checks remain green.
+- **VS-AUDIT-007:** Gmail volume changed to 2,110 inbox / 1,530 unread, 145 spam / 98 unread, 260 trash / 219 unread; targeted searches found no clear new VibeSpace customer incident.
+- **VS-AUDIT-003:** revalidated. The specified Supabase target remains separately readable but AccessRevamp-oriented; authoritative repository-pinned VibeSpace backend coverage remains missing.
+- **VS-AUDIT-004:** revalidated. Requested Stripe target remains inaccessible; the specified Supabase payment-control state still contains one open historical webhook warning and no open dispute/refund/unprocessed-event aggregate.
 - **VS-AUDIT-008 / VS-AUDIT-010:** revalidated by current Supabase Security/Performance Advisors.
-- **VS-AUDIT-011:** no recurrence observed in the current API-log window; historical privacy evidence remains unresolved.
 - **VS-AUDIT-031 / VS-AUDIT-029 / VS-AUDIT-030 / VS-AUDIT-018 / VS-AUDIT-005 / VS-AUDIT-022 / VS-AUDIT-024:** revalidated unchanged.
 
 ### Resolved findings
@@ -68,9 +66,9 @@ Last completed audit: **2026-08-12 13:00 UTC**
 
 ### Connector failures and blind spots
 
-- **Supabase:** branch listing still returns `Project not found` despite successful SQL/advisor/log/table/function reads against `vbkkimvedmklebghtkzs`. More importantly, that specified project is AccessRevamp-oriented and not the repository-pinned VibeSpace issuer, so authoritative production VibeSpace RLS/log/function/storage/performance coverage is still missing. Metadata review is not a substitute for two-account negative authorization testing.
-- **Stripe:** the connected OAuth session belongs to a different sandbox account than the requested target and lacks the permission needed to retrieve that target. Requested-account failed/incomplete payments, refunds, disputes, subscriptions, invoices, customers, webhooks/events, suspicious activity, and overall account health remain unverified.
-- **GitHub:** secret-scanning/code-scanning alert inventories and default Actions permission configuration are integration-blocked; Dependabot alerts are disabled. PR #31 is too large for exhaustive dynamic or line-by-line review in one pass.
+- **Supabase:** the specified project is AccessRevamp-oriented and not the repository-pinned VibeSpace issuer, so authoritative production VibeSpace RLS/log/function/storage/performance coverage remains missing. Metadata review is not a substitute for two-account negative authorization testing.
+- **Stripe:** the connected OAuth session belongs to a different sandbox account than the requested target and lacks permission to retrieve that target. Requested-account failed/incomplete payments, refunds, disputes, subscriptions, invoices, customers, webhooks/events, suspicious activity, and overall account health remain unverified.
+- **GitHub:** secret-scanning/code-scanning alert inventories remain integration-blocked and Dependabot alerts are disabled. PR #31 is too large for exhaustive dynamic or line-by-line review in one pass.
 - **Runtime/release:** packaged Windows/macOS/Linux execution, signed installer validation, authoritative VibeSpace production migrations, two-account authorization, requested Stripe test-mode lifecycle/webhooks, deployed OAuth/MCP, rollback, high-volume media/Model Foundry stress, and long-duration soak/capacity remain unverified.
 - **Gmail:** merged-account scale, aliases/routing, queue ownership, response state, and SLA tracking limit completeness. Relevant spam/trash were searched, but no-match does not guarantee absence elsewhere.
 
@@ -85,7 +83,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** PR #31 file state/description; `main` installer and release workflow
 - **Evidence summary:** `install/install.ps1` remains absent at PR head `eda462d…`, while the release workflow still publishes that path as the Windows one-line installer. No current-user impact is claimed because the deletion is unmerged.
 - **First seen:** 2026-08-10 05:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on draft PR #31; not shipped on `main`
 - **Affected component:** Windows installation/update entry point and release documentation
 - **Recommended remediation:** Before merge, restore the installer or intentionally replace the Windows install mechanism and update every reference; add CI asserting documented installer paths exist and parse/dry-run successfully.
@@ -94,9 +92,9 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-029 — Default branch has no enforced protection or ruleset
 - **Severity:** High
 - **Source:** GitHub `main` branch metadata and repository rulesets API
-- **Evidence summary:** `main` still reports `protected: false`, required-status enforcement off, and no repository rulesets. A direct push is technically possible without a repository-enforced PR/review/CI gate. No unauthorized push is claimed.
+- **Evidence summary:** `main` still reports unprotected/required-status enforcement off, and repository rulesets remain empty. A direct push is technically possible without a repository-enforced PR/review/CI gate. No unauthorized push is claimed.
 - **First seen:** 2026-08-09 21:03 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open
 - **Affected component:** Default-branch integrity, merge/release governance
 - **Recommended remediation:** Add an enforced ruleset requiring PRs, independent approvals, current required CI/security checks, force-push/deletion blocking, and tightly restricted bypass actors.
@@ -107,7 +105,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** `.github/workflows/release.yml`
 - **Evidence summary:** The release workflow still invokes mutable references including `dtolnay/rust-toolchain@stable`, `swatinem/rust-cache@v2`, and `tauri-apps/tauri-action@v0` while the job has repository-write authority and receives signing material. No upstream-action compromise is alleged; post-build signature checks are a positive control.
 - **First seen:** 2026-08-09 21:03 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open
 - **Affected component:** Release supply chain, signing/updater keys, official artifacts
 - **Recommended remediation:** Pin release actions to reviewed immutable full SHAs, minimize token permissions, protect signing secrets behind release approvals, and document controlled updates.
@@ -118,7 +116,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** `main` `app/src-tauri/tauri.conf.json` and `releases/channel.json`
 - **Evidence summary:** `main` identifies VibeSpace as `1.5.0`, while its first updater endpoint serves `0.1.48`, Windows x64 only, with no artifact-signature field.
 - **First seen:** 2026-08-05 13:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on `main`
 - **Affected component:** Desktop update discovery and security/reliability patch delivery
 - **Recommended remediation:** Ship one authoritative signed manifest path, package-test signed update discovery/rollback, and require target/URL/signature validation in release gating.
@@ -137,10 +135,10 @@ Last completed audit: **2026-08-12 13:00 UTC**
 
 ### VS-AUDIT-003 — Connected Supabase audit target does not match repository-pinned VibeSpace backend evidence
 - **Severity:** High
-- **Source:** Live project listing/schema/migrations/functions/logs; PR #31 environment evidence
-- **Evidence summary:** Management listing returns `tipeobvisjqvpbzcpckh` as active/healthy and PR #31 calls it the repository-pinned VibeSpace issuer. Direct reads of `vbkkimvedmklebghtkzs` work and report healthy service status, but its schema/functions/cron/migrations remain AccessRevamp-oriented.
+- **Source:** Live project/schema/migrations/functions/logs; PR #31 environment evidence
+- **Evidence summary:** Direct reads of `vbkkimvedmklebghtkzs` work, but its schema/functions/cron/migrations remain AccessRevamp-oriented. PR #31 evidence identifies `tipeobvisjqvpbzcpckh` as the repository-pinned VibeSpace issuer.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open; authoritative VibeSpace backend is not the specified connected target
 - **Affected component:** Audit coverage, authentication, deployment assurance, environment isolation
 - **Recommended remediation:** Document one authoritative production VibeSpace project/owner, connect read-only audit access to that exact project, reconcile app/Edge Function/MCP/deployment configuration, and rerun all backend checks there.
@@ -149,9 +147,9 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-004 — Stripe account/catalog mismatch and webhook-state uncertainty
 - **Severity:** High
 - **Source:** Stripe connector metadata/OAuth permissions; connected-Supabase payment controls
-- **Evidence summary:** The active Stripe connector is authenticated to a different sandbox account (`acct_1TgcFB…`) from the requested target (`acct_1TgcEx…`); requested-target retrieval is denied by OAuth permissions. The AccessRevamp-oriented Supabase target reports checkout enabled/live-approved, refunds disabled, one open warning `webhook_failure` dated 2026-07-28, and last successful webhook 2026-07-25, with zero disputes/open refunds/unprocessed Stripe events/non-final refunds in aggregate.
+- **Evidence summary:** The active Stripe connector is authenticated to a different sandbox account from the requested target; requested-target retrieval is denied by OAuth permissions. The AccessRevamp-oriented Supabase target has one open historical warning-level payment/webhook incident and current aggregate checks show zero open disputes, refund requests, refund authorizations, unprocessed Stripe events, and non-final refunds.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open; requested Stripe target remains unauditable end-to-end
 - **Affected component:** Checkout, payment fulfillment, refunds, subscriptions, webhooks, environment configuration
 - **Recommended remediation:** Connect/read-authorize the exact VibeSpace Stripe account, reconcile catalog/prices/webhook signing with the authoritative backend, review the historical webhook warning, and run isolated test-mode purchase/failure/refund/subscription/reconciliation flows.
@@ -162,7 +160,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** Historical GitHub secret-scanning notification; current search/alert endpoint limitations
 - **Evidence summary:** GitHub previously reported a push-protection bypass for a Stripe API-key pattern in a public test file. Selected current literal searches return no result, but direct secret-scanning alerts remain inaccessible and current-index absence does not clear history/forks or prove the value synthetic/revoked.
 - **First seen:** 2026-08-01 20:01 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open pending direct alert validation and revocation decision
 - **Affected component:** Public repository history and credential hygiene
 - **Recommended remediation:** Review the original alert directly, prove the value synthetic or rotate/revoke it, replace key-shaped fixtures, and inspect history/forks/caches.
@@ -171,9 +169,9 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-013 — Draft PR #31 remains unsafe to merge/deploy without additional release evidence
 - **Severity:** High
 - **Source:** PR metadata/comparison, exact-head Actions, selected code/release review
-- **Evidence summary:** Head `eda462d…` remains open/draft with 1,569 files, 187,511 additions, 10,621 deletions, and 201 commits; it is **201 ahead / 18 behind** current `main`. Exact-head Rust compile and AI-boundary evaluation pass, but frontend CI fails Vitest and skips release-manifest validation. The branch spans auth, Supabase/Stripe, Tauri/native authority, browser/MCP/OAuth/relay, model training, multimodal chat, voice/calling, AI runtime, and deployment tooling, and still lacks the documented Windows installer.
+- **Evidence summary:** Head `eda462d…` remains open/draft with 1,569 files, 187,511 additions, 10,621 deletions, and 201 commits; it is **201 ahead / 19 behind** current `main`. Exact-head Rust compile and AI-boundary evaluation pass, but frontend CI fails Vitest and skips release-manifest validation. The branch spans auth, Supabase/Stripe, Tauri/native authority, browser/MCP/OAuth/relay, model training, multimodal chat, voice/calling, AI runtime, and deployment tooling, and still lacks the documented Windows installer.
 - **First seen:** 2026-08-02 19:17 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open; unmerged draft; exact-head frontend CI failing and production-like evidence incomplete
 - **Affected component:** Merge/release readiness and application/runtime/security/billing integrity
 - **Recommended remediation:** Freeze/split scope, sync `main`, resolve installer ownership, fix/rerun exact-head CI, require independent subsystem/security/billing/native review and dedicated suites, and validate packaged multi-platform apps, authoritative migrations, two-account authorization, requested Stripe test mode, OAuth/MCP deployment, rollback, and resource-exhaustion/soak on one immutable SHA.
@@ -184,7 +182,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** Historical Gmail Google Payments/Workspace billing notification
 - **Evidence summary:** A prior notice said a merged AccessRevamp-oriented Workspace Business Starter subscription was suspended because billing setup was incomplete. No evidence establishes VibeSpace dependency and no superseding VibeSpace-relevant status message was found this run.
 - **First seen:** 2026-08-04 20:47 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open/reopened; VibeSpace relevance unconfirmed
 - **Affected component:** Workspace/mailbox availability for a merged administrative/support domain
 - **Recommended remediation:** Determine whether VibeSpace support/admin identity/recovery relies on this tenant; if so restore billing/access and verify mailbox/data continuity.
@@ -192,10 +190,10 @@ Last completed audit: **2026-08-12 13:00 UTC**
 
 ### VS-AUDIT-020 — Weak password/password-change defaults in Supabase repository configuration
 - **Severity:** Medium
-- **Source:** Repository `supabase/config.toml`; live Security Advisor on specified target
-- **Evidence summary:** Repository configuration has historically specified a six-character password minimum, no composition requirement, and `secure_password_change = false`. The specified live target also reports leaked-password protection disabled, but it is AccessRevamp-oriented rather than the repository-pinned VibeSpace backend.
+- **Source:** Repository Supabase configuration; live Security Advisor on specified target
+- **Evidence summary:** Repository configuration has historically specified a six-character password minimum, no composition requirement, and `secure_password_change = false`. The specified live target still reports leaked-password protection disabled, but it is AccessRevamp-oriented rather than the repository-pinned VibeSpace backend.
 - **First seen:** 2026-08-06 05:15 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open; authoritative VibeSpace hosted applicability unverified
 - **Affected component:** Supabase Auth password policy/account-change protection
 - **Recommended remediation:** Use stronger passphrase-aligned minimums, enable recent reauthentication and leaked-password protection where supported, and verify password reset/change on the authoritative project.
@@ -204,9 +202,9 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-007 — VibeSpace support routing and triage cannot be reliably verified
 - **Severity:** Medium
 - **Source:** Gmail label metadata and targeted inbox/spam/trash searches
-- **Evidence summary:** No clear new VibeSpace customer operational request was found. Current counts are INBOX 2,099 / 1,519 unread, SPAM 144 / 97 unread, TRASH 260 / 219 unread. Public aliases, routing rules, queue ownership, response state, and SLA tracking remain unverified.
+- **Evidence summary:** No clear new VibeSpace customer operational request was found. Current counts are INBOX 2,110 / 1,530 unread, SPAM 145 / 98 unread, TRASH 260 / 219 unread. Public aliases, routing rules, queue ownership, response state, and SLA tracking remain unverified.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open
 - **Affected component:** Customer-support operations
 - **Recommended remediation:** Confirm public support routing with controlled external delivery and a dedicated VibeSpace queue with ownership/response-state/SLA tracking.
@@ -215,9 +213,9 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-008 — Supabase leaked-password protection is disabled
 - **Severity:** Medium
 - **Source:** Live Supabase Security Advisor for specified target
-- **Evidence summary:** Security Advisor still reports `auth_leaked_password_protection` disabled on `vbkkimvedmklebghtkzs`. Authoritative VibeSpace applicability remains unresolved because of VS-AUDIT-003.
+- **Evidence summary:** Security Advisor still reports leaked-password protection disabled on `vbkkimvedmklebghtkzs`. Authoritative VibeSpace applicability remains unresolved because of VS-AUDIT-003.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on connected project; authoritative VibeSpace applicability unverified
 - **Affected component:** Password authentication
 - **Recommended remediation:** Enable leaked-password protection where supported, strengthen password policy, and verify reset/change reauthentication on every in-scope environment.
@@ -228,7 +226,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** Tauri configuration/capabilities/custom commands/windows and selected PR browser/native changes
 - **Evidence summary:** The desktop retains broad native functionality and a broad asset/CSP connectivity surface. Prior Browser Chat review found positive isolation controls and no arbitrary remote-content-to-privileged-IPC exploit was demonstrated. No application-code commit reached `main` this interval.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open hardening review
 - **Affected component:** Tauri asset/native HTTP/process/updater permissions, IPC, file access, CSP/window isolation
 - **Recommended remediation:** Maintain explicit per-window command allowlists, separate privileged/unprivileged WebViews, narrow roots/origins/plugin permissions, and require negative IPC/capability tests.
@@ -236,10 +234,10 @@ Last completed audit: **2026-08-12 13:00 UTC**
 
 ### VS-AUDIT-011 — Email addresses are embedded in API URLs and retained in logs
 - **Severity:** Medium
-- **Source:** Historical live Supabase API logs; current empty API-log window
-- **Evidence summary:** Historical logs showed suppression-list requests placing batches of email addresses in query parameters, causing log retention. The current API-log query returned no entries, so no recurrence was observed; historical retention/path behavior has not been disproved. Traffic appeared AccessRevamp-related.
+- **Source:** Historical live Supabase API logs; current log window
+- **Evidence summary:** Historical logs showed suppression-list requests placing batches of email addresses in query parameters, causing log retention. Current API-log review returned no material recurrence, so historical retention/path behavior remains unresolved rather than newly active. Traffic appeared AccessRevamp-related.
 - **First seen:** 2026-08-02 05:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open historical privacy finding; no current recurrence observed
 - **Affected component:** Privacy/logging/suppression-list processing
 - **Recommended remediation:** Move address data to bounded server-side bodies/RPC or keyed hashes, minimize retention, restrict log access, and review historical deletion controls.
@@ -250,7 +248,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** GitHub Dependabot/security configuration and default CI
 - **Evidence summary:** Dependabot alerts remain disabled. Default CI has no repository-wide dependency-vulnerability audit gate and does not require every native/MCP security suite. Direct secret/code-scanning inventories remain integration-blocked. This is an assurance gap, not evidence of a currently exploitable dependency.
 - **First seen:** 2026-08-07 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open
 - **Affected component:** Dependency vulnerability monitoring and release reproducibility
 - **Recommended remediation:** Enable reviewed dependency alerts/updates, add dependency audits for every package ecosystem, pin/lock release resolutions where appropriate, and require MCP/native security tests on the immutable release SHA.
@@ -261,7 +259,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** PR #31 chat media implementation; prior direct review
 - **Evidence summary:** Prior review established up to 24 media items, videos up to 40 MiB each, and no aggregate-byte ceiling, with representation/decoding paths capable of large duplicate memory footprints. No remote trigger or shipping to `main` was established. PR head is unchanged, so no fix was established.
 - **First seen:** 2026-08-08 05:05 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on draft PR #31; not shipped on `main`
 - **Affected component:** Chat composer media, renderer memory, video preview/model preprocessing
 - **Recommended remediation:** Enforce aggregate draft bytes before reads, lower global video count, prefer Blob/object URLs or bounded temp-file references, avoid full-file copies, and add near-limit stress tests.
@@ -272,7 +270,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** `.github/workflows/ci.yml`, prior PR release evidence, MCP Worker package
 - **Evidence summary:** Default CI still runs Rust `cargo check --release` rather than the complete native unit/security suite, and dedicated MCP Worker checks remain outside the root required gate. Current `main` CI is green but does not close this coverage gap.
 - **First seen:** 2026-08-08 13:15 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open
 - **Affected component:** Native Tauri command authority, MCP gateway, security-regression CI
 - **Recommended remediation:** Add Rust unit/security tests and MCP Worker test/typecheck/dry-run checks to required CI and require them on the immutable release SHA.
@@ -283,7 +281,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** PR #31 Cloudflare MCP Worker; prior direct review
 - **Evidence summary:** Prior review found the MCP request guard relying on declared `Content-Length`, treating omission as zero, before handing the request to the MCP SDK. Authentication, canonical-host, and allowlisted-origin controls are present; no auth bypass/code execution was shown. PR head is unchanged, so no fix was established.
 - **First seen:** 2026-08-08 21:13 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on unmerged PR #31
 - **Affected component:** Public Cloudflare MCP HTTP endpoint and request resource consumption
 - **Recommended remediation:** Enforce actual received-byte limits before SDK parsing regardless of headers and add omitted/inaccurate/chunked/oversized-body tests.
@@ -294,7 +292,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** PR #31 OAuth consent site; prior direct review
 - **Evidence summary:** The consent page asks for credentials while importing Supabase JS directly from a third-party CDN at runtime. No malicious CDN behavior, XSS, or open redirect was demonstrated; the issue is avoidable supply-chain trust on a credential-handling origin. PR head is unchanged.
 - **First seen:** 2026-08-08 21:13 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on unmerged/unverified deployment path
 - **Affected component:** OAuth consent/sign-in page and credential confidentiality/availability
 - **Recommended remediation:** Bundle/self-host the audited client, use a restrictive CSP, pin/verify build dependencies, and test the deployed artifact.
@@ -305,7 +303,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** PR #31 Model Foundry UI/native ingestion path; prior direct review
 - **Evidence summary:** Native multi-select source ingestion has a 64 MiB per-source limit but no source-count or aggregate-byte cap. Processing retains normalized chunks/artifacts in memory; a large aggregate selection can consume substantial memory/CPU/disk. This is a local availability/reliability risk, not a remote exploit claim. PR head is unchanged.
 - **First seen:** 2026-08-09 05:02 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on unmerged PR #31
 - **Affected component:** Model Foundry knowledge-source ingestion, native process memory/CPU/disk reliability
 - **Recommended remediation:** Add maximum source count and aggregate-byte budgets in UI/native enforcement, stream/chunk large files, bound artifact size/active jobs, and add near-limit/concurrent stress tests.
@@ -316,7 +314,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** GitHub Actions exact-head run `31449158283` for PR #31
 - **Evidence summary:** At current PR head `eda462d…`, dependency install, TypeScript, Vite build, and Rust compile pass, but Vitest fails and release-manifest validation is skipped. Prior annotations show duplicate/missing cloud-sync lifecycle calls and an expected authority becoming undefined. No production crash, cross-account access, or exploit is established.
 - **First seen:** 2026-08-09 13:01 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open on draft PR #31; current exact-head CI failing
 - **Affected component:** Account identity authority, cloud-sync loop lifecycle, frontend CI/release assurance
 - **Recommended remediation:** Make account-authority transitions deterministic and single-owner, ensure old loops quiesce before replacement, await retry/cancellation cleanup, preserve focused regressions, and rerun the immutable head until Vitest/release-manifest validation are green.
@@ -325,7 +323,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-014 — Administrative identity/application authorization events
 - **Severity:** Informational
 - **Source:** Gmail Google/Supabase/Stripe/Fly.io/GitHub security and authorization notifications
-- **Evidence summary:** A new Google-account sign-in alert arrived at 2026-08-12 01:54 UTC, and a Sign in with Google notice recorded a Hostinger authorization at 2026-08-11 22:00 UTC. The messages do not establish unauthorized access or VibeSpace impact, and sensitive account details are omitted. Historical authorization/recovery/sign-in notices likewise may be owner-initiated. No newer matching administrative security notice was identified after the current audit cutoff.
+- **Evidence summary:** The latest recorded material administrative signals remain a Google-account sign-in alert at 2026-08-12 01:54 UTC and a Sign in with Google Hostinger authorization at 2026-08-11 22:00 UTC. They do not establish unauthorized access or VibeSpace impact. No newer matching administrative security notice was identified in this run.
 - **First seen:** 2026-08-03 03:06 UTC
 - **Last seen:** 2026-08-12 01:54 UTC
 - **Status:** Open; owner confirmation required for unrecognized activity
@@ -349,7 +347,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 - **Source:** Live Supabase Performance Advisor
 - **Evidence summary:** Performance Advisor returns multiple `unused_index` informational candidates across the AccessRevamp-oriented schema and no higher-severity item in the returned set. Low/atypical traffic means the signal alone does not justify deletion.
 - **First seen:** 2026-08-01 21:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Open; observe on relevant environment
 - **Affected component:** PostgreSQL maintenance/write overhead
 - **Recommended remediation:** Observe representative query statistics and remove/consolidate indexes only after proving redundancy and constraint/query safety on the authoritative project.
@@ -362,7 +360,7 @@ Last completed audit: **2026-08-12 13:00 UTC**
 ### VS-AUDIT-012 — Verified sessions could update another customer profile
 - **Severity:** Critical
 - **Source:** Historical/current live Supabase RLS/profile/grant inspection of connected target
-- **Evidence summary:** Historical state allowed a verified session to update a profile row without proving ownership. Current connected-target state has owner-bound policies with RESTRICTIVE verified-session gating; current grants also deny authenticated direct profile UPDATE/INSERT/DELETE, and metadata shows no public SECURITY DEFINER browser-executable function. No cross-account mutation test was performed.
+- **Evidence summary:** Historical state allowed a verified session to update a profile row without proving ownership. Current connected-target state has owner-bound policies with RESTRICTIVE verified-session gating; current grants deny authenticated direct profile UPDATE/INSERT/DELETE, and metadata shows no public SECURITY DEFINER browser-executable function. No cross-account mutation test was performed.
 - **First seen:** 2026-08-02 21:00 UTC
 - **Last seen as open:** 2026-08-11 05:00 UTC
 - **Resolved:** 2026-08-11 13:00 UTC
@@ -397,13 +395,13 @@ Last completed audit: **2026-08-12 13:00 UTC**
 
 ### VS-AUDIT-021 — Default-branch frontend CI failed Vitest and skipped release-manifest validation
 - **Severity:** Medium
-- **Source:** Historical failing `main` runs and current successful run `31565734702`
-- **Evidence summary:** This finding opened after an audit-log-only `main` head failed Vitest, was resolved, reopened after another audit-log-only failure, and is resolved again. Current pre-audit `main` head `9d4ecc6b…` changes only this audit log and its exact CI is green. No application-code remediation is claimed.
+- **Source:** Historical failing `main` runs and current successful run `31601513456`
+- **Evidence summary:** This finding opened after an audit-log-only `main` head failed Vitest, was resolved, reopened after another audit-log-only failure, and is resolved again. Current pre-audit `main` changes only this audit log and its exact CI is green. No application-code remediation is claimed.
 - **First seen:** 2026-08-07 05:06 UTC
 - **Historically resolved:** 2026-08-07 21:00 UTC
 - **Reopened:** 2026-08-09 21:03 UTC
 - **Resolved again:** 2026-08-10 05:00 UTC
-- **Last seen:** 2026-08-12 13:00 UTC
+- **Last seen:** 2026-08-12 21:00 UTC
 - **Status:** Resolved for current `main` CI health
 - **Affected component:** Default-branch frontend test lifecycle and release-manifest gate
 - **Recommended remediation:** Continue deterministic async cleanup and keep Vitest/release-manifest validation required by branch governance.
@@ -468,5 +466,6 @@ Last completed audit: **2026-08-12 13:00 UTC**
 | 2026-08-11 21:00 | No new/resolved findings. A Supabase advisor email reported RLS disabled in another project, strengthening VS-AUDIT-016. Specified target remained RLS-enabled on all listed public tables; historical webhook warning persisted; `main` green/unprotected; PR #31 201 ahead/16 behind and frontend-red. |
 | 2026-08-12 05:00 | **No new or newly resolved findings.** `main` advanced only by the prior audit-log commit `654557b0…`; exact CI `31536748530` is green. PR #31 remains `eda462d…`, 201 ahead/17 behind, frontend-red at Vitest, and missing the Windows installer. Branch protection/rulesets, stale updater, mutable release actions, disabled Dependabot, secret/code-scanning visibility, and incomplete native/MCP required tests remain open. Management project listing now directly reinforces that `tipeob…` is the visible active VibeSpace-pinned Supabase project while requested `vbkk…` remains AccessRevamp-oriented. The requested Stripe account remains unreadable because the connected OAuth session is a different sandbox and lacks account-retrieve permission. Gmail counts are INBOX 2,092/1,512 unread, SPAM 142/95 unread, TRASH 260/219 unread; a new Google sign-in alert and Hostinger authorization notice update VS-AUDIT-014 without proving unauthorized access. Specified-target Supabase advisors/RLS/storage/functions/logs/payment aggregates were revalidated; leaked-password protection remains disabled and the single historical webhook warning remains open. No remediation was performed. |
 | 2026-08-12 13:00 | **No new or newly resolved findings.** `main` advanced only by the prior audit-log commit `9d4ecc6b…`; exact CI `31565734702` is green. PR #31 remains `eda462d…`, 201 ahead/18 behind, frontend-red at Vitest, and missing the Windows installer; AI-boundary and Rust compile checks remain green. Branch protection/rulesets, stale updater, mutable release actions, disabled Dependabot, secret/code-scanning visibility, incomplete native/MCP required tests, Supabase environment mismatch, and requested Stripe-account access remain open. Gmail counts are INBOX 2,099/1,519 unread, SPAM 144/97 unread, TRASH 260/219 unread with no clear new VibeSpace customer/security/billing incident after the prior cutoff. Specified-target Supabase advisors/RLS/grants/storage/functions/logs/migrations/payment aggregates were revalidated; all listed public tables remain RLS-enabled, leaked-password protection remains disabled, and the single historical webhook warning remains open. No remediation was performed. |
+| 2026-08-12 21:00 | **No new or newly resolved findings.** Pre-audit `main` was prior audit-log-only commit `83a29aa8…`; exact CI `31601513456` is green. PR #31 remains `eda462d…`, 201 ahead/19 behind, frontend-red at Vitest, and missing the Windows installer; AI-boundary and Rust compile checks remain green. `main` remains unprotected/no-ruleset, the updater manifest remains stale, mutable release actions and disabled Dependabot remain open, and direct secret/code-scanning alert inventory remains inaccessible. Gmail counts are INBOX 2,110/1,530 unread, SPAM 145/98 unread, TRASH 260/219 unread with no clear new VibeSpace support/security/billing incident after the prior cutoff. Specified-target Supabase RLS/grants/storage/advisors/logs/payment aggregates were revalidated: all listed public tables remain RLS-enabled, sampled browser-role privileges remain constrained by RLS/grants, all three buckets are private, leaked-password protection remains disabled, and the single historical webhook warning remains the only open payment-security incident. Requested Stripe target remains inaccessible because the connected session is a different sandbox and lacks account-retrieve permission. No remediation was performed. |
 
 Every run was read-only except for maintaining this file. No application, repository-settings/collaboration, database, Supabase, Stripe, payment, customer, subscription, dispute, Gmail, label, or inbox remediation has been performed by the audit automation.
