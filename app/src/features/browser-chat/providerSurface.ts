@@ -59,6 +59,7 @@ export interface ProviderSurfacePlatform {
     label: string,
     options: WebviewOptions,
   ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
+  hideAllSurfaces?(): Promise<void>;
   openExternal(url: string): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
   subscribeNavigation?(
@@ -272,7 +273,11 @@ export function createProviderSurfaceController(
 
     async hideAll() {
       visibilityRevision += 1;
-      await hideExcept();
+      if (platform.hideAllSurfaces) {
+        await platform.hideAllSurfaces();
+      } else {
+        await hideExcept();
+      }
     },
 
     async subscribeHostGeometry(listener) {
@@ -358,6 +363,9 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
       }
       managedSurfaces.set(label, surface);
       return surface;
+    },
+    async hideAllSurfaces() {
+      await nativeInvoke('browser_chat_surface_hide_all');
     },
     openExternal,
     async subscribeHostGeometry(listener) {

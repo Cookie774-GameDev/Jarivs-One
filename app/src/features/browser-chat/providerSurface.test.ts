@@ -231,6 +231,24 @@ describe('Browser Chat managed provider surface', () => {
     expect(surface.hide).toHaveBeenCalledOnce();
   });
 
+  it('hides native child surfaces that predate the current controller', async () => {
+    const fake = platform();
+    const orphanedSurface = fakeWindow(`browser-chat-chatgpt:${ACCOUNT_PROFILE_KEY}`);
+    fake.windows.set(orphanedSurface.label, orphanedSurface);
+    (
+      fake.implementation as ProviderSurfacePlatform & {
+        hideAllSurfaces(): Promise<void>;
+      }
+    ).hideAllSurfaces = async () => {
+      await Promise.all([...fake.windows.values()].map((surface) => surface.hide()));
+    };
+    const controller = createProviderSurfaceController(fake.implementation);
+
+    await controller.hideAll();
+
+    expect(orphanedSurface.hide).toHaveBeenCalledOnce();
+  });
+
   it('uses distinct child surfaces and hides the former surface across account profiles', async () => {
     const fake = platform();
     const controller = createProviderSurfaceController(fake.implementation);
