@@ -1,0 +1,104 @@
+.jarvis-voice-panel {
+  background:
+    radial-gradient(circle at 10% 5%, hsl(var(--accent-copper) / 0.18), transparent 32%),
+    linear-gradient(145deg, hsl(28 28% 10% / 0.98), hsl(24 34% 5% / 0.99));
+  border-color: hsl(var(--accent-copper) / 0.36);
+  box-shadow:
+    0 26px 72px hsl(0 0% 0% / 0.72),
+    0 0 40px hsl(var(--accent-copper) / 0.14),
+    inset 0 1px 0 hsl(var(--accent-amber) / 0.12);
+}
+
+.jarvis-voice-panel .jarvis-voice-drag-row,
+.jarvis-voice-panel .jarvis-voice-drag-row > div {
+  min-height: 4.5rem;
+}
+
+.jarvis-voice-panel .jarvis-voice-drag-row > div {
+  gap: 0.75rem;
+  padding: 0.55rem 2.75rem 0.55rem 0.75rem;
+}
+
+.jarvis-voice-panel .jarvis-voice-orb-button {
+  min-height: 3.25rem;
+  min-width: 3.25rem;
+}
+
+.jarvis-signal-wireframe {
+  fill: none;
+  stroke: hsl(var(--accent-amber) / calc(0.46 + var(--jarvis-signal-energy, 0) * 0.42));
+  stroke-width: 1.2;
+  filter: drop-shadow(
+    0 0 calc(2px + var(--jarvis-signal-energy, 0) * 6px) hsl(var(--accent-amber))
+  );
+  opacity: calc(0.58 + var(--jarvis-signal-energy, 0) * 0.34);
+}
+
+.jarvis-voice-mic {
+  color: hsl(var(--accent-amber));
+  border-color: hsl(var(--accent-copper) / 0.45);
+  box-shadow:
+    0 0 0 3px hsl(var(--accent-copper) / 0.07),
+    inset 0 0 14px hsl(var(--accent-copper) / 0.16);
+}
+
+.jarvis-voice-mic:hover {
+  border-color: hsl(var(--accent-amber) / 0.72);
+  box-shadow:
+    0 0 18px hsl(var(--accent-copper) / 0.28),
+    inset 0 0 16px hsl(var(--accent-copper) / 0.2);
+}
+
+.jarvis-command-disclosure {
+  background: linear-gradient(90deg, hsl(var(--accent-copper) / 0.06), transparent 60%);
+}
+
+.jarvis-voice-model-selector {
+  min-width: 10.5rem;
+  max-width: 15rem;
+  padding-right: 0.75rem;
+}
+
+.jarvis-voice-model-selector select {
+  width: 100%;
+  min-height: 1.9rem;
+  border: 1px solid hsl(var(--accent-copper) / 0.36);
+  border-radius: 999px;
+  background: hsl(24 25% 8% / 0.9);
+  color: hsl(var(--foreground));
+  padding: 0.25rem 1.8rem 0.25rem 0.65rem;
+  font-size: 0.7rem;
+  line-height: 1rem;
+}
+
+.jarvis-voice-model-selector select:focus-visible {
+  outline: 2px solid hsl(var(--accent-amber) / 0.72);
+  outline-offset: 2px;
+}
+
+.jarvis-voice-panel [role='log'] {
+  max-height: 17rem;
+  padding: 0.75rem;
+}
+
+.jarvis-voice-panel [role='log'] > div {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid hsl(var(--accent-copper) / 0.12);
+}
+
+@media (max-width: 560px) {
+  .jarvis-voice-panel {
+    width: calc(100vw - 1.5rem) !important;
+  }
+
+  .jarvis-voice-model-selector {
+    min-width: 8rem;
+    max-width: 10.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-signal-wireframe {
+    filter: none;
+  }
+}

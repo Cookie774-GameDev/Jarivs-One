@@ -68,7 +68,10 @@ import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import { createVoiceSignalController, type VoiceSignalController } from './voiceSignal';
+import { VoiceModelSelector } from './VoiceModelSelector';
 import './voice.sakura.css';
+import './voice-module.css';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -201,6 +204,10 @@ export function VoiceModal() {
   const panelLayout = useThemeMotionLayout('size');
   const commandCenterTransition = useThemeLayoutTransition(LEGACY_COMMAND_CENTER_TRANSITION);
   const levelRef = React.useRef(0);
+  const signalControllerRef = React.useRef<VoiceSignalController | null>(null);
+  if (!signalControllerRef.current) {
+    signalControllerRef.current = createVoiceSignalController(levelRef);
+  }
   const pendingUtteranceRef = React.useRef('');
   const utteranceTimerRef = React.useRef<number | null>(null);
   const restartTimerRef = React.useRef<number | null>(null);
@@ -227,6 +234,17 @@ export function VoiceModal() {
       ),
     [chatModelSelection],
   );
+  React.useEffect(() => {
+    const signal = signalControllerRef.current;
+    if (!signal || !open) {
+      signal?.stop();
+      return;
+    }
+    if (state === 'listening') void signal.startListening();
+    else if (state === 'speaking') signal.startSpeaking();
+    else signal.stop();
+    return () => signal.stop();
+  }, [open, state]);
   const commandCenterHandlers = React.useMemo<JarvisCommandCenterHandlers>(() => {
     const hostPort = commandCenterBinding?.hostPort;
     if (!hostPort) return {};
@@ -702,7 +720,6 @@ export function VoiceModal() {
 
     const schedulePartial = (text: string) => {
       pendingPartial = text;
-      levelRef.current = Math.min(1, 0.25 + text.length / 48);
       if (partialTimer !== null) return;
       partialTimer = window.setTimeout(() => {
         partialTimer = null;
@@ -927,7 +944,7 @@ export function VoiceModal() {
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!shadow-none',
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![background-image:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![filter:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:!shadow-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![transform:none]',
           '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-shell::before]:!hidden',
-          showCommandCenter ? 'w-[26.25rem]' : 'w-[17.875rem]',
+          showCommandCenter ? 'w-[42rem]' : 'w-[31rem]',
         )}
         aria-label="Jarvis voice session"
         data-monochrome-surface="voice"
@@ -994,29 +1011,32 @@ export function VoiceModal() {
         ) : null}
 
         {/* Command Center disclosure */}
-        <button
-          ref={commandCenterDisclosureRef}
-          type="button"
-          onClick={() => setShowCommandCenter((visible) => !visible)}
-          aria-expanded={showCommandCenter}
-          aria-controls={commandCenterRegionId}
-          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted"
-        >
-          <span className="shrink-0 font-medium text-foreground">Command Center</span>
-          {showCommandCenter ? (
-            <span
-              className="ml-auto min-w-0 break-words text-right text-xs leading-tight"
-              title={modelLabel}
-            >
-              {modelLabel}
-            </span>
-          ) : null}
-          {showCommandCenter ? (
-            <ChevronUp className="h-2.5 w-2.5 shrink-0" />
-          ) : (
-            <ChevronDown className="ml-auto h-2.5 w-2.5 shrink-0" />
-          )}
-        </button>
+        <div className="jarvis-command-disclosure relative z-[1] flex min-h-10 items-center border-t border-border/70 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted">
+          <button
+            ref={commandCenterDisclosureRef}
+            type="button"
+            onClick={() => setShowCommandCenter((visible) => !visible)}
+            aria-expanded={showCommandCenter}
+            aria-controls={commandCenterRegionId}
+            className="flex min-h-10 min-w-0 flex-1 items-center gap-2 px-3 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="shrink-0 font-medium text-foreground">Command Center</span>
+            {showCommandCenter ? (
+              <span
+                className="min-w-0 break-words text-right text-xs leading-tight"
+                title={modelLabel}
+              >
+                {modelLabel}
+              </span>
+            ) : null}
+            {showCommandCenter ? (
+              <ChevronUp className="ml-auto h-3 w-3 shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="ml-auto h-3 w-3 shrink-0" aria-hidden="true" />
+            )}
+          </button>
+          {showCommandCenter ? <VoiceModelSelector selection={chatModelSelection} /> : null}
+        </div>
 
         <AnimatePresence>
           {showCommandCenter && (

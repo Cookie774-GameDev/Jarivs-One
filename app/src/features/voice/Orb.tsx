@@ -36,7 +36,9 @@ export interface OrbProps {
   /** Optional stable role label for screen readers. */
   ariaLabel?: string;
   /** Visual treatment. Defaults to the ambient layered presentation. */
-  presentation?: 'default' | 'monochrome-flat';
+  presentation?: 'default' | 'monochrome-flat' | 'signal-globe';
+  /** Mutable 0..1 signal sampled without causing React renders. */
+  levelRef?: React.RefObject<number>;
 }
 
 const LEGACY_ORB_STATE_TRANSITION = Object.freeze({
@@ -149,6 +151,7 @@ export function Orb({
   className,
   ariaLabel,
   presentation = 'default',
+  levelRef,
 }: OrbProps) {
   const style = STYLES[state];
   const reducedMotion = usePrefersReducedMotion();
@@ -156,6 +159,25 @@ export function Orb({
   const haloTransition = useThemeMotionTransition(LEGACY_ORB_HALO_TRANSITION);
   const active = state === 'listening' || state === 'thinking' || state === 'speaking';
   const flat = presentation === 'monochrome-flat';
+  const signalGlobe = presentation === 'signal-globe';
+  const signalSphereRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!signalGlobe || !levelRef || reducedMotion) return;
+    let frame = 0;
+    let disposed = false;
+    const updateEnergy = () => {
+      if (disposed) return;
+      const energy = Math.min(1, Math.max(0, levelRef.current ?? 0));
+      signalSphereRef.current?.style.setProperty('--jarvis-signal-energy', energy.toFixed(3));
+      frame = window.requestAnimationFrame(updateEnergy);
+    };
+    frame = window.requestAnimationFrame(updateEnergy);
+    return () => {
+      disposed = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [levelRef, reducedMotion, signalGlobe]);
 
   return (
     <motion.div
@@ -192,7 +214,9 @@ export function Orb({
           inset: flat ? '-18%' : '-40%',
           background: flat
             ? 'hsl(var(--foreground) / 0.08)'
-            : 'radial-gradient(circle, hsl(var(--accent-amber) / 0.5) 0%, hsl(var(--accent-copper) / 0.3) 35%, transparent 70%)',
+            : signalGlobe
+              ? 'radial-gradient(circle, hsl(var(--accent-amber) / calc(0.2 + var(--jarvis-signal-energy, 0) * 0.48)) 0%, hsl(var(--accent-copper) / 0.18) 38%, transparent 72%)'
+              : 'radial-gradient(circle, hsl(var(--accent-amber) / 0.5) 0%, hsl(var(--accent-copper) / 0.3) 35%, transparent 70%)',
           filter: flat ? undefined : 'blur(34px)',
           willChange: 'transform, opacity',
         }}
@@ -222,7 +246,9 @@ export function Orb({
         style={{
           background: flat
             ? 'hsl(var(--foreground) / 0.16)'
-            : 'conic-gradient(from 0deg, hsl(var(--accent-amber)) 0deg, hsl(var(--accent-copper)) 120deg, hsl(var(--accent-amber)) 240deg, hsl(var(--accent-copper)) 360deg)',
+            : signalGlobe
+              ? 'conic-gradient(from 18deg, transparent 0 24deg, hsl(var(--accent-amber) / 0.92) 38deg, transparent 64deg 102deg, hsl(var(--accent-copper) / 0.76) 128deg, transparent 162deg 228deg, hsl(var(--accent-amber) / 0.82) 254deg, transparent 286deg)'
+              : 'conic-gradient(from 0deg, hsl(var(--accent-amber)) 0deg, hsl(var(--accent-copper)) 120deg, hsl(var(--accent-amber)) 240deg, hsl(var(--accent-copper)) 360deg)',
           filter: flat ? undefined : 'blur(10px)',
           opacity: 0.78,
           willChange: 'transform',
@@ -237,19 +263,36 @@ export function Orb({
 
       {/* Layer 3 - Glassy inner sphere with off-center light source for 3D illusion. */}
       <div
+        ref={signalSphereRef}
         aria-hidden
         className="absolute rounded-full"
         style={{
           inset: '12%',
           background: flat
             ? 'hsl(var(--accent-copper) / 0.72)'
-            : 'radial-gradient(circle at 32% 30%, hsl(0 0% 100% / 0.18) 0%, hsl(var(--accent-amber) / 0.58) 28%, hsl(var(--accent-copper) / 0.86) 70%, hsl(var(--accent-copper) / 0.96) 100%)',
+            : signalGlobe
+              ? 'radial-gradient(circle at 38% 34%, hsl(var(--accent-amber) / 0.86), hsl(var(--accent-copper) / 0.7) 34%, hsl(25 72% 12%) 72%, hsl(20 60% 5%) 100%)'
+              : 'radial-gradient(circle at 32% 30%, hsl(0 0% 100% / 0.18) 0%, hsl(var(--accent-amber) / 0.58) 28%, hsl(var(--accent-copper) / 0.86) 70%, hsl(var(--accent-copper) / 0.96) 100%)',
           border: flat ? '2px solid hsl(var(--foreground) / 0.6)' : undefined,
           boxShadow: flat
             ? undefined
             : 'inset 0 0 28px hsl(var(--accent-amber) / 0.48), inset 0 -10px 28px hsl(var(--accent-copper) / 0.56)',
         }}
-      />
+      >
+        {signalGlobe ? (
+          <svg
+            viewBox="0 0 100 100"
+            className="jarvis-signal-wireframe absolute inset-0 h-full w-full"
+            aria-hidden="true"
+          >
+            <ellipse cx="50" cy="50" rx="30" ry="48" />
+            <ellipse cx="50" cy="50" rx="15" ry="48" />
+            <ellipse cx="50" cy="50" rx="48" ry="18" />
+            <ellipse cx="50" cy="50" rx="48" ry="34" />
+            <path d="M3 50h94M50 3v94" />
+          </svg>
+        ) : null}
+      </div>
 
       {/* Layer 4 - Specular highlight, blurred. Sells the "polished marble" feel. */}
       <div

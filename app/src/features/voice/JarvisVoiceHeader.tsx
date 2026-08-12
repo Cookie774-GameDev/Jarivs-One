@@ -87,7 +87,13 @@ export function JarvisVoiceHeader({
           data-sik-evidence={voiceControlEvidence}
           title={controlTitle}
         >
-          <Orb state={state} size={30} ariaLabel="Jarvis voice activity" />
+          <Orb
+            state={state}
+            size={42}
+            ariaLabel="Jarvis voice activity"
+            presentation="signal-globe"
+            levelRef={levelRef}
+          />
         </button>
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-xs font-semibold leading-4 text-foreground">
@@ -115,11 +121,20 @@ export function JarvisVoiceHeader({
           </span>
         </div>
         <div className="mx-auto min-w-0 flex-1">
-          <VoiceActivityWaveform levelRef={levelRef} active={state === 'listening'} />
+          <VoiceActivityWaveform
+            levelRef={levelRef}
+            active={state === 'listening' || state === 'speaking'}
+          />
         </div>
-        <div className="jarvis-voice-mic flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+        <button
+          type="button"
+          className="jarvis-voice-mic flex h-9 w-9 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/80"
+          onClick={onToggleListening}
+          aria-label="Toggle microphone"
+          title={controlTitle}
+        >
           <Mic className="h-3 w-3 text-muted-foreground" strokeWidth={1.8} aria-hidden="true" />
-        </div>
+        </button>
       </div>
     </div>
   );
