@@ -471,6 +471,7 @@ describe('BrowserChatHub', () => {
   });
 
   it('renders durable pinned and provider sessions and persists their local actions', async () => {
+    const hideAll = vi.spyOn(browserChatSurface, 'hideAll').mockResolvedValue();
     await testDatabase.projects.bulkPut([
       {
         id: 'project-1' as ProjectId,
@@ -616,6 +617,15 @@ describe('BrowserChatHub', () => {
       expect((await testDatabase.chats.get('chat-regular' as ChatId))?.project_id).toBe(
         'project-2',
       );
+    });
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Project for Renamed research' }), {
+      target: { value: '' },
+    });
+    await waitFor(async () => {
+      expect((await testDatabase.browser_chat_bindings.get(regular.id))?.projectId).toBeUndefined();
+      expect((await testDatabase.chats.get('chat-regular' as ChatId))?.project_id).toBeUndefined();
+      expect(hideAll).toHaveBeenCalledOnce();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Actions for Renamed research' }));

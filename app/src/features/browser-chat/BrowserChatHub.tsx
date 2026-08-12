@@ -719,7 +719,7 @@ export function BrowserChatHub({
     patch: BrowserChatBindingUpdateInput,
     chatPatch?: Partial<Chat>,
   ) => {
-    if (!accountId || !bindingWorkspaceId) return;
+    if (!accountId || !bindingWorkspaceId) return false;
     try {
       const updatedBinding = await bindingRepository.update(
         { accountId, workspaceId: bindingWorkspaceId },
@@ -736,11 +736,28 @@ export function BrowserChatHub({
             : session,
         ),
       );
+      return true;
     } catch (cause) {
       toast.error(
         'Browser Chat update failed',
         cause instanceof Error ? cause.message : 'The Browser Chat could not be updated.',
       );
+      return false;
+    }
+  };
+
+  const changeBrowserSessionProject = async (
+    binding: BrowserChatBindingRow,
+    projectValue: string,
+  ) => {
+    const nextProjectId = projectValue || undefined;
+    const updated = await updateBrowserSession(
+      binding,
+      { projectId: nextProjectId },
+      { project_id: nextProjectId as Chat['project_id'] },
+    );
+    if (updated && binding.chatId === chatId && nextProjectId === undefined) {
+      await browserChatSurface.hideAll();
     }
   };
 
@@ -1134,14 +1151,7 @@ export function BrowserChatHub({
                 id={`browser-chat-project-${binding.id}`}
                 aria-label={`Project for ${binding.localTitle}`}
                 value={binding.projectId ?? ''}
-                onChange={(event) => {
-                  const nextProjectId = event.target.value || undefined;
-                  void updateBrowserSession(
-                    binding,
-                    { projectId: nextProjectId },
-                    { project_id: nextProjectId as Chat['project_id'] },
-                  );
-                }}
+                onChange={(event) => void changeBrowserSessionProject(binding, event.target.value)}
                 className="min-w-0 flex-1 rounded border border-border bg-background px-1 py-0.5 text-[9px] text-muted-foreground"
               >
                 <option value="">No project</option>

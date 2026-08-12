@@ -296,9 +296,9 @@ export function createBrowserChatBindingRepository(
         const next: BrowserChatBindingRow = {
           ...current,
           projectId:
-            patch.projectId === undefined
-              ? current.projectId
-              : optionalString(patch.projectId, 'browser_chat_project_id_invalid', 256),
+            'projectId' in patch
+              ? optionalString(patch.projectId, 'browser_chat_project_id_invalid', 256)
+              : current.projectId,
           providerConversationKey,
           resumeUrl,
           providerProjectKey:
