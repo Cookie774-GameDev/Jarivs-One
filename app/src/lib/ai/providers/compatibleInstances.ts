@@ -1,4 +1,5 @@
 import { makeOpenAICompatibleProvider } from './openai-compatible';
+import { activeQwenCompatibleBaseUrl } from '../nativeConnectionProbe';
 
 export const OPENROUTER_DEFAULT_MODEL = 'openrouter/auto';
 export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
@@ -59,7 +60,7 @@ export const xaiProvider = makeOpenAICompatibleProvider({
 export const qwenProvider = makeOpenAICompatibleProvider({
   id: 'qwen',
   name: 'Qwen / Alibaba Cloud',
-  baseUrl: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+  baseUrl: activeQwenCompatibleBaseUrl,
   apiKeyStoreKey: 'qwen',
   defaultModel: QWEN_DEFAULT_MODEL,
   transport: 'native',

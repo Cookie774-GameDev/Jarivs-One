@@ -392,6 +392,113 @@ describe('OpenCodeHarness', () => {
     });
   });
 
+  it('binds a verified non-US Qwen endpoint before catalog resolution and prompt dispatch', async () => {
+    const endpoint = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+    const calls: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      calls.push(`${init?.method ?? 'GET'} ${path}`);
+      if (path === '/config' && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          provider: { qwen: { options: { baseURL: endpoint } } },
+        });
+        return new Response(JSON.stringify({ provider: {} }), { status: 200 });
+      }
+      if (path === '/config/providers') return providerResponse('qwen', 'qwen3.7-plus');
+      if (path === '/event') {
+        return sse(
+          { type: 'server.connected', properties: {} },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
+      }
+      if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), {
+      fetch,
+      qwenEndpoint: () => endpoint,
+    });
+
+    await collect(
+      harness.send({
+        ...request(),
+        selection: { providerId: 'qwen', modelId: 'qwen3.7-plus' },
+      }),
+    );
+
+    expect(calls.slice(0, 4)).toEqual([
+      'PATCH /config',
+      'GET /config/providers',
+      'GET /event',
+      'POST /session/session-1/prompt_async',
+    ]);
+  });
+
+  it('fails closed before Qwen catalog or prompt access without a verified endpoint', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const harness = new OpenCodeHarness(runtime(), {
+      fetch,
+      qwenEndpoint: () => undefined,
+    });
+
+    await expect(
+      collect(
+        harness.send({
+          ...request(),
+          selection: { providerId: 'qwen', modelId: 'qwen3.7-plus' },
+        }),
+      ),
+    ).resolves.toEqual([
+      {
+        type: 'error',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        message: 'Qwen has no endpoint authenticated by the current credential.',
+      },
+    ]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reapplies Qwen configuration when the verified endpoint changes', async () => {
+    let endpoint = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+    const patched: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/config' && init?.method === 'PATCH') {
+        patched.push(JSON.parse(String(init.body)).provider.qwen.options.baseURL);
+        return new Response(JSON.stringify({ provider: {} }), { status: 200 });
+      }
+      if (path === '/config/providers') return providerResponse('qwen', 'qwen3.7-plus');
+      if (path === '/event') {
+        return sse(
+          { type: 'server.connected', properties: {} },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
+      }
+      if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), { fetch, qwenEndpoint: () => endpoint });
+
+    await collect(
+      harness.send({
+        ...request(),
+        selection: { providerId: 'qwen', modelId: 'qwen3.7-plus' },
+      }),
+    );
+    endpoint = 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1';
+    await collect(
+      harness.send({
+        ...request(),
+        selection: { providerId: 'qwen', modelId: 'qwen3.7-plus' },
+      }),
+    );
+
+    expect(patched).toEqual([
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    ]);
+  });
+
   it('surfaces an exact unavailable-model error before opening a stream or prompt', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(providerResponse());
     const harness = new OpenCodeHarness(runtime(), { fetch });

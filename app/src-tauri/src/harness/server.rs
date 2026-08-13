@@ -386,8 +386,7 @@ fn qwen_provider_config(environment_name: &str) -> Value {
         "npm": "@ai-sdk/openai-compatible",
         "name": "Qwen / Alibaba Cloud",
         "options": {
-            "apiKey": format!("{{env:{environment_name}}}"),
-            "baseURL": "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+            "apiKey": format!("{{env:{environment_name}}}")
         },
         "models": models
     })
@@ -1534,7 +1533,8 @@ mod tests {
         assert_eq!(qwen["name"], "Qwen / Alibaba Cloud");
         assert_eq!(
             qwen["options"]["baseURL"],
-            "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+            serde_json::Value::Null,
+            "Qwen must remain unusable until the authenticated endpoint is patched in"
         );
         assert_eq!(qwen["models"]["qwen3.7-plus"]["name"], "Qwen 3.7 Plus");
         assert_eq!(

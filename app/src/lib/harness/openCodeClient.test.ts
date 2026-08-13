@@ -87,6 +87,36 @@ describe('OpenCodeHttpClient', () => {
     });
   });
 
+  it('patches only a bounded verified Qwen endpoint into managed OpenCode config', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ provider: {} }), { status: 200 }));
+    const client = createOpenCodeHttpClient(connection, { fetch });
+    const endpoint = 'https://coding-intl.dashscope.aliyuncs.com/v1';
+
+    await client.configureQwenEndpoint(endpoint);
+
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(new URL(String(url)).pathname).toBe('/config');
+    expect(init?.method).toBe('PATCH');
+    const serialized = String(init?.body);
+    expect(JSON.parse(serialized)).toEqual({
+      provider: { qwen: { options: { baseURL: endpoint } } },
+    });
+    expect(serialized).not.toMatch(/apiKey|authorization|bearer|secret|token/i);
+  });
+
+  it('rejects an unrecognized Qwen endpoint before contacting OpenCode', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await expect(client.configureQwenEndpoint('https://attacker.example/v1')).rejects.toThrow(
+      'verified Qwen endpoint',
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('discovers provider auth, authorizes the exact dynamic method, and completes callbacks', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url, init) => {
       const path = new URL(String(url)).pathname;

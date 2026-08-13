@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
+import {
+  probeQwenApiCredential,
+  resetActiveQwenCompatibleBaseUrlForTests,
+} from '../nativeConnectionProbe';
 import {
   deepseekProvider,
   mistralProvider,
@@ -17,10 +21,50 @@ vi.mock('@/lib/nativeFetch', () => ({
 }));
 
 describe('Qwen compatible provider', () => {
+  beforeEach(async () => {
+    resetActiveQwenCompatibleBaseUrlForTests();
+    await probeQwenApiCredential(
+      'verified-test-key',
+      vi.fn(async (url: RequestInfo | URL) =>
+        String(url).startsWith('https://dashscope-us.aliyuncs.com/')
+          ? new Response('{}', { status: 200 })
+          : new Response('', { status: 401 }),
+      ),
+    );
+  });
+
   afterEach(() => {
     nativeFetchMock.mockReset();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('fails closed before transport when no bounded endpoint authenticated successfully', async () => {
+    resetActiveQwenCompatibleBaseUrlForTests();
+    useAuthStore.setState({ apiKeys: { qwen: 'qwen-test-key' } });
+
+    await expect(
+      qwenProvider.run({
+        agent: {
+          id: 'agent_qwen_unverified' as never,
+          slug: 'qwen',
+          name: 'Qwen',
+          description: '',
+          system_prompt: '',
+          model: { provider: 'qwen', model: QWEN_DEFAULT_MODEL },
+          tools_allowed: [],
+          memory_scope: 'workspace',
+          capabilities: [],
+          created_at: 1,
+          updated_at: 1,
+        },
+        systemPrompt: 'Be concise.',
+        messages: [{ role: 'user', content: 'Hello' }],
+        signal: new AbortController().signal,
+        onChunk: vi.fn(),
+      }),
+    ).rejects.toThrow('authenticated endpoint');
+    expect(nativeFetchMock).not.toHaveBeenCalled();
   });
 
   it('streams chat through the official Model Studio US endpoint', async () => {

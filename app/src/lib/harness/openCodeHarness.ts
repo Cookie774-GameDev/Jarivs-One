@@ -1,4 +1,5 @@
 import { HarnessError, redactHarnessText } from './errors';
+import { verifiedQwenCompatibleBaseUrl } from '@/lib/ai/nativeConnectionProbe';
 import { normalizeOpenCodeEvent } from './eventNormalizer';
 import { createOpenCodeHttpClient, type OpenCodeHttpClient } from './openCodeClient';
 import {
@@ -24,6 +25,7 @@ interface OpenCodeHarnessOptions {
   fetch?: typeof globalThis.fetch;
   maxReconnectAttempts?: number;
   reconnectDelay?: (attempt: number) => Promise<void>;
+  qwenEndpoint?: () => string | undefined;
 }
 
 const MAX_RECENT_EVENTS = 256;
@@ -155,6 +157,8 @@ export class OpenCodeHarness implements VibeSpaceHarness {
   private readonly sessionDirectories = new Map<string, string>();
   private readonly maxReconnectAttempts: number;
   private readonly reconnectDelay: (attempt: number) => Promise<void>;
+  private readonly qwenEndpoint: () => string | undefined;
+  private appliedQwenEndpoint?: Readonly<{ generation: string; endpoint: string }>;
   private disposed = false;
 
   constructor(
@@ -165,6 +169,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     this.reconnectDelay =
       options.reconnectDelay ??
       ((attempt) => new Promise((resolve) => setTimeout(resolve, Math.min(1_000, attempt * 150))));
+    this.qwenEndpoint = options.qwenEndpoint ?? verifiedQwenCompatibleBaseUrl;
   }
 
   private connection(): OpenCodeServerConnection {
@@ -182,6 +187,31 @@ export class OpenCodeHarness implements VibeSpaceHarness {
 
   private client(connection = this.connection()): OpenCodeHttpClient {
     return createOpenCodeHttpClient(connection, { fetch: this.options.fetch });
+  }
+
+  private async ensureQwenEndpoint(
+    providerId: string,
+    connection: OpenCodeServerConnection,
+    client: OpenCodeHttpClient,
+  ): Promise<void> {
+    if (providerId !== 'qwen') return;
+    const endpoint = this.qwenEndpoint();
+    if (!endpoint) {
+      throw new HarnessError({
+        code: 'PROVIDER_NOT_CONFIGURED',
+        message: 'Qwen has no endpoint authenticated by the current credential.',
+        repair: 'Save a valid Qwen credential and wait for its authenticated endpoint probe.',
+        recoverable: true,
+      });
+    }
+    if (
+      this.appliedQwenEndpoint?.generation === connection.generation &&
+      this.appliedQwenEndpoint.endpoint === endpoint
+    ) {
+      return;
+    }
+    await client.configureQwenEndpoint(endpoint);
+    this.appliedQwenEndpoint = Object.freeze({ generation: connection.generation, endpoint });
   }
 
   async ensureReady(): Promise<HarnessReady> {
@@ -236,6 +266,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     let streamedAssistantText = '';
 
     try {
+      await this.ensureQwenEndpoint(input.selection.providerId, connection, client);
       const resolvedSelection = resolveOpenCodeSelection(
         input.selection,
         await this.listProviders(),
@@ -396,6 +427,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     this.controllers.forEach((controller) => controller.abort());
     this.controllers.clear();
     this.sessionDirectories.clear();
+    this.appliedQwenEndpoint = undefined;
     const connection = this.runtime.getConnection();
     if (connection) await this.client(connection).disposeInstance();
   }

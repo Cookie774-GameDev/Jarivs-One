@@ -1,4 +1,5 @@
 import { redactHarnessText } from './errors';
+import { QWEN_COMPATIBLE_BASE_URLS } from '@/lib/ai/nativeConnectionProbe';
 import type { OpenCodeServerConnection } from './runtimeManager';
 import { parseOpenCodeSse, type OpenCodeSseEvent } from './sseParser';
 
@@ -49,6 +50,7 @@ export interface OpenCodeProviderAuthorization {
 
 export interface OpenCodeHttpClient {
   health(): Promise<{ healthy: true; version: string }>;
+  configureQwenEndpoint(baseUrl: string): Promise<void>;
   configProviders(): Promise<unknown>;
   providerAuthMethods(): Promise<Readonly<Record<string, readonly OpenCodeProviderAuthMethod[]>>>;
   providerStatus(): Promise<{ connected: readonly string[] }>;
@@ -364,14 +366,29 @@ export function createOpenCodeHttpClient(
       }
       return { healthy: true, version: value.version };
     },
+    async configureQwenEndpoint(qwenBaseUrl) {
+      if (!(QWEN_COMPATIBLE_BASE_URLS as readonly string[]).includes(qwenBaseUrl)) {
+        throw new Error('OpenCode requires a verified Qwen endpoint.');
+      }
+      await request('/config', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          provider: {
+            qwen: {
+              options: {
+                baseURL: qwenBaseUrl,
+              },
+            },
+          },
+        }),
+      });
+    },
     configProviders: () => request('/config/providers', {}, 'json', MAX_PROVIDER_JSON_BYTES),
     async providerAuthMethods() {
       return requireProviderAuthMethods(await request('/provider/auth'));
     },
     async providerStatus() {
-      return requireProviderStatus(
-        await request('/provider', {}, 'json', MAX_PROVIDER_JSON_BYTES),
-      );
+      return requireProviderStatus(await request('/provider', {}, 'json', MAX_PROVIDER_JSON_BYTES));
     },
     async authorizeProvider(providerId, method, inputs) {
       return requireProviderAuthorization(
