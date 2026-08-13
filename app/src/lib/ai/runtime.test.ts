@@ -185,6 +185,7 @@ import {
   handleInstalledJarvisKernelClientRequest,
   installJarvisKernelRuntimeHost,
   openCodeToolsForInteractionMode,
+  prepareOpenCodeMessagesForInteractionMode,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
 import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
@@ -377,6 +378,84 @@ describe('startRuntimeListener agent routing', () => {
         .filter(([tool]) => tool !== 'vibespace_context')
         .every(([, enabled]) => enabled === false),
     ).toBe(true);
+  });
+
+  it('routes natural read-and-cite file questions only through the Context Map tool', () => {
+    const naturalContextTools = openCodeToolsForInteractionMode('agent', [
+      {
+        role: 'user',
+        content:
+          'hey can u read these files and answer these five questions for me, use the files for every answer and tell me where u found it',
+      },
+    ]);
+    expect(naturalContextTools.vibespace_context).toBe(true);
+    expect(
+      Object.entries(naturalContextTools)
+        .filter(([tool]) => tool !== 'vibespace_context')
+        .every(([, enabled]) => enabled === false),
+    ).toBe(true);
+  });
+
+  it.each([
+    'write these files and tell me where you saved them',
+    'delete the file after reading it',
+    'run a command that lists these files',
+  ])('does not reinterpret a mutating request as Context Map-only: %s', (content) => {
+    const tools = openCodeToolsForInteractionMode('agent', [{ role: 'user', content }]);
+    expect(tools['command.list']).toBe(true);
+    expect(tools['terminal.write']).toBe(true);
+  });
+
+  it('adds a bounded exact search directive to the natural read-and-cite provider turn', () => {
+    const content =
+      'Please read the files and answer with the exact source filename: what belongs to Observatory Lumen?';
+    const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.content).toMatch(/^Call the real `vibespace_context` function now/);
+    expect(messages[0]?.content).toContain(
+      'Call the real `vibespace_context` function now with exactly these two arguments',
+    );
+    expect(messages[0]?.content).toContain('"operation":"search"');
+    expect(messages[0]?.content).toContain('"limit":5');
+    expect(messages[0]?.content).toContain(JSON.stringify(content));
+    expect(messages[0]?.content).toContain('Do not include `pointer`');
+    expect(messages[0]?.content).toContain('If a search item preview contains the complete answer');
+    expect(messages[0]?.content).toContain(
+      'The final answer MUST include the exact matching record title',
+    );
+    expect(messages[0]?.content).toContain('Do not cite unrelated context-pack sources');
+    expect(messages[0]?.content).toContain('Only call `operation="open"`');
+    expect(messages[0]?.content).toContain('This is a direct user chat, not a subagent assignment');
+    expect(messages[0]?.content).toContain('Do not answer with a bootstrap receipt');
+  });
+
+  it('hands every numbered research question to a separate bounded Context Map search', () => {
+    const questions = [
+      'in the literature files, what comes right after everybody watched Kutúzov?',
+      'what recovery color belongs to Observatory Lumen?',
+      'what did the receiving clerk pair with the orbit handoff?',
+      'where does Station Bracken keep the emergency compass?',
+      'who signed the two final calibration records?',
+    ];
+    const content = [
+      'hey can u read these files and answer these five questions for me, use the files for every answer and tell me where u found it',
+      ...questions.map((question, index) => `${index + 1}) ${question}`),
+    ].join('\n');
+
+    const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
+    const prepared = String(messages[0]?.content);
+
+    expect(prepared.match(/"operation":"search"/gu)).toHaveLength(5);
+    for (const question of questions) {
+      expect(prepared).toContain(JSON.stringify(`From the mapped files only: ${question}`));
+    }
+    expect(prepared).not.toContain(
+      JSON.stringify('hey can u read these files and answer these five questions for me'),
+    );
+    expect(prepared.match(/"limit":3/gu)).toHaveLength(5);
+    expect(prepared).toContain('Run all five searches before answering');
+    expect(prepared).toContain('answer every numbered question');
   });
 
   it('presents an OpenCode approval in the live placeholder and preserves its decision', async () => {

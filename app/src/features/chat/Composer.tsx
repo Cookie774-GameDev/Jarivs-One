@@ -38,6 +38,7 @@ import {
 } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import { requestsReadOnlyContextTool } from '@/lib/jarvis/contextToolIntent';
 import { parseJarvisModelSwitchIntent } from '@/lib/jarvis/modelSwitchDecision';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -2399,6 +2400,7 @@ export function Composer({
       !overrideText &&
       !options.promptForgeApproved &&
       !promptForge.isDraftApproved(rawSendText) &&
+      !requestsReadOnlyContextTool(rawSendText) &&
       rawSendText.trim().length > 0 &&
       promptForgeUpgradeForSendRef.current
     ) {

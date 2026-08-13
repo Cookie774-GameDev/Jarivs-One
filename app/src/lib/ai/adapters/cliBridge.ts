@@ -22,12 +22,14 @@ export interface CliInvocationRequest {
   reasoningEffort?: string;
   workingDirectory?: string;
   sessionId?: string;
+  tools?: Readonly<Record<string, boolean>>;
 }
 
 export interface CliInvocation {
   args: string[];
   stdin?: string;
   cwd?: string;
+  toolScope?: 'vibespace_context';
 }
 
 export interface CliScanRequest {
@@ -73,6 +75,7 @@ export interface CliStartRequest {
   stdin: string | null;
   timeoutMs: number;
   outputLimitBytes: number;
+  toolScope?: 'vibespace_context';
 }
 
 export type CliEventStream = 'stdout' | 'stderr' | 'status';
@@ -551,6 +554,20 @@ function safeDetail(value: string): string {
   return boundedProviderText(value, DEFAULT_JSONL_LIMITS.maxMessageChars)?.trim() || '';
 }
 
+export function preferNativeCliExecutable(
+  executableName: string,
+  executables: readonly DetectedExecutable[],
+): DetectedExecutable | undefined {
+  const matching = executables.filter(
+    (item) => item.requestedName === executableName || item.requestedName === undefined,
+  );
+  return (
+    matching.find((item) => /\.(?:exe|com)$/i.test(item.executablePath)) ??
+    matching.find((item) => item.requestedName === executableName) ??
+    matching[0]
+  );
+}
+
 export async function findCliExecutable(
   executableName: string,
 ): Promise<DetectedExecutable | undefined> {
@@ -559,10 +576,7 @@ export async function findCliExecutable(
     customPath: null,
     customPathConfirmed: false,
   });
-  return (
-    result.executables.find((item) => item.requestedName === executableName) ??
-    result.executables[0]
-  );
+  return preferNativeCliExecutable(executableName, result.executables);
 }
 
 async function detectProvider(definition: CliProviderDefinition): Promise<DetectionResult> {
@@ -660,6 +674,7 @@ async function* sendProviderRequest(
     reasoningEffort: request.reasoningEffort,
     workingDirectory: request.workingDirectory,
     sessionId: request.sessionId,
+    tools: request.tools,
   });
   const parser = new BoundedJsonlNormalizer(definition.normalizeRecord);
   let stderr = '';
@@ -673,6 +688,7 @@ async function* sendProviderRequest(
       stdin: invocation.stdin ?? null,
       timeoutMs: DEFAULT_TIMEOUT_MS,
       outputLimitBytes: DEFAULT_OUTPUT_LIMIT_BYTES,
+      ...(invocation.toolScope ? { toolScope: invocation.toolScope } : {}),
     },
     request.signal,
   )) {

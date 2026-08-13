@@ -34,6 +34,7 @@ import type {
 import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './adapters/catalog';
 import { kernelSmokeCliAdapter } from './adapters/cliBridge';
 import { llmContentToText } from './types';
+import { runSubscriptionCliBridge } from './subscriptionCliBridge';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import {
   isKernelSmokeBindingActive,
@@ -180,6 +181,7 @@ type KernelSmokeCliConnectionArgs = {
   prompt: string;
   modelId?: string;
   systemPrompt?: string;
+  reasoningEffort?: string;
   workingDirectory?: string;
   signal?: AbortSignal;
   requirements?: ConnectionRequirements;
@@ -380,9 +382,6 @@ function resolveOpenCodeSelection(req: RunAgentRequest): HarnessModelSelection {
     if (!connection.enabled) {
       throw new Error(`Provider connection is disabled: ${req.connectionId}`);
     }
-    if (connection.mode === 'external-cli') {
-      throw new Error('External provider CLI connections cannot transport VibeSpace Chat.');
-    }
     if (auth.offlineMode && connection.mode !== 'local') throw new NoModelSelectedError();
     assertConnectionCapabilities(connection, req.connectionRequirements);
     const providerId = connection.mode === 'local' ? 'ollama' : connection.providerId;
@@ -460,6 +459,71 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
     if (req.requestId !== req.protectedAttempt.requestId) {
       throw new Error('Protected provider request IDs do not match.');
     }
+  }
+
+  const exactConnection = req.connectionId
+    ? getProviderConnectionDescriptor(req.connectionId)
+    : undefined;
+  if (exactConnection?.mode === 'external-cli') {
+    assertConnectionCapabilities(exactConnection, req.connectionRequirements);
+    const transport = req.compiledPrompt
+      ? buildProviderPromptTransport({
+          compiled: req.compiledPrompt,
+          connection: exactConnection,
+          messages: req.messages,
+        })
+      : undefined;
+    const prompt =
+      transport?.strategy === 'prefixed-preamble'
+        ? transport.prompt
+        : req.messages
+            .map((message) => `${message.role}: ${llmContentToText(message.content)}`)
+            .join('\n\n');
+    const reasoningEffort = resolveOpenCodeVariant(req.provider_options);
+    const dispatch = (hooks?: ProtectedAttemptHooks) =>
+      runSubscriptionCliBridge({
+        connection: exactConnection,
+        requestId: req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`,
+        prompt,
+        modelId: req.agent.model.model,
+        reasoningEffort,
+        workingDirectory: req.workingDirectory,
+        signal: req.signal,
+        requirements: req.connectionRequirements,
+        tools: req.tools,
+        onChunk: req.onChunk,
+        onResponseObservation: hooks?.onResponseObservation,
+        onActionDispatch: hooks?.onActionDispatch,
+      });
+    const response = protectedDispatch
+      ? await runProtectedProviderAttempt(
+          {
+            ...req.protectedAttempt!,
+            providerId: exactConnection.providerId,
+            modelId: req.agent.model.model,
+          },
+          dispatch,
+        )
+      : await dispatch();
+    useAgentStore
+      .getState()
+      .addTokens(
+        req.agent.id,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        response.usage.cost_usd,
+      );
+    recordConnectionUsage({
+      connectionId: exactConnection.id,
+      providerId: response.provider,
+      modelId: response.model,
+      timestamp: Date.now(),
+      inputTokens: response.usage.input_tokens,
+      cachedInputTokens: 0,
+      outputTokens: response.usage.output_tokens,
+      costUsd: response.usage.cost_usd,
+    });
+    return response;
   }
 
   const selection = resolveOpenCodeSelection(req);

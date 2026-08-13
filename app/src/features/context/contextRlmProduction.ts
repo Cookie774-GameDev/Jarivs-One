@@ -33,8 +33,12 @@ import {
   loadProductionRlmHistory,
 } from './contextRlmHistory';
 
-const MAX_SOURCE_SHARD_BYTES = 512 * 1024;
+const MAX_SOURCE_SHARD_BYTES = 1024 * 1024;
 const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
+
+export function requestsMappedFileAuthority(query: string): boolean {
+  return /\b(?:files?|filename|source\s+(?:file|filename|path))\b/i.test(query);
+}
 
 interface ProductionContextNode {
   id: string;
@@ -152,10 +156,73 @@ function utf8ByteOffset(content: string, characterOffset: number): number {
 function flexibleWhitespaceOffset(content: string, query: string): number {
   const tokens = query.split(/\s+/gu).filter(Boolean);
   if (tokens.length === 0) return -1;
-  const pattern = tokens
-    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'))
-    .join('\\s+');
+  const pattern = tokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+');
   return content.search(new RegExp(pattern, 'iu'));
+}
+
+const SEARCH_STOP_WORDS = new Set([
+  'answer',
+  'exact',
+  'files',
+  'from',
+  'please',
+  'read',
+  'source',
+  'what',
+  'which',
+  'with',
+]);
+
+function meaningfulQueryMatches(
+  content: string,
+  query: string,
+): { offset: number; score: number } | undefined {
+  const terms = [
+    ...new Set(
+      query
+        .toLocaleLowerCase('en-US')
+        .match(/[\p{L}\p{N}][\p{L}\p{N}-]{2,}/gu)
+        ?.filter((term) => !SEARCH_STOP_WORDS.has(term)) ?? [],
+    ),
+  ];
+  const folded = content.toLocaleLowerCase('en-US');
+  const matches = terms
+    .map((term) => ({ term, offset: folded.indexOf(term) }))
+    .filter((match) => match.offset >= 0);
+  if (matches.length === 0) return undefined;
+  const phraseMatches: Array<{ offset: number; length: number }> = [];
+  for (let start = 0; start < terms.length - 1; start += 1) {
+    for (let end = terms.length; end >= start + 2; end -= 1) {
+      const phrase = terms.slice(start, end).join(' ');
+      const offset = folded.indexOf(phrase);
+      if (offset >= 0) {
+        phraseMatches.push({ offset, length: end - start });
+        break;
+      }
+    }
+  }
+  const strongestPhrase = phraseMatches.sort((left, right) => right.length - left.length)[0];
+  const properNameMatches = [
+    ...query.matchAll(/\b(?:[\p{Lu}][\p{L}\p{N}-]*)(?:\s+[\p{Lu}][\p{L}\p{N}-]*)+\b/gu),
+  ]
+    .map((match) => match[0])
+    .map((phrase) => ({ phrase, offset: folded.indexOf(phrase.toLocaleLowerCase('en-US')) }))
+    .filter((match) => match.offset >= 0);
+  const strongestProperName = properNameMatches.sort(
+    (left, right) => right.phrase.length - left.phrase.length,
+  )[0];
+  return {
+    offset:
+      strongestProperName?.offset ??
+      strongestPhrase?.offset ??
+      Math.min(...matches.map((match) => match.offset)),
+    // A contiguous entity phrase is far stronger evidence than several common
+    // words scattered through an unrelated book.
+    score:
+      matches.length +
+      (strongestPhrase ? strongestPhrase.length ** 2 * 10 : 0) +
+      (strongestProperName ? 1000 + strongestProperName.phrase.length : 0),
+  };
 }
 
 function parseSearchResults(value: unknown): Array<{
@@ -299,8 +366,7 @@ export function createContextMapRlmRepository(
     },
     async search(scope, query, signal) {
       const authorities = await loadAuthorities(scope, signal);
-      const exactQuery =
-        query.startsWith('"') && query.endsWith('"') ? query.slice(1, -1) : query;
+      const exactQuery = query.startsWith('"') && query.endsWith('"') ? query.slice(1, -1) : query;
       const maps = new Map<string, RecordAuthority[]>();
       for (const authority of authorities) {
         const group = maps.get(authority.mapId) ?? [];
@@ -331,35 +397,7 @@ export function createContextMapRlmRepository(
         } catch {
           indexed = [];
         }
-        if (indexed.length === 0) {
-          for (const authority of scopedAuthorities) {
-            const source = await readAuthority(authority, signal);
-            if (!source || source.contentHash !== authority.record.contentHash) continue;
-            const offset = flexibleWhitespaceOffset(source.content, exactQuery);
-            if (offset < 0) continue;
-            const selected = source.content.slice(
-              offset,
-              Math.min(source.content.length, offset + exactQuery.length + 512),
-            );
-            const byteStart = utf8ByteOffset(source.content, offset);
-            hits.push({
-              recordId: authority.record.id,
-              pointer: createContextPointer({
-                id: `ptr:${authority.record.id}:${byteStart}:${
-                  byteStart + new TextEncoder().encode(selected).length
-                }`,
-                recordId: authority.record.id,
-                byteStart,
-                byteEnd: byteStart + new TextEncoder().encode(selected).length,
-                sourceVersion: source.sourceVersion,
-                contentHash: source.contentHash,
-              }),
-              preview: selected.slice(0, 320),
-              score: 1,
-            });
-          }
-          continue;
-        }
+        const indexedNodeIds = new Set(indexed.map((match) => match.documentId));
         for (const match of indexed) {
           const authority = scopedAuthorities.find((item) => item.nodeId === match.documentId);
           if (!authority) continue;
@@ -367,12 +405,14 @@ export function createContextMapRlmRepository(
           if (!source || source.contentHash !== authority.record.contentHash) continue;
           const folded = source.content.toLocaleLowerCase('en-US');
           const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
+          const meaningful =
+            exactOffset < 0 ? meaningfulQueryMatches(source.content, exactQuery) : undefined;
           const excerptOffset = folded.indexOf(match.excerpt.toLocaleLowerCase('en-US'));
-          const queryOffset = exactOffset;
+          const queryOffset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
           const characterStart = Math.max(0, excerptOffset);
-          const pointerStart = queryOffset >= 0 ? queryOffset : characterStart;
+          const pointerStart = queryOffset ?? characterStart;
           const selected =
-              queryOffset >= 0
+            queryOffset !== undefined
               ? source.content.slice(
                   queryOffset,
                   Math.min(source.content.length, queryOffset + exactQuery.length + 512),
@@ -390,8 +430,47 @@ export function createContextMapRlmRepository(
               sourceVersion: source.sourceVersion,
               contentHash: source.contentHash,
             }),
-            preview: match.excerpt.slice(0, 320),
-            score: match.score,
+            preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
+            // The derivative index finds candidates, but immutable source bytes
+            // remain ranking authority. This prevents stale/generic index scores
+            // from outranking a contiguous entity or handoff match.
+            score:
+              exactOffset >= 0
+                ? 1_000_000_000 + Math.min(match.score, 999)
+                : meaningful
+                  ? meaningful.score * 1_000 + Math.min(match.score, 999)
+                  : match.score,
+          });
+        }
+        for (const authority of scopedAuthorities) {
+          if (indexedNodeIds.has(authority.nodeId)) continue;
+          const source = await readAuthority(authority, signal);
+          if (!source || source.contentHash !== authority.record.contentHash) continue;
+          const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
+          const meaningful =
+            exactOffset < 0 ? meaningfulQueryMatches(source.content, exactQuery) : undefined;
+          const offset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
+          if (offset === undefined) continue;
+          const selected = source.content.slice(
+            offset,
+            Math.min(source.content.length, offset + Math.max(exactQuery.length, 512)),
+          );
+          const byteStart = utf8ByteOffset(source.content, offset);
+          const byteEnd = byteStart + new TextEncoder().encode(selected).length;
+          hits.push({
+            recordId: authority.record.id,
+            pointer: createContextPointer({
+              id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
+              recordId: authority.record.id,
+              byteStart,
+              byteEnd,
+              sourceVersion: source.sourceVersion,
+              contentHash: source.contentHash,
+            }),
+            preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
+            // Missing derivative-index entries must not suppress a stronger
+            // match in the immutable source bytes.
+            score: exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000,
           });
         }
       }
@@ -526,10 +605,22 @@ export function createProductionRlmContextTool() {
     read: readTextFileSample,
     lexicalSearch: createTauriContextLexicalSearchExecutor(),
   });
-  const repository = createFederatedRlmRepository([
+  const historyRepository = createHistoryRlmRepository({ load: loadProductionRlmHistory });
+  const federatedRepository = createFederatedRlmRepository([
     contextMapRepository,
-    createHistoryRlmRepository({ load: loadProductionRlmHistory }),
+    historyRepository,
   ]);
+  const repository: ContextQueryRepository = {
+    ...federatedRepository,
+    search(scope, query, signal) {
+      // Explicit file/source questions must not be answered from previous chat
+      // echoes of the same question. Search mapped file authority directly so
+      // returned titles and pointers belong to the requested corpus.
+      return requestsMappedFileAuthority(query)
+        ? contextMapRepository.search(scope, query, signal)
+        : federatedRepository.search(scope, query, signal);
+    },
+  };
   const queryService = createContextQueryService({
     repository,
     limits: {

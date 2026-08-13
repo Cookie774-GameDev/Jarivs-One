@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { requestsReadOnlyContextTool } from '@/lib/jarvis/contextToolIntent';
 
 const source = readFileSync(resolve(process.cwd(), 'src/features/chat/Composer.tsx'), 'utf8');
 
@@ -32,6 +33,25 @@ describe('Composer Prompt Forge integration', () => {
     expect(source).not.toContain('onSendUpgraded');
     expect(source).not.toMatch(/onStart=\{[^}]*handleSend/u);
     expect(source).not.toMatch(/onReplace=\{[^}]*handleSend/u);
+  });
+
+  it('bypasses auto-upgrade for natural read-only Context Map research turns', () => {
+    const contextMapResearchPrompt = [
+      'hey can u read these files and answer these five questions for me, use the files for every answer and tell me where u found it',
+      '1. What belongs to Observatory Lumen?',
+      '2. Which record names the project owner?',
+      '3. What date does the source give?',
+      '4. Which two files describe the cross-record dependency?',
+      '5. What exact constraint appears in the final document?',
+    ].join('\n');
+
+    expect(requestsReadOnlyContextTool(contextMapResearchPrompt)).toBe(true);
+    expect(requestsReadOnlyContextTool('Draft a friendly project update for the team.')).toBe(
+      false,
+    );
+    expect(source).toMatch(
+      /!requestsReadOnlyContextTool\(rawSendText\)[\s\S]*promptForgeUpgradeForSendRef\.current/u,
+    );
   });
 
   it('places the secondary Forge control between model/mode selection and dictation/Send', () => {

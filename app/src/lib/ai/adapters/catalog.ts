@@ -88,6 +88,7 @@ function externalConnection(input: {
   authSource: string;
   promptTransport: 'prefixed-preamble' | 'unsupported';
   capabilities?: Partial<ProviderCapabilities>;
+  toolAllowlist?: ProviderConnection['toolAllowlist'];
 }): Readonly<ProviderConnection> {
   return Object.freeze({
     id: input.id,
@@ -97,6 +98,7 @@ function externalConnection(input: {
     mode: 'external-cli' as const,
     authSource: input.authSource,
     capabilities: externalCapabilities(input.capabilities),
+    ...(input.toolAllowlist ? { toolAllowlist: Object.freeze([...input.toolAllowlist]) } : {}),
     promptTransport: input.promptTransport,
     enabled: true,
   });
@@ -109,6 +111,8 @@ export const CODEX_CLI_CONNECTION = externalConnection({
   displayName: 'Codex CLI',
   authSource: 'codex-cli-session',
   promptTransport: CODEX_CLI_DEFINITION.promptTransport,
+  capabilities: { tools: true },
+  toolAllowlist: ['vibespace_context'],
 });
 
 export interface ConnectionModelOption {

@@ -1,3 +1,4 @@
+use crate::harness::tool_gateway::{create_codex_context_lease, ToolGatewayState};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -28,6 +29,7 @@ const PROVIDER_EXECUTABLE_NAMES: [&str; 11] = [
     "openai",
 ];
 const KERNEL_SMOKE_EXECUTABLE_NAME: &str = "vibespace_kernel_smoke_cli";
+const CODEX_CONTEXT_TOKEN_ENV: &str = "VIBESPACE_CODEX_CONTEXT_TOKEN";
 static NEXT_EXECUTABLE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +42,7 @@ pub struct CliStartRequest {
     pub stdin: Option<String>,
     pub timeout_ms: u64,
     pub output_limit_bytes: usize,
+    pub tool_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +115,7 @@ struct ExecutableFingerprint {
 struct TrustedExecutable {
     canonical_path: PathBuf,
     fingerprint: ExecutableFingerprint,
+    requested_name: Option<String>,
 }
 
 pub struct CliBridgeState {
@@ -187,6 +191,7 @@ impl CliBridgeState {
             TrustedExecutable {
                 canonical_path: canonical_path.clone(),
                 fingerprint,
+                requested_name: requested_name.clone(),
             },
         );
         Ok(DetectedExecutable {
@@ -197,6 +202,15 @@ impl CliBridgeState {
     }
 
     fn resolve_trusted_executable(&self, executable_id: &str) -> Result<PathBuf, String> {
+        Ok(self
+            .resolve_trusted_executable_entry(executable_id)?
+            .canonical_path)
+    }
+
+    fn resolve_trusted_executable_entry(
+        &self,
+        executable_id: &str,
+    ) -> Result<TrustedExecutable, String> {
         let trusted = self
             .trusted_executables
             .lock()
@@ -215,7 +229,11 @@ impl CliBridgeState {
         {
             return Err("trusted executable was replaced after discovery".to_string());
         }
-        Ok(canonical)
+        Ok(TrustedExecutable {
+            canonical_path: canonical,
+            fingerprint: trusted.fingerprint,
+            requested_name: trusted.requested_name,
+        })
     }
 
     fn register(&self, request_id: &str) -> Result<(CancellationFlag, ActiveRequestGuard), String> {
@@ -324,6 +342,24 @@ struct PreparedStartRequest {
     stdin: Option<Vec<u8>>,
     timeout_ms: u64,
     output_limit_bytes: usize,
+    tool_scope: bool,
+    secret_environment: Option<SecretEnvironment>,
+}
+
+#[derive(PartialEq, Eq)]
+struct SecretEnvironment {
+    name: &'static str,
+    value: String,
+}
+
+impl std::fmt::Debug for SecretEnvironment {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SecretEnvironment")
+            .field("name", &self.name)
+            .field("value", &"[redacted]")
+            .finish()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -490,7 +526,15 @@ fn prepare_start_request(
 ) -> Result<PreparedStartRequest, String> {
     validate_request_id(&request.request_id)?;
     validate_runtime_limits(request.timeout_ms, request.output_limit_bytes)?;
-    let executable_path = state.resolve_trusted_executable(&request.executable_id)?;
+    let trusted = state.resolve_trusted_executable_entry(&request.executable_id)?;
+    let tool_scope = match request.tool_scope.as_deref() {
+        None => false,
+        Some("vibespace_context") if trusted.requested_name.as_deref() == Some("codex") => true,
+        Some("vibespace_context") => {
+            return Err("Context Map tools require the discovered Codex executable".into())
+        }
+        Some(_) => return Err("CLI tool scope is unsupported".into()),
+    };
     let cwd = request
         .cwd
         .as_deref()
@@ -498,13 +542,103 @@ fn prepare_start_request(
         .transpose()?;
 
     Ok(PreparedStartRequest {
-        executable_path,
+        executable_path: trusted.canonical_path,
         args: request.args,
         cwd,
         stdin: request.stdin.map(String::into_bytes),
         timeout_ms: request.timeout_ms,
         output_limit_bytes: request.output_limit_bytes,
+        tool_scope,
+        secret_environment: None,
     })
+}
+
+fn configure_codex_context_invocation(
+    prepared: &mut PreparedStartRequest,
+    endpoint_url: &str,
+    token: &str,
+) -> Result<(), String> {
+    if !prepared.tool_scope {
+        return Err("Codex Context Map scope was not requested".into());
+    }
+    if prepared.stdin.is_none() || !valid_codex_context_base_args(&prepared.args) {
+        return Err("Codex Context Map invocation is not safely isolatable".into());
+    }
+    if !endpoint_url.starts_with("http://127.0.0.1:")
+        || endpoint_url.contains('"')
+        || token.len() < 32
+    {
+        return Err("Codex Context Map lease is invalid".into());
+    }
+    prepared.args.splice(
+        1..1,
+        [
+            "--ignore-user-config".to_string(),
+            "--ephemeral".to_string(),
+        ],
+    );
+    prepared.args.extend([
+        "--sandbox".into(),
+        "read-only".into(),
+        "-c".into(),
+        "approval_policy=\"never\"".into(),
+        "-c".into(),
+        format!("mcp_servers.vibespace_context.url=\"{endpoint_url}\""),
+        "-c".into(),
+        format!("mcp_servers.vibespace_context.bearer_token_env_var=\"{CODEX_CONTEXT_TOKEN_ENV}\""),
+        "-c".into(),
+        "mcp_servers.vibespace_context.enabled_tools=[\"vibespace_context\"]".into(),
+        "-c".into(),
+        "mcp_servers.vibespace_context.required=true".into(),
+        "-".into(),
+    ]);
+    prepared.secret_environment = Some(SecretEnvironment {
+        name: CODEX_CONTEXT_TOKEN_ENV,
+        value: token.to_string(),
+    });
+    Ok(())
+}
+
+fn valid_codex_context_base_args(args: &[String]) -> bool {
+    if args.get(0).map(String::as_str) != Some("exec")
+        || args.get(1).map(String::as_str) != Some("--json")
+    {
+        return false;
+    }
+    let mut index = 2;
+    if args.get(index).map(String::as_str) == Some("--cd") {
+        let Some(directory) = args.get(index + 1) else {
+            return false;
+        };
+        if directory.is_empty() {
+            return false;
+        }
+        index += 2;
+    }
+    if args.get(index).map(String::as_str) != Some("--model")
+        || !matches!(
+            args.get(index + 1).map(String::as_str),
+            Some("gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna")
+        )
+    {
+        return false;
+    }
+    index += 2;
+    if args.get(index).map(String::as_str) == Some("-c") {
+        if !matches!(
+            args.get(index + 1).map(String::as_str),
+            Some(
+                "model_reasoning_effort=\"low\""
+                    | "model_reasoning_effort=\"medium\""
+                    | "model_reasoning_effort=\"high\""
+                    | "model_reasoning_effort=\"xhigh\""
+            )
+        ) {
+            return false;
+        }
+        index += 2;
+    }
+    index == args.len()
 }
 
 fn prepare_probe_request(
@@ -1842,6 +1976,11 @@ fn run_supervised_process(
     if let Some(cwd) = &prepared.cwd {
         command.current_dir(cwd);
     }
+    if let Some(secret) = &prepared.secret_environment {
+        command.env_remove("OPENAI_API_KEY");
+        command.env_remove("OPENAI_KEY");
+        command.env(secret.name, &secret.value);
+    }
     let mut child = spawn_contained_process(&mut command)?;
     on_started();
 
@@ -1940,17 +2079,32 @@ fn status_event(
 pub fn cli_bridge_start(
     app: tauri::AppHandle,
     state: tauri::State<'_, CliBridgeState>,
+    tool_gateway: tauri::State<'_, ToolGatewayState>,
     request: CliStartRequest,
 ) -> Result<(), String> {
     let request_id = request.request_id.clone();
     let output_limit = request.output_limit_bytes;
-    let prepared = prepare_start_request(&state, request)?;
+    let mut prepared = prepare_start_request(&state, request)?;
+    let context_lease = if prepared.tool_scope {
+        let directory = prepared
+            .cwd
+            .as_ref()
+            .and_then(|path| path.to_str())
+            .map(str::to_string);
+        let lease =
+            create_codex_context_lease(&app, &tool_gateway, &request_id, directory.as_deref())?;
+        configure_codex_context_invocation(&mut prepared, lease.url(), lease.token())?;
+        Some(lease)
+    } else {
+        None
+    };
     let (cancellation, active_guard) = state.register(&request_id)?;
     let thread_request_id = request_id.clone();
     thread::Builder::new()
         .name(format!("cli-bridge-{request_id}"))
         .spawn(move || {
             let _active_guard = active_guard;
+            let _context_lease = context_lease;
             let result = run_supervised_process(
                 prepared,
                 cancellation,
@@ -2072,6 +2226,114 @@ mod tests {
     }
 
     #[test]
+    fn codex_context_scope_requires_codex_identity_and_injects_only_isolated_http_mcp() {
+        let executable = fixture_path("codex.exe");
+        fs::write(&executable, b"codex fixture").unwrap();
+        let canonical = fs::canonicalize(&executable).unwrap();
+        let state = CliBridgeState::default();
+        let codex_id = state
+            .register_trusted_executable(canonical.clone(), Some("codex".into()))
+            .unwrap()
+            .executable_id;
+        let mut prepared = prepare_start_request(
+            &state,
+            CliStartRequest {
+                request_id: "codex-context-1".into(),
+                executable_id: codex_id,
+                args: vec![
+                    "exec".into(),
+                    "--json".into(),
+                    "--model".into(),
+                    "gpt-5.6-luna".into(),
+                    "-c".into(),
+                    "model_reasoning_effort=\"xhigh\"".into(),
+                ],
+                cwd: None,
+                stdin: Some("exact prompt".into()),
+                timeout_ms: 1_000,
+                output_limit_bytes: 1_024,
+                tool_scope: Some("vibespace_context".into()),
+            },
+        )
+        .unwrap();
+        let secret = "s".repeat(64);
+        configure_codex_context_invocation(
+            &mut prepared,
+            "http://127.0.0.1:43123/v1/codex-context/lease",
+            &secret,
+        )
+        .unwrap();
+
+        assert_eq!(
+            prepared.args,
+            vec![
+                "exec",
+                "--ignore-user-config",
+                "--ephemeral",
+                "--json",
+                "--model",
+                "gpt-5.6-luna",
+                "-c",
+                "model_reasoning_effort=\"xhigh\"",
+                "--sandbox",
+                "read-only",
+                "-c",
+                "approval_policy=\"never\"",
+                "-c",
+                "mcp_servers.vibespace_context.url=\"http://127.0.0.1:43123/v1/codex-context/lease\"",
+                "-c",
+                "mcp_servers.vibespace_context.bearer_token_env_var=\"VIBESPACE_CODEX_CONTEXT_TOKEN\"",
+                "-c",
+                "mcp_servers.vibespace_context.enabled_tools=[\"vibespace_context\"]",
+                "-c",
+                "mcp_servers.vibespace_context.required=true",
+                "-"
+            ]
+        );
+        assert!(!prepared.args.iter().any(|arg| arg.contains(&secret)));
+        assert_eq!(prepared.stdin, Some(b"exact prompt".to_vec()));
+        assert_eq!(
+            format!("{:?}", prepared.secret_environment),
+            "Some(SecretEnvironment { name: \"VIBESPACE_CODEX_CONTEXT_TOKEN\", value: \"[redacted]\" })"
+        );
+
+        let custom_state = CliBridgeState::default();
+        let custom_id = custom_state
+            .register_trusted_executable(canonical, None)
+            .unwrap()
+            .executable_id;
+        assert!(prepare_start_request(
+            &custom_state,
+            CliStartRequest {
+                request_id: "codex-context-2".into(),
+                executable_id: custom_id,
+                args: vec!["exec".into()],
+                cwd: None,
+                stdin: Some("prompt".into()),
+                timeout_ms: 1_000,
+                output_limit_bytes: 1_024,
+                tool_scope: Some("vibespace_context".into()),
+            }
+        )
+        .is_err());
+        prepared.args = vec![
+            "exec".into(),
+            "--json".into(),
+            "--model".into(),
+            "gpt-5.6-luna".into(),
+            "--dangerously-bypass-approvals-and-sandbox".into(),
+        ];
+        prepared.secret_environment = None;
+        assert!(configure_codex_context_invocation(
+            &mut prepared,
+            "http://127.0.0.1:43123/v1/codex-context/lease",
+            &secret,
+        )
+        .is_err());
+        let _ = fs::remove_file(executable);
+    }
+
+    #[test]
     fn cli_bridge_accepts_safe_executable_names_and_rejects_unsafe_names() {
         for name in [
             "codex",
@@ -2164,6 +2426,7 @@ mod tests {
                 stdin: Some(prompt.clone()),
                 timeout_ms: 1_000,
                 output_limit_bytes: 1_024,
+                tool_scope: None,
             },
         )
         .expect("valid request");
@@ -2461,6 +2724,7 @@ mod tests {
             stdin: None,
             timeout_ms: 1_000,
             output_limit_bytes: 1_024,
+            tool_scope: None,
         };
 
         assert!(prepare_probe_request(&state, probe(raw_path.clone())).is_err());
@@ -2673,6 +2937,7 @@ mod tests {
                 stdin: None,
                 timeout_ms: 10_000,
                 output_limit_bytes: 1_024,
+                tool_scope: None,
             },
         )
         .unwrap();
@@ -2703,6 +2968,7 @@ mod tests {
                 stdin: None,
                 timeout_ms: 10_000,
                 output_limit_bytes: 4_096,
+                tool_scope: None,
             },
         )
         .unwrap();
@@ -2756,6 +3022,7 @@ mod tests {
                 stdin: None,
                 timeout_ms: 10_000,
                 output_limit_bytes: 8_192,
+                tool_scope: None,
             },
         )
         .unwrap();
@@ -2805,6 +3072,8 @@ mod tests {
             stdin: None,
             timeout_ms: 1_000,
             output_limit_bytes: 1_024,
+            tool_scope: false,
+            secret_environment: None,
         };
         let mut started_count = 0;
 

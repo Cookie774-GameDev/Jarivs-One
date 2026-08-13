@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
@@ -14,6 +15,7 @@ const MAX_ID_BYTES: usize = 200;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_ACTIVE_CONNECTIONS: usize = 16;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_MCP_CALL_IDS: usize = 4096;
 pub const TOOL_REQUEST_EVENT: &str = "vibespace://tool-gateway/request";
 
 const TOOL_CATALOG: &[&str] = &[
@@ -286,6 +288,28 @@ pub struct ToolGatewayState {
     pending: Arc<PendingRequests>,
 }
 
+pub struct CodexContextLease {
+    url: String,
+    token: String,
+    revoked: Arc<AtomicBool>,
+}
+
+impl CodexContextLease {
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+}
+
+impl Drop for CodexContextLease {
+    fn drop(&mut self) {
+        self.revoked.store(true, Ordering::Release);
+    }
+}
+
 impl ToolGatewayState {
     pub fn endpoint(&self) -> Result<ToolGatewayEndpoint, ToolGatewayError> {
         self.endpoint
@@ -302,6 +326,337 @@ fn http_response(status: &str, body: &[u8]) -> Vec<u8> {
         body.len()
     );
     [header.as_bytes(), body].concat()
+}
+
+fn mcp_response(id: &Value, result: Value) -> Vec<u8> {
+    let encoded = serde_json::to_vec(&serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": result,
+    }))
+    .unwrap_or_else(|_| {
+        br#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}"#
+            .to_vec()
+    });
+    if encoded.len() <= MAX_RESPONSE_BODY_BYTES {
+        encoded
+    } else {
+        mcp_error(Some(id), -32002, "Response exceeded the safe size limit")
+    }
+}
+
+fn mcp_error(id: Option<&Value>, code: i64, message: &str) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id.unwrap_or(&Value::Null),
+        "error": { "code": code, "message": message },
+    }))
+    .unwrap_or_else(|_| {
+        br#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}"#
+            .to_vec()
+    })
+}
+
+fn context_tool_descriptor() -> Value {
+    serde_json::json!({
+        "name": "vibespace_context",
+        "description": "Search or open the current VibeSpace Context Map within its bounded authority.",
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["operation"],
+            "properties": {
+                "operation": { "type": "string", "enum": ["search", "open"] },
+                "query": { "type": "string", "maxLength": 32768 },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 5 },
+                "pointer": { "type": "string", "maxLength": 4096 }
+            }
+        }
+    })
+}
+
+fn reserve_mcp_call_id(seen: &mut HashSet<String>, id: Option<&Value>) -> bool {
+    let Some(id) = id.and_then(|value| match value {
+        Value::String(value) if safe_id(value) => Some(format!("s:{value}")),
+        Value::Number(value) => Some(format!("n:{value}")),
+        _ => None,
+    }) else {
+        return false;
+    };
+    if seen.len() >= MAX_MCP_CALL_IDS {
+        return false;
+    }
+    seen.insert(id)
+}
+
+fn parse_http_request(
+    stream: &mut TcpStream,
+    expected_path: &str,
+) -> Result<(String, Vec<u8>), ToolGatewayError> {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    let header_end = loop {
+        let read = stream
+            .read(&mut buffer)
+            .map_err(|_| error("invalid_request", "The request was unreadable."))?;
+        if read == 0 {
+            return Err(error("invalid_request", "The request ended early."));
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+        if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+            break index + 4;
+        }
+        if bytes.len() > MAX_HEADER_BYTES {
+            return Err(error(
+                "request_too_large",
+                "The headers exceeded the safe size limit.",
+            ));
+        }
+    };
+    let header = std::str::from_utf8(&bytes[..header_end])
+        .map_err(|_| error("invalid_request", "The request headers were invalid."))?;
+    let mut lines = header.split("\r\n");
+    let expected_request_line = format!("POST {expected_path} HTTP/1.1");
+    if lines.next() != Some(expected_request_line.as_str()) {
+        return Err(error("invalid_request", "The endpoint is unavailable."));
+    }
+    let mut authorization = None;
+    let mut content_length = None;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("authorization") {
+            authorization = Some(value.trim().to_string());
+        } else if name.eq_ignore_ascii_case("content-length") {
+            content_length = value.trim().parse::<usize>().ok();
+        }
+    }
+    let length = content_length
+        .ok_or_else(|| error("invalid_request", "The request length was missing."))?;
+    if length > MAX_REQUEST_BODY_BYTES {
+        return Err(error(
+            "request_too_large",
+            "The request exceeded the safe size limit.",
+        ));
+    }
+    while bytes.len() - header_end < length {
+        let read = stream
+            .read(&mut buffer)
+            .map_err(|_| error("invalid_request", "The request body was unreadable."))?;
+        if read == 0 {
+            return Err(error("invalid_request", "The request body ended early."));
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+    }
+    Ok((
+        authorization.unwrap_or_default(),
+        bytes[header_end..header_end + length].to_vec(),
+    ))
+}
+
+fn handle_codex_mcp_connection(
+    mut stream: TcpStream,
+    path: &str,
+    token: &str,
+    session_id: &str,
+    directory: Option<&str>,
+    app: &AppHandle,
+    pending: &PendingRequests,
+    seen_call_ids: &mut HashSet<String>,
+) -> Result<(), ToolGatewayError> {
+    let (authorization, body) = match parse_http_request(&mut stream, path) {
+        Ok(value) => value,
+        Err(_) => {
+            let _ = stream.write_all(&http_response(
+                "400 Bad Request",
+                &mcp_error(None, -32600, "Invalid request"),
+            ));
+            return Ok(());
+        }
+    };
+    if !validate_bearer(Some(&authorization), token) {
+        let _ = stream.write_all(&http_response(
+            "401 Unauthorized",
+            &mcp_error(None, -32001, "Authentication failed"),
+        ));
+        return Ok(());
+    }
+    let value: Value = match serde_json::from_slice::<Value>(&body) {
+        Ok(value) if value.is_object() => value,
+        _ => {
+            let _ = stream.write_all(&http_response(
+                "400 Bad Request",
+                &mcp_error(None, -32700, "Parse error"),
+            ));
+            return Ok(());
+        }
+    };
+    let id = value.get("id");
+    let method = value
+        .get("method")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let response = match method {
+        "initialize" => {
+            let protocol_version = value
+                .pointer("/params/protocolVersion")
+                .and_then(Value::as_str)
+                .filter(|version| matches!(*version, "2024-11-05" | "2025-03-26" | "2025-06-18"))
+                .unwrap_or("2025-06-18");
+            mcp_response(
+                id.unwrap_or(&Value::Null),
+                serde_json::json!({
+                    "protocolVersion": protocol_version,
+                    "capabilities": { "tools": { "listChanged": false } },
+                    "serverInfo": { "name": "vibespace-context", "version": "1" }
+                }),
+            )
+        }
+        "notifications/initialized" => {
+            let _ = stream.write_all(&http_response("202 Accepted", &[]));
+            return Ok(());
+        }
+        "tools/list" => mcp_response(
+            id.unwrap_or(&Value::Null),
+            serde_json::json!({ "tools": [context_tool_descriptor()] }),
+        ),
+        "tools/call" => {
+            let params = value.get("params").and_then(Value::as_object);
+            if !reserve_mcp_call_id(seen_call_ids, id) {
+                mcp_error(id, -32600, "Invalid or replayed request ID")
+            } else if params
+                .and_then(|item| item.get("name"))
+                .and_then(Value::as_str)
+                != Some("vibespace_context")
+            {
+                mcp_error(id, -32601, "Tool unavailable")
+            } else {
+                let args = params
+                    .and_then(|item| item.get("arguments"))
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if !args.is_object() {
+                    mcp_error(id, -32602, "Invalid tool arguments")
+                } else {
+                    let request_id = format!("codex-{}", nanoid::nanoid!(32));
+                    let request = ToolGatewayRequest {
+                        protocol_version: 1,
+                        request_id: request_id.clone(),
+                        session_id: session_id.to_string(),
+                        message_id: format!("mcp-{}", nanoid::nanoid!(24)),
+                        tool: "vibespace_context".into(),
+                        args,
+                        directory: directory.map(str::to_string),
+                        worktree: directory.map(str::to_string),
+                    };
+                    let receiver = pending.reserve(&request_id)?;
+                    if app.emit(TOOL_REQUEST_EVENT, request).is_err() {
+                        pending.cancel(&request_id);
+                        mcp_error(id, -32603, "Context routing unavailable")
+                    } else {
+                        let tool_response = match receiver.recv_timeout(RESPONSE_TIMEOUT) {
+                            Ok(response) => response,
+                            Err(_) => {
+                                pending.cancel(&request_id);
+                                ToolGatewayResponse {
+                                    request_id,
+                                    ok: false,
+                                    code: "request_timeout".into(),
+                                    message: "The Context Map request timed out.".into(),
+                                    data: None,
+                                }
+                            }
+                        };
+                        let bounded = bounded_response_json(tool_response.clone())?;
+                        let text = String::from_utf8(bounded)
+                            .unwrap_or_else(|_| r#"{"ok":false,"code":"invalid_response"}"#.into());
+                        mcp_response(
+                            id.unwrap_or(&Value::Null),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }],
+                                "isError": !tool_response.ok
+                            }),
+                        )
+                    }
+                }
+            }
+        }
+        _ => mcp_error(id, -32601, "Method unavailable"),
+    };
+    stream
+        .write_all(&http_response("200 OK", &response))
+        .map_err(|_| {
+            error(
+                "connection_closed",
+                "The Codex Context Map connection closed.",
+            )
+        })
+}
+
+pub fn create_codex_context_lease(
+    app: &AppHandle,
+    state: &ToolGatewayState,
+    session_id: &str,
+    directory: Option<&str>,
+) -> Result<CodexContextLease, String> {
+    if !safe_id(session_id) {
+        return Err("The Codex Context Map session ID is invalid.".into());
+    }
+    if directory.is_some_and(|value| !safe_absolute_directory(value)) {
+        return Err("The Codex Context Map directory scope is invalid.".into());
+    }
+    let listener = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
+        .map_err(|_| "The Codex Context Map lease could not bind to loopback.".to_string())?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|_| "The Codex Context Map lease could not be isolated.".to_string())?;
+    let address = listener
+        .local_addr()
+        .map_err(|_| "The Codex Context Map lease address is unavailable.".to_string())?;
+    let lease_id = nanoid::nanoid!(32);
+    let path = format!("/v1/codex-context/{lease_id}");
+    let token = nanoid::nanoid!(64);
+    let revoked = Arc::new(AtomicBool::new(false));
+    let thread_revoked = Arc::clone(&revoked);
+    let app = app.clone();
+    let pending = Arc::clone(&state.pending);
+    let thread_token = token.clone();
+    let thread_session_id = session_id.to_string();
+    let thread_directory = directory.map(str::to_string);
+    let thread_path = path.clone();
+    std::thread::Builder::new()
+        .name(format!("codex-context-{lease_id}"))
+        .spawn(move || {
+            let mut seen_call_ids = HashSet::new();
+            while !thread_revoked.load(Ordering::Acquire) {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        let _ = handle_codex_mcp_connection(
+                            stream,
+                            &thread_path,
+                            &thread_token,
+                            &thread_session_id,
+                            thread_directory.as_deref(),
+                            &app,
+                            &pending,
+                            &mut seen_call_ids,
+                        );
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(_) => break,
+                }
+            }
+        })
+        .map_err(|_| "The Codex Context Map lease could not start.".to_string())?;
+    Ok(CodexContextLease {
+        url: format!("http://{address}{path}"),
+        token,
+        revoked,
+    })
 }
 
 fn error_body(request_id: &str, failure: ToolGatewayError) -> Vec<u8> {
@@ -538,10 +893,14 @@ pub fn tool_gateway_respond(
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_response_json, parse_tool_request, validate_bearer, PendingRequests,
+        bounded_response_json, context_tool_descriptor, mcp_response, parse_tool_request,
+        reserve_mcp_call_id, validate_bearer, CodexContextLease, PendingRequests,
         ToolGatewayResponse, MAX_REQUEST_BODY_BYTES, MAX_RESPONSE_BODY_BYTES,
     };
     use serde_json::json;
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     fn request(tool: &str) -> Vec<u8> {
         serde_json::to_vec(&json!({
@@ -582,6 +941,38 @@ mod tests {
                 "unknown_tool"
             );
         }
+    }
+
+    #[test]
+    fn codex_mcp_catalog_exposes_only_bounded_context_map_and_lease_drop_revokes() {
+        let descriptor = context_tool_descriptor();
+        assert_eq!(descriptor["name"], "vibespace_context");
+        assert_eq!(descriptor["inputSchema"]["additionalProperties"], false);
+        assert_eq!(
+            descriptor["inputSchema"]["properties"]["limit"]["maximum"],
+            5
+        );
+        let revoked = Arc::new(AtomicBool::new(false));
+        let lease = CodexContextLease {
+            url: "http://127.0.0.1:1/v1/codex-context/test".into(),
+            token: "t".repeat(64),
+            revoked: Arc::clone(&revoked),
+        };
+        assert!(!revoked.load(Ordering::Acquire));
+        drop(lease);
+        assert!(revoked.load(Ordering::Acquire));
+        let oversized = mcp_response(
+            &json!(1),
+            json!({ "data": "x".repeat(MAX_RESPONSE_BODY_BYTES) }),
+        );
+        assert!(oversized.len() <= MAX_RESPONSE_BODY_BYTES);
+        assert!(String::from_utf8(oversized)
+            .unwrap()
+            .contains("Response exceeded the safe size limit"));
+        let mut seen = HashSet::new();
+        assert!(reserve_mcp_call_id(&mut seen, Some(&json!("call-1"))));
+        assert!(!reserve_mcp_call_id(&mut seen, Some(&json!("call-1"))));
+        assert!(!reserve_mcp_call_id(&mut seen, None));
     }
 
     #[test]

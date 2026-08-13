@@ -37,6 +37,7 @@ import {
 } from './exactLiteralReply';
 import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
+import { requestsReadOnlyContextTool } from '@/lib/jarvis/contextToolIntent';
 import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } from '@/lib/actions';
 import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
 import { buildAgentTerminalContext } from '@/features/terminals/agentContext';
@@ -1597,14 +1598,11 @@ export function openCodeToolsForInteractionMode(
   mode: JarvisInteractionMode,
   messages: readonly LLMMessage[] = [],
 ): Readonly<Record<string, boolean>> {
-  const latestUserText =
-    [...messages]
-      .reverse()
-      .find((message) => message.role === 'user')
-      ?.content;
+  const latestUserText = [...messages]
+    .reverse()
+    .find((message) => message.role === 'user')?.content;
   const requestsContextMapTool =
-    latestUserText !== undefined &&
-    /\b(?:vibespace_context|context map)\b/i.test(llmContentToText(latestUserText));
+    latestUserText !== undefined && requestsReadOnlyContextTool(llmContentToText(latestUserText));
   return Object.freeze(
     Object.fromEntries(
       TOOL_GATEWAY_CATALOG.map((tool) => [
@@ -1615,6 +1613,71 @@ export function openCodeToolsForInteractionMode(
       ]),
     ),
   );
+}
+
+function boundedReadOnlyResearchQueries(userText: string): readonly string[] {
+  const numbered = userText
+    .split(/\r?\n/gu)
+    .flatMap((line) => {
+      const match = line.match(/^\s*(?:\d{1,2}[.)]|[-*])\s+(.+?)\s*$/u);
+      return match?.[1] ? [match[1]] : [];
+    })
+    .filter((question) => question.length >= 12)
+    .slice(0, 5);
+  return numbered.length >= 2 ? numbered : [userText];
+}
+
+export function prepareOpenCodeMessagesForInteractionMode(
+  messages: readonly LLMMessage[],
+): readonly LLMMessage[] {
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      latestUserIndex = index;
+      break;
+    }
+  }
+  if (latestUserIndex < 0) return messages;
+  const latest = messages[latestUserIndex]!;
+  const userText = llmContentToText(latest.content);
+  if (!requestsReadOnlyContextTool(userText)) return messages;
+  const researchQueries = boundedReadOnlyResearchQueries(userText);
+  const researchQueryCount =
+    ['zero', 'one', 'two', 'three', 'four', 'five'][researchQueries.length] ??
+    String(researchQueries.length);
+  const directive =
+    researchQueries.length === 1
+      ? [
+          'Call the real `vibespace_context` function now with exactly these two arguments:',
+          `{"operation":"search","query":${JSON.stringify(userText)},"limit":5}`,
+          'Do not include `pointer`, `recordId`, byte ranges, continuation, or any other optional argument in this first call.',
+          'Do not print, narrate, or wrap the call as JSON text. Wait for the real search result.',
+          'If a search item preview contains the complete answer, answer immediately and cite that item record title/path. Only call `operation="open"` when the preview is insufficient, using one exact pointer returned by search.',
+          'The final answer MUST include the exact matching record title (including its `.txt` filename) from the search result together with the requested facts.',
+          'Do not cite unrelated context-pack sources or replace the matching search-result title with another filename.',
+          'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
+        ].join('\n')
+      : [
+          `Call the real \`vibespace_context\` function once for each of the ${researchQueryCount} numbered questions, using these exact bounded argument objects in order:`,
+          ...researchQueries.map(
+            (query) =>
+              `{"operation":"search","query":${JSON.stringify(
+                `From the mapped files only: ${query}`,
+              )},"limit":3}`,
+          ),
+          `Run all ${researchQueryCount} searches before answering. Do not print or narrate the JSON objects; invoke the real function and wait for every result.`,
+          'Use each matching preview as bounded evidence. Only call `operation="open"` when that question cannot be answered from its previews, using an exact returned pointer.',
+          'Then answer every numbered question in order. For every answer, include the exact matching record title (including its `.txt` filename); cross-record questions must cite both matching files.',
+          'Do not cite unrelated context-pack sources or replace a matching search-result title with another filename.',
+          'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
+        ].join('\n');
+  const content =
+    typeof latest.content === 'string'
+      ? directive
+      : [...latest.content, { type: 'text' as const, text: directive }];
+  const prepared = [...messages];
+  prepared[latestUserIndex] = { ...latest, content };
+  return prepared;
 }
 
 function openCodePermissionRequest(approval: VibeSpaceApproval): JarvisPermissionRequest {
@@ -1796,11 +1859,7 @@ function updateStructuredAgentStatus(
 
 /** @internal A protected action proposal is a waiting checkpoint, not completed work. */
 export function responseAwaitsApproval(parts: readonly Part[]): boolean {
-  return parts.some(
-    (part) =>
-      part.kind === 'action_proposal' &&
-      part.status === 'pending',
-  );
+  return parts.some((part) => part.kind === 'action_proposal' && part.status === 'pending');
 }
 
 function updateStructuredAgentHarnessBinding(
@@ -2013,7 +2072,10 @@ function approvedFileReadContext(
   }
   const result = part.result as Record<string, unknown>;
   const data =
-    result.ok === true && result.data && typeof result.data === 'object' && !Array.isArray(result.data)
+    result.ok === true &&
+    result.data &&
+    typeof result.data === 'object' &&
+    !Array.isArray(result.data)
       ? (result.data as Record<string, unknown>)
       : undefined;
   if (
@@ -2031,9 +2093,7 @@ function approvedFileReadContext(
 }
 
 /** @internal Converts stored action state into bounded provider history. */
-export function actionPartToLlmText(
-  part: Extract<Part, { kind: 'action_proposal' }>,
-): string {
+export function actionPartToLlmText(part: Extract<Part, { kind: 'action_proposal' }>): string {
   const label = part.action_id;
   switch (part.status) {
     case 'pending':
@@ -2504,6 +2564,7 @@ async function createRuntimeKernelTurn(input: {
   workspaceId?: string;
   projectId?: string;
   text: string;
+  providerUserText?: string;
   userMessageId: string;
   messages: readonly LLMMessage[];
   interactionMode: JarvisInteractionMode;
@@ -2594,7 +2655,7 @@ async function createRuntimeKernelTurn(input: {
     agent: input.agent,
     surface,
     interactionMode: input.interactionMode,
-    userText: input.text,
+    userText: input.providerUserText ?? input.text,
     messageHistory: [...input.messages],
     model: input.model,
     identity: {
@@ -4109,9 +4170,7 @@ export function startRuntimeListener(
             const capturedAt = Date.now();
             const selectedConnection =
               'connectionId' in selected && selected.connectionId
-                ? PROVIDER_CONNECTIONS.find(
-                    (connection) => connection.id === selected.connectionId,
-                  )
+                ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selected.connectionId)
                 : undefined;
             const model: JarvisModelSnapshot = {
               ...('connectionId' in selected && selected.connectionId
@@ -4123,10 +4182,9 @@ export function startRuntimeListener(
                 'connectionMode' in selected && selected.connectionMode
                   ? selected.connectionMode
                   : connectionModeForProvider(String(runnable.model.provider)),
-              capabilities:
-                selectedConnection
-                  ? { ...selectedConnection.capabilities }
-                  : 'capabilities' in selected && selected.capabilities
+              capabilities: selectedConnection
+                ? { ...selectedConnection.capabilities }
+                : 'capabilities' in selected && selected.capabilities
                   ? { ...selected.capabilities }
                   : {},
               ...(runnable.temperature === undefined
@@ -4134,6 +4192,10 @@ export function startRuntimeListener(
                 : { effectiveTemperature: runnable.temperature }),
               capturedAt,
             };
+            const kernelMessages = prepareOpenCodeMessagesForInteractionMode(llmMessages);
+            const kernelUserText = [...kernelMessages]
+              .reverse()
+              .find((message) => message.role === 'user')?.content;
             const turn = await createRuntimeKernelTurn({
               host,
               agent: runnable,
@@ -4147,8 +4209,11 @@ export function startRuntimeListener(
               ...(chatRecord?.workspace_id ? { workspaceId: String(chatRecord.workspace_id) } : {}),
               ...(projectId ? { projectId: String(projectId) } : {}),
               text,
+              ...(kernelUserText === undefined
+                ? {}
+                : { providerUserText: llmContentToText(kernelUserText) }),
               userMessageId: userMessage.id,
-              messages: llmMessages,
+              messages: kernelMessages,
               interactionMode,
               speakReply: detail.speakReply === true,
               contextBlocks: runtimeContextBlocks,
@@ -4482,7 +4547,7 @@ export function startRuntimeListener(
         agent: runnable,
         chatId: String(chatId),
         ...(structuredAgent ? { parentChatId: structuredAgent.parentChatId } : {}),
-        messages: requestMessages,
+        messages: [...prepareOpenCodeMessagesForInteractionMode(requestMessages)],
         max_output_tokens: optimizedOutputTokenLimit,
         provider_options: reasoningPolicy?.providerOptions,
         connectionId:

@@ -20,6 +20,11 @@ const { codexDetect, codexProbeAuth, codexSend, harnessRun, nativeInvoke, ollama
   }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: nativeInvoke }));
+vi.mock('@/lib/harness/toolGatewayAuthority', () => ({
+  captureToolGatewayAuthorityClaim: () => ({ scope: {}, generation: 1 }),
+  bindToolGatewaySessionAuthority: () => true,
+  releaseToolGatewaySessionAuthority: vi.fn(),
+}));
 
 vi.mock('./openCodeRunAgent', () => ({
   openCodeRunAgentAdapter: {
@@ -401,7 +406,7 @@ describe('AI provider routing', () => {
     expect(openaiRun).not.toHaveBeenCalled();
   });
 
-  it('rejects an external provider CLI as alternate Chat transport', async () => {
+  it('routes an external provider CLI selection through its exact subscription adapter', async () => {
     const controller = new AbortController();
     const codexAgent: Agent = {
       ...openaiAgent,
@@ -423,10 +428,24 @@ describe('AI provider routing', () => {
         signal: controller.signal,
         workingDirectory: 'C:\\workspace with spaces',
         provider_options: { reasoning_effort: 'xhigh' },
+        connectionRequirements: { tools: true },
+        tools: { vibespace_context: true },
       }),
-    ).rejects.toThrow('External provider CLI connections cannot transport VibeSpace Chat');
+    ).resolves.toMatchObject({
+      text: 'cli response',
+      provider: 'openai',
+      model: 'gpt-5.6-sol',
+    });
 
-    expect(codexSend).not.toHaveBeenCalled();
+    expect(codexSend).toHaveBeenCalledOnce();
+    expect(codexSend.mock.calls[0]![0]).toMatchObject({
+      connection: { id: 'openai-codex' },
+      modelId: 'gpt-5.6-sol',
+      workingDirectory: 'C:\\workspace with spaces',
+      reasoningEffort: 'xhigh',
+      tools: { vibespace_context: true },
+    });
+    expect(codexSend.mock.calls[0]![0].prompt).toContain('EXACT PROTECTED SYSTEM CONTRACT');
     expect(harnessRun).not.toHaveBeenCalled();
     expect(openaiRun).not.toHaveBeenCalled();
   });

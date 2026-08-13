@@ -222,20 +222,39 @@ function nextWholeHour(): number {
   return date.getTime();
 }
 
+function requestedScheduleTime(text: string): number {
+  const relativeDay = /\btomorrow\b/i.test(text) ? 1 : 0;
+  const time = text.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (!time) return nextWholeHour();
+  let hour = Number(time[1]);
+  const minute = Number(time[2] ?? 0);
+  if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return nextWholeHour();
+  if (time[3]?.toLowerCase() === 'pm' && hour !== 12) hour += 12;
+  if (time[3]?.toLowerCase() === 'am' && hour === 12) hour = 0;
+  const date = new Date();
+  date.setDate(date.getDate() + relativeDay);
+  date.setHours(hour, minute, 0, 0);
+  if (relativeDay === 0 && date.getTime() <= Date.now()) return nextWholeHour();
+  return date.getTime();
+}
+
 function extractScheduleCreateRequest(
   text: string,
 ): { title: string; prompt: string; startAtMs: number; recurrence: string } | null {
-  if (!/\b(schedule|scheduled|every|daily|weekly|monthly|morning|evening|night)\b/.test(text))
+  const lower = normalized(text);
+  if (!/\b(schedule|scheduled|every|daily|weekly|monthly|morning|evening|night)\b/.test(lower))
     return null;
-  if (!/\b(make|create|schedule|run|remind|check|summarize|review)\b/.test(text)) return null;
-  const recurrence = /\bmonthly\b/.test(text)
+  if (!/\b(make|create|schedule|run|remind|check|summarize|review)\b/.test(lower)) return null;
+  const recurrence = /\bmonthly\b/.test(lower)
     ? 'monthly'
-    : /\bweekly|friday|monday|tuesday|wednesday|thursday|saturday|sunday\b/.test(text)
+    : /\bweekly|friday|monday|tuesday|wednesday|thursday|saturday|sunday\b/.test(lower)
       ? 'weekly'
-      : /\bdaily|every morning|every day|morning|evening|night\b/.test(text)
+      : /\bdaily|every morning|every day|morning|evening|night\b/.test(lower)
         ? 'daily'
         : 'once';
+  const namedTitle = text.match(/\b(?:schedule\s+)?named\s+["“]([^"”]+)["”]/i)?.[1]?.trim();
   const title =
+    namedTitle ||
     text
       .replace(/\b(make|create)\s+(?:a\s+)?schedule\s+(?:to|for)?\b/i, '')
       .replace(
@@ -246,8 +265,8 @@ function extractScheduleCreateRequest(
       .slice(0, 80) || 'Jarvis task';
   return {
     title: title.charAt(0).toUpperCase() + title.slice(1),
-    prompt: text,
-    startAtMs: nextWholeHour(),
+    prompt: lower,
+    startAtMs: requestedScheduleTime(text),
     recurrence,
   };
 }
@@ -270,16 +289,34 @@ export function isJarvisCreatorWizardAnswerDump(text: string): boolean {
   return false;
 }
 
-function extractCreatorStartRequest(text: string): { kind: 'agent' | 'skill' } | null {
+export function extractCreatorStartRequest(text: string): { kind: 'agent' | 'skill' } | null {
   if (isJarvisCreatorWizardAnswerDump(text)) return null;
-  if (!/\b(make|create|build|draft|write|generate)\b/.test(text)) return null;
-  const agentIndex = text.search(/\bagents?\b/);
-  const skillIndex = text.search(/\bskills?\b/);
-  if (agentIndex < 0 && skillIndex < 0) return null;
-  if (agentIndex >= 0 && skillIndex >= 0) {
-    return agentIndex <= skillIndex ? { kind: 'agent' } : { kind: 'skill' };
+  const directRequest =
+    /\b(?:make|create|build|draft|write|generate)\s+(?:(?:me|us)\s+)?(?:(?:an?|the|new)\s+)?(?:(?:jarvis|vibespace)\s+)?(agent|skill)s?\b/i.exec(
+      text,
+    );
+  if (!directRequest) return null;
+  return directRequest[1]?.toLowerCase() === 'skill' ? { kind: 'skill' } : { kind: 'agent' };
+}
+
+function extractAgentRunRequest(
+  text: string,
+): { task: string; agentId: string } | null {
+  const request = text.trim();
+  if (
+    !/\b(?:spawn|run|launch|start)\s+(?:one|1|a)\s+(?:sub-?agent|child agent)\b/i.test(request)
+  ) {
+    return null;
   }
-  return agentIndex >= 0 ? { kind: 'agent' } : { kind: 'skill' };
+  const agentId = /\b(?:saved\s+)?agent\s+id\s+(agt_[A-Za-z0-9_-]+)\b/i.exec(request)?.[1];
+  const delegatedTask = /\b(?:sub-?agent|child agent)\s+to\s+([\s\S]+?)(?=\s+Use the saved agent id\b)/i.exec(
+    request,
+  )?.[1];
+  if (!agentId || !delegatedTask) return null;
+  const sourceExcerpt = /\bSource excerpt(?:\s+from\s+[^:]+)?:\s*([\s\S]+)$/i.exec(request)?.[0];
+  const task = `${delegatedTask.trim()} The child must use installed local Ollama Llama 3.2, must not edit files or use the network, and must not spawn more children.${sourceExcerpt ? ` ${sourceExcerpt.trim()}` : ''}`;
+  if (task.length > 50_000) return null;
+  return { task, agentId };
 }
 
 /**
@@ -296,6 +333,29 @@ export function inferFallbackActionProposals(
   const user = normalized(userText);
   const assistant = normalized(assistantText);
   const proposals: ParsedActionProposal[] = [];
+
+  // Creator question responses are structured draft input, not standalone
+  // app-action intent. Do not let words such as "create" or "read a file"
+  // escape the wizard into filesystem approvals.
+  if (isJarvisCreatorWizardAnswerDump(userText)) return proposals;
+  // Protected Context turns expose only the bounded Context gateway. Never
+  // reinterpret incidental slash text (for example "title/path") or model
+  // narration as a separate filesystem approval.
+  if (/^\s*Call the real `vibespace_context` function\b/u.test(userText)) {
+    return proposals;
+  }
+
+  const agentRun = extractAgentRunRequest(userText);
+  if (agentRun) {
+    proposals.push(
+      proposal(
+        'agent.run',
+        agentRun,
+        `Run the exact saved agent ${agentRun.agentId} with the bounded task after user approval.`,
+      ),
+    );
+    return proposals;
+  }
 
   if (asksAboutPlugins(user) && (asksToOpenSettings(user) || /\b(show|list|tell)\b/.test(user))) {
     proposals.push(
@@ -394,7 +454,7 @@ export function inferFallbackActionProposals(
     );
   }
 
-  const scheduleCreate = extractScheduleCreateRequest(user);
+  const scheduleCreate = extractScheduleCreateRequest(userText);
   if (scheduleCreate) {
     proposals.push(
       proposal(
@@ -410,6 +470,18 @@ export function inferFallbackActionProposals(
     proposals.push(
       proposal('files.read', { path: fileRead.path }, `Read ${fileRead.path} after user approval.`),
     );
+  }
+
+  const fileEdit = extractFileEditRequest(userText);
+  if (fileEdit) {
+    proposals.push(
+      proposal(
+        'files.edit',
+        { path: fileEdit.path, content: fileEdit.content },
+        `Replace ${fileEdit.path} after user approval.`,
+      ),
+    );
+    return proposals;
   }
 
   const defaultWriteDir = getCachedDefaultWriteDir();
@@ -435,13 +507,36 @@ export function inferFallbackActionProposals(
   return proposals.slice(0, 3);
 }
 
+export function extractFileEditRequest(
+  userText: string,
+): { path: string; content: string } | null {
+  const raw = userText.trim();
+  if (
+    !/\b(?:update|replace|overwrite|edit|modify)\b/i.test(raw) ||
+    !/\b(?:existing|entire|whole|contents?)\b/i.test(raw)
+  ) {
+    return null;
+  }
+  const pathMatch =
+    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
+    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
+  const path = pathMatch?.[1]?.replace(/[.,;:]+$/, '').trim();
+  if (!path || path.length > 32_768) return null;
+  const contentMatch = raw.match(
+    /\b(?:contents?\s+with|contains?|containing|says?)\s+exactly\s*:\s*([\s\S]+)$/i,
+  );
+  const content = contentMatch?.[1]?.trim();
+  if (content === undefined || content.length > 1_000_000) return null;
+  return { path, content };
+}
+
 export function extractFileReadRequest(userText: string): { path: string } | null {
   const raw = userText.trim();
   const pathMatch =
     raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
     raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
   const intentText = pathMatch ? raw.replace(pathMatch[0], ' ') : raw;
-  if (!/\b(read|inspect|open|show|load|check)\b/i.test(intentText)) return null;
+  if (!/\b(read|inspect|review|audit|open|show|load|check)\b/i.test(intentText)) return null;
   if (
     !/\b(file|path|contents?|directly)\b/i.test(intentText) &&
     !/\.[a-z0-9]{1,12}\b/i.test(raw)
@@ -477,7 +572,19 @@ export function extractFileWriteRequest(
 ): { path: string; content: string } | null {
   const raw = userText.trim();
   if (!raw) return null;
-  const lower = raw.toLowerCase();
+  const pathMatch =
+    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
+    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
+  // A path is data, not intent. In particular, read targets such as
+  // native-write-proof.txt must not manufacture a second files.create action.
+  const intentText = pathMatch ? raw.replace(pathMatch[0], ' ') : raw;
+  const lower = intentText.toLowerCase();
+  if (
+    /\b(?:make|perform)\s+no\s+(?:edits?|changes?)\b/i.test(raw) ||
+    /\b(?:do not|don't)\s+(?:edit|write|create|modify)\b/i.test(raw)
+  ) {
+    return null;
+  }
   if (
     /\b(?:ledger|status summary|qualification report)\b/i.test(raw) &&
     /\b(?:pass|fail|present|absent)\b/i.test(raw) &&
@@ -494,10 +601,6 @@ export function extractFileWriteRequest(
   }
 
   // Absolute Windows / UNC / POSIX path, optionally quoted
-  const pathMatch =
-    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
-    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
-
   let path: string;
   if (pathMatch?.[1]) {
     path = pathMatch[1].replace(/[.,;:]+$/, '').trim();

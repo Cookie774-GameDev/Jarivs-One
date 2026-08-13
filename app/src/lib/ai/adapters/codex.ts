@@ -29,6 +29,15 @@ function toolStatus(value: unknown): Extract<ProviderEvent, { type: 'tool' }>['s
 
 export function buildCodexInvocation(request: CliInvocationRequest): CliInvocation {
   assertCliPrompt(request.prompt);
+  const enabledTools = Object.entries(request.tools ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name);
+  if (
+    enabledTools.length > 0 &&
+    (enabledTools.length !== 1 || enabledTools[0] !== 'vibespace_context')
+  ) {
+    throw new Error('Codex CLI tool scope is unsupported');
+  }
   const args = ['exec', '--json'];
   if (request.workingDirectory) args.push('--cd', request.workingDirectory);
   if (request.modelId) args.push('--model', requireModelId(request.modelId, 'Codex'));
@@ -42,6 +51,7 @@ export function buildCodexInvocation(request: CliInvocationRequest): CliInvocati
     args,
     stdin: request.prompt,
     ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
+    ...(enabledTools.length === 1 ? { toolScope: 'vibespace_context' as const } : {}),
   };
 }
 
@@ -126,12 +136,7 @@ export function normalizeCodexJsonl(input: string, limits?: JsonlParserLimits): 
 }
 
 export function classifyCodexAuthProbe(probe: Readonly<CliProbeResult>): AuthProbeResult {
-  if (
-    probe.timedOut ||
-    probe.exitCode !== 0 ||
-    probe.stdout.truncated ||
-    probe.stderr.truncated
-  ) {
+  if (probe.timedOut || probe.exitCode !== 0 || probe.stdout.truncated || probe.stderr.truncated) {
     return {
       status: 'unknown',
       detail: 'Codex sign-in status could not be verified.',

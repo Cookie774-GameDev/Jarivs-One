@@ -1,6 +1,7 @@
 export type ConnectionMode = 'external-cli' | 'native-api' | 'local';
 
 export type JarvisPromptTransportStrategy = 'native-system' | 'prefixed-preamble' | 'unsupported';
+export type ProviderToolName = 'vibespace_context';
 
 export interface ProviderCapabilities {
   text: boolean;
@@ -28,6 +29,7 @@ export interface ProviderConnection {
   authSource: string;
   modelId?: string;
   capabilities: ProviderCapabilities;
+  toolAllowlist?: readonly ProviderToolName[];
   promptTransport: JarvisPromptTransportStrategy;
   enabled: boolean;
 }
@@ -93,6 +95,7 @@ export interface ProviderRequest {
   systemPrompt?: string;
   workingDirectory?: string;
   sessionId?: string;
+  tools?: Readonly<Record<string, boolean>>;
   signal?: AbortSignal;
   onResponseObservation?: (
     observation:

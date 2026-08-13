@@ -3,6 +3,34 @@ import { __setCachedDefaultWriteDirForTests } from './defaultWriteDir';
 import { inferFallbackActionProposals } from './fallbackActions';
 
 describe('inferFallbackActionProposals', () => {
+  it('does not reinterpret a protected Context tool directive as files.read', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'Call the real `vibespace_context` function now.',
+        'If a search item preview contains the complete answer, cite that item record title/path.',
+        'Only call `operation="open"` when the preview is insufficient.',
+        'No mandatory coordination-file read applies.',
+      ].join('\n'),
+      'Read /path after user approval.',
+    );
+
+    expect(proposals).toEqual([]);
+  });
+
+  it('does not reinterpret a multi-question Context tool directive as a schedule', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'Call the real `vibespace_context` function once for each of the five numbered questions, using these exact bounded argument objects in order:',
+        '{"operation":"search","query":"what recovery color belongs to Observatory Lumen?","limit":3}',
+        'Run all five searches before answering.',
+        'For every answer, include the exact matching record title.',
+      ].join('\n'),
+      'I will run those searches.',
+    );
+
+    expect(proposals).toEqual([]);
+  });
+
   afterEach(() => {
     __setCachedDefaultWriteDirForTests(null);
   });
@@ -147,6 +175,39 @@ describe('inferFallbackActionProposals', () => {
     expect(proposals.map(({ action_id }) => action_id)).toEqual(['files.create']);
   });
 
+  it('does not infer a write action from the word write inside a read target filename', () => {
+    const proposals = inferFallbackActionProposals(
+      'Read C:\\Users\\viper\\VibeSpace-RLM-UAT\\native-write-proof.txt and return its exact contents.',
+      'I need permission to read that file.',
+    );
+
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(['files.read']);
+  });
+
+  it('does not infer a file write from an explicit no-edits review continuation', () => {
+    const proposals = inferFallbackActionProposals(
+      'Now analyze the approved file content. Identify one real issue, make no edits, and end with one line beginning RESULT:.',
+      'I will provide the review.',
+    );
+
+    expect(proposals.find((proposal) => proposal.action_id === 'files.create')).toBeUndefined();
+  });
+
+  it('proposes files.edit for an explicit whole-file replacement', () => {
+    const proposals = inferFallbackActionProposals(
+      'Update the existing file "C:\\Users\\viper\\VibeSpace-RLM-UAT\\native-write-proof.txt" by replacing its entire contents with exactly: VIBESPACE_NATIVE_EDIT_PROOF_20260812.',
+      'Here is some example code instead.',
+    );
+
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(['files.edit']);
+    expect(proposals[0]).toMatchObject({
+      params: {
+        path: 'C:\\Users\\viper\\VibeSpace-RLM-UAT\\native-write-proof.txt',
+        content: 'VIBESPACE_NATIVE_EDIT_PROOF_20260812.',
+      },
+    });
+  });
+
   it('joins an explicit directory with the requested filename for a file inspection', () => {
     const proposals = inferFallbackActionProposals(
       'Inspect C:\\Users\\viper\\Downloads and check whether vibespace-read-proof-817.txt exists.',
@@ -234,6 +295,71 @@ describe('inferFallbackActionProposals', () => {
     });
   });
 
+  it('treats a read-only file review as a real file-read request', () => {
+    const proposals = inferFallbackActionProposals(
+      'Review C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs for one real functional bug. Read only.',
+      'I will review the file.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'files.read',
+      params: { path: 'C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs' },
+    });
+  });
+
+  it('runs the exact saved agent when the user explicitly requests one bounded child', () => {
+    const request =
+      'Spawn one sub-agent to review C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs for one real functional bug or usability issue. Use the saved agent id agt_BPTbjAHi36MThyOB only. The child must use installed local Ollama Llama 3.2, must not edit files or use the network, and must not spawn more children. Wait for it and report its result.';
+    const proposals = inferFallbackActionProposals(
+      request,
+      'I need permission to read that file.',
+    );
+
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      action_id: 'agent.run',
+      params: {
+        agentId: 'agt_BPTbjAHi36MThyOB',
+        task: expect.stringMatching(
+          /^Review C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus\.mjs[\s\S]*must not spawn more children/i,
+        ),
+      },
+      rationale: expect.stringMatching(/saved agent/i),
+    });
+  });
+
+  it('preserves a trailing bounded source excerpt in the delegated child task', () => {
+    const proposals = inferFallbackActionProposals(
+      'Spawn one sub-agent to review this bounded source excerpt for one bug. Use the saved agent id agt_BPTbjAHi36MThyOB only. The child must not edit files or spawn more children. Wait for it. Source excerpt: pending = paragraph;',
+      'I can run the saved agent.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'agent.run',
+      params: {
+        agentId: 'agt_BPTbjAHi36MThyOB',
+        task: expect.stringContaining('Source excerpt: pending = paragraph;'),
+      },
+    });
+  });
+
+  it('does not mistake a worker wrapper plus build-prefixed filename for an agent-creator request', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'You are a chat-native Jarvis multitask agent inside the VibeSpace chat interface.',
+        'You are a worker for a parent chat supervisor. Stay in this thread and complete the assigned task.',
+        'Task: Review C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs for one real functional bug. Read only.',
+      ].join('\n'),
+      'I will review the file.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'files.read',
+      params: { path: 'C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs' },
+    });
+    expect(proposals.some((proposal) => proposal.action_id === 'creator.start')).toBe(false);
+  });
+
   it('proposes creating a Jarvis schedule from natural language', () => {
     const proposals = inferFallbackActionProposals(
       'Make a schedule to check AI news every morning',
@@ -249,6 +375,25 @@ describe('inferFallbackActionProposals', () => {
     });
   });
 
+  it('preserves a quoted schedule name and resolves tomorrow at a stated time', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-12T07:07:00-05:00'));
+    const proposals = inferFallbackActionProposals(
+      'Create a one-time VibeSpace schedule named "RLM UAT Schedule — Owner Verify". Make it a harmless local reminder tomorrow at 9:00 AM.',
+      'I can create that schedule.',
+    );
+    vi.useRealTimers();
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'schedule.create',
+      params: {
+        title: 'RLM UAT Schedule — Owner Verify',
+        recurrence: 'once',
+        startAtMs: new Date('2026-08-13T09:00:00-05:00').getTime(),
+      },
+    });
+  });
+
   it('proposes launching the Make with Jarvis agent creator for agent requests', () => {
     const proposals = inferFallbackActionProposals(
       'make an agent that reviews pull requests',
@@ -259,6 +404,30 @@ describe('inferFallbackActionProposals', () => {
       action_id: 'creator.start',
       params: { kind: 'agent' },
       rationale: expect.stringMatching(/agent/i),
+    });
+  });
+
+  it('recognizes a named VibeSpace agent request', () => {
+    const proposals = inferFallbackActionProposals(
+      'Create a VibeSpace agent named "RLM UAT Agent — Llama32" and configure it to use local Ollama Llama 3.2.',
+      'Here is example Python code.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'creator.start',
+      params: { kind: 'agent' },
+    });
+  });
+
+  it('recognizes a named VibeSpace skill request', () => {
+    const proposals = inferFallbackActionProposals(
+      'Create a VibeSpace skill named "RLM UAT Skill — File Inspector".',
+      'Here is example code.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'creator.start',
+      params: { kind: 'skill' },
     });
   });
 
@@ -285,6 +454,18 @@ describe('inferFallbackActionProposals', () => {
     );
 
     expect(proposals.find((p) => p.action_id === 'creator.start')).toBeUndefined();
+  });
+
+  it('does not infer filesystem actions from creator skill answer dumps', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'What do you want this skill to do?: Create a skill named RLM UAT Skill — File Inspector that inspects one user-approved local file and reports its structure without modifying it or using the network.',
+        'How should it behave in detail?: Read only the exact file the user approves. Never edit or create files.',
+      ].join('\n'),
+      'I will draft the skill.',
+    );
+
+    expect(proposals).toEqual([]);
   });
 
   it('does not re-open Make with Jarvis for agent creator answer dumps', () => {

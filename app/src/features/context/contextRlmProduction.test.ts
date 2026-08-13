@@ -1,8 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { VibeSpaceHarness } from '@/lib/harness/types';
-import { createContextMapRlmRepository, createOllamaRlmChildRunner } from './contextRlmProduction';
+import {
+  createContextMapRlmRepository,
+  createOllamaRlmChildRunner,
+  requestsMappedFileAuthority,
+} from './contextRlmProduction';
 
 const SHA = `sha256:${'a'.repeat(64)}` as const;
+
+describe('requestsMappedFileAuthority', () => {
+  it.each([
+    'Please read the files and answer with the exact source filename.',
+    'What is the source file for this fact?',
+    'Cite the source path.',
+  ])('routes explicit mapped-file questions away from chat history: %s', (query) => {
+    expect(requestsMappedFileAuthority(query)).toBe(true);
+  });
+
+  it('keeps ordinary cross-history research federated', () => {
+    expect(requestsMappedFileAuthority('Summarize what we decided about the release.')).toBe(false);
+  });
+});
 
 function maps() {
   return [
@@ -162,6 +180,175 @@ describe('production Context Map RLM repository', () => {
         contentHash: 'a'.repeat(64),
       },
     });
+  });
+
+  it('admits and exact-scans mapped corpus shards larger than the former 512 KiB ceiling', async () => {
+    const anchor = 'Observatory Lumen color cobalt-fern verification 47291';
+    const content = `${'bounded corpus filler '.repeat(30_000)}\n${anchor}`;
+    expect(new TextEncoder().encode(content).length).toBeGreaterThan(512 * 1024);
+    expect(new TextEncoder().encode(content).length).toBeLessThan(1024 * 1024);
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(content).length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path, maxBytes) => {
+        expect(maxBytes).toBe(1024 * 1024);
+        return { ok: true as const, path, content };
+      }),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Please read the files and answer: what color phrase and verification number belong to Observatory Lumen?',
+    );
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]?.preview).toContain('[SOURCE FILE: book.txt]');
+    expect(hits[0]?.preview).toContain(anchor);
+    expect(hits[0]?.score).toBeGreaterThan(1);
+  });
+
+  it('ranks a contiguous entity phrase above scattered generic question words', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'file-2',
+      kind: 'file' as const,
+      title: 'unrelated.txt',
+      summary: '',
+      path: 'C:\\repo\\unrelated.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        content: path.endsWith('book.txt')
+          ? 'Observatory Lumen is cobalt-fern, verification number 47291.'
+          : 'Many records discuss color phrases and verification numbers.',
+      })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Please read the files: what color phrase and verification number belong to Observatory Lumen?',
+    );
+
+    expect(hits[0]?.recordId).toContain('file-1');
+    expect(hits[0]?.preview).toContain('Observatory Lumen');
+    expect(hits[0]!.score).toBeGreaterThan(hits[1]!.score);
+  });
+
+  it('re-ranks derivative index hits against source content instead of trusting stale index scores', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'file-2',
+      kind: 'file' as const,
+      title: 'handoff-51.txt',
+      summary: '',
+      path: 'C:\\repo\\handoff-51.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    const contents: Record<string, string> = {
+      'C:\\repo\\book.txt': 'A generic clerk was left near an unrelated neighboring record.',
+      'C:\\repo\\handoff-51.txt':
+        'ORBIT HANDOFF PART TWO. The receiving clerk answers glass-peregrine with harbor-saffron.',
+    };
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: contents[path]!.length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content: contents[path]! })),
+      lexicalSearch: vi.fn(async () => [
+        {
+          documentId: 'file-1',
+          excerpt: contents['C:\\repo\\book.txt'],
+          score: 100,
+        },
+        {
+          documentId: 'file-2',
+          excerpt: contents['C:\\repo\\handoff-51.txt'],
+          score: 1,
+        },
+      ]),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'the orbit relay handoff is split between neighboring records — what phrase was left and what answer did the receiving clerk pair with it?',
+    );
+
+    expect(hits[0]?.recordId).toContain('file-2');
+    expect(hits[0]?.preview).toContain('harbor-saffron');
+  });
+
+  it('recovers source-authoritative hits omitted by a nonempty stale lexical index', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'file-2',
+      kind: 'file' as const,
+      title: 'observatory-lumen.txt',
+      summary: '',
+      path: 'C:\\repo\\observatory-lumen.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    const contents: Record<string, string> = {
+      'C:\\repo\\book.txt': 'A generic record mentions a recovery color without naming any site.',
+      'C:\\repo\\observatory-lumen.txt': 'Observatory Lumen uses the recovery color cobalt-fern.',
+    };
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: contents[path]!.length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content: contents[path]! })),
+      lexicalSearch: vi.fn(async () => [
+        {
+          documentId: 'file-1',
+          excerpt: contents['C:\\repo\\book.txt'],
+          score: 100,
+        },
+      ]),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'From the mapped files only: what recovery color belongs to Observatory Lumen?',
+    );
+
+    expect(hits[0]?.recordId).toContain('file-2');
+    expect(hits[0]?.preview).toContain('[SOURCE FILE: observatory-lumen.txt]');
+    expect(hits[0]?.preview).toContain('cobalt-fern');
   });
 
   it('rejects traversing relative node paths before native filesystem access', async () => {

@@ -167,7 +167,16 @@ describe('provider capability catalog', () => {
       subscriptionQuota: false,
       localOnly: false,
     };
-    expect(getProviderConnectionDescriptor('openai-codex').capabilities).toEqual(external);
+    expect(getProviderConnectionDescriptor('openai-codex').capabilities).toEqual({
+      ...external,
+      tools: true,
+    });
+    expect(getProviderConnectionDescriptor('openai-codex').toolAllowlist).toEqual([
+      'vibespace_context',
+    ]);
+    expect(Object.isFrozen(getProviderConnectionDescriptor('openai-codex').toolAllowlist)).toBe(
+      true,
+    );
     expect(getProviderConnectionDescriptor('anthropic-claude-code').capabilities).toEqual(external);
     expect(getProviderConnectionDescriptor('google-gemini-cli').capabilities).toEqual({
       ...external,
@@ -345,6 +354,30 @@ describe('shell-free provider command vectors', () => {
     expect(() =>
       buildCodexInvocation({ prompt, reasoningEffort: 'high; Remove-Item C:\\' }),
     ).toThrowError('Codex CLI reasoning effort is unsupported');
+  });
+
+  it('marks only an exact Context Map request for the native run-scoped bridge', () => {
+    expect(
+      buildCodexInvocation({
+        prompt,
+        modelId: 'gpt-5.6-luna',
+        reasoningEffort: 'xhigh',
+        tools: { vibespace_context: true },
+      }),
+    ).toEqual({
+      args: ['exec', '--json', '--model', 'gpt-5.6-luna', '-c', 'model_reasoning_effort="xhigh"'],
+      stdin: prompt,
+      toolScope: 'vibespace_context',
+    });
+    const invalidToolScopes: ReadonlyArray<Readonly<Record<string, boolean>>> = [
+      { 'terminal.list': true },
+      { vibespace_context: true, 'terminal.list': true },
+    ];
+    for (const tools of invalidToolScopes) {
+      expect(() => buildCodexInvocation({ prompt, tools })).toThrowError(
+        'Codex CLI tool scope is unsupported',
+      );
+    }
   });
 
   it('keeps Claude and OpenCode prompts on stdin', () => {
