@@ -3,10 +3,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
 pub const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
@@ -15,6 +15,7 @@ const MAX_ID_BYTES: usize = 200;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_ACTIVE_CONNECTIONS: usize = 16;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const RESPONSE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAX_MCP_CALL_IDS: usize = 4096;
 pub const TOOL_REQUEST_EVENT: &str = "vibespace://tool-gateway/request";
 
@@ -291,7 +292,9 @@ pub struct ToolGatewayState {
 pub struct CodexContextLease {
     url: String,
     token: String,
-    revoked: Arc<AtomicBool>,
+    authority: Arc<CodexLeaseAuthority>,
+    address: SocketAddr,
+    listener: Option<std::thread::JoinHandle<()>>,
 }
 
 impl CodexContextLease {
@@ -306,7 +309,97 @@ impl CodexContextLease {
 
 impl Drop for CodexContextLease {
     fn drop(&mut self) {
+        self.authority.revoke();
+        let _ = TcpStream::connect(self.address);
+        if let Some(listener) = self.listener.take() {
+            let _ = listener.join();
+        }
+    }
+}
+
+#[derive(Default)]
+struct CodexLeaseAuthority {
+    revoked: AtomicBool,
+    gate: Mutex<()>,
+    connections: Mutex<HashMap<u64, TcpStream>>,
+    next_connection_id: AtomicU64,
+}
+
+impl CodexLeaseAuthority {
+    fn is_revoked(&self) -> bool {
+        self.revoked.load(Ordering::Acquire)
+    }
+
+    fn dispatch(
+        &self,
+        request: ToolGatewayRequest,
+        emit: &dyn Fn(ToolGatewayRequest) -> bool,
+    ) -> bool {
+        let Ok(_gate) = self.gate.lock() else {
+            return false;
+        };
+        !self.is_revoked() && emit(request)
+    }
+
+    fn select_response(&self, response: ToolGatewayResponse) -> ToolGatewayResponse {
+        let Ok(_gate) = self.gate.lock() else {
+            return revoked_tool_response(response.request_id);
+        };
+        if self.is_revoked() {
+            revoked_tool_response(response.request_id)
+        } else {
+            response
+        }
+    }
+
+    fn register_connection(self: &Arc<Self>, stream: &TcpStream) -> Option<CodexConnectionGuard> {
+        let _gate = self.gate.lock().ok()?;
+        if self.is_revoked() {
+            return None;
+        }
+        let id = self.next_connection_id.fetch_add(1, Ordering::Relaxed);
+        self.connections
+            .lock()
+            .ok()?
+            .insert(id, stream.try_clone().ok()?);
+        Some(CodexConnectionGuard {
+            id,
+            authority: Arc::clone(self),
+        })
+    }
+
+    fn revoke(&self) {
+        let _gate = self.gate.lock();
         self.revoked.store(true, Ordering::Release);
+        if let Ok(mut connections) = self.connections.lock() {
+            for stream in connections.values() {
+                let _ = stream.shutdown(Shutdown::Both);
+            }
+            connections.clear();
+        }
+    }
+}
+
+struct CodexConnectionGuard {
+    id: u64,
+    authority: Arc<CodexLeaseAuthority>,
+}
+
+impl Drop for CodexConnectionGuard {
+    fn drop(&mut self) {
+        if let Ok(mut connections) = self.authority.connections.lock() {
+            connections.remove(&self.id);
+        }
+    }
+}
+
+fn revoked_tool_response(request_id: String) -> ToolGatewayResponse {
+    ToolGatewayResponse {
+        request_id,
+        ok: false,
+        code: "authority_revoked".into(),
+        message: "The Context Map lease was revoked.".into(),
+        data: None,
     }
 }
 
@@ -389,20 +482,44 @@ fn reserve_mcp_call_id(seen: &mut HashSet<String>, id: Option<&Value>) -> bool {
     seen.insert(id)
 }
 
+fn reserve_shared_mcp_call_id(seen: &Mutex<HashSet<String>>, id: Option<&Value>) -> bool {
+    seen.lock()
+        .map(|mut seen| reserve_mcp_call_id(&mut seen, id))
+        .unwrap_or(false)
+}
+
 fn parse_http_request(
     stream: &mut TcpStream,
     expected_path: &str,
+    authority: &CodexLeaseAuthority,
 ) -> Result<(String, Vec<u8>), ToolGatewayError> {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let _ = stream.set_read_timeout(Some(RESPONSE_POLL_INTERVAL));
+    let mut deadline = Instant::now() + Duration::from_secs(5);
     let mut bytes = Vec::new();
     let mut buffer = [0_u8; 4096];
     let header_end = loop {
-        let read = stream
-            .read(&mut buffer)
-            .map_err(|_| error("invalid_request", "The request was unreadable."))?;
+        if authority.is_revoked() {
+            return Err(error(
+                "authority_revoked",
+                "The Context Map lease was revoked.",
+            ));
+        }
+        let read = match stream.read(&mut buffer) {
+            Ok(read) => read,
+            Err(failure)
+                if matches!(
+                    failure.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) && Instant::now() < deadline =>
+            {
+                continue;
+            }
+            Err(_) => return Err(error("invalid_request", "The request was unreadable.")),
+        };
         if read == 0 {
             return Err(error("invalid_request", "The request ended early."));
         }
+        deadline = Instant::now() + Duration::from_secs(5);
         bytes.extend_from_slice(&buffer[..read]);
         if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
             break index + 4;
@@ -442,12 +559,28 @@ fn parse_http_request(
         ));
     }
     while bytes.len() - header_end < length {
-        let read = stream
-            .read(&mut buffer)
-            .map_err(|_| error("invalid_request", "The request body was unreadable."))?;
+        if authority.is_revoked() {
+            return Err(error(
+                "authority_revoked",
+                "The Context Map lease was revoked.",
+            ));
+        }
+        let read = match stream.read(&mut buffer) {
+            Ok(read) => read,
+            Err(failure)
+                if matches!(
+                    failure.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) && Instant::now() < deadline =>
+            {
+                continue;
+            }
+            Err(_) => return Err(error("invalid_request", "The request body was unreadable.")),
+        };
         if read == 0 {
             return Err(error("invalid_request", "The request body ended early."));
         }
+        deadline = Instant::now() + Duration::from_secs(5);
         bytes.extend_from_slice(&buffer[..read]);
     }
     Ok((
@@ -462,11 +595,15 @@ fn handle_codex_mcp_connection(
     token: &str,
     session_id: &str,
     directory: Option<&str>,
-    app: &AppHandle,
     pending: &PendingRequests,
-    seen_call_ids: &mut HashSet<String>,
+    seen_call_ids: &Mutex<HashSet<String>>,
+    authority: &Arc<CodexLeaseAuthority>,
+    emit_request: &dyn Fn(ToolGatewayRequest) -> bool,
 ) -> Result<(), ToolGatewayError> {
-    let (authorization, body) = match parse_http_request(&mut stream, path) {
+    let Some(_connection_guard) = authority.register_connection(&stream) else {
+        return Ok(());
+    };
+    let (authorization, body) = match parse_http_request(&mut stream, path, authority) {
         Ok(value) => value,
         Err(_) => {
             let _ = stream.write_all(&http_response(
@@ -493,6 +630,13 @@ fn handle_codex_mcp_connection(
             return Ok(());
         }
     };
+    if authority.is_revoked() {
+        let _ = stream.write_all(&http_response(
+            "503 Service Unavailable",
+            &mcp_error(None, -32004, "Context lease revoked"),
+        ));
+        return Ok(());
+    }
     let id = value.get("id");
     let method = value
         .get("method")
@@ -524,7 +668,7 @@ fn handle_codex_mcp_connection(
         ),
         "tools/call" => {
             let params = value.get("params").and_then(Value::as_object);
-            if !reserve_mcp_call_id(seen_call_ids, id) {
+            if !reserve_shared_mcp_call_id(seen_call_ids, id) {
                 mcp_error(id, -32600, "Invalid or replayed request ID")
             } else if params
                 .and_then(|item| item.get("name"))
@@ -552,20 +696,45 @@ fn handle_codex_mcp_connection(
                         worktree: directory.map(str::to_string),
                     };
                     let receiver = pending.reserve(&request_id)?;
-                    if app.emit(TOOL_REQUEST_EVENT, request).is_err() {
+                    if !authority.dispatch(request, emit_request) {
                         pending.cancel(&request_id);
-                        mcp_error(id, -32603, "Context routing unavailable")
+                        if authority.is_revoked() {
+                            mcp_error(id, -32004, "Context lease revoked")
+                        } else {
+                            mcp_error(id, -32603, "Context routing unavailable")
+                        }
                     } else {
-                        let tool_response = match receiver.recv_timeout(RESPONSE_TIMEOUT) {
-                            Ok(response) => response,
-                            Err(_) => {
+                        let deadline = Instant::now() + RESPONSE_TIMEOUT;
+                        let tool_response = loop {
+                            if authority.is_revoked() {
                                 pending.cancel(&request_id);
-                                ToolGatewayResponse {
-                                    request_id,
+                                break revoked_tool_response(request_id.clone());
+                            }
+                            let now = Instant::now();
+                            if now >= deadline {
+                                pending.cancel(&request_id);
+                                break ToolGatewayResponse {
+                                    request_id: request_id.clone(),
                                     ok: false,
                                     code: "request_timeout".into(),
                                     message: "The Context Map request timed out.".into(),
                                     data: None,
+                                };
+                            }
+                            let wait = RESPONSE_POLL_INTERVAL.min(deadline.duration_since(now));
+                            match receiver.recv_timeout(wait) {
+                                Ok(response) => break authority.select_response(response),
+                                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                                    pending.cancel(&request_id);
+                                    break ToolGatewayResponse {
+                                        request_id: request_id.clone(),
+                                        ok: false,
+                                        code: "context_unavailable".into(),
+                                        message: "The Context Map response became unavailable."
+                                            .into(),
+                                        data: None,
+                                    };
                                 }
                             }
                         };
@@ -595,6 +764,111 @@ fn handle_codex_mcp_connection(
         })
 }
 
+type ToolRequestEmitter = Arc<dyn Fn(ToolGatewayRequest) -> bool + Send + Sync>;
+
+struct ActiveHandlerGuard {
+    active: Arc<Mutex<usize>>,
+}
+
+impl Drop for ActiveHandlerGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.active.lock() {
+            *active = active.saturating_sub(1);
+        }
+    }
+}
+
+fn reserve_active_handler(active: &Arc<Mutex<usize>>) -> Option<ActiveHandlerGuard> {
+    let mut count = active.lock().ok()?;
+    if *count >= MAX_ACTIVE_CONNECTIONS {
+        return None;
+    }
+    *count += 1;
+    drop(count);
+    Some(ActiveHandlerGuard {
+        active: Arc::clone(active),
+    })
+}
+
+fn reject_overloaded_codex_connection(stream: TcpStream) {
+    let _ = stream.shutdown(Shutdown::Both);
+}
+
+fn reap_finished_handlers(handlers: &mut Vec<std::thread::JoinHandle<()>>) {
+    let mut index = 0;
+    while index < handlers.len() {
+        if handlers[index].is_finished() {
+            let handler = handlers.swap_remove(index);
+            let _ = handler.join();
+        } else {
+            index += 1;
+        }
+    }
+}
+
+fn serve_codex_context_listener(
+    listener: TcpListener,
+    path: String,
+    token: String,
+    session_id: String,
+    directory: Option<String>,
+    pending: Arc<PendingRequests>,
+    authority: Arc<CodexLeaseAuthority>,
+    emit_request: ToolRequestEmitter,
+) {
+    let seen_call_ids = Arc::new(Mutex::new(HashSet::new()));
+    let active = Arc::new(Mutex::new(0_usize));
+    let mut handlers = Vec::with_capacity(MAX_ACTIVE_CONNECTIONS);
+    while !authority.is_revoked() {
+        reap_finished_handlers(&mut handlers);
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if authority.is_revoked() {
+                    continue;
+                }
+                let Some(active_guard) = reserve_active_handler(&active) else {
+                    reject_overloaded_codex_connection(stream);
+                    continue;
+                };
+                let path = path.clone();
+                let token = token.clone();
+                let session_id = session_id.clone();
+                let directory = directory.clone();
+                let pending = Arc::clone(&pending);
+                let authority = Arc::clone(&authority);
+                let seen_call_ids = Arc::clone(&seen_call_ids);
+                let emit_request = Arc::clone(&emit_request);
+                if let Ok(handler) = std::thread::Builder::new()
+                    .name(format!("codex-context-request-{session_id}"))
+                    .spawn(move || {
+                        let _active_guard = active_guard;
+                        let _ = handle_codex_mcp_connection(
+                            stream,
+                            &path,
+                            &token,
+                            &session_id,
+                            directory.as_deref(),
+                            &pending,
+                            &seen_call_ids,
+                            &authority,
+                            emit_request.as_ref(),
+                        );
+                    })
+                {
+                    handlers.push(handler);
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => break,
+        }
+    }
+    for handler in handlers {
+        let _ = handler.join();
+    }
+}
+
 pub fn create_codex_context_lease(
     app: &AppHandle,
     state: &ToolGatewayState,
@@ -618,44 +892,37 @@ pub fn create_codex_context_lease(
     let lease_id = nanoid::nanoid!(32);
     let path = format!("/v1/codex-context/{lease_id}");
     let token = nanoid::nanoid!(64);
-    let revoked = Arc::new(AtomicBool::new(false));
-    let thread_revoked = Arc::clone(&revoked);
+    let authority = Arc::new(CodexLeaseAuthority::default());
+    let thread_authority = Arc::clone(&authority);
     let app = app.clone();
     let pending = Arc::clone(&state.pending);
     let thread_token = token.clone();
     let thread_session_id = session_id.to_string();
     let thread_directory = directory.map(str::to_string);
     let thread_path = path.clone();
-    std::thread::Builder::new()
+    let listener = std::thread::Builder::new()
         .name(format!("codex-context-{lease_id}"))
         .spawn(move || {
-            let mut seen_call_ids = HashSet::new();
-            while !thread_revoked.load(Ordering::Acquire) {
-                match listener.accept() {
-                    Ok((stream, _)) => {
-                        let _ = handle_codex_mcp_connection(
-                            stream,
-                            &thread_path,
-                            &thread_token,
-                            &thread_session_id,
-                            thread_directory.as_deref(),
-                            &app,
-                            &pending,
-                            &mut seen_call_ids,
-                        );
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(_) => break,
-                }
-            }
+            let emit_request: ToolRequestEmitter =
+                Arc::new(move |request| app.emit(TOOL_REQUEST_EVENT, request).is_ok());
+            serve_codex_context_listener(
+                listener,
+                thread_path,
+                thread_token,
+                thread_session_id,
+                thread_directory,
+                pending,
+                thread_authority,
+                emit_request,
+            );
         })
         .map_err(|_| "The Codex Context Map lease could not start.".to_string())?;
     Ok(CodexContextLease {
         url: format!("http://{address}{path}"),
         token,
-        revoked,
+        authority,
+        address,
+        listener: Some(listener),
     })
 }
 
@@ -894,13 +1161,18 @@ pub fn tool_gateway_respond(
 mod tests {
     use super::{
         bounded_response_json, context_tool_descriptor, mcp_response, parse_tool_request,
-        reserve_mcp_call_id, validate_bearer, CodexContextLease, PendingRequests,
-        ToolGatewayResponse, MAX_REQUEST_BODY_BYTES, MAX_RESPONSE_BODY_BYTES,
+        reserve_active_handler, reserve_mcp_call_id, reserve_shared_mcp_call_id,
+        serve_codex_context_listener, validate_bearer, CodexContextLease, CodexLeaseAuthority,
+        PendingRequests, ToolGatewayRequest, ToolGatewayResponse, MAX_ACTIVE_CONNECTIONS,
+        MAX_REQUEST_BODY_BYTES, MAX_RESPONSE_BODY_BYTES,
     };
     use serde_json::json;
     use std::collections::HashSet;
+    use std::io::{Read, Write};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::time::{Duration, Instant};
 
     fn request(tool: &str) -> Vec<u8> {
         serde_json::to_vec(&json!({
@@ -914,6 +1186,43 @@ mod tests {
             "worktree": "C:\\workspace"
         }))
         .unwrap()
+    }
+
+    fn codex_context_call(
+        address: SocketAddr,
+        path: &str,
+        token: &str,
+        id: usize,
+        query: &str,
+    ) -> serde_json::Value {
+        let body = serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": {
+                "name": "vibespace_context",
+                "arguments": {
+                    "operation": "search",
+                    "query": query,
+                    "limit": 3
+                }
+            }
+        }))
+        .unwrap();
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        write!(
+            stream,
+            "POST {path} HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .unwrap();
+        stream.write_all(&body).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        serde_json::from_str(response.split("\r\n\r\n").nth(1).unwrap()).unwrap()
     }
 
     #[test]
@@ -952,15 +1261,17 @@ mod tests {
             descriptor["inputSchema"]["properties"]["limit"]["maximum"],
             5
         );
-        let revoked = Arc::new(AtomicBool::new(false));
+        let authority = Arc::new(CodexLeaseAuthority::default());
         let lease = CodexContextLease {
             url: "http://127.0.0.1:1/v1/codex-context/test".into(),
             token: "t".repeat(64),
-            revoked: Arc::clone(&revoked),
+            authority: Arc::clone(&authority),
+            address: "127.0.0.1:1".parse().unwrap(),
+            listener: None,
         };
-        assert!(!revoked.load(Ordering::Acquire));
+        assert!(!authority.is_revoked());
         drop(lease);
-        assert!(revoked.load(Ordering::Acquire));
+        assert!(authority.is_revoked());
         let oversized = mcp_response(
             &json!(1),
             json!({ "data": "x".repeat(MAX_RESPONSE_BODY_BYTES) }),
@@ -973,6 +1284,320 @@ mod tests {
         assert!(reserve_mcp_call_id(&mut seen, Some(&json!("call-1"))));
         assert!(!reserve_mcp_call_id(&mut seen, Some(&json!("call-1"))));
         assert!(!reserve_mcp_call_id(&mut seen, None));
+    }
+
+    #[test]
+    fn codex_mcp_dispatches_five_parallel_calls_without_head_of_line_cancellation() {
+        let listener =
+            TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let path = "/v1/codex-context/parallel".to_string();
+        let token = "t".repeat(64);
+        let pending = Arc::new(PendingRequests::default());
+        let authority = Arc::new(CodexLeaseAuthority::default());
+        let observed = Arc::new(Mutex::new(Vec::<ToolGatewayRequest>::new()));
+        let emit_pending = Arc::clone(&pending);
+        let emit_observed = Arc::clone(&observed);
+        let emit = Arc::new(move |request: ToolGatewayRequest| {
+            let ready = {
+                let mut observed = emit_observed.lock().unwrap();
+                observed.push(request);
+                (observed.len() == 5).then(|| observed.clone())
+            };
+            ready.is_none_or(|requests| {
+                requests.into_iter().all(|request| {
+                    emit_pending
+                        .respond(ToolGatewayResponse {
+                            request_id: request.request_id,
+                            ok: true,
+                            code: "ok".into(),
+                            message: "Ready".into(),
+                            data: Some(json!({ "query": request.args["query"] })),
+                        })
+                        .is_ok()
+                })
+            })
+        });
+        let server_authority = Arc::clone(&authority);
+        let server_path = path.clone();
+        let server_token = token.clone();
+        let server_pending = Arc::clone(&pending);
+        let server = std::thread::spawn(move || {
+            serve_codex_context_listener(
+                listener,
+                server_path,
+                server_token,
+                "session-parallel".into(),
+                Some("C:\\workspace".into()),
+                server_pending,
+                server_authority,
+                emit,
+            );
+        });
+
+        let barrier = Arc::new(Barrier::new(6));
+        let clients = (0..5)
+            .map(|index| {
+                let barrier = Arc::clone(&barrier);
+                let path = path.clone();
+                let token = token.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let envelope = codex_context_call(
+                        address,
+                        &path,
+                        &token,
+                        index + 1,
+                        &format!("question-{index}"),
+                    );
+                    let result: serde_json::Value = serde_json::from_str(
+                        envelope["result"]["content"][0]["text"].as_str().unwrap(),
+                    )
+                    .unwrap();
+                    (
+                        envelope["id"].as_u64().unwrap(),
+                        result["data"]["query"].as_str().unwrap().to_string(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        let mut results = clients
+            .into_iter()
+            .map(|client| client.join().unwrap())
+            .collect::<Vec<_>>();
+        results.sort();
+
+        authority.revoke();
+        server.join().unwrap();
+        assert_eq!(
+            results,
+            vec![
+                (1, "question-0".into()),
+                (2, "question-1".into()),
+                (3, "question-2".into()),
+                (4, "question-3".into()),
+                (5, "question-4".into()),
+            ]
+        );
+        let requests = observed.lock().unwrap();
+        assert_eq!(requests.len(), 5);
+        let distinct_ids = requests
+            .iter()
+            .map(|request| request.request_id.as_str())
+            .collect::<HashSet<_>>();
+        assert_eq!(distinct_ids.len(), 5);
+    }
+
+    #[test]
+    fn codex_mcp_revocation_terminates_an_inflight_renderer_wait() {
+        let listener =
+            TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let path = "/v1/codex-context/revoke".to_string();
+        let token = "t".repeat(64);
+        let pending = Arc::new(PendingRequests::default());
+        let authority = Arc::new(CodexLeaseAuthority::default());
+        let (emitted, received) = std::sync::mpsc::sync_channel(1);
+        let emit = Arc::new(move |_request: ToolGatewayRequest| emitted.send(()).is_ok());
+        let server_authority = Arc::clone(&authority);
+        let server_path = path.clone();
+        let server_token = token.clone();
+        let server = std::thread::spawn(move || {
+            serve_codex_context_listener(
+                listener,
+                server_path,
+                server_token,
+                "session-revoke".into(),
+                Some("C:\\workspace".into()),
+                pending,
+                server_authority,
+                emit,
+            );
+        });
+        let client = std::thread::spawn(move || {
+            std::panic::catch_unwind(|| {
+                codex_context_call(address, &path, &token, 1, "question-revoke")
+            })
+        });
+
+        received.recv_timeout(Duration::from_secs(5)).unwrap();
+        authority.revoke();
+        assert!(client.join().unwrap().is_err());
+        server.join().unwrap();
+        assert!(authority.connections.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn codex_mcp_never_dispatches_to_renderer_after_revoke_linearizes() {
+        let authority = Arc::new(CodexLeaseAuthority::default());
+        let dispatched = Arc::new(AtomicBool::new(false));
+        let dispatch_authority = Arc::clone(&authority);
+        let dispatch_observed = Arc::clone(&dispatched);
+        let (emit_entered, entered_emit) = std::sync::mpsc::sync_channel(1);
+        let (emit_released, release_emit) = std::sync::mpsc::sync_channel(1);
+        let release_emit = Mutex::new(release_emit);
+        let dispatch = std::thread::spawn(move || {
+            dispatch_authority.dispatch(
+                ToolGatewayRequest {
+                    protocol_version: 1,
+                    request_id: "request-race".into(),
+                    session_id: "session-race".into(),
+                    message_id: "message-race".into(),
+                    tool: "vibespace_context".into(),
+                    args: json!({ "operation": "search", "query": "race", "limit": 3 }),
+                    directory: None,
+                    worktree: None,
+                },
+                &move |_| {
+                    emit_entered.send(()).unwrap();
+                    release_emit.lock().unwrap().recv().unwrap();
+                    dispatch_observed.store(true, Ordering::Release);
+                    true
+                },
+            )
+        });
+        entered_emit.recv_timeout(Duration::from_secs(5)).unwrap();
+        let revoke_authority = Arc::clone(&authority);
+        let revoke = std::thread::spawn(move || {
+            revoke_authority.revoke();
+        });
+        assert!(!authority.is_revoked());
+        emit_released.send(()).unwrap();
+        assert!(dispatch.join().unwrap());
+        revoke.join().unwrap();
+        assert!(dispatched.load(Ordering::Acquire));
+        assert!(!authority.dispatch(
+            ToolGatewayRequest {
+                protocol_version: 1,
+                request_id: "request-after-revoke".into(),
+                session_id: "session-race".into(),
+                message_id: "message-after-revoke".into(),
+                tool: "vibespace_context".into(),
+                args: json!({ "operation": "search", "query": "after", "limit": 3 }),
+                directory: None,
+                worktree: None,
+            },
+            &|_| panic!("renderer dispatch occurred after revoke linearized"),
+        ));
+    }
+
+    #[test]
+    fn codex_mcp_revocation_wins_a_concurrent_renderer_success() {
+        let authority = Arc::new(CodexLeaseAuthority::default());
+        let gate = authority.gate.lock().unwrap();
+        let response_authority = Arc::clone(&authority);
+        let response = std::thread::spawn(move || {
+            response_authority.select_response(ToolGatewayResponse {
+                request_id: "request-response-race".into(),
+                ok: true,
+                code: "ok".into(),
+                message: "Ready".into(),
+                data: Some(json!({ "query": "stale" })),
+            })
+        });
+        authority.revoked.store(true, Ordering::Release);
+        drop(gate);
+
+        let selected = response.join().unwrap();
+        assert!(!selected.ok);
+        assert_eq!(selected.code, "authority_revoked");
+        assert!(selected.data.is_none());
+    }
+
+    #[test]
+    fn codex_context_lease_drop_joins_partial_read_and_renderer_wait_handlers() {
+        let listener =
+            TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let path = "/v1/codex-context/drop-lifetime".to_string();
+        let token = "t".repeat(64);
+        let authority = Arc::new(CodexLeaseAuthority::default());
+        let thread_authority = Arc::clone(&authority);
+        let pending = Arc::new(PendingRequests::default());
+        let (emitted, request_emitted) = std::sync::mpsc::sync_channel(1);
+        let emit = Arc::new(move |_request: ToolGatewayRequest| emitted.send(()).is_ok());
+        let thread_path = path.clone();
+        let thread_token = token.clone();
+        let listener_thread = std::thread::spawn(move || {
+            serve_codex_context_listener(
+                listener,
+                thread_path,
+                thread_token,
+                "session-drop-lifetime".into(),
+                Some("C:\\workspace".into()),
+                pending,
+                thread_authority,
+                emit,
+            );
+        });
+        let lease = CodexContextLease {
+            url: format!("http://{address}{path}"),
+            token: token.clone(),
+            authority: Arc::clone(&authority),
+            address,
+            listener: Some(listener_thread),
+        };
+
+        let mut partial = TcpStream::connect(address).unwrap();
+        partial
+            .write_all(format!("POST {path} HTTP/1.1\r\nHost: {address}\r\n").as_bytes())
+            .unwrap();
+        let renderer_wait = std::thread::spawn(move || {
+            std::panic::catch_unwind(|| {
+                codex_context_call(address, &path, &token, 1, "drop-lifetime")
+            })
+        });
+        request_emitted
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        while authority.connections.lock().unwrap().len() < 2 {
+            std::thread::yield_now();
+        }
+
+        let started = Instant::now();
+        drop(lease);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(authority.connections.lock().unwrap().is_empty());
+        assert_eq!(Arc::strong_count(&authority), 1);
+        drop(partial);
+        let _ = renderer_wait.join();
+    }
+
+    #[test]
+    fn codex_mcp_bounds_active_handlers_and_synchronizes_replay_ids() {
+        let active = Arc::new(Mutex::new(0_usize));
+        let guards = (0..MAX_ACTIVE_CONNECTIONS)
+            .map(|_| reserve_active_handler(&active).expect("capacity should be available"))
+            .collect::<Vec<_>>();
+        assert!(reserve_active_handler(&active).is_none());
+        drop(guards);
+        assert!(reserve_active_handler(&active).is_some());
+
+        let seen = Arc::new(Mutex::new(HashSet::new()));
+        let barrier = Arc::new(Barrier::new(9));
+        let reservations = (0..8)
+            .map(|_| {
+                let seen = Arc::clone(&seen);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    reserve_shared_mcp_call_id(&seen, Some(&json!("same-call")))
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        assert_eq!(
+            reservations
+                .into_iter()
+                .map(|reservation| reservation.join().unwrap())
+                .filter(|reserved| *reserved)
+                .count(),
+            1
+        );
     }
 
     #[test]
