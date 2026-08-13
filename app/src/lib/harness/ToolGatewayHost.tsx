@@ -77,6 +77,10 @@ export function ToolGatewayHost({ runtime: suppliedRuntime }: ToolGatewayHostPro
         if (requestId) void respond(invalidResponse(requestId)).catch(() => undefined);
         return;
       }
+      if (request.tool === 'vibespace_context') {
+        void dispatch(request).catch(() => undefined);
+        return;
+      }
       const previous = queues.get(request.sessionId) ?? Promise.resolve();
       const next = previous
         .catch(() => undefined)

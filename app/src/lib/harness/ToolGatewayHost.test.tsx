@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolGatewayResponse } from './toolGatewayProtocol';
 
@@ -147,6 +147,58 @@ describe('ToolGatewayHost', () => {
       await Promise.resolve();
     });
     expect(execute).toHaveBeenCalledTimes(3);
+  });
+
+  it('dispatches five same-session Context Map reads concurrently and correlates one response each', async () => {
+    const releases = new Map<string, () => void>();
+    const execute = vi.fn(
+      ({ requestId }: { requestId: string }): Promise<ToolGatewayResponse> =>
+        new Promise((resolve) => {
+          releases.set(requestId, () =>
+            resolve({
+              requestId,
+              ok: true,
+              code: 'ok',
+              message: 'done',
+              data: { requestId },
+            }),
+          );
+        }),
+    );
+    render(<ToolGatewayHost runtime={{ execute }} />);
+    await mounted();
+
+    await act(async () => {
+      for (let index = 1; index <= 5; index += 1) {
+        tauri.listener?.({
+          payload: {
+            ...request(`context-${index}`, 'session-context'),
+            tool: 'vibespace_context',
+            args: { operation: 'search', query: `question-${index}`, limit: 3 },
+          },
+        });
+      }
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledTimes(5);
+    expect([...releases.keys()].sort()).toEqual([
+      'context-1',
+      'context-2',
+      'context-3',
+      'context-4',
+      'context-5',
+    ]);
+
+    await act(async () => {
+      for (const release of releases.values()) release();
+    });
+    await waitFor(() => expect(tauri.invoke).toHaveBeenCalledTimes(5));
+    expect(
+      tauri.invoke.mock.calls
+        .map(([, { response }]) => (response as ToolGatewayResponse).requestId)
+        .sort(),
+    ).toEqual(['context-1', 'context-2', 'context-3', 'context-4', 'context-5']);
   });
 
   it('releases the listener and sends no late response after unmount', async () => {
