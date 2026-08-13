@@ -8,6 +8,7 @@ import {
   createProductionToolGatewayDependencies,
   grantNextToolGatewayMutation,
   grantToolGatewayMutation,
+  installToolGatewayRlmContextPort,
   installToolGatewayPluginReadPort,
 } from './toolGatewayProduction';
 import {
@@ -189,5 +190,33 @@ describe('production tool gateway dependencies', () => {
     ).resolves.toEqual({ summary: undefined, data: 'second' });
     expect(secondRun).toHaveBeenCalledOnce();
     second();
+  });
+
+  it('binds the RLM context port to the current account, project, worktree, and session', async () => {
+    const execute = vi.fn(async () => ({ mode: 'rlm', bounded: true }));
+    const dispose = installToolGatewayRlmContextPort({ execute });
+    const deps = createProductionToolGatewayDependencies();
+    const context = {
+      requestId: 'request-rlm',
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      directory: 'C:\\work\\project',
+      worktree: 'C:\\work\\project\\.worktrees\\feature',
+      mutationApproved: false,
+    };
+
+    await expect(
+      Promise.resolve(deps.context.rlm({ operation: 'describe' }, context)),
+    ).resolves.toEqual({ mode: 'rlm', bounded: true });
+    expect(execute).toHaveBeenCalledWith(
+      { operation: 'describe' },
+      expect.objectContaining({
+        sessionId: 'session-1',
+        accountId: 'account-a',
+        projectId: 'project-a',
+        worktreeId: 'C:\\work\\project\\.worktrees\\feature',
+      }),
+    );
+    dispose();
   });
 });

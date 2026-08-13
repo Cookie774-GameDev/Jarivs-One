@@ -365,6 +365,7 @@ export function createOpenCodeRunAgentAdapter(
       for await (const event of harness.send({
         sessionId: record.session.id,
         selection: input.selection,
+        ...(input.compiledPrompt ? { agent: 'vibespace' } : {}),
         ...(input.variant ? { variant: input.variant } : {}),
         system: input.compiledPrompt?.systemText ?? input.agent.system_prompt,
         parts,

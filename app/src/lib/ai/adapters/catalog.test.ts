@@ -219,6 +219,7 @@ describe('provider capability catalog', () => {
       ...native,
       images: true,
       files: true,
+      tools: true,
       localOnly: true,
     });
     expect(() => getProviderConnectionDescriptor('missing')).toThrowError(

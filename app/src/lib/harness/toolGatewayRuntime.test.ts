@@ -19,7 +19,7 @@ function dependencies(approved = true) {
     command: { list: call, run: call },
     profile: { readAllAboutMe: call, updateAllAboutMe: call },
     learning: { read: call, update: call },
-    context: { list: call, read: call, attach: call },
+    context: { list: call, read: call, attach: call, rlm: call },
     skills: { list: call, load: call },
     plugins: { list: call, run: call },
     tasks: { create: call, update: call },
@@ -46,6 +46,7 @@ const argumentsByTool: Record<ToolGatewayTool, Record<string, unknown>> = {
   'context.list': {},
   'context.read': { contextId: 'c-1' },
   'context.attach': { contextId: 'c-1' },
+  vibespace_context: { operation: 'describe' },
   'skills.list': {},
   'skills.load': { skillId: 's-1' },
   'plugins.list': {},
@@ -92,10 +93,11 @@ describe('tool gateway semantic runtime', () => {
     const { deps } = dependencies();
     await createToolGatewayRuntime(deps).execute(request('terminal.read'));
     await createToolGatewayRuntime(deps).execute(request('context.read'));
+    await createToolGatewayRuntime(deps).execute(request('vibespace_context'));
     await createToolGatewayRuntime(deps).execute(request('profile.allAboutMe.read'));
     await createToolGatewayRuntime(deps).execute(request('memory.learning.read'));
     await createToolGatewayRuntime(deps).execute(request('app.getState'));
-    expect(deps.authorizeRequest).toHaveBeenCalledTimes(5);
+    expect(deps.authorizeRequest).toHaveBeenCalledTimes(6);
     expect(deps.authorizeMutation).not.toHaveBeenCalled();
   });
 

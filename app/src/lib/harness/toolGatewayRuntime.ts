@@ -39,6 +39,7 @@ export interface ToolGatewayDependencies {
     list: SemanticMethod;
     read: SemanticMethod;
     attach: SemanticMethod;
+    rlm: SemanticMethod;
   };
   skills: { list: SemanticMethod; load: SemanticMethod };
   plugins: { list: SemanticMethod; run: SemanticMethod };
@@ -81,6 +82,7 @@ export function createToolGatewayRuntime(deps: ToolGatewayDependencies): {
     'context.list': deps.context.list,
     'context.read': deps.context.read,
     'context.attach': deps.context.attach,
+    vibespace_context: deps.context.rlm,
     'skills.list': deps.skills.list,
     'skills.load': deps.skills.load,
     'plugins.list': deps.plugins.list,

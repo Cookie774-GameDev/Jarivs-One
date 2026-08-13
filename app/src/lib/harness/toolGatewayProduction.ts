@@ -18,6 +18,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { TaskId } from '@/types/common';
 import type { ActionResult } from '@/lib/actions/types';
+import type { RlmContextLease } from '@/features/context/rlmOpenCodeTool';
 import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
 import {
   authorizeToolGatewayMutation,
@@ -38,6 +39,19 @@ type ToolGatewayPluginReadPort = Readonly<{
 }>;
 
 let pluginReadPort: ToolGatewayPluginReadPort | undefined;
+
+type ToolGatewayRlmContextPort = Readonly<{
+  execute(args: Record<string, unknown>, lease: RlmContextLease): Promise<unknown>;
+}>;
+
+let rlmContextPort: ToolGatewayRlmContextPort | undefined;
+
+export function installToolGatewayRlmContextPort(port: ToolGatewayRlmContextPort): () => void {
+  rlmContextPort = port;
+  return () => {
+    if (rlmContextPort === port) rlmContextPort = undefined;
+  };
+}
 
 export function installToolGatewayPluginReadPort(port: ToolGatewayPluginReadPort): () => void {
   pluginReadPort = port;
@@ -300,6 +314,20 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
           })),
       read: (args) => readContext(stringArg(args, 'contextId')),
       attach: async (args) => ({ attached: await readContext(stringArg(args, 'contextId')) }),
+      rlm: (args, context) => {
+        const port = rlmContextPort;
+        if (!port) throw new Error('rlm_context_unavailable');
+        const auth = useAuthStore.getState();
+        if (!auth.localUserId) throw new Error('rlm_context_authority_unavailable');
+        return port.execute(args, {
+          sessionId: context.sessionId,
+          accountId: auth.localUserId,
+          ...(auth.workspaceId ? { workspaceId: String(auth.workspaceId) } : {}),
+          ...(auth.projectId ? { projectId: String(auth.projectId) } : {}),
+          ...(context.worktree ? { worktreeId: context.worktree } : {}),
+          expiresAt: Date.now() + 30_000,
+        });
+      },
     },
     skills: {
       list: (args) =>

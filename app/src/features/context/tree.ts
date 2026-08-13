@@ -937,7 +937,7 @@ async function scanProjectFiles(
 
   const walk = async (dir: string, depth: number): Promise<void> => {
     assertGenerationActive(signal);
-    if (files.length >= MAX_SCAN_FILES || totalChars >= MAX_TOTAL_SAMPLE_CHARS) return;
+    if (files.length >= MAX_SCAN_FILES) return;
     if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir) || seenDirs.size >= MAX_SCAN_DIRECTORIES) {
       return;
     }
@@ -976,7 +976,7 @@ async function scanProjectFiles(
         await yieldControl();
         assertGenerationActive(signal);
       }
-      if (files.length >= MAX_SCAN_FILES || totalChars >= MAX_TOTAL_SAMPLE_CHARS) break;
+      if (files.length >= MAX_SCAN_FILES) break;
       if (entry.isDir) {
         if (!IGNORED_DIRS.has(entry.name.toLowerCase())) await walk(entry.path, depth + 1);
         continue;
@@ -1001,7 +1001,8 @@ async function scanProjectFiles(
           classifyJarvisReadError(validation.error);
           continue;
         }
-        const content = mediaMetadataContent(rootDir, entry);
+        const remaining = Math.max(0, MAX_TOTAL_SAMPLE_CHARS - totalChars);
+        const content = mediaMetadataContent(rootDir, entry).slice(0, remaining);
         totalChars += content.length;
         files.push({
           path: entry.path,
@@ -1031,8 +1032,7 @@ async function scanProjectFiles(
         contentSample: result.content,
       });
       if (!contentDecision.allowed) continue;
-      const remaining = MAX_TOTAL_SAMPLE_CHARS - totalChars;
-      if (remaining <= 0) break;
+      const remaining = Math.max(0, MAX_TOTAL_SAMPLE_CHARS - totalChars);
       const chunkLimit = Math.min(MAX_FILE_SAMPLE_CHARS, remaining);
       const content = result.content.slice(0, chunkLimit);
       totalChars += content.length;
@@ -1380,7 +1380,7 @@ function buildFallbackTree(
       sizeBytes: groupFiles.reduce((sum, file) => sum + file.size, 0),
       createdAt: earliestTimestamp(groupFiles.map((file) => file.createdMs)),
       modifiedAt: latestTimestamp(groupFiles.map((file) => file.modifiedMs)),
-      children: groupFiles.slice(0, 16).map((file, fileIndex) => ({
+      children: groupFiles.map((file, fileIndex) => ({
         id: stableId(`file-${file.relativePath}-${fileIndex}`),
         title: basename(file.relativePath),
         kind: 'file' as const,

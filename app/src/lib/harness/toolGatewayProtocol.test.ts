@@ -52,6 +52,7 @@ describe('tool gateway protocol', () => {
       'context.list': {},
       'context.read': { contextId: 'context-1' },
       'context.attach': { contextId: 'context-1' },
+      vibespace_context: { operation: 'describe' },
       'skills.list': {},
       'skills.load': { skillId: 'skill-1' },
       'plugins.list': {},
@@ -70,6 +71,147 @@ describe('tool gateway protocol', () => {
           args: argumentsByTool[tool],
         },
       );
+    }
+  });
+
+  it('accepts the namespaced bounded RLM query surface and rejects authority injection', () => {
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: {
+            operation: 'open',
+            pointer: {
+              id: 'pointer-1',
+              recordId: 'record-1',
+              byteStart: 0,
+              byteEnd: 32,
+              sourceVersion: 'sha256:aaaaaaaa',
+              contentHash: 'a'.repeat(64),
+            },
+            maxBytes: 32,
+          },
+        }),
+      ).args,
+    ).toMatchObject({ operation: 'open', maxBytes: 32 });
+
+    expect(() =>
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: { operation: 'search', query: 'needle', accountId: 'foreign-account' },
+        }),
+      ),
+    ).toThrow();
+  });
+
+  it('normalizes bounded decimal strings emitted by local tool-calling models', () => {
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: { operation: 'search', query: 'needle', limit: '5' },
+        }),
+      ).args,
+    ).toEqual({ operation: 'search', query: 'needle', limit: 5 });
+
+    for (const limit of ['5.0', '-1', '01', '1e2', '101']) {
+      expect(() =>
+        parseToolGatewayRequest(
+          request({
+            tool: 'vibespace_context',
+            args: { operation: 'search', query: 'needle', limit },
+          }),
+        ),
+      ).toThrow();
+    }
+  });
+
+  it('drops OpenCode schema placeholders that the selected operation cannot consume', () => {
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: {
+            operation: 'search',
+            query: 'needle',
+            limit: '5',
+            continuation: null,
+            pointer: {
+              id: null,
+              recordId: null,
+              sourceVersion: null,
+              contentHash: null,
+              byteStart: null,
+              byteEnd: null,
+            },
+            maxBytes: null,
+            beforeBytes: null,
+            afterBytes: null,
+            recordId: null,
+            required: ['id', 'recordId', 'sourceVersion', 'contentHash'],
+          },
+        }),
+      ).args,
+    ).toEqual({ operation: 'search', query: 'needle', limit: 5 });
+
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: {
+            operation: 'investigate',
+            query: 'find the passage',
+            pointer:
+              '{"recordId":"null","sourceVersion":"v1.0","contentHash":"not-a-sha256"}',
+            required: ['id', 'recordId', 'sourceVersion', 'contentHash'],
+          },
+        }),
+      ).args,
+    ).toEqual({ operation: 'investigate', query: 'find the passage' });
+
+    expect(() =>
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: { operation: 'investigate', query: 'find the passage', accountId: 'foreign' },
+        }),
+      ),
+    ).toThrow();
+  });
+
+  it('decodes a bounded JSON pointer emitted by local tool-calling models', () => {
+    const pointer = {
+      id: 'pointer-1',
+      recordId: 'record-1',
+      byteStart: 10,
+      byteEnd: 42,
+      sourceVersion: `sha256:${'a'.repeat(64)}`,
+      contentHash: 'a'.repeat(64),
+    };
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: { operation: 'open', pointer: JSON.stringify(pointer), maxBytes: '600' },
+        }),
+      ).args,
+    ).toEqual({ operation: 'open', pointer, maxBytes: 600 });
+
+    for (const malformed of [
+      '{',
+      JSON.stringify({ ...pointer, contentHash: 'not-a-sha256' }),
+      JSON.stringify({ ...pointer, accountId: 'foreign' }),
+      JSON.stringify(pointer).padEnd(8_193, ' '),
+    ]) {
+      expect(() =>
+        parseToolGatewayRequest(
+          request({
+            tool: 'vibespace_context',
+            args: { operation: 'open', pointer: malformed },
+          }),
+        ),
+      ).toThrow();
     }
   });
 

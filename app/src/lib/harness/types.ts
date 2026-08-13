@@ -122,6 +122,7 @@ export interface HarnessSession {
 export interface HarnessSendRequest {
   sessionId: string;
   selection: HarnessModelSelection;
+  agent?: string;
   variant?: string;
   system?: string;
   parts: readonly unknown[];

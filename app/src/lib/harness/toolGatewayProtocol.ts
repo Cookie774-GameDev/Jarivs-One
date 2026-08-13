@@ -15,6 +15,7 @@ export const TOOL_GATEWAY_CATALOG = [
   'context.list',
   'context.read',
   'context.attach',
+  'vibespace_context',
   'skills.list',
   'skills.load',
   'plugins.list',
@@ -118,13 +119,48 @@ function optionalString(value: unknown, name: string, max: number): void {
 }
 
 function integer(value: unknown, name: string, max: number): void {
-  if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > max) {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > max) {
     invalid(`${name} is invalid.`);
   }
 }
 
 function optionalInteger(value: unknown, name: string, max: number): void {
   if (value !== undefined) integer(value, name, max);
+}
+
+function normalizedSemanticInteger(value: unknown, name: string, max: number): number {
+  const normalized =
+    typeof value === 'string' && /^(?:0|[1-9]\d*)$/.test(value) ? Number(value) : value;
+  integer(normalized, name, max);
+  return normalized as number;
+}
+
+function normalizeSemanticPlaceholders(value: unknown): unknown {
+  if (!plainObject(value)) return value;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === null) continue;
+    if (
+      key === 'pointer' &&
+      plainObject(item) &&
+      Object.values(item).every((pointerValue) => pointerValue === null)
+    ) {
+      continue;
+    }
+    normalized[key] = item;
+  }
+  return normalized;
+}
+
+function selectSemanticFields(
+  envelope: Record<string, unknown>,
+  fields: readonly string[],
+): Record<string, unknown> {
+  return Object.fromEntries(
+    fields
+      .filter((field) => Object.prototype.hasOwnProperty.call(envelope, field))
+      .map((field) => [field, envelope[field]]),
+  );
 }
 
 function terminal(value: unknown): void {
@@ -225,6 +261,106 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
       args = exactKeys(input, ['contextId']);
       stringField(args.contextId, 'contextId', 200, { id: true });
       return args;
+    case 'vibespace_context': {
+      const semanticInput = normalizeSemanticPlaceholders(input);
+      const envelope = exactKeys(
+        semanticInput,
+        ['operation'],
+        [
+          'query',
+          'limit',
+          'continuation',
+          'pointer',
+          'maxBytes',
+          'beforeBytes',
+          'afterBytes',
+          'recordId',
+          'required',
+        ],
+      );
+      const operation = stringField(envelope.operation, 'operation', 32);
+      switch (operation) {
+        case 'describe':
+        case 'checkpoint':
+          return { operation };
+        case 'search':
+          args = exactKeys(
+            selectSemanticFields(envelope, ['operation', 'query', 'limit', 'continuation']),
+            ['operation', 'query'],
+            ['limit', 'continuation'],
+          );
+          stringField(args.query, 'query', 4096);
+          if (args.limit !== undefined) {
+            args.limit = normalizedSemanticInteger(args.limit, 'limit', 100);
+          }
+          optionalString(args.continuation, 'continuation', 512);
+          return args;
+        case 'open':
+          args = exactKeys(
+            selectSemanticFields(envelope, ['operation', 'pointer', 'maxBytes', 'continuation']),
+            ['operation', 'pointer'],
+            ['maxBytes', 'continuation'],
+          );
+          args.pointer = validateContextPointer(args.pointer);
+          if (args.maxBytes !== undefined) {
+            args.maxBytes = normalizedSemanticInteger(args.maxBytes, 'maxBytes', 131_072);
+          }
+          optionalString(args.continuation, 'continuation', 512);
+          return args;
+        case 'expand':
+          args = exactKeys(
+            selectSemanticFields(envelope, [
+              'operation',
+              'pointer',
+              'beforeBytes',
+              'afterBytes',
+            ]),
+            ['operation', 'pointer'],
+            ['beforeBytes', 'afterBytes'],
+          );
+          args.pointer = validateContextPointer(args.pointer);
+          if (args.beforeBytes !== undefined) {
+            args.beforeBytes = normalizedSemanticInteger(
+              args.beforeBytes,
+              'beforeBytes',
+              131_072,
+            );
+          }
+          if (args.afterBytes !== undefined) {
+            args.afterBytes = normalizedSemanticInteger(args.afterBytes, 'afterBytes', 131_072);
+          }
+          return args;
+        case 'related':
+          args = exactKeys(
+            selectSemanticFields(envelope, ['operation', 'recordId', 'limit']),
+            ['operation', 'recordId'],
+            ['limit'],
+          );
+          stringField(args.recordId, 'recordId', 512);
+          if (args.limit !== undefined) {
+            args.limit = normalizedSemanticInteger(args.limit, 'limit', 100);
+          }
+          return args;
+        case 'timeline':
+        case 'sources':
+          args = exactKeys(selectSemanticFields(envelope, ['operation', 'limit']), ['operation'], [
+            'limit',
+          ]);
+          if (args.limit !== undefined) {
+            args.limit = normalizedSemanticInteger(args.limit, 'limit', 100);
+          }
+          return args;
+        case 'investigate':
+          args = exactKeys(selectSemanticFields(envelope, ['operation', 'query']), [
+            'operation',
+            'query',
+          ]);
+          stringField(args.query, 'query', 4096);
+          return args;
+        default:
+          invalid('context operation is unavailable.');
+      }
+    }
     case 'skills.load':
       args = exactKeys(input, ['skillId']);
       stringField(args.skillId, 'skillId', 200, { id: true });
@@ -260,6 +396,53 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
       stringField(args.route, 'route', 256);
       return args;
   }
+}
+
+function validateContextPointer(value: unknown): Record<string, unknown> {
+  if (typeof value === 'string') {
+    if (value.length < 2 || value.length > 8_192 || value.includes('\0')) {
+      invalid('pointer is invalid.');
+    }
+    try {
+      value = JSON.parse(value) as unknown;
+    } catch {
+      invalid('pointer is invalid.');
+    }
+  }
+  const pointer = exactKeys(
+    value,
+    ['id', 'recordId', 'sourceVersion', 'contentHash'],
+    ['lineStart', 'lineEnd', 'byteStart', 'byteEnd', 'messageId', 'eventId', 'toolCallId'],
+  );
+  stringField(pointer.id, 'pointer.id', 512);
+  stringField(pointer.recordId, 'pointer.recordId', 512);
+  stringField(pointer.sourceVersion, 'pointer.sourceVersion', 512);
+  if (typeof pointer.contentHash !== 'string' || !/^[a-f0-9]{64}$/u.test(pointer.contentHash)) {
+    invalid('pointer.contentHash is invalid.');
+  }
+  const hasBytes = pointer.byteStart !== undefined || pointer.byteEnd !== undefined;
+  const hasLines = pointer.lineStart !== undefined || pointer.lineEnd !== undefined;
+  if (hasBytes === hasLines) invalid('pointer span is invalid.');
+  if (hasBytes) {
+    integer(pointer.byteStart, 'pointer.byteStart', Number.MAX_SAFE_INTEGER);
+    integer(pointer.byteEnd, 'pointer.byteEnd', Number.MAX_SAFE_INTEGER);
+    if ((pointer.byteEnd as number) <= (pointer.byteStart as number)) {
+      invalid('pointer byte span is invalid.');
+    }
+  } else {
+    integer(pointer.lineStart, 'pointer.lineStart', Number.MAX_SAFE_INTEGER);
+    integer(pointer.lineEnd, 'pointer.lineEnd', Number.MAX_SAFE_INTEGER);
+    if (
+      (pointer.lineStart as number) < 1 ||
+      (pointer.lineEnd as number) <= (pointer.lineStart as number)
+    ) {
+      invalid('pointer line span is invalid.');
+    }
+  }
+  optionalString(pointer.messageId, 'pointer.messageId', 512);
+  optionalString(pointer.eventId, 'pointer.eventId', 512);
+  optionalString(pointer.toolCallId, 'pointer.toolCallId', 512);
+  return pointer;
 }
 
 function absoluteDirectory(value: string): boolean {

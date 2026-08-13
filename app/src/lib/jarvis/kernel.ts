@@ -126,6 +126,7 @@ export type JarvisKernelPrepareProvider = (input: {
   runId: string;
   requestId: string;
   attemptNumber: number;
+  interactionMode: JarvisRequestEnvelope['interactionMode'];
   compiledPrompt: Readonly<CompiledJarvisPrompt>;
   agent: Agent;
   model: Readonly<JarvisModelSnapshot>;
@@ -635,6 +636,7 @@ async function runJarvisKernelExecution(
           runId: input.run.id,
           requestId: input.attempt.requestId,
           attemptNumber: input.attempt.attemptNumber,
+          interactionMode: input.interactionMode,
           compiledPrompt: compiled,
           agent: input.agent,
           model: input.model,

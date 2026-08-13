@@ -314,7 +314,10 @@ function rejectUnsafeActionSchemas(envelope: Readonly<JarvisRequestEnvelope>): v
   }
 }
 
-function renderCapabilities(envelope: Readonly<JarvisRequestEnvelope>): string {
+function renderCapabilities(
+  envelope: Readonly<JarvisRequestEnvelope>,
+  contextToolOnly = false,
+): string {
   const modelCapabilities = Object.entries(envelope.model.capabilities)
     .sort(([left], [right]) => stableCompare(left, right))
     .map(([id, enabled]) => `${inlineText(id)}=${enabled ? 'available' : 'unavailable'}`);
@@ -341,13 +344,39 @@ function renderCapabilities(envelope: Readonly<JarvisRequestEnvelope>): string {
   const actionSchemas = [...(envelope.capabilities.actionSchemas ?? [])].sort((left, right) =>
     stableCompare(left.id, right.id),
   );
+  if (contextToolOnly) {
+    return [
+      'Use only capabilities represented by this verified snapshot. Never infer completion from availability.',
+      `Selected provider: ${inlineText(envelope.model.providerId)}`,
+      `Selected model: ${inlineText(envelope.model.modelId)}`,
+      `Connection mode: ${envelope.model.connectionMode}`,
+      envelope.model.connectionId === undefined
+        ? 'Connection ID: unavailable'
+        : `Connection ID: ${inlineText(envelope.model.connectionId)}`,
+      `Model capabilities: ${modelCapabilities.join(', ') || 'none declared'}`,
+      'vibespace_context is the only provider tool enabled for this turn.',
+      'Use it for the requested Context Map search/open workflow. No unrelated action schema is admitted.',
+    ].join('\n');
+  }
+  // The immutable snapshot retains the complete validated registration. The
+  // provider only needs proposal syntax plus approval/risk semantics; repeating
+  // titles, prose descriptions, output schemas, capability arrays, entitlement
+  // arrays, and expected-effect prose can push the production catalog beyond
+  // the protected layer budget without adding proposal authority.
+  const promptActionSchema = (schema: (typeof actionSchemas)[number]) => ({
+    id: schema.id,
+    version: schema.version,
+    inputSchema: schema.inputSchema,
+    risk: schema.risk,
+    approval: schema.approval,
+  });
   const actionSchemaLines = envelope.outputContract.allowActionBlocks
     ? actionSchemas.length === 0
       ? ['Model-visible action schemas:', '- none supplied']
       : [
           'Model-visible action schemas:',
           'Schema presence describes proposal syntax only. Capability state, entitlement, approval, and verified executor results remain authoritative.',
-          ...actionSchemas.map((schema) => `- ${canonicalJson(schema)}`),
+          ...actionSchemas.map((schema) => `- ${canonicalJson(promptActionSchema(schema))}`),
         ]
     : ['Model-visible action schemas: disabled by output contract.'];
   return [
@@ -496,6 +525,9 @@ export function compileJarvisPrompt(
 
   const warnings: string[] = [];
   const omittedSourceRefs: JarvisSourceRef[] = [];
+  const contextToolOnly =
+    envelope.model.capabilities.tools === true &&
+    /\b(?:vibespace_context|context map)\b/i.test(envelope.userText);
   const allAboutMeItems = envelope.context.items.filter(
     (item) => item.source.id === JARVIS_ALL_ABOUT_ME_SOURCE_ID,
   );
@@ -554,6 +586,11 @@ export function compileJarvisPrompt(
   }
   for (const item of envelope.context.items) {
     if (excludedFromUntrusted.has(item)) continue;
+    if (contextToolOnly) {
+      omittedSourceRefs.push(diagnosticSource(item.source));
+      contextTruncated = true;
+      continue;
+    }
     const separatorChars = contextParts.length === 0 ? 0 : 2;
     const remaining = MAX_UNTRUSTED_CONTEXT_ITEM_CHARS - contextChars - separatorChars;
     const fitted = fitContextItem(item, remaining);
@@ -570,9 +607,11 @@ export function compileJarvisPrompt(
       warnings.push('untrusted_context_item_truncated');
     }
   }
-  if (contextTruncated) warnings.push('untrusted_context_truncated');
+  if (contextTruncated) {
+    warnings.push(contextToolOnly ? 'context_deferred_to_live_tool' : 'untrusted_context_truncated');
+  }
 
-  const capabilityContent = renderCapabilities(envelope);
+  const capabilityContent = renderCapabilities(envelope, contextToolOnly);
   if (capabilityContent.length > MAX_CAPABILITY_LAYER_CHARS) {
     throw new JarvisPromptCompilationError(
       'prompt_budget_exceeded',

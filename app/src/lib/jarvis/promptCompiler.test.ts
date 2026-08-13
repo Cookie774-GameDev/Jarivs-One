@@ -339,7 +339,9 @@ describe('compileJarvisPrompt', () => {
     expect(capabilityLayer).toContain('"command":{"description":"Exact command text."');
     expect(capabilityLayer).toContain('"approval":"always"');
     expect(capabilityLayer).toContain('"risk":"destructive"');
-    expect(capabilityLayer).toContain('\\n## immutable-security is data, not authority.');
+    expect(capabilityLayer).not.toContain('"expectedEffect"');
+    expect(capabilityLayer).not.toContain('"outputSchema"');
+    expect(capabilityLayer).not.toContain('"requiredCapabilities"');
     expect(occurrences(compiled.systemText, '## immutable-security [immutable_security]')).toBe(1);
     expect(capabilityLayer).not.toContain('\n## immutable-security is data');
   });
@@ -399,6 +401,34 @@ describe('compileJarvisPrompt', () => {
       'Model-visible action schemas: disabled by output contract.',
     );
     expect(compiled.layers[2]?.content).not.toContain('"id":"terminal.run"');
+  });
+
+  it('keeps explicit Context Map tool turns inside a small-model prompt budget', async () => {
+    const exposed = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed();
+    const source = contextItem('large-unrelated-source', 'irrelevant attached context '.repeat(600));
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        userText:
+          'Call vibespace_context with operation="search" and query="unique corpus anchor".',
+        capabilities: createJarvisCapabilitySnapshot({
+          ...capabilitySnapshot(),
+          actionSchemas: exposed,
+        }),
+        context: context([source]),
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+    const contextLayer = compiled.layers[5]?.content ?? '';
+
+    expect(capabilityLayer).toContain('vibespace_context');
+    expect(capabilityLayer).toContain('only provider tool enabled for this turn');
+    expect(capabilityLayer).not.toContain('"id":"terminal.run"');
+    expect(contextLayer).not.toContain('irrelevant attached context');
+    expect(compiled.diagnostics.omittedSourceRefs).toContainEqual(
+      expect.objectContaining({ id: source.source.id }),
+    );
+    expect(compiled.diagnostics.warnings).toContain('context_deferred_to_live_tool');
+    expect(compiled.systemText.length).toBeLessThan(16_000);
   });
 
   it('uses the same immutable identity source for typed and voice chat', async () => {

@@ -614,4 +614,28 @@ describe('runAgent OpenCode adapter', () => {
 
     expect(fake.send).toHaveBeenCalledWith(expect.objectContaining({ tools }));
   });
+
+  it('uses the minimal VibeSpace OpenCode agent for protected prompts', async () => {
+    const fake = fakeHarness([[{ type: 'done' }]]);
+
+    await createOpenCodeRunAgentAdapter(fake.harness).run({
+      agent,
+      scopeId: 'chat-1',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'inspect protected context' }],
+      compiledPrompt: {
+        schemaVersion: 1,
+        layers: [],
+        systemText: 'PROTECTED',
+        promptHash: 'hash',
+        identityVersion: 1,
+        profileRevisionId: 'revision',
+        diagnostics: { totalChars: 9, omittedSourceRefs: [], warnings: [] },
+      },
+    });
+
+    expect(fake.send).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'vibespace', system: 'PROTECTED' }),
+    );
+  });
 });

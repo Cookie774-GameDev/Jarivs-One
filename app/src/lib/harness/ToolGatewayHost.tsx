@@ -1,7 +1,11 @@
 import * as React from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { createProductionToolGatewayDependencies } from './toolGatewayProduction';
+import {
+  createProductionToolGatewayDependencies,
+  installToolGatewayRlmContextPort,
+} from './toolGatewayProduction';
+import { productionRlmContextTool } from '@/features/context/contextRlmProduction';
 import {
   parseToolGatewayRequest,
   type ToolGatewayRequest,
@@ -56,6 +60,7 @@ export function ToolGatewayHost({ runtime: suppliedRuntime }: ToolGatewayHostPro
     let disposed = false;
     let unlisten: (() => void) | undefined;
     const queues = new Map<string, Promise<void>>();
+    const uninstallRlmContext = installToolGatewayRlmContextPort(productionRlmContextTool);
 
     const dispatch = async (request: ToolGatewayRequest): Promise<void> => {
       const response = await runtime.execute(request);
@@ -91,6 +96,7 @@ export function ToolGatewayHost({ runtime: suppliedRuntime }: ToolGatewayHostPro
     return () => {
       disposed = true;
       unlisten?.();
+      uninstallRlmContext();
       queues.clear();
     };
   }, [runtime]);

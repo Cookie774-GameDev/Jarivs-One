@@ -11,9 +11,20 @@ const tauri = vi.hoisted(() => ({
     return tauri.unlisten;
   }),
 }));
+const production = vi.hoisted(() => ({
+  disposeRlm: vi.fn(),
+  installRlm: vi.fn(() => production.disposeRlm),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: tauri.listen }));
+vi.mock('./toolGatewayProduction', () => ({
+  createProductionToolGatewayDependencies: vi.fn(),
+  installToolGatewayRlmContextPort: production.installRlm,
+}));
+vi.mock('@/features/context/contextRlmProduction', () => ({
+  productionRlmContextTool: { execute: vi.fn() },
+}));
 
 import { ToolGatewayHost } from './ToolGatewayHost';
 
@@ -49,6 +60,17 @@ describe('ToolGatewayHost', () => {
     vi.clearAllMocks();
     tauri.listener = null;
     tauri.invoke.mockResolvedValue(undefined);
+  });
+
+  it('mounts and disposes the production RLM context port with the gateway host', async () => {
+    const view = render(<ToolGatewayHost runtime={{ execute: vi.fn() }} />);
+    await mounted();
+    expect(production.installRlm).toHaveBeenCalledOnce();
+    expect(production.installRlm).toHaveBeenCalledWith(
+      expect.objectContaining({ execute: expect.any(Function) }),
+    );
+    view.unmount();
+    expect(production.disposeRlm).toHaveBeenCalledOnce();
   });
 
   it('installs one listener and returns exactly one bounded native response', async () => {

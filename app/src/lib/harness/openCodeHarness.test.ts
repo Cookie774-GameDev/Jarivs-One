@@ -104,6 +104,7 @@ describe('OpenCodeHarness', () => {
       if (path === '/config/providers') return providerResponse();
       if (path === '/event') {
         return sse(
+          { type: 'server.connected', properties: {} },
           {
             type: 'message.part.updated',
             properties: {
@@ -139,6 +140,111 @@ describe('OpenCodeHarness', () => {
     ).toEqual(['C:\\workspace', 'C:\\workspace']);
   });
 
+  it('waits for the OpenCode event stream handshake before submitting a fast prompt', async () => {
+    let streamConnected = false;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') return providerResponse();
+      if (path === '/event') {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        streamConnected = true;
+        return sse(
+          { type: 'server.connected', properties: {} },
+          {
+            type: 'message.part.updated',
+            properties: {
+              sessionID: 'session-1',
+              delta: 'Fast response',
+              part: { type: 'text' },
+            },
+          },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
+      }
+      if (path.endsWith('/prompt_async')) {
+        return streamConnected
+          ? new Response(null, { status: 204 })
+          : new Response('prompt submitted before event stream handshake', { status: 409 });
+      }
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), { fetch });
+
+    await expect(collect(harness.send(request()))).resolves.toEqual([
+      { type: 'assistant.delta', text: 'Fast response' },
+      { type: 'done', finishReason: 'idle' },
+    ]);
+  });
+
+  it('recovers the latest assistant text snapshot when OpenCode omits text deltas', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') return providerResponse('ollama', 'llama3.2:latest');
+      if (path === '/event') {
+        return sse(
+          { type: 'server.connected', properties: {} },
+          {
+            type: 'message.updated',
+            properties: {
+              sessionID: 'session-1',
+              info: { id: 'message-user', role: 'user' },
+            },
+          },
+          {
+            type: 'message.part.updated',
+            properties: {
+              sessionID: 'session-1',
+              part: {
+                id: 'part-user',
+                messageID: 'message-user',
+                type: 'text',
+                text: 'Do not echo this user prompt.',
+              },
+            },
+          },
+          {
+            type: 'message.updated',
+            properties: {
+              sessionID: 'session-1',
+              info: { id: 'message-assistant', role: 'assistant' },
+            },
+          },
+          {
+            type: 'message.part.updated',
+            properties: {
+              sessionID: 'session-1',
+              part: {
+                id: 'part-assistant',
+                messageID: 'message-assistant',
+                type: 'text',
+                text: 'The oversized paragraph remains larger than the shard limit.',
+              },
+            },
+          },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
+      }
+      if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), { fetch });
+
+    await expect(
+      collect(
+        harness.send({
+          ...request(),
+          selection: { providerId: 'ollama', modelId: 'llama3.2:latest' },
+        }),
+      ),
+    ).resolves.toEqual([
+      {
+        type: 'assistant.delta',
+        text: 'The oversized paragraph remains larger than the shard limit.',
+      },
+      { type: 'done', finishReason: 'idle' },
+    ]);
+  });
+
   it('reconnects, suppresses duplicates, and ignores malformed or cross-session events', async () => {
     let eventRequests = 0;
     const duplicate = {
@@ -159,8 +265,9 @@ describe('OpenCodeHarness', () => {
       if (path === '/event') {
         eventRequests += 1;
         return eventRequests === 1
-          ? sse(duplicate)
+          ? sse({ type: 'server.connected', properties: {} }, duplicate)
           : sse(
+              { type: 'server.connected', properties: {} },
               duplicate,
               '{broken',
               {
@@ -195,7 +302,7 @@ describe('OpenCodeHarness', () => {
       if (path === '/config/providers') return providerResponse();
       if (path === '/event') {
         controller.abort();
-        return sse();
+        return sse({ type: 'server.connected', properties: {} });
       }
       if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
       if (path.endsWith('/abort')) return new Response('true', { status: 200 });
@@ -216,10 +323,16 @@ describe('OpenCodeHarness', () => {
       if (path === '/config/providers') return providerResponse();
       if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
       if (path === '/event') {
+        const encoder = new TextEncoder();
         return new Response(
           new ReadableStream({
             start(controller) {
-              controller.error(new Error(secretFailure));
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`,
+                ),
+              );
+              setTimeout(() => controller.error(new Error(secretFailure)), 0);
             },
           }),
           { status: 200, headers: { 'content-type': 'text/event-stream' } },
@@ -248,7 +361,10 @@ describe('OpenCodeHarness', () => {
       const path = new URL(String(url)).pathname;
       if (path === '/config/providers') return providerResponse('ollama', 'qwen3:4b');
       if (path === '/event') {
-        return sse({ type: 'session.idle', properties: { sessionID: 'session-1' } });
+        return sse(
+          { type: 'server.connected', properties: {} },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
       }
       if (path.endsWith('/prompt_async')) {
         promptBody = JSON.parse(String(init?.body));
@@ -262,6 +378,7 @@ describe('OpenCodeHarness', () => {
       harness.send({
         ...request(),
         selection: { providerId: 'local', modelId: 'qwen3:4b' },
+        agent: 'vibespace',
         variant: 'high',
         tools: { 'terminal.list': true, 'terminal.write': false },
       }),
@@ -269,6 +386,7 @@ describe('OpenCodeHarness', () => {
 
     expect(promptBody).toMatchObject({
       model: { providerID: 'ollama', modelID: 'qwen3:4b' },
+      agent: 'vibespace',
       variant: 'high',
       tools: { 'terminal.list': true, 'terminal.write': false },
     });

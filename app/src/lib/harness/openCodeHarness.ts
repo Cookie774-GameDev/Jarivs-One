@@ -28,6 +28,68 @@ interface OpenCodeHarnessOptions {
 
 const MAX_RECENT_EVENTS = 256;
 const MAX_ERROR_LENGTH = 2_048;
+const MAX_RECOVERED_ASSISTANT_TEXT = 1_500_000;
+
+type FullTextSnapshotState = {
+  assistantMessageIds: Set<string>;
+  latestAssistantMessageId?: string;
+  textPartsByMessage: Map<string, Map<string, string>>;
+};
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function boundedString(value: unknown, maximum: number): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= maximum
+    ? value
+    : undefined;
+}
+
+function observeFullTextSnapshot(
+  value: unknown,
+  expectedSessionId: string,
+  state: FullTextSnapshotState,
+): void {
+  const event = recordValue(value);
+  const properties = recordValue(event?.properties);
+  if (!event || !properties || properties.sessionID !== expectedSessionId) return;
+
+  if (event.type === 'message.updated') {
+    const info = recordValue(properties.info);
+    const messageId = boundedString(info?.id, 512);
+    if (messageId && info?.role === 'assistant') {
+      state.assistantMessageIds.add(messageId);
+      state.latestAssistantMessageId = messageId;
+    }
+    return;
+  }
+  if (event.type !== 'message.part.updated') return;
+
+  const part = recordValue(properties.part);
+  const messageId = boundedString(part?.messageID, 512);
+  const partId = boundedString(part?.id, 512);
+  const text = boundedString(part?.text, MAX_RECOVERED_ASSISTANT_TEXT);
+  if (!part || part.type !== 'text' || !messageId || !partId || !text) return;
+  let messageParts = state.textPartsByMessage.get(messageId);
+  if (!messageParts) {
+    messageParts = new Map();
+    state.textPartsByMessage.set(messageId, messageParts);
+  }
+  if (messageParts.size >= 256 && !messageParts.has(partId)) return;
+  messageParts.set(partId, text);
+}
+
+function latestAssistantTextSnapshot(state: FullTextSnapshotState): string {
+  const messageId = state.latestAssistantMessageId;
+  if (!messageId || !state.assistantMessageIds.has(messageId)) return '';
+  const parts = state.textPartsByMessage.get(messageId);
+  if (!parts) return '';
+  const text = [...parts.values()].join('');
+  return text.length <= MAX_RECOVERED_ASSISTANT_TEXT ? text : '';
+}
 
 function safeError(error: unknown, connection?: OpenCodeServerConnection): string {
   let message = error instanceof Error ? error.message : 'OpenCode stream failed.';
@@ -65,6 +127,27 @@ function nextEvent(
   const pending = iterator.next();
   void pending.catch(() => undefined);
   return pending;
+}
+
+async function waitForServerConnected(
+  pending: Promise<IteratorResult<OpenCodeSseEvent>>,
+): Promise<void> {
+  const item = await pending;
+  if (item.done) throw new Error('OpenCode event stream closed before its handshake.');
+  let value: unknown;
+  try {
+    value = JSON.parse(item.value.data) as unknown;
+  } catch {
+    throw new Error('OpenCode event stream returned an invalid handshake.');
+  }
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('type' in value) ||
+    value.type !== 'server.connected'
+  ) {
+    throw new Error('OpenCode event stream did not confirm its handshake.');
+  }
 }
 
 export class OpenCodeHarness implements VibeSpaceHarness {
@@ -146,6 +229,11 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     let reconnects = 0;
     const recent = new RecentEventSet();
     const workingDirectory = input.workingDirectory ?? this.sessionDirectories.get(input.sessionId);
+    const fullTextSnapshots: FullTextSnapshotState = {
+      assistantMessageIds: new Set(),
+      textPartsByMessage: new Map(),
+    };
+    let streamedAssistantText = '';
 
     try {
       const resolvedSelection = resolveOpenCodeSelection(
@@ -154,6 +242,8 @@ export class OpenCodeHarness implements VibeSpaceHarness {
       );
       let iterator = client.events(controller.signal, workingDirectory)[Symbol.asyncIterator]();
       let pending = nextEvent(iterator);
+      await waitForServerConnected(pending);
+      pending = nextEvent(iterator);
       if (!controller.signal.aborted) {
         await client.promptAsync(
           input.sessionId,
@@ -162,6 +252,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
               providerID: resolvedSelection.providerId,
               modelID: resolvedSelection.modelId,
             },
+            ...(input.agent ? { agent: input.agent } : {}),
             ...(input.variant ? { variant: input.variant } : {}),
             parts: input.parts,
             ...(input.system ? { system: input.system } : {}),
@@ -186,8 +277,21 @@ export class OpenCodeHarness implements VibeSpaceHarness {
           } catch {
             continue;
           }
+          observeFullTextSnapshot(raw, input.sessionId, fullTextSnapshots);
           const normalized = normalizeOpenCodeEvent(raw, input.sessionId);
           for (const event of normalized) {
+            if (event.type === 'assistant.delta') {
+              streamedAssistantText += event.text;
+            } else if (event.type === 'done') {
+              const snapshot = latestAssistantTextSnapshot(fullTextSnapshots);
+              if (snapshot.startsWith(streamedAssistantText)) {
+                const missingText = snapshot.slice(streamedAssistantText.length);
+                if (missingText) {
+                  streamedAssistantText += missingText;
+                  yield { type: 'assistant.delta', text: missingText };
+                }
+              }
+            }
             yield event;
             if (event.type === 'done' || event.type === 'error') {
               terminal = true;
@@ -216,6 +320,8 @@ export class OpenCodeHarness implements VibeSpaceHarness {
             client = this.client(connection);
             await client.getSession(input.sessionId, workingDirectory);
             iterator = client.events(controller.signal, workingDirectory)[Symbol.asyncIterator]();
+            pending = nextEvent(iterator);
+            await waitForServerConnected(pending);
             pending = nextEvent(iterator);
           } catch (recoveryError) {
             if (reconnects >= this.maxReconnectAttempts) {

@@ -33,6 +33,7 @@ const TOOL_CATALOG: &[&str] = &[
     "context.list",
     "context.read",
     "context.attach",
+    "vibespace_context",
     "skills.list",
     "skills.load",
     "plugins.list",
@@ -561,6 +562,12 @@ mod tests {
         let parsed = parse_tool_request(&request("terminal.list")).unwrap();
         assert_eq!(parsed.tool, "terminal.list");
         assert_eq!(parsed.directory.as_deref(), Some("C:\\workspace"));
+        assert_eq!(
+            parse_tool_request(&request("vibespace_context"))
+                .unwrap()
+                .tool,
+            "vibespace_context"
+        );
 
         for rejected in [
             "tauri.invoke",

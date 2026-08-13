@@ -143,6 +143,7 @@ export const OLLAMA_LOCAL_CONNECTION: Readonly<ProviderConnection> = Object.free
   capabilities: capabilities({
     images: true,
     files: true,
+    tools: true,
     localOnly: true,
     subscriptionQuota: false,
   }),

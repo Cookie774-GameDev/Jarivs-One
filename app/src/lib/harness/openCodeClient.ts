@@ -12,6 +12,7 @@ export interface OpenCodeSession extends JsonRecord {
 
 export interface OpenCodePrompt {
   model: { providerID: string; modelID: string };
+  agent?: string;
   variant?: string;
   parts: readonly unknown[];
   system?: string;

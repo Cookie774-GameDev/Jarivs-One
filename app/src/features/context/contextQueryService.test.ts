@@ -1,0 +1,275 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  ContextQueryError,
+  createContextQueryService,
+  type ContextQueryRepository,
+  type ContextScope,
+} from './contextQueryService';
+import {
+  createContextPointer,
+  createContextRecord,
+  type ContextPointer,
+  type ContextRecord,
+} from './losslessContext';
+
+const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
+const encoder = new TextEncoder();
+
+function record(id: string, overrides: Partial<ContextRecord> = {}): ContextRecord {
+  return createContextRecord({
+    id,
+    accountId: 'account-1',
+    projectId: 'project-1',
+    worktreeId: 'worktree-1',
+    sourceKind: 'file_version',
+    sourceId: `source-${id}`,
+    createdAt: 1_700_000_000_000,
+    contentHash: HASH_A,
+    contentRef: `asset://${id}`,
+    title: `${id}.txt`,
+    trustLevel: 'app_verified',
+    ...overrides,
+  });
+}
+
+function pointer(recordId: string, start = 0, end = 12): ContextPointer {
+  return createContextPointer({
+    id: `pointer-${recordId}-${start}-${end}`,
+    recordId,
+    byteStart: start,
+    byteEnd: end,
+    sourceVersion: 'sha256:aaaaaaaa',
+    contentHash: HASH_A,
+  });
+}
+
+const scope: ContextScope = {
+  accountId: 'account-1',
+  projectId: 'project-1',
+  worktreeId: 'worktree-1',
+};
+
+function repository(
+  records: readonly ContextRecord[],
+  content = 'alpha\nbeta\ngamma\ndelta\n',
+): ContextQueryRepository {
+  return {
+    listRecords: vi.fn(async () => records),
+    getRecord: vi.fn(async (recordId) => records.find((item) => item.id === recordId)),
+    search: vi.fn(async () =>
+      records.map((item, index) => ({
+        recordId: item.id,
+        pointer: pointer(item.id),
+        preview: `${item.title} ${'match '.repeat(80)}`,
+        score: 1 - index / 10,
+      })),
+    ),
+    readSource: vi.fn(async () => ({
+      bytes: encoder.encode(content),
+      contentHash: HASH_A,
+      sourceVersion: 'sha256:aaaaaaaa',
+    })),
+    canOpen: vi.fn(async () => true),
+    relatedRecordIds: vi.fn(async (recordId) =>
+      records.filter((item) => item.id !== recordId).map((item) => item.id),
+    ),
+  };
+}
+
+describe('context query service', () => {
+  it('exposes the complete bounded query surface', () => {
+    const service = createContextQueryService({ repository: repository([]) });
+    expect(Object.keys(service).sort()).toEqual(
+      [
+        'checkpoint',
+        'describe',
+        'expand',
+        'investigate',
+        'open',
+        'related',
+        'search',
+        'sources',
+        'timeline',
+      ].sort(),
+    );
+  });
+
+  it('bounds search previews and paginates with opaque continuation handles', async () => {
+    const repo = repository([record('one'), record('two'), record('three')]);
+    const service = createContextQueryService({
+      repository: repo,
+      limits: { maxSearchResults: 2, maxPreviewCharacters: 48 },
+    });
+
+    const first = await service.search({ scope, query: 'match', limit: 99 });
+    expect(first.items).toHaveLength(2);
+    expect(first.items.every((item) => item.preview.length <= 48)).toBe(true);
+    expect(first.truncated).toBe(true);
+    expect(first.continuation).toMatch(/^ctxc_/);
+
+    const second = await service.search({
+      scope,
+      query: 'match',
+      limit: 99,
+      continuation: first.continuation,
+    });
+    expect(second.items.map((item) => item.record.id)).toEqual(['three']);
+    expect(second.truncated).toBe(false);
+  });
+
+  it('re-checks scope and permission at open time and returns exact bounded bytes', async () => {
+    const repo = repository([record('one')], '0123456789abcdefghijklmnop');
+    const service = createContextQueryService({
+      repository: repo,
+      limits: { maxOpenBytes: 5 },
+    });
+    const exact = pointer('one', 2, 14);
+
+    const first = await service.open({ scope, pointer: exact });
+    expect(first).toMatchObject({
+      status: 'current',
+      text: '23456',
+      byteStart: 2,
+      byteEnd: 7,
+      truncated: true,
+    });
+    expect(first.continuation).toMatch(/^ctxc_/);
+
+    const second = await service.open({
+      scope,
+      pointer: exact,
+      continuation: first.continuation,
+    });
+    expect(second.text).toBe('789ab');
+    expect(repo.canOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('rehydrates persisted record authority before opening a pointer after restart', async () => {
+    const persisted = record('one');
+    let hydrated = false;
+    const repo = repository([persisted], '0123456789abcdefghijklmnop');
+    vi.mocked(repo.getRecord).mockImplementation(async (recordId) =>
+      hydrated && recordId === persisted.id ? persisted : undefined,
+    );
+    vi.mocked(repo.listRecords).mockImplementation(async () => {
+      hydrated = true;
+      return [persisted];
+    });
+    const service = createContextQueryService({ repository: repo });
+
+    await expect(service.open({ scope, pointer: pointer('one', 2, 8) })).resolves.toMatchObject({
+      text: '234567',
+      byteStart: 2,
+      byteEnd: 8,
+    });
+    expect(repo.listRecords).toHaveBeenCalledWith(scope, undefined);
+    expect(repo.getRecord).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses cross-scope records even when a repository accidentally returns them', async () => {
+    const repo = repository([record('foreign', { projectId: 'project-2' })]);
+    const service = createContextQueryService({ repository: repo });
+
+    await expect(service.open({ scope, pointer: pointer('foreign') })).rejects.toMatchObject({
+      code: 'scope_denied',
+    });
+    expect(repo.canOpen).not.toHaveBeenCalled();
+  });
+
+  it('reports missing, stale, and hash-mismatched authority without retargeting', async () => {
+    const repo = repository([record('one')]);
+    const service = createContextQueryService({ repository: repo });
+    vi.mocked(repo.readSource)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        bytes: encoder.encode('changed'),
+        contentHash: HASH_B,
+        sourceVersion: 'sha256:bbbbbbbb',
+      });
+
+    await expect(service.open({ scope, pointer: pointer('one') })).rejects.toMatchObject({
+      code: 'source_missing',
+    });
+    await expect(service.open({ scope, pointer: pointer('one') })).rejects.toMatchObject({
+      code: 'source_stale',
+    });
+  });
+
+  it('invalidates deleted authority even when a repository still returns a stale pointer', async () => {
+    const repo = repository([record('deleted', { deletedAt: 1_700_000_000_001 })]);
+    const service = createContextQueryService({ repository: repo });
+    await expect(service.open({ scope, pointer: pointer('deleted') })).rejects.toMatchObject({
+      code: 'scope_denied',
+    });
+  });
+
+  it('never crosses account, project, or worktree boundaries in cached continuations', async () => {
+    const repo = repository([record('one'), record('two')]);
+    const service = createContextQueryService({
+      repository: repo,
+      limits: { maxSearchResults: 1 },
+    });
+    const first = await service.search({ scope, query: 'match' });
+    await expect(
+      service.search({
+        scope: { ...scope, worktreeId: 'worktree-attacker' },
+        query: 'match',
+        continuation: first.continuation,
+      }),
+    ).rejects.toMatchObject({ code: 'continuation_invalid' });
+  });
+
+  it('expands neighboring bytes but never exceeds the configured open budget', async () => {
+    const service = createContextQueryService({
+      repository: repository([record('one')], '0123456789abcdefghijklmnop'),
+      limits: { maxOpenBytes: 10 },
+    });
+    const result = await service.expand({
+      scope,
+      pointer: pointer('one', 10, 14),
+      beforeBytes: 4,
+      afterBytes: 7,
+    });
+
+    expect(result.text).toBe('6789abcdef');
+    expect(result.byteStart).toBe(6);
+    expect(result.byteEnd).toBe(16);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('propagates cancellation before repository work starts', async () => {
+    const repo = repository([record('one')]);
+    const service = createContextQueryService({ repository: repo });
+    const controller = new AbortController();
+    controller.abort('owner_cancelled');
+
+    await expect(
+      service.search({ scope, query: 'alpha', signal: controller.signal }),
+    ).rejects.toBeInstanceOf(ContextQueryError);
+    expect(repo.search).not.toHaveBeenCalled();
+  });
+
+  it('returns scoped sources, timeline, related pointers, checkpoints, and investigation packs', async () => {
+    const one = record('one', { createdAt: 10 });
+    const two = record('two', { createdAt: 20 });
+    const service = createContextQueryService({
+      repository: repository([two, one, record('foreign', { accountId: 'account-2' })]),
+      limits: { maxSearchResults: 2, maxPreviewCharacters: 80, maxOpenBytes: 20 },
+    });
+
+    expect((await service.sources({ scope })).items.map((item) => item.id)).toEqual(['two', 'one']);
+    expect((await service.timeline({ scope })).items.map((item) => item.id)).toEqual([
+      'one',
+      'two',
+    ]);
+    expect((await service.related({ scope, recordId: 'one' })).items[0]?.id).toBe('two');
+    expect(await service.checkpoint({ scope })).toMatchObject({
+      recordCount: 2,
+      contentHashes: [HASH_A, HASH_A],
+    });
+    expect((await service.investigate({ scope, query: 'match' })).evidence.length).toBeGreaterThan(
+      0,
+    );
+  });
+});
