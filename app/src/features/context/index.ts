@@ -605,3 +605,29 @@ export {
   createProductionRlmContextTool,
   productionRlmContextTool,
 } from './contextRlmProduction';
+export {
+  CorpusScaleError,
+  MAX_ADDRESSABLE_CORPUS_TOKENS,
+  createCorpusScaleMetadata,
+  locateCorpusTokenPosition,
+  parseCorpusTokenCount,
+  parseSerializedCorpusScaleMetadata,
+  serializeCorpusScaleMetadata,
+  type CorpusScaleMetadata,
+  type CorpusTokenCountInput,
+  type SerializedCorpusScaleMetadata,
+} from './corpusScale';
+export {
+  RECURSIVE_CONTEXT_LIMITS,
+  RecursiveContextError,
+  createRecursiveContextPlanner,
+  type RecursiveContextBudgets,
+  type RecursiveContextEvidence,
+  type RecursiveContextEvidenceProvenance,
+  type RecursiveContextRequest,
+  type RecursiveContextResult,
+  type RecursiveContextRoundRequest,
+  type RecursiveContextRoundResult,
+  type RecursiveContextStopReason,
+} from './recursiveContextPlanner';
+export { createRecursiveContextQueryAdapter } from './recursiveContextQueryAdapter';
