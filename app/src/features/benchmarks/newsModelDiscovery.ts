@@ -25,6 +25,9 @@ export interface NewsApiItem {
 interface NewsApiResponse {
   generatedAt?: string;
   items?: unknown;
+  freshness?: {
+    state?: unknown;
+  };
 }
 
 export interface NewsModelRelease {
@@ -67,7 +70,10 @@ const STALE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 let memoryCache: { endpoint: string; pair: NewsBenchmarkPair; cachedAt: number } | null = null;
-let inFlight: Promise<NewsBenchmarkDiscovery> | null = null;
+type NewsReleaseFetch =
+  | { status: 'empty' }
+  | { status: 'ready'; release: NewsModelRelease; stale: boolean };
+const inFlightByEndpoint = new Map<string, Promise<NewsReleaseFetch>>();
 
 export function resolveNewsApiUrl(explicitUrl?: string | null): string | null {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
@@ -122,7 +128,14 @@ export function pickLatestModelRelease(items: unknown): NewsModelRelease | null 
     const verificationDelta =
       verificationWeight(right.verification) - verificationWeight(left.verification);
     if (verificationDelta !== 0) return verificationDelta;
-    return right.importance - left.importance;
+    const importanceDelta = right.importance - left.importance;
+    if (importanceDelta !== 0) return importanceDelta;
+    const modelDelta = normalizeModelName(left.modelName).localeCompare(
+      normalizeModelName(right.modelName),
+      'en',
+    );
+    if (modelDelta !== 0) return modelDelta;
+    return left.url.localeCompare(right.url, 'en');
   });
 
   return candidates[0] ?? null;
@@ -178,41 +191,44 @@ export async function discoverNewsBenchmarkPair(
     if (cached && Date.now() - cached.cachedAt <= CACHE_TTL_MS) {
       return { status: 'ready', pair: remapCachedPair(cached.pair, rows) };
     }
-    if (inFlight) return inFlight;
   }
-
-  const task = (async (): Promise<NewsBenchmarkDiscovery> => {
+  try {
+    const fetched = await fetchNewsRelease(endpoint);
+    if (fetched.status === 'empty') return fetched;
+    const pair = selectNewsBenchmarkPair(fetched.release, rows);
+    writeCache(endpoint, pair);
+    return { status: 'ready', pair, stale: fetched.stale };
+  } catch (error) {
     const cached = readCache(endpoint);
-    try {
-      const response = await nativeFetch(`${endpoint}/api/news?category=model-release&limit=40`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        timeoutMs: FETCH_TIMEOUT_MS,
-      });
-      if (!response.ok) throw new Error(`News API returned HTTP ${response.status}`);
+    const stalePair =
+      cached && Date.now() - cached.cachedAt <= STALE_CACHE_MAX_AGE_MS
+        ? remapCachedPair(cached.pair, rows)
+        : undefined;
+    return { status: 'error', message: boundedNewsDiscoveryError(error), stalePair };
+  }
+}
 
-      const payload = (await response.json()) as NewsApiResponse;
-      const release = pickLatestModelRelease(payload.items);
-      if (!release) return { status: 'empty' };
-
-      const pair = selectNewsBenchmarkPair(release, rows);
-      writeCache(endpoint, pair);
-      return { status: 'ready', pair };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const stalePair =
-        cached && Date.now() - cached.cachedAt <= STALE_CACHE_MAX_AGE_MS
-          ? remapCachedPair(cached.pair, rows)
-          : undefined;
-      return { status: 'error', message, stalePair };
-    }
+async function fetchNewsRelease(endpoint: string): Promise<NewsReleaseFetch> {
+  const existing = inFlightByEndpoint.get(endpoint);
+  if (existing) return existing;
+  const task = (async (): Promise<NewsReleaseFetch> => {
+    const response = await nativeFetch(`${endpoint}/api/news?category=model-release&limit=40`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      timeoutMs: FETCH_TIMEOUT_MS,
+    });
+    if (!response.ok) throw new Error(`News API returned HTTP ${response.status}`);
+    const payload = (await response.json()) as NewsApiResponse;
+    const release = pickLatestModelRelease(payload.items);
+    return release
+      ? { status: 'ready', release, stale: isRetainedNewsPayload(payload) }
+      : { status: 'empty' };
   })();
-
-  inFlight = task;
+  inFlightByEndpoint.set(endpoint, task);
   try {
     return await task;
   } finally {
-    if (inFlight === task) inFlight = null;
+    if (inFlightByEndpoint.get(endpoint) === task) inFlightByEndpoint.delete(endpoint);
   }
 }
 
@@ -230,7 +246,12 @@ function selectBestModelName(names: readonly string[]): string | null {
   const candidates = names
     .map(cleanModelName)
     .filter((name): name is string => Boolean(name))
-    .sort((left, right) => modelNameSpecificity(right) - modelNameSpecificity(left));
+    .sort((left, right) => {
+      const specificityDelta = modelNameSpecificity(right) - modelNameSpecificity(left);
+      return (
+        specificityDelta || normalizeModelName(left).localeCompare(normalizeModelName(right), 'en')
+      );
+    });
   return candidates[0] ?? null;
 }
 
@@ -349,7 +370,11 @@ function findLeaderboardMatch(
       score >= 78 &&
       (!best ||
         score > best.score ||
-        (score === best.score && row.arena_score > best.row.arena_score))
+        (score === best.score && row.arena_score > best.row.arena_score) ||
+        (score === best.score &&
+          row.arena_score === best.row.arena_score &&
+          normalizeModelName(row.model).localeCompare(normalizeModelName(best.row.model), 'en') <
+            0))
     ) {
       best = { row, score };
     }
@@ -376,7 +401,14 @@ function selectSecondaryRow(input: {
       const priority = (sameFamily ? 2_000 : 0) + (sameProvider ? 1_000 : 0) + row.arena_score;
       return { row, sameFamily, sameProvider, priority };
     })
-    .sort((left, right) => right.priority - left.priority);
+    .sort((left, right) => {
+      const priorityDelta = right.priority - left.priority;
+      if (priorityDelta !== 0) return priorityDelta;
+      return normalizeModelName(left.row.model).localeCompare(
+        normalizeModelName(right.row.model),
+        'en',
+      );
+    });
 
   const winner = ranked[0];
   if (!winner) return { row: null, reason: 'none' };
@@ -453,4 +485,17 @@ function writeCache(endpoint: string, pair: NewsBenchmarkPair): void {
   } catch {
     // The feature remains usable without persistent cache access.
   }
+}
+
+function isRetainedNewsPayload(payload: NewsApiResponse): boolean {
+  const state = payload.freshness?.state;
+  return state === 'stale' || state === 'degraded' || state === 'failed' || state === 'never';
+}
+
+function boundedNewsDiscoveryError(error: unknown): string {
+  if (error instanceof Error) {
+    const status = /^News API returned HTTP (\d{3})$/u.exec(error.message);
+    if (status) return `News API returned HTTP ${status[1]}`;
+  }
+  return 'Benchmark Scout could not refresh the news feed.';
 }

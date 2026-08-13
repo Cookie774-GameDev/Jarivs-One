@@ -35,6 +35,8 @@ export interface AccessAppHostProps {
   children: React.ReactNode;
   enabled: boolean;
   runtime: AccessAppRuntime;
+  /** Stable account identity used to cancel and reset account-owned state. */
+  accountIdentity?: string;
   privacyUrl?: string;
   termsUrl?: string;
 }
@@ -66,6 +68,7 @@ export function AccessAppHost({
   children,
   enabled,
   runtime,
+  accountIdentity = '',
   privacyUrl,
   termsUrl,
 }: AccessAppHostProps) {
@@ -75,6 +78,7 @@ export function AccessAppHost({
   const [actionNotice, setActionNotice] = React.useState<string | null>(null);
   const actionGeneration = React.useRef(0);
   const actionController = React.useRef<AbortController | null>(null);
+  const accountIdentityRef = React.useRef(accountIdentity);
 
   React.useEffect(
     () => () => {
@@ -84,6 +88,18 @@ export function AccessAppHost({
     [],
   );
 
+  React.useEffect(() => {
+    if (accountIdentityRef.current === accountIdentity) return;
+    accountIdentityRef.current = accountIdentity;
+    actionGeneration.current += 1;
+    actionController.current?.abort();
+    actionController.current = null;
+    setViewModel(null);
+    setPendingAction(null);
+    setActionError(null);
+    setActionNotice(null);
+  }, [accountIdentity]);
+
   const loadAccess = React.useCallback(
     async (signal: AbortSignal) => {
       const next = await runtime.loadViewModel(signal);
@@ -92,6 +108,18 @@ export function AccessAppHost({
         setActionError(null);
       }
       return next.host;
+    },
+    [accountIdentity, runtime],
+  );
+
+  const openRuntimeUrl = React.useCallback(
+    async (
+      signal: AbortSignal,
+      createUrl: (signal: AbortSignal) => Promise<string>,
+    ): Promise<void> => {
+      const url = await createUrl(signal);
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      await runtime.openExternalUrl(url);
     },
     [runtime],
   );
@@ -181,8 +209,7 @@ export function AccessAppHost({
           void runAction(
             'manage-billing',
             async (signal) => {
-              const url = await runtime.createPortalUrl(signal);
-              await runtime.openExternalUrl(url);
+              await openRuntimeUrl(signal, runtime.createPortalUrl);
             },
             'Billing could not be opened. Please try again.',
           );
@@ -226,8 +253,7 @@ export function AccessAppHost({
           runAction(
             'subscribe',
             async (signal) => {
-              const url = await runtime.createCheckoutUrl(signal);
-              await runtime.openExternalUrl(url);
+              await openRuntimeUrl(signal, runtime.createCheckoutUrl);
             },
             'Checkout could not be opened. Please try again.',
           );
@@ -248,8 +274,7 @@ export function AccessAppHost({
               void runAction(
                 'manage-billing',
                 async (signal) => {
-                  const url = await runtime.createPortalUrl(signal);
-                  await runtime.openExternalUrl(url);
+                  await openRuntimeUrl(signal, runtime.createPortalUrl);
                 },
                 'Billing could not be opened. Please try again.',
               );
@@ -631,7 +656,7 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
     <>
       <DesktopPresencePublisher appVersion={appVersion} />
       <AccessAppHost
-        key={cloudUserId}
+        accountIdentity={cloudUserId}
         enabled={accessGateEnabled}
         runtime={runtime}
         privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}

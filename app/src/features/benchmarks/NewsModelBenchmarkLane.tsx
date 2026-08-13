@@ -16,6 +16,10 @@ export const NEWS_BENCHMARK_REFRESH_MS = 60 * 60 * 1000;
 
 type LaneState = { status: 'loading' } | NewsBenchmarkDiscovery;
 
+export function isNewsBenchmarkDiscoveryStale(state: LaneState): boolean {
+  return state.status === 'error' || (state.status === 'ready' && state.stale === true);
+}
+
 export function NewsModelBenchmarkLane() {
   const configured = Boolean(resolveNewsApiUrl());
   const [state, setState] = React.useState<LaneState>(
@@ -145,7 +149,7 @@ export function NewsModelBenchmarkLane() {
             Checking verified model-release news…
           </div>
         ) : pair ? (
-          <ComparisonPair pair={pair} stale={state.status === 'error'} />
+          <ComparisonPair pair={pair} stale={isNewsBenchmarkDiscoveryStale(state)} />
         ) : state.status === 'empty' ? (
           <div className="cozy-card !px-4 !py-3 text-secondary text-muted-foreground">
             No verified model release with a recognizable model name is available yet.

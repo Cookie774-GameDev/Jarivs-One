@@ -7,9 +7,15 @@ import {
   buildModelPickerGroups,
   useAccessibleChatModels,
 } from './useAccessibleChatModels';
-import { CODEX_CLI_CONNECTION, CONNECTION_MODEL_OPTIONS } from './adapters/catalog';
+import {
+  CODEX_CLI_CONNECTION,
+  CONNECTION_MODEL_OPTIONS,
+  OPENCODE_CLI_CONNECTION,
+} from './adapters/catalog';
 import { OPENAI_API_CONNECTION } from './adapters/nativeCatalog';
 import {
+  AI_CONNECTION_STATE_EVENT,
+  markConnectionSessionChecked,
   resetConnectionSessionChecksForTests,
   writeConnectionMetadata,
   writeConnectionPickerStates,
@@ -17,7 +23,10 @@ import {
 
 const { ensureExternalConnectionAutoDetection, isConnectionSessionChecked } = vi.hoisted(() => ({
   ensureExternalConnectionAutoDetection: vi.fn(async () => ({})),
-  isConnectionSessionChecked: vi.fn(() => false),
+  isConnectionSessionChecked: vi.fn((_connectionId?: string) => false),
+}));
+const { listOpenCodeModels } = vi.hoisted(() => ({
+  listOpenCodeModels: vi.fn(async () => [] as readonly { id: string; label: string }[]),
 }));
 
 vi.mock('./adapters/autoDetectConnections', () => ({
@@ -29,6 +38,17 @@ vi.mock('./connectionState', async (importOriginal) => ({
   isConnectionSessionChecked,
 }));
 
+vi.mock('./adapters/opencode', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./adapters/opencode')>();
+  return {
+    ...actual,
+    openCodeCliAdapter: Object.freeze({
+      ...actual.openCodeCliAdapter,
+      listModels: listOpenCodeModels,
+    }),
+  };
+});
+
 describe('useAccessibleChatModels', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -36,6 +56,8 @@ describe('useAccessibleChatModels', () => {
     ensureExternalConnectionAutoDetection.mockClear();
     isConnectionSessionChecked.mockReset();
     isConnectionSessionChecked.mockReturnValue(false);
+    listOpenCodeModels.mockReset();
+    listOpenCodeModels.mockResolvedValue([]);
     syncDiscoveredOllamaModels([]);
     useAuthStore.setState({ defaultLocalModel: '', apiKeys: {}, offlineMode: false, plan: 'free' });
   });
@@ -67,6 +89,60 @@ describe('useAccessibleChatModels', () => {
 
     expect(result.current.hasAny).toBe(true);
     expect(result.current.flatOptions[0]?.modelId).toBe('llama3.2');
+  });
+
+  it('adds safely discovered OpenCode models to the exact subscription connection', async () => {
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    listOpenCodeModels.mockResolvedValue([
+      { id: 'openrouter/Model v2 (beta)+preview', label: 'openrouter/Model v2 (beta)+preview' },
+    ]);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
+    markConnectionSessionChecked(['opencode-cli']);
+
+    const { result } = renderHook(() => useAccessibleChatModels());
+
+    await waitFor(() => {
+      expect(
+        result.current.flatOptions.find((option) => option.connectionId === 'opencode-cli'),
+      ).toMatchObject({
+        modelId: 'openrouter/Model v2 (beta)+preview',
+        available: true,
+      });
+    });
+  });
+
+  it('does not probe OpenCode models until current-session authentication is verified', async () => {
+    isConnectionSessionChecked.mockReturnValue(false);
+
+    renderHook(() => useAccessibleChatModels());
+
+    await act(async () => Promise.resolve());
+    expect(listOpenCodeModels).not.toHaveBeenCalled();
+  });
+
+  it('does not repeat OpenCode discovery for unrelated connection events', async () => {
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    listOpenCodeModels.mockResolvedValue([{ id: 'openai/gpt-5', label: 'openai/gpt-5' }]);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
+    markConnectionSessionChecked(['opencode-cli']);
+    renderHook(() => useAccessibleChatModels());
+    await waitFor(() => expect(listOpenCodeModels).toHaveBeenCalledTimes(1));
+
+    act(() => window.dispatchEvent(new Event(AI_CONNECTION_STATE_EVENT)));
+    await act(async () => Promise.resolve());
+    expect(listOpenCodeModels).toHaveBeenCalledTimes(1);
   });
 
   it('removes every cloud and external connection from Fully Local Chat', () => {
@@ -156,6 +232,23 @@ describe('useAccessibleChatModels', () => {
     expect(
       groups[0]?.options.every((option) => option.authLabel === 'Authentication unknown'),
     ).toBe(true);
+  });
+
+  it('never enables unknown OpenCode subscription authentication', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        'opencode-cli': [{ id: 'openai/gpt-5', label: 'openai/gpt-5' }],
+      },
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'unknown' },
+      },
+    });
+
+    expect(groups[0]?.options).toEqual([
+      expect.objectContaining({ available: false, authLabel: 'Authentication unknown' }),
+    ]);
   });
 
   it('does not trust persisted ChatGPT auth until this app session completes detection', async () => {

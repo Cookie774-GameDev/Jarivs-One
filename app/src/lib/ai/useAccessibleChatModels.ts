@@ -12,10 +12,12 @@ import type { ProviderConnection } from './adapters/types';
 import {
   CODEX_CLI_CONNECTION,
   CONNECTION_MODEL_OPTIONS,
+  OPENCODE_CLI_CONNECTION,
   PROVIDER_CATALOG,
   PROVIDER_CONNECTIONS,
 } from './adapters/catalog';
 import { ensureExternalConnectionAutoDetection } from './adapters/autoDetectConnections';
+import { openCodeCliAdapter } from './adapters/opencode';
 import {
   AI_CONNECTION_STATE_EVENT,
   isConnectionSessionChecked,
@@ -107,7 +109,7 @@ export function buildConnectionPickerGroups(args: {
       auth: connection.mode === 'local' ? ('authenticated' as const) : ('unknown' as const),
     };
     const authAllowsUse =
-      connection.id === CODEX_CLI_CONNECTION.id
+      connection.id === CODEX_CLI_CONNECTION.id || connection.id === OPENCODE_CLI_CONNECTION.id
         ? state.auth === 'authenticated'
         : state.auth !== 'unauthenticated';
     for (const model of models) {
@@ -172,6 +174,15 @@ export function useAccessibleChatModels() {
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
   const ollamaOptions = useOllamaModelOptions();
   const [connectionRevision, setConnectionRevision] = useState(0);
+  const [openCodeModels, setOpenCodeModels] = useState<
+    readonly Readonly<{ id: string; label: string }>[]
+  >([]);
+  const openCodeSessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+  const openCodeReady =
+    !offlineMode &&
+    isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id) &&
+    openCodeSessionState?.available === true &&
+    openCodeSessionState.auth === 'authenticated';
   useEffect(() => {
     const update = () => setConnectionRevision((value) => value + 1);
     window.addEventListener(AI_CONNECTION_STATE_EVENT, update);
@@ -184,6 +195,26 @@ export function useAccessibleChatModels() {
       window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
     };
   }, [offlineMode]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!openCodeReady || !openCodeCliAdapter.listModels) {
+      setOpenCodeModels([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void openCodeCliAdapter
+      .listModels()
+      .then((models) => {
+        if (!cancelled) setOpenCodeModels(models);
+      })
+      .catch(() => {
+        if (!cancelled) setOpenCodeModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openCodeReady]);
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
 
   const groups = useMemo(() => {
@@ -243,14 +274,25 @@ export function useAccessibleChatModels() {
     return buildConnectionPickerGroups({
       connections: pickerConnections,
       modelsByProvider,
-      modelsByConnection: CONNECTION_MODEL_OPTIONS,
+      modelsByConnection: {
+        ...CONNECTION_MODEL_OPTIONS,
+        ...(openCodeModels.length > 0 ? { 'opencode-cli': openCodeModels } : {}),
+      },
       stateByConnection,
     }).sort(
       (a, b) =>
         Number(b.options.some((option) => option.available)) -
         Number(a.options.some((option) => option.available)),
     );
-  }, [apiKeys, offlineMode, plan, defaultLocalModel, ollamaSignature, connectionRevision]);
+  }, [
+    apiKeys,
+    offlineMode,
+    plan,
+    defaultLocalModel,
+    ollamaSignature,
+    connectionRevision,
+    openCodeModels,
+  ]);
 
   const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
   return {

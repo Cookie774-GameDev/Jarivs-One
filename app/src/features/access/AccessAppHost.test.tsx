@@ -242,6 +242,55 @@ describe('AccessAppHost', () => {
     expect(hostRuntime.openExternalUrl).toHaveBeenCalledWith('https://billing.example.test/portal');
   });
 
+  it.each([
+    ['checkout', /subscribe to vibespace access/i, 'createCheckoutUrl'],
+    ['portal', /manage billing/i, 'createPortalUrl'],
+  ] as const)(
+    'aborts a pending %s action and clears account-owned state when identity changes',
+    async (_name, buttonName, createMethod) => {
+      const pendingUrl = deferred<string>();
+      let actionSignal: AbortSignal | undefined;
+      const accountA = runtime({
+        loadViewModel: vi.fn(async () =>
+          viewModel({
+            state: 'locked',
+            displayState: 'locked',
+            usable: false,
+            locked: true,
+            checkoutNeeded: true,
+          }),
+        ),
+        [createMethod]: vi.fn((signal?: AbortSignal) => {
+          actionSignal = signal;
+          return pendingUrl.promise;
+        }),
+      });
+      const accountBAccess = deferred<AccessViewModel>();
+      const accountB = runtime({ loadViewModel: vi.fn(() => accountBAccess.promise) });
+      const view = renderHost(accountA, { accountIdentity: 'account-a' });
+      await screen.findByText(/access is locked/i);
+
+      fireEvent.click(screen.getAllByRole('button', { name: buttonName })[0]!);
+      expect(actionSignal?.aborted).toBe(false);
+
+      view.rerender(
+        <AccessAppHost enabled runtime={accountB} accountIdentity="account-b">
+          <p>Protected workspace</p>
+        </AccessAppHost>,
+      );
+      expect(actionSignal?.aborted).toBe(true);
+      expect(screen.queryByText(/backup file was created/i)).toBeNull();
+
+      await act(async () => pendingUrl.resolve('https://billing.example.test/stale-account'));
+      expect(accountA.openExternalUrl).not.toHaveBeenCalled();
+      expect(accountB.openExternalUrl).not.toHaveBeenCalled();
+
+      await act(async () => accountBAccess.resolve(viewModel()));
+      expect(await screen.findByText('Protected workspace')).toBeTruthy();
+      expect(accountB.loadViewModel).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('restores access only after a fresh authoritative check', async () => {
     const hostRuntime = runtime();
     vi.mocked(hostRuntime.loadViewModel)

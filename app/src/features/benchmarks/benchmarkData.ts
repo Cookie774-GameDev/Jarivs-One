@@ -150,7 +150,7 @@ function dedupeRows(rows: BenchmarkRow[]): BenchmarkRow[] {
   const indexes = new Map<string, number>();
 
   for (const row of rows) {
-    const key = row.model.trim().toLocaleLowerCase();
+    const key = `${row.provider.trim().toLocaleLowerCase()}:${row.model.trim().toLocaleLowerCase()}`;
     const existingIndex = indexes.get(key);
     if (existingIndex == null) {
       indexes.set(key, unique.length);
@@ -199,6 +199,14 @@ const REQUIRED_MODEL_COUNT = 50;
 const MAX_ROW_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 12_000;
 
+interface LiveDataset {
+  rows: BenchmarkRow[];
+  sourceName: string;
+  sourceUrl: string;
+}
+
+let liveRefreshInFlight: Promise<LiveDataset & { ingestedAt: number }> | null = null;
+
 /**
  * Snapshot timestamp — curated Top 50 UNIQUE models (AA Intelligence, 2026-07-11).
  * The live fetch path is authoritative on Refresh; this labels curated rows.
@@ -217,6 +225,8 @@ interface CacheEntry {
   rows: BenchmarkRow[];
   fromSnapshot: boolean;
   cachedAt: number;
+  sourceName?: string;
+  sourceUrl?: string;
 }
 
 function isLiveCacheEntry(entry: CacheEntry, allowExpired = false): boolean {
@@ -225,10 +235,25 @@ function isLiveCacheEntry(entry: CacheEntry, allowExpired = false): boolean {
   if (!Array.isArray(entry.rows) || entry.rows.length < REQUIRED_MODEL_COUNT) return false;
   if (!allowExpired && Date.now() - entry.cachedAt > CACHE_TTL_MS) return false;
   if (entry.rows.some((r) => r.source === 'snapshot')) return false;
+  if (
+    (entry.sourceName !== undefined || entry.sourceUrl !== undefined) &&
+    !isKnownLiveSource(entry.sourceName, entry.sourceUrl)
+  ) {
+    return false;
+  }
   const newestFetched = Math.max(...entry.rows.map((r) => r.fetched_at));
   if (!Number.isFinite(newestFetched)) return false;
   if (Date.now() - newestFetched > MAX_ROW_AGE_MS) return false;
   return true;
+}
+
+function isKnownLiveSource(sourceName: unknown, sourceUrl: unknown): boolean {
+  if (sourceName === 'LMArena via Wu Long archive') return sourceUrl === WULONG_TEXT_LEADERBOARD;
+  return (
+    sourceName === 'LMArena' &&
+    typeof sourceUrl === 'string' &&
+    (LMARENA_ENDPOINTS as readonly string[]).includes(sourceUrl)
+  );
 }
 
 function readCache(allowExpired = false): CacheEntry | null {
@@ -291,10 +316,12 @@ function normalize(raw: unknown, ts: number): BenchmarkRow[] {
     const o = c as Record<string, unknown>;
     const model = pickString(o, ['model', 'name', 'model_name']);
     const provider = pickString(o, ['provider', 'organization', 'org']);
-    const score = pickNumber(o, ['arena_score', 'elo', 'rating', 'score']);
+    // A generic `score` can represent a completely different benchmark.
+    // Accept only fields that identify an Arena/Elo-style metric here.
+    const score = pickNumber(o, ['arena_score', 'elo', 'rating']);
     if (!model || !provider || score == null) continue;
-    const ciLow = pickNumber(o, ['ci_low', 'lower', 'lower_bound']) ?? score - 5;
-    const ciHigh = pickNumber(o, ['ci_high', 'upper', 'upper_bound']) ?? score + 5;
+    const ciLow = pickNumber(o, ['ci_low', 'lower', 'lower_bound']) ?? score;
+    const ciHigh = pickNumber(o, ['ci_high', 'upper', 'upper_bound']) ?? score;
     rows.push({
       model,
       provider: provider.toLowerCase(),
@@ -394,7 +421,7 @@ export function normalizeWulong(raw: unknown, fallbackTs: number): BenchmarkRow[
 
   for (const entry of payload.models) {
     if (!entry?.model || entry.score == null || !Number.isFinite(entry.score)) continue;
-    const ci = entry.ci ?? 5;
+    const ci = entry.ci != null && Number.isFinite(entry.ci) ? Math.max(0, entry.ci) : 0;
     const score = Math.round(entry.score);
     const vendor = entry.vendor?.trim() || 'unknown';
     rows.push({
@@ -414,7 +441,7 @@ export function normalizeWulong(raw: unknown, fallbackTs: number): BenchmarkRow[
   return dedupeRows(rows);
 }
 
-async function fetchLiveRows(now: number): Promise<BenchmarkRow[]> {
+async function fetchLiveRows(now: number): Promise<LiveDataset> {
   const errors: string[] = [];
 
   try {
@@ -422,17 +449,19 @@ async function fetchLiveRows(now: number): Promise<BenchmarkRow[]> {
       timeoutMs: FETCH_TIMEOUT_MS,
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) throw new Error(`wulong: HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as unknown;
     const rows = normalizeWulong(data, now);
     if (rows.length < REQUIRED_MODEL_COUNT) {
-      throw new Error(
-        `wulong: incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`,
-      );
+      throw new Error(`incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`);
     }
-    return rows;
+    return {
+      rows,
+      sourceName: 'LMArena via Wu Long archive',
+      sourceUrl: WULONG_TEXT_LEADERBOARD,
+    };
   } catch (err) {
-    errors.push(err instanceof Error ? err.message : String(err));
+    errors.push(boundedLeaderboardError('wulong', err));
   }
 
   for (const url of LMARENA_ENDPOINTS) {
@@ -441,24 +470,56 @@ async function fetchLiveRows(now: number): Promise<BenchmarkRow[]> {
         timeoutMs: FETCH_TIMEOUT_MS,
         headers: { Accept: 'application/json,text/html;q=0.9,*/*;q=0.8' },
       });
-      if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const contentType = res.headers.get('content-type') ?? '';
       const data = contentType.includes('application/json')
         ? ((await res.json()) as unknown)
         : extractLeaderboardJson(await res.text());
       const rows = normalize(data, now);
       if (rows.length < REQUIRED_MODEL_COUNT) {
-        throw new Error(
-          `${url}: incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`,
-        );
+        throw new Error(`incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`);
       }
-      return rows;
+      return { rows, sourceName: 'LMArena', sourceUrl: url };
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
+      errors.push(boundedLeaderboardError('lmarena', err));
     }
   }
 
   throw new Error(errors.join(' | ') || 'Live leaderboard unavailable');
+}
+
+function boundedLeaderboardError(source: 'wulong' | 'lmarena', error: unknown): string {
+  if (error instanceof Error) {
+    const http = /^HTTP (\d{3})$/u.exec(error.message);
+    if (http) return `${source}: HTTP ${http[1]}`;
+    const incomplete = /incomplete leaderboard \((\d+)\/(\d+) models\)/u.exec(error.message);
+    if (incomplete) {
+      return `${source}: incomplete leaderboard (${incomplete[1]}/${incomplete[2]} models)`;
+    }
+  }
+  return `${source}: request failed`;
+}
+
+async function refreshLiveDataset(): Promise<LiveDataset & { ingestedAt: number }> {
+  if (liveRefreshInFlight) return liveRefreshInFlight;
+  const task = (async () => {
+    const ingestedAt = Date.now();
+    const dataset = await fetchLiveRows(ingestedAt);
+    writeCache({
+      rows: dataset.rows,
+      fromSnapshot: false,
+      cachedAt: ingestedAt,
+      sourceName: dataset.sourceName,
+      sourceUrl: dataset.sourceUrl,
+    });
+    return { ...dataset, ingestedAt };
+  })();
+  liveRefreshInFlight = task;
+  try {
+    return await task;
+  } finally {
+    if (liveRefreshInFlight === task) liveRefreshInFlight = null;
+  }
 }
 
 /**
@@ -475,7 +536,7 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
       sourceName: 'Artificial Analysis',
       sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
       benchmarkDate: SNAPSHOT_TS,
-      ingestedAt: Date.now(),
+      ingestedAt: SNAPSHOT_TS,
       confidence: 'high',
       normalizationNote:
         'This snapshot is displayed as its own Intelligence Index dataset and is never numerically merged with Arena scores.',
@@ -492,8 +553,8 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         cached: true,
         dataset: {
           metricLabel: 'Arena score',
-          sourceName: 'LMArena via Wu Long archive',
-          sourceUrl: WULONG_TEXT_LEADERBOARD,
+          sourceName: cached.sourceName ?? 'LMArena via Wu Long archive',
+          sourceUrl: cached.sourceUrl ?? WULONG_TEXT_LEADERBOARD,
           benchmarkDate,
           ingestedAt: cached.cachedAt,
           confidence: 'medium',
@@ -504,19 +565,17 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
     }
   }
 
-  const now = Date.now();
   try {
-    const rows = await fetchLiveRows(now);
-    writeCache({ rows, fromSnapshot: false, cachedAt: now });
+    const { rows, ingestedAt, sourceName, sourceUrl } = await refreshLiveDataset();
     return {
       rows: enrichRows(rows),
       fromSnapshot: false,
       dataset: {
         metricLabel: 'Arena score',
-        sourceName: 'LMArena via Wu Long archive',
-        sourceUrl: WULONG_TEXT_LEADERBOARD,
+        sourceName,
+        sourceUrl,
         benchmarkDate: Math.max(...rows.map((row) => row.fetched_at)),
-        ingestedAt: now,
+        ingestedAt,
         confidence: 'medium',
         normalizationNote:
           'Arena rows are ranked only against the same Arena feed and are not merged with Intelligence Index scores.',
@@ -534,8 +593,8 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         reason,
         dataset: {
           metricLabel: 'Arena score',
-          sourceName: 'LMArena via Wu Long archive',
-          sourceUrl: WULONG_TEXT_LEADERBOARD,
+          sourceName: staleCache.sourceName ?? 'LMArena via Wu Long archive',
+          sourceUrl: staleCache.sourceUrl ?? WULONG_TEXT_LEADERBOARD,
           benchmarkDate: Math.max(...staleCache.rows.map((row) => row.fetched_at)),
           ingestedAt: staleCache.cachedAt,
           confidence: 'medium',
@@ -544,7 +603,7 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         },
       };
     }
-    return { ...curated, reason };
+    return { ...curated, reason, stale: Date.now() - SNAPSHOT_TS > CACHE_TTL_MS };
   }
 }
 
