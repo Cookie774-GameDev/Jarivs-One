@@ -119,6 +119,25 @@ Generic discovered Ollama models therefore no longer receive invented `tool_call
 or `num_ctx` claims. Only the separately created and live-verified
 `vibespace-llama3.2-16k:latest` tag receives those explicit capability fields.
 
+## Final native regression checks — 2026-08-13
+
+- Oversized composer input: chat `cht_TMgkLPgGAPlmvQ1s` accepted exactly 128,001 characters and
+  persisted message `msg_cE4um-7gD7eomtCk` as a managed `.txt` file reference. The native artifact
+  was exactly 128,001 bytes and 128,001 characters, with SHA-256
+  `a04320981b977b50bae137704104aebef7135d943007da3d9aecf5b21a8afde4`.
+- Cross-chat concurrency: while chat `cht_TMgkLPgGAPlmvQ1s` had an active long generation, new chat
+  `cht_mvhQTdN-VCgCrUoe` persisted independent message `msg_1PjQYJ7lP13dNUgI` and started its own
+  run. The composer cleared and no queued-message banner appeared. Both runs were cancelled through
+  supported app controls after evidence capture.
+- Connector truth on final native binary: OpenAI subscription session
+  `ses_0060f5b19ffeCW8Q6ZPHIcWNnz` reached the supported route and returned
+  `Token refresh failed: 401`; Qwen session `ses_0060f42f8ffenHqsg267xr4Mpp` reached Alibaba and
+  returned `Incorrect API key` with HTTP 401. Neither route silently fell back.
+- Final running native executable SHA-256:
+  `2f4ee5ef6b46f4e73cf5f4ca12390fea67011a76aede4d4d2db68b0d4e5f6b27`.
+- Storage recovery removed only the accidental generated C: Rust target cache (3.46 GB); C: free
+  space increased from 5.42 GB to 8.40 GB. Corpus, source, chats, and evidence were preserved.
+
 ## Native cross-source result
 
 A message containing the exact A anchor was created through the visible native chat composer.
