@@ -11,6 +11,10 @@ import {
 describe('oversized message attachments', () => {
   beforeEach(resetOversizedAttachmentCleanupForTests);
 
+  it('uses exactly four times the former 32,000-character attachment threshold', () => {
+    expect(OVERSIZED_CHAT_TEXT_THRESHOLD).toBe(128_000);
+  });
+
   it('keeps ordinary text inline and creates a native file only above the high threshold', async () => {
     const bridge = {
       create: vi.fn(async () => ({

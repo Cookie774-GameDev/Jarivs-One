@@ -23,4 +23,8 @@ describe('ChatView Browser Goal activation', () => {
     expect(source).not.toMatch(/setSelectedModel|setDefaultProvider/);
     expect(source).toContain('TokenBossCinematic');
   });
+
+  it('remounts the composer per chat so a running chat cannot queue a different chat', () => {
+    expect(source).toContain('<Composer key={String(activeChatId)} chatId={activeChatId} />');
+  });
 });

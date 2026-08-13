@@ -161,7 +161,7 @@ export function ChatView() {
           <>
             <ChatThread chatId={activeChatId} fixtureMessages={visualChatFixture?.messages} />
             <BrowserGoalStatus chatId={String(activeChatId)} />
-            <Composer chatId={activeChatId} />
+            <Composer key={String(activeChatId)} chatId={activeChatId} />
             <TokenBossCinematic chatId={String(activeChatId)} />
             <ChatOutputPanel
               chatId={String(activeChatId)}

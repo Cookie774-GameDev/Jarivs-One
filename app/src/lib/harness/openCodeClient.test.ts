@@ -145,6 +145,23 @@ describe('OpenCodeHttpClient', () => {
     expect(JSON.parse(String(fetch.mock.calls[3]?.[1]?.body))).toEqual({ method: 2 });
   });
 
+  it('accepts provider status responses larger than the generic JSON limit', async () => {
+    const padding = 'x'.repeat(2 * 1024 * 1024);
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          all: [{ id: 'openai', models: { test: { description: padding } } }],
+          default: {},
+          connected: ['openai'],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await expect(client.providerStatus()).resolves.toEqual({ connected: ['openai'] });
+  });
+
   it('rejects malformed or oversized provider auth schemas', async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()

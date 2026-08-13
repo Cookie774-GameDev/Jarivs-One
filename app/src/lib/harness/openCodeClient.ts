@@ -368,7 +368,9 @@ export function createOpenCodeHttpClient(
       return requireProviderAuthMethods(await request('/provider/auth'));
     },
     async providerStatus() {
-      return requireProviderStatus(await request('/provider'));
+      return requireProviderStatus(
+        await request('/provider', {}, 'json', MAX_PROVIDER_JSON_BYTES),
+      );
     },
     async authorizeProvider(providerId, method, inputs) {
       return requireProviderAuthorization(
