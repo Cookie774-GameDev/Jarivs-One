@@ -454,6 +454,12 @@ fn context_tool_descriptor() -> Value {
     serde_json::json!({
         "name": "vibespace_context",
         "description": "Search or open the current VibeSpace Context Map within its bounded authority.",
+        "annotations": {
+            "readOnlyHint": true,
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": false
+        },
         "inputSchema": {
             "type": "object",
             "additionalProperties": false,
@@ -1260,6 +1266,15 @@ mod tests {
         assert_eq!(
             descriptor["inputSchema"]["properties"]["limit"]["maximum"],
             5
+        );
+        assert_eq!(
+            descriptor["annotations"],
+            json!({
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            })
         );
         let authority = Arc::new(CodexLeaseAuthority::default());
         let lease = CodexContextLease {
