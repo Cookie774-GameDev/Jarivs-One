@@ -84,6 +84,125 @@ describe('harness runtime manager', () => {
     unsubscribe();
   });
 
+  it('shares one detect and ensure chain across concurrent refresh callers', async () => {
+    const detection = deferred<NativeRuntimeDetection>();
+    const native = adapter({ detect: vi.fn(() => detection.promise) });
+    const manager = createHarnessRuntimeManager(native);
+
+    const first = manager.refresh();
+    const second = manager.refresh();
+    expect(native.detect).toHaveBeenCalledTimes(1);
+
+    detection.resolve(readyDetection);
+    await Promise.all([first, second]);
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot().kind).toBe('ready');
+  });
+
+  it('coalesces a StrictMode-style immediate unsubscribe and remount', async () => {
+    const detection = deferred<NativeRuntimeDetection>();
+    const native = adapter({ detect: vi.fn(() => detection.promise) });
+    const manager = createHarnessRuntimeManager(native);
+
+    const first = manager.subscribe(() => {});
+    await settle();
+    expect(native.detect).toHaveBeenCalledTimes(1);
+    first();
+    const second = manager.subscribe(() => {});
+    await settle();
+    expect(native.detect).toHaveBeenCalledTimes(1);
+
+    detection.resolve(readyDetection);
+    await settle();
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    second();
+  });
+
+  it('discards a pending detection after the last subscriber is truly gone', async () => {
+    const detection = deferred<NativeRuntimeDetection>();
+    const native = adapter({ detect: vi.fn(() => detection.promise) });
+    const manager = createHarnessRuntimeManager(native);
+    const notifications = vi.fn();
+
+    const unsubscribe = manager.subscribe(notifications);
+    await settle();
+    unsubscribe();
+    await settle();
+    notifications.mockClear();
+    detection.resolve(readyDetection);
+    await settle();
+
+    expect(native.ensureServer).not.toHaveBeenCalled();
+    expect(manager.getConnection()).toBeUndefined();
+    expect(notifications).not.toHaveBeenCalled();
+  });
+
+  it('discards a pending ensure result after the last subscriber is gone', async () => {
+    const server = deferred<OpenCodeServerConnection>();
+    const native = adapter({ ensureServer: vi.fn(() => server.promise) });
+    const manager = createHarnessRuntimeManager(native);
+    const notifications = vi.fn();
+
+    const unsubscribe = manager.subscribe(notifications);
+    await settle();
+    expect(manager.getSnapshot()).toEqual({ kind: 'starting' });
+    unsubscribe();
+    await settle();
+    notifications.mockClear();
+    server.resolve(readyConnection);
+    await settle();
+
+    expect(manager.getConnection()).toBeUndefined();
+    expect(manager.getSnapshot()).toEqual({ kind: 'starting' });
+    expect(notifications).not.toHaveBeenCalled();
+  });
+
+  it('reuses a validated ready connection when the runtime subscriber remounts', async () => {
+    const native = adapter();
+    const manager = createHarnessRuntimeManager(native);
+    const first = manager.subscribe(() => {});
+    await settle();
+    expect(manager.getSnapshot().kind).toBe('ready');
+    first();
+    await settle();
+
+    const second = manager.subscribe(() => {});
+    await settle();
+    expect(native.detect).toHaveBeenCalledTimes(1);
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot().kind).toBe('ready');
+    second();
+  });
+
+  it('discards a late ready-event server status after lifecycle teardown', async () => {
+    const status = deferred<OpenCodeServerConnection | null>();
+    const native = adapter({
+      detect: vi.fn().mockResolvedValue({ status: 'missing' }),
+      serverStatus: vi.fn(() => status.promise),
+    });
+    const manager = createHarnessRuntimeManager(native);
+    const notifications = vi.fn();
+    const unsubscribe = manager.subscribe(notifications);
+    await settle();
+
+    native.emit({
+      kind: 'ready',
+      source: 'managed',
+      version: readyConnection.version,
+      generation: readyConnection.generation,
+    });
+    expect(native.serverStatus).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    await settle();
+    notifications.mockClear();
+    status.resolve(readyConnection);
+    await settle();
+
+    expect(manager.getConnection()).toBeUndefined();
+    expect(manager.getSnapshot()).toEqual({ kind: 'download_required' });
+    expect(notifications).not.toHaveBeenCalled();
+  });
+
   it('stays starting until the authenticated native server is ready', async () => {
     const server = deferred<OpenCodeServerConnection>();
     const native = adapter({ ensureServer: vi.fn(() => server.promise) });
@@ -299,12 +418,13 @@ describe('harness runtime manager', () => {
     first();
     expect(unlisten).not.toHaveBeenCalled();
     second();
+    await settle();
     expect(unlisten).toHaveBeenCalledTimes(1);
 
     const third = manager.subscribe(() => {});
     await settle();
     expect(native.listen).toHaveBeenCalledTimes(2);
-    expect(native.detect).toHaveBeenCalledTimes(2);
+    expect(native.detect).toHaveBeenCalledTimes(1);
     third();
   });
 

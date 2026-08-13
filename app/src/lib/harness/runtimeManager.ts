@@ -134,6 +134,17 @@ export function createHarnessRuntimeManager(
   const subscribers = new Set<() => void>();
   let unlisten: (() => void) | undefined;
   let activation = 0;
+  let lifecycleActive = false;
+  let teardownTicket = 0;
+  let operationGeneration = 0;
+  let eventGeneration = 0;
+  let refreshFlight:
+    | Readonly<{
+        activation: number | undefined;
+        operation: number;
+        promise: Promise<void>;
+      }>
+    | undefined;
   let connection: OpenCodeServerConnection | undefined;
 
   const publish = (next: HarnessRuntimeState) => {
@@ -169,7 +180,11 @@ export function createHarnessRuntimeManager(
     return candidate;
   };
 
-  const applyDetection = async (detection: NativeRuntimeDetection) => {
+  const applyDetection = async (
+    detection: NativeRuntimeDetection,
+    current: () => boolean = () => true,
+  ) => {
+    if (!current()) return;
     if (detection.status !== 'systemCompatible' && detection.status !== 'managedCompatible') {
       clearConnection();
       publish(mapUnavailableDetection(detection));
@@ -181,6 +196,7 @@ export function createHarnessRuntimeManager(
     clearConnection();
     publish({ kind: 'starting' });
     const ready = validatedConnection(await native.ensureServer(detection.executableId as string));
+    if (!current()) return;
     connection = ready;
     publish({
       kind: 'ready',
@@ -189,13 +205,25 @@ export function createHarnessRuntimeManager(
     });
   };
 
-  const handleEvent = (event: NativeRuntimeEvent) => {
+  const lifecycleIsCurrent = (generation: number) =>
+    lifecycleActive && generation === activation && subscribers.size > 0;
+
+  const handleEvent = (event: NativeRuntimeEvent, generation: number) => {
+    if (!lifecycleIsCurrent(generation)) return;
+    const eventOperation = ++eventGeneration;
     if (event.kind === 'ready') {
       if (!event.generation) return;
       void native
         .serverStatus()
         .then((status) => {
-          if (!status || status.generation !== event.generation) return;
+          if (
+            !lifecycleIsCurrent(generation) ||
+            eventOperation !== eventGeneration ||
+            !status ||
+            status.generation !== event.generation
+          ) {
+            return;
+          }
           const ready = validatedConnection(status);
           connection = ready;
           publish({
@@ -205,6 +233,7 @@ export function createHarnessRuntimeManager(
           });
         })
         .catch((error) => {
+          if (!lifecycleIsCurrent(generation) || eventOperation !== eventGeneration) return;
           clearConnection();
           publish({
             kind: 'failed',
@@ -226,23 +255,50 @@ export function createHarnessRuntimeManager(
     publish(mapEvent(event));
   };
 
-  const refresh = async () => {
-    if (!native.available()) {
-      clearConnection();
-      publish({ kind: 'ready', source: 'system', version: 'web-preview' });
-      return;
+  const refresh = (lifecycleGeneration?: number): Promise<void> => {
+    const operationActivation =
+      lifecycleGeneration ?? (subscribers.size > 0 ? activation : undefined);
+    if (
+      refreshFlight &&
+      refreshFlight.activation === operationActivation &&
+      refreshFlight.operation === operationGeneration
+    ) {
+      return refreshFlight.promise;
     }
-    publish({ kind: 'checking' });
-    try {
-      await applyDetection(await native.detect());
-    } catch (error) {
-      clearConnection();
-      publish({
-        kind: 'failed',
-        recoverable: true,
-        message: boundedCopy(error, 'Harness detection failed.'),
-      });
-    }
+    const operation = ++operationGeneration;
+    const current = () =>
+      operation === operationGeneration &&
+      (operationActivation === undefined || lifecycleIsCurrent(operationActivation));
+    const promise = (async () => {
+      if (!native.available()) {
+        if (!current()) return;
+        clearConnection();
+        publish({ kind: 'ready', source: 'system', version: 'web-preview' });
+        return;
+      }
+      if (!current()) return;
+      publish({ kind: 'checking' });
+      try {
+        const detection = await native.detect();
+        if (!current()) return;
+        await applyDetection(detection, current);
+      } catch (error) {
+        if (!current()) return;
+        clearConnection();
+        publish({
+          kind: 'failed',
+          recoverable: true,
+          message: boundedCopy(error, 'Harness detection failed.'),
+        });
+      }
+    })();
+    const flight = Object.freeze({ activation: operationActivation, operation, promise });
+    refreshFlight = flight;
+    const clearFlight = () => {
+      if (refreshFlight === flight) refreshFlight = undefined;
+    };
+    void promise.then(clearFlight, clearFlight);
+    return promise;
   };
 
   const activate = async (generation: number) => {
@@ -251,15 +307,17 @@ export function createHarnessRuntimeManager(
       return;
     }
     try {
-      const stop = await native.listen(handleEvent);
-      if (generation !== activation || subscribers.size === 0) {
+      const stop = await native.listen((event) => handleEvent(event, generation));
+      if (!lifecycleIsCurrent(generation)) {
         stop();
         return;
       }
       unlisten = stop;
-      await refresh();
+      if (snapshot.kind !== 'ready' || !connection) {
+        await refresh(generation);
+      }
     } catch (error) {
-      if (generation === activation) {
+      if (lifecycleIsCurrent(generation)) {
         publish({
           kind: 'failed',
           recoverable: true,
@@ -272,16 +330,28 @@ export function createHarnessRuntimeManager(
   return {
     subscribe(listener) {
       subscribers.add(listener);
+      teardownTicket += 1;
       if (subscribers.size === 1) {
-        activation += 1;
-        void activate(activation);
+        if (!lifecycleActive) {
+          lifecycleActive = true;
+          activation += 1;
+          void activate(activation);
+        }
       }
       return () => {
         subscribers.delete(listener);
         if (subscribers.size === 0) {
-          activation += 1;
-          unlisten?.();
-          unlisten = undefined;
+          const ticket = ++teardownTicket;
+          queueMicrotask(() => {
+            if (ticket !== teardownTicket || subscribers.size > 0) return;
+            lifecycleActive = false;
+            activation += 1;
+            operationGeneration += 1;
+            eventGeneration += 1;
+            refreshFlight = undefined;
+            unlisten?.();
+            unlisten = undefined;
+          });
         }
       };
     },
@@ -293,10 +363,19 @@ export function createHarnessRuntimeManager(
         await refresh();
         return;
       }
+      const operation = ++operationGeneration;
+      refreshFlight = undefined;
+      const operationActivation = subscribers.size > 0 ? activation : undefined;
+      const current = () =>
+        operation === operationGeneration &&
+        (operationActivation === undefined || lifecycleIsCurrent(operationActivation));
       publish({ kind: 'downloading', progress: 0 });
       try {
-        await applyDetection(await native.install());
+        const detection = await native.install();
+        if (!current()) return;
+        await applyDetection(detection, current);
       } catch (error) {
+        if (!current()) return;
         clearConnection();
         publish({
           kind: 'failed',

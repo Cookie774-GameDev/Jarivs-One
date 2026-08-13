@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -450,11 +450,14 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn opencode_runtime_detect(
-    app: AppHandle,
-    state: State<'_, OpenCodeRuntimeState>,
-) -> Result<OpenCodeRuntimeDetection, String> {
-    detect_opencode_runtime(&app, &state)
+pub async fn opencode_runtime_detect(app: AppHandle) -> Result<OpenCodeRuntimeDetection, String> {
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = worker_app.state::<OpenCodeRuntimeState>();
+        detect_opencode_runtime(&worker_app, state.inner())
+    })
+    .await
+    .map_err(|_| "OpenCode runtime detection worker failed.".to_string())?
 }
 
 pub fn detect_opencode_runtime(
@@ -645,6 +648,21 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn runtime_detection_command_offloads_blocking_discovery() {
+        let source = include_str!("runtime.rs");
+        let command = source
+            .split("pub async fn opencode_runtime_detect")
+            .nth(1)
+            .and_then(|remainder| remainder.split("pub fn detect_opencode_runtime").next())
+            .expect("runtime detection command must remain async");
+
+        assert!(
+            command.contains("tauri::async_runtime::spawn_blocking"),
+            "runtime detection must not hash files or probe child processes on the command handler"
+        );
+    }
 
     struct FixtureRoot(PathBuf);
 
