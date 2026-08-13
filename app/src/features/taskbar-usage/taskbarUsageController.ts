@@ -30,6 +30,26 @@ export {
 
 let stopController: (() => void) | undefined;
 
+export function createAsyncUnlistenerRegistry() {
+  let stopped = false;
+  const unlisteners = new Set<() => void>();
+  return {
+    add(unlisten: () => void): void {
+      if (stopped) {
+        unlisten();
+        return;
+      }
+      unlisteners.add(unlisten);
+    },
+    stop(): void {
+      if (stopped) return;
+      stopped = true;
+      for (const unlisten of unlisteners) unlisten();
+      unlisteners.clear();
+    },
+  };
+}
+
 export function startTaskbarUsageController(): () => void {
   if (stopController) return stopController;
 
@@ -38,7 +58,7 @@ export function startTaskbarUsageController(): () => void {
   let displayTimer: number | undefined;
   let mainVisible = true;
   let lastPreferencesKey = '';
-  const nativeUnlisteners: Array<() => void> = [];
+  const nativeUnlisteners = createAsyncUnlistenerRegistry();
   const refreshCoordinator = createUsageRefreshCoordinator();
   refreshCoordinator.setOnline(globalThis.navigator?.onLine !== false);
 
@@ -107,9 +127,7 @@ export function startTaskbarUsageController(): () => void {
             activity: providerActivityTracker.snapshot(),
             now: Date.now(),
           });
-          if (
-            refreshedSnapshots.some((snapshot) => snapshot.providerId === 'openai-codex')
-          ) {
+          if (refreshedSnapshots.some((snapshot) => snapshot.providerId === 'openai-codex')) {
             try {
               const codexUsage = await readCodexAccountUsage();
               const primary = codexUsage.windows[0];
@@ -257,26 +275,39 @@ export function startTaskbarUsageController(): () => void {
   document.addEventListener('visibilitychange', handleVisibility);
 
   if ('__TAURI_INTERNALS__' in window) {
-    void import('@tauri-apps/api/event').then(async ({ listen }) => {
-      nativeUnlisteners.push(
-        await listen('jarvis:before-hide', () => {
-          mainVisible = false;
-          lastPreferencesKey = '';
-          syncLifecycle();
-        }),
-        await listen('jarvis:reopen', () => {
-          mainVisible = true;
-          lastPreferencesKey = '';
-          syncLifecycle();
-        }),
-        await listen<{ providerId?: string }>('taskbar-usage://open-connections', (event) => {
-          void showMainWindowConnections(event.payload?.providerId);
-        }),
-        await listen<{ providerId?: string }>('taskbar-usage://refresh', (event) => {
-          void refresh(true, event.payload?.providerId);
-        }),
-      );
-    });
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => {
+        const retain = (registration: Promise<() => void>) => {
+          void registration
+            .then((unlisten) => nativeUnlisteners.add(unlisten))
+            .catch(() => undefined);
+        };
+        retain(
+          listen('jarvis:before-hide', () => {
+            mainVisible = false;
+            lastPreferencesKey = '';
+            syncLifecycle();
+          }),
+        );
+        retain(
+          listen('jarvis:reopen', () => {
+            mainVisible = true;
+            lastPreferencesKey = '';
+            syncLifecycle();
+          }),
+        );
+        retain(
+          listen<{ providerId?: string }>('taskbar-usage://open-connections', (event) => {
+            void showMainWindowConnections(event.payload?.providerId);
+          }),
+        );
+        retain(
+          listen<{ providerId?: string }>('taskbar-usage://refresh', (event) => {
+            void refresh(true, event.payload?.providerId);
+          }),
+        );
+      })
+      .catch(() => undefined);
   }
 
   syncLifecycle();
@@ -291,7 +322,7 @@ export function startTaskbarUsageController(): () => void {
     unsubscribeStore();
     unsubscribeAuth();
     unsubscribeActivity();
-    for (const unlisten of nativeUnlisteners) unlisten();
+    nativeUnlisteners.stop();
     stopController = undefined;
   };
   return stopController;

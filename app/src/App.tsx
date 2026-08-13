@@ -2324,6 +2324,12 @@ function sharedRuntimeProfileHandshake(
   if (!promise) {
     promise = verifyRuntimeProfileHandshake(query, plan, expectation, timeoutMs);
     promises.set(key, promise);
+    const currentPromise = promise;
+    void currentPromise.catch(() => {
+      if (promises?.get(key) === currentPromise) {
+        promises.delete(key);
+      }
+    });
   }
   return promise;
 }
@@ -2429,7 +2435,15 @@ export function RuntimeProfileHandshakeGate({
     <RuntimeProfileHandshakeProofContext.Provider value={proof}>
       {children}
     </RuntimeProfileHandshakeProofContext.Provider>
-  ) : null;
+  ) : (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-0 flex items-center justify-center bg-background p-6 text-sm text-muted-foreground"
+    >
+      Verifying VibeSpace runtime security…
+    </div>
+  );
 }
 
 const FIXTURE_READY_TIMEOUT_MS = 5_000;

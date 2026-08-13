@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { syntheticCredentialFixture } from '@/test/syntheticCredentialFixture';
@@ -21,6 +23,12 @@ afterEach(() => {
 });
 
 describe('ErrorBoundary crash containment', () => {
+  it('contains the App at the renderer root rather than below early boot gates', () => {
+    const mainSource = readFileSync(resolve(process.cwd(), 'src/main.tsx'), 'utf8');
+
+    expect(mainSource).toMatch(/<ErrorBoundary>\s*<App\s*\/>\s*<\/ErrorBoundary>/);
+  });
+
   it('redacts and bounds exception details before returning them', () => {
     const secret = syntheticCredentialFixture('ghp_', 'SyntheticCredentialValue1234567890');
     const error = new Error(`Provider failed with ${secret}`);
