@@ -345,7 +345,7 @@ export function useBrowserChatRelay(
     };
   }, [enabled, scope?.accountId, scope?.projectId]);
 
-  const sharedStatus = useSyncExternalStore(
+  const sharedStatus = useSyncExternalStore<BrowserChatRelayStatus>(
     subscribeRelayStatus,
     () => relayStatusSnapshot,
     () => 'disabled',

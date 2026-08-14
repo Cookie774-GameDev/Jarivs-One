@@ -117,9 +117,9 @@ describe('global Browser Chat relay supervisor', () => {
     const rendered = render(<GlobalRelayHost routeMounted />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('global-relay-status')).toHaveTextContent('connected'),
+      expect(screen.getByTestId('global-relay-status').textContent).toBe('connected'),
     );
-    expect(screen.getByTestId('route-relay-status')).toHaveTextContent('connected');
+    expect(screen.getByTestId('route-relay-status').textContent).toBe('connected');
     expect(relayMocks.getBrowserChatBridgeClient).toHaveBeenCalledTimes(1);
     expect(relayMocks.onAuthStateChange).toHaveBeenCalledTimes(1);
 
@@ -127,7 +127,7 @@ describe('global Browser Chat relay supervisor', () => {
     rendered.rerender(<GlobalRelayHost routeMounted={false} />);
 
     await waitFor(() =>
-      expect(screen.getByTestId('global-relay-status')).toHaveTextContent('connected'),
+      expect(screen.getByTestId('global-relay-status').textContent).toBe('connected'),
     );
     expect(relayMocks.getBrowserChatBridgeClient).toHaveBeenCalledTimes(1);
     expect(relayMocks.resetBrowserChatBridgeClient).toHaveBeenCalledTimes(resetCount);
