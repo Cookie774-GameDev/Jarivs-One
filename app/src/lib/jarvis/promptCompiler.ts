@@ -13,7 +13,10 @@ import {
 import { isProtectedJarvisAgent, JARVIS_IDENTITY_POLICY } from '@/lib/jarvis/identity';
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
 import { classifyJarvisSource, isJarvisModelVisibleSchemaSafe } from '@/lib/jarvis/sourcePolicy';
-import { requestsReadOnlyContextTool } from '@/lib/jarvis/contextToolIntent';
+import {
+  requestsDirectContextAddress,
+  requestsReadOnlyContextTool,
+} from '@/lib/jarvis/contextToolIntent';
 
 export const JARVIS_ALL_ABOUT_ME_SOURCE_ID = 'jarvis:all-about-me';
 
@@ -318,6 +321,7 @@ function rejectUnsafeActionSchemas(envelope: Readonly<JarvisRequestEnvelope>): v
 function renderCapabilities(
   envelope: Readonly<JarvisRequestEnvelope>,
   contextToolOnly = false,
+  directAddress = false,
 ): string {
   const modelCapabilities = Object.entries(envelope.model.capabilities)
     .sort(([left], [right]) => stableCompare(left, right))
@@ -346,6 +350,17 @@ function renderCapabilities(
     stableCompare(left.id, right.id),
   );
   if (contextToolOnly) {
+    const operationGuidance = directAddress
+      ? [
+          'For an explicit direct address request, call `vibespace_context` with `operation="address"` once for each exact caller-supplied address object, in the supplied order.',
+          'Use only the caller-supplied `corpusId` and canonical-decimal string `position`. Never coerce `position` through a JavaScript number or infer, round, normalize, or replace either argument.',
+          'Never substitute `search`, `open`, or `expand` for an explicit address request. Do not add `query`, `limit`, `pointer`, byte ranges, or continuation arguments.',
+          'Do not exceed twelve address calls in this provider turn. Wait for every real tool result and answer only from the returned bounded evidence.',
+        ]
+      : [
+          'For a single-question file research turn, first call `vibespace_context` with `operation="search"`, the complete user question, and `limit=5`. A search item preview is valid bounded evidence: answer from it when complete and cite its record title/path. Call `operation="open"` only when a preview is insufficient, using only an exact pointer returned by search.',
+          'For a numbered multi-question request, call `operation="search"` exactly once per numbered question using the exact bounded queries supplied in the provider turn with `limit=3`; finish every search before answering and cite the matching record title/path for every answer. Do not make an additional whole-request search. After those mandatory searches finish, you may make at most six additional evidence calls total across `operation="open"` and `operation="expand"`, no more than two for any one question, no more than one evidence retrieval for each cited source, and only with exact pointers returned by that question\'s search. When a requested revision or neighboring provenance is absent from a matching preview, call `operation="expand"` with that exact pointer and at least one of `beforeBytes` or `afterBytes`; each supplied direction must be at most 2048. `expand` replaces `open` for that source. Never infer a revision or make a whole-source request when the bounded evidence does not contain it.',
+        ];
     return [
       'Use only capabilities represented by this verified snapshot. Never infer completion from availability.',
       `Selected provider: ${inlineText(envelope.model.providerId)}`,
@@ -357,9 +372,8 @@ function renderCapabilities(
       `Model capabilities: ${modelCapabilities.join(', ') || 'none declared'}`,
       'vibespace_context is the only provider tool enabled for this turn.',
       'This direct user chat is not a subagent assignment or delegation. Subagent bootstrap, coordination receipt, lock, and mandatory-file-read instructions do not apply to this turn. Do not emit `BOOTSTRAP_OK` or `BOOTSTRAP_BLOCKED`.',
-      'The function name is always `vibespace_context`; operation names such as `investigate`, `search`, `open`, and `expand` are arguments, never function names.',
-      'For a single-question file research turn, first call `vibespace_context` with `operation="search"`, the complete user question, and `limit=5`. A search item preview is valid bounded evidence: answer from it when complete and cite its record title/path. Call `operation="open"` only when a preview is insufficient, using only an exact pointer returned by search.',
-      'For a numbered multi-question request, call `operation="search"` exactly once per numbered question using the exact bounded queries supplied in the provider turn with `limit=3`; finish every search before answering and cite the matching record title/path for every answer. Do not make an additional whole-request search. After those mandatory searches finish, you may make at most six additional evidence calls total across `operation="open"` and `operation="expand"`, no more than two for any one question, no more than one evidence retrieval for each cited source, and only with exact pointers returned by that question\'s search. When a requested revision or neighboring provenance is absent from a matching preview, call `operation="expand"` with that exact pointer and at least one of `beforeBytes` or `afterBytes`; each supplied direction must be at most 2048. `expand` replaces `open` for that source. Never infer a revision or make a whole-source request when the bounded evidence does not contain it.',
+      'The function name is always `vibespace_context`; operation names such as `investigate`, `search`, `open`, `expand`, and `address` are arguments, never function names.',
+      ...operationGuidance,
       'Never print or narrate a tool call as JSON. Invoke the enabled function, wait for its result, and answer only from returned evidence. No unrelated action schema is admitted.',
     ].join('\n');
   }
@@ -552,6 +566,7 @@ export function compileJarvisPrompt(
   const omittedSourceRefs: JarvisSourceRef[] = [];
   const contextToolOnly =
     envelope.model.capabilities.tools === true && requestsReadOnlyContextTool(envelope.userText);
+  const directAddress = contextToolOnly && requestsDirectContextAddress(envelope.userText);
   const allAboutMeItems = envelope.context.items.filter(
     (item) => item.source.id === JARVIS_ALL_ABOUT_ME_SOURCE_ID,
   );
@@ -637,7 +652,7 @@ export function compileJarvisPrompt(
     );
   }
 
-  const capabilityContent = renderCapabilities(envelope, contextToolOnly);
+  const capabilityContent = renderCapabilities(envelope, contextToolOnly, directAddress);
   if (capabilityContent.length > MAX_CAPABILITY_LAYER_CHARS) {
     throw new JarvisPromptCompilationError(
       'prompt_budget_exceeded',

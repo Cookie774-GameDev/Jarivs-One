@@ -430,6 +430,62 @@ describe('startRuntimeListener agent routing', () => {
     expect(messages[0]?.content).toContain('Do not answer with a bootstrap receipt');
   });
 
+  const liveTest08AddressBatches = [
+    `This is batch 1 of 2 for one Test08 run in the same retained chat.
+Use the production vibespace_context address operation only. Do not use search, open, or expand.
+Make exactly 9 address calls, one for each case below, and no other tool calls.
+For each call, use the exact corpusId and canonical decimal position.
+Return one row per case in this order: corpusId | position | shard | offset | tokenStart | tokenEnd | source filename | source SHA-256 | exact CANONICAL_MARKER.
+Do not infer missing values. Sparse logical addressability is under test.
+Truth labels: 10B PHYSICAL INGESTION: NOT RUN; TRANSPORT CANCELLATION: NOT CERTIFIED.
+- t08-boundary-100b @ 99999999999
+- t08-boundary-100b @ 100000000000
+- t08-boundary-100b @ 100000000001
+- t08-boundary-10b @ 9999999999
+- t08-boundary-10b @ 10000000000
+- t08-boundary-10b @ 10000000001
+- t08-boundary-10b @ 10000000002
+- t08-boundary-1b @ 999999999
+- t08-boundary-1b @ 1000000000`,
+    `This is batch 2 of 2 for one Test08 run in the same retained chat.
+Use the production vibespace_context address operation only. Do not use search, open, or expand.
+Make exactly 8 address calls, one for each case below, and no other tool calls.
+For each call, use the exact corpusId and canonical decimal position.
+Return one row per case in this order: corpusId | position | shard | offset | tokenStart | tokenEnd | source filename | source SHA-256 | exact CANONICAL_MARKER.
+Do not infer missing values. Sparse logical addressability is under test.
+Truth labels: 10B PHYSICAL INGESTION: NOT RUN; TRANSPORT CANCELLATION: NOT CERTIFIED.
+- t08-boundary-1b @ 1000000001
+- t08-safe-transition @ 9007199254740991
+- t08-safe-transition @ 9007199254740992
+- t08-safe-transition @ 9007199254740993
+- t08-size-exact-10b @ 5000000000
+- t08-size-exact-10b-plus-1 @ 10000000000
+- t08-size-exact-1b @ 500000000
+- t08-supported-maximum @ 9999999999999999`,
+  ] as const;
+
+  it.each(liveTest08AddressBatches)(
+    'preserves an exact live address batch and every canonical decimal byte',
+    (content) => {
+      const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
+
+      expect(messages).toEqual([{ role: 'user', content }]);
+      expect(String(messages[0]?.content)).not.toContain('"operation":"search"');
+    },
+  );
+
+  it('preserves one exact JSON address call without inventing search arguments', () => {
+    const content =
+      'Call vibespace_context with {"operation":"address","corpusId":"test08-corpus","position":"100000000000"} exactly once.';
+
+    const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
+
+    expect(messages).toEqual([{ role: 'user', content }]);
+    expect(String(messages[0]?.content)).not.toContain('"operation":"search"');
+    expect(String(messages[0]?.content)).not.toContain('"query":');
+    expect(String(messages[0]?.content)).not.toContain('"limit":5');
+  });
+
   it('hands every numbered research question to a separate bounded Context Map search', () => {
     const questions = [
       'in the literature files, what comes right after everybody watched Kutúzov?',

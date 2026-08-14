@@ -494,6 +494,25 @@ describe('compileJarvisPrompt', () => {
     expect(compiled.systemText.length).toBeLessThan(16_000);
   });
 
+  it('protects a direct address request from search substitution or numeric coercion', async () => {
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        userText:
+          'Call vibespace_context with {"operation":"address","corpusId":"test08-corpus","position":"9007199254740992"} exactly once.',
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+
+    expect(capabilityLayer).toContain('operation="address"');
+    expect(capabilityLayer).toContain('caller-supplied `corpusId`');
+    expect(capabilityLayer).toContain('canonical-decimal string `position`');
+    expect(capabilityLayer).toContain('Never coerce `position` through a JavaScript number');
+    expect(capabilityLayer).toContain('Never substitute `search`, `open`, or `expand`');
+    expect(capabilityLayer).not.toContain(
+      'For a single-question file research turn, first call `vibespace_context` with `operation="search"`',
+    );
+  });
+
   it('keeps natural read-and-cite file questions inside the Context Map-only prompt budget', async () => {
     const exposed = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed();
     const source = contextItem(

@@ -37,7 +37,10 @@ import {
 } from './exactLiteralReply';
 import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
-import { requestsReadOnlyContextTool } from '@/lib/jarvis/contextToolIntent';
+import {
+  requestsDirectContextAddress,
+  requestsReadOnlyContextTool,
+} from '@/lib/jarvis/contextToolIntent';
 import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } from '@/lib/actions';
 import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
 import { buildAgentTerminalContext } from '@/features/terminals/agentContext';
@@ -1641,6 +1644,7 @@ export function prepareOpenCodeMessagesForInteractionMode(
   const latest = messages[latestUserIndex]!;
   const userText = llmContentToText(latest.content);
   if (!requestsReadOnlyContextTool(userText)) return messages;
+  if (requestsDirectContextAddress(userText)) return messages;
   const researchQueries = boundedReadOnlyResearchQueries(userText);
   const researchQueryCount =
     ['zero', 'one', 'two', 'three', 'four', 'five'][researchQueries.length] ??
