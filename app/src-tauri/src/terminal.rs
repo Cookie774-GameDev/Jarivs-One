@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use tauri::async_runtime::{spawn_blocking, JoinHandle, Mutex as AsyncMutex};
 use tauri::{AppHandle, Emitter, State};
@@ -31,13 +31,25 @@ use tauri::{AppHandle, Emitter, State};
 /// We hide the inner map behind an async `Mutex` so commands can `.await`
 /// while holding it; in practice we only hold it long enough to insert,
 /// remove, or clone an `Arc` out of a value.
-#[derive(Default)]
 pub struct TerminalState(
     pub Arc<AsyncMutex<HashMap<String, PtyHandle>>>,
     Arc<StdMutex<HashMap<String, usize>>>,
     Arc<AtomicUsize>,
     Arc<AtomicBool>,
+    Arc<String>,
 );
+
+impl Default for TerminalState {
+    fn default() -> Self {
+        Self(
+            Arc::new(AsyncMutex::new(HashMap::new())),
+            Arc::new(StdMutex::new(HashMap::new())),
+            Arc::new(AtomicUsize::new(0)),
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(format!("native-runtime-{}", nanoid::nanoid!(20))),
+        )
+    }
+}
 
 impl TerminalState {
     /// Conservatively reports whether restarting the native process could
@@ -88,6 +100,17 @@ impl TerminalState {
 
     pub fn cancel_restart(&self) {
         self.3.store(false, Ordering::SeqCst);
+    }
+
+    fn runtime_generation(&self) -> &str {
+        self.4.as_str()
+    }
+
+    #[cfg(test)]
+    fn with_runtime_generation_for_tests(runtime_generation: impl Into<String>) -> Self {
+        let mut state = Self::default();
+        state.4 = Arc::new(runtime_generation.into());
+        state
     }
 }
 
@@ -140,8 +163,8 @@ pub struct PtyHandle {
     deleted: Arc<AtomicBool>,
 }
 
-/// Metadata returned by `terminal_list`. Serialised as camelCase to match
-/// the JS contract (`{ sessionId, command, cwd, rows, cols, startedAt }`).
+/// Metadata returned by `terminal_list`. The flattened native process
+/// binding is captured once at spawn and repeated unchanged on every list.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalInfo {
@@ -154,6 +177,21 @@ pub struct TerminalInfo {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub deleted: bool,
+    #[serde(flatten)]
+    pub process_binding: NativeProcessBinding,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeProcessBinding {
+    /// Opaque per-spawn identity; unlike PID, it is never reused deliberately.
+    pub process_instance_id: String,
+    /// Native process identifier reported by the live portable-pty child.
+    pub pid: u32,
+    /// OS-reported process creation time, normalized to Unix milliseconds.
+    pub process_started_at: u64,
+    /// Opaque identity shared by terminal sessions in this native runtime.
+    pub runtime_generation: String,
 }
 
 #[derive(Serialize)]
@@ -167,6 +205,8 @@ pub struct SpawnResponse {
     /// True only when the backend placed the startup command in the child
     /// process arguments. The frontend must not replay it through PTY input.
     pub startup_command_consumed: bool,
+    #[serde(flatten)]
+    pub process_binding: NativeProcessBinding,
 }
 
 #[derive(Clone, Serialize)]
@@ -511,6 +551,225 @@ async fn deliver_kill(
 const MAX_TERMINAL_SESSIONS: usize = 10;
 const MAX_CANCELLATION_TOKEN_BYTES: usize = 512;
 const MAX_STARTUP_COMMAND_BYTES: usize = 32_768;
+const MAX_NATIVE_ID_BYTES: usize = 128;
+const WINDOWS_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
+const MAX_SAFE_JS_INTEGER: u64 = 9_007_199_254_740_991;
+
+fn valid_native_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_NATIVE_ID_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn process_started_at_from_filetime_ticks(ticks: u64) -> Result<u64, String> {
+    let unix_millis = ticks
+        .checked_sub(WINDOWS_UNIX_EPOCH_100NS)
+        .map(|unix_ticks| unix_ticks / 10_000)
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())?;
+    valid_process_started_at(unix_millis)
+}
+
+fn valid_process_started_at(unix_millis: u64) -> Result<u64, String> {
+    (unix_millis > 0 && unix_millis <= MAX_SAFE_JS_INTEGER)
+        .then_some(unix_millis)
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())
+}
+
+fn build_process_binding(
+    runtime_generation: &str,
+    pid: Option<u32>,
+    process_started_at: Option<u64>,
+    process_instance_id: &str,
+) -> Result<NativeProcessBinding, String> {
+    if !valid_native_id(runtime_generation) || !valid_native_id(process_instance_id) {
+        return Err("terminal: invalid native process identity".to_string());
+    }
+    let pid = pid
+        .filter(|pid| *pid != 0)
+        .ok_or_else(|| "terminal: native process identifier is unavailable".to_string())?;
+    let process_started_at = valid_process_started_at(
+        process_started_at
+            .ok_or_else(|| "terminal: native process creation time is unavailable".to_string())?,
+    )?;
+    Ok(NativeProcessBinding {
+        process_instance_id: process_instance_id.to_string(),
+        pid,
+        process_started_at,
+        runtime_generation: runtime_generation.to_string(),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn native_process_started_at(child: &(dyn Child + Send + Sync)) -> Result<u64, String> {
+    use windows::Win32::Foundation::{FILETIME, HANDLE};
+    use windows::Win32::System::Threading::GetProcessTimes;
+
+    let raw_handle = child
+        .as_raw_handle()
+        .ok_or_else(|| "terminal: native process handle is unavailable".to_string())?;
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    // SAFETY: portable-pty owns the live process handle for the duration of
+    // this call and all four FILETIME outputs are initialized, writable, and
+    // remain alive until GetProcessTimes returns.
+    unsafe {
+        GetProcessTimes(
+            HANDLE(raw_handle),
+            &mut creation,
+            &mut exit,
+            &mut kernel,
+            &mut user,
+        )
+    }
+    .map_err(|_| "terminal: native process creation time is unavailable".to_string())?;
+    process_started_at_from_filetime_ticks(
+        ((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64,
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn native_process_started_at(child: &(dyn Child + Send + Sync)) -> Result<u64, String> {
+    use std::fs;
+
+    let pid = child
+        .process_id()
+        .filter(|pid| *pid != 0)
+        .ok_or_else(|| "terminal: native process identifier is unavailable".to_string())?;
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))
+        .map_err(|_| "terminal: native process creation time is unavailable".to_string())?;
+    let fields = stat
+        .rsplit_once(") ")
+        .map(|(_, fields)| fields)
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())?;
+    // After the parenthesized command, token zero is field 3 (`state`);
+    // process start ticks are field 22, therefore token index 19.
+    let start_ticks = fields
+        .split_whitespace()
+        .nth(19)
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())?;
+    let boot_seconds = fs::read_to_string("/proc/stat")
+        .ok()
+        .and_then(|stat| {
+            stat.lines().find_map(|line| {
+                line.strip_prefix("btime ")
+                    .and_then(|value| value.parse::<u64>().ok())
+            })
+        })
+        .ok_or_else(|| "terminal: native boot time is unavailable".to_string())?;
+    extern "C" {
+        fn sysconf(name: i32) -> isize;
+    }
+    // Linux `_SC_CLK_TCK` is ABI value 2.
+    let clock_ticks_per_second = unsafe { sysconf(2) };
+    if clock_ticks_per_second <= 0 {
+        return Err("terminal: native process clock is unavailable".to_string());
+    }
+    let boot_millis = boot_seconds
+        .checked_mul(1_000)
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())?;
+    let elapsed_millis = start_ticks
+        .checked_mul(1_000)
+        .and_then(|ticks| ticks.checked_div(clock_ticks_per_second as u64))
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())?;
+    valid_process_started_at(
+        boot_millis
+            .checked_add(elapsed_millis)
+            .ok_or_else(|| "terminal: invalid native process creation time".to_string())?,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn native_process_started_at(child: &(dyn Child + Send + Sync)) -> Result<u64, String> {
+    use std::ffi::c_void;
+    use std::mem::{size_of, MaybeUninit};
+
+    #[repr(C)]
+    struct ProcBsdInfo {
+        pbi_flags: u32,
+        pbi_status: u32,
+        pbi_xstatus: u32,
+        pbi_pid: u32,
+        pbi_ppid: u32,
+        pbi_uid: u32,
+        pbi_gid: u32,
+        pbi_ruid: u32,
+        pbi_rgid: u32,
+        pbi_svuid: u32,
+        pbi_svgid: u32,
+        rfu_1: u32,
+        pbi_comm: [i8; 16],
+        pbi_name: [i8; 32],
+        pbi_nfiles: u32,
+        pbi_pgid: u32,
+        pbi_pjobc: u32,
+        e_tdev: u32,
+        e_tpgid: u32,
+        pbi_nice: i32,
+        pbi_start_tvsec: u64,
+        pbi_start_tvusec: u64,
+    }
+    extern "C" {
+        fn proc_pidinfo(
+            pid: i32,
+            flavor: i32,
+            arg: u64,
+            buffer: *mut c_void,
+            buffer_size: i32,
+        ) -> i32;
+    }
+
+    let pid = child
+        .process_id()
+        .filter(|pid| *pid != 0 && *pid <= i32::MAX as u32)
+        .ok_or_else(|| "terminal: native process identifier is unavailable".to_string())?;
+    let mut info = MaybeUninit::<ProcBsdInfo>::zeroed();
+    let expected = size_of::<ProcBsdInfo>() as i32;
+    // SAFETY: `info` is a correctly sized writable PROC_PIDTBSDINFO buffer.
+    // It is assumed initialized only when proc_pidinfo reports the full size.
+    let written = unsafe {
+        proc_pidinfo(
+            pid as i32,
+            3,
+            0,
+            info.as_mut_ptr().cast::<c_void>(),
+            expected,
+        )
+    };
+    if written != expected {
+        return Err("terminal: native process creation time is unavailable".to_string());
+    }
+    // SAFETY: The successful full-size proc_pidinfo result initialized `info`.
+    let info = unsafe { info.assume_init() };
+    let millis = info
+        .pbi_start_tvsec
+        .checked_mul(1_000)
+        .and_then(|value| value.checked_add(info.pbi_start_tvusec / 1_000))
+        .ok_or_else(|| "terminal: invalid native process creation time".to_string())?;
+    valid_process_started_at(millis)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn native_process_started_at(_child: &(dyn Child + Send + Sync)) -> Result<u64, String> {
+    Err("terminal: authoritative process creation time is unavailable".to_string())
+}
+
+fn capture_process_binding(
+    child: &(dyn Child + Send + Sync),
+    runtime_generation: &str,
+    process_instance_id: &str,
+) -> Result<NativeProcessBinding, String> {
+    build_process_binding(
+        runtime_generation,
+        child.process_id(),
+        Some(native_process_started_at(child)?),
+        process_instance_id,
+    )
+}
 
 fn valid_cancellation_token(token: &str) -> bool {
     !token.is_empty()
@@ -780,10 +1039,23 @@ pub async fn terminal_spawn(
         builder.env("VIBESPACE_PROJECT_ID", project_id);
     }
 
-    let child = pair
+    let mut child = pair
         .slave
         .spawn_command(builder)
         .map_err(|e| format!("terminal: spawn failed: {e}"))?;
+    let process_instance_id = format!("ptyproc_{}", nanoid::nanoid!(20));
+    let process_binding = match capture_process_binding(
+        child.as_ref(),
+        state.runtime_generation(),
+        &process_instance_id,
+    ) {
+        Ok(binding) => binding,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+    };
     // Drop the slave handle now: the child process holds its own reference
     // to the slave fd, and dropping ours means the master will see EOF as
     // soon as the child exits (instead of hanging forever).
@@ -810,6 +1082,7 @@ pub async fn terminal_spawn(
         project_id: project_id.clone(),
         project_name: project_name.clone(),
         deleted: false,
+        process_binding: process_binding.clone(),
     };
 
     // Reader task. Owns the child + reader so it can wait() once the master
@@ -903,6 +1176,7 @@ pub async fn terminal_spawn(
         session_id,
         cwd: response_cwd,
         startup_command_consumed: launch.startup_command_consumed,
+        process_binding,
     })
 }
 
@@ -1077,10 +1351,12 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        decode_terminal_bytes, default_terminal_cwd, emit_before_remove, terminal_launch_spec,
-        valid_cancellation_token, validated_kill_request, ExitReason, KillRequest, KillRequestKind,
-        KillResultKind, KillStart, LifecycleArbiter, TerminalKillResult, TerminalState,
-        MAX_CANCELLATION_TOKEN_BYTES,
+        build_process_binding, capture_process_binding, decode_terminal_bytes,
+        default_terminal_cwd, emit_before_remove, native_process_started_at,
+        process_started_at_from_filetime_ticks, terminal_launch_spec, valid_cancellation_token,
+        validated_kill_request, ExitReason, KillRequest, KillRequestKind, KillResultKind,
+        KillStart, LifecycleArbiter, SpawnResponse, TerminalInfo, TerminalKillResult,
+        TerminalState, MAX_CANCELLATION_TOKEN_BYTES, WINDOWS_UNIX_EPOCH_100NS,
     };
 
     #[test]
@@ -1122,6 +1398,192 @@ mod tests {
     #[test]
     fn terminal_startup_commands_reject_nul_before_process_creation() {
         assert!(terminal_launch_spec(None, Some("bad\0command".to_string())).is_err());
+    }
+
+    #[test]
+    fn process_binding_serializes_complete_secret_free_contract() {
+        let binding = build_process_binding(
+            "native-runtime-fixture",
+            Some(42),
+            Some(12_345),
+            "ptyproc_fixture",
+        )
+        .expect("valid process binding");
+
+        let value = serde_json::to_value(binding).expect("serialize process binding");
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "processInstanceId": "ptyproc_fixture",
+                "pid": 42,
+                "processStartedAt": 12_345,
+                "runtimeGeneration": "native-runtime-fixture",
+            })
+        );
+        let encoded = value.to_string();
+        for forbidden in [
+            "command",
+            "argument",
+            "environment",
+            "transcript",
+            "credential",
+            "token",
+        ] {
+            assert!(!encoded.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn process_binding_rejects_missing_or_invalid_native_metadata() {
+        let valid_started_at = 1;
+        assert!(build_process_binding(
+            "native-runtime-fixture",
+            None,
+            Some(valid_started_at),
+            "ptyproc_fixture",
+        )
+        .is_err());
+        assert!(build_process_binding(
+            "native-runtime-fixture",
+            Some(0),
+            Some(valid_started_at),
+            "ptyproc_fixture",
+        )
+        .is_err());
+        assert!(
+            build_process_binding("native-runtime-fixture", Some(42), None, "ptyproc_fixture",)
+                .is_err()
+        );
+        assert!(process_started_at_from_filetime_ticks(WINDOWS_UNIX_EPOCH_100NS - 1).is_err());
+        assert!(
+            build_process_binding("", Some(42), Some(valid_started_at), "ptyproc_fixture").is_err()
+        );
+        assert!(build_process_binding(
+            "native-runtime-fixture",
+            Some(42),
+            Some(valid_started_at),
+            "",
+        )
+        .is_err());
+        assert!(build_process_binding(
+            "native-runtime-fixture",
+            Some(42),
+            Some(0),
+            "ptyproc_fixture",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn process_instances_are_distinct_within_one_runtime_generation() {
+        let first =
+            build_process_binding("native-runtime-fixture", Some(42), Some(2), "ptyproc_first")
+                .expect("first binding");
+        let second = build_process_binding(
+            "native-runtime-fixture",
+            Some(43),
+            Some(2),
+            "ptyproc_second",
+        )
+        .expect("second binding");
+
+        assert_eq!(first.runtime_generation, second.runtime_generation);
+        assert_ne!(first.process_instance_id, second.process_instance_id);
+    }
+
+    #[test]
+    fn terminal_state_owns_one_deterministic_runtime_generation() {
+        let state = TerminalState::with_runtime_generation_for_tests("native-runtime-fixture");
+        let next = TerminalState::with_runtime_generation_for_tests("native-runtime-next");
+
+        assert_eq!(state.runtime_generation(), "native-runtime-fixture");
+        assert_eq!(state.runtime_generation(), state.runtime_generation());
+        assert_ne!(state.runtime_generation(), next.runtime_generation());
+    }
+
+    #[test]
+    fn spawn_and_list_wire_shapes_repeat_the_exact_process_binding() {
+        let binding = build_process_binding(
+            "native-runtime-fixture",
+            Some(42),
+            Some(3),
+            "ptyproc_fixture",
+        )
+        .expect("valid binding");
+        let response = SpawnResponse {
+            session_id: "tty_fixture".to_string(),
+            cwd: "C:\\fixture".to_string(),
+            startup_command_consumed: true,
+            process_binding: binding.clone(),
+        };
+        let info = TerminalInfo {
+            session_id: "tty_fixture".to_string(),
+            command: "powershell.exe".to_string(),
+            cwd: "C:\\fixture".to_string(),
+            rows: 30,
+            cols: 100,
+            started_at: 40,
+            project_id: None,
+            project_name: None,
+            deleted: false,
+            process_binding: binding,
+        };
+
+        let response = serde_json::to_value(response).expect("serialize spawn");
+        let info = serde_json::to_value(info).expect("serialize list");
+        for key in [
+            "processInstanceId",
+            "pid",
+            "processStartedAt",
+            "runtimeGeneration",
+        ] {
+            assert_eq!(
+                response.get(key),
+                info.get(key),
+                "{key} must remain immutable"
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_real_pty_binding_matches_the_live_child() {
+        use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 10,
+                cols: 40,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("open disposable pty");
+        let mut command = CommandBuilder::new("powershell.exe");
+        command.args([
+            "-NoLogo",
+            "-NoProfile",
+            "-Command",
+            "Start-Sleep -Seconds 5",
+        ]);
+        let mut child = pair
+            .slave
+            .spawn_command(command)
+            .expect("spawn disposable pty child");
+        let expected_pid = child.process_id().expect("live child pid");
+        let expected_started_at =
+            native_process_started_at(child.as_ref()).expect("live child process creation time");
+
+        let binding =
+            capture_process_binding(child.as_ref(), "native-runtime-fixture", "ptyproc_fixture")
+                .expect("capture live child binding");
+
+        assert_eq!(binding.pid, expected_pid);
+        assert_eq!(binding.process_started_at, expected_started_at);
+        assert_eq!(binding.runtime_generation, "native-runtime-fixture");
+        assert_eq!(binding.process_instance_id, "ptyproc_fixture");
+
+        child.kill().expect("terminate disposable pty child");
+        child.wait().expect("reap disposable pty child");
     }
 
     #[test]
