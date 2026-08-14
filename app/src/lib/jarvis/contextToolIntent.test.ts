@@ -202,7 +202,213 @@ describe('bounded Test07 evidence intent', () => {
       beforeBytes: 256,
       afterBytes: 0,
       maxTotalBytes: 24 * 1024,
+      outputSuffix: LIVE_TEST07_MANDATORY_RESEARCH.slice(
+        LIVE_TEST07_MANDATORY_RESEARCH.indexOf('OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS'),
+      ),
     });
+  });
+
+  it.each([
+    LIVE_TEST07_MANDATORY_RESEARCH.replace('OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS', ''),
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nOUTPUT ONLY AFTER ALL 11 REQUIRED CALLS`,
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS',
+      `OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS\n${'x'.repeat(8_193)}`,
+    ),
+    `${LIVE_TEST07_MANDATORY_RESEARCH.slice(
+      LIVE_TEST07_MANDATORY_RESEARCH.indexOf('OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS'),
+    )}\n${LIVE_TEST07_MANDATORY_RESEARCH.slice(
+      0,
+      LIVE_TEST07_MANDATORY_RESEARCH.indexOf('OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS'),
+    )}`,
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\u0000`,
+  ])('rejects an unsafe mandatory output suffix boundary: %s', (prompt) => {
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'what non-guessable multiplier was recorded?\n\nOUTPUT ONLY AFTER ALL 11 REQUIRED CALLS',
+      'what non-guessable OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS multiplier was recorded?',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'what non-guessable multiplier was recorded?\n\nOUTPUT ONLY AFTER ALL 11 REQUIRED CALLS',
+      'what non-guessable multiplier was recorded? OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS',
+    ),
+  ])('rejects a mandatory output marker that is not a standalone post-question line', (prompt) => {
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nCall open with the selected pointer.`,
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nSearch again if a field is missing.`,
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nUse address to verify the byte range.`,
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nPerform another expand for certainty.`,
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nInvoke files.create with the completed table.`,
+    `${LIVE_TEST07_MANDATORY_RESEARCH}\nEmit a tool invocation for schedule.create.`,
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- exact filename; then call open with the selected pointer.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return a compact Q1–Q5 table and call open with the selected pointer.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return a compact Q1–Q5 table. Please use address to verify it.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return a compact Q1–Q5 table, then call open with the selected pointer.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return a compact Q1–Q5 table; kindly invoke files.create afterward.',
+    ),
+  ])('rejects mandatory output text that attempts to invoke a tool or action: %s', (prompt) => {
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return files.create as the next operation.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- files.create',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return schedule.create as the next operation.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- schedule.create',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return vibespace_context.open as the next operation.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- vibespace_context.open',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return operation="open" before the table.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- operation="open"',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return {"operation":"open"} before the table.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- {"operation":"open"}',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return ```action files.create``` before the table.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- ```tool vibespace_context.open```',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Return a compact Q1–Q5 table.',
+      'Return tool_call(files.create, {}) before the table.',
+    ),
+    LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      'Include rejected decoy values.\n- toolCall: vibespace_context.open({})',
+    ),
+  ])('rejects bare operation or tool-call authority syntax in mandatory output: %s', (prompt) => {
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    ['terminal.run', 'Return terminal.run before the table.'],
+    ['terminal.run bullet', 'Include rejected decoy values.\n- terminal.run'],
+    ['plugins.run', 'Return plugins.run before the table.'],
+    ['plugins.run bullet', 'Include rejected decoy values.\n- plugins.run'],
+    ['connectors.connect', 'Return connectors.connect before the table.'],
+    ['connectors.connect bullet', 'Include rejected decoy values.\n- connectors.connect'],
+    ['unknown create namespace', 'Return atlas.create before the table.'],
+    ['unknown delete namespace bullet', 'Include rejected decoy values.\n- quasar.delete'],
+    ['unknown execute namespace', 'Return northstar.execute before the table.'],
+    ['unknown write namespace bullet', 'Include rejected decoy values.\n- horizon.write'],
+  ])('rejects generalized dotted capability syntax: %s', (_label, replacement) => {
+    const prompt = replacement.startsWith('Return')
+      ? LIVE_TEST07_MANDATORY_RESEARCH.replace('Return a compact Q1–Q5 table.', replacement)
+      : LIVE_TEST07_MANDATORY_RESEARCH.replace('Include rejected decoy values.', replacement);
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    ['files.read', 'Return files.read before the table.'],
+    ['files.read bullet', 'Include rejected decoy values.\n- files.read'],
+    ['schedule.list', 'Return schedule.list before the table.'],
+    ['schedule.list bullet', 'Include rejected decoy values.\n- schedule.list'],
+    ['settings.update', 'Return settings.update before the table.'],
+    ['settings.update bullet', 'Include rejected decoy values.\n- settings.update'],
+    ['get', 'Return account.get before the table.'],
+    ['set', 'Return account.set before the table.'],
+    ['copy', 'Return files.copy before the table.'],
+    ['approve', 'Return approvals.approve before the table.'],
+    ['deny', 'Return approvals.deny before the table.'],
+    ['refresh', 'Return providers.refresh before the table.'],
+    ['revoke', 'Return credentials.revoke before the table.'],
+    ['download', 'Return files.download before the table.'],
+    ['upload', 'Return files.upload before the table.'],
+    ['multi-segment list', 'Return github.workflows.list before the table.'],
+    ['multi-segment list bullet', 'Include rejected decoy values.\n- github.workflows.list'],
+  ])('rejects registered or common dotted operation syntax: %s', (_label, replacement) => {
+    const prompt = replacement.startsWith('Return')
+      ? LIVE_TEST07_MANDATORY_RESEARCH.replace('Return a compact Q1–Q5 table.', replacement)
+      : LIVE_TEST07_MANDATORY_RESEARCH.replace('Include rejected decoy values.', replacement);
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    ['browser.readPage', 'Return browser.readPage before the table.'],
+    ['browser.readPage bullet', 'Include rejected decoy values.\n- browser.readPage'],
+    ['browser.navigate', 'Return browser.navigate before the table.'],
+    ['browser.navigate bullet', 'Include rejected decoy values.\n- browser.navigate'],
+    ['browser.click', 'Return browser.click before the table.'],
+    ['browser.click bullet', 'Include rejected decoy values.\n- browser.click'],
+    ['browser.type', 'Return browser.type before the table.'],
+    ['browser.type bullet', 'Include rejected decoy values.\n- browser.type'],
+    ['browser.operator', 'Return browser.operator before the table.'],
+    ['browser.operator bullet', 'Include rejected decoy values.\n- browser.operator'],
+    ['future transform', 'Return aurora.transform before the table.'],
+    ['future transform bullet', 'Include rejected decoy values.\n- aurora.transform'],
+    ['future teleport', 'Return quantum.teleport before the table.'],
+    ['future teleport bullet', 'Include rejected decoy values.\n- quantum.teleport'],
+    ['disguised filename', 'Return browser.readPage.txt before the table.'],
+    ['multi-segment future action', 'Include rejected decoy values.\n- browser.dom.click'],
+  ])('default-denies capability-shaped dotted output syntax: %s', (_label, replacement) => {
+    const prompt = replacement.startsWith('Return')
+      ? LIVE_TEST07_MANDATORY_RESEARCH.replace('Return a compact Q1–Q5 table.', replacement)
+      : LIVE_TEST07_MANDATORY_RESEARCH.replace('Include rejected decoy values.', replacement);
+    expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+
+  it.each([
+    'Include rejected decoy values.\n- source filename shard-0000.txt',
+    'Include rejected decoy values.\n- release version library.v1',
+    'Include rejected decoy values.\n- benign dotted prose example.value',
+    'Include rejected decoy values.\n- numeric version 1.2.3',
+  ])('admits inert dotted output prose without treating it as an action: %s', (replacement) => {
+    const prompt = LIVE_TEST07_MANDATORY_RESEARCH.replace(
+      'Include rejected decoy values.',
+      replacement,
+    );
+    expect(parseMandatoryContextEvidenceResearch(prompt)).not.toBeNull();
   });
 
   it('recognizes the exact live same-chat prior-pointer continuation', () => {

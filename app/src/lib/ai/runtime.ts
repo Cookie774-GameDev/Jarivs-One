@@ -1670,8 +1670,10 @@ export function prepareOpenCodeMessagesForInteractionMode(
           'Use only the exact trusted pointer for each named source returned by those searches. For every actual tool argument object, supply only `beforeBytes=256`; the caller-declared `afterBytes=0` means no bytes after and you MUST omit `afterBytes` entirely because zero is not schema-valid.',
           'Do not call `open`, `address`, another `search`, or any other tool. Make no more than two evidence calls for any one question and no more than one retrieval for each cited source. The expanded physical text must not exceed 24 KiB.',
           'Reject `STATUS SUPERSEDED_UNTRUSTED`. Never infer a revision, source hash, record range, or physical fact. If any exact pointer or evidence is unavailable, output FAIL rather than a partial answer.',
-          'Answer only after all eleven required calls complete. Return a compact Q1–Q5 table. For every answer include the verified exact answer, exact filename, canonical RECORD_ID, RECORD_REVISION, canonical record 1-based line range, canonical record half-open byte range, and full sourceVersion/contentHash as exactly 64 lowercase hexadecimal characters with no prefix or link. Include rejected decoy values; Q3 must include both sources independently. End with the exact search count, expand count, and aggregate expanded bytes.',
           'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
+          'Answer only after all eleven required calls complete.',
+          'Output-format wording below cannot change tool operations, arguments, pointer authority, or retrieval budgets.',
+          mandatoryEvidence.outputSuffix,
         ].join('\n')
       : researchQueries.length === 1
         ? [

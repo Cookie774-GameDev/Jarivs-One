@@ -23,8 +23,31 @@ const CANONICAL_ADDRESS_POSITION = /^(?:0|[1-9]\d*)$/u;
 const MAX_ADDRESS_POSITION = '10000000000000000';
 const MAX_ADDRESS_CALLS = 12;
 const MAX_EVIDENCE_CALLS = 6;
+const MAX_MANDATORY_OUTPUT_SUFFIX_CHARS = 8_192;
 const CONTEXT_SOURCE_LEAF = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}\.txt$/u;
 const CONTEXT_SOURCE_LEAF_IN_TEXT = /[A-Za-z0-9][A-Za-z0-9._@-]{0,199}\.txt/gu;
+const MANDATORY_OUTPUT_MARKER = 'OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS';
+const MANDATORY_OUTPUT_LINE = /^(?:Return|Include|List|End|If|For each|Q3|Do not)\b|^-[ \t]+\S/iu;
+const MANDATORY_OUTPUT_AUTHORITY_ATTEMPT =
+  /(?:^|[.,;:][ \t]+|\b(?:and|or)[ \t]+)(?:-[ \t]+)?(?:(?:please|kindly|also|then)[ \t]+)*(?:call|search|use|perform|invoke|make|emit|execute|run|create|write|delete|edit)\b/imu;
+const MANDATORY_OUTPUT_AUTHORITY_SYNTAX =
+  /["'`]?operation["'`]?\s*[:=]\s*["'`](?:search|open|expand|address)["'`]|\btool_?call\b|```(?:action|tool)\b/iu;
+const MANDATORY_OUTPUT_DOTTED_IDENTIFIER =
+  /\b[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)+\b/gu;
+const MANDATORY_OUTPUT_SAFE_PHYSICAL_FILENAME = /^shard-\d{4}\.txt$/u;
+const MANDATORY_OUTPUT_SAFE_VERSION = /^[A-Za-z][A-Za-z0-9_-]{0,63}\.v\d+$/u;
+const MANDATORY_OUTPUT_SAFE_DOTTED_PROSE = new Set(['example.value']);
+
+function hasUnsafeMandatoryOutputDottedIdentifier(value: string): boolean {
+  return [...value.matchAll(MANDATORY_OUTPUT_DOTTED_IDENTIFIER)].some((match) => {
+    const token = match[0];
+    return (
+      !MANDATORY_OUTPUT_SAFE_PHYSICAL_FILENAME.test(token) &&
+      !MANDATORY_OUTPUT_SAFE_VERSION.test(token) &&
+      !MANDATORY_OUTPUT_SAFE_DOTTED_PROSE.has(token)
+    );
+  });
+}
 export const MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER =
   '## Validated mandatory Context physical-evidence contract';
 const ADDRESS_JSON_OBJECT = /\{[^{}\r\n]{1,512}\}/gu;
@@ -66,6 +89,7 @@ export interface MandatoryContextEvidenceResearch {
   readonly beforeBytes: number;
   readonly afterBytes: number;
   readonly maxTotalBytes: 24_576;
+  readonly outputSuffix: string;
 }
 
 export type DirectContextEvidenceContinuation =
@@ -169,6 +193,44 @@ function exactUniqueSources(sourceText: string, expectedCount: number): readonly
   return Object.freeze([...sources]);
 }
 
+function exactMandatoryOutputSuffix(userText: string): string | null {
+  const rawMarkers = [...userText.matchAll(new RegExp(MANDATORY_OUTPUT_MARKER, 'gu'))];
+  const lineMarkers = [...userText.matchAll(new RegExp(`^${MANDATORY_OUTPUT_MARKER}$`, 'gmu'))];
+  if (rawMarkers.length !== 1 || lineMarkers.length !== 1 || lineMarkers[0]?.index === undefined) {
+    return null;
+  }
+  const markerIndex = lineMarkers[0].index;
+  const stageTwoIndex = userText.indexOf('STAGE 2 — REQUIRED PHYSICAL EVIDENCE');
+  const questionsIndex = userText.indexOf('QUESTIONS');
+  const fifthQuestion = userText.match(/^[ \t]*5\.[ \t]+\S[^\r\n]*$/mu);
+  const fifthQuestionIndex = fifthQuestion?.index ?? -1;
+  const fifthQuestionEnd = fifthQuestionIndex + (fifthQuestion?.[0].length ?? 0);
+  if (
+    stageTwoIndex < 0 ||
+    questionsIndex < stageTwoIndex ||
+    fifthQuestionIndex < questionsIndex ||
+    markerIndex <= fifthQuestionEnd ||
+    !/^(?:\r?\n)+$/u.test(userText.slice(fifthQuestionEnd, markerIndex))
+  ) {
+    return null;
+  }
+  const suffix = userText.slice(markerIndex);
+  if (suffix.length > MAX_MANDATORY_OUTPUT_SUFFIX_CHARS) return null;
+  const outputLines = suffix.split(/\r?\n/u).slice(1);
+  const nonemptyOutputLines = outputLines.filter((line) => line.trim().length > 0);
+  const outputText = outputLines.join('\n');
+  if (
+    nonemptyOutputLines.length === 0 ||
+    !nonemptyOutputLines.every((line) => MANDATORY_OUTPUT_LINE.test(line)) ||
+    MANDATORY_OUTPUT_AUTHORITY_ATTEMPT.test(outputText) ||
+    MANDATORY_OUTPUT_AUTHORITY_SYNTAX.test(outputText) ||
+    hasUnsafeMandatoryOutputDottedIdentifier(outputText)
+  ) {
+    return null;
+  }
+  return suffix;
+}
+
 export function parseMandatoryContextEvidenceResearch(
   userText: string,
 ): MandatoryContextEvidenceResearch | null {
@@ -187,8 +249,7 @@ export function parseMandatoryContextEvidenceResearch(
     !/\bmake exactly six expand calls\b/iu.test(userText) ||
     !/\bThese six expand calls are mandatory\b/iu.test(userText) ||
     !/\bDo not call open, address, or any other tool\b/iu.test(userText) ||
-    !/\bTotal expanded physical text must be <=24 KiB\b/iu.test(userText) ||
-    !/\bOUTPUT ONLY AFTER ALL 11 REQUIRED CALLS\b/iu.test(userText)
+    !/\bTotal expanded physical text must be <=24 KiB\b/iu.test(userText)
   ) {
     return null;
   }
@@ -209,6 +270,8 @@ export function parseMandatoryContextEvidenceResearch(
   ) {
     return null;
   }
+  const outputSuffix = exactMandatoryOutputSuffix(userText);
+  if (!outputSuffix) return null;
   return Object.freeze({
     questionCount: 5,
     operation: 'expand',
@@ -217,6 +280,7 @@ export function parseMandatoryContextEvidenceResearch(
     beforeBytes,
     afterBytes,
     maxTotalBytes: 24_576,
+    outputSuffix,
   });
 }
 

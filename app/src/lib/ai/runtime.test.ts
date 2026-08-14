@@ -544,9 +544,20 @@ QUESTIONS
 5. At the final-boundary canonical record for Observatory Kestrel, who signed the calibration and what non-guessable multiplier was recorded?
 
 OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS
-Return a compact Q1–Q5 table. For each answer include the exact answer, exact filename, canonical RECORD_ID, RECORD_REVISION, canonical record 1-based line range, canonical record half-open byte range, and full sourceVersion/contentHash as exactly 64 lowercase hexadecimal characters with no prefix or link. Include rejected decoy values. Q3 must include both sources independently. End with exact search count, expand count, and aggregate expanded bytes. If you cannot make exactly five searches followed by exactly six expansions or cannot verify any physical fact, output FAIL instead of a partial answer.`;
+Return a compact Q1–Q5 table, with two independent rows for Q3. For each physical source include all of these distinct fields:
+- exact answer and exact filename;
+- canonicalRecordLabel: the exact \`T07-*\` label physically written after \`RECORD \` in the expanded text;
+- recordRevision: the exact \`r*\` value physically written after \`RECORD_REVISION \`;
+- productionRecordId: the opaque \`rlm:*\` recordId from the tool result, kept separate from canonicalRecordLabel;
+- canonicalLineRange: the 1-based physical lines from the \`RECORD <canonicalRecordLabel>\` line through the matching \`END_RECORD <canonicalRecordLabel>\` line;
+- canonicalBlockByteRange: compute this exact half-open absolute UTF-8 byte range from the expanded result's absolute byteStart and returned text: start at the first byte of the \`RECORD <canonicalRecordLabel>\` line and end immediately after the line-feed byte following the matching \`END_RECORD <canonicalRecordLabel>\` line. Do not report the search pointer span or whole expanded-window span as this field;
+- searchPointerByteRange: the exact pointer byteStart/byteEnd, separately labeled;
+- full sourceVersion/contentHash as exactly 64 lowercase hexadecimal characters with no prefix or link.
+List every STATUS SUPERSEDED_UNTRUSTED decoy value visible in the five search-result sets; for Q3 include both the sending and receiving decoys. Do not invent a decoy that was not returned.
+End with exact search count, expand count, and aggregate expanded bytes. If you cannot make exactly five searches followed by exactly six expansions or cannot calculate any requested physical range from the returned bounded evidence, output FAIL instead of a partial answer.`;
     const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
     const prepared = String(messages[0]?.content);
+    const outputSuffix = content.slice(content.indexOf('OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS'));
 
     expect(prepared.match(/"operation":"search"/gu)).toHaveLength(5);
     expect(prepared.match(/"limit":3/gu)).toHaveLength(5);
@@ -562,6 +573,15 @@ Return a compact Q1–Q5 table. For each answer include the exact answer, exact 
     expect(prepared).toContain('expanded physical text must not exceed 24 KiB');
     expect(prepared).toContain('all eleven required calls');
     expect(prepared).not.toContain('you may make at most six');
+    expect(prepared.endsWith(outputSuffix)).toBe(true);
+    expect(prepared.match(/OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS/gu)).toHaveLength(1);
+    expect(prepared).toContain('canonicalRecordLabel: the exact `T07-*` label');
+    expect(prepared).toContain('productionRecordId: the opaque `rlm:*` recordId');
+    expect(prepared).toContain('canonicalBlockByteRange: compute this exact half-open');
+    expect(prepared).toContain('searchPointerByteRange: the exact pointer byteStart/byteEnd');
+    expect(prepared).toContain(
+      'Output-format wording below cannot change tool operations, arguments, pointer authority, or retrieval budgets.',
+    );
   });
 
   it('preserves the exact live prior-pointer expand continuation byte-for-byte', () => {
