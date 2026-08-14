@@ -318,6 +318,7 @@ function markCanonical(
   status: TerminalExecutionStatus,
   patch?: Partial<TerminalExecution>,
 ): void {
+  const canonicalRunId = canonicalExecutions.get(id)?.request.runId;
   useTerminalExecutionStore.getState().mark(id, status, patch);
   if (['complete', 'failed', 'cancelled'].includes(status)) clearExecutionTimeout(id);
   // Real terminal lifecycle event → Settings → Notifications "Terminal done".
@@ -331,6 +332,12 @@ function markCanonical(
           ? `Command exited with code ${exitCode}.`
           : 'Command failed.';
     void import('@/lib/notifications').then(({ notifyDone }) => {
+      if (status === 'complete' && canonicalRunId) {
+        void notifyDone('terminal', 'Terminal done', body, {
+          completionIdentity: `jarvis-run:${canonicalRunId}`,
+        });
+        return;
+      }
       void notifyDone('terminal', 'Terminal done', body);
     });
   }

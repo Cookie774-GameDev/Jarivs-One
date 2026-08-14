@@ -29,6 +29,13 @@ import type { JarvisTerminalOwnedExecution } from '@/lib/jarvis/approvalEngine';
 import type { JarvisQueuedCancellationTransitionAuthority } from '@/lib/jarvis/executionJournal/abortRegistry';
 import type { CanonicalTerminalEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
+const notificationMocks = vi.hoisted(() => ({
+  notifyDone: vi.fn(),
+}));
+
+vi.mock('@/lib/notifications', () => ({
+  notifyDone: notificationMocks.notifyDone,
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => vi.fn()),
@@ -38,6 +45,7 @@ describe('terminal execution lifecycle', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    notificationMocks.notifyDone.mockResolvedValue(undefined);
     vi.mocked(invoke).mockResolvedValue(undefined);
     useTerminalExecutionStore.getState().clear();
     resetTerminalCommandQueueDurabilityForTests();
@@ -532,6 +540,44 @@ describe('terminal execution lifecycle', () => {
     });
     expect(stale.recordCancellationVerified).toHaveBeenCalledOnce();
     expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('cancelled');
+  });
+
+  it('shares the exact canonical run completion identity with task notifications', async () => {
+    canonicalHarness();
+    await expect(claimTerminalExecution('jterm_1')).resolves.toBe(true);
+    await expect(attachTerminalExecution('jterm_1', 'pty_1')).resolves.toBe(true);
+
+    await expect(
+      settleTerminalExecutionFromNativeExit('jterm_1', {
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    ).resolves.toBe(true);
+
+    await vi.waitFor(() => expect(notificationMocks.notifyDone).toHaveBeenCalledOnce());
+    expect(notificationMocks.notifyDone).toHaveBeenCalledWith(
+      'terminal',
+      'Terminal done',
+      'Command finished successfully.',
+      { completionIdentity: 'jarvis-run:jrun_1' },
+    );
+  });
+
+  it('keeps canonical terminal failure presentation truthful and outside completion dedupe', async () => {
+    canonicalHarness();
+    await expect(claimTerminalExecution('jterm_1')).resolves.toBe(true);
+
+    await expect(
+      failTerminalExecutionBeforeNativeExit('jterm_1', 'pre_session_initialization_failed'),
+    ).resolves.toBe(true);
+
+    await vi.waitFor(() => expect(notificationMocks.notifyDone).toHaveBeenCalledOnce());
+    expect(notificationMocks.notifyDone).toHaveBeenCalledWith(
+      'terminal',
+      'Terminal done',
+      'Command failed.',
+    );
   });
 
   it.each([

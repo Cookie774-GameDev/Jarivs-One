@@ -41,9 +41,7 @@ export const DONE_NOTIFICATION_LABELS: Record<DoneNotificationKey, string> = {
   reminders: 'Task reminders',
 };
 
-export function getDoneNotificationLabels(
-  persona?: unknown,
-): Record<DoneNotificationKey, string> {
+export function getDoneNotificationLabels(persona?: unknown): Record<DoneNotificationKey, string> {
   const name = assistantPersonaDisplayName(persona);
   return {
     ...DONE_NOTIFICATION_LABELS,
@@ -57,13 +55,15 @@ export const DONE_NOTIFICATION_DESCRIPTIONS: Record<DoneNotificationKey, string>
   tasks: 'When a task is marked done.',
   contextMaps: 'When a Context map finishes generating.',
   skills: 'When a skill is enabled or disabled.',
-  connectors:
-    'When a provider CLI session or API connector loses authorization (sign-in expired).',
+  connectors: 'When a provider CLI session or API connector loses authorization (sign-in expired).',
   reminders: 'When a scheduled task reminder is due.',
 };
 
 const DONE_NOTIFICATION_DEDUPE_MS = 4_000;
-const recentDoneNotifications = new Map<string, number>();
+const COMPLETION_IDENTITY_DEDUPE_MS = 10 * 60_000;
+const MAX_RECENT_DONE_NOTIFICATIONS = 64;
+const MAX_COMPLETION_IDENTITY_LENGTH = 512;
+const recentDoneNotifications = new Map<string, { observedAt: number; ttlMs: number }>();
 
 export interface NotifyDoneOptions {
   /** Allow in-app toast when OS notifications are unavailable (explicit test only). */
@@ -72,6 +72,8 @@ export interface NotifyDoneOptions {
   force?: boolean;
   /** Skip duplicate suppression (test notification only). */
   skipDedupe?: boolean;
+  /** Stable non-secret identity shared by multiple presentations of one completion. */
+  completionIdentity?: string;
 }
 
 export interface TestNotificationResult extends NotifyResult {
@@ -85,8 +87,7 @@ export interface TestNotificationResult extends NotifyResult {
  */
 export function getAiCompletionInstruction(persona?: unknown): string {
   if (!useUIStore.getState().aiCompletionCue) return '';
-  const resolved =
-    persona !== undefined ? persona : useAuthStore.getState().personaPreset;
+  const resolved = persona !== undefined ? persona : useAuthStore.getState().personaPreset;
   const name = assistantPersonaDisplayName(resolved);
   return [
     `${name} completion signal (required when this cue is enabled):`,
@@ -102,20 +103,40 @@ function shouldSkipDuplicateDoneNotification(
   kind: DoneNotificationKey,
   title: string,
   body?: string,
+  completionIdentity?: string,
 ): boolean {
-  const key = `${kind}\0${title}\0${body ?? ''}`;
+  const stableCompletionIdentity =
+    typeof completionIdentity === 'string' &&
+    completionIdentity.length > 0 &&
+    completionIdentity.length <= MAX_COMPLETION_IDENTITY_LENGTH &&
+    completionIdentity === completionIdentity.trim() &&
+    !/[\u0000-\u001f\u007f]/u.test(completionIdentity)
+      ? completionIdentity
+      : undefined;
+  const key = stableCompletionIdentity
+    ? `completion\0${stableCompletionIdentity}`
+    : `presentation\0${kind}\0${title}\0${body ?? ''}`;
+  const ttlMs = stableCompletionIdentity
+    ? COMPLETION_IDENTITY_DEDUPE_MS
+    : DONE_NOTIFICATION_DEDUPE_MS;
   const now = Date.now();
   const last = recentDoneNotifications.get(key);
-  if (last !== undefined && now - last < DONE_NOTIFICATION_DEDUPE_MS) {
+  if (last !== undefined && now - last.observedAt < last.ttlMs) {
     return true;
   }
-  recentDoneNotifications.set(key, now);
-  if (recentDoneNotifications.size > 64) {
-    for (const [entryKey, ts] of recentDoneNotifications) {
-      if (now - ts > DONE_NOTIFICATION_DEDUPE_MS) {
+  recentDoneNotifications.delete(key);
+  recentDoneNotifications.set(key, { observedAt: now, ttlMs });
+  if (recentDoneNotifications.size > MAX_RECENT_DONE_NOTIFICATIONS) {
+    for (const [entryKey, entry] of recentDoneNotifications) {
+      if (now - entry.observedAt >= entry.ttlMs) {
         recentDoneNotifications.delete(entryKey);
       }
     }
+  }
+  while (recentDoneNotifications.size > MAX_RECENT_DONE_NOTIFICATIONS) {
+    const oldest = recentDoneNotifications.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    recentDoneNotifications.delete(oldest);
   }
   return false;
 }
@@ -148,7 +169,10 @@ export async function notifyDone(
   if (!options.force) {
     if (!state.notificationMaster || !state.doneNotifications[kind]) return null;
   }
-  if (!options.skipDedupe && shouldSkipDuplicateDoneNotification(kind, title, body)) {
+  if (
+    !options.skipDedupe &&
+    shouldSkipDuplicateDoneNotification(kind, title, body, options.completionIdentity)
+  ) {
     return null;
   }
 
@@ -190,9 +214,7 @@ export async function sendTestNotification(): Promise<TestNotificationResult> {
   const permissionBefore = await getNotificationPermission();
   // Always attempt a permission prompt when still undecided.
   const permission =
-    permissionBefore === 'default'
-      ? await requestNotificationPermission()
-      : permissionBefore;
+    permissionBefore === 'default' ? await requestNotificationPermission() : permissionBefore;
 
   const result = await notifyDone(
     'jarvis',
@@ -229,10 +251,7 @@ export async function ensureOsNotificationPermission(): Promise<NotificationPerm
  * Fire when a connector/auth session transitions authenticated → unauthenticated.
  * Call only with real inspection results (not first paint).
  */
-export function notifyConnectorAuthExpired(
-  connectionLabel: string,
-  detail?: string,
-): void {
+export function notifyConnectorAuthExpired(connectionLabel: string, detail?: string): void {
   void notifyDone(
     'connectors',
     'Connector sign-in expired',
@@ -245,12 +264,8 @@ export function notifyConnectorAuthExpired(
  * Compare previous vs next connection metadata and notify on auth loss.
  */
 export function detectAndNotifyConnectorAuthLoss(
-  previous: Readonly<
-    Partial<Record<string, { auth?: string; disabled?: boolean } | undefined>>
-  >,
-  next: Readonly<
-    Partial<Record<string, { auth?: string; disabled?: boolean } | undefined>>
-  >,
+  previous: Readonly<Partial<Record<string, { auth?: string; disabled?: boolean } | undefined>>>,
+  next: Readonly<Partial<Record<string, { auth?: string; disabled?: boolean } | undefined>>>,
   labels?: Readonly<Partial<Record<string, string>>>,
 ): string[] {
   const fired: string[] = [];
