@@ -471,11 +471,31 @@ fn context_tool_descriptor() -> Value {
                 "pointer": {
                     "description": "Use the exact pointer object returned by search. A JSON-encoded pointer string remains accepted for compatibility.",
                     "oneOf": [
-                        { "type": "string", "maxLength": 4096 },
+                        { "type": "string", "maxLength": 8192 },
                         {
                             "type": "object",
                             "additionalProperties": false,
                             "required": ["id", "recordId", "sourceVersion", "contentHash"],
+                            "oneOf": [
+                                {
+                                    "required": ["byteStart", "byteEnd"],
+                                    "not": {
+                                        "anyOf": [
+                                            { "required": ["lineStart"] },
+                                            { "required": ["lineEnd"] }
+                                        ]
+                                    }
+                                },
+                                {
+                                    "required": ["lineStart", "lineEnd"],
+                                    "not": {
+                                        "anyOf": [
+                                            { "required": ["byteStart"] },
+                                            { "required": ["byteEnd"] }
+                                        ]
+                                    }
+                                }
+                            ],
                             "properties": {
                                 "id": { "type": "string", "maxLength": 512 },
                                 "recordId": { "type": "string", "maxLength": 512 },
@@ -484,10 +504,28 @@ fn context_tool_descriptor() -> Value {
                                     "type": "string",
                                     "pattern": "^[a-f0-9]{64}$"
                                 },
-                                "lineStart": { "type": "integer", "minimum": 1 },
-                                "lineEnd": { "type": "integer", "minimum": 2 },
-                                "byteStart": { "type": "integer", "minimum": 0 },
-                                "byteEnd": { "type": "integer", "minimum": 1 },
+                                "lineStart": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9_007_199_254_740_991_i64
+                                },
+                                "lineEnd": {
+                                    "description": "Must be greater than lineStart.",
+                                    "type": "integer",
+                                    "minimum": 2,
+                                    "maximum": 9_007_199_254_740_991_i64
+                                },
+                                "byteStart": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9_007_199_254_740_991_i64
+                                },
+                                "byteEnd": {
+                                    "description": "Must be greater than byteStart.",
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9_007_199_254_740_991_i64
+                                },
                                 "messageId": { "type": "string", "maxLength": 512 },
                                 "eventId": { "type": "string", "maxLength": 512 },
                                 "toolCallId": { "type": "string", "maxLength": 512 }
@@ -1295,7 +1333,7 @@ mod tests {
         );
         let pointer_schema = &descriptor["inputSchema"]["properties"]["pointer"];
         assert_eq!(pointer_schema["oneOf"][0]["type"], "string");
-        assert_eq!(pointer_schema["oneOf"][0]["maxLength"], 4096);
+        assert_eq!(pointer_schema["oneOf"][0]["maxLength"], 8192);
         assert_eq!(pointer_schema["oneOf"][1]["type"], "object");
         assert_eq!(pointer_schema["oneOf"][1]["additionalProperties"], false);
         assert_eq!(
@@ -1305,6 +1343,25 @@ mod tests {
         assert_eq!(
             pointer_schema["oneOf"][1]["properties"]["contentHash"]["pattern"],
             "^[a-f0-9]{64}$"
+        );
+        assert_eq!(
+            pointer_schema["oneOf"][1]["properties"]["byteStart"]["maximum"],
+            9_007_199_254_740_991_i64
+        );
+        assert_eq!(
+            pointer_schema["oneOf"][1]["oneOf"][0]["required"],
+            json!(["byteStart", "byteEnd"])
+        );
+        assert_eq!(
+            pointer_schema["oneOf"][1]["oneOf"][1]["required"],
+            json!(["lineStart", "lineEnd"])
+        );
+        assert_eq!(
+            pointer_schema["oneOf"][1]["oneOf"][0]["not"]["anyOf"],
+            json!([
+                { "required": ["lineStart"] },
+                { "required": ["lineEnd"] }
+            ])
         );
         assert_eq!(
             descriptor["annotations"],
