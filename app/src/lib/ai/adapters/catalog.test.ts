@@ -12,13 +12,19 @@ import {
   CLI_BRIDGE_EVENT,
   MAX_CLI_PROMPT_CHARS,
   probeCliBridge,
+  requireModelId,
   streamCliBridge,
   type CliBridgeEvent,
   type CliProbeRequest,
   type CliStartRequest,
 } from './cliBridge';
 import { buildClaudeInvocation } from './claude';
-import { buildCodexInvocation, classifyCodexAuthProbe, CODEX_CLI_DEFINITION } from './codex';
+import {
+  buildCodexInvocation,
+  classifyCodexAuthProbe,
+  codexCliAdapter,
+  CODEX_CLI_DEFINITION,
+} from './codex';
 import { buildCopilotInvocation } from './copilot';
 import { buildGeminiInvocation } from './gemini';
 import { buildOpenCodeInvocation } from './opencode';
@@ -524,6 +530,196 @@ describe('shell-free provider command vectors', () => {
     expect(() =>
       buildCodexInvocation({ prompt, modelId: '--dangerously-skip-permissions' }),
     ).toThrowError('Codex CLI model ID contains unsafe characters');
+  });
+
+  it('preserves bounded supported model punctuation and spaces as one literal argv item', () => {
+    const modelId = 'model family/v2 + preview';
+    const vectors = [
+      buildCodexInvocation({ prompt, modelId }).args,
+      buildClaudeInvocation({ prompt, modelId }).args,
+      buildCopilotInvocation({ prompt, modelId }).args,
+      buildQwenInvocation({ prompt, modelId }).args,
+      buildOpenCodeInvocation({ prompt, modelId }).args,
+    ];
+
+    expect(vectors[0]).toContain(modelId);
+    expect(vectors[1]).toContain(modelId);
+    expect(vectors[2]).toContain(`--model=${modelId}`);
+    expect(vectors[3]).toContain(modelId);
+    expect(vectors[4]).toContain(modelId);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', '   '],
+    ['option-leading', '--dangerously-skip-permissions'],
+    ['control-bearing', 'safe\nunsafe'],
+    ['bidi-bearing', 'safe\u202eunsafe'],
+    ['oversized', `m${'x'.repeat(512)}`],
+  ])('rejects %s model IDs before constructing provider argv', (_label, modelId) => {
+    expect(() => requireModelId(modelId, 'Test')).toThrow();
+  });
+});
+
+describe('fail-closed CLI version detection', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset();
+    vi.mocked(listen).mockReset();
+  });
+
+  async function detectCodex() {
+    if (!codexCliAdapter.detect) throw new Error('Codex detection is not registered');
+    return codexCliAdapter.detect();
+  }
+
+  function mockCodexVersionProbe(probe: {
+    exitCode: number | null;
+    stdout: { data: string; truncated: boolean };
+    stderr: { data: string; truncated: boolean };
+    timedOut: boolean;
+  }): void {
+    vi.mocked(invoke)
+      .mockResolvedValueOnce({
+        executables: [
+          {
+            executableId: 'codex-safe-id',
+            requestedName: 'codex',
+            executablePath: 'C:\\safe\\codex.exe',
+          },
+        ],
+      })
+      .mockResolvedValueOnce(probe);
+  }
+
+  it('keeps a bounded well-formed version available', async () => {
+    mockCodexVersionProbe({
+      exitCode: 0,
+      stdout: { data: 'codex-cli 1.2.3\n', truncated: false },
+      stderr: { data: '', truncated: false },
+      timedOut: false,
+    });
+
+    await expect(detectCodex()).resolves.toEqual({
+      status: 'available',
+      executablePath: 'C:\\safe\\codex.exe',
+      version: 'codex-cli 1.2.3',
+    });
+  });
+
+  it.each([
+    [
+      'stdout truncation',
+      {
+        exitCode: 0,
+        stdout: { data: 'codex-cli 1.2.3', truncated: true },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'stderr truncation',
+      {
+        exitCode: 0,
+        stdout: { data: 'codex-cli 1.2.3', truncated: false },
+        stderr: { data: 'bounded diagnostic', truncated: true },
+        timedOut: false,
+      },
+    ],
+    [
+      'empty output',
+      {
+        exitCode: 0,
+        stdout: { data: '', truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'control-only output',
+      {
+        exitCode: 0,
+        stdout: { data: '\u001b[31m\u0000', truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'malformed output',
+      {
+        exitCode: 0,
+        stdout: { data: 'unexpected future response', truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'oversized output',
+      {
+        exitCode: 0,
+        stdout: { data: `codex-cli 1.2.3 ${'x'.repeat(256)}`, truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'bidi-bearing output',
+      {
+        exitCode: 0,
+        stdout: { data: 'codex-cli 1.2.3\u202efake', truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'secret-shaped output',
+      {
+        exitCode: 0,
+        stdout: { data: 'sk-abcdefgh1234', truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'nonzero exit',
+      {
+        exitCode: 1,
+        stdout: { data: 'codex-cli 1.2.3', truncated: false },
+        stderr: { data: 'sensitive detail must not surface', truncated: false },
+        timedOut: false,
+      },
+    ],
+    [
+      'timeout',
+      {
+        exitCode: null,
+        stdout: { data: '', truncated: false },
+        stderr: { data: '', truncated: false },
+        timedOut: true,
+      },
+    ],
+  ])('requires attention for %s without surfacing probe output', async (_label, probe) => {
+    mockCodexVersionProbe(probe);
+
+    const result = await detectCodex();
+
+    expect(result.status).toBe('requires_attention');
+    expect(result).not.toHaveProperty('version');
+    if (probe.stdout.data) expect(JSON.stringify(result)).not.toContain(probe.stdout.data);
+    if (probe.stderr.data) expect(JSON.stringify(result)).not.toContain(probe.stderr.data);
+  });
+
+  it('does not surface a raw native detection exception', async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(
+      new Error('native bridge failed with token=should-never-surface'),
+    );
+
+    const result = await detectCodex();
+
+    expect(result).toEqual({
+      status: 'requires_attention',
+      detail: 'CLI detection failed.',
+    });
+    expect(JSON.stringify(result)).not.toContain('should-never-surface');
   });
 });
 

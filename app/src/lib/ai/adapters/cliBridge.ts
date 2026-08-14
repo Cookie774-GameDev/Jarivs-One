@@ -15,6 +15,12 @@ const DEFAULT_TIMEOUT_MS = 300_000;
 const DEFAULT_PROBE_TIMEOUT_MS = 3_000;
 const DEFAULT_OUTPUT_LIMIT_BYTES = 1_048_576;
 const DEFAULT_PROBE_OUTPUT_LIMIT_BYTES = 16_384;
+const MAX_CLI_MODEL_ID_CHARS = 512;
+const MAX_CLI_VERSION_CHARS = 256;
+const UNSAFE_DIRECTIONAL_FORMAT = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/u;
+const SAFE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9 ._:/@+\-]*$/;
+const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9 ._+:/()@\-]*$/;
 
 export interface CliInvocationRequest {
   prompt: string;
@@ -192,13 +198,21 @@ export function assertCliPrompt(prompt: string): void {
 }
 
 export function requireModelId(modelId: string | undefined, provider: string): string {
-  const value = modelId?.trim();
-  if (!value) throw new Error(`${provider} CLI requires an explicit model`);
-  if (value.length > 512) throw new Error(`${provider} CLI model ID exceeds 512 characters`);
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/.test(value)) {
+  if (modelId === undefined || modelId.trim().length === 0) {
+    throw new Error(`${provider} CLI requires an explicit model`);
+  }
+  if (modelId.length > MAX_CLI_MODEL_ID_CHARS) {
+    throw new Error(`${provider} CLI model ID exceeds ${MAX_CLI_MODEL_ID_CHARS} characters`);
+  }
+  if (
+    modelId !== modelId.trim() ||
+    CONTROL_CHARACTER.test(modelId) ||
+    UNSAFE_DIRECTIONAL_FORMAT.test(modelId) ||
+    !SAFE_MODEL_ID.test(modelId)
+  ) {
     throw new Error(`${provider} CLI model ID contains unsafe characters`);
   }
-  return value;
+  return modelId;
 }
 
 export async function scanCliBridge(request: CliScanRequest): Promise<CliDetectionResult> {
@@ -554,6 +568,24 @@ function safeDetail(value: string): string {
   return boundedProviderText(value, DEFAULT_JSONL_LIMITS.maxMessageChars)?.trim() || '';
 }
 
+function parseVersionOutput(probe: Readonly<CliProbeResult>): string | undefined {
+  if (probe.stdout.truncated || probe.stderr.truncated) return undefined;
+  const version = probe.stdout.data.trim();
+  const sanitizedVersion = boundedProviderText(version, MAX_CLI_VERSION_CHARS + 1);
+  if (
+    version.length === 0 ||
+    version.length > MAX_CLI_VERSION_CHARS ||
+    sanitizedVersion !== version ||
+    CONTROL_CHARACTER.test(version) ||
+    UNSAFE_DIRECTIONAL_FORMAT.test(version) ||
+    !SAFE_VERSION.test(version) ||
+    !/\d/u.test(version)
+  ) {
+    return undefined;
+  }
+  return version;
+}
+
 export function preferNativeCliExecutable(
   executableName: string,
   executables: readonly DetectedExecutable[],
@@ -603,16 +635,23 @@ async function detectProvider(definition: CliProviderDefinition): Promise<Detect
         detail: 'Version probe exited unsuccessfully.',
       };
     }
-    const version = safeDetail(probe.stdout.data).split(/\r?\n/, 1)[0]?.trim();
+    const version = parseVersionOutput(probe);
+    if (!version) {
+      return {
+        status: 'requires_attention',
+        executablePath: executable.executablePath,
+        detail: 'Version probe returned invalid output.',
+      };
+    }
     return {
       status: 'available',
       executablePath: executable.executablePath,
-      ...(version ? { version } : {}),
+      version,
     };
-  } catch (error) {
+  } catch {
     return {
       status: 'requires_attention',
-      detail: safeDetail(error instanceof Error ? error.message : 'CLI detection failed.'),
+      detail: 'CLI detection failed.',
     };
   }
 }
