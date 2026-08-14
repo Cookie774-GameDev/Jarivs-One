@@ -840,15 +840,22 @@ describe('production Context Map RLM repository', () => {
       'in the literature files, what are the eight words right after the bit where talk stopped and everybody watched Kutúzov? quote only those words and show me the file',
     );
     const entityOffsets = [...content.matchAll(/Kutúzov/gu)].map((match) => match.index);
+    const contextStart = content.indexOf('talk ceased');
 
     expect(entityOffsets).toHaveLength(109);
     expect(entityOffsets[62]).toBe(content.indexOf('Kutúzov who'));
     expect(hits[0]?.preview).toContain('[SOURCE FILE: 0007-pg2600.txt]');
     expect(hits[0]?.pointer.byteStart).toBe(
-      new TextEncoder().encode(content.slice(0, content.indexOf('Kutúzov who'))).length,
+      new TextEncoder().encode(content.slice(0, contextStart)).length,
     );
-    expect(hits[0]?.preview).toContain('\nKutúzov who, wearing a white cap with a red');
+    expect(hits[0]?.preview).toContain(
+      '\ntalk ceased and all eyes were fixed on\nKutúzov who, wearing a white cap with a red',
+    );
     expect(hits[0]?.preview).toContain('who, wearing a white cap with a red');
+    expect(hits[0]!.pointer.byteEnd).toBeGreaterThan(
+      new TextEncoder().encode(content.slice(0, content.indexOf('red band') + 'red band'.length))
+        .length,
+    );
   });
 
   it('anchors Unicode singleton names without promoting sentence-leading directives', async () => {

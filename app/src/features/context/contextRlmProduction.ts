@@ -297,6 +297,7 @@ function meaningfulQueryMatches(
     | {
         phrase: string;
         offset: number;
+        contextStart: number;
         density: number;
         span: number;
         contextual: boolean;
@@ -311,6 +312,11 @@ function meaningfulQueryMatches(
     const entityPattern = escapeRegExp(phrase);
     const boundedEntityPattern = `(?<![\\p{L}\\p{N}_])${entityPattern}(?![\\p{L}\\p{N}_])`;
     const fallbackOffset = content.search(new RegExp(boundedEntityPattern, 'iu'));
+    const repeatedEntity =
+      fallbackOffset >= 0 &&
+      content
+        .slice(fallbackOffset + phrase.length)
+        .search(new RegExp(boundedEntityPattern, 'iu')) >= 0;
     const contextTerms = plan.terms
       .filter(
         (term) =>
@@ -332,6 +338,7 @@ function meaningfulQueryMatches(
       | {
           phrase: string;
           offset: number;
+          contextStart: number;
           density: number;
           span: number;
           contextual: true;
@@ -349,6 +356,7 @@ function meaningfulQueryMatches(
         const offset = match.index + relativeOffset;
         let orderAligned = false;
         let clueDistance = Number.MAX_SAFE_INTEGER;
+        let clueOffset = offset;
         for (const term of contextTerms) {
           const termIndex = plan.terms.indexOf(term);
           const termRegex = new RegExp(
@@ -371,6 +379,7 @@ function meaningfulQueryMatches(
             ) {
               orderAligned = aligned;
               clueDistance = distance;
+              clueOffset = match.index + termMatch.index;
             }
           }
         }
@@ -386,6 +395,7 @@ function meaningfulQueryMatches(
         const candidate = {
           phrase,
           offset,
+          contextStart: repeatedEntity ? Math.min(offset, clueOffset) : offset,
           density: plan.terms.filter((term) => contextTokens.has(term)).length,
           span: match[0].length,
           contextual: true as const,
@@ -420,6 +430,7 @@ function meaningfulQueryMatches(
         ? {
             phrase,
             offset: fallbackOffset,
+            contextStart: fallbackOffset,
             density: 0,
             span: Number.MAX_SAFE_INTEGER,
             contextual: false as const,
@@ -477,7 +488,7 @@ function meaningfulQueryMatches(
     .sort((left, right) => right.offset - left.offset)[0]?.offset;
   return {
     offset:
-      strongestProperName?.offset ??
+      strongestProperName?.contextStart ??
       responseAnchorOffset ??
       densestOffset ??
       strongestPhrase?.offset,
