@@ -26,6 +26,11 @@ export interface SerializedCorpusScaleMetadata {
 }
 
 export type CorpusTokenCountInput = bigint | number | string;
+export type CorpusTokenAddress = Readonly<{
+  position: string;
+  shard: string;
+  offset: string;
+}>;
 
 export class CorpusScaleError extends Error {
   constructor(readonly detail: string) {
@@ -117,7 +122,7 @@ export function locateCorpusTokenPosition(
   metadata: Readonly<CorpusScaleMetadata>,
   positionInput: CorpusTokenCountInput,
   shardSizeInput: CorpusTokenCountInput,
-): Readonly<{ position: string; shard: string; offset: string }> {
+): CorpusTokenAddress {
   const validated = createCorpusScaleMetadata(metadata);
   const position = parseCorpusTokenCount(positionInput, 'position');
   const shardSize = parseCorpusTokenCount(shardSizeInput, 'shard_size');
@@ -128,4 +133,21 @@ export function locateCorpusTokenPosition(
     shard: (position / shardSize).toString(10),
     offset: (position % shardSize).toString(10),
   });
+}
+
+export function parseCorpusTokenAddressQuery(
+  metadata: Readonly<CorpusScaleMetadata>,
+  query: string,
+  shardSize: CorpusTokenCountInput,
+): CorpusTokenAddress {
+  const match = /^token:(0|[1-9][0-9]*)$/u.exec(query);
+  if (!match) throw new CorpusScaleError('token_query');
+  return locateCorpusTokenPosition(metadata, match[1]!, shardSize);
+}
+
+export function serializeCorpusTokenAddressRoute(address: CorpusTokenAddress): string {
+  const position = parseCorpusTokenCount(address.position, 'position');
+  const shard = parseCorpusTokenCount(address.shard, 'shard');
+  const offset = parseCorpusTokenCount(address.offset, 'offset');
+  return `token:${position.toString(10)};shard:${shard.toString(10)};offset:${offset.toString(10)}`;
 }

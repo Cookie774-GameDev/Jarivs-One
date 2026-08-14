@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCorpusScaleMetadata } from './corpusScale';
 import {
+  createContextQueryService,
+  type ContextQueryRepository,
+  type ContextScope,
+} from './contextQueryService';
+import { createCorpusScaleMetadata } from './corpusScale';
+import { createContextPointer, createContextRecord } from './losslessContext';
+import {
+  RECURSIVE_CONTEXT_LIMITS,
   RecursiveContextError,
   createRecursiveContextPlanner,
   type RecursiveContextBudgets,
   type RecursiveContextEvidence,
 } from './recursiveContextPlanner';
+import { createRecursiveContextQueryAdapter } from './recursiveContextQueryAdapter';
 
 const corpus = createCorpusScaleMetadata({
   corpusId: 'corpus-100b',
@@ -41,35 +49,79 @@ function evidence(id: string, estimatedTokens = 100): RecursiveContextEvidence {
 }
 
 describe('recursive context planner', () => {
-  it('routes exact sparse boundary addresses deterministically with provenance', async () => {
-    const positions = [
-      999_999_999n,
-      1_000_000_000n,
-      10_000_000_000n,
-      10_000_000_001n,
-      9_007_199_254_740_993n,
-    ];
-    const retrieveRound = vi.fn(async ({ queries }: { queries: readonly string[] }) => {
-      const position = BigInt(queries[0]!.slice('token:'.length));
-      const shard = position / 1_000_000n;
-      return {
-        evidence: [evidence(`${shard.toString(10)}-${(position % 1_000_000n).toString(10)}`)],
-        nextQueries: [],
-        complete: true,
-      };
+  it('composes exact logical routing through ContextQueryService with derived provenance', async () => {
+    const logicalCorpus = createCorpusScaleMetadata({
+      corpusId: 'composed-10b',
+      totalTokens: 10_000_000_002n,
+      indexedTokens: 10_000_000_002n,
+      chunkCount: 4_882_813n,
+      shardCount: 10_001n,
+      contentDigest: `sha256:${'c'.repeat(64)}`,
+      generatedAt: 1_700_000_000_000,
     });
-    const planner = createRecursiveContextPlanner({ retrieveRound });
+    const scope: ContextScope = { accountId: 'account-1', projectId: 'project-1' };
+    const content = 'boundary=10000000001 answer=amber-quartz';
+    const digest = 'd'.repeat(64);
+    const record = createContextRecord({
+      id: 'composed-record',
+      accountId: scope.accountId,
+      projectId: scope.projectId,
+      sourceKind: 'file_version',
+      sourceId: 'composed-source',
+      createdAt: 1,
+      contentHash: digest,
+      contentRef: 'sparse://physical/shard-10000',
+      trustLevel: 'app_verified',
+    });
+    const pointer = createContextPointer({
+      id: 'composed-pointer',
+      recordId: record.id,
+      byteStart: 0,
+      byteEnd: new TextEncoder().encode(content).length,
+      sourceVersion: 'revision-1',
+      contentHash: digest,
+    });
+    const repository: ContextQueryRepository = {
+      listRecords: vi.fn(async () => [record]),
+      getRecord: vi.fn(async () => record),
+      search: vi.fn(async (_scope, query) =>
+        query === 'token:10000000001;shard:10000;offset:1'
+          ? [{ recordId: record.id, pointer, preview: content, score: 1 }]
+          : [],
+      ),
+      readSource: vi.fn(async () => ({
+        bytes: new TextEncoder().encode(content),
+        contentHash: digest,
+        sourceVersion: pointer.sourceVersion,
+      })),
+      canOpen: vi.fn(async () => true),
+    };
+    const adapter = createRecursiveContextQueryAdapter({
+      queryService: createContextQueryService({ repository }),
+      scope,
+      logicalAddressing: { corpus: logicalCorpus, shardSize: 1_000_000n },
+    });
+    const planner = createRecursiveContextPlanner({ retrieveRound: adapter.retrieveRound });
 
-    for (const position of positions) {
-      const result = await planner.retrieve({
-        query: `token:${position.toString(10)}`,
-        corpus,
-        budgets,
-      });
-      expect(result.status).toBe('complete');
-      expect(result.evidence[0]?.provenance.locator).toContain('sparse://corpus-100b/');
-      expect(result.contextTokens).toBe(100);
-    }
+    const result = await planner.retrieve({
+      query: 'token:10000000001',
+      corpus: logicalCorpus,
+      budgets,
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.evidence[0]?.provenance).toEqual({
+      sourceId: record.sourceId,
+      sourceRevision: pointer.sourceVersion,
+      contentDigest: `sha256:${digest}`,
+      indexedAt: record.createdAt,
+      locator: 'sparse://physical/shard-10000#token=10000000001&shard=10000&offset=1',
+    });
+    expect(repository.search).toHaveBeenCalledWith(
+      scope,
+      'token:10000000001;shard:10000;offset:1',
+      undefined,
+    );
   });
 
   it('detects a recursive query loop without issuing another retrieval', async () => {
@@ -124,5 +176,42 @@ describe('recursive context planner', () => {
         budgets: { ...budgets, maxContextTokens: 32_769 },
       }),
     ).rejects.toBeInstanceOf(RecursiveContextError);
+  });
+
+  it('accepts every exact planner ceiling and rejects each value above it', async () => {
+    const complete = vi.fn(async () => ({
+      evidence: [evidence('bounded', RECURSIVE_CONTEXT_LIMITS.maxContextTokens)],
+      nextQueries: [],
+      complete: true,
+    }));
+    const atLimits: RecursiveContextBudgets = {
+      maxIterations: RECURSIVE_CONTEXT_LIMITS.maxIterations,
+      maxContextTokens: RECURSIVE_CONTEXT_LIMITS.maxContextTokens,
+      maxItems: RECURSIVE_CONTEXT_LIMITS.maxItems,
+      maxQueriesPerIteration: RECURSIVE_CONTEXT_LIMITS.maxQueriesPerIteration,
+      maxTotalQueries: RECURSIVE_CONTEXT_LIMITS.maxTotalQueries,
+    };
+    await expect(
+      createRecursiveContextPlanner({ retrieveRound: complete }).retrieve({
+        query: 'bounded',
+        corpus,
+        budgets: atLimits,
+      }),
+    ).resolves.toMatchObject({
+      status: 'complete',
+      iterations: 1,
+      queriesIssued: 1,
+      contextTokens: RECURSIVE_CONTEXT_LIMITS.maxContextTokens,
+    });
+
+    for (const field of Object.keys(atLimits) as Array<keyof RecursiveContextBudgets>) {
+      await expect(
+        createRecursiveContextPlanner({ retrieveRound: complete }).retrieve({
+          query: 'bounded',
+          corpus,
+          budgets: { ...atLimits, [field]: atLimits[field] + 1 },
+        }),
+      ).rejects.toBeInstanceOf(RecursiveContextError);
+    }
   });
 });
