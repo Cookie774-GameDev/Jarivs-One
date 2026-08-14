@@ -180,6 +180,40 @@ describe('tool gateway protocol', () => {
     ).toThrow();
   });
 
+  it('drops null optional fields from an otherwise valid OpenCode context pointer', () => {
+    const pointer = {
+      id: 'pointer-1',
+      recordId: 'record-1',
+      byteStart: 10,
+      byteEnd: 20,
+      sourceVersion: `sha256:${'a'.repeat(64)}`,
+      contentHash: 'a'.repeat(64),
+      lineStart: null,
+      lineEnd: null,
+      messageId: null,
+      eventId: null,
+      toolCallId: null,
+    };
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: { operation: 'open', pointer, maxBytes: null, continuation: null },
+        }),
+      ).args,
+    ).toEqual({
+      operation: 'open',
+      pointer: {
+        id: 'pointer-1',
+        recordId: 'record-1',
+        byteStart: 10,
+        byteEnd: 20,
+        sourceVersion: `sha256:${'a'.repeat(64)}`,
+        contentHash: 'a'.repeat(64),
+      },
+    });
+  });
+
   it('decodes a bounded JSON pointer emitted by local tool-calling models', () => {
     const pointer = {
       id: 'pointer-1',

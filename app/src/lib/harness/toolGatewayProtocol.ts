@@ -409,6 +409,11 @@ function validateContextPointer(value: unknown): Record<string, unknown> {
       invalid('pointer is invalid.');
     }
   }
+  if (plainObject(value)) {
+    value = Object.fromEntries(
+      Object.entries(value).filter(([, pointerValue]) => pointerValue !== null),
+    );
+  }
   const pointer = exactKeys(
     value,
     ['id', 'recordId', 'sourceVersion', 'contentHash'],
