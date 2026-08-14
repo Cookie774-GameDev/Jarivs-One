@@ -1,21 +1,34 @@
-//! Browser Chat provider surfaces managed by native window APIs.
+//! Browser Chat provider surfaces embedded as child WebViews of the main VibeSpace window.
 //!
-//! The remote provider origin never receives VibeSpace capability authority:
-//! every command verifies that the invoking webview is the local `main` view,
-//! and provider URLs are selected from this fixed registry rather than supplied
-//! by renderer input.
+//! The remote provider origin never receives VibeSpace capability authority: every command
+//! verifies that the invoking webview is the local `main` view, and provider URLs come from a
+//! fixed registry rather than renderer input.
 
-use std::sync::{LazyLock, Mutex};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    webview::{Webview, WebviewBuilder},
+    AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+};
 
 const PROVIDER_LABELS: [&str; 3] = [
     "browser-chat-chatgpt",
     "browser-chat-claude",
     "browser-chat-gemini",
 ];
-static SURFACE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+// Native surface operations are serialized so React geometry updates cannot create duplicate
+// child WebViews or race against route-leave hide commands. The visible label lets provider
+// switches focus once without stealing focus during geometry-only updates.
+#[derive(Debug)]
+struct SurfaceState {
+    visible_label: Option<&'static str>,
+}
+
+static SURFACE_STATE: Mutex<SurfaceState> = Mutex::new(SurfaceState {
+    visible_label: None,
+});
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +63,7 @@ fn provider_config(provider_id: &str) -> Result<ProviderConfig, String> {
         ),
         _ => return Err("browser_chat_provider_not_allowed".to_string()),
     };
+
     Ok(ProviderConfig {
         id,
         label,
@@ -81,35 +95,18 @@ fn validate_bounds(bounds: &BrowserChatBounds) -> Result<(), String> {
     }
 }
 
-fn absolute_bounds(
-    main: &WebviewWindow,
+fn relative_bounds(
     bounds: &BrowserChatBounds,
-) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), String> {
+) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
     validate_bounds(bounds)?;
-    let scale = main
-        .scale_factor()
-        .map_err(|error| format!("browser_chat_scale_failed:{error}"))?;
-    let origin = main
-        .inner_position()
-        .map_err(|error| format!("browser_chat_position_failed:{error}"))?;
     Ok((
-        tauri::PhysicalPosition::new(
-            origin.x + (bounds.x * scale).round() as i32,
-            origin.y + (bounds.y * scale).round() as i32,
-        ),
-        tauri::PhysicalSize::new(
-            (bounds.width * scale).round().max(1.0) as u32,
-            (bounds.height * scale).round().max(1.0) as u32,
-        ),
+        LogicalPosition::new(bounds.x, bounds.y),
+        LogicalSize::new(bounds.width, bounds.height),
     ))
 }
 
-fn apply_bounds(
-    provider: &tauri::Window,
-    main: &WebviewWindow,
-    bounds: &BrowserChatBounds,
-) -> Result<(), String> {
-    let (position, size) = absolute_bounds(main, bounds)?;
+fn apply_bounds(provider: &Webview, bounds: &BrowserChatBounds) -> Result<(), String> {
+    let (position, size) = relative_bounds(bounds)?;
     provider
         .set_position(position)
         .map_err(|error| format!("browser_chat_position_failed:{error}"))?;
@@ -118,89 +115,75 @@ fn apply_bounds(
         .map_err(|error| format!("browser_chat_size_failed:{error}"))
 }
 
-fn hide_other_providers(app: &AppHandle, selected: Option<&str>) {
+fn hide_provider(app: &AppHandle, label: &str) -> Result<(), String> {
+    if let Some(webview) = app.get_webview(label) {
+        webview
+            .hide()
+            .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
+    }
+    Ok(())
+}
+
+fn hide_other_providers(app: &AppHandle, selected: Option<&str>) -> Result<(), String> {
     for label in PROVIDER_LABELS {
         if Some(label) != selected {
-            if let Some(window) = app.get_window(label) {
-                let _ = window.hide();
-            }
+            hide_provider(app, label)?;
         }
     }
+    Ok(())
 }
 
-fn should_activate_provider(is_visible: bool) -> bool {
-    !is_visible
-}
-
-fn open_provider(
-    app: AppHandle,
-    caller: WebviewWindow,
-    provider: ProviderConfig,
-    bounds: BrowserChatBounds,
-) -> Result<bool, String> {
-    hide_other_providers(&app, Some(provider.label));
-
-    if let Some(existing) = app.get_window(provider.label) {
-        apply_bounds(&existing, &caller, &bounds)?;
-        let is_visible = existing
-            .is_visible()
-            .map_err(|error| format!("browser_chat_visibility_failed:{error}"))?;
-        if should_activate_provider(is_visible) {
-            existing
-                .show()
-                .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
-            existing
-                .set_focus()
-                .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
-        }
-        return Ok(false);
-    }
-
-    let (position, size) = absolute_bounds(&caller, &bounds)?;
+fn profile_directory(app: &AppHandle, provider_id: &str) -> Result<std::path::PathBuf, String> {
     let profile_dir = app
         .path()
         .app_data_dir()
         .map_err(|error| format!("browser_chat_profile_failed:{error}"))?
         .join("browser-chat")
-        .join(provider.id);
+        .join(provider_id);
     std::fs::create_dir_all(&profile_dir)
         .map_err(|error| format!("browser_chat_profile_failed:{error}"))?;
+    Ok(profile_dir)
+}
 
-    let builder =
-        WebviewWindowBuilder::new(&app, provider.label, WebviewUrl::External(provider.url))
-            .title("VibeSpace Browser Chat")
-            .data_directory(profile_dir)
-            .decorations(false)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .skip_taskbar(true)
-            .always_on_top(false)
-            .focused(false)
-            .visible(false)
-            .inner_size(size.width as f64, size.height as f64)
-            .position(position.x as f64, position.y as f64);
+fn open_provider(
+    app: AppHandle,
+    provider: ProviderConfig,
+    bounds: BrowserChatBounds,
+) -> Result<bool, String> {
+    let mut state = SURFACE_STATE
+        .lock()
+        .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
 
-    #[cfg(windows)]
-    let builder = builder
-        .owner(&caller)
-        .map_err(|error| format!("browser_chat_owner_failed:{error}"))?;
+    hide_other_providers(&app, Some(provider.label))?;
 
-    let created = builder
-        .build()
-        .map_err(|error| format!("browser_chat_create_failed:{error}"))?;
-    let native_window = app
-        .get_window(created.label())
-        .ok_or_else(|| "browser_chat_window_missing".to_string())?;
-    apply_bounds(&native_window, &caller, &bounds)?;
-    native_window
+    let (webview, created) = if let Some(existing) = app.get_webview(provider.label) {
+        apply_bounds(&existing, &bounds)?;
+        (existing, false)
+    } else {
+        let main = app
+            .get_window("main")
+            .ok_or_else(|| "browser_chat_main_window_missing".to_string())?;
+        let (position, size) = relative_bounds(&bounds)?;
+        let builder = WebviewBuilder::new(provider.label, WebviewUrl::External(provider.url))
+            .data_directory(profile_directory(&app, provider.id)?)
+            .focused(false);
+        let created = main
+            .add_child(builder, position, size)
+            .map_err(|error| format!("browser_chat_create_failed:{error}"))?;
+        (created, true)
+    };
+
+    let should_focus = created || state.visible_label != Some(provider.label);
+    webview
         .show()
         .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
-    native_window
-        .set_focus()
-        .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
-
-    Ok(true)
+    if should_focus {
+        webview
+            .set_focus()
+            .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
+    }
+    state.visible_label = Some(provider.label);
+    Ok(created)
 }
 
 #[tauri::command]
@@ -215,14 +198,9 @@ pub async fn browser_chat_surface_open(
     let provider = provider_config(&provider_id)?;
     let status_provider_id = provider.id.to_string();
 
-    let created = tauri::async_runtime::spawn_blocking(move || {
-        let _surface_guard = SURFACE_LOCK
-            .lock()
-            .map_err(|_| "browser_chat_state_unavailable".to_string())?;
-        open_provider(app, caller, provider, bounds)
-    })
-    .await
-    .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
+    let created = tauri::async_runtime::spawn_blocking(move || open_provider(app, provider, bounds))
+        .await
+        .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
 
     Ok(BrowserChatSurfaceStatus {
         provider_id: status_provider_id,
@@ -237,11 +215,12 @@ pub async fn browser_chat_surface_hide_all(
 ) -> Result<(), String> {
     ensure_main_caller(caller.label())?;
     tauri::async_runtime::spawn_blocking(move || {
-        let _surface_guard = SURFACE_LOCK
+        let mut state = SURFACE_STATE
             .lock()
-            .map_err(|_| "browser_chat_state_unavailable".to_string())?;
-        hide_other_providers(&app, None);
-        Ok::<(), String>(())
+            .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
+        hide_other_providers(&app, None)?;
+        state.visible_label = None;
+        Ok(())
     })
     .await
     .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
@@ -257,15 +236,14 @@ pub async fn browser_chat_surface_hide(
     ensure_main_caller(caller.label())?;
     let provider = provider_config(&provider_id)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let _surface_guard = SURFACE_LOCK
+        let mut state = SURFACE_STATE
             .lock()
-            .map_err(|_| "browser_chat_state_unavailable".to_string())?;
-        if let Some(window) = app.get_window(provider.label) {
-            window
-                .hide()
-                .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
+            .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
+        hide_provider(&app, provider.label)?;
+        if state.visible_label == Some(provider.label) {
+            state.visible_label = None;
         }
-        Ok::<(), String>(())
+        Ok(())
     })
     .await
     .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
@@ -306,8 +284,27 @@ mod tests {
     }
 
     #[test]
-    fn visible_provider_does_not_need_reactivation_for_geometry_updates() {
-        assert!(!should_activate_provider(true));
-        assert!(should_activate_provider(false));
+    fn child_bounds_remain_relative_to_the_main_window() {
+        let (position, size) = relative_bounds(&BrowserChatBounds {
+            x: 120.0,
+            y: 90.0,
+            width: 880.0,
+            height: 620.0,
+        })
+        .expect("valid relative bounds");
+
+        assert_eq!(position.x, 120.0);
+        assert_eq!(position.y, 90.0);
+        assert_eq!(size.width, 880.0);
+        assert_eq!(size.height, 620.0);
+    }
+
+    #[test]
+    fn visible_provider_state_distinguishes_activation_from_geometry_updates() {
+        let mut state = SurfaceState { visible_label: None };
+        assert_ne!(state.visible_label, Some("browser-chat-chatgpt"));
+        state.visible_label = Some("browser-chat-chatgpt");
+        assert_eq!(state.visible_label, Some("browser-chat-chatgpt"));
+        assert_ne!(state.visible_label, Some("browser-chat-claude"));
     }
 }

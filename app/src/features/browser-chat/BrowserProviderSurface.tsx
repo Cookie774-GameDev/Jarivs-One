@@ -32,6 +32,17 @@ export function BrowserProviderSurface({
     let updateInFlight = false;
     let queuedBounds: ProviderSurfaceBounds | null = null;
     let lastResizeBounds: ProviderSurfaceBounds | null = null;
+    let hostVisible = false;
+    let hiddenApplied = false;
+
+    const hideManagedSurface = () => {
+      hostVisible = false;
+      queuedBounds = null;
+      lastResizeBounds = null;
+      if (hiddenApplied) return;
+      hiddenApplied = true;
+      void runtime.hideAll();
+    };
 
     const openLatestBounds = async (initialBounds: ProviderSurfaceBounds) => {
       if (updateInFlight) {
@@ -41,20 +52,22 @@ export function BrowserProviderSurface({
       updateInFlight = true;
       let nextBounds: ProviderSurfaceBounds | null = initialBounds;
       try {
-        while (nextBounds && !disposed) {
+        while (nextBounds && !disposed && hostVisible) {
           const bounds = nextBounds;
           queuedBounds = null;
           try {
             const result = await runtime.openManaged(provider, bounds);
-            if (!disposed) {
-              setError(null);
-              setProviderRuntime(provider.id, {
-                pageStatus: result.kind === 'managed' ? 'ready' : 'system_browser',
-                toolBridgeStatus: provider.toolBridgeStatus,
-              });
+            if (disposed || !hostVisible) {
+              await runtime.hideAll();
+              break;
             }
+            setError(null);
+            setProviderRuntime(provider.id, {
+              pageStatus: result.kind === 'managed' ? 'ready' : 'system_browser',
+              toolBridgeStatus: provider.toolBridgeStatus,
+            });
           } catch (cause) {
-            if (!disposed) {
+            if (!disposed && hostVisible) {
               const message =
                 cause instanceof Error ? cause.message : 'Managed provider surface failed.';
               setError(message);
@@ -77,7 +90,18 @@ export function BrowserProviderSurface({
       frame = window.requestAnimationFrame(() => {
         if (disposed) return;
         const rect = host.getBoundingClientRect();
-        if (rect.width < 1 || rect.height < 1) return;
+        const rendered =
+          document.visibilityState !== 'hidden' &&
+          host.isConnected &&
+          rect.width >= 1 &&
+          rect.height >= 1;
+        if (!rendered) {
+          hideManagedSurface();
+          return;
+        }
+
+        hostVisible = true;
+        hiddenApplied = false;
         const bounds: ProviderSurfaceBounds = {
           x: rect.x,
           y: rect.y,
@@ -107,8 +131,10 @@ export function BrowserProviderSurface({
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => synchronize());
     const handleWindowResize = () => synchronize();
+    const handleVisibilityChange = () => synchronize(true);
     observer?.observe(host);
     window.addEventListener('resize', handleWindowResize);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     void runtime
       .subscribeHostGeometry?.(() => synchronize(true))
       .then((unsubscribe) => {
@@ -121,9 +147,12 @@ export function BrowserProviderSurface({
 
     return () => {
       disposed = true;
+      hostVisible = false;
+      queuedBounds = null;
       window.cancelAnimationFrame(frame);
       observer?.disconnect();
       window.removeEventListener('resize', handleWindowResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribeHostGeometry?.();
       void runtime.hideAll();
     };

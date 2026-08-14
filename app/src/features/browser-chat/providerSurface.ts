@@ -85,8 +85,8 @@ export function createNativeManagedProviderSurface(
       });
     },
     async setFocus() {
-      // The guarded native open command focuses the provider after applying
-      // its final bounds, avoiding the broken JavaScript window dispatcher.
+      // The guarded native open command focuses only on creation/activation.
+      // Geometry-only updates never steal focus from the VibeSpace shell.
     },
     async setPosition(position) {
       bounds = { ...bounds, ...position };
@@ -210,11 +210,7 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
     };
   }
 
-  const [{ invoke }, { getCurrentWindow }] = await Promise.all([
-    import('@tauri-apps/api/core'),
-    import('@tauri-apps/api/window'),
-  ]);
-  const currentWindow = getCurrentWindow();
+  const { invoke } = await import('@tauri-apps/api/core');
   const nativeInvoke: NativeBrowserChatInvoke = (command, args) => invoke(command, args);
 
   return {
@@ -229,16 +225,6 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
       return surface;
     },
     openExternal,
-    async subscribeHostGeometry(listener) {
-      const [unlistenMoved, unlistenScale] = await Promise.all([
-        currentWindow.onMoved(listener),
-        currentWindow.onScaleChanged(listener),
-      ]);
-      return () => {
-        unlistenMoved();
-        unlistenScale();
-      };
-    },
   };
 }
 

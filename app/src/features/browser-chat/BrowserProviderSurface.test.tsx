@@ -5,23 +5,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { browserChatProvider } from './providerRegistry';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
 
+const visibleRect: DOMRect = {
+  x: 20,
+  y: 30,
+  top: 30,
+  right: 920,
+  bottom: 670,
+  left: 20,
+  width: 900,
+  height: 640,
+  toJSON: () => ({}),
+};
+
+const hiddenRect: DOMRect = {
+  x: 0,
+  y: 0,
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+  width: 0,
+  height: 0,
+  toJSON: () => ({}),
+};
+
 describe('BrowserProviderSurface', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
   });
+
   beforeEach(() => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      x: 20,
-      y: 30,
-      top: 30,
-      right: 920,
-      bottom: 670,
-      left: 20,
-      width: 900,
-      height: 640,
-      toJSON: () => ({}),
-    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(visibleRect);
   });
 
   it('opens the selected managed provider and hides all surfaces on unmount', async () => {
@@ -54,6 +69,51 @@ describe('BrowserProviderSurface', () => {
     rendered.unmount();
     await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledOnce());
     expect(unsubscribeHostGeometry).toHaveBeenCalledOnce();
+  });
+
+  it('hides immediately when the Browser Chat host is not rendered', async () => {
+    vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue(hiddenRect);
+    const runtime = {
+      openManaged: vi.fn(async () => ({
+        kind: 'managed' as const,
+        providerId: 'chatgpt' as const,
+      })),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+    };
+
+    render(<BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />);
+
+    await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledOnce());
+    expect(runtime.openManaged).not.toHaveBeenCalled();
+  });
+
+  it('re-hides a stale native open that resolves after route teardown', async () => {
+    let releaseOpen: (() => void) | undefined;
+    const pendingOpen = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    const runtime = {
+      openManaged: vi.fn(async () => {
+        await pendingOpen;
+        return { kind: 'managed' as const, providerId: 'chatgpt' as const };
+      }),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+    };
+
+    const rendered = render(
+      <BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />,
+    );
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+
+    rendered.unmount();
+    await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledOnce());
+    releaseOpen?.();
+
+    await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledTimes(2));
   });
 
   it('coalesces geometry bursts while one native surface update is in flight', async () => {
