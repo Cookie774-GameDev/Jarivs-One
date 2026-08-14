@@ -60,6 +60,12 @@ describe('OpenCode provider response parsing', () => {
               tool_call: true,
               limit: { context: 262_144, output: 32_768 },
               modalities: { input: ['text', 'image'], output: ['text'] },
+              cost: {
+                input: 0,
+                output: 0,
+                cache: { read: 0, write: 0 },
+              },
+              headers: { authorization: 'Bearer never-expose-model-secret' },
             },
           },
         },
@@ -81,6 +87,12 @@ describe('OpenCode provider response parsing', () => {
             contextWindowTokens: 262_144,
             supportsImages: true,
             supportsTools: true,
+            pricing: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+            },
           },
         ],
       },
@@ -89,6 +101,30 @@ describe('OpenCode provider response parsing', () => {
     expect(JSON.stringify(parsed)).not.toContain('OPENROUTER_API_KEY');
     expect(JSON.stringify(parsed)).not.toContain('also-secret');
     expect(JSON.stringify(parsed)).not.toContain('upstream-id');
+    expect(JSON.stringify(parsed)).not.toContain('never-expose-model-secret');
+  });
+
+  it('omits incomplete, unsafe, or unsupported model pricing instead of guessing', () => {
+    const costs = [
+      { input: 0, output: 0, cache: { read: 0 } },
+      { input: 0, output: Number.NaN, cache: { read: 0, write: 0 } },
+      { input: -1, output: 0, cache: { read: 0, write: 0 } },
+      { input: 0, output: 0, cache: { read: 0, write: 0 }, longContext: { input: 0 } },
+      { input: 0, output: 0, cache: { read: 0, write: 1_000_001 } },
+    ];
+    const parsed = parseOpenCodeProviderResponse({
+      providers: [
+        {
+          id: 'priced',
+          models: Object.fromEntries(
+            costs.map((cost, index) => [`model-${index}`, { name: `Model ${index}`, cost }]),
+          ),
+        },
+      ],
+    });
+
+    expect(parsed[0]?.models).toHaveLength(costs.length);
+    expect(parsed[0]?.models.every((model) => model.pricing === undefined)).toBe(true);
   });
 
   it('bounds collections and ignores malformed provider or model identities', () => {

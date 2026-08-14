@@ -1,11 +1,17 @@
 import { HarnessError } from './errors';
-import type { HarnessModel, HarnessModelSelection, HarnessProvider } from './types';
+import type {
+  HarnessModel,
+  HarnessModelPricing,
+  HarnessModelSelection,
+  HarnessProvider,
+} from './types';
 
 const MAX_PROVIDERS = 256;
 const MAX_MODELS_PER_PROVIDER = 4_096;
 const MAX_PROVIDER_ID = 256;
 const MAX_MODEL_ID = 512;
 const MAX_DISPLAY_NAME = 512;
+const MAX_PRICE_PER_MILLION_TOKENS = 1_000_000;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -54,6 +60,41 @@ function positiveInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
+function exactKeys(record: UnknownRecord, required: readonly string[]): boolean {
+  const keys = Object.keys(record);
+  return keys.length === required.length && required.every((key) => keys.includes(key));
+}
+
+function boundedPrice(value: unknown): number | undefined {
+  return typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= MAX_PRICE_PER_MILLION_TOKENS
+    ? value
+    : undefined;
+}
+
+function modelPricing(value: unknown): Readonly<HarnessModelPricing> | undefined {
+  const cost = asRecord(value);
+  if (!cost || !exactKeys(cost, ['input', 'output', 'cache'])) return undefined;
+  const cache = asRecord(cost.cache);
+  if (!cache || !exactKeys(cache, ['read', 'write'])) return undefined;
+
+  const input = boundedPrice(cost.input);
+  const output = boundedPrice(cost.output);
+  const cacheRead = boundedPrice(cache.read);
+  const cacheWrite = boundedPrice(cache.write);
+  if (
+    input === undefined ||
+    output === undefined ||
+    cacheRead === undefined ||
+    cacheWrite === undefined
+  ) {
+    return undefined;
+  }
+  return Object.freeze({ input, output, cacheRead, cacheWrite });
+}
+
 export function parseOpenCodeProviderResponse(value: unknown): readonly HarnessProvider[] {
   const response = asRecord(value);
   if (!response || !Array.isArray(response.providers)) return [];
@@ -79,6 +120,7 @@ export function parseOpenCodeProviderResponse(value: unknown): readonly HarnessP
       const modalities = asRecord(model.modalities);
       const inputModalities = Array.isArray(modalities?.input) ? modalities.input : undefined;
       const contextWindowTokens = positiveInteger(limit?.context);
+      const pricing = modelPricing(model.cost);
       const supportsImages =
         typeof model.attachment === 'boolean'
           ? model.attachment
@@ -92,6 +134,7 @@ export function parseOpenCodeProviderResponse(value: unknown): readonly HarnessP
         ...(contextWindowTokens ? { contextWindowTokens } : {}),
         ...(typeof supportsImages === 'boolean' ? { supportsImages } : {}),
         ...(typeof supportsTools === 'boolean' ? { supportsTools } : {}),
+        ...(pricing ? { pricing } : {}),
       });
     }
 

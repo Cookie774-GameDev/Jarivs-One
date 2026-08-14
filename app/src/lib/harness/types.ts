@@ -44,6 +44,14 @@ export interface HarnessModel {
   contextWindowTokens?: number;
   supportsImages?: boolean;
   supportsTools?: boolean;
+  pricing?: Readonly<HarnessModelPricing>;
+}
+
+export interface HarnessModelPricing {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
 }
 
 export interface HarnessProvider {
