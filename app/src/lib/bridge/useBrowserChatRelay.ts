@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
+import { revokeBrowserChatWorkspace } from '@/features/browser-chat/workspaceGrant';
 import { isSupabaseConfigured } from '@/lib/supabase/env';
 import {
   getBrowserChatBridgeClient,
@@ -7,7 +8,6 @@ import {
   setBridgeWorkspaceGrant,
   type BridgeStatus,
 } from './BridgeClient';
-import { revokeBrowserChatWorkspace } from '@/features/browser-chat/workspaceGrant';
 
 export const DEFAULT_VIBESPACE_MCP_URL = 'https://vibespace-mcp.combatonline02.workers.dev';
 const RELAY_TICKET_TIMEOUT_MS = 10_000;
@@ -19,6 +19,209 @@ interface RelayTicketRequestOptions {
 export interface BrowserChatRelayScope {
   readonly accountId: string;
   readonly projectId: string | null;
+}
+
+export type BrowserChatRelayStatus = BridgeStatus | 'disabled';
+
+interface RelaySubscription {
+  enabled: boolean;
+  scope?: BrowserChatRelayScope;
+}
+
+const relaySubscriptions = new Map<symbol, RelaySubscription>();
+const relayStatusListeners = new Set<() => void>();
+let relayStatusSnapshot: BrowserChatRelayStatus = 'disabled';
+let relayLifecycleKey = '';
+let relayLifecycleStop: (() => void) | undefined;
+let relayReconcileQueued = false;
+
+function publishRelayStatus(nextStatus: BrowserChatRelayStatus): void {
+  if (relayStatusSnapshot === nextStatus) return;
+  relayStatusSnapshot = nextStatus;
+  for (const listener of relayStatusListeners) listener();
+}
+
+function subscribeRelayStatus(listener: () => void): () => void {
+  relayStatusListeners.add(listener);
+  return () => relayStatusListeners.delete(listener);
+}
+
+function clearSessionGrant(): void {
+  setBridgeWorkspaceGrant();
+  revokeBrowserChatWorkspace();
+}
+
+function relaySubscriptionKey(subscription: RelaySubscription): string {
+  return JSON.stringify({
+    enabled: subscription.enabled,
+    accountId: subscription.scope?.accountId ?? '',
+    projectId: subscription.scope?.projectId ?? null,
+  });
+}
+
+function selectRelaySubscription(): RelaySubscription | undefined {
+  const enabled = [...relaySubscriptions.values()].filter(
+    (subscription) => subscription.enabled,
+  );
+  return enabled.find((subscription) => Boolean(subscription.scope?.accountId)) ?? enabled[0];
+}
+
+function stopActiveRelay(clearGrant: boolean): void {
+  relayLifecycleStop?.();
+  relayLifecycleStop = undefined;
+  relayLifecycleKey = '';
+  if (clearGrant) clearSessionGrant();
+  publishRelayStatus('disabled');
+}
+
+function startBrowserChatRelayLifecycle(
+  scope: BrowserChatRelayScope | undefined,
+): () => void {
+  const environment = import.meta.env as Record<string, string | undefined>;
+  const cloudUrl = resolveBrowserChatCloudUrl(environment);
+  const url = resolveBrowserChatRelayUrl(cloudUrl);
+  const usesTicketGateway =
+    Boolean(environment.VITE_VIBESPACE_MCP_URL) ||
+    (!environment.VITE_PHONE_JARVIS_CLOUD_URL && cloudUrl === DEFAULT_VIBESPACE_MCP_URL);
+  let cancelled = false;
+  let authGeneration = 0;
+  let activeRequest: AbortController | undefined;
+  let unsubscribe: (() => void) | undefined;
+  let activeIdentity: { accountId: string; jwt: string } | undefined;
+
+  const lifecycleIsCurrent = () => !cancelled;
+  const invalidateAuthWork = () => {
+    authGeneration += 1;
+    activeRequest?.abort();
+    activeRequest = undefined;
+  };
+  const disableRelay = (clearGrant = false) => {
+    invalidateAuthWork();
+    activeIdentity = undefined;
+    resetBrowserChatBridgeClient();
+    if (clearGrant) clearSessionGrant();
+    if (lifecycleIsCurrent()) publishRelayStatus('disabled');
+  };
+
+  publishRelayStatus('disabled');
+  if (!url || !isSupabaseConfigured()) {
+    disableRelay(false);
+    return () => {
+      cancelled = true;
+      invalidateAuthWork();
+      resetBrowserChatBridgeClient();
+    };
+  }
+
+  const start = async (jwt: string, accountId: string) => {
+    if (!lifecycleIsCurrent()) return;
+    if (!accountId || (scope?.accountId && accountId !== scope.accountId)) {
+      disableRelay(true);
+      return;
+    }
+    if (
+      activeIdentity &&
+      (activeIdentity.accountId !== accountId || activeIdentity.jwt !== jwt)
+    ) {
+      clearSessionGrant();
+    }
+    activeIdentity = { accountId, jwt };
+    invalidateAuthWork();
+    const currentAuthGeneration = authGeneration;
+    const requestController = new AbortController();
+    activeRequest = requestController;
+    resetBrowserChatBridgeClient();
+    const generationIsCurrent = () =>
+      lifecycleIsCurrent() &&
+      !requestController.signal.aborted &&
+      authGeneration === currentAuthGeneration;
+
+    try {
+      const client = getBrowserChatBridgeClient({
+        url,
+        jwt,
+        accountId,
+        projectId: scope?.projectId,
+        ...(usesTicketGateway
+          ? {
+              resolveUrl: (token) =>
+                requestBrowserChatRelayTicket(cloudUrl!, token, fetch, {
+                  signal: requestController.signal,
+                }),
+            }
+          : {}),
+        onStatus: (nextStatus) => {
+          if (generationIsCurrent()) publishRelayStatus(nextStatus);
+        },
+      });
+      client.setJwt(jwt);
+      if (!generationIsCurrent()) return;
+      await client.start();
+    } catch {
+      if (generationIsCurrent()) publishRelayStatus('error');
+    }
+  };
+
+  void (async () => {
+    try {
+      const { getSupabaseClient } = await import('@/lib/supabase/client');
+      if (!lifecycleIsCurrent()) return;
+      const client = getSupabaseClient();
+      if (!client) {
+        publishRelayStatus('disabled');
+        return;
+      }
+      const initialAuthGeneration = authGeneration;
+      const subscription = client.auth.onAuthStateChange((event, session) => {
+        if (!lifecycleIsCurrent()) return;
+        const nextJwt = session?.access_token;
+        const nextAccountId = session?.user?.id ?? '';
+        if (event === 'SIGNED_OUT' || !nextJwt || !nextAccountId) {
+          disableRelay(true);
+          return;
+        }
+        void start(nextJwt, nextAccountId);
+      });
+      unsubscribe = () => subscription.data.subscription.unsubscribe();
+      const { data } = await client.auth.getSession();
+      if (!lifecycleIsCurrent() || authGeneration !== initialAuthGeneration) return;
+      const jwt = data.session?.access_token;
+      const accountId = data.session?.user?.id ?? '';
+      if (jwt && accountId) await start(jwt, accountId);
+      else disableRelay(true);
+    } catch {
+      if (lifecycleIsCurrent()) publishRelayStatus('error');
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+    invalidateAuthWork();
+    unsubscribe?.();
+    resetBrowserChatBridgeClient();
+  };
+}
+
+function reconcileRelaySupervisor(): void {
+  relayReconcileQueued = false;
+  const selected = selectRelaySubscription();
+  if (!selected) {
+    stopActiveRelay(true);
+    return;
+  }
+
+  const nextKey = relaySubscriptionKey(selected);
+  if (relayLifecycleStop && relayLifecycleKey === nextKey) return;
+
+  if (relayLifecycleStop) stopActiveRelay(true);
+  relayLifecycleKey = nextKey;
+  relayLifecycleStop = startBrowserChatRelayLifecycle(selected.scope);
+}
+
+function scheduleRelayReconcile(): void {
+  if (relayReconcileQueued) return;
+  relayReconcileQueued = true;
+  void Promise.resolve().then(reconcileRelaySupervisor);
 }
 
 export function resolveBrowserChatRelayUrl(cloudUrl: string | undefined): string | null {
@@ -128,134 +331,24 @@ export async function requestBrowserChatRelayTicket(
 export function useBrowserChatRelay(
   enabled: boolean,
   scope?: BrowserChatRelayScope,
-): BridgeStatus | 'disabled' {
-  const [status, setStatus] = useState<BridgeStatus | 'disabled'>('disabled');
-  const lifecycleGenerationRef = useRef(0);
-  const authGenerationRef = useRef(0);
+): BrowserChatRelayStatus {
+  const subscriptionIdRef = useRef<symbol | null>(null);
+  subscriptionIdRef.current ??= Symbol('browser-chat-relay-subscriber');
 
   useEffect(() => {
-    const lifecycleGeneration = ++lifecycleGenerationRef.current;
-    const environment = import.meta.env as Record<string, string | undefined>;
-    const cloudUrl = resolveBrowserChatCloudUrl(environment);
-    const url = resolveBrowserChatRelayUrl(cloudUrl);
-    const usesTicketGateway =
-      Boolean(environment.VITE_VIBESPACE_MCP_URL) ||
-      (!environment.VITE_PHONE_JARVIS_CLOUD_URL && cloudUrl === DEFAULT_VIBESPACE_MCP_URL);
-    let cancelled = false;
-    let activeRequest: AbortController | undefined;
-    let unsubscribe: (() => void) | undefined;
-    let activeIdentity: { accountId: string; jwt: string } | undefined;
-    const lifecycleIsCurrent = () =>
-      !cancelled && lifecycleGenerationRef.current === lifecycleGeneration;
-    const invalidateAuthWork = () => {
-      authGenerationRef.current += 1;
-      activeRequest?.abort();
-      activeRequest = undefined;
-    };
-    const clearSessionGrant = () => {
-      setBridgeWorkspaceGrant();
-      revokeBrowserChatWorkspace();
-    };
-    const disableRelay = (clearGrant = false) => {
-      invalidateAuthWork();
-      activeIdentity = undefined;
-      resetBrowserChatBridgeClient();
-      if (clearGrant) clearSessionGrant();
-      if (lifecycleIsCurrent()) setStatus('disabled');
-    };
-
-    if (!enabled || !url || !isSupabaseConfigured()) {
-      disableRelay(!enabled);
-      return;
-    }
-
-    const start = async (jwt: string, accountId: string) => {
-      if (!lifecycleIsCurrent()) return;
-      if (!accountId || (scope?.accountId && accountId !== scope.accountId)) {
-        disableRelay(true);
-        return;
-      }
-      if (
-        activeIdentity &&
-        (activeIdentity.accountId !== accountId || activeIdentity.jwt !== jwt)
-      ) {
-        clearSessionGrant();
-      }
-      activeIdentity = { accountId, jwt };
-      invalidateAuthWork();
-      const authGeneration = authGenerationRef.current;
-      const requestController = new AbortController();
-      activeRequest = requestController;
-      resetBrowserChatBridgeClient();
-      const generationIsCurrent = () =>
-        lifecycleIsCurrent() &&
-        !requestController.signal.aborted &&
-        authGenerationRef.current === authGeneration;
-      try {
-        const client = getBrowserChatBridgeClient({
-          url,
-          jwt,
-          accountId,
-          projectId: scope?.projectId,
-          ...(usesTicketGateway
-            ? {
-                resolveUrl: (token) =>
-                  requestBrowserChatRelayTicket(cloudUrl!, token, fetch, {
-                    signal: requestController.signal,
-                  }),
-              }
-            : {}),
-          onStatus: (nextStatus) => {
-            if (generationIsCurrent()) setStatus(nextStatus);
-          },
-        });
-        client.setJwt(jwt);
-        if (!generationIsCurrent()) return;
-        await client.start();
-      } catch {
-        if (generationIsCurrent()) setStatus('error');
-      }
-    };
-
-    void (async () => {
-      try {
-        const { getSupabaseClient } = await import('@/lib/supabase/client');
-        if (!lifecycleIsCurrent()) return;
-        const client = getSupabaseClient();
-        if (!client) return;
-        const initialAuthGeneration = authGenerationRef.current;
-        const subscription = client.auth.onAuthStateChange((event, session) => {
-          if (!lifecycleIsCurrent()) return;
-          const nextJwt = session?.access_token;
-          const nextAccountId = session?.user?.id ?? '';
-          if (event === 'SIGNED_OUT' || !nextJwt || !nextAccountId) {
-            disableRelay(true);
-            return;
-          }
-          void start(nextJwt, nextAccountId);
-        });
-        unsubscribe = () => subscription.data.subscription.unsubscribe();
-        const { data } = await client.auth.getSession();
-        if (!lifecycleIsCurrent() || authGenerationRef.current !== initialAuthGeneration) {
-          return;
-        }
-        const jwt = data.session?.access_token;
-        const accountId = data.session?.user?.id ?? '';
-        if (jwt && accountId) await start(jwt, accountId);
-        else disableRelay(true);
-      } catch {
-        if (lifecycleIsCurrent()) setStatus('error');
-      }
-    })();
-
+    const subscriptionId = subscriptionIdRef.current!;
+    relaySubscriptions.set(subscriptionId, { enabled, scope });
+    scheduleRelayReconcile();
     return () => {
-      cancelled = true;
-      lifecycleGenerationRef.current += 1;
-      invalidateAuthWork();
-      unsubscribe?.();
-      resetBrowserChatBridgeClient();
+      relaySubscriptions.delete(subscriptionId);
+      scheduleRelayReconcile();
     };
   }, [enabled, scope?.accountId, scope?.projectId]);
 
-  return status;
+  const sharedStatus = useSyncExternalStore(
+    subscribeRelayStatus,
+    () => relayStatusSnapshot,
+    () => 'disabled',
+  );
+  return enabled ? sharedStatus : 'disabled';
 }
