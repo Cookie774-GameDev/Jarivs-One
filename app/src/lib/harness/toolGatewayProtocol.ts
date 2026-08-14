@@ -71,7 +71,28 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
 const SAFE_CORPUS_ID = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$/u;
 const CANONICAL_LOGICAL_POSITION = /^(?:0|[1-9][0-9]*)$/u;
 const MAX_LOGICAL_POSITION = 10_000_000_000_000_000n;
-const FORBIDDEN_KEY = /(?:authorization|cookie|credential|password|secret|token|api.?key)/i;
+const SECRET_KEY_FRAGMENTS = [
+  'secret',
+  'token',
+  'password',
+  'authorization',
+  'authentication',
+  'authheader',
+  'cookie',
+  'credential',
+  'apikey',
+  'api_key',
+  'api-key',
+  'api.key',
+] as const;
+const MAX_SEMANTIC_TOKEN_DECIMAL = '10000000000000000';
+const SEMANTIC_TOKEN_COUNT_KEYS = new Set(['contextTokens', 'estimatedTokens']);
+const SEMANTIC_TOKEN_DECIMAL_KEYS = new Set([
+  'totalTokens',
+  'indexedTokens',
+  'tokenStart',
+  'tokenEnd',
+]);
 const catalog = new Set<string>(TOOL_GATEWAY_CATALOG);
 
 function invalid(message: string): never {
@@ -171,6 +192,26 @@ function terminal(value: unknown): void {
   else stringField(value, 'terminal', 200, { id: true });
 }
 
+function safeSemanticTokenField(key: string, value: unknown): boolean {
+  if (SEMANTIC_TOKEN_COUNT_KEYS.has(key)) {
+    return Number.isSafeInteger(value) && (value as number) >= 0;
+  }
+  if (
+    !SEMANTIC_TOKEN_DECIMAL_KEYS.has(key) ||
+    typeof value !== 'string' ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(value) ||
+    value.length > MAX_SEMANTIC_TOKEN_DECIMAL.length
+  ) {
+    return false;
+  }
+  return value.length < MAX_SEMANTIC_TOKEN_DECIMAL.length || value <= MAX_SEMANTIC_TOKEN_DECIMAL;
+}
+
+function secretBearingJsonKey(key: string): boolean {
+  const normalized = key.toLocaleLowerCase('en-US');
+  return SECRET_KEY_FRAGMENTS.some((fragment) => normalized.includes(fragment));
+}
+
 function safeJson(value: unknown, depth = 0): boolean {
   if (depth > 8) return false;
   if (value === null || typeof value === 'boolean' || typeof value === 'string') return true;
@@ -184,8 +225,28 @@ function safeJson(value: unknown, depth = 0): boolean {
       key !== '__proto__' &&
       key !== 'prototype' &&
       key !== 'constructor' &&
-      !FORBIDDEN_KEY.test(key) &&
+      !secretBearingJsonKey(key) &&
       safeJson(item, depth + 1),
+  );
+}
+
+function safeResponseJson(value: unknown, depth = 0): boolean {
+  if (depth > 8) return false;
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) {
+    return value.length <= 100 && value.every((item) => safeResponseJson(item, depth + 1));
+  }
+  if (!plainObject(value) || Object.keys(value).length > 100) return false;
+  return Object.entries(value).every(
+    ([key, item]) =>
+      key.length <= 200 &&
+      key !== '__proto__' &&
+      key !== 'prototype' &&
+      key !== 'constructor' &&
+      (secretBearingJsonKey(key)
+        ? safeSemanticTokenField(key, item)
+        : safeResponseJson(item, depth + 1)),
   );
 }
 
@@ -522,7 +583,7 @@ export function boundToolGatewayResponse(response: ToolGatewayResponse): ToolGat
     !SAFE_ID.test(response.code) ||
     typeof response.message !== 'string' ||
     response.message.length > 4096 ||
-    (response.data !== undefined && !safeJson(response.data))
+    (response.data !== undefined && !safeResponseJson(response.data))
   ) {
     return fallbackResponse(response.requestId);
   }

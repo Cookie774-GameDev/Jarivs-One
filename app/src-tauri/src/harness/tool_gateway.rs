@@ -222,22 +222,52 @@ pub fn bounded_response_json(
             "The tool response did not match the gateway protocol.",
         ));
     }
+    fn safe_semantic_token_field(key: &str, value: &Value) -> bool {
+        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+        const MAX_SEMANTIC_TOKEN_DECIMAL: u64 = 10_000_000_000_000_000;
+        match key {
+            "contextTokens" | "estimatedTokens" => value
+                .as_u64()
+                .is_some_and(|count| count <= MAX_SAFE_INTEGER),
+            "totalTokens" | "indexedTokens" | "tokenStart" | "tokenEnd" => value
+                .as_str()
+                .filter(|decimal| {
+                    decimal.len() <= "10000000000000000".len()
+                        && (*decimal == "0"
+                            || (!decimal.starts_with('0')
+                                && decimal.bytes().all(|byte| byte.is_ascii_digit())))
+                })
+                .and_then(|decimal| decimal.parse::<u64>().ok())
+                .is_some_and(|decimal| decimal <= MAX_SEMANTIC_TOKEN_DECIMAL),
+            _ => false,
+        }
+    }
+
+    fn secret_bearing_json_key(key: &str) -> bool {
+        let normalized = key.to_ascii_lowercase();
+        [
+            "secret",
+            "token",
+            "password",
+            "authorization",
+            "authentication",
+            "authheader",
+            "cookie",
+            "credential",
+            "apikey",
+            "api_key",
+            "api-key",
+            "api.key",
+        ]
+        .iter()
+        .any(|fragment| normalized.contains(fragment))
+    }
+
     fn redact(value: &mut Value) {
         match value {
             Value::Object(object) => {
                 for (key, value) in object {
-                    let normalized = key.to_ascii_lowercase();
-                    if [
-                        "secret",
-                        "token",
-                        "password",
-                        "authorization",
-                        "apikey",
-                        "api_key",
-                    ]
-                    .iter()
-                    .any(|needle| normalized.contains(needle))
-                    {
+                    if !safe_semantic_token_field(key, value) && secret_bearing_json_key(key) {
                         *value = Value::String("[redacted]".into());
                     } else {
                         redact(value);
@@ -1888,5 +1918,111 @@ mod tests {
         assert_eq!(value["ok"], false);
         assert!(!value["message"].as_str().unwrap().contains("secret-token"));
         assert!(!value.to_string().contains("must-not-leak"));
+    }
+
+    #[test]
+    fn preserves_bounded_semantic_token_counts_and_ranges() {
+        let data = json!({
+            "contextTokens": 73,
+            "estimatedTokens": 71,
+            "totalTokens": "10000000000000000",
+            "indexedTokens": "10000000000000000",
+            "tokenStart": "9007199254740992",
+            "tokenEnd": "9007199254740993"
+        });
+        let encoded = bounded_response_json(ToolGatewayResponse {
+            request_id: "request-1".into(),
+            ok: true,
+            code: "ok".into(),
+            message: "Ready".into(),
+            data: Some(data.clone()),
+        })
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(value["data"], data);
+    }
+
+    #[test]
+    fn redacts_invalid_semantic_and_non_allowlisted_token_fields_recursively() {
+        for (key, unsafe_value) in [
+            ("contextTokens", json!(-1)),
+            ("estimatedTokens", json!(1.5)),
+            ("contextTokens", json!(9_007_199_254_740_992_u64)),
+            ("totalTokens", json!("01")),
+            ("indexedTokens", json!("1e9")),
+            ("tokenStart", json!("+1")),
+            ("tokenEnd", json!("\u{0000}1")),
+            ("totalTokens", json!("1".repeat(100))),
+            ("indexedTokens", json!("10000000000000001")),
+            ("tokenStart", json!("secret-token")),
+            ("accessToken", json!("never-return")),
+            ("refreshToken", json!("never-return")),
+            ("sessionToken", json!("never-return")),
+            ("subscriptionToken", json!("never-return")),
+            ("authToken", json!("never-return")),
+            ("authorization", json!("never-return")),
+            ("authentication", json!("never-return")),
+            ("authHeader", json!("never-return")),
+            ("apiKey", json!("never-return")),
+            ("api_key", json!("never-return")),
+            ("api-key", json!("never-return")),
+            ("api.key", json!("never-return")),
+            ("cookie", json!("never-return")),
+            ("credential", json!("never-return")),
+        ] {
+            let mut root = serde_json::Map::new();
+            root.insert(key.into(), unsafe_value.clone());
+            let mut nested = serde_json::Map::new();
+            nested.insert(key.into(), unsafe_value);
+            for (data, pointer) in [
+                (serde_json::Value::Object(root), format!("/data/{key}")),
+                (json!({ "nested": nested }), format!("/data/nested/{key}")),
+            ] {
+                let encoded = bounded_response_json(ToolGatewayResponse {
+                    request_id: "request-1".into(),
+                    ok: true,
+                    code: "ok".into(),
+                    message: "Ready".into(),
+                    data: Some(data),
+                })
+                .unwrap();
+                let value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+                assert_eq!(value.pointer(&pointer).unwrap(), "[redacted]", "{key}");
+            }
+        }
+    }
+
+    #[test]
+    fn does_not_overmatch_ordinary_author_or_authority_keys() {
+        for key in ["author", "authority"] {
+            let mut data = serde_json::Map::new();
+            data.insert(key.into(), json!("bounded-value"));
+            let encoded = bounded_response_json(ToolGatewayResponse {
+                request_id: "request-1".into(),
+                ok: true,
+                code: "ok".into(),
+                message: "Ready".into(),
+                data: Some(serde_json::Value::Object(data)),
+            })
+            .unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+            assert_eq!(value["data"][key], "bounded-value", "{key}");
+        }
+    }
+
+    #[test]
+    fn retains_the_encoded_response_size_cap_for_otherwise_safe_data() {
+        let encoded = bounded_response_json(ToolGatewayResponse {
+            request_id: "request-1".into(),
+            ok: true,
+            code: "ok".into(),
+            message: "Ready".into(),
+            data: Some(json!({ "body": "x".repeat(MAX_RESPONSE_BODY_BYTES) })),
+        })
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(value["ok"], false);
+        assert_eq!(value["code"], "response_too_large");
+        assert!(value.get("data").is_none());
     }
 }

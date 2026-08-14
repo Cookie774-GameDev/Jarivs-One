@@ -365,4 +365,172 @@ describe('tool gateway protocol', () => {
       message: 'The semantic tool result exceeded the safe size limit.',
     });
   });
+
+  it('preserves bounded semantic token counts and ranges in address results', () => {
+    const data = {
+      status: 'complete',
+      contextTokens: 73,
+      corpus: {
+        totalTokens: '10000000000000000',
+        indexedTokens: '10000000000000000',
+      },
+      evidence: [
+        {
+          estimatedTokens: 71,
+          exactExcerpt: 'x'.repeat(1_000),
+        },
+      ],
+      address: {
+        tokenStart: '9007199254740992',
+        tokenEnd: '9007199254740993',
+      },
+    };
+
+    expect(
+      boundToolGatewayResponse({
+        requestId: 'request-1',
+        ok: true,
+        code: 'ok',
+        message: 'done',
+        data,
+      }),
+    ).toEqual({
+      requestId: 'request-1',
+      ok: true,
+      code: 'ok',
+      message: 'done',
+      data,
+    });
+  });
+
+  it.each([
+    ['contextTokens', 0],
+    ['estimatedTokens', Number.MAX_SAFE_INTEGER],
+    ['totalTokens', '10000000000000000'],
+    ['indexedTokens', '0'],
+    ['tokenStart', '9007199254740992'],
+    ['tokenEnd', '9007199254740993'],
+  ])('keeps semantic response field %s unavailable to plugin request input', (key, value) => {
+    for (const input of [{ [key]: value }, { nested: { [key]: value } }]) {
+      expect(() =>
+        parseToolGatewayRequest(
+          request({
+            tool: 'plugins.run',
+            args: { pluginId: 'plugin-1', operation: 'inspect', input },
+          }),
+        ),
+      ).toThrow();
+    }
+  });
+
+  it.each([
+    'apiKey',
+    'api_key',
+    'api-key',
+    'api.key',
+    'authorization',
+    'authentication',
+    'authHeader',
+    'authToken',
+    'secret',
+    'token',
+    'password',
+    'cookie',
+    'credential',
+  ])('rejects secret-bearing key %s at request and response boundaries', (key) => {
+    for (const data of [{ [key]: 'never-return' }, { nested: { [key]: 'never-return' } }]) {
+      expect(() =>
+        parseToolGatewayRequest(
+          request({
+            tool: 'plugins.run',
+            args: { pluginId: 'plugin-1', operation: 'inspect', input: data },
+          }),
+        ),
+      ).toThrow();
+      expect(
+        boundToolGatewayResponse({
+          requestId: 'request-1',
+          ok: true,
+          code: 'ok',
+          message: 'done',
+          data,
+        }),
+      ).toMatchObject({
+        ok: false,
+        code: 'response_too_large',
+      });
+    }
+  });
+
+  it.each(['author', 'authority'])('does not overmatch ordinary key %s', (key) => {
+    const data = { [key]: 'bounded-value' };
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'plugins.run',
+          args: { pluginId: 'plugin-1', operation: 'inspect', input: data },
+        }),
+      ).args,
+    ).toMatchObject({ input: data });
+    expect(
+      boundToolGatewayResponse({
+        requestId: 'request-1',
+        ok: true,
+        code: 'ok',
+        message: 'done',
+        data,
+      }),
+    ).toMatchObject({ ok: true, data });
+  });
+
+  it.each([
+    ['negative count', { contextTokens: -1 }],
+    ['fractional count', { estimatedTokens: 1.5 }],
+    ['not-a-number count', { contextTokens: Number.NaN }],
+    ['infinite count', { estimatedTokens: Number.POSITIVE_INFINITY }],
+    ['unsafe count', { contextTokens: Number.MAX_SAFE_INTEGER + 1 }],
+    ['signed decimal', { tokenStart: '+1' }],
+    ['leading-zero decimal', { tokenEnd: '01' }],
+    ['exponent decimal', { totalTokens: '1e9' }],
+    ['control-bearing decimal', { tokenEnd: '\u00001' }],
+    ['oversized decimal', { totalTokens: '1'.repeat(100) }],
+    ['out-of-range decimal', { indexedTokens: '10000000000000001' }],
+    ['secret-shaped semantic value', { tokenStart: 'secret-token' }],
+    ['non-allowlisted token key', { accessToken: 'never-return' }],
+    ['nested non-allowlisted token key', { nested: { refreshToken: 'never-return' } }],
+    ['session token key', { sessionToken: 'never-return' }],
+    ['subscription token key', { subscriptionToken: 'never-return' }],
+    ['auth token key', { authToken: 'never-return' }],
+    ['API key', { apiKey: 'never-return' }],
+    ['cookie key', { cookie: 'never-return' }],
+    ['credential key', { credential: 'never-return' }],
+  ])('fails closed for unsafe renderer response data: %s', (_label, data) => {
+    expect(
+      boundToolGatewayResponse({
+        requestId: 'request-1',
+        ok: true,
+        code: 'ok',
+        message: 'done',
+        data,
+      }),
+    ).toMatchObject({
+      ok: false,
+      code: 'response_too_large',
+    });
+  });
+
+  it('retains the actual encoded response size cap for otherwise safe data', () => {
+    expect(
+      boundToolGatewayResponse({
+        requestId: 'request-1',
+        ok: true,
+        code: 'ok',
+        message: 'done',
+        data: { body: 'x'.repeat(140_000) },
+      }),
+    ).toMatchObject({
+      ok: false,
+      code: 'response_too_large',
+    });
+  });
 });
