@@ -220,7 +220,7 @@ pub async fn browser_chat_surface_hide_all(
             .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
         hide_other_providers(&app, None)?;
         state.visible_label = None;
-        Ok(())
+        Ok::<(), String>(())
     })
     .await
     .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
@@ -243,7 +243,7 @@ pub async fn browser_chat_surface_hide(
         if state.visible_label == Some(provider.label) {
             state.visible_label = None;
         }
-        Ok(())
+        Ok::<(), String>(())
     })
     .await
     .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
