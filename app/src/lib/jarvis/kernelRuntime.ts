@@ -1591,6 +1591,7 @@ export function createJarvisKernelRuntime(
   const loadCanonicalActionScope = async (
     suppliedParent: JarvisRun,
     suppliedAttempt?: Readonly<{ runId: string; requestId: string; attemptNumber: number }>,
+    responseBackedApprovalId?: string,
   ): Promise<CanonicalActionScope> => {
     const canonicalParent = await repositories.run.getById(
       suppliedParent.accountId,
@@ -1621,25 +1622,25 @@ export function createJarvisKernelRuntime(
     }
 
     if (canonicalParent.source === 'schedule') throw new Error('kernel_action_scope_mismatch');
-    const providerStarts = (
+    const runEvents = (
       await input.db.jarvis_events.where('run_id').equals(canonicalParent.id).toArray()
-    )
-      .map(fromJarvisEventRow)
-      .filter((event) => {
-        const source = event.producerSourceEvidence;
-        return (
-          event.type === 'model' &&
-          event.status === 'started' &&
-          source?.producerKind === 'provider' &&
-          source.phase === 'start' &&
-          source.state === 'started' &&
-          source.accountId === canonicalParent.accountId &&
-          source.runId === canonicalParent.id
-        );
-      });
+    ).map(fromJarvisEventRow);
+    const providerStarts = runEvents.filter((event) => {
+      const source = event.producerSourceEvidence;
+      return (
+        event.type === 'model' &&
+        event.status === 'started' &&
+        source?.producerKind === 'provider' &&
+        source.phase === 'start' &&
+        source.state === 'started' &&
+        source.accountId === canonicalParent.accountId &&
+        source.runId === canonicalParent.id
+      );
+    });
     if (providerStarts.length !== 1) throw new Error('kernel_action_scope_mismatch');
     const providerScope = providerStarts[0]!.producerSourceEvidence!;
     if (
+      providerScope.producerKind !== 'provider' ||
       !providerScope.requestId ||
       !Number.isSafeInteger(providerScope.attemptNumber) ||
       providerScope.attemptNumber < 1 ||
@@ -1649,6 +1650,56 @@ export function createJarvisKernelRuntime(
           suppliedAttempt.attemptNumber !== providerScope.attemptNumber))
     ) {
       throw new Error('kernel_action_scope_mismatch');
+    }
+    if (responseBackedApprovalId) {
+      if (canonicalParent.status !== 'awaiting_approval') {
+        throw new Error('kernel_action_scope_mismatch');
+      }
+      const approval = await repositories.approval.getById(
+        canonicalParent.accountId,
+        responseBackedApprovalId,
+      );
+      if (
+        !approval ||
+        !['pending', 'approved'].includes(approval.status) ||
+        approval.runId !== canonicalParent.id ||
+        approval.requestId !== providerScope.requestId ||
+        approval.attemptNumber !== providerScope.attemptNumber ||
+        approval.expiresAt <= input.now()
+      ) {
+        throw new Error('kernel_action_scope_mismatch');
+      }
+      const providerResultEvents = runEvents.filter(
+        (event) =>
+          event.runId === canonicalParent.id &&
+          event.producerSourceEvidence?.producerKind === 'provider' &&
+          event.producerSourceEvidence.phase === 'result',
+      );
+      const providerResult = providerResultEvents[0]?.producerSourceEvidence;
+      const responseCheckpoints = runEvents.filter(
+        (event) =>
+          event.idempotencyKey === `action-response-ready:${responseBackedApprovalId}` &&
+          event.type === 'message' &&
+          event.status === 'approval_required' &&
+          event.producerSourceEvidence?.producerKind === 'provider' &&
+          event.producerSourceEvidence.phase === 'result' &&
+          event.producerSourceEvidence.state === 'completed',
+      );
+      if (
+        providerResultEvents.length !== 1 ||
+        providerResult?.producerKind !== 'provider' ||
+        providerResult.state !== 'completed' ||
+        providerResult.accountId !== canonicalParent.accountId ||
+        providerResult.runId !== canonicalParent.id ||
+        providerResult.requestId !== providerScope.requestId ||
+        providerResult.attemptNumber !== providerScope.attemptNumber ||
+        providerResult.producerIdentity.providerId !== providerScope.producerIdentity.providerId ||
+        providerResult.producerIdentity.modelId !== providerScope.producerIdentity.modelId ||
+        responseCheckpoints.length !== 1 ||
+        responseCheckpoints[0]!.seq !== providerResultEvents[0]!.seq
+      ) {
+        throw new Error('kernel_action_scope_mismatch');
+      }
     }
     return Object.freeze({
       parentRun: canonicalParent,
@@ -2029,6 +2080,7 @@ export function createJarvisKernelRuntime(
             accountBinding: binding,
             outcome: result.state,
             resultRef: result.resultRef,
+            ...(result.responseResult === undefined ? {} : { result: result.responseResult }),
             completedAt: result.completedAt,
           });
           if (!finalized.committed) {
@@ -3546,7 +3598,11 @@ export function createJarvisKernelRuntime(
       );
     },
     async decide(actionInput: Parameters<JarvisKernelActionPort['decide']>[0]) {
-      const scope = await loadCanonicalActionScope(actionInput.parentRun);
+      const scope = await loadCanonicalActionScope(
+        actionInput.parentRun,
+        undefined,
+        actionInput.approvalId,
+      );
       return invokeActionCapability(scope, async (capability, parentRun, binding) => {
         const responseBacked = await hasActionResponseCheckpoint(scope, actionInput.approvalId);
         const value = await capability.decide({ ...actionInput, parentRun });
@@ -3576,7 +3632,11 @@ export function createJarvisKernelRuntime(
       });
     },
     async execute(actionInput: Parameters<JarvisKernelActionPort['execute']>[0]) {
-      const scope = await loadCanonicalActionScope(actionInput.parentRun);
+      const scope = await loadCanonicalActionScope(
+        actionInput.parentRun,
+        undefined,
+        actionInput.approvalId,
+      );
       return invokeActionCapability(scope, async (capability, parentRun, binding) => {
         const responseBacked = await hasActionResponseCheckpoint(scope, actionInput.approvalId);
         const value = await capability.execute({ ...actionInput, parentRun });
