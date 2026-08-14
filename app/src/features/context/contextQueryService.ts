@@ -98,6 +98,8 @@ export interface ContextOpenResult {
   text: string;
   byteStart: number;
   byteEnd: number;
+  lineStart: number;
+  lineEnd: number;
   truncated: boolean;
   continuation?: string;
 }
@@ -148,6 +150,29 @@ function byteRangeForPointer(
   const start = newlineOffsets[bounds.start - 1] ?? bytes.length;
   const end = newlineOffsets[bounds.end - 1] ?? bytes.length;
   return { start, end: Math.max(start, end) };
+}
+
+function lineRangeForBytes(
+  bytes: Uint8Array,
+  byteStart: number,
+  byteEnd: number,
+): {
+  start: number;
+  end: number;
+} {
+  const start = Math.min(Math.max(0, byteStart), bytes.length);
+  const end = Math.min(Math.max(start, byteEnd), bytes.length);
+  let currentLine = 1;
+  for (let index = 0; index < start; index += 1) {
+    if (bytes[index] === 10) currentLine += 1;
+  }
+  const lineStart = currentLine;
+  let lineEnd = currentLine;
+  for (let index = start; index < end; index += 1) {
+    lineEnd = currentLine;
+    if (bytes[index] === 10) currentLine += 1;
+  }
+  return { start: lineStart, end: lineEnd };
 }
 
 function boundedInteger(value: number | undefined, fallback: number, maximum: number): number {
@@ -343,6 +368,7 @@ export function createContextQueryService(dependencies: {
     const byteBudget = boundedInteger(input.maxBytes, limits.maxOpenBytes, limits.maxOpenBytes);
     const end = Math.min(requestedEnd, start + byteBudget);
     const truncated = end < requestedEnd;
+    const lines = lineRangeForBytes(source.bytes, start, end);
     const exactPointer = createContextPointer({
       ...pointer,
       byteStart: start,
@@ -357,6 +383,8 @@ export function createContextQueryService(dependencies: {
       text: new TextDecoder().decode(source.bytes.slice(start, end)),
       byteStart: start,
       byteEnd: end,
+      lineStart: lines.start,
+      lineEnd: lines.end,
       truncated,
       ...(truncated
         ? {

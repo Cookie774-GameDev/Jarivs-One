@@ -145,6 +145,76 @@ describe('context query service', () => {
     expect(repo.canOpen).toHaveBeenCalledTimes(2);
   });
 
+  it('derives exact one-based line provenance from LF, CRLF, and multibyte source bytes', async () => {
+    const content = 'α\r\nβ\n終';
+    const repo = repository([record('one')], content);
+    const service = createContextQueryService({ repository: repo });
+
+    const result = await service.open({
+      scope,
+      pointer: pointer('one', encoder.encode('α\r\n').length, encoder.encode(content).length),
+    });
+
+    expect(result).toMatchObject({
+      text: 'β\n終',
+      byteStart: 4,
+      byteEnd: 10,
+      lineStart: 2,
+      lineEnd: 3,
+    });
+  });
+
+  it('reports the exact line range for each bounded open continuation', async () => {
+    const content = 'aa\nbb\ncc';
+    const service = createContextQueryService({
+      repository: repository([record('one')], content),
+      limits: { maxOpenBytes: 4 },
+    });
+    const exact = pointer('one', 0, encoder.encode(content).length);
+
+    const first = await service.open({ scope, pointer: exact });
+    const second = await service.open({
+      scope,
+      pointer: exact,
+      continuation: first.continuation,
+    });
+
+    expect(first).toMatchObject({
+      text: 'aa\nb',
+      byteStart: 0,
+      byteEnd: 4,
+      lineStart: 1,
+      lineEnd: 2,
+    });
+    expect(second).toMatchObject({
+      text: 'b\ncc',
+      byteStart: 4,
+      byteEnd: 8,
+      lineStart: 2,
+      lineEnd: 3,
+    });
+  });
+
+  it('keeps newline and empty end-of-source line provenance deterministic', async () => {
+    const content = 'a\n';
+    const service = createContextQueryService({
+      repository: repository([record('one')], content),
+    });
+
+    await expect(service.open({ scope, pointer: pointer('one', 0, 2) })).resolves.toMatchObject({
+      text: 'a\n',
+      lineStart: 1,
+      lineEnd: 1,
+    });
+    await expect(service.open({ scope, pointer: pointer('one', 2, 3) })).resolves.toMatchObject({
+      text: '',
+      byteStart: 2,
+      byteEnd: 2,
+      lineStart: 2,
+      lineEnd: 2,
+    });
+  });
+
   it('rehydrates persisted record authority before opening a pointer after restart', async () => {
     const persisted = record('one');
     let hydrated = false;
@@ -235,7 +305,31 @@ describe('context query service', () => {
     expect(result.text).toBe('6789abcdef');
     expect(result.byteStart).toBe(6);
     expect(result.byteEnd).toBe(16);
+    expect(result.lineStart).toBe(1);
+    expect(result.lineEnd).toBe(1);
     expect(result.truncated).toBe(true);
+  });
+
+  it('derives expanded line provenance from the exact bounded expanded byte range', async () => {
+    const content = 'zero\none\ntwo\n';
+    const service = createContextQueryService({
+      repository: repository([record('one')], content),
+      limits: { maxOpenBytes: 13 },
+    });
+    const result = await service.expand({
+      scope,
+      pointer: pointer('one', 5, 8),
+      beforeBytes: 5,
+      afterBytes: 4,
+    });
+
+    expect(result).toMatchObject({
+      text: 'zero\none\ntwo',
+      byteStart: 0,
+      byteEnd: 12,
+      lineStart: 1,
+      lineEnd: 3,
+    });
   });
 
   it('propagates cancellation before repository work starts', async () => {
@@ -248,6 +342,24 @@ describe('context query service', () => {
       service.search({ scope, query: 'alpha', signal: controller.signal }),
     ).rejects.toBeInstanceOf(ContextQueryError);
     expect(repo.search).not.toHaveBeenCalled();
+  });
+
+  it('returns no open provenance when cancellation arrives during the physical source read', async () => {
+    const repo = repository([record('one')]);
+    const controller = new AbortController();
+    vi.mocked(repo.readSource).mockImplementation(async () => {
+      controller.abort('owner_cancelled');
+      return {
+        bytes: encoder.encode('alpha\nbeta'),
+        contentHash: HASH_A,
+        sourceVersion: 'sha256:aaaaaaaa',
+      };
+    });
+    const service = createContextQueryService({ repository: repo });
+
+    await expect(
+      service.open({ scope, pointer: pointer('one'), signal: controller.signal }),
+    ).rejects.toMatchObject({ code: 'cancelled' });
   });
 
   it('returns scoped sources, timeline, related pointers, checkpoints, and investigation packs', async () => {

@@ -50,6 +50,8 @@ function openResult(
     text,
     byteStart: 0,
     byteEnd: new TextEncoder().encode(text).length,
+    lineStart: 1,
+    lineEnd: 1,
     truncated: false,
   };
 }
