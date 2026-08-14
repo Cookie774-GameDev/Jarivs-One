@@ -62,6 +62,16 @@ function safeHttpsUrl(value: string | undefined): string | undefined {
 
 const noop = () => undefined;
 
+async function openAuthorizedExternalUrl(
+  signal: AbortSignal,
+  createUrl: () => Promise<string>,
+  openUrl: (url: string) => Promise<void>,
+) {
+  const url = await createUrl();
+  if (signal.aborted) return;
+  await openUrl(url);
+}
+
 export function AccessAppHost({
   children,
   enabled,
@@ -180,10 +190,12 @@ export function AccessAppHost({
         onManageBilling={() => {
           void runAction(
             'manage-billing',
-            async (signal) => {
-              const url = await runtime.createPortalUrl(signal);
-              await runtime.openExternalUrl(url);
-            },
+            (signal) =>
+              openAuthorizedExternalUrl(
+                signal,
+                () => runtime.createPortalUrl(signal),
+                (url) => runtime.openExternalUrl(url),
+              ),
             'Billing could not be opened. Please try again.',
           );
         }}
@@ -225,10 +237,12 @@ export function AccessAppHost({
         const checkout = () =>
           runAction(
             'subscribe',
-            async (signal) => {
-              const url = await runtime.createCheckoutUrl(signal);
-              await runtime.openExternalUrl(url);
-            },
+            (signal) =>
+              openAuthorizedExternalUrl(
+                signal,
+                () => runtime.createCheckoutUrl(signal),
+                (url) => runtime.openExternalUrl(url),
+              ),
             'Checkout could not be opened. Please try again.',
           );
         const paywall = (
@@ -247,10 +261,12 @@ export function AccessAppHost({
             onManageBilling={() => {
               void runAction(
                 'manage-billing',
-                async (signal) => {
-                  const url = await runtime.createPortalUrl(signal);
-                  await runtime.openExternalUrl(url);
-                },
+                (signal) =>
+                  openAuthorizedExternalUrl(
+                    signal,
+                    () => runtime.createPortalUrl(signal),
+                    (url) => runtime.openExternalUrl(url),
+                  ),
                 'Billing could not be opened. Please try again.',
               );
             }}
@@ -524,11 +540,7 @@ function InstalledCloudAuthentication({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-copper">
           VibeSpace Access
         </p>
-        <h1
-          ref={headingRef}
-          tabIndex={-1}
-          className="mt-3 text-2xl font-semibold text-foreground"
-        >
+        <h1 ref={headingRef} tabIndex={-1} className="mt-3 text-2xl font-semibold text-foreground">
           Sign in to VibeSpace
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
