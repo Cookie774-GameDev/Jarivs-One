@@ -58,7 +58,17 @@ export interface OpenCodeRunAgentInput {
     sessionId: string;
     parentSessionId?: string;
   }) => void | Promise<void>;
+  onCompletionEvidence?: (evidence: OpenCodeCompletionEvidence) => void;
   tools?: Readonly<Record<string, boolean>>;
+}
+
+export interface OpenCodeCompletionEvidence {
+  readonly observedAt: number;
+  readonly usageEventObserved: true;
+  readonly sessionId: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly usage: Readonly<NormalizedUsage>;
 }
 
 export interface OpenCodeRunAgentAdapter {
@@ -188,6 +198,25 @@ function usageValue(value: number | undefined): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+function observedUsage(usage: NormalizedUsage): Readonly<NormalizedUsage> {
+  const normalized: NormalizedUsage = {};
+  for (const key of [
+    'inputTokens',
+    'outputTokens',
+    'cachedTokens',
+    'reasoningTokens',
+    'costUsd',
+  ] as const) {
+    const value = usage[key];
+    if (value === undefined) continue;
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error('OpenCode reported invalid usage telemetry.');
+    }
+    normalized[key] = value;
+  }
+  return Object.freeze(normalized);
+}
+
 export function createOpenCodeRunAgentAdapter(
   harness: VibeSpaceHarness = openCodeHarness,
   authority: OpenCodeSessionAuthorityPort = productionSessionAuthority,
@@ -247,6 +276,14 @@ export function createOpenCodeRunAgentAdapter(
   return {
     async run(input) {
       if (input.signal?.aborted) throw abortError();
+      const selection: HarnessModelSelection = Object.freeze({
+        providerId: input.selection.providerId,
+        modelId: input.selection.modelId,
+        ...(input.selection.connectionId ? { connectionId: input.selection.connectionId } : {}),
+        ...(input.selection.runtimeProviderId
+          ? { runtimeProviderId: input.selection.runtimeProviderId }
+          : {}),
+      });
       const authorityClaim = authority.capture();
       if (!authorityClaim) throw new Error('OpenCode session authority is unavailable.');
       const scopeId = normalizeScopeId(input.scopeId);
@@ -357,14 +394,15 @@ export function createOpenCodeRunAgentAdapter(
       let text = '';
       let first = true;
       let usage: NormalizedUsage = {};
+      let usageEventObserved = false;
       let finishReason: string | undefined;
       let done = false;
       const expectedProvider =
-        input.selection.runtimeProviderId ?? runtimeProviderId(input.selection.providerId);
+        selection.runtimeProviderId ?? runtimeProviderId(selection.providerId);
 
       for await (const event of harness.send({
         sessionId: record.session.id,
-        selection: input.selection,
+        selection,
         ...(input.compiledPrompt ? { agent: 'vibespace' } : {}),
         ...(input.variant ? { variant: input.variant } : {}),
         system: input.compiledPrompt?.systemText ?? input.agent.system_prompt,
@@ -377,7 +415,9 @@ export function createOpenCodeRunAgentAdapter(
         if (eventDispatchesAction(event)) {
           input.onActionDispatch?.({ observedAt: Date.now() });
         }
-        if (event.type === 'assistant.delta') {
+        if (event.type === 'session.updated' && event.sessionId !== record.session.id) {
+          throw new Error('OpenCode reported a different session identity.');
+        } else if (event.type === 'assistant.delta') {
           input.onResponseObservation?.({ kind: 'sdk_chunk', observedAt: Date.now() });
           text += event.text;
           input.onChunk?.({ delta: event.text, ...(first ? { first: true } : {}) });
@@ -385,9 +425,10 @@ export function createOpenCodeRunAgentAdapter(
         } else if (event.type === 'approval.requested') {
           await input.onApprovalRequested?.(event.approval);
         } else if (event.type === 'usage.updated') {
+          usageEventObserved = true;
           if (
             (event.usage.providerId && event.usage.providerId !== expectedProvider) ||
-            (event.usage.modelId && event.usage.modelId !== input.selection.modelId)
+            (event.usage.modelId && event.usage.modelId !== selection.modelId)
           ) {
             throw new Error(
               'OpenCode reported a model identity different from the exact selection.',
@@ -405,6 +446,22 @@ export function createOpenCodeRunAgentAdapter(
 
       if (input.signal?.aborted) throw abortError();
       if (!done) throw new Error('OpenCode ended without a terminal completion event.');
+      if (!usageEventObserved) {
+        throw new Error('OpenCode completed without an observed usage event.');
+      }
+      if (usage.providerId !== expectedProvider || usage.modelId !== selection.modelId) {
+        throw new Error('OpenCode completed without exact model identity evidence.');
+      }
+      const completionUsage = observedUsage(usage);
+      const completionEvidence: OpenCodeCompletionEvidence = Object.freeze({
+        observedAt: Date.now(),
+        usageEventObserved: true,
+        sessionId: record.session.id,
+        providerId: expectedProvider,
+        modelId: selection.modelId,
+        usage: completionUsage,
+      });
+      input.onCompletionEvidence?.(completionEvidence);
       record.messageCount = input.messages.length;
       record.messageFingerprints = messageFingerprints;
       record.touchedAt = Date.now();
@@ -418,7 +475,7 @@ export function createOpenCodeRunAgentAdapter(
           cost_usd: usageValue(usage.costUsd),
         },
         provider: expectedProvider as ProviderId,
-        model: input.selection.modelId,
+        model: selection.modelId,
         ...(finishReason ? { finish_reason: finishReason } : {}),
       };
     },

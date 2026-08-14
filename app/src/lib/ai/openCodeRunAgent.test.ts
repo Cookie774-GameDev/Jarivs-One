@@ -26,6 +26,17 @@ const agent: Agent = {
   updated_at: 1,
 };
 
+const exactUsageEvent: HarnessEvent = {
+  type: 'usage.updated',
+  usage: {
+    inputTokens: 0,
+    outputTokens: 0,
+    costUsd: 0,
+    providerId: 'openai',
+    modelId: 'gpt-exact',
+  },
+};
+
 function authorityClaim(generation: number): ToolGatewayAuthorityClaim {
   return {
     scope: {
@@ -67,7 +78,7 @@ function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
 
 describe('runAgent OpenCode adapter', () => {
   it('binds a newly created OpenCode session before it can send tools', async () => {
-    const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    const fake = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
     const claim = authorityClaim(1);
     const authority = {
       capture: vi.fn(() => claim),
@@ -90,7 +101,7 @@ describe('runAgent OpenCode adapter', () => {
   });
 
   it('deletes a session and never sends when authority changes during creation', async () => {
-    const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    const fake = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
     let resolveCreation: ((session: { id: string; chatId: string }) => void) | undefined;
     fake.createSession.mockImplementationOnce(
       (input) =>
@@ -125,8 +136,8 @@ describe('runAgent OpenCode adapter', () => {
 
   it('retires a stale cached parent tree before creating a child in a new authority', async () => {
     const fake = fakeHarness([
-      [{ type: 'done', finishReason: 'stop' }],
-      [{ type: 'done', finishReason: 'stop' }],
+      [exactUsageEvent, { type: 'done', finishReason: 'stop' }],
+      [exactUsageEvent, { type: 'done', finishReason: 'stop' }],
     ]);
     let currentAuthority = authorityClaim(1);
     const bindings = new Map<string, ToolGatewayAuthorityClaim>();
@@ -174,7 +185,7 @@ describe('runAgent OpenCode adapter', () => {
   });
 
   it('retires the session and never sends when authority changes in onSessionBound', async () => {
-    const fake = fakeHarness([[{ type: 'done', finishReason: 'stop' }]]);
+    const fake = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
     let currentAuthority = authorityClaim(1);
     const bindings = new Map<string, ToolGatewayAuthorityClaim>();
     const authority = {
@@ -300,8 +311,8 @@ describe('runAgent OpenCode adapter', () => {
 
   it('reuses a scoped session and sends only newly appended conversation messages', async () => {
     const fake = fakeHarness([
-      [{ type: 'assistant.delta', text: 'one' }, { type: 'done' }],
-      [{ type: 'assistant.delta', text: 'two' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'one' }, exactUsageEvent, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'two' }, exactUsageEvent, { type: 'done' }],
     ]);
     const adapter = createOpenCodeRunAgentAdapter(fake.harness);
     const base = {
@@ -328,8 +339,8 @@ describe('runAgent OpenCode adapter', () => {
 
   it('binds a child scope to its existing OpenCode parent session', async () => {
     const fake = fakeHarness([
-      [{ type: 'assistant.delta', text: 'parent' }, { type: 'done' }],
-      [{ type: 'assistant.delta', text: 'child' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'parent' }, exactUsageEvent, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'child' }, exactUsageEvent, { type: 'done' }],
     ]);
     const adapter = createOpenCodeRunAgentAdapter(fake.harness);
     const onSessionBound = vi.fn();
@@ -362,8 +373,8 @@ describe('runAgent OpenCode adapter', () => {
 
   it('creates a dormant OpenCode parent before a child and reuses it for a later parent turn', async () => {
     const fake = fakeHarness([
-      [{ type: 'assistant.delta', text: 'child' }, { type: 'done' }],
-      [{ type: 'assistant.delta', text: 'parent' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'child' }, exactUsageEvent, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'parent' }, exactUsageEvent, { type: 'done' }],
     ]);
     const adapter = createOpenCodeRunAgentAdapter(fake.harness);
 
@@ -413,7 +424,9 @@ describe('runAgent OpenCode adapter', () => {
   });
 
   it('rejects a child working directory that differs from its mapped parent', async () => {
-    const fake = fakeHarness([[{ type: 'assistant.delta', text: 'parent' }, { type: 'done' }]]);
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'parent' }, exactUsageEvent, { type: 'done' }],
+    ]);
     const adapter = createOpenCodeRunAgentAdapter(fake.harness);
 
     await adapter.run({
@@ -438,7 +451,9 @@ describe('runAgent OpenCode adapter', () => {
   });
 
   it('rejects silently reparenting an established child scope', async () => {
-    const fake = fakeHarness([[{ type: 'assistant.delta', text: 'child' }, { type: 'done' }]]);
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'child' }, exactUsageEvent, { type: 'done' }],
+    ]);
     const adapter = createOpenCodeRunAgentAdapter(fake.harness);
 
     await adapter.run({
@@ -463,8 +478,8 @@ describe('runAgent OpenCode adapter', () => {
 
   it('replaces a scoped session when earlier conversation history changes', async () => {
     const fake = fakeHarness([
-      [{ type: 'assistant.delta', text: 'one' }, { type: 'done' }],
-      [{ type: 'assistant.delta', text: 'two' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'one' }, exactUsageEvent, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'two' }, exactUsageEvent, { type: 'done' }],
     ]);
     const adapter = createOpenCodeRunAgentAdapter(fake.harness);
     const base = {
@@ -505,6 +520,209 @@ describe('runAgent OpenCode adapter', () => {
     ).rejects.toThrow(/model identity/i);
   });
 
+  it('rejects terminal completion without an observed usage event or exact usage identity', async () => {
+    const missingUsage = fakeHarness([
+      [{ type: 'assistant.delta', text: 'unsupported success' }, { type: 'done' }],
+    ]);
+    const missingIdentity = fakeHarness([
+      [
+        {
+          type: 'usage.updated',
+          usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        },
+        { type: 'done' },
+      ],
+    ]);
+    const input = {
+      agent,
+      scopeId: 'chat-telemetry',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user' as const, content: 'hello' }],
+    };
+
+    await expect(createOpenCodeRunAgentAdapter(missingUsage.harness).run(input)).rejects.toThrow(
+      /usage event/i,
+    );
+    await expect(createOpenCodeRunAgentAdapter(missingIdentity.harness).run(input)).rejects.toThrow(
+      /model identity/i,
+    );
+  });
+
+  it('rejects a harness event attributed to a different OpenCode session', async () => {
+    const fake = fakeHarness([
+      [{ type: 'session.updated', sessionId: 'session-other' }, exactUsageEvent, { type: 'done' }],
+    ]);
+
+    await expect(
+      createOpenCodeRunAgentAdapter(fake.harness).run({
+        agent,
+        scopeId: 'chat-session-mismatch',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    ).rejects.toThrow(/session identity/i);
+  });
+
+  it('reports exact observed zero usage as immutable completion evidence', async () => {
+    const fake = fakeHarness([
+      [
+        { type: 'assistant.delta', text: 'zero is observed' },
+        {
+          type: 'usage.updated',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedTokens: 0,
+            reasoningTokens: 0,
+            costUsd: 0,
+            providerId: 'openai',
+            modelId: 'gpt-exact',
+            authorization: 'Bearer never-expose',
+          } as never,
+        },
+        { type: 'done', finishReason: 'stop' },
+      ],
+    ]);
+    const onCompletionEvidence = vi.fn();
+
+    await expect(
+      createOpenCodeRunAgentAdapter(fake.harness).run({
+        agent,
+        scopeId: 'chat-observed-zero',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+        onCompletionEvidence,
+      }),
+    ).resolves.toMatchObject({
+      text: 'zero is observed',
+      usage: { input_tokens: 0, output_tokens: 0, cost_usd: 0 },
+    });
+
+    expect(onCompletionEvidence).toHaveBeenCalledOnce();
+    const evidence = onCompletionEvidence.mock.calls[0]?.[0];
+    expect(evidence).toEqual({
+      observedAt: expect.any(Number),
+      usageEventObserved: true,
+      sessionId: 'session-1',
+      providerId: 'openai',
+      modelId: 'gpt-exact',
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedTokens: 0,
+        reasoningTokens: 0,
+        costUsd: 0,
+      },
+    });
+    expect(Object.isFrozen(evidence)).toBe(true);
+    expect(Object.isFrozen(evidence.usage)).toBe(true);
+    expect(JSON.stringify(evidence)).not.toContain('never-expose');
+  });
+
+  it('snapshots the exact selection identity before streaming can mutate caller state', async () => {
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'stable' }, exactUsageEvent, { type: 'done' }],
+    ]);
+    const selection = { providerId: 'openai', modelId: 'gpt-exact' };
+    const onCompletionEvidence = vi.fn();
+
+    await createOpenCodeRunAgentAdapter(fake.harness).run({
+      agent,
+      scopeId: 'chat-selection-snapshot',
+      selection,
+      messages: [{ role: 'user', content: 'hello' }],
+      onChunk: () => {
+        selection.modelId = 'gpt-mutated';
+      },
+      onCompletionEvidence,
+    });
+
+    expect(fake.send.mock.calls[0]?.[0].selection).toEqual({
+      providerId: 'openai',
+      modelId: 'gpt-exact',
+    });
+    expect(onCompletionEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: 'openai', modelId: 'gpt-exact' }),
+    );
+  });
+
+  it('rejects nonfinite or negative observed usage instead of reporting default zero', async () => {
+    const fake = fakeHarness([
+      [
+        {
+          type: 'usage.updated',
+          usage: {
+            inputTokens: -1,
+            outputTokens: Number.NaN,
+            costUsd: 0,
+            providerId: 'openai',
+            modelId: 'gpt-exact',
+          },
+        },
+        { type: 'done' },
+      ],
+    ]);
+
+    await expect(
+      createOpenCodeRunAgentAdapter(fake.harness).run({
+        agent,
+        scopeId: 'chat-invalid-usage',
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    ).rejects.toThrow(/invalid usage telemetry/i);
+  });
+
+  it('reports the same exact OpenCode session for a successful follow-up turn', async () => {
+    const observedUsage: HarnessEvent = {
+      type: 'usage.updated',
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        costUsd: 0,
+        providerId: 'openai',
+        modelId: 'gpt-exact',
+      },
+    };
+    const fake = fakeHarness([
+      [{ type: 'assistant.delta', text: 'one' }, observedUsage, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'two' }, observedUsage, { type: 'done' }],
+    ]);
+    const evidence: unknown[] = [];
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    const base = {
+      agent,
+      scopeId: 'chat-follow-up-evidence',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      onCompletionEvidence: (value: unknown) => evidence.push(value),
+    } as const;
+
+    await adapter.run({ ...base, messages: [{ role: 'user', content: 'first' }] });
+    await adapter.run({
+      ...base,
+      messages: [
+        { role: 'user', content: 'first' },
+        { role: 'assistant', content: 'one' },
+        { role: 'user', content: 'second' },
+      ],
+    });
+
+    expect(fake.createSession).toHaveBeenCalledTimes(1);
+    expect(evidence).toHaveLength(2);
+    expect(evidence).toEqual([
+      expect.objectContaining({
+        sessionId: 'session-1',
+        providerId: 'openai',
+        modelId: 'gpt-exact',
+      }),
+      expect.objectContaining({
+        sessionId: 'session-1',
+        providerId: 'openai',
+        modelId: 'gpt-exact',
+      }),
+    ]);
+  });
+
   it('honors cancellation before and during streaming', async () => {
     const before = new AbortController();
     before.abort();
@@ -523,7 +741,7 @@ describe('runAgent OpenCode adapter', () => {
 
     const during = new AbortController();
     const streaming = fakeHarness([
-      [{ type: 'assistant.delta', text: 'partial' }, { type: 'done' }],
+      [{ type: 'assistant.delta', text: 'partial' }, exactUsageEvent, { type: 'done' }],
     ]);
     await expect(
       createOpenCodeRunAgentAdapter(streaming.harness).run({
@@ -577,6 +795,7 @@ describe('runAgent OpenCode adapter', () => {
       [
         { type: 'approval.requested', approval },
         { type: 'assistant.delta', text: 'continued' },
+        exactUsageEvent,
         { type: 'done' },
       ],
     ]);
@@ -597,7 +816,7 @@ describe('runAgent OpenCode adapter', () => {
   });
 
   it('forwards the exact caller tool policy without adding a fallback', async () => {
-    const fake = fakeHarness([[{ type: 'done' }]]);
+    const fake = fakeHarness([[exactUsageEvent, { type: 'done' }]]);
     const tools = {
       'terminal.list': true,
       'terminal.write': false,
@@ -616,7 +835,7 @@ describe('runAgent OpenCode adapter', () => {
   });
 
   it('uses the minimal VibeSpace OpenCode agent for protected prompts', async () => {
-    const fake = fakeHarness([[{ type: 'done' }]]);
+    const fake = fakeHarness([[exactUsageEvent, { type: 'done' }]]);
 
     await createOpenCodeRunAgentAdapter(fake.harness).run({
       agent,
