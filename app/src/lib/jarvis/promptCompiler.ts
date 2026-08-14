@@ -375,15 +375,35 @@ function renderCapabilities(
     risk: schema.risk,
     approval: schema.approval,
   });
-  const actionSchemaLines = envelope.outputContract.allowActionBlocks
+  const actionBlocksEnabled =
+    envelope.interactionMode === 'agent' && envelope.outputContract.allowActionBlocks;
+  const actionExampleSchema =
+    actionSchemas.find((schema) => schema.id === 'files.create') ?? actionSchemas[0];
+  const actionExample =
+    actionExampleSchema === undefined
+      ? undefined
+      : JSON.stringify({
+          id: actionExampleSchema.id,
+          params: Object.fromEntries(
+            (actionExampleSchema.inputSchema.required ?? []).map((key) => [key, '<value>']),
+          ),
+          rationale: '<one-sentence reason>',
+        });
+  const actionSchemaLines = actionBlocksEnabled
     ? actionSchemas.length === 0
       ? ['Model-visible action schemas:', '- none supplied']
       : [
           'Model-visible action schemas:',
-          'Schema presence describes proposal syntax only. Capability state, entitlement, approval, and verified executor results remain authoritative.',
+          'These schemas describe VibeSpace textual approval proposals, not native provider tools. Native provider tools being unavailable does not make these textual proposals unavailable.',
+          'Emit one proposal as an exact fenced `action` JSON block using this shape:',
+          '```action',
+          actionExample!,
+          '```',
+          'Obey each schema approval field. For `approval="always"`, the user must approve before execution. Never claim completion before a verified executor result.',
+          'Capability state, entitlement, approval, and verified executor results remain authoritative.',
           ...actionSchemas.map((schema) => `- ${canonicalJson(promptActionSchema(schema))}`),
         ]
-    : ['Model-visible action schemas: disabled by output contract.'];
+    : ['Model-visible action schemas: disabled by interaction mode or output contract.'];
   return [
     'Use only capabilities represented by this verified snapshot. Never infer completion from availability.',
     `Selected provider: ${inlineText(envelope.model.providerId)}`,

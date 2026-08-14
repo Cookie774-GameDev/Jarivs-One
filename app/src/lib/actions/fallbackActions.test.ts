@@ -505,6 +505,54 @@ describe('inferFallbackActionProposals', () => {
     expect(proposals.some(({ action_id }) => action_id === 'schedule.create')).toBe(false);
   });
 
+  it('restores only the explicitly required final LF after production trims the live prompt', () => {
+    __setCachedDefaultWriteDirForTests(LIVE_TEST03_ROOT);
+
+    const proposals = inferFallbackActionProposals(
+      LIVE_TEST03_PROMPT.trim(),
+      'The files.create capability is not available in this session.',
+    );
+
+    expect(proposals).toHaveLength(10);
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(
+      Array.from({ length: 10 }, () => 'files.create'),
+    );
+    expect(proposals.map(({ params }) => params)).toEqual(
+      LIVE_TEST03_FILES.map(({ name, content }) => ({
+        path: `${LIVE_TEST03_BASE}\\${name}`,
+        content,
+        root: LIVE_TEST03_ROOT,
+      })),
+    );
+    expect(
+      proposals.some(({ action_id }) =>
+        ['schedule.create', 'terminal.run', 'files.edit'].includes(action_id),
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    [
+      'missing explicit final-newline instruction',
+      LIVE_TEST03_PROMPT.replace(', including the final newline', '').trim(),
+    ],
+    [
+      'ambiguous terminal newline convention',
+      LIVE_TEST03_PROMPT.replace(
+        LIVE_TEST03_FILES[0].content,
+        LIVE_TEST03_FILES[0].content.replace(/\n$/u, '\r\n'),
+      ).trim(),
+    ],
+  ])('does not restore a trimmed final newline for %s', (_label, request) => {
+    __setCachedDefaultWriteDirForTests(LIVE_TEST03_ROOT);
+    expect(
+      inferFallbackActionProposals(
+        request,
+        'The files.create capability is not available in this session.',
+      ),
+    ).toEqual([]);
+  });
+
   it.each([
     ['count mismatch', LIVE_TEST03_PROMPT.replace('exactly ten', 'exactly nine')],
     ['duplicate marker', LIVE_TEST03_PROMPT.replace('10_status.html', '09_cards.html')],

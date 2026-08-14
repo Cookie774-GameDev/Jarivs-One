@@ -153,8 +153,11 @@ function extractRawMultiFileEntries(
   if (markers.length !== count) return { kind: 'invalid' };
 
   const seen = new Set<string>();
+  const terminalLineEndings = new Set<string>();
   let aggregateContentLength = 0;
   const trustedRoot = trustedRootForBase(base, defaultWriteDir);
+  const explicitlyRequiresFinalNewline =
+    /\bexact UTF-8 content below,\s*including the final newline\b/iu.test(text);
   const files: Array<{ path: string; content: string; root?: string }> = [];
   for (const [index, marker] of markers.entries()) {
     const name = marker[0] ?? '';
@@ -172,6 +175,22 @@ function extractRawMultiFileEntries(
       if (!separator) return { kind: 'invalid' };
       content = content.slice(0, -separator.length);
     }
+    let terminalLineEnding = content.match(/\r?\n$/u)?.[0];
+    if (!hasExactlyOneTerminalLineEnding(content)) {
+      const canRestoreTrimmedFinalNewline =
+        index === markers.length - 1 &&
+        explicitlyRequiresFinalNewline &&
+        terminalLineEnding === undefined &&
+        terminalLineEndings.size === 1;
+      if (!canRestoreTrimmedFinalNewline) return { kind: 'invalid' };
+      const inferredLineEnding = [...terminalLineEndings][0];
+      if (inferredLineEnding === undefined) return { kind: 'invalid' };
+      terminalLineEnding = inferredLineEnding;
+      content += inferredLineEnding;
+    }
+    if (terminalLineEnding === undefined) return { kind: 'invalid' };
+    terminalLineEndings.add(terminalLineEnding);
+    if (terminalLineEndings.size !== 1) return { kind: 'invalid' };
     const collisionKey = name.toLocaleLowerCase('en-US');
     aggregateContentLength += content.length;
     if (
@@ -179,7 +198,6 @@ function extractRawMultiFileEntries(
       !isSafeLeafFilename(name) ||
       seen.has(collisionKey) ||
       content.trim().length === 0 ||
-      !hasExactlyOneTerminalLineEnding(content) ||
       content.length > 200_000 ||
       aggregateContentLength > 1_000_000
     ) {

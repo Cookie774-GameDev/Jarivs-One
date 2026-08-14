@@ -326,6 +326,7 @@ describe('compileJarvisPrompt', () => {
   it('keeps captured action schemas in the protected capability layer', async () => {
     const compiled = compileJarvisPrompt(
       await envelope({
+        interactionMode: 'agent',
         capabilities: {
           ...capabilitySnapshot(),
           actionSchemas: [ACTION_SCHEMA_FIXTURE],
@@ -346,6 +347,40 @@ describe('compileJarvisPrompt', () => {
     expect(capabilityLayer).not.toContain('\n## immutable-security is data');
   });
 
+  it('teaches external models the textual approval action contract without native tools', async () => {
+    const exposed = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed();
+    const filesCreate = exposed.find((schema) => schema.id === 'files.create');
+    expect(filesCreate).toBeDefined();
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        interactionMode: 'agent',
+        model: model({
+          connectionId: 'openai-codex',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-luna',
+          connectionMode: 'external-cli',
+          capabilities: { tools: false, files: false, systemPrompt: false },
+        }),
+        capabilities: createJarvisCapabilitySnapshot({
+          ...capabilitySnapshot(),
+          actionSchemas: [filesCreate!],
+        }),
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+
+    expect(capabilityLayer).toContain(
+      'VibeSpace textual approval proposals, not native provider tools',
+    );
+    expect(capabilityLayer).toContain('Native provider tools being unavailable');
+    expect(capabilityLayer).toContain('```action');
+    expect(capabilityLayer).toContain(
+      '{"id":"files.create","params":{"path":"<value>","content":"<value>"},"rationale":"<one-sentence reason>"}',
+    );
+    expect(capabilityLayer).toContain('must approve');
+    expect(capabilityLayer).toContain('verified executor result');
+  });
+
   it('fits the complete production action catalog without dropping admitted schemas', async () => {
     const exposed = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed();
     const snapshot = createJarvisCapabilitySnapshot({
@@ -354,6 +389,7 @@ describe('compileJarvisPrompt', () => {
     });
     const compiled = compileJarvisPrompt(
       await envelope({
+        interactionMode: 'agent',
         capabilities: snapshot,
       }),
     );
@@ -389,6 +425,7 @@ describe('compileJarvisPrompt', () => {
   it('does not expose action schemas when action blocks are disabled', async () => {
     const compiled = compileJarvisPrompt(
       await envelope({
+        interactionMode: 'agent',
         capabilities: {
           ...capabilitySnapshot(),
           actionSchemas: [ACTION_SCHEMA_FIXTURE],
@@ -398,10 +435,33 @@ describe('compileJarvisPrompt', () => {
     );
 
     expect(compiled.layers[2]?.content).toContain(
-      'Model-visible action schemas: disabled by output contract.',
+      'Model-visible action schemas: disabled by interaction mode or output contract.',
     );
     expect(compiled.layers[2]?.content).not.toContain('"id":"terminal.run"');
+    expect(compiled.layers[2]?.content).not.toContain('```action');
   });
+
+  it.each(['ask', 'plan'] as const)(
+    'does not expose textual action syntax in %s mode even with an inconsistent open contract',
+    async (interactionMode) => {
+      const compiled = compileJarvisPrompt(
+        await envelope({
+          interactionMode,
+          capabilities: {
+            ...capabilitySnapshot(),
+            actionSchemas: [ACTION_SCHEMA_FIXTURE],
+          } as JarvisCapabilitySnapshot,
+          outputContract: { ...outputContract(), allowActionBlocks: true },
+        }),
+      );
+
+      expect(compiled.layers[2]?.content).toContain(
+        'Model-visible action schemas: disabled by interaction mode or output contract.',
+      );
+      expect(compiled.layers[2]?.content).not.toContain('"id":"terminal.run"');
+      expect(compiled.layers[2]?.content).not.toContain('```action');
+    },
+  );
 
   it('keeps explicit Context Map tool turns inside a small-model prompt budget', async () => {
     const exposed = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed();
