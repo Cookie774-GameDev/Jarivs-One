@@ -1327,6 +1327,30 @@ describe('verifyRuntimeProfileHandshake (frontend/native agreement)', () => {
     vi.useRealTimers();
   });
 
+  it('allows a bounded delayed native query during a busy cold-start window', async () => {
+    vi.useFakeTimers();
+    const query = vi.fn(
+      () =>
+        new Promise<RuntimeProfileEvidence>((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                profile: 'ordinary',
+                appIdentifier: 'ai.jarvis.desktop',
+                capabilityIdentifier: null,
+                sessionNonceHash: null,
+              }),
+            15_000,
+          );
+        }),
+    );
+    const result = verifyRuntimeProfileHandshake(query, ordinaryPlan);
+    const assertion = expect(result).resolves.toMatchObject({ profile: 'ordinary' });
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    vi.useRealTimers();
+  });
+
   it('fails closed before querying when the visual-test identity expectation is absent', async () => {
     const query = queryReturning(visualNativeEvidence);
     await expect(verifyRuntimeProfileHandshake(query, visualTestPlan)).rejects.toThrow(

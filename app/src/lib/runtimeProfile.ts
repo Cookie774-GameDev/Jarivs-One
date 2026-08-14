@@ -28,7 +28,7 @@ export const MONOCHROME_DEVELOPMENT_AUTHORITY_ID = 'development:monochrome-workb
 
 /** The native command used to prove frontend/native agreement before fixtures. */
 export const RUNTIME_PROFILE_QUERY_COMMAND = 'runtime_profile_query' as const;
-export const RUNTIME_PROFILE_QUERY_TIMEOUT_MS = 5_000 as const;
+export const RUNTIME_PROFILE_QUERY_TIMEOUT_MS = 30_000 as const;
 export const MONOCHROME_EVIDENCE_COMMIT_COMMAND = 'monochrome_evidence_commit' as const;
 export const MONOCHROME_EVIDENCE_SCHEMA_VERSION =
   'vibespace.monochrome.native-evidence.v1' as const;
