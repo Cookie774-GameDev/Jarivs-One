@@ -1,11 +1,8 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { canonicalRemoteMcpEndpoint } from '@/lib/mcp/remoteAuthorization';
-import {
-  getVibeSpaceMcpGateway,
-  type VibeSpaceMcpGateway,
-} from '@/lib/mcp/vibeSpaceGateway';
+import { getVibeSpaceMcpGateway, type VibeSpaceMcpGateway } from '@/lib/mcp/vibeSpaceGateway';
 import { useAuthStore } from '@/stores/auth';
 
 const SAFE_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/u;
@@ -24,6 +21,14 @@ interface ReviewedConnection {
   readonly authentication: 'none';
 }
 
+interface McpOperationScope {
+  readonly accountId: string;
+  readonly projectId: string;
+  readonly runtime: VibeSpaceMcpGateway;
+  readonly generation: number;
+  readonly controller: AbortController;
+}
+
 export function McpConnections({ runtime: configuredRuntime }: McpConnectionsProps) {
   const accountId = useAuthStore(
     (state) => state.cloudSession?.user_id ?? state.localUserId ?? 'local_account',
@@ -31,12 +36,33 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
   const projectId = useAuthStore(
     (state) => state.projectId ?? state.workspaceId ?? 'default_project',
   );
-  const runtime =
-    configuredRuntime ??
-    getVibeSpaceMcpGateway({
+  const runtime = useMemo(
+    () =>
+      configuredRuntime ??
+      getVibeSpaceMcpGateway({
+        accountId,
+        projectId,
+      }),
+    [accountId, configuredRuntime, projectId],
+  );
+  const operationScopeRef = useRef<McpOperationScope | undefined>(undefined);
+  const previousScope = operationScopeRef.current;
+  if (
+    !previousScope ||
+    previousScope.accountId !== accountId ||
+    previousScope.projectId !== projectId ||
+    previousScope.runtime !== runtime
+  ) {
+    previousScope?.controller.abort();
+    operationScopeRef.current = {
       accountId,
       projectId,
-    });
+      runtime,
+      generation: (previousScope?.generation ?? 0) + 1,
+      controller: new AbortController(),
+    };
+  }
+  const operationScope = operationScopeRef.current!;
   const connections = useSyncExternalStore(
     runtime.subscribe,
     runtime.getSnapshot,
@@ -50,6 +76,25 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
   const [authorized, setAuthorized] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+
+  const operationIsCurrent = (candidate: McpOperationScope) =>
+    operationScopeRef.current === candidate && !candidate.controller.signal.aborted;
+
+  useEffect(() => {
+    setId('');
+    setName('');
+    setDescription('');
+    setEndpoint('');
+    setReviewed(undefined);
+    setAuthorized(false);
+    setBusy(false);
+    setError(undefined);
+    return () => {
+      if (operationScopeRef.current === operationScope) {
+        operationScope.controller.abort();
+      }
+    };
+  }, [operationScope]);
 
   const invalidateReview = () => {
     setReviewed(undefined);
@@ -80,14 +125,16 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
 
   const connect = async () => {
     if (!reviewed || !authorized || busy) return;
+    const scope = operationScope;
     setBusy(true);
     setError(undefined);
     try {
-      await runtime.connect({
+      await scope.runtime.connect({
         id: reviewed.id,
         endpoint: reviewed.endpoint,
         confirmedByUser: true,
       });
+      if (!operationIsCurrent(scope)) return;
       setId('');
       setName('');
       setDescription('');
@@ -95,17 +142,20 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
       setReviewed(undefined);
       setAuthorized(false);
     } catch {
+      if (!operationIsCurrent(scope)) return;
       setError(SAFE_CONNECTION_ERROR);
     } finally {
-      setBusy(false);
+      if (operationIsCurrent(scope)) setBusy(false);
     }
   };
 
   const runGatewayAction = async (action: () => Promise<void>) => {
+    const scope = operationScope;
     setError(undefined);
     try {
       await action();
     } catch {
+      if (!operationIsCurrent(scope)) return;
       setError(SAFE_CONNECTION_ERROR);
     }
   };
@@ -133,8 +183,7 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
           HTTP; every discovered tool stays off until you allow it explicitly.
         </p>
         <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-          This flow does not launch local processes or accept commands, credentials, or raw
-          secrets.
+          This flow does not launch local processes or accept commands, credentials, or raw secrets.
         </p>
       </div>
 
@@ -289,11 +338,7 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
                   Review the exact endpoint and discovered tool names. Approval stores only bounded
                   non-secret identity, schema, integrity, and exposure metadata.
                 </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => approveProfile(connection.id)}
-                >
+                <Button type="button" size="sm" onClick={() => approveProfile(connection.id)}>
                   Approve this exact profile
                 </Button>
               </div>
@@ -348,9 +393,7 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
               size="sm"
               variant="outline"
               aria-label={`Disconnect ${connection.id}`}
-              onClick={() =>
-                void runGatewayAction(() => runtime.disconnect(connection.id))
-              }
+              onClick={() => void runGatewayAction(() => runtime.disconnect(connection.id))}
             >
               Disconnect
             </Button>
@@ -360,9 +403,7 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
                 size="sm"
                 variant="outline"
                 aria-label={`Reconnect ${connection.id}`}
-                onClick={() =>
-                  void runGatewayAction(() => runtime.reconnect(connection.id))
-                }
+                onClick={() => void runGatewayAction(() => runtime.reconnect(connection.id))}
               >
                 Reconnect approved profile
               </Button>
