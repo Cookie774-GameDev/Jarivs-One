@@ -573,6 +573,25 @@ describe('compileJarvisPrompt', () => {
     expect(compiled.systemText.length).toBeLessThan(16_000);
   });
 
+  it('protects a mandatory prior-pointer expansion from search substitution and zero directions', async () => {
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        userText:
+          'Using only the exact six search-result pointers already returned in this chat for shard-0000.txt, shard-0025.txt, shard-0047.txt, shard-0048.txt, shard-0063.txt, and shard-0095.txt, make exactly six vibespace_context expand calls, each with beforeBytes=256 and afterBytes=0. Do not call open, search, address, or any other tool.',
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+
+    expect(capabilityLayer).toContain('exactly six `operation="expand"` calls');
+    expect(capabilityLayer).toContain('exact prior search-result pointers');
+    expect(capabilityLayer).toContain('supply only `beforeBytes=256`');
+    expect(capabilityLayer).toContain('omit `afterBytes` entirely');
+    expect(capabilityLayer).toContain('Never substitute `search`, `open`, or `address`');
+    expect(capabilityLayer).not.toContain(
+      'first call `vibespace_context` with `operation="search"`',
+    );
+  });
+
   it('uses the same immutable identity source for typed and voice chat', async () => {
     const typed = compileJarvisPrompt(await envelope({ surface: 'typed_chat' }));
     const voice = compileJarvisPrompt(

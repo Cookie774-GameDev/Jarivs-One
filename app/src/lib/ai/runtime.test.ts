@@ -527,6 +527,75 @@ Truth labels: 10B PHYSICAL INGESTION: NOT RUN; TRANSPORT CANCELLATION: NOT CERTI
     expect(prepared).toContain('answer every numbered question');
   });
 
+  it('requires the exact live five-search then six-expand physical-evidence contract', () => {
+    const content = `Use only the production vibespace_context tool against the currently approved physical Test07 Context Map. Current physical bytes are the only authority. Complete both stages below in this single provider turn before writing any answer.
+
+STAGE 1 — REQUIRED SEARCHES
+Make exactly five search calls, one for each numbered question below, each with limit 3. Do not answer after the searches.
+
+STAGE 2 — REQUIRED PHYSICAL EVIDENCE
+From those five search results, select the canonical trusted pointer for each of these exact six required sources: shard-0000.txt, shard-0025.txt, shard-0047.txt, shard-0048.txt, shard-0063.txt, shard-0095.txt. Then make exactly six expand calls, one per selected source, with beforeBytes=256 and afterBytes=0. These six expand calls are mandatory even when a search preview appears to contain an answer. Search previews are not sufficient evidence. Do not call open, address, or any other tool. Reject STATUS SUPERSEDED_UNTRUSTED. Total expanded physical text must be <=24 KiB.
+
+QUESTIONS
+1. In the fresh Test07 archive, what verification key is assigned to the canonical Frostglass Array checkpoint at the end-boundary record?
+2. For the canonical Moonwake Beacon opening-boundary record, what recovery color and verification number are active?
+3. The canonical Northwind relay handoff crosses two neighboring Test07 shards. What phrase was left by the sending clerk, and what answer did the receiving clerk pair with it?
+4. According to the canonical middle-region record for Station Emberline, where is the emergency sextant stored and what is its verification number?
+5. At the final-boundary canonical record for Observatory Kestrel, who signed the calibration and what non-guessable multiplier was recorded?
+
+OUTPUT ONLY AFTER ALL 11 REQUIRED CALLS
+Return a compact Q1–Q5 table. For each answer include the exact answer, exact filename, canonical RECORD_ID, RECORD_REVISION, canonical record 1-based line range, canonical record half-open byte range, and full sourceVersion/contentHash as exactly 64 lowercase hexadecimal characters with no prefix or link. Include rejected decoy values. Q3 must include both sources independently. End with exact search count, expand count, and aggregate expanded bytes. If you cannot make exactly five searches followed by exactly six expansions or cannot verify any physical fact, output FAIL instead of a partial answer.`;
+    const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
+    const prepared = String(messages[0]?.content);
+
+    expect(prepared.match(/"operation":"search"/gu)).toHaveLength(5);
+    expect(prepared.match(/"limit":3/gu)).toHaveLength(5);
+    expect(prepared).toContain('MUST make exactly six `operation="expand"` calls');
+    expect(prepared).toContain(
+      'shard-0000.txt, shard-0025.txt, shard-0047.txt, shard-0048.txt, shard-0063.txt, shard-0095.txt',
+    );
+    expect(prepared).toContain('Search previews are explicitly insufficient');
+    expect(prepared).toContain('supply only `beforeBytes=256`');
+    expect(prepared).toContain('omit `afterBytes` entirely');
+    expect(prepared).toContain('one expansion per exact cited source');
+    expect(prepared).toContain('no more than two evidence calls for any one question');
+    expect(prepared).toContain('expanded physical text must not exceed 24 KiB');
+    expect(prepared).toContain('all eleven required calls');
+    expect(prepared).not.toContain('you may make at most six');
+  });
+
+  it('preserves the exact live prior-pointer expand continuation byte-for-byte', () => {
+    const content = `Your prior answer is incomplete because it used previews only and omitted required physical provenance. Do not repeat any search and do not reuse preview text as evidence.
+
+Using only the exact six search-result pointers already returned in this chat for shard-0000.txt, shard-0025.txt, shard-0047.txt, shard-0048.txt, shard-0063.txt, and shard-0095.txt, make exactly six vibespace_context expand calls: one per source, each with beforeBytes=256 and afterBytes=0. Do not call open, search, address, or any other tool. Reject STATUS SUPERSEDED_UNTRUSTED.
+
+Then return the compact Q1–Q5 table with the verified exact answer, exact filename, canonical RECORD_ID, RECORD_REVISION, canonical record 1-based line range, canonical record half-open byte range, full sourceVersion/contentHash as exactly 64 lowercase hex characters with no prefix or link, and rejected decoy value. Q3 must include both sources independently. End with exactly: prior searches=5; this-turn expands=6; total retrieval calls=6; aggregate expanded bytes=<exact sum>. If the exact prior pointers are unavailable or any required physical fact cannot be read from the six results, say FAIL rather than guessing.`;
+
+    expect(prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }])).toEqual([
+      { role: 'user', content },
+    ]);
+  });
+
+  it('routes a negated prior-pointer expand request through ordinary safe research', () => {
+    const content =
+      'Using only the exact six search-result pointers already returned in this chat for shard-0000.txt, shard-0025.txt, shard-0047.txt, shard-0048.txt, shard-0063.txt, and shard-0095.txt, do not make exactly six vibespace_context expand calls, each with beforeBytes=256 and afterBytes=0. Do not call search.';
+    const prepared = String(
+      prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }])[0]?.content,
+    );
+
+    expect(prepared).not.toBe(content);
+    expect(prepared).toContain('"operation":"search"');
+  });
+
+  it('preserves one bounded old-pointer open continuation without inventing a search', () => {
+    const content =
+      'Using only the exact prior Q2 pointer already present in this chat, make exactly one vibespace_context open call with maxBytes=4096. Do not call search, expand, address, or any other tool.';
+
+    expect(prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }])).toEqual([
+      { role: 'user', content },
+    ]);
+  });
+
   it('presents an OpenCode approval in the live placeholder and preserves its decision', async () => {
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_opencode_approval' as ChatId;

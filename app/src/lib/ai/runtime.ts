@@ -38,6 +38,9 @@ import {
 import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
 import {
+  MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER,
+  parseDirectContextEvidenceContinuation,
+  parseMandatoryContextEvidenceResearch,
   requestsDirectContextAddress,
   requestsReadOnlyContextTool,
 } from '@/lib/jarvis/contextToolIntent';
@@ -1645,36 +1648,56 @@ export function prepareOpenCodeMessagesForInteractionMode(
   const userText = llmContentToText(latest.content);
   if (!requestsReadOnlyContextTool(userText)) return messages;
   if (requestsDirectContextAddress(userText)) return messages;
+  if (parseDirectContextEvidenceContinuation(userText)) return messages;
+  const mandatoryEvidence = parseMandatoryContextEvidenceResearch(userText);
   const researchQueries = boundedReadOnlyResearchQueries(userText);
   const researchQueryCount =
     ['zero', 'one', 'two', 'three', 'four', 'five'][researchQueries.length] ??
     String(researchQueries.length);
   const directive =
-    researchQueries.length === 1
+    mandatoryEvidence && researchQueries.length === mandatoryEvidence.questionCount
       ? [
-          'Call the real `vibespace_context` function now with exactly these two arguments:',
-          `{"operation":"search","query":${JSON.stringify(userText)},"limit":5}`,
-          'Do not include `pointer`, `recordId`, byte ranges, continuation, or any other optional argument in this first call.',
-          'Do not print, narrate, or wrap the call as JSON text. Wait for the real search result.',
-          'If a search item preview contains the complete answer, answer immediately and cite that item record title/path. Only call `operation="open"` when the preview is insufficient, using one exact pointer returned by search.',
-          'The final answer MUST include the exact matching record title (including its `.txt` filename) from the search result together with the requested facts.',
-          'Do not cite unrelated context-pack sources or replace the matching search-result title with another filename.',
-          'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
-        ].join('\n')
-      : [
-          `Call the real \`vibespace_context\` function with \`operation="search"\` exactly once for each of the ${researchQueryCount} numbered questions, using these exact bounded argument objects in order:`,
+          MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER,
+          'Call the real `vibespace_context` function with `operation="search"` exactly once for each of the five numbered questions, using these exact bounded argument objects in order:',
           ...researchQueries.map(
             (query) =>
               `{"operation":"search","query":${JSON.stringify(
                 `From the mapped files only: ${query}`,
               )},"limit":3}`,
           ),
-          `Run all ${researchQueryCount} searches before answering. Do not print or narrate the JSON objects; invoke the real function and wait for every result.`,
-          'Use each matching preview as bounded evidence. After those mandatory searches finish, you may make at most six additional evidence calls total across `operation="open"` and `operation="expand"`, no more than two for any one question, no more than one evidence retrieval for each cited source, and only with exact pointers returned by that question\'s search. When a requested revision or neighboring provenance is absent from a matching preview, call `operation="expand"` with that exact pointer and at least one of `beforeBytes` or `afterBytes`; each supplied direction must be at most 2048. `expand` replaces `open` for that source. Never infer a revision or make a whole-source request when the bounded evidence does not contain it.',
-          'Then answer every numbered question in order. For every answer, include the exact matching record title (including its `.txt` filename); cross-record questions must cite both matching files.',
-          'Do not cite unrelated context-pack sources or replace a matching search-result title with another filename.',
+          'Run all five searches before answering. Search previews are explicitly insufficient physical evidence.',
+          `After all five searches finish, you MUST make exactly six \`operation="expand"\` calls, one expansion per exact cited source in this order: ${mandatoryEvidence.sources.join(', ')}.`,
+          'Use only the exact trusted pointer for each named source returned by those searches. For every actual tool argument object, supply only `beforeBytes=256`; the caller-declared `afterBytes=0` means no bytes after and you MUST omit `afterBytes` entirely because zero is not schema-valid.',
+          'Do not call `open`, `address`, another `search`, or any other tool. Make no more than two evidence calls for any one question and no more than one retrieval for each cited source. The expanded physical text must not exceed 24 KiB.',
+          'Reject `STATUS SUPERSEDED_UNTRUSTED`. Never infer a revision, source hash, record range, or physical fact. If any exact pointer or evidence is unavailable, output FAIL rather than a partial answer.',
+          'Answer only after all eleven required calls complete. Return a compact Q1–Q5 table. For every answer include the verified exact answer, exact filename, canonical RECORD_ID, RECORD_REVISION, canonical record 1-based line range, canonical record half-open byte range, and full sourceVersion/contentHash as exactly 64 lowercase hexadecimal characters with no prefix or link. Include rejected decoy values; Q3 must include both sources independently. End with the exact search count, expand count, and aggregate expanded bytes.',
           'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
-        ].join('\n');
+        ].join('\n')
+      : researchQueries.length === 1
+        ? [
+            'Call the real `vibespace_context` function now with exactly these two arguments:',
+            `{"operation":"search","query":${JSON.stringify(userText)},"limit":5}`,
+            'Do not include `pointer`, `recordId`, byte ranges, continuation, or any other optional argument in this first call.',
+            'Do not print, narrate, or wrap the call as JSON text. Wait for the real search result.',
+            'If a search item preview contains the complete answer, answer immediately and cite that item record title/path. Only call `operation="open"` when the preview is insufficient, using one exact pointer returned by search.',
+            'The final answer MUST include the exact matching record title (including its `.txt` filename) from the search result together with the requested facts.',
+            'Do not cite unrelated context-pack sources or replace the matching search-result title with another filename.',
+            'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
+          ].join('\n')
+        : [
+            `Call the real \`vibespace_context\` function with \`operation="search"\` exactly once for each of the ${researchQueryCount} numbered questions, using these exact bounded argument objects in order:`,
+            ...researchQueries.map(
+              (query) =>
+                `{"operation":"search","query":${JSON.stringify(
+                  `From the mapped files only: ${query}`,
+                )},"limit":3}`,
+            ),
+            `Run all ${researchQueryCount} searches before answering. Do not print or narrate the JSON objects; invoke the real function and wait for every result.`,
+            'Use each matching preview as bounded evidence. After those mandatory searches finish, you may make at most six additional evidence calls total across `operation="open"` and `operation="expand"`, no more than two for any one question, no more than one evidence retrieval for each cited source, and only with exact pointers returned by that question\'s search. When a requested revision or neighboring provenance is absent from a matching preview, call `operation="expand"` with that exact pointer and at least one of `beforeBytes` or `afterBytes`; each supplied direction must be at most 2048. `expand` replaces `open` for that source. Never infer a revision or make a whole-source request when the bounded evidence does not contain it.',
+            'Then answer every numbered question in order. For every answer, include the exact matching record title (including its `.txt` filename); cross-record questions must cite both matching files.',
+            'Do not cite unrelated context-pack sources or replace a matching search-result title with another filename.',
+            'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
+          ].join('\n');
   const content =
     typeof latest.content === 'string'
       ? directive

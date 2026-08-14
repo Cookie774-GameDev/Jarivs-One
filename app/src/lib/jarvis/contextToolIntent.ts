@@ -22,6 +22,11 @@ const ADDRESS_CORPUS_ID = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$/u;
 const CANONICAL_ADDRESS_POSITION = /^(?:0|[1-9]\d*)$/u;
 const MAX_ADDRESS_POSITION = '10000000000000000';
 const MAX_ADDRESS_CALLS = 12;
+const MAX_EVIDENCE_CALLS = 6;
+const CONTEXT_SOURCE_LEAF = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}\.txt$/u;
+const CONTEXT_SOURCE_LEAF_IN_TEXT = /[A-Za-z0-9][A-Za-z0-9._@-]{0,199}\.txt/gu;
+export const MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER =
+  '## Validated mandatory Context physical-evidence contract';
 const ADDRESS_JSON_OBJECT = /\{[^{}\r\n]{1,512}\}/gu;
 const ADDRESS_JSON_KEY = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*:/gu;
 const ADDRESS_BULLET =
@@ -51,6 +56,242 @@ const CALL_COUNT_WORDS: Readonly<Record<string, number>> = Object.freeze({
 interface DirectAddressTuple {
   corpusId: string;
   position: string;
+}
+
+export interface MandatoryContextEvidenceResearch {
+  readonly questionCount: 5;
+  readonly operation: 'expand';
+  readonly evidenceCount: number;
+  readonly sources: readonly string[];
+  readonly beforeBytes: number;
+  readonly afterBytes: number;
+  readonly maxTotalBytes: 24_576;
+}
+
+export type DirectContextEvidenceContinuation =
+  | Readonly<{
+      operation: 'expand';
+      evidenceCount: number;
+      sources: readonly string[];
+      beforeBytes?: number;
+      afterBytes?: number;
+    }>
+  | Readonly<{
+      operation: 'open';
+      evidenceCount: 1;
+      sources: readonly [];
+      maxBytes: 4096;
+    }>;
+
+function boundedDirectContextText(userText: string): boolean {
+  return (
+    userText.length > 0 &&
+    userText.length <= MAX_DIRECT_CONTEXT_REQUEST_CHARS &&
+    !UNSAFE_DIRECT_CONTEXT_CONTROL.test(userText)
+  );
+}
+
+function countFromText(value: string): number | undefined {
+  const normalized = value.toLowerCase();
+  const count = CALL_COUNT_WORDS[normalized] ?? Number(normalized);
+  return Number.isSafeInteger(count) && count >= 1 && count <= MAX_EVIDENCE_CALLS
+    ? count
+    : undefined;
+}
+
+interface ContextCallCount {
+  readonly operation: 'open' | 'expand' | 'search' | 'address';
+  readonly count: number | null;
+}
+
+function hasNegatedContextCallCount(userText: string): boolean {
+  return /\b(?:(?:do\s+not|don't|never)\s+(?:make|call|invoke|use|perform)|(?:avoid|without)\s+(?:make|making|call|calling|invoke|invoking|use|using|perform|performing))\s+exactly\s+(?:[A-Za-z]+|\d+)\s+(?:vibespace_context\s+)?(?:open|expand|search|address)\s+calls?\b/iu.test(
+    userText,
+  );
+}
+
+function affirmativeContextCallCounts(userText: string): readonly ContextCallCount[] {
+  return [
+    ...userText.matchAll(
+      /\bmake exactly\s+([A-Za-z]+|\d+)\s+(?:vibespace_context\s+)?(open|expand|search|address)\s+calls?\b/giu,
+    ),
+  ].flatMap((match) => {
+    const count = match[1] ? countFromText(match[1]) : undefined;
+    const operation = match[2]?.toLowerCase();
+    return operation === 'open' ||
+      operation === 'expand' ||
+      operation === 'search' ||
+      operation === 'address'
+      ? [{ count: count ?? null, operation }]
+      : [];
+  });
+}
+
+function parseDirection(userText: string, name: 'beforeBytes' | 'afterBytes'): number | undefined {
+  const matches = [
+    ...userText.matchAll(new RegExp(`\\b${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)\\b`, 'giu')),
+  ];
+  if (matches.length === 0) return undefined;
+  if (matches.length !== 1) return Number.NaN;
+  const value = Number(matches[0]?.[1]);
+  return Number.isSafeInteger(value) && value >= 0 && value <= 2048 ? value : Number.NaN;
+}
+
+function validExpansionDirections(
+  beforeBytes: number | undefined,
+  afterBytes: number | undefined,
+): boolean {
+  return (
+    !Number.isNaN(beforeBytes) &&
+    !Number.isNaN(afterBytes) &&
+    (beforeBytes === undefined || (beforeBytes >= 0 && beforeBytes <= 2048)) &&
+    (afterBytes === undefined || (afterBytes >= 0 && afterBytes <= 2048)) &&
+    (beforeBytes !== undefined || afterBytes !== undefined) &&
+    ((beforeBytes ?? 0) > 0 || (afterBytes ?? 0) > 0)
+  );
+}
+
+function exactUniqueSources(sourceText: string, expectedCount: number): readonly string[] | null {
+  if (/[\\/]/u.test(sourceText)) return null;
+  const sources = sourceText.match(CONTEXT_SOURCE_LEAF_IN_TEXT) ?? [];
+  const residue = sourceText
+    .replace(CONTEXT_SOURCE_LEAF_IN_TEXT, '')
+    .replace(/\band\b/giu, '')
+    .replace(/[,\s]/gu, '');
+  if (
+    residue.length > 0 ||
+    sources.length !== expectedCount ||
+    new Set(sources).size !== sources.length ||
+    sources.some((source) => !CONTEXT_SOURCE_LEAF.test(source))
+  ) {
+    return null;
+  }
+  return Object.freeze([...sources]);
+}
+
+export function parseMandatoryContextEvidenceResearch(
+  userText: string,
+): MandatoryContextEvidenceResearch | null {
+  const callCounts = affirmativeContextCallCounts(userText);
+  if (
+    !boundedDirectContextText(userText) ||
+    hasNegatedContextCallCount(userText) ||
+    callCounts.length !== 2 ||
+    !callCounts.some(({ operation, count }) => operation === 'search' && count === 5) ||
+    !callCounts.some(({ operation, count }) => operation === 'expand' && count === 6) ||
+    !/\bSTAGE 1\s+—\s+REQUIRED SEARCHES\b/u.test(userText) ||
+    !/\bSTAGE 2\s+—\s+REQUIRED PHYSICAL EVIDENCE\b/u.test(userText) ||
+    !/\bMake exactly five search calls\b/iu.test(userText) ||
+    !/\beach with limit 3\b/iu.test(userText) ||
+    !/\bSearch previews are not sufficient evidence\b/iu.test(userText) ||
+    !/\bmake exactly six expand calls\b/iu.test(userText) ||
+    !/\bThese six expand calls are mandatory\b/iu.test(userText) ||
+    !/\bDo not call open, address, or any other tool\b/iu.test(userText) ||
+    !/\bTotal expanded physical text must be <=24 KiB\b/iu.test(userText) ||
+    !/\bOUTPUT ONLY AFTER ALL 11 REQUIRED CALLS\b/iu.test(userText)
+  ) {
+    return null;
+  }
+  const questions = userText.match(/^\s*[1-5]\.\s+\S.+$/gmu) ?? [];
+  if (questions.length !== 5) return null;
+  const sourceClause = userText.match(
+    /\bexact six required sources:\s*([^\r\n]+?)\.\s+Then make exactly six expand calls\b/iu,
+  )?.[1];
+  if (!sourceClause) return null;
+  const sources = exactUniqueSources(sourceClause, 6);
+  if (!sources) return null;
+  const beforeBytes = parseDirection(userText, 'beforeBytes');
+  const afterBytes = parseDirection(userText, 'afterBytes');
+  if (
+    !validExpansionDirections(beforeBytes, afterBytes) ||
+    beforeBytes !== 256 ||
+    afterBytes !== 0
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    questionCount: 5,
+    operation: 'expand',
+    evidenceCount: 6,
+    sources,
+    beforeBytes,
+    afterBytes,
+    maxTotalBytes: 24_576,
+  });
+}
+
+export function parseDirectContextEvidenceContinuation(
+  userText: string,
+): DirectContextEvidenceContinuation | null {
+  const countedPriorPointers = userText.match(
+    /\bexact\s+(one|two|three|four|five|six|\d+)\s+search-result pointers?\s+(?:already returned|already present) in this chat\b/iu,
+  );
+  const singularPriorPointer =
+    /\bexact prior [A-Za-z0-9_-]+ pointer\s+(?:already returned|already present) in this chat\b/iu.test(
+      userText,
+    );
+  if (
+    !boundedDirectContextText(userText) ||
+    hasNegatedContextCallCount(userText) ||
+    (!countedPriorPointers && !singularPriorPointer) ||
+    !/\b(?:Do not repeat any search|Do not call [^.\r\n]*\bsearch\b|no new search)\b/iu.test(
+      userText,
+    )
+  ) {
+    return null;
+  }
+  const request = userText.match(
+    /\bmake exactly\s+(one|two|three|four|five|six|\d+)\s+vibespace_context\s+(expand|open)\s+calls?\b/iu,
+  );
+  if (!request?.[1] || !request[2]) return null;
+  const evidenceCount = countFromText(request[1]);
+  if (!evidenceCount) return null;
+  const operation = request[2].toLowerCase() as 'expand' | 'open';
+  const priorPointerCount = countedPriorPointers?.[1]
+    ? countFromText(countedPriorPointers[1])
+    : singularPriorPointer
+      ? 1
+      : undefined;
+  if (priorPointerCount !== evidenceCount) return null;
+  const affirmativeEvidenceRequests = affirmativeContextCallCounts(userText);
+  if (
+    affirmativeEvidenceRequests.length !== 1 ||
+    affirmativeEvidenceRequests[0]?.operation !== operation ||
+    affirmativeEvidenceRequests[0]?.count !== evidenceCount
+  ) {
+    return null;
+  }
+  if (operation === 'open') {
+    if (
+      evidenceCount !== 1 ||
+      !/\bmaxBytes\s*=\s*4096\b/u.test(userText) ||
+      /\b(?:beforeBytes|afterBytes)\s*=/u.test(userText)
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      operation,
+      evidenceCount: 1,
+      sources: Object.freeze([] as const),
+      maxBytes: 4096,
+    });
+  }
+  const sourceClause = userText.match(
+    /\balready returned in this chat for\s+(.+?),\s+make exactly\b/iu,
+  )?.[1];
+  if (!sourceClause) return null;
+  const sources = exactUniqueSources(sourceClause, evidenceCount);
+  if (!sources) return null;
+  const beforeBytes = parseDirection(userText, 'beforeBytes');
+  const afterBytes = parseDirection(userText, 'afterBytes');
+  if (!validExpansionDirections(beforeBytes, afterBytes)) return null;
+  return Object.freeze({
+    operation,
+    evidenceCount,
+    sources,
+    ...(beforeBytes === undefined ? {} : { beforeBytes }),
+    ...(afterBytes === undefined ? {} : { afterBytes }),
+  });
 }
 
 function boundedAddressPosition(value: string): boolean {

@@ -14,6 +14,9 @@ import { isProtectedJarvisAgent, JARVIS_IDENTITY_POLICY } from '@/lib/jarvis/ide
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
 import { classifyJarvisSource, isJarvisModelVisibleSchemaSafe } from '@/lib/jarvis/sourcePolicy';
 import {
+  MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER,
+  parseDirectContextEvidenceContinuation,
+  parseMandatoryContextEvidenceResearch,
   requestsDirectContextAddress,
   requestsReadOnlyContextTool,
 } from '@/lib/jarvis/contextToolIntent';
@@ -350,6 +353,13 @@ function renderCapabilities(
     stableCompare(left.id, right.id),
   );
   if (contextToolOnly) {
+    const directEvidence = parseDirectContextEvidenceContinuation(envelope.userText);
+    const mandatoryEvidence =
+      parseMandatoryContextEvidenceResearch(envelope.userText) ??
+      (envelope.userText.startsWith(MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER) &&
+      /\bMUST make exactly six `operation="expand"` calls\b/u.test(envelope.userText)
+        ? Object.freeze({ evidenceCount: 6 as const })
+        : null);
     const operationGuidance = directAddress
       ? [
           'For an explicit direct address request, call `vibespace_context` with `operation="address"` once for each exact caller-supplied address object, in the supplied order.',
@@ -357,10 +367,32 @@ function renderCapabilities(
           'Never substitute `search`, `open`, or `expand` for an explicit address request. Do not add `query`, `limit`, `pointer`, byte ranges, or continuation arguments.',
           'Do not exceed twelve address calls in this provider turn. Wait for every real tool result and answer only from the returned bounded evidence.',
         ]
-      : [
-          'For a single-question file research turn, first call `vibespace_context` with `operation="search"`, the complete user question, and `limit=5`. A search item preview is valid bounded evidence: answer from it when complete and cite its record title/path. Call `operation="open"` only when a preview is insufficient, using only an exact pointer returned by search.',
-          'For a numbered multi-question request, call `operation="search"` exactly once per numbered question using the exact bounded queries supplied in the provider turn with `limit=3`; finish every search before answering and cite the matching record title/path for every answer. Do not make an additional whole-request search. After those mandatory searches finish, you may make at most six additional evidence calls total across `operation="open"` and `operation="expand"`, no more than two for any one question, no more than one evidence retrieval for each cited source, and only with exact pointers returned by that question\'s search. When a requested revision or neighboring provenance is absent from a matching preview, call `operation="expand"` with that exact pointer and at least one of `beforeBytes` or `afterBytes`; each supplied direction must be at most 2048. `expand` replaces `open` for that source. Never infer a revision or make a whole-source request when the bounded evidence does not contain it.',
-        ];
+      : directEvidence?.operation === 'expand'
+        ? [
+            `Make exactly ${directEvidence.evidenceCount === 6 ? 'six' : directEvidence.evidenceCount} \`operation="expand"\` calls using only the exact prior search-result pointers already present in this retained provider chat.`,
+            'Never substitute `search`, `open`, or `address`, and never create, normalize, or guess a pointer. Use no more than one retrieval per named source and no more than two evidence calls for any one question.',
+            directEvidence.beforeBytes === 256 && directEvidence.afterBytes === 0
+              ? 'For every actual tool argument object, supply only `beforeBytes=256`; the caller-declared `afterBytes=0` is an omission sentinel and you must omit `afterBytes` entirely rather than send zero.'
+              : 'For each actual tool argument object, include only caller-declared positive byte directions from 1 through 2048; omit every absent or zero-valued direction.',
+            'Keep aggregate expanded physical text within 24 KiB. Wait for every real expansion result and answer only from that physical evidence. If an exact prior pointer is unavailable or stale, fail instead of searching again or guessing.',
+          ]
+        : directEvidence?.operation === 'open'
+          ? [
+              'Make exactly one `operation="open"` call using only the exact prior pointer already present in this retained provider chat and `maxBytes=4096`.',
+              'Never substitute `search`, `expand`, or `address`, and never create, normalize, or guess a pointer.',
+              'Wait for the real result and fail closed if the exact prior pointer is unavailable or stale.',
+            ]
+          : mandatoryEvidence
+            ? [
+                'For this explicit mandatory physical-evidence turn, complete exactly five `operation="search"` calls with `limit=3`, then exactly six `operation="expand"` calls before answering.',
+                'Search previews are insufficient. Use one exact returned pointer for each of the six named cited sources, no more than two evidence calls per question and one retrieval per cited source.',
+                'For every actual expansion argument object, supply only `beforeBytes=256`; the caller-declared `afterBytes=0` is an omission sentinel and must be omitted entirely rather than sent as zero.',
+                'Never substitute `open`, `address`, an additional whole-request search, or another tool. Keep aggregate expanded physical text within 24 KiB and fail instead of inferring missing provenance.',
+              ]
+            : [
+                'For a single-question file research turn, first call `vibespace_context` with `operation="search"`, the complete user question, and `limit=5`. A search item preview is valid bounded evidence: answer from it when complete and cite its record title/path. Call `operation="open"` only when a preview is insufficient, using only an exact pointer returned by search.',
+                'For a numbered multi-question request, call `operation="search"` exactly once per numbered question using the exact bounded queries supplied in the provider turn with `limit=3`; finish every search before answering and cite the matching record title/path for every answer. Do not make an additional whole-request search. After those mandatory searches finish, you may make at most six additional evidence calls total across `operation="open"` and `operation="expand"`, no more than two for any one question, no more than one evidence retrieval for each cited source, and only with exact pointers returned by that question\'s search. When a requested revision or neighboring provenance is absent from a matching preview, call `operation="expand"` with that exact pointer and at least one of `beforeBytes` or `afterBytes`; each supplied direction must be at most 2048. `expand` replaces `open` for that source. Never infer a revision or make a whole-source request when the bounded evidence does not contain it.',
+              ];
     return [
       'Use only capabilities represented by this verified snapshot. Never infer completion from availability.',
       `Selected provider: ${inlineText(envelope.model.providerId)}`,
