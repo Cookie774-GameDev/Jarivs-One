@@ -2,6 +2,84 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { __setCachedDefaultWriteDirForTests } from './defaultWriteDir';
 import { inferFallbackActionProposals } from './fallbackActions';
 
+function exactMultiFileRequest(
+  count: string | number,
+  baseDirectory: string,
+  entries: readonly { name: string; content?: string }[],
+): string {
+  return [
+    `Create exactly ${count} new files.`,
+    `Base directory: "${baseDirectory}"`,
+    ...entries.flatMap((entry, index) => [
+      `${index + 1}. Filename: \`${entry.name}\``,
+      '```text',
+      ...(entry.content === undefined ? [] : [entry.content]),
+      '```',
+    ]),
+    'Use the real files.create action for each file.',
+    'For every action, show the normal approval and wait for approval before execution.',
+  ].join('\n');
+}
+
+const LIVE_TEST03_ROOT = 'C:\\Users\\viper\\Downloads';
+const LIVE_TEST03_BASE = `${LIVE_TEST03_ROOT}\\VibeSpace-Test03-Ten-Files-20260813-01`;
+const LIVE_TEST03_FILES = [
+  {
+    name: '01_readme.txt',
+    content:
+      'Title: Northstar Ledger\nVerification: cobalt-wren-731\nSummary: A brass compass points north at dawn.\n',
+  },
+  {
+    name: '02_checklist.txt',
+    content:
+      'Title: Riverstone Note\nVerification: amber-fox-462\nSummary: Smooth river stones mark the shallow crossing.\n',
+  },
+  {
+    name: '03_summary.txt',
+    content:
+      'Title: Skyline Memo\nVerification: violet-crane-583\nSummary: Three rooftops silhouette the evening sky.\n',
+  },
+  {
+    name: '04_plan.md',
+    content:
+      '# Orchard Brief\n\nVerification: maple-otter-284\n\n- Apples are counted at sunrise.\n- Pears are checked before noon.\n',
+  },
+  {
+    name: '05_notes.md',
+    content:
+      '# Workshop Checklist\n\nVerification: copper-finch-619\n\n- Calibrate the small brass gauge.\n- Store the wrench in drawer two.\n',
+  },
+  {
+    name: '06_results.md',
+    content:
+      '# Tidepool Log\n\nVerification: silver-seal-347\n\n- Observe the anemone at low tide.\n- Count three shells near the ledge.\n',
+  },
+  {
+    name: '07_index.html',
+    content:
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Beacon Page</title></head><body><h1>Beacon Page</h1><p data-verification="solar-lynx-905">A harbor beacon flashes twice at dusk.</p></body></html>\n',
+  },
+  {
+    name: '08_report.html',
+    content:
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Library Page</title></head><body><h1>Library Page</h1><p data-verification="indigo-moth-826">A quiet librarian shelves the final atlas.</p></body></html>\n',
+  },
+  {
+    name: '09_cards.html',
+    content:
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Garden Page</title></head><body><h1>Garden Page</h1><p data-verification="crimson-hare-154">A cedar gate opens toward the herb garden.</p></body></html>\n',
+  },
+  {
+    name: '10_status.html',
+    content:
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Observatory Page</title></head><body><h1>Observatory Page</h1><p data-verification="golden-ibis-792">The dome tracks one bright winter star.</p></body></html>\n',
+  },
+] as const;
+
+const LIVE_TEST03_PROMPT = `Create exactly ten new files in \`${LIVE_TEST03_BASE}\` using only ten registered \`files.create\` actions. For every action use root \`${LIVE_TEST03_ROOT}\`, the exact absolute path, and the exact UTF-8 content below, including the final newline. Emit all ten action blocks in one response so I can use Approve all. Do not use a terminal, shell, script, patch, helper file, or \`files.edit\`. Do not claim creation until every approved action succeeds. If any target exists or any action fails, stop and report failure; do not rename, overwrite, or substitute.
+
+${LIVE_TEST03_FILES.map(({ name, content }) => `${name}\n${content}`).join('\n')}`;
+
 describe('inferFallbackActionProposals', () => {
   it('does not reinterpret a protected Context tool directive as files.read', () => {
     const proposals = inferFallbackActionProposals(
@@ -310,10 +388,7 @@ describe('inferFallbackActionProposals', () => {
   it('runs the exact saved agent when the user explicitly requests one bounded child', () => {
     const request =
       'Spawn one sub-agent to review C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs for one real functional bug or usability issue. Use the saved agent id agt_BPTbjAHi36MThyOB only. The child must use installed local Ollama Llama 3.2, must not edit files or use the network, and must not spawn more children. Wait for it and report its result.';
-    const proposals = inferFallbackActionProposals(
-      request,
-      'I need permission to read that file.',
-    );
+    const proposals = inferFallbackActionProposals(request, 'I need permission to read that file.');
 
     expect(proposals).toHaveLength(1);
     expect(proposals[0]).toMatchObject({
@@ -372,6 +447,183 @@ describe('inferFallbackActionProposals', () => {
         recurrence: 'daily',
         prompt: 'make a schedule to check ai news every morning',
       }),
+    });
+  });
+
+  it('does not reinterpret the Test 03 ten-file approval language as a schedule', () => {
+    const entries = [
+      { name: 'test03-01.txt', content: 'TXT-01 deterministic payload' },
+      { name: 'test03-02.txt', content: 'TXT-02 deterministic payload' },
+      { name: 'test03-03.txt', content: 'TXT-03 deterministic payload' },
+      { name: 'test03-04.md', content: '# MD-04 deterministic payload' },
+      { name: 'test03-05.md', content: '# MD-05 deterministic payload' },
+      { name: 'test03-06.md', content: '# MD-06 deterministic payload' },
+      { name: 'test03-07.html', content: '<p>HTML-07 deterministic payload</p>' },
+      { name: 'test03-08.html', content: '<p>HTML-08 deterministic payload</p>' },
+      { name: 'test03-09.html', content: '<p>HTML-09 deterministic payload</p>' },
+      { name: 'test03-10.html', content: '<p>HTML-10 deterministic payload</p>' },
+    ] as const;
+    const proposals = inferFallbackActionProposals(
+      exactMultiFileRequest('ten', 'C:\\Users\\viper\\Downloads', entries),
+      'I prepared the requested file actions.',
+    );
+
+    expect(proposals).toHaveLength(10);
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(
+      Array.from({ length: 10 }, () => 'files.create'),
+    );
+    expect(proposals.map(({ params }) => params)).toEqual(
+      entries.map((entry) => ({
+        path: `C:\\Users\\viper\\Downloads\\${entry.name}`,
+        content: `${entry.content}\n`,
+      })),
+    );
+  });
+
+  it('emits the exact ten raw-marker actions from the verbatim live Test 03 prompt', () => {
+    __setCachedDefaultWriteDirForTests(LIVE_TEST03_ROOT);
+
+    const proposals = inferFallbackActionProposals(
+      LIVE_TEST03_PROMPT,
+      'I prepared the requested file actions.',
+    );
+
+    expect(LIVE_TEST03_FILES.map(({ content }) => content.length)).toEqual([
+      101, 107, 103, 114, 123, 119, 215, 222, 221, 227,
+    ]);
+    expect(proposals).toHaveLength(10);
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(
+      Array.from({ length: 10 }, () => 'files.create'),
+    );
+    expect(proposals.map(({ params }) => params)).toEqual(
+      LIVE_TEST03_FILES.map(({ name, content }) => ({
+        path: `${LIVE_TEST03_BASE}\\${name}`,
+        content,
+        root: LIVE_TEST03_ROOT,
+      })),
+    );
+    expect(proposals.some(({ action_id }) => action_id === 'schedule.create')).toBe(false);
+  });
+
+  it.each([
+    ['count mismatch', LIVE_TEST03_PROMPT.replace('exactly ten', 'exactly nine')],
+    ['duplicate marker', LIVE_TEST03_PROMPT.replace('10_status.html', '09_cards.html')],
+    ['traversal marker', LIVE_TEST03_PROMPT.replace('10_status.html', '../10_status.html')],
+    ['extra marker', `${LIVE_TEST03_PROMPT}\n11_extra.txt\nextra\n`],
+    ['empty content', LIVE_TEST03_PROMPT.replace(LIVE_TEST03_FILES[9].content, '\n')],
+    [
+      'declared root outside base',
+      LIVE_TEST03_PROMPT.replace(
+        'use root `C:\\Users\\viper\\Downloads`',
+        'use root `D:\\Unrelated`',
+      ),
+    ],
+  ])('fails closed for malformed raw-marker input: %s', (_label, request) => {
+    __setCachedDefaultWriteDirForTests(LIVE_TEST03_ROOT);
+    expect(inferFallbackActionProposals(request, 'I prepared the writes.')).toEqual([]);
+  });
+
+  it('attaches the cached trusted root only when the declared base is inside it', () => {
+    const trustedRoot = 'C:\\Users\\demo\\AppData\\Roaming\\ai.jarvis.desktop\\Projects';
+    __setCachedDefaultWriteDirForTests(trustedRoot);
+    const insideProposals = inferFallbackActionProposals(
+      exactMultiFileRequest('two', `${trustedRoot}\\Batch`, [
+        { name: 'one.txt', content: 'one' },
+        { name: 'two.md', content: 'two' },
+      ]),
+      'I prepared both writes.',
+    );
+
+    const outsideProposals = inferFallbackActionProposals(
+      exactMultiFileRequest('two', 'C:\\Users\\demo\\Downloads', [
+        { name: 'one.txt', content: 'one' },
+        { name: 'two.md', content: 'two' },
+      ]),
+      'I prepared both writes.',
+    );
+
+    expect(insideProposals).toHaveLength(2);
+    expect(insideProposals.every(({ params }) => params.root === trustedRoot)).toBe(true);
+    expect(outsideProposals).toHaveLength(2);
+    expect(outsideProposals.every(({ params }) => !('root' in params))).toBe(true);
+  });
+
+  it.each([
+    [
+      'count mismatch',
+      exactMultiFileRequest('three', 'C:\\Users\\viper\\Downloads', [
+        { name: 'one.txt', content: 'one' },
+        { name: 'two.txt', content: 'two' },
+      ]),
+    ],
+    [
+      'duplicate collision',
+      exactMultiFileRequest('two', 'C:\\Users\\viper\\Downloads', [
+        { name: 'same.txt', content: 'one' },
+        { name: 'SAME.txt', content: 'two' },
+      ]),
+    ],
+    [
+      'traversal leaf',
+      exactMultiFileRequest('two', 'C:\\Users\\viper\\Downloads', [
+        { name: '../escape.txt', content: 'one' },
+        { name: 'safe.txt', content: 'two' },
+      ]),
+    ],
+    [
+      'missing content block',
+      exactMultiFileRequest('two', 'C:\\Users\\viper\\Downloads', [
+        { name: 'empty.txt' },
+        { name: 'safe.txt', content: 'two' },
+      ]),
+    ],
+    [
+      'more than ten',
+      exactMultiFileRequest(
+        11,
+        'C:\\Users\\viper\\Downloads',
+        Array.from({ length: 11 }, (_, index) => ({
+          name: `file-${index + 1}.txt`,
+          content: `content-${index + 1}`,
+        })),
+      ),
+    ],
+    [
+      'ambiguous base directories',
+      exactMultiFileRequest('two', 'C:\\Users\\viper\\Downloads', [
+        { name: 'one.txt', content: 'one' },
+        { name: 'two.txt', content: 'two' },
+      ]).replace(
+        'Base directory: "C:\\Users\\viper\\Downloads"',
+        'Base directory: "C:\\Users\\viper\\Downloads"\nBase directory: "D:\\Other"',
+      ),
+    ],
+  ])('fails closed for malformed exact multi-file input: %s', (_label, request) => {
+    expect(inferFallbackActionProposals(request, 'I prepared the writes.')).toEqual([]);
+  });
+
+  it.each([
+    'Create an approval note for every action.',
+    'Check every file in this folder.',
+    'Review every item in the approved list.',
+    'Create one summary for every record.',
+  ])('does not treat a bare quantifier as schedule intent: %s', (request) => {
+    const proposals = inferFallbackActionProposals(request, 'I can help with that request.');
+
+    expect(proposals.some(({ action_id }) => action_id === 'schedule.create')).toBe(false);
+  });
+
+  it.each([
+    ['Run this check every day.', 'daily'],
+    ['Review alerts every week.', 'weekly'],
+    ['Summarize activity every month.', 'monthly'],
+    ['Check the queue on weekdays.', 'weekly'],
+  ])('preserves bounded temporal recurrence: %s', (request, recurrence) => {
+    const proposals = inferFallbackActionProposals(request, 'I can create that recurring task.');
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'schedule.create',
+      params: expect.objectContaining({ recurrence }),
     });
   });
 

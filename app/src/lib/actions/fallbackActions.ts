@@ -59,6 +59,209 @@ const NUMBER_WORDS: Record<string, number> = {
   ten: 10,
 };
 
+type ExactMultiFileCreateRequest =
+  | { kind: 'not_multi' }
+  | { kind: 'invalid' }
+  | {
+      kind: 'valid';
+      files: Array<{ path: string; content: string; root?: string }>;
+    };
+
+const WINDOWS_RESERVED_LEAF = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.[^.]*)?$/i;
+
+function isSafeAbsoluteDirectory(path: string): boolean {
+  const windowsPath = /^(?:[A-Za-z]:[\\/]|\\\\)/u.test(path);
+  if (
+    path.length === 0 ||
+    path.length > 32_768 ||
+    /[\u0000-\u001f]/u.test(path) ||
+    !/^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+|\/)/u.test(path) ||
+    (windowsPath && /[<>"|?*]/u.test(path)) ||
+    (windowsPath && /:(?![\\/])/u.test(path.slice(2)))
+  ) {
+    return false;
+  }
+  return !path
+    .split(/[\\/]/u)
+    .some(
+      (segment) =>
+        segment === '.' ||
+        segment === '..' ||
+        (windowsPath && segment.length > 0 && /[. ]$/u.test(segment)),
+    );
+}
+
+function isSafeLeafFilename(name: string): boolean {
+  return (
+    name.length <= 255 &&
+    name.trim() === name &&
+    /^[A-Za-z0-9][A-Za-z0-9._ -]*$/u.test(name) &&
+    !name.includes('..') &&
+    !/[. ]$/u.test(name) &&
+    !WINDOWS_RESERVED_LEAF.test(name)
+  );
+}
+
+function trustedRootForBase(base: string, defaultWriteDir: string | null): string | null {
+  return defaultWriteDir !== null && isPathInsideRoot(base, defaultWriteDir)
+    ? defaultWriteDir
+    : null;
+}
+
+function exactMultiFileEntry(
+  base: string,
+  name: string,
+  content: string,
+  root: string | null,
+): { path: string; content: string; root?: string } | null {
+  const separator = /^[A-Za-z]:[\\/]|^\\\\/u.test(base) ? '\\' : '/';
+  const path = `${base}${separator}${name}`;
+  if (path.length > 32_768) return null;
+  return { path, content, ...(root ? { root } : {}) };
+}
+
+function hasExactlyOneTerminalLineEnding(content: string): boolean {
+  const lineEnding = content.match(/\r?\n$/u)?.[0];
+  if (!lineEnding) return false;
+  return !content.slice(0, -lineEnding.length).endsWith('\n');
+}
+
+function extractRawMultiFileEntries(
+  text: string,
+  count: number,
+  defaultWriteDir: string | null,
+): ExactMultiFileCreateRequest {
+  const baseMatches = [
+    ...text.matchAll(
+      /\bcreate\s+exactly\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+new\s+files?\s+in\s+`([^`\r\n]+)`/giu,
+    ),
+  ];
+  if (baseMatches.length !== 1) return { kind: 'invalid' };
+  const base = (baseMatches[0]?.[1] ?? '').replace(/[\\/]+$/u, '');
+  if (!isSafeAbsoluteDirectory(base)) return { kind: 'invalid' };
+
+  const declaredRootMatches = [...text.matchAll(/\buse root\s+`([^`\r\n]+)`/giu)];
+  if (declaredRootMatches.length > 1) return { kind: 'invalid' };
+  if (declaredRootMatches.length === 1) {
+    const declaredRoot = (declaredRootMatches[0]?.[1] ?? '').replace(/[\\/]+$/u, '');
+    if (!isSafeAbsoluteDirectory(declaredRoot) || !isPathInsideRoot(base, declaredRoot)) {
+      return { kind: 'invalid' };
+    }
+  }
+
+  const markers = [...text.matchAll(/^(\d{2})_([A-Za-z0-9][A-Za-z0-9._ -]*)$/gmu)];
+  if (markers.length !== count) return { kind: 'invalid' };
+
+  const seen = new Set<string>();
+  let aggregateContentLength = 0;
+  const trustedRoot = trustedRootForBase(base, defaultWriteDir);
+  const files: Array<{ path: string; content: string; root?: string }> = [];
+  for (const [index, marker] of markers.entries()) {
+    const name = marker[0] ?? '';
+    const ordinal = Number(marker[1]);
+    const markerStart = marker.index;
+    if (markerStart === undefined) return { kind: 'invalid' };
+    let contentStart = markerStart + name.length;
+    const markerLineEnding = text.slice(contentStart).match(/^\r?\n/u)?.[0];
+    if (!markerLineEnding) return { kind: 'invalid' };
+    contentStart += markerLineEnding.length;
+    const contentEnd = markers[index + 1]?.index ?? text.length;
+    let content = text.slice(contentStart, contentEnd);
+    if (index < markers.length - 1) {
+      const separator = content.match(/(\r?\n)\1$/u)?.[1];
+      if (!separator) return { kind: 'invalid' };
+      content = content.slice(0, -separator.length);
+    }
+    const collisionKey = name.toLocaleLowerCase('en-US');
+    aggregateContentLength += content.length;
+    if (
+      ordinal !== index + 1 ||
+      !isSafeLeafFilename(name) ||
+      seen.has(collisionKey) ||
+      content.trim().length === 0 ||
+      !hasExactlyOneTerminalLineEnding(content) ||
+      content.length > 200_000 ||
+      aggregateContentLength > 1_000_000
+    ) {
+      return { kind: 'invalid' };
+    }
+    seen.add(collisionKey);
+    const file = exactMultiFileEntry(base, name, content, trustedRoot);
+    if (!file) return { kind: 'invalid' };
+    files.push(file);
+  }
+
+  return { kind: 'valid', files };
+}
+
+function extractExactMultiFileCreateRequest(
+  text: string,
+  defaultWriteDir: string | null,
+): ExactMultiFileCreateRequest {
+  const intentMatches = [
+    ...text.matchAll(
+      /\bcreate\s+exactly\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+new\s+files?\b/giu,
+    ),
+  ];
+  if (intentMatches.length === 0) return { kind: 'not_multi' };
+  if (intentMatches.length !== 1) return { kind: 'invalid' };
+
+  const countToken = intentMatches[0]?.[1]?.toLowerCase();
+  const count = countToken
+    ? /^\d+$/u.test(countToken)
+      ? Number(countToken)
+      : NUMBER_WORDS[countToken]
+    : undefined;
+  if (!Number.isSafeInteger(count) || count === undefined) return { kind: 'invalid' };
+  if (count === 1) return { kind: 'not_multi' };
+  if (count < 2 || count > 10) return { kind: 'invalid' };
+
+  const baseMatches = [...text.matchAll(/^[ \t]*Base directory:[ \t]*"([^"\r\n]+)"[ \t]*$/gimu)];
+  if (baseMatches.length === 0) {
+    return extractRawMultiFileEntries(text, count, defaultWriteDir);
+  }
+  if (baseMatches.length !== 1) return { kind: 'invalid' };
+  const rawBase = baseMatches[0]?.[1] ?? '';
+  if (!isSafeAbsoluteDirectory(rawBase)) return { kind: 'invalid' };
+  const base = rawBase.replace(/[\\/]+$/u, '');
+  if (!base) return { kind: 'invalid' };
+
+  const blockPattern =
+    /(?:^|\r?\n)[ \t]*(\d{1,2})\.[ \t]+Filename:[ \t]+`([^`\r\n]+)`[ \t]*\r?\n```[A-Za-z0-9_-]{0,32}\r?\n([\s\S]*?)(\r?\n)```[ \t]*(?=\r?\n|$)/gu;
+  const blocks = [...text.matchAll(blockPattern)];
+  const fenceCount = [...text.matchAll(/^[ \t]*```[^\r\n]*$/gmu)].length;
+  if (blocks.length !== count || fenceCount !== count * 2) return { kind: 'invalid' };
+
+  const seen = new Set<string>();
+  let aggregateContentLength = 0;
+  const files: Array<{ path: string; content: string; root?: string }> = [];
+  const trustedRoot = trustedRootForBase(base, defaultWriteDir);
+
+  for (const [index, block] of blocks.entries()) {
+    const ordinal = Number(block[1]);
+    const name = block[2] ?? '';
+    const content = `${block[3] ?? ''}${block[4] ?? ''}`;
+    const collisionKey = name.toLocaleLowerCase('en-US');
+    aggregateContentLength += content.length;
+    if (
+      ordinal !== index + 1 ||
+      !isSafeLeafFilename(name) ||
+      seen.has(collisionKey) ||
+      content.trim().length === 0 ||
+      content.length > 200_000 ||
+      aggregateContentLength > 1_000_000
+    ) {
+      return { kind: 'invalid' };
+    }
+    seen.add(collisionKey);
+    const file = exactMultiFileEntry(base, name, content, trustedRoot);
+    if (!file) return { kind: 'invalid' };
+    files.push(file);
+  }
+
+  return { kind: 'valid', files };
+}
+
 function readTerminalCount(value: string | undefined): number | null {
   if (!value) return null;
   const asNumber = /^\d+$/.test(value) ? Number(value) : NUMBER_WORDS[value];
@@ -94,10 +297,7 @@ function extractSingleTerminalRunRequest(text: string): { command: string } | nu
       text.trim(),
     );
   const command = match?.[1]
-    ?.replace(
-      /^(?:this\s+)?exact\s+(?:powershell|shell|terminal)?\s*command\s*:\s*/i,
-      '',
-    )
+    ?.replace(/^(?:this\s+)?exact\s+(?:powershell|shell|terminal)?\s*command\s*:\s*/i, '')
     ?.replace(/\b(?:please|okay|ok)\b[.!?\s]*$/i, '')
     .replace(/[.!?]+$/u, '')
     .trim();
@@ -242,14 +442,21 @@ function extractScheduleCreateRequest(
   text: string,
 ): { title: string; prompt: string; startAtMs: number; recurrence: string } | null {
   const lower = normalized(text);
-  if (!/\b(schedule|scheduled|every|daily|weekly|monthly|morning|evening|night)\b/.test(lower))
-    return null;
+  const explicitSchedule = /\b(?:schedules?|scheduled)\b/.test(lower);
+  const temporalRecurrence =
+    /\b(?:daily|weekly|monthly|morning|evening|night|weekdays)\b/.test(lower) ||
+    /\bevery\s+(?:morning|days?|evening|night|weeks?|months?|weekdays?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.test(
+      lower,
+    );
+  if (!explicitSchedule && !temporalRecurrence) return null;
   if (!/\b(make|create|schedule|run|remind|check|summarize|review)\b/.test(lower)) return null;
-  const recurrence = /\bmonthly\b/.test(lower)
+  const recurrence = /\bmonthly\b|\bevery\s+months?\b/.test(lower)
     ? 'monthly'
-    : /\bweekly|friday|monday|tuesday|wednesday|thursday|saturday|sunday\b/.test(lower)
+    : /\bweekly|weekdays|friday|monday|tuesday|wednesday|thursday|saturday|sunday\b|\bevery\s+weeks?\b/.test(
+          lower,
+        )
       ? 'weekly'
-      : /\bdaily|every morning|every day|morning|evening|night\b/.test(lower)
+      : /\bdaily|morning|evening|night\b|\bevery\s+days?\b/.test(lower)
         ? 'daily'
         : 'once';
   const namedTitle = text.match(/\b(?:schedule\s+)?named\s+["“]([^"”]+)["”]/i)?.[1]?.trim();
@@ -262,7 +469,8 @@ function extractScheduleCreateRequest(
         '',
       )
       .trim()
-      .slice(0, 80) || 'Jarvis task';
+      .slice(0, 80) ||
+    'Jarvis task';
   return {
     title: title.charAt(0).toUpperCase() + title.slice(1),
     prompt: lower,
@@ -299,19 +507,16 @@ export function extractCreatorStartRequest(text: string): { kind: 'agent' | 'ski
   return directRequest[1]?.toLowerCase() === 'skill' ? { kind: 'skill' } : { kind: 'agent' };
 }
 
-function extractAgentRunRequest(
-  text: string,
-): { task: string; agentId: string } | null {
+function extractAgentRunRequest(text: string): { task: string; agentId: string } | null {
   const request = text.trim();
-  if (
-    !/\b(?:spawn|run|launch|start)\s+(?:one|1|a)\s+(?:sub-?agent|child agent)\b/i.test(request)
-  ) {
+  if (!/\b(?:spawn|run|launch|start)\s+(?:one|1|a)\s+(?:sub-?agent|child agent)\b/i.test(request)) {
     return null;
   }
   const agentId = /\b(?:saved\s+)?agent\s+id\s+(agt_[A-Za-z0-9_-]+)\b/i.exec(request)?.[1];
-  const delegatedTask = /\b(?:sub-?agent|child agent)\s+to\s+([\s\S]+?)(?=\s+Use the saved agent id\b)/i.exec(
-    request,
-  )?.[1];
+  const delegatedTask =
+    /\b(?:sub-?agent|child agent)\s+to\s+([\s\S]+?)(?=\s+Use the saved agent id\b)/i.exec(
+      request,
+    )?.[1];
   if (!agentId || !delegatedTask) return null;
   const sourceExcerpt = /\bSource excerpt(?:\s+from\s+[^:]+)?:\s*([\s\S]+)$/i.exec(request)?.[0];
   const task = `${delegatedTask.trim()} The child must use installed local Ollama Llama 3.2, must not edit files or use the network, and must not spawn more children.${sourceExcerpt ? ` ${sourceExcerpt.trim()}` : ''}`;
@@ -343,6 +548,15 @@ export function inferFallbackActionProposals(
   // narration as a separate filesystem approval.
   if (/^\s*Call the real `vibespace_context` function\b/u.test(userText)) {
     return proposals;
+  }
+
+  const defaultWriteDir = getCachedDefaultWriteDir();
+  const exactMultiFileCreate = extractExactMultiFileCreateRequest(userText, defaultWriteDir);
+  if (exactMultiFileCreate.kind === 'invalid') return proposals;
+  if (exactMultiFileCreate.kind === 'valid') {
+    return exactMultiFileCreate.files.map((file) =>
+      proposal('files.create', file, `Write ${file.path} after user approval.`),
+    );
   }
 
   const agentRun = extractAgentRunRequest(userText);
@@ -484,7 +698,6 @@ export function inferFallbackActionProposals(
     return proposals;
   }
 
-  const defaultWriteDir = getCachedDefaultWriteDir();
   const fileWrite = extractFileWriteRequest(userText, assistantText, {
     defaultDir: defaultWriteDir,
   });
@@ -507,9 +720,7 @@ export function inferFallbackActionProposals(
   return proposals.slice(0, 3);
 }
 
-export function extractFileEditRequest(
-  userText: string,
-): { path: string; content: string } | null {
+export function extractFileEditRequest(userText: string): { path: string; content: string } | null {
   const raw = userText.trim();
   if (
     !/\b(?:update|replace|overwrite|edit|modify)\b/i.test(raw) ||
@@ -537,10 +748,7 @@ export function extractFileReadRequest(userText: string): { path: string } | nul
     raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
   const intentText = pathMatch ? raw.replace(pathMatch[0], ' ') : raw;
   if (!/\b(read|inspect|review|audit|open|show|load|check)\b/i.test(intentText)) return null;
-  if (
-    !/\b(file|path|contents?|directly)\b/i.test(intentText) &&
-    !/\.[a-z0-9]{1,12}\b/i.test(raw)
-  ) {
+  if (!/\b(file|path|contents?|directly)\b/i.test(intentText) && !/\.[a-z0-9]{1,12}\b/i.test(raw)) {
     return null;
   }
   let path = pathMatch?.[1]?.replace(/[.,;:]+$/, '').trim();
@@ -548,7 +756,9 @@ export function extractFileReadRequest(userText: string): { path: string } | nul
   const pathLeaf = path.split(/[\\/]/).at(-1) ?? '';
   if (!/\.[a-z0-9]{1,12}$/i.test(pathLeaf)) {
     const directoryPath = path;
-    const requestedFilename = [...raw.matchAll(/\b([A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,12})\b/g)]
+    const requestedFilename = [
+      ...raw.matchAll(/\b([A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,12})\b/g),
+    ]
       .map((match) => match[1])
       .find((filename) => filename && !directoryPath.includes(filename));
     if (requestedFilename) {
