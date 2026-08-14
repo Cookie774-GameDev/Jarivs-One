@@ -371,6 +371,34 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+type ExactTerminalRef = Readonly<{ sessionId?: string; paneId?: string }>;
+
+function parseExactTerminalRef(raw: string): ExactTerminalRef | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const candidate = Array.isArray(parsed) ? (parsed.length === 1 ? parsed[0] : null) : parsed;
+    if (typeof candidate === 'string') {
+      const sessionId = candidate.trim();
+      return sessionId ? { sessionId } : null;
+    }
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+    const source = candidate as Record<string, unknown>;
+    const sessionId = typeof source.sessionId === 'string' ? source.sessionId.trim() : '';
+    const paneId = typeof source.paneId === 'string' ? source.paneId.trim() : '';
+    if (!sessionId && !paneId) return null;
+    return {
+      ...(sessionId ? { sessionId } : {}),
+      ...(paneId ? { paneId } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasExactlyOneTerminalSelector(params: Record<string, unknown>): boolean {
+  return ['sessionId', 'paneId', 'agentSlug'].filter((key) => text(params, key)).length === 1;
+}
+
 async function terminalSessions(params: Record<string, unknown>) {
   const { useTerminalTranscriptStore } = await import('@/features/terminals/transcriptStore');
   const all = Object.values(useTerminalTranscriptStore.getState().sessions);
@@ -555,26 +583,31 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
       id: 'terminal.send_input',
       category: 'terminal',
       label: 'Send terminal input',
-      description:
-        'Send explicit input to referenced terminals, or all live panes when no refs are supplied.',
+      description: 'Send explicit input to exactly one referenced live terminal.',
       destructive: true,
       params: [
         { key: 'command', label: 'Input', type: 'string', required: true },
-        { key: 'refsJson', label: 'Terminal refs JSON', type: 'string' },
+        { key: 'refsJson', label: 'One terminal ref JSON', type: 'string', required: true },
       ],
       run: (params, ctx) => {
         const command = text(params, 'command');
         if (!command) return Promise.resolve(fail('Terminal input is required.'));
         const refsJson = text(params, 'refsJson');
-        return runRequired(
-          resolveLegacy,
-          refsJson ? 'terminal.sendToRefs' : 'terminal.sendAll',
-          {
-            command,
-            ...(refsJson ? { refsJson } : {}),
-          },
-          ctx,
-        );
+        const ref = parseExactTerminalRef(refsJson);
+        if (!ref) {
+          return Promise.resolve(fail('Exactly one explicit terminal ref is required.'));
+        }
+        return terminalSessions(ref).then((sessions) => {
+          if (sessions.length !== 1) {
+            return fail('The explicit terminal ref did not resolve to exactly one live terminal.');
+          }
+          return runRequired(
+            resolveLegacy,
+            'terminal.sendToRefs',
+            { command, refsJson: JSON.stringify([ref]) },
+            ctx,
+          );
+        });
       },
     },
     {
@@ -582,7 +615,7 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
       category: 'terminal',
       label: 'Wait for terminal output',
       description:
-        'Wait until a terminal emits output or contains an expected string, with a bounded timeout.',
+        'Wait until exactly one explicitly selected terminal emits output or contains an expected string.',
       params: [
         { key: 'sessionId', label: 'Session id', type: 'string' },
         { key: 'paneId', label: 'Pane id', type: 'string' },
@@ -592,12 +625,18 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         { key: 'timeoutMs', label: 'Timeout milliseconds', type: 'number' },
       ],
       run: async (params) => {
+        if (!hasExactlyOneTerminalSelector(params)) {
+          return fail('Exactly one explicit terminal selector is required.');
+        }
         const timeoutMs = numberInRange(params, 'timeoutMs', 30_000, 250, 60_000);
         const afterBytes = numberInRange(params, 'afterBytes', 0, 0, Number.MAX_SAFE_INTEGER);
         const contains = text(params, 'contains').toLowerCase();
         const deadline = Date.now() + timeoutMs;
         do {
           const sessions = await terminalSessions(params);
+          if (sessions.length > 1) {
+            return fail('The terminal selector resolved to more than one live terminal.');
+          }
           const match = sessions.find(
             (session) =>
               session.bytesSeen > afterBytes &&
@@ -619,7 +658,8 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
       id: 'terminal.collect_output',
       category: 'terminal',
       label: 'Collect terminal output',
-      description: 'Collect bounded, sanitized transcript tails from matching terminal panes.',
+      description:
+        'Collect a bounded, sanitized transcript tail from one explicitly selected terminal.',
       params: [
         { key: 'sessionId', label: 'Session id', type: 'string' },
         { key: 'paneId', label: 'Pane id', type: 'string' },
@@ -627,8 +667,14 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         { key: 'maxChars', label: 'Maximum characters', type: 'number' },
       ],
       run: async (params) => {
+        if (!hasExactlyOneTerminalSelector(params)) {
+          return fail('Exactly one explicit terminal selector is required.');
+        }
         const sessions = await terminalSessions(params);
         if (!sessions.length) return fail('No matching terminal transcript is available.');
+        if (sessions.length > 1) {
+          return fail('The terminal selector resolved to more than one live terminal.');
+        }
         const maxChars = numberInRange(params, 'maxChars', 8_000, 200, 16_000);
         return ok(
           `Collected output from ${sessions.length} terminal${sessions.length === 1 ? '' : 's'}.`,

@@ -15,6 +15,7 @@ import {
   jarvisTerminalHandoffReceiptBrand,
   type JarvisTerminalOwnedExecution,
 } from '@/lib/jarvis/approvalEngine';
+import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 
 const mcpMocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -104,6 +105,114 @@ describe('Jarvis canonical core actions', () => {
       ok: false,
       error: 'Required host action terminal.bulkOpen is unavailable.',
     });
+  });
+
+  it('requires exactly one explicit terminal ref before sending input', async () => {
+    const sendToRefs = vi.fn(async () => ({ ok: true as const, summary: 'sent' }));
+    const sendAll = vi.fn(async () => ({ ok: true as const, summary: 'broadcast' }));
+    const actions = createJarvisCoreActions((id) => {
+      if (id === 'terminal.sendToRefs') return action(id, sendToRefs);
+      if (id === 'terminal.sendAll') return action(id, sendAll);
+      return undefined;
+    });
+    const send = actions.find((item) => item.id === 'terminal.send_input')!;
+    expect(send.params.find((param) => param.key === 'refsJson')?.required).toBe(true);
+
+    for (const refsJson of [
+      undefined,
+      '[]',
+      '[{"sessionId":"pty-a"},{"sessionId":"pty-b"}]',
+      '{}',
+    ]) {
+      await expect(
+        send.run(
+          {
+            command: 'status',
+            ...(refsJson === undefined ? {} : { refsJson }),
+          },
+          { source: 'ai' },
+        ),
+      ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/exactly one/i) });
+    }
+
+    expect(sendAll).not.toHaveBeenCalled();
+    expect(sendToRefs).not.toHaveBeenCalled();
+
+    useTerminalTranscriptStore.getState().reset();
+    await expect(
+      send.run({ command: 'status', refsJson: '[{"sessionId":"pty-stale"}]' }, { source: 'ai' }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/exactly one live/i) });
+    expect(sendToRefs).not.toHaveBeenCalled();
+
+    useTerminalTranscriptStore
+      .getState()
+      .registerSession('pty-exact', { paneId: 'pane-exact', command: 'opencode' });
+    await expect(
+      send.run({ command: 'status', refsJson: '[{"sessionId":"pty-exact"}]' }, { source: 'ai' }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(sendToRefs).toHaveBeenCalledOnce();
+    expect(sendToRefs).toHaveBeenCalledWith(
+      { command: 'status', refsJson: '[{"sessionId":"pty-exact"}]' },
+      { source: 'ai' },
+    );
+    expect(sendAll).not.toHaveBeenCalled();
+    useTerminalTranscriptStore.getState().reset();
+  });
+
+  it('requires exactly one explicit selector for terminal wait and collect', async () => {
+    const actions = createJarvisCoreActions(() => undefined);
+    const wait = actions.find((item) => item.id === 'terminal.wait_for_output')!;
+    const collect = actions.find((item) => item.id === 'terminal.collect_output')!;
+
+    await expect(wait.run({}, { source: 'ai' })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/exactly one/i),
+    });
+    await expect(
+      wait.run({ sessionId: 'pty-a', paneId: 'pane-a' }, { source: 'ai' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/exactly one/i),
+    });
+    await expect(collect.run({}, { source: 'ai' })).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/exactly one/i),
+    });
+    await expect(
+      collect.run({ sessionId: 'pty-a', agentSlug: 'scout' }, { source: 'ai' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/exactly one/i),
+    });
+
+    useTerminalTranscriptStore.getState().reset();
+    useTerminalTranscriptStore
+      .getState()
+      .registerSession('pty-exact', { paneId: 'pane-exact', command: 'opencode' });
+    useTerminalTranscriptStore.getState().appendOutput('pty-exact', 'T09_EXACT_OUTPUT');
+    await expect(
+      wait.run(
+        { sessionId: 'pty-exact', contains: 'T09_EXACT_OUTPUT', timeoutMs: 250 },
+        { source: 'ai' },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { sessionId: 'pty-exact', paneId: 'pane-exact' },
+    });
+    await expect(
+      collect.run({ sessionId: 'pty-exact', maxChars: 2_000 }, { source: 'ai' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        sessions: [
+          expect.objectContaining({
+            sessionId: 'pty-exact',
+            output: expect.stringContaining('T09_EXACT_OUTPUT'),
+          }),
+        ],
+      },
+    });
+    useTerminalTranscriptStore.getState().reset();
   });
 
   it('does not claim legacy task cancellation before canonical kernel injection', async () => {

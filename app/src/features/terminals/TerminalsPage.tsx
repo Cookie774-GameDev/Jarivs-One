@@ -109,6 +109,16 @@ export function forgetTerminalLeafSessions(
   }
 }
 
+function terminalRefMatchesLeaf(
+  ref: TerminalRef,
+  leaf: Extract<PaneNode, { kind: 'leaf' }>,
+): boolean {
+  const hasIdentity = Boolean(ref.paneId || ref.sessionId);
+  const paneMatches = !ref.paneId || ref.paneId === leaf.id;
+  const sessionMatches = !ref.sessionId || ref.sessionId === leaf.sessionId;
+  return hasIdentity && paneMatches && sessionMatches;
+}
+
 type InvokeCommand = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 export async function deleteTerminalProjectSnapshots(
@@ -127,6 +137,13 @@ export function applyTerminalCommandBatch(
   let replaceRootNext = false;
   for (const item of items) {
     if (item.kind === 'shell') {
+      if (item.target === 'refs') {
+        const refs = item.refs ?? [];
+        const hasMatch = flattenLeaves(next).some((leaf) =>
+          refs.some((ref) => terminalRefMatchesLeaf(ref, leaf)),
+        );
+        if (!hasMatch) continue;
+      }
       markExecution(item.id, 'starting');
       if (item.target === 'all') {
         const pendingCommandId = Date.now();
@@ -140,16 +157,10 @@ export function applyTerminalCommandBatch(
       } else if (item.target === 'refs' && item.refs && item.refs.length > 0) {
         const refs = item.refs;
         const pendingCommandId = Date.now();
-        let matched = false;
         next = fromLeaves(
           flattenLeaves(next).map((leaf, index) => {
-            const hit = refs.some(
-              (ref) =>
-                (ref.paneId && ref.paneId === leaf.id) ||
-                (ref.sessionId && ref.sessionId === leaf.sessionId),
-            );
+            const hit = refs.some((ref) => terminalRefMatchesLeaf(ref, leaf));
             if (!hit) return leaf;
-            matched = true;
             return {
               ...leaf,
               pendingCommand: item.command,
@@ -157,14 +168,6 @@ export function applyTerminalCommandBatch(
             };
           }),
         );
-        if (!matched) {
-          const first = refs[0];
-          next = appendLeaf(next, {
-            command: defaultShell(),
-            startupCommand: item.command || undefined,
-            agentSlug: first?.agentSlug ?? item.label,
-          });
-        }
       } else {
         const seed = {
           command: defaultShell(),

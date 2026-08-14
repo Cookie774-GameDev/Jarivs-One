@@ -5,7 +5,7 @@ import {
   commandForAgent,
   summarizeTerminalResetCancellations,
 } from './TerminalsPage';
-import { appendLeaf, flattenLeaves, MAX_PANES, newLeaf } from './paneTree';
+import { appendLeaf, flattenLeaves, MAX_PANES, newLeaf, type PaneNode } from './paneTree';
 import {
   claimTerminalCommands,
   enqueueCanonicalTerminalCommand,
@@ -72,7 +72,9 @@ describe('commandForAgent', () => {
       },
     ]);
 
-    expect(flattenLeaves(next).find((leaf) => leaf.executionId === 'terminal_open_tool_1')).toMatchObject({
+    expect(
+      flattenLeaves(next).find((leaf) => leaf.executionId === 'terminal_open_tool_1'),
+    ).toMatchObject({
       startupCommand: 'opencode',
       startupCommands: [
         "Set-Location -LiteralPath 'C:\\Work Tree'",
@@ -82,6 +84,102 @@ describe('commandForAgent', () => {
       preserveExisting: true,
       cwd: 'C:\\Work Tree',
     });
+  });
+
+  it('does not create a pane or mark an execution when a terminal ref is stale', () => {
+    const current: PaneNode = {
+      kind: 'split',
+      id: 'split-isolation',
+      orientation: 'h',
+      ratio: 0.5,
+      left: { kind: 'leaf', id: 'pane-a', sessionId: 'pty-a' },
+      right: { kind: 'leaf', id: 'pane-b', sessionId: 'pty-b' },
+    };
+    const markExecution = vi.fn();
+
+    const next = applyTerminalCommandBatch(
+      current,
+      [
+        {
+          kind: 'shell',
+          id: 'send-stale',
+          command: 'T09_TARGET_ONLY',
+          target: 'refs',
+          refs: [{ sessionId: 'pty-missing' }],
+        },
+      ],
+      markExecution,
+    );
+
+    expect(next).toBe(current);
+    expect(flattenLeaves(next)).toHaveLength(2);
+    expect(flattenLeaves(next).every((leaf) => leaf.pendingCommand === undefined)).toBe(true);
+    expect(markExecution).not.toHaveBeenCalled();
+  });
+
+  it('sends a referenced command to exactly one matching terminal', () => {
+    const current: PaneNode = {
+      kind: 'split',
+      id: 'split-isolation',
+      orientation: 'h',
+      ratio: 0.5,
+      left: { kind: 'leaf', id: 'pane-a', sessionId: 'pty-a' },
+      right: { kind: 'leaf', id: 'pane-b', sessionId: 'pty-b' },
+    };
+    const markExecution = vi.fn();
+
+    const next = applyTerminalCommandBatch(
+      current,
+      [
+        {
+          kind: 'shell',
+          id: 'send-exact',
+          command: 'T09_TARGET_ONLY',
+          target: 'refs',
+          refs: [{ sessionId: 'pty-a' }],
+        },
+      ],
+      markExecution,
+    );
+    const leaves = flattenLeaves(next);
+
+    expect(leaves).toHaveLength(2);
+    expect(leaves.find((leaf) => leaf.sessionId === 'pty-a')?.pendingCommand).toBe(
+      'T09_TARGET_ONLY',
+    );
+    expect(leaves.find((leaf) => leaf.sessionId === 'pty-b')?.pendingCommand).toBeUndefined();
+    expect(markExecution).toHaveBeenCalledOnce();
+    expect(markExecution).toHaveBeenCalledWith('send-exact', 'starting');
+  });
+
+  it('rejects a ref whose pane and session identities point at different terminals', () => {
+    const current: PaneNode = {
+      kind: 'split',
+      id: 'split-isolation',
+      orientation: 'h',
+      ratio: 0.5,
+      left: { kind: 'leaf', id: 'pane-a', sessionId: 'pty-a' },
+      right: { kind: 'leaf', id: 'pane-b', sessionId: 'pty-b' },
+    };
+    const markExecution = vi.fn();
+
+    const next = applyTerminalCommandBatch(
+      current,
+      [
+        {
+          kind: 'shell',
+          id: 'send-conflicted',
+          command: 'T09_TARGET_ONLY',
+          target: 'refs',
+          refs: [{ paneId: 'pane-a', sessionId: 'pty-b' }],
+        },
+      ],
+      markExecution,
+    );
+
+    expect(next).toBe(current);
+    expect(markExecution).not.toHaveBeenCalled();
+    expect(flattenLeaves(next).every((leaf) => leaf.pendingCommand === undefined)).toBe(true);
   });
 
   it('does not present null or revoked reset authority as committed cancellation', () => {
