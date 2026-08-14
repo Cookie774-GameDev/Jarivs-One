@@ -68,6 +68,9 @@ export interface ToolGatewayResponse {
 
 const MAX_RESPONSE_BYTES = 128 * 1024;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
+const SAFE_CORPUS_ID = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$/u;
+const CANONICAL_LOGICAL_POSITION = /^(?:0|[1-9][0-9]*)$/u;
+const MAX_LOGICAL_POSITION = 10_000_000_000_000_000n;
 const FORBIDDEN_KEY = /(?:authorization|cookie|credential|password|secret|token|api.?key)/i;
 const catalog = new Set<string>(TOOL_GATEWAY_CATALOG);
 
@@ -275,6 +278,8 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
           'beforeBytes',
           'afterBytes',
           'recordId',
+          'corpusId',
+          'position',
           'required',
         ],
       );
@@ -309,25 +314,32 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
           return args;
         case 'expand':
           args = exactKeys(
-            selectSemanticFields(envelope, [
-              'operation',
-              'pointer',
-              'beforeBytes',
-              'afterBytes',
-            ]),
+            selectSemanticFields(envelope, ['operation', 'pointer', 'beforeBytes', 'afterBytes']),
             ['operation', 'pointer'],
             ['beforeBytes', 'afterBytes'],
           );
           args.pointer = validateContextPointer(args.pointer);
           if (args.beforeBytes !== undefined) {
-            args.beforeBytes = normalizedSemanticInteger(
-              args.beforeBytes,
-              'beforeBytes',
-              131_072,
-            );
+            args.beforeBytes = normalizedSemanticInteger(args.beforeBytes, 'beforeBytes', 131_072);
           }
           if (args.afterBytes !== undefined) {
             args.afterBytes = normalizedSemanticInteger(args.afterBytes, 'afterBytes', 131_072);
+          }
+          return args;
+        case 'address':
+          args = exactKeys(selectSemanticFields(envelope, ['operation', 'corpusId', 'position']), [
+            'operation',
+            'corpusId',
+            'position',
+          ]);
+          stringField(args.corpusId, 'corpusId', 200, { id: true });
+          if (
+            !SAFE_CORPUS_ID.test(args.corpusId as string) ||
+            typeof args.position !== 'string' ||
+            !CANONICAL_LOGICAL_POSITION.test(args.position) ||
+            BigInt(args.position) > MAX_LOGICAL_POSITION
+          ) {
+            invalid('position is invalid.');
           }
           return args;
         case 'related':
@@ -343,9 +355,11 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
           return args;
         case 'timeline':
         case 'sources':
-          args = exactKeys(selectSemanticFields(envelope, ['operation', 'limit']), ['operation'], [
-            'limit',
-          ]);
+          args = exactKeys(
+            selectSemanticFields(envelope, ['operation', 'limit']),
+            ['operation'],
+            ['limit'],
+          );
           if (args.limit !== undefined) {
             args.limit = normalizedSemanticInteger(args.limit, 'limit', 100);
           }

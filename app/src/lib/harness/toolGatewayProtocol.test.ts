@@ -127,6 +127,56 @@ describe('tool gateway protocol', () => {
     }
   });
 
+  it.each([
+    '999999999',
+    '1000000000',
+    '1000000001',
+    '9999999999',
+    '10000000000',
+    '10000000001',
+    '100000000000',
+    '9007199254740991',
+    '9007199254740992',
+    '9007199254740993',
+  ])('preserves exact canonical large address %s as a string', (position) => {
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: { operation: 'address', corpusId: 'sparse-boundaries', position },
+        }),
+      ).args,
+    ).toEqual({ operation: 'address', corpusId: 'sparse-boundaries', position });
+  });
+
+  it.each([10_000_000_001, '01', '1e10', '-1', '+1', '1.0', '', '10000000000000001'])(
+    'rejects noncanonical or out-of-range large address %o',
+    (position) => {
+      expect(() =>
+        parseToolGatewayRequest(
+          request({
+            tool: 'vibespace_context',
+            args: { operation: 'address', corpusId: 'sparse-boundaries', position },
+          }),
+        ),
+      ).toThrow();
+    },
+  );
+
+  it.each(['../foreign', 'safe/path', ' leading', 'trailing ', 'control\u0000id', 'x'.repeat(201)])(
+    'rejects unsafe large-address corpus id %o',
+    (corpusId) => {
+      expect(() =>
+        parseToolGatewayRequest(
+          request({
+            tool: 'vibespace_context',
+            args: { operation: 'address', corpusId, position: '1' },
+          }),
+        ),
+      ).toThrow();
+    },
+  );
+
   it('drops OpenCode schema placeholders that the selected operation cannot consume', () => {
     expect(
       parseToolGatewayRequest(
@@ -162,8 +212,7 @@ describe('tool gateway protocol', () => {
           args: {
             operation: 'investigate',
             query: 'find the passage',
-            pointer:
-              '{"recordId":"null","sourceVersion":"v1.0","contentHash":"not-a-sha256"}',
+            pointer: '{"recordId":"null","sourceVersion":"v1.0","contentHash":"not-a-sha256"}',
             required: ['id', 'recordId', 'sourceVersion', 'contentHash'],
           },
         }),

@@ -8,6 +8,7 @@ export const RLM_CONTEXT_OPERATIONS = [
   'search',
   'open',
   'expand',
+  'address',
   'related',
   'timeline',
   'sources',
@@ -43,6 +44,7 @@ interface QueryPort {
   search(input: unknown): Promise<unknown>;
   open(input: unknown): Promise<unknown>;
   expand(input: unknown): Promise<unknown>;
+  address?(input: unknown): Promise<unknown>;
   related(input: unknown): Promise<unknown>;
   timeline(input: unknown): Promise<unknown>;
   sources(input: unknown): Promise<unknown>;
@@ -63,6 +65,9 @@ const DEFAULT_RLM_BUDGET: Readonly<RlmBudget> = Object.freeze({
   maxToolCalls: 12,
   maxOpenBytes: 256 * 1024,
 });
+const SAFE_CORPUS_ID = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$/u;
+const CANONICAL_POSITION = /^(?:0|[1-9][0-9]*)$/u;
+const MAX_LOGICAL_POSITION = 10_000_000_000_000_000n;
 
 function invalid(): never {
   throw new RlmOpenCodeToolError('invalid_arguments');
@@ -103,6 +108,23 @@ function text(value: unknown, maximum = 4_096): string {
     value.length > maximum ||
     value.trim() !== value ||
     value.includes('\0')
+  ) {
+    invalid();
+  }
+  return value;
+}
+
+function corpusId(value: unknown): string {
+  const parsed = text(value, 200);
+  if (!SAFE_CORPUS_ID.test(parsed)) invalid();
+  return parsed;
+}
+
+function canonicalPosition(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !CANONICAL_POSITION.test(value) ||
+    BigInt(value) > MAX_LOGICAL_POSITION
   ) {
     invalid();
   }
@@ -174,6 +196,8 @@ export function createRlmOpenCodeTool(dependencies: {
         'beforeBytes',
         'afterBytes',
         'recordId',
+        'corpusId',
+        'position',
       ],
     );
     if (
@@ -222,6 +246,16 @@ export function createRlmOpenCodeTool(dependencies: {
           pointer: pointer(args.pointer),
           beforeBytes: optionalPositiveInteger(args.beforeBytes, maxOpenBytes) ?? 0,
           afterBytes: optionalPositiveInteger(args.afterBytes, maxOpenBytes) ?? 0,
+          signal,
+        });
+      }
+      case 'address': {
+        const args = exactKeys(rawInput, ['operation', 'corpusId', 'position']);
+        if (!dependencies.queryService.address) invalid();
+        return dependencies.queryService.address({
+          scope,
+          corpusId: corpusId(args.corpusId),
+          position: canonicalPosition(args.position),
           signal,
         });
       }

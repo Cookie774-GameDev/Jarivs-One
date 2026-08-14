@@ -453,7 +453,7 @@ fn mcp_error(id: Option<&Value>, code: i64, message: &str) -> Vec<u8> {
 fn context_tool_descriptor() -> Value {
     serde_json::json!({
         "name": "vibespace_context",
-        "description": "Search, open, or boundedly expand an exact search pointer from the current VibeSpace Context Map.",
+        "description": "Search, open, boundedly expand, or resolve an exact logical token address from the current VibeSpace Context Map.",
         "annotations": {
             "readOnlyHint": true,
             "destructiveHint": false,
@@ -465,8 +465,18 @@ fn context_tool_descriptor() -> Value {
             "additionalProperties": false,
             "required": ["operation"],
             "properties": {
-                "operation": { "type": "string", "enum": ["search", "open", "expand"] },
+                "operation": { "type": "string", "enum": ["search", "open", "expand", "address"] },
                 "query": { "type": "string", "maxLength": 32768 },
+                "corpusId": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$"
+                },
+                "position": {
+                    "type": "string",
+                    "maxLength": 17,
+                    "pattern": "^(?:0|[1-9][0-9]{0,15}|10000000000000000)$"
+                },
                 "limit": { "type": "integer", "minimum": 1, "maximum": 5 },
                 "beforeBytes": { "type": "integer", "minimum": 1, "maximum": 2048 },
                 "afterBytes": { "type": "integer", "minimum": 1, "maximum": 2048 },
@@ -557,6 +567,10 @@ fn context_tool_descriptor() -> Value {
                             { "required": ["afterBytes"] }
                         ]
                     }
+                },
+                {
+                    "if": { "properties": { "operation": { "const": "address" } } },
+                    "then": { "required": ["corpusId", "position"] }
                 }
             ]
         }
@@ -1354,7 +1368,23 @@ mod tests {
         assert_eq!(descriptor["inputSchema"]["additionalProperties"], false);
         assert_eq!(
             descriptor["inputSchema"]["properties"]["operation"]["enum"],
-            json!(["search", "open", "expand"])
+            json!(["search", "open", "expand", "address"])
+        );
+        assert_eq!(
+            descriptor["inputSchema"]["properties"]["position"]["type"],
+            "string"
+        );
+        assert_eq!(
+            descriptor["inputSchema"]["properties"]["position"]["pattern"],
+            "^(?:0|[1-9][0-9]{0,15}|10000000000000000)$"
+        );
+        assert_eq!(
+            descriptor["inputSchema"]["properties"]["corpusId"]["maxLength"],
+            200
+        );
+        assert_eq!(
+            descriptor["inputSchema"]["properties"]["corpusId"]["pattern"],
+            "^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$"
         );
         assert_eq!(
             descriptor["inputSchema"]["properties"]["limit"]["maximum"],
@@ -1393,6 +1423,10 @@ mod tests {
                             { "required": ["afterBytes"] }
                         ]
                     }
+                },
+                {
+                    "if": { "properties": { "operation": { "const": "address" } } },
+                    "then": { "required": ["corpusId", "position"] }
                 }
             ])
         );

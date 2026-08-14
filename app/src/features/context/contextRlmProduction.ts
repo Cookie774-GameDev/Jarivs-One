@@ -13,12 +13,21 @@ import {
   type ContextScope,
 } from './contextQueryService';
 import {
+  createCorpusScaleMetadata,
+  locateCorpusTokenPosition,
+  parseCorpusTokenCount,
+  serializeCorpusScaleMetadata,
+  type CorpusScaleMetadata,
+} from './corpusScale';
+import {
   createContextPointer,
   createContextRecord,
   type ContextRecord,
   type ContextSourceKind,
 } from './losslessContext';
 import { createRlmOpenCodeTool } from './rlmOpenCodeTool';
+import { createRecursiveContextPlanner } from './recursiveContextPlanner';
+import { createRecursiveContextQueryAdapter } from './recursiveContextQueryAdapter';
 import {
   createRlmRuntime,
   type RlmChildAnalysis,
@@ -36,6 +45,13 @@ import {
 const MAX_SOURCE_SHARD_BYTES = 1024 * 1024;
 const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
 const MAX_CONCURRENT_SOURCE_VALIDATIONS = 8;
+const LARGE_ADDRESS_DESCRIPTOR = '.vibespace-large-address-v1.json';
+const MAX_LARGE_ADDRESS_DESCRIPTOR_BYTES = 64 * 1024;
+const MAX_LARGE_ADDRESS_SHARD_BYTES = 4 * 1024;
+const MAX_LARGE_ADDRESS_SHARDS = 256;
+const SAFE_LARGE_ADDRESS_ID = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,199}$/u;
+const SHA256_REVISION = /^sha256:[a-f0-9]{64}$/u;
+const CANONICAL_LARGE_ADDRESS_POSITION = /^(?:0|[1-9][0-9]*)$/u;
 
 export function requestsMappedFileAuthority(query: string): boolean {
   return /\b(?:files?|filename|source\s+(?:file|filename|path))\b/i.test(query);
@@ -114,6 +130,185 @@ interface ContextMapSearchHit {
   pointer: ReturnType<typeof createContextPointer>;
   preview: string;
   score: number;
+}
+
+interface LargeAddressShard {
+  index: string;
+  tokenStart: string;
+  tokenEnd: string;
+  file: string;
+  contentSha256: `sha256:${string}`;
+}
+
+interface LargeAddressDescriptor {
+  corpus: Readonly<CorpusScaleMetadata>;
+  shardSize: bigint;
+  shards: readonly LargeAddressShard[];
+}
+
+interface ContextMapAddressRepository extends ContextQueryRepository {
+  address(
+    scope: ContextScope,
+    corpusId: string,
+    position: string,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+}
+
+function largeAddressError(): never {
+  throw new Error('large_address_invalid');
+}
+
+function exactObject(value: unknown, required: readonly string[]): Record<string, unknown> {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    largeAddressError();
+  }
+  const object = value as Record<string, unknown>;
+  if (
+    required.some((key) => !Object.prototype.hasOwnProperty.call(object, key)) ||
+    Object.keys(object).some((key) => !required.includes(key))
+  ) {
+    largeAddressError();
+  }
+  return object;
+}
+
+function safeRelativeAddressFile(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length < 1 ||
+    value.length > 512 ||
+    value.includes('\\') ||
+    value.includes(':') ||
+    /^(?:\/|[A-Za-z]:)|[\u0000-\u001f\u007f]/u.test(value)
+  ) {
+    largeAddressError();
+  }
+  const segments = value.split('/');
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+    largeAddressError();
+  }
+  return value;
+}
+
+function parseLargeAddressDescriptor(content: string): LargeAddressDescriptor {
+  if (new TextEncoder().encode(content).length > MAX_LARGE_ADDRESS_DESCRIPTOR_BYTES) {
+    largeAddressError();
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    largeAddressError();
+  }
+  const descriptor = exactObject(parsed, [
+    'version',
+    'corpusId',
+    'totalTokens',
+    'shardSize',
+    'contentDigest',
+    'generatedAt',
+    'shards',
+  ]);
+  if (
+    descriptor.version !== 1 ||
+    typeof descriptor.corpusId !== 'string' ||
+    !SAFE_LARGE_ADDRESS_ID.test(descriptor.corpusId) ||
+    typeof descriptor.contentDigest !== 'string' ||
+    !SHA256_REVISION.test(descriptor.contentDigest) ||
+    !Number.isSafeInteger(descriptor.generatedAt) ||
+    (descriptor.generatedAt as number) < 0 ||
+    !Array.isArray(descriptor.shards) ||
+    descriptor.shards.length < 1 ||
+    descriptor.shards.length > MAX_LARGE_ADDRESS_SHARDS
+  ) {
+    largeAddressError();
+  }
+  let totalTokens: bigint;
+  let shardSize: bigint;
+  if (typeof descriptor.totalTokens !== 'string' || typeof descriptor.shardSize !== 'string') {
+    largeAddressError();
+  }
+  try {
+    totalTokens = parseCorpusTokenCount(descriptor.totalTokens as string, 'total_tokens');
+    shardSize = parseCorpusTokenCount(descriptor.shardSize as string, 'shard_size');
+  } catch {
+    largeAddressError();
+  }
+  if (totalTokens === 0n || shardSize === 0n) largeAddressError();
+  const expectedShardCount = (totalTokens + shardSize - 1n) / shardSize;
+  if (expectedShardCount !== BigInt(descriptor.shards.length)) largeAddressError();
+  const shards = descriptor.shards.map((value, ordinal): LargeAddressShard => {
+    const shard = exactObject(value, ['index', 'tokenStart', 'tokenEnd', 'file', 'contentSha256']);
+    let index: bigint;
+    let tokenStart: bigint;
+    let tokenEnd: bigint;
+    if (
+      typeof shard.index !== 'string' ||
+      typeof shard.tokenStart !== 'string' ||
+      typeof shard.tokenEnd !== 'string'
+    ) {
+      largeAddressError();
+    }
+    try {
+      index = parseCorpusTokenCount(shard.index as string, 'shard_index');
+      tokenStart = parseCorpusTokenCount(shard.tokenStart as string, 'token_start');
+      tokenEnd = parseCorpusTokenCount(shard.tokenEnd as string, 'token_end');
+    } catch {
+      largeAddressError();
+    }
+    const expectedStart = BigInt(ordinal) * shardSize;
+    const expectedEnd =
+      expectedStart + shardSize < totalTokens ? expectedStart + shardSize : totalTokens;
+    if (
+      index !== BigInt(ordinal) ||
+      tokenStart !== expectedStart ||
+      tokenEnd !== expectedEnd ||
+      typeof shard.contentSha256 !== 'string' ||
+      !SHA256_REVISION.test(shard.contentSha256)
+    ) {
+      largeAddressError();
+    }
+    return Object.freeze({
+      index: index.toString(10),
+      tokenStart: tokenStart.toString(10),
+      tokenEnd: tokenEnd.toString(10),
+      file: safeRelativeAddressFile(shard.file),
+      contentSha256: shard.contentSha256 as `sha256:${string}`,
+    });
+  });
+  if (
+    new Set(shards.map((shard) => shard.file.toLocaleLowerCase('en-US'))).size !== shards.length
+  ) {
+    largeAddressError();
+  }
+  const corpus = createCorpusScaleMetadata({
+    corpusId: descriptor.corpusId,
+    totalTokens,
+    indexedTokens: totalTokens,
+    chunkCount: expectedShardCount,
+    shardCount: expectedShardCount,
+    contentDigest: descriptor.contentDigest,
+    generatedAt: descriptor.generatedAt as number,
+  });
+  return Object.freeze({ corpus, shardSize, shards: Object.freeze(shards) });
+}
+
+function canonicalLargeAddressShardManifest(shards: readonly LargeAddressShard[]): string {
+  return JSON.stringify(
+    shards.map((shard) => [
+      shard.index,
+      shard.tokenStart,
+      shard.tokenEnd,
+      shard.file,
+      shard.contentSha256,
+    ]),
+  );
 }
 
 function flatten(nodes: readonly ProductionContextNode[]): ProductionContextNode[] {
@@ -671,7 +866,7 @@ async function mapBoundedInOrder<T, R>(
 
 export function createContextMapRlmRepository(
   dependencies: ContextMapRlmDependencies,
-): ContextQueryRepository {
+): ContextMapAddressRepository {
   const authorityByRecordId = new Map<string, RecordAuthority>();
   const inFlightAuthorityBuilds = new Map<string, Promise<RecordAuthority[]>>();
   const latestAuthorityGenerationByScope = new Map<string, number>();
@@ -928,7 +1123,203 @@ export function createContextMapRlmRepository(
     return awaitWithSignal(read, signal);
   };
 
+  const address = async (
+    scope: ContextScope,
+    corpusId: string,
+    position: string,
+    signal?: AbortSignal,
+  ) => {
+    if (
+      !SAFE_LARGE_ADDRESS_ID.test(corpusId) ||
+      typeof position !== 'string' ||
+      !CANONICAL_LARGE_ADDRESS_POSITION.test(position)
+    ) {
+      largeAddressError();
+    }
+    let parsedPosition: bigint;
+    try {
+      parsedPosition = parseCorpusTokenCount(position, 'position');
+    } catch {
+      largeAddressError();
+    }
+    const normalizedScope = validateContextScope(scope);
+    const authorities = await loadAuthorities(normalizedScope, signal);
+    const matchingDescriptors: Array<{
+      authority: RecordAuthority;
+      descriptor: LargeAddressDescriptor;
+    }> = [];
+    for (const authority of authorities) {
+      const normalizedPath = authority.record.contentRef.replaceAll('\\', '/');
+      if (
+        authority.inlineContent !== undefined ||
+        authority.record.title !== LARGE_ADDRESS_DESCRIPTOR ||
+        !normalizedPath.endsWith(`/${LARGE_ADDRESS_DESCRIPTOR}`)
+      ) {
+        continue;
+      }
+      const source = await readAuthority(authority, signal);
+      if (
+        !source ||
+        source.bytes.length > MAX_LARGE_ADDRESS_DESCRIPTOR_BYTES ||
+        (await sha256Text(source.content)) !== authority.record.contentHash
+      ) {
+        largeAddressError();
+      }
+      const descriptor = parseLargeAddressDescriptor(source.content);
+      const derivedDigest = `sha256:${await sha256Text(
+        canonicalLargeAddressShardManifest(descriptor.shards),
+      )}`;
+      if (derivedDigest !== descriptor.corpus.contentDigest) {
+        largeAddressError();
+      }
+      if (descriptor.corpus.corpusId === corpusId) {
+        matchingDescriptors.push({ authority, descriptor });
+      }
+    }
+    if (matchingDescriptors.length !== 1) largeAddressError();
+    const selectedDescriptor = matchingDescriptors[0]!;
+    let logicalAddress: ReturnType<typeof locateCorpusTokenPosition>;
+    try {
+      logicalAddress = locateCorpusTokenPosition(
+        selectedDescriptor.descriptor.corpus,
+        parsedPosition,
+        selectedDescriptor.descriptor.shardSize,
+      );
+    } catch {
+      largeAddressError();
+    }
+    const shard = selectedDescriptor.descriptor.shards[Number(logicalAddress.shard)];
+    if (!shard) largeAddressError();
+    const shardAuthorities = selectedDescriptor.descriptor.shards.map((candidateShard) => {
+      const expectedPath = sourcePath(selectedDescriptor.authority.rootDir, candidateShard.file);
+      if (!expectedPath) largeAddressError();
+      const normalizedExpectedPath = expectedPath.replaceAll('\\', '/').toLocaleLowerCase('en-US');
+      const matches = authorities.filter(
+        (authority) =>
+          authority.mapId === selectedDescriptor.authority.mapId &&
+          authority.rootDir === selectedDescriptor.authority.rootDir &&
+          authority.record.contentRef.replaceAll('\\', '/').toLocaleLowerCase('en-US') ===
+            normalizedExpectedPath &&
+          `sha256:${authority.record.contentHash}` === candidateShard.contentSha256,
+      );
+      if (matches.length !== 1) largeAddressError();
+      return matches[0]!;
+    });
+    const selectedAuthority = shardAuthorities[Number(logicalAddress.shard)]!;
+    const source = await readAuthority(selectedAuthority, signal);
+    if (
+      !source ||
+      source.bytes.length < 1 ||
+      source.bytes.length > MAX_LARGE_ADDRESS_SHARD_BYTES ||
+      source.contentHash !== selectedAuthority.record.contentHash ||
+      `sha256:${await sha256Text(source.content)}` !== shard.contentSha256
+    ) {
+      largeAddressError();
+    }
+    const pointer = createContextPointer({
+      id: `ptr:${selectedAuthority.record.id}:0:${source.bytes.length}`,
+      recordId: selectedAuthority.record.id,
+      byteStart: 0,
+      byteEnd: source.bytes.length,
+      sourceVersion: source.sourceVersion,
+      contentHash: source.contentHash,
+    });
+    const routed = `token:${logicalAddress.position};shard:${logicalAddress.shard};offset:${logicalAddress.offset}`;
+    const repository: ContextQueryRepository = {
+      async listRecords() {
+        return [selectedAuthority.record];
+      },
+      async getRecord(recordId) {
+        return recordId === selectedAuthority.record.id ? selectedAuthority.record : undefined;
+      },
+      async search(_queryScope, query) {
+        return query === routed
+          ? [
+              {
+                recordId: selectedAuthority.record.id,
+                pointer,
+                preview: source.content.slice(0, 320),
+                score: 1,
+              },
+            ]
+          : [];
+      },
+      async readSource(record) {
+        if (record.id !== selectedAuthority.record.id) return undefined;
+        const current = await readAuthority(selectedAuthority, signal);
+        if (
+          !current ||
+          current.contentHash !== selectedAuthority.record.contentHash ||
+          `sha256:${await sha256Text(current.content)}` !== shard.contentSha256
+        ) {
+          return undefined;
+        }
+        return {
+          bytes: current.bytes,
+          contentHash: current.contentHash,
+          sourceVersion: current.sourceVersion,
+        };
+      },
+      async canOpen(record, queryScope) {
+        if (
+          record.id !== selectedAuthority.record.id ||
+          JSON.stringify(record) !== JSON.stringify(selectedAuthority.record) ||
+          !recordMatchesScope(selectedAuthority.record, validateContextScope(queryScope))
+        ) {
+          return false;
+        }
+        return classifyJarvisSource({
+          path: selectedAuthority.record.contentRef,
+          root: selectedAuthority.rootDir,
+          channel: 'automatic_scan',
+          kind: 'text',
+          contentSample: source.content,
+        }).allowed;
+      },
+    };
+    const queryService = createContextQueryService({
+      repository,
+      limits: {
+        maxSearchResults: 1,
+        maxPreviewCharacters: 320,
+        maxOpenBytes: MAX_LARGE_ADDRESS_SHARD_BYTES,
+        maxRelatedResults: 1,
+      },
+    });
+    const adapter = createRecursiveContextQueryAdapter({
+      queryService,
+      scope: normalizedScope,
+      logicalAddressing: {
+        corpus: selectedDescriptor.descriptor.corpus,
+        shardSize: selectedDescriptor.descriptor.shardSize,
+      },
+    });
+    const planner = createRecursiveContextPlanner(adapter);
+    const result = await planner.retrieve({
+      query: `token:${logicalAddress.position}`,
+      corpus: selectedDescriptor.descriptor.corpus,
+      budgets: {
+        maxIterations: 1,
+        maxContextTokens: 16_384,
+        maxItems: 1,
+        maxQueriesPerIteration: 1,
+        maxTotalQueries: 1,
+      },
+      signal,
+    });
+    return Object.freeze({
+      ...result,
+      corpus: serializeCorpusScaleMetadata(result.corpus),
+      address: Object.freeze({
+        ...logicalAddress,
+        tokenStart: shard.tokenStart,
+        tokenEnd: shard.tokenEnd,
+      }),
+    });
+  };
+
   return {
+    address,
     async listRecords(scope, signal) {
       return (await loadAuthorities(scope, signal)).map((authority) => authority.record);
     },
@@ -1246,7 +1637,22 @@ export function createProductionRlmContextTool() {
     partitionSize: 2,
   });
   return createRlmOpenCodeTool({
-    queryService,
+    queryService: Object.freeze({
+      ...queryService,
+      address(input: {
+        scope: ContextScope;
+        corpusId: string;
+        position: string;
+        signal?: AbortSignal;
+      }) {
+        return contextMapRepository.address(
+          input.scope,
+          input.corpusId,
+          input.position,
+          input.signal,
+        );
+      },
+    }),
     rlmRuntime,
     maxOpenBytes: 64 * 1024,
     rlmBudget: {

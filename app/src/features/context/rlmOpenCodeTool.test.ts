@@ -13,6 +13,7 @@ const lease = {
 function dependencies() {
   return {
     queryService: {
+      address: vi.fn(async (input) => input),
       describe: vi.fn(async ({ scope }) => ({ scope, recordCount: 2 })),
       search: vi.fn(async ({ scope, query }) => ({
         scope,
@@ -114,6 +115,60 @@ describe('OpenCode RLM context tool adapter', () => {
       }),
     );
     expect(result).toMatchObject({ answer: 'investigated:cross-source root cause' });
+  });
+
+  it.each([
+    '999999999',
+    '1000000000',
+    '1000000001',
+    '9999999999',
+    '10000000000',
+    '10000000001',
+    '100000000000',
+    '9007199254740991',
+    '9007199254740992',
+    '9007199254740993',
+  ])('routes canonical logical address %s using only lease-derived scope', async (position) => {
+    const deps = dependencies();
+    const tool = createRlmOpenCodeTool({ ...deps, now: () => 1_000 });
+    const controller = new AbortController();
+
+    await tool.execute(
+      { operation: 'address', corpusId: 'sparse-boundaries', position },
+      lease,
+      controller.signal,
+    );
+
+    expect(deps.queryService.address).toHaveBeenCalledWith({
+      scope: {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        worktreeId: 'worktree-1',
+      },
+      corpusId: 'sparse-boundaries',
+      position,
+      signal: controller.signal,
+    });
+  });
+
+  it.each([
+    { operation: 'address', corpusId: 'sparse', position: 10_000_000_001 },
+    { operation: 'address', corpusId: 'sparse', position: '01' },
+    { operation: 'address', corpusId: 'sparse', position: '1e10' },
+    { operation: 'address', corpusId: 'sparse', position: '-1' },
+    { operation: 'address', corpusId: 'sparse', position: '+1' },
+    { operation: 'address', corpusId: 'sparse', position: '1.0' },
+    { operation: 'address', corpusId: '../foreign', position: '1' },
+    { operation: 'address', corpusId: 'safe/path', position: '1' },
+    { operation: 'address', corpusId: 'sparse', position: '1', root: 'C:\\foreign' },
+  ])('rejects malformed or authority-bearing address arguments: %o', async (args) => {
+    const deps = dependencies();
+    const tool = createRlmOpenCodeTool({ ...deps, now: () => 1_000 });
+
+    await expect(tool.execute(args, lease)).rejects.toMatchObject({ code: 'invalid_arguments' });
+    expect(deps.queryService.address).not.toHaveBeenCalled();
+    expect(deps.queryService.search).not.toHaveBeenCalled();
+    expect(deps.queryService.open).not.toHaveBeenCalled();
   });
 
   it.each([

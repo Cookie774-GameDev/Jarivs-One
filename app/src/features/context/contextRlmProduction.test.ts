@@ -8,6 +8,29 @@ import {
 
 const SHA = `sha256:${'a'.repeat(64)}` as const;
 
+async function contentSha(content: string): Promise<`sha256:${string}`> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+async function shardManifestSha(
+  shards: readonly Record<string, unknown>[],
+): Promise<`sha256:${string}`> {
+  return contentSha(
+    JSON.stringify(
+      shards.map((shard) => [
+        shard.index,
+        shard.tokenStart,
+        shard.tokenEnd,
+        shard.file,
+        shard.contentSha256,
+      ]),
+    ),
+  );
+}
+
 describe('requestsMappedFileAuthority', () => {
   it.each([
     'Please read the files and answer with the exact source filename.',
@@ -65,7 +88,390 @@ function maps() {
   ];
 }
 
+async function singleShardAddressRepository(
+  descriptorInput: Record<string, unknown>,
+  options: { duplicateDescriptor?: boolean } = {},
+) {
+  const shard = 'bounded physical address evidence';
+  const shardSha = await contentSha(shard);
+  const defaultShards = [
+    {
+      index: '0',
+      tokenStart: '0',
+      tokenEnd: '10000000001',
+      file: 'shard.txt',
+      contentSha256: shardSha,
+    },
+  ];
+  const descriptor = JSON.stringify({
+    version: 1,
+    corpusId: 'bounded-corpus',
+    totalTokens: '10000000001',
+    shardSize: '10000000001',
+    contentDigest: await shardManifestSha(defaultShards),
+    generatedAt: 1,
+    shards: defaultShards,
+    ...descriptorInput,
+  });
+  const descriptorSha = await contentSha(descriptor);
+  const paths = [
+    'C:\\bounded\\.vibespace-large-address-v1.json',
+    ...(options.duplicateDescriptor
+      ? ['C:\\bounded\\nested\\.vibespace-large-address-v1.json']
+      : []),
+    'C:\\bounded\\shard.txt',
+  ];
+  const lexicalSearch = vi.fn(async () => []);
+  const repository = createContextMapRlmRepository({
+    loadMaps: vi.fn(async () => [
+      {
+        id: 'map-bounded',
+        projectId: 'project-1',
+        rootDir: 'C:\\bounded',
+        status: 'active' as const,
+        updatedAt: 1,
+        tree: {
+          nodes: paths.map((path, index) => ({
+            id: `bounded-${index}`,
+            kind: 'file',
+            title: path.split('\\').at(-1)!,
+            summary: '',
+            path,
+          })),
+        },
+      },
+    ]),
+    stat: vi.fn(async (path) => ({
+      ok: true as const,
+      path,
+      kind: 'file' as const,
+      size: path.endsWith('.json') ? descriptor.length : shard.length,
+      createdMs: 1,
+      modifiedMs: 1,
+      sha256: path.endsWith('.json') ? descriptorSha : shardSha,
+    })),
+    read: vi.fn(async (path) => ({
+      ok: true as const,
+      path,
+      content: path.endsWith('.json') ? descriptor : shard,
+    })),
+    lexicalSearch,
+  });
+  return { repository, lexicalSearch };
+}
+
 describe('production Context Map RLM repository', () => {
+  it('routes an unsafe-integer logical address through one physical mapped descriptor and shard', async () => {
+    const shard0 = 'sparse shard zero';
+    const shard1 = 'SAFE_TRANSITION_ANSWER=amber-quartz';
+    const shard0Sha = await contentSha(shard0);
+    const shard1Sha = await contentSha(shard1);
+    const shards = [
+      {
+        index: '0',
+        tokenStart: '0',
+        tokenEnd: '9007199254740992',
+        file: 'shards/shard-0000.txt',
+        contentSha256: shard0Sha,
+      },
+      {
+        index: '1',
+        tokenStart: '9007199254740992',
+        tokenEnd: '9007199254740994',
+        file: 'shards/shard-0001.txt',
+        contentSha256: shard1Sha,
+      },
+    ];
+    const descriptor = JSON.stringify({
+      version: 1,
+      corpusId: 'sparse-boundaries',
+      totalTokens: '9007199254740994',
+      shardSize: '9007199254740992',
+      contentDigest: await shardManifestSha(shards),
+      generatedAt: 1_700_000_000_000,
+      shards,
+    });
+    const descriptorSha = await contentSha(descriptor);
+    const contents: Record<string, string> = {
+      'C:\\repo\\.vibespace-large-address-v1.json': descriptor,
+      'C:\\repo\\shards\\shard-0000.txt': shard0,
+      'C:\\repo\\shards\\shard-0001.txt': shard1,
+    };
+    const hashes: Record<string, `sha256:${string}`> = {
+      'C:\\repo\\.vibespace-large-address-v1.json': descriptorSha,
+      'C:\\repo\\shards\\shard-0000.txt': shard0Sha,
+      'C:\\repo\\shards\\shard-0001.txt': shard1Sha,
+    };
+    const lexicalSearch = vi.fn(async () => []);
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => [
+        {
+          id: 'map-address',
+          projectId: 'project-1',
+          rootDir: 'C:\\repo',
+          status: 'active' as const,
+          updatedAt: 20,
+          tree: {
+            nodes: Object.keys(contents).map((path, index) => ({
+              id: `node-${index}`,
+              kind: 'file',
+              title: path.split('\\').at(-1)!,
+              summary: '',
+              path,
+              sizeBytes: contents[path]!.length,
+              modifiedAt: 20,
+            })),
+          },
+        },
+      ]),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(contents[path]!).length,
+        createdMs: 20,
+        modifiedMs: 20,
+        sha256: hashes[path]!,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content: contents[path]! })),
+      lexicalSearch,
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const first = await repository.address(scope, 'sparse-boundaries', '9007199254740993');
+    const second = await repository.address(scope, 'sparse-boundaries', '9007199254740993');
+    const firstShard = await repository.address(scope, 'sparse-boundaries', '0');
+
+    expect(second).toEqual(first);
+    expect(firstShard).toMatchObject({
+      address: {
+        position: '0',
+        shard: '0',
+        offset: '0',
+        tokenStart: '0',
+        tokenEnd: '9007199254740992',
+      },
+    });
+    expect(first).toMatchObject({
+      status: 'complete',
+      stopReason: 'complete',
+      address: {
+        position: '9007199254740993',
+        shard: '1',
+        offset: '1',
+        tokenStart: '9007199254740992',
+        tokenEnd: '9007199254740994',
+      },
+      corpus: {
+        corpusId: 'sparse-boundaries',
+        totalTokens: '9007199254740994',
+      },
+      evidence: [
+        {
+          exactExcerpt: shard1,
+          provenance: {
+            contentDigest: shard1Sha,
+            locator: expect.stringContaining('#token=9007199254740993&shard=1&offset=1'),
+          },
+        },
+      ],
+    });
+    expect(lexicalSearch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on stale descriptor shard bytes before publishing address evidence', async () => {
+    const expected = 'expected physical bytes';
+    const stale = 'changed physical bytes';
+    const expectedSha = await contentSha(expected);
+    const shards = [
+      {
+        index: '0',
+        tokenStart: '0',
+        tokenEnd: '10000000001',
+        file: 'shard.txt',
+        contentSha256: expectedSha,
+      },
+    ];
+    const descriptor = JSON.stringify({
+      version: 1,
+      corpusId: 'stale-corpus',
+      totalTokens: '10000000001',
+      shardSize: '10000000001',
+      contentDigest: await shardManifestSha(shards),
+      generatedAt: 1,
+      shards,
+    });
+    const descriptorSha = await contentSha(descriptor);
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => [
+        {
+          id: 'map-stale',
+          projectId: 'project-1',
+          rootDir: 'C:\\stale',
+          status: 'active' as const,
+          updatedAt: 1,
+          tree: {
+            nodes: [
+              {
+                id: 'descriptor',
+                kind: 'file',
+                title: '.vibespace-large-address-v1.json',
+                summary: '',
+                path: 'C:\\stale\\.vibespace-large-address-v1.json',
+              },
+              {
+                id: 'shard',
+                kind: 'file',
+                title: 'shard.txt',
+                summary: '',
+                path: 'C:\\stale\\shard.txt',
+              },
+            ],
+          },
+        },
+      ]),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: path.endsWith('.json') ? descriptor.length : stale.length,
+        createdMs: 1,
+        modifiedMs: 1,
+        sha256: path.endsWith('.json') ? descriptorSha : expectedSha,
+      })),
+      read: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        content: path.endsWith('.json') ? descriptor : stale,
+      })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    await expect(
+      repository.address(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'stale-corpus',
+        '10000000000',
+      ),
+    ).rejects.toThrow('large_address');
+  });
+
+  it.each([
+    ['numeric token total', { totalTokens: 10_000_000_001 }],
+    ['leading-zero token total', { totalTokens: '010000000001' }],
+    ['declared digest mismatch', { contentDigest: `sha256:${'0'.repeat(64)}` }],
+    [
+      'gap before first shard',
+      {
+        shards: [
+          {
+            index: '0',
+            tokenStart: '1',
+            tokenEnd: '10000000001',
+            file: 'shard.txt',
+            contentSha256: `sha256:${'a'.repeat(64)}`,
+          },
+        ],
+      },
+    ],
+    [
+      'reversed shard range',
+      {
+        shards: [
+          {
+            index: '0',
+            tokenStart: '10000000001',
+            tokenEnd: '0',
+            file: 'shard.txt',
+            contentSha256: `sha256:${'a'.repeat(64)}`,
+          },
+        ],
+      },
+    ],
+    [
+      'out-of-root shard path',
+      {
+        shards: [
+          {
+            index: '0',
+            tokenStart: '0',
+            tokenEnd: '10000000001',
+            file: '../foreign.txt',
+            contentSha256: `sha256:${'a'.repeat(64)}`,
+          },
+        ],
+      },
+    ],
+    [
+      'Windows alternate-data-stream shard path',
+      {
+        shards: [
+          {
+            index: '0',
+            tokenStart: '0',
+            tokenEnd: '10000000001',
+            file: 'shard.txt:stream',
+            contentSha256: `sha256:${'a'.repeat(64)}`,
+          },
+        ],
+      },
+    ],
+    [
+      'duplicate physical shard path',
+      {
+        totalTokens: '2',
+        shardSize: '1',
+        shards: [
+          {
+            index: '0',
+            tokenStart: '0',
+            tokenEnd: '1',
+            file: 'shard.txt',
+            contentSha256: `sha256:${'a'.repeat(64)}`,
+          },
+          {
+            index: '1',
+            tokenStart: '1',
+            tokenEnd: '2',
+            file: 'shard.txt',
+            contentSha256: `sha256:${'b'.repeat(64)}`,
+          },
+        ],
+      },
+    ],
+  ])('fails closed for malformed physical descriptor: %s', async (_label, mutation) => {
+    const { repository, lexicalSearch } = await singleShardAddressRepository(mutation);
+    await expect(
+      repository.address(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'bounded-corpus',
+        '10000000000',
+      ),
+    ).rejects.toThrow('large_address');
+    expect(lexicalSearch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for duplicate corpus descriptors and out-of-range positions', async () => {
+    const duplicate = await singleShardAddressRepository({}, { duplicateDescriptor: true });
+    await expect(
+      duplicate.repository.address(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'bounded-corpus',
+        '1',
+      ),
+    ).rejects.toThrow('large_address');
+    expect(duplicate.lexicalSearch).not.toHaveBeenCalled();
+
+    const bounded = await singleShardAddressRepository({});
+    await expect(
+      bounded.repository.address(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'bounded-corpus',
+        '10000000001',
+      ),
+    ).rejects.toThrow('large_address');
+    expect(bounded.lexicalSearch).not.toHaveBeenCalled();
+  });
   it('normalizes copied-file timestamp inversion before constructing authority', async () => {
     const content = 'Observatory Lumen uses cobalt-fern verification 47291.';
     const repository = createContextMapRlmRepository({
