@@ -8,6 +8,7 @@ import {
   failTerminalExecutionBeforeNativeExit,
   markTerminalExecution,
   observeTerminalExecutionNativeExit,
+  readTerminalProcessIdentity,
   requestTerminalExecutionCancellation,
   settleTerminalExecutionFromNativeExit,
   terminalCancellationDisposition,
@@ -42,6 +43,22 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 describe('terminal execution lifecycle', () => {
+  const processAttachment = {
+    accountId: 'account-a',
+    projectId: 'project-a',
+    paneId: 'pane-a',
+    sessionId: 'pty_1',
+    processInstanceId: 'process-instance-1',
+    pid: 4242,
+    processStartedAt: 1_723_456_789_000,
+    runtimeGeneration: 'runtime-generation-1',
+  } as const;
+  const canonicalAttachment = (sessionId = 'pty_1') => ({
+    ...processAttachment,
+    sessionId,
+    processInstanceId: `process-${sessionId}`,
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
@@ -140,7 +157,17 @@ describe('terminal execution lifecycle', () => {
     });
   });
 
-  function canonicalHarness(request: { timeoutMs?: number } = {}) {
+  function canonicalHarness(
+    request: {
+      timeoutMs?: number;
+      accountId?: string;
+      runId?: string;
+      executionId?: `jterm_${string}`;
+    } = {},
+  ) {
+    const accountId = request.accountId ?? 'account-a';
+    const runId = request.runId ?? 'jrun_1';
+    const executionId = request.executionId ?? 'jterm_1';
     const registrations = new Map<string, JarvisAbortRegistration>();
     const registrationAuthority: JarvisAbortRegistrationAuthority = {
       registerIssuedOwner: vi.fn((registration) => {
@@ -164,7 +191,7 @@ describe('terminal execution lifecycle', () => {
       requestState: 'new' as const,
       authorityState: 'current' as const,
       cancellationRequestId: 'jcancel_1',
-      aggregate: { kind: 'signal_delivered' as const, ownerIds: ['terminal:jterm_1'] },
+      aggregate: { kind: 'signal_delivered' as const, ownerIds: [`terminal:${executionId}`] },
     }));
     const execution: JarvisTerminalOwnedExecution = {
       recordResult,
@@ -177,9 +204,9 @@ describe('terminal execution lifecycle', () => {
     >(async () => ({ applied: true as const }));
     const acceptor = createJarvisTerminalExecutionAcceptor({
       request: {
-        accountId: 'account-a',
-        runId: 'jrun_1',
-        executionId: 'jterm_1',
+        accountId,
+        runId,
+        executionId,
         cancellationToken: 'jcancel_native_1',
         command: 'powershell',
         ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
@@ -188,7 +215,7 @@ describe('terminal execution lifecycle', () => {
       queuedTransitionAuthority: { transitionQueuedRunToCancelled },
     });
     const receipt = acceptor.acceptIssuedExecution({
-      executionId: 'jterm_1',
+      executionId,
       ownerId: 'approval:jappr_1',
       execution,
     });
@@ -296,7 +323,7 @@ describe('terminal execution lifecycle', () => {
       ownerId: 'terminal:jterm_1',
     });
 
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     vi.mocked(invoke).mockResolvedValueOnce({
       kind: 'signal_delivered',
       requestKind: 'canonical_cancellation',
@@ -312,15 +339,209 @@ describe('terminal execution lifecycle', () => {
   it('treats an exact repeated session attach as idempotent', async () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     const registrationsAfterFirstAttach = vi.mocked(
       harness.registrationAuthority.registerIssuedOwner,
     ).mock.calls.length;
 
-    await expect(attachTerminalExecution('jterm_1', 'pty_1')).resolves.toBe(true);
+    await expect(attachTerminalExecution('jterm_1', canonicalAttachment())).resolves.toBe(true);
     expect(harness.registrationAuthority.registerIssuedOwner).toHaveBeenCalledTimes(
       registrationsAfterFirstAttach,
     );
+  });
+
+  it('freezes the complete native process identity and reads it only for the exact scope', async () => {
+    canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+
+    await expect(attachTerminalExecution('jterm_1', processAttachment)).resolves.toBe(true);
+
+    const identity = readTerminalProcessIdentity('jterm_1', {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      runId: 'jrun_1',
+      executionId: 'jterm_1',
+      paneId: 'pane-a',
+    });
+    expect(identity).toEqual({
+      ...processAttachment,
+      runId: 'jrun_1',
+      executionId: 'jterm_1',
+    });
+    expect(Object.isFrozen(identity)).toBe(true);
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.processIdentity).toBe(identity);
+    expect(
+      readTerminalProcessIdentity('jterm_1', {
+        accountId: 'account-b',
+        projectId: 'project-a',
+        runId: 'jrun_1',
+        executionId: 'jterm_1',
+        paneId: 'pane-a',
+      }),
+    ).toBeNull();
+  });
+
+  it('does not let a later status patch overwrite the canonical process identity', async () => {
+    canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    expect(await attachTerminalExecution('jterm_1', processAttachment)).toBe(true);
+    const identity = useTerminalExecutionStore.getState().executions.jterm_1.processIdentity;
+
+    markTerminalExecution('jterm_1', 'running', {
+      processIdentity: Object.freeze({
+        ...processAttachment,
+        runId: 'jrun-forged',
+        executionId: 'jterm_1',
+      }),
+    });
+
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.processIdentity).toBe(identity);
+  });
+
+  it('keeps the canonical process identity immutable at the store boundary', async () => {
+    canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    expect(await attachTerminalExecution('jterm_1', processAttachment)).toBe(true);
+    const identity = useTerminalExecutionStore.getState().executions.jterm_1.processIdentity;
+
+    useTerminalExecutionStore.getState().mark('jterm_1', 'running', {
+      processIdentity: Object.freeze({
+        ...processAttachment,
+        runtimeGeneration: 'forged-generation',
+        runId: 'jrun_1',
+        executionId: 'jterm_1',
+      }),
+    });
+
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.processIdentity).toBe(identity);
+  });
+
+  it.each([
+    ['missing process instance', { processInstanceId: '' }],
+    ['control-bearing process instance', { processInstanceId: 'process\u0001instance' }],
+    ['zero pid', { pid: 0 }],
+    ['fractional pid', { pid: 42.5 }],
+    ['pid beyond u32', { pid: 0x1_0000_0000 }],
+    ['invalid process start', { processStartedAt: 0 }],
+    ['control-bearing generation', { runtimeGeneration: 'generation\nforged' }],
+    ['wrong account', { accountId: 'account-b' }],
+  ])('rejects an invalid native process binding: %s', async (_label, patch) => {
+    canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+
+    await expect(
+      attachTerminalExecution('jterm_1', { ...processAttachment, ...patch }),
+    ).resolves.toBe(false);
+    expect(
+      readTerminalProcessIdentity('jterm_1', {
+        accountId: 'account-a',
+        projectId: 'project-a',
+        runId: 'jrun_1',
+        executionId: 'jterm_1',
+        paneId: 'pane-a',
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['process instance', { processInstanceId: 'process-instance-2' }],
+    ['pid reuse start time', { processStartedAt: 1_723_456_789_100 }],
+    ['runtime restart', { runtimeGeneration: 'runtime-generation-2' }],
+    ['pane', { paneId: 'pane-b' }],
+    ['project', { projectId: 'project-b' }],
+  ])(
+    'rejects a repeated attach with changed %s without overwriting identity',
+    async (_label, patch) => {
+      canonicalHarness();
+      expect(await claimTerminalExecution('jterm_1')).toBe(true);
+      expect(await attachTerminalExecution('jterm_1', processAttachment)).toBe(true);
+
+      await expect(
+        attachTerminalExecution('jterm_1', { ...processAttachment, ...patch }),
+      ).resolves.toBe(false);
+      expect(
+        readTerminalProcessIdentity('jterm_1', {
+          accountId: 'account-a',
+          projectId: 'project-a',
+          runId: 'jrun_1',
+          executionId: 'jterm_1',
+          paneId: 'pane-a',
+        }),
+      ).toEqual({
+        ...processAttachment,
+        runId: 'jrun_1',
+        executionId: 'jterm_1',
+      });
+    },
+  );
+
+  it('prevents two canonical executions from claiming the same active session or process', async () => {
+    canonicalHarness();
+    canonicalHarness({ executionId: 'jterm_2', runId: 'jrun_2' });
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    expect(await claimTerminalExecution('jterm_2')).toBe(true);
+    expect(await attachTerminalExecution('jterm_1', processAttachment)).toBe(true);
+
+    await expect(
+      attachTerminalExecution('jterm_2', {
+        ...processAttachment,
+        sessionId: 'pty_2',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      attachTerminalExecution('jterm_2', {
+        ...processAttachment,
+        processInstanceId: 'process-instance-2',
+      }),
+    ).resolves.toBe(false);
+    expect(
+      readTerminalProcessIdentity('jterm_2', {
+        accountId: 'account-a',
+        projectId: 'project-a',
+        runId: 'jrun_2',
+        executionId: 'jterm_2',
+        paneId: 'pane-a',
+      }),
+    ).toBeNull();
+  });
+
+  it('linearizes concurrent claims for the same native process identity', async () => {
+    canonicalHarness();
+    canonicalHarness({ executionId: 'jterm_2', runId: 'jrun_2' });
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    expect(await claimTerminalExecution('jterm_2')).toBe(true);
+
+    const results = await Promise.all([
+      attachTerminalExecution('jterm_1', processAttachment),
+      attachTerminalExecution('jterm_2', {
+        ...processAttachment,
+        sessionId: 'pty_2',
+      }),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+  });
+
+  it.each([
+    ['project', { projectId: 'project-b' }],
+    ['run', { runId: 'jrun-other' }],
+    ['execution', { executionId: 'jterm_other' }],
+    ['pane', { paneId: 'pane-b' }],
+  ])('rejects a %s-scoped identity read', async (_label, scopePatch) => {
+    canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    expect(await attachTerminalExecution('jterm_1', processAttachment)).toBe(true);
+
+    expect(
+      readTerminalProcessIdentity('jterm_1', {
+        accountId: 'account-a',
+        projectId: 'project-a',
+        runId: 'jrun_1',
+        executionId: 'jterm_1',
+        paneId: 'pane-a',
+        ...scopePatch,
+      }),
+    ).toBeNull();
   });
 
   it.each([
@@ -332,7 +553,7 @@ describe('terminal execution lifecycle', () => {
     async (nativeKind, ownerKind) => {
       const harness = canonicalHarness();
       expect(await claimTerminalExecution('jterm_1')).toBe(true);
-      await attachTerminalExecution('jterm_1', 'pty_1');
+      await attachTerminalExecution('jterm_1', canonicalAttachment());
       vi.mocked(invoke).mockResolvedValueOnce({
         kind: nativeKind,
         requestKind: 'canonical_cancellation',
@@ -354,7 +575,7 @@ describe('terminal execution lifecycle', () => {
     vi.useFakeTimers();
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     markTerminalExecution('jterm_1', 'running', { timeoutMs: 1_000 });
 
     await vi.advanceTimersByTimeAsync(1_000);
@@ -372,7 +593,7 @@ describe('terminal execution lifecycle', () => {
   it('keeps signal delivery nonterminal until the matching native exit verifies cancellation', async () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     vi.mocked(invoke).mockResolvedValueOnce({
       kind: 'signal_delivered',
       requestKind: 'canonical_cancellation',
@@ -412,7 +633,7 @@ describe('terminal execution lifecycle', () => {
   it('settles through the process-level exit owner after the terminal view is absent', async () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
 
     await observeTerminalExecutionNativeExit({
       sessionId: 'pty_1',
@@ -438,7 +659,9 @@ describe('terminal execution lifecycle', () => {
     ).resolves.toBe(false);
     expect(harness.recordResult).not.toHaveBeenCalled();
 
-    await expect(attachTerminalExecution('jterm_1', 'pty_spawn_race')).resolves.toBe(true);
+    await expect(
+      attachTerminalExecution('jterm_1', canonicalAttachment('pty_spawn_race')),
+    ).resolves.toBe(true);
 
     expect(harness.recordResult).toHaveBeenCalledOnce();
     expect(harness.execution.dispose).toHaveBeenCalledOnce();
@@ -448,7 +671,7 @@ describe('terminal execution lifecycle', () => {
   it('reconciles an externally requested cancellation before verifying its native exit', async () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
 
     await settleTerminalExecutionFromNativeExit('jterm_1', {
       sessionId: 'pty_1',
@@ -490,7 +713,7 @@ describe('terminal execution lifecycle', () => {
   it('records natural native completion once and rejects a stale cancellation token', async () => {
     const natural = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
 
     await settleTerminalExecutionFromNativeExit('jterm_1', {
       sessionId: 'pty_1',
@@ -516,7 +739,7 @@ describe('terminal execution lifecycle', () => {
     resetTerminalCommandQueueDurabilityForTests();
     const stale = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     await requestTerminalExecutionCancellation('jterm_1');
     await settleTerminalExecutionFromNativeExit('jterm_1', {
       sessionId: 'pty_1',
@@ -545,7 +768,7 @@ describe('terminal execution lifecycle', () => {
   it('shares the exact canonical run completion identity with task notifications', async () => {
     canonicalHarness();
     await expect(claimTerminalExecution('jterm_1')).resolves.toBe(true);
-    await expect(attachTerminalExecution('jterm_1', 'pty_1')).resolves.toBe(true);
+    await expect(attachTerminalExecution('jterm_1', canonicalAttachment())).resolves.toBe(true);
 
     await expect(
       settleTerminalExecutionFromNativeExit('jterm_1', {
@@ -588,7 +811,7 @@ describe('terminal execution lifecycle', () => {
     async (reason, code) => {
       const harness = canonicalHarness();
       expect(await claimTerminalExecution('jterm_1')).toBe(true);
-      await attachTerminalExecution('jterm_1', 'pty_1');
+      await attachTerminalExecution('jterm_1', canonicalAttachment());
 
       await settleTerminalExecutionFromNativeExit('jterm_1', {
         sessionId: 'pty_1',
@@ -610,7 +833,7 @@ describe('terminal execution lifecycle', () => {
   it('reads the matching cancellation intent before verifying an accepted exit', async () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
 
     await settleTerminalExecutionFromNativeExit('jterm_1', {
       sessionId: 'pty_1',
@@ -631,7 +854,7 @@ describe('terminal execution lifecycle', () => {
     vi.useFakeTimers();
     const harness = canonicalHarness({ timeoutMs: 25 });
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     markTerminalExecution('jterm_1', 'running', { sessionId: 'pty_1' });
 
     await vi.advanceTimersByTimeAsync(25);
@@ -649,7 +872,7 @@ describe('terminal execution lifecycle', () => {
     const harness = canonicalHarness();
     harness.recordResult.mockResolvedValueOnce({ kind: 'account_authority_revoked' });
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
 
     await settleTerminalExecutionFromNativeExit('jterm_1', {
       sessionId: 'pty_1',
@@ -717,7 +940,7 @@ describe('terminal execution lifecycle', () => {
   it('returns truthful already-terminal state when a verified local execution is closed again', async () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
-    await attachTerminalExecution('jterm_1', 'pty_1');
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
     await settleTerminalExecutionFromNativeExit('jterm_1', {
       sessionId: 'pty_1',
       code: 0,

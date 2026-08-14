@@ -47,8 +47,40 @@ export interface TerminalExecution {
   timeoutMs?: number;
   timedOut?: boolean;
   settlementError?: string;
+  processIdentity?: TerminalProcessIdentity;
   updatedAt: number;
 }
+
+export type NativeTerminalProcessBinding = Readonly<{
+  processInstanceId: string;
+  pid: number;
+  processStartedAt: number;
+  runtimeGeneration: string;
+}>;
+
+export type TerminalProcessAttachment = Readonly<
+  NativeTerminalProcessBinding & {
+    accountId: string;
+    projectId: string | null;
+    paneId: string;
+    sessionId: string;
+  }
+>;
+
+export type TerminalProcessIdentity = Readonly<
+  TerminalProcessAttachment & {
+    runId: string;
+    executionId: string;
+  }
+>;
+
+export type TerminalProcessIdentityScope = Readonly<{
+  accountId: string;
+  projectId: string | null;
+  runId: string;
+  executionId: string;
+  paneId: string;
+}>;
 
 export type NativeTerminalKillRequest = Readonly<{
   sessionId: string;
@@ -169,6 +201,7 @@ type CanonicalExecutionRecord = {
   queueOwnerDisposer?: () => void;
   nativeOwnerDisposer?: () => void;
   sessionId?: string;
+  processIdentity?: TerminalProcessIdentity;
   cancellationRequestId?: string;
   claimed: boolean;
   settled: boolean;
@@ -180,15 +213,78 @@ const MAX_EXECUTIONS = 100;
 const executionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const canonicalExecutions = new Map<string, CanonicalExecutionRecord>();
 const canonicalSessionOwners = new Map<string, string>();
+const canonicalProcessOwners = new Map<string, string>();
 const pendingNativeExits = new Map<string, NativeTerminalExitPayload>();
 const settledCanonicalExecutions = new Map<string, { sessionId?: string }>();
 let terminalExitListener: Promise<void> | undefined;
 
 function stableIdentifier(value: string, label: string): string {
-  if (!value || value !== value.trim() || value.includes('\u0000')) {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > 256 ||
+    value !== value.trim() ||
+    /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
     throw new TypeError(`${label} must be a stable nonblank identifier.`);
   }
   return value;
+}
+
+function validProcessNumber(value: number, maximum: number): boolean {
+  return Number.isSafeInteger(value) && value > 0 && value <= maximum;
+}
+
+function createTerminalProcessIdentity(
+  record: CanonicalExecutionRecord,
+  attachment: TerminalProcessAttachment,
+): TerminalProcessIdentity | null {
+  try {
+    if (stableIdentifier(attachment.accountId, 'accountId') !== record.request.accountId) {
+      return null;
+    }
+    const projectId =
+      attachment.projectId === null ? null : stableIdentifier(attachment.projectId, 'projectId');
+    const identity = Object.freeze({
+      accountId: record.request.accountId,
+      projectId,
+      runId: record.request.runId,
+      executionId: record.request.executionId,
+      paneId: stableIdentifier(attachment.paneId, 'paneId'),
+      sessionId: stableIdentifier(attachment.sessionId, 'sessionId'),
+      processInstanceId: stableIdentifier(attachment.processInstanceId, 'processInstanceId'),
+      pid: attachment.pid,
+      processStartedAt: attachment.processStartedAt,
+      runtimeGeneration: stableIdentifier(attachment.runtimeGeneration, 'runtimeGeneration'),
+    });
+    if (
+      !validProcessNumber(identity.pid, 0xffff_ffff) ||
+      !validProcessNumber(identity.processStartedAt, Number.MAX_SAFE_INTEGER)
+    ) {
+      return null;
+    }
+    return identity;
+  } catch {
+    return null;
+  }
+}
+
+function sameTerminalProcessIdentity(
+  left: TerminalProcessIdentity,
+  right: TerminalProcessIdentity,
+): boolean {
+  return (
+    left.accountId === right.accountId &&
+    left.projectId === right.projectId &&
+    left.runId === right.runId &&
+    left.executionId === right.executionId &&
+    left.paneId === right.paneId &&
+    left.sessionId === right.sessionId &&
+    left.processInstanceId === right.processInstanceId &&
+    left.pid === right.pid &&
+    left.processStartedAt === right.processStartedAt &&
+    left.runtimeGeneration === right.runtimeGeneration
+  );
 }
 
 function canonicalExecutionId(value: string | undefined): value is `jterm_${string}` {
@@ -215,6 +311,13 @@ function disposeRecord(record: CanonicalExecutionRecord): void {
   ) {
     canonicalSessionOwners.delete(record.sessionId);
   }
+  if (
+    record.processIdentity &&
+    canonicalProcessOwners.get(record.processIdentity.processInstanceId) ===
+      record.request.executionId
+  ) {
+    canonicalProcessOwners.delete(record.processIdentity.processInstanceId);
+  }
   clearExecutionTimeout(record.request.executionId);
 }
 
@@ -237,6 +340,7 @@ function clearCanonicalExecutions(): void {
   for (const record of canonicalExecutions.values()) disposeRecord(record);
   canonicalExecutions.clear();
   canonicalSessionOwners.clear();
+  canonicalProcessOwners.clear();
   pendingNativeExits.clear();
   settledCanonicalExecutions.clear();
 }
@@ -269,6 +373,9 @@ export const useTerminalExecutionStore = create<TerminalExecutionState>((set) =>
         [id]: {
           ...state.executions[id],
           ...patch,
+          ...(state.executions[id]?.processIdentity
+            ? { processIdentity: state.executions[id].processIdentity }
+            : {}),
           id,
           status,
           updatedAt: Date.now(),
@@ -318,8 +425,13 @@ function markCanonical(
   status: TerminalExecutionStatus,
   patch?: Partial<TerminalExecution>,
 ): void {
-  const canonicalRunId = canonicalExecutions.get(id)?.request.runId;
-  useTerminalExecutionStore.getState().mark(id, status, patch);
+  const canonical = canonicalExecutions.get(id);
+  const canonicalRunId = canonical?.request.runId;
+  const { processIdentity: _untrustedProcessIdentity, ...safePatch } = patch ?? {};
+  useTerminalExecutionStore.getState().mark(id, status, {
+    ...safePatch,
+    ...(canonical?.processIdentity ? { processIdentity: canonical.processIdentity } : {}),
+  });
   if (['complete', 'failed', 'cancelled'].includes(status)) clearExecutionTimeout(id);
   // Real terminal lifecycle event → Settings → Notifications "Terminal done".
   // Skip pure cancellations (user-initiated abort is not a "command finished" cue).
@@ -581,29 +693,69 @@ export function markTerminalExecution(
 
 export async function attachTerminalExecution(
   id: string | undefined,
-  sessionId: string,
+  attachment: string | TerminalProcessAttachment,
 ): Promise<boolean> {
+  const sessionId = typeof attachment === 'string' ? attachment : attachment.sessionId;
   if (!id) return true;
   const record = canonicalExecutions.get(id);
   if (record) {
     if (!record.claimed || record.disposed || record.settled) return false;
-    if (record.sessionId && record.sessionId !== sessionId) return false;
+    if (typeof attachment === 'string') return false;
+    const processIdentity = createTerminalProcessIdentity(record, attachment);
+    if (!processIdentity) return false;
+    if (
+      record.processIdentity &&
+      !sameTerminalProcessIdentity(record.processIdentity, processIdentity)
+    ) {
+      return false;
+    }
+    const sessionOwner = canonicalSessionOwners.get(processIdentity.sessionId);
+    const processOwner = canonicalProcessOwners.get(processIdentity.processInstanceId);
+    if ((sessionOwner && sessionOwner !== id) || (processOwner && processOwner !== id)) {
+      return false;
+    }
     await ensureTerminalExecutionExitListener();
-    const stableSessionId = stableIdentifier(sessionId, 'sessionId');
-    if (record.sessionId === stableSessionId && record.nativeOwnerDisposer) {
+    if (
+      !record.claimed ||
+      record.disposed ||
+      record.settled ||
+      (record.processIdentity &&
+        !sameTerminalProcessIdentity(record.processIdentity, processIdentity))
+    ) {
+      return false;
+    }
+    const currentSessionOwner = canonicalSessionOwners.get(processIdentity.sessionId);
+    const currentProcessOwner = canonicalProcessOwners.get(processIdentity.processInstanceId);
+    if (
+      (currentSessionOwner && currentSessionOwner !== id) ||
+      (currentProcessOwner && currentProcessOwner !== id)
+    ) {
+      return false;
+    }
+    const stableSessionId = processIdentity.sessionId;
+    if (
+      record.sessionId === stableSessionId &&
+      record.processIdentity &&
+      record.nativeOwnerDisposer
+    ) {
       canonicalSessionOwners.set(stableSessionId, id);
+      canonicalProcessOwners.set(processIdentity.processInstanceId, id);
       return true;
     }
     const previousSessionId = record.sessionId;
+    const previousProcessIdentity = record.processIdentity;
     record.sessionId = stableSessionId;
+    record.processIdentity = processIdentity;
     try {
       replaceWithNativeOwner(record);
     } catch (error) {
       record.sessionId = previousSessionId;
+      record.processIdentity = previousProcessIdentity;
       throw error;
     }
     canonicalSessionOwners.set(stableSessionId, id);
-    markCanonical(id, 'starting', { sessionId });
+    canonicalProcessOwners.set(processIdentity.processInstanceId, id);
+    markCanonical(id, 'starting', { sessionId: stableSessionId, processIdentity });
     const pendingExit = pendingNativeExits.get(stableSessionId);
     if (pendingExit) {
       pendingNativeExits.delete(stableSessionId);
@@ -626,6 +778,27 @@ export async function attachTerminalExecution(
   }
   markTerminalExecution(id, 'starting', { sessionId });
   return true;
+}
+
+export function readTerminalProcessIdentity(
+  executionId: string,
+  scope: TerminalProcessIdentityScope,
+): TerminalProcessIdentity | null {
+  const identity =
+    canonicalExecutions.get(executionId)?.processIdentity ??
+    useTerminalExecutionStore.getState().executions[executionId]?.processIdentity;
+  if (
+    !identity ||
+    scope.executionId !== executionId ||
+    identity.accountId !== scope.accountId ||
+    identity.projectId !== scope.projectId ||
+    identity.runId !== scope.runId ||
+    identity.executionId !== scope.executionId ||
+    identity.paneId !== scope.paneId
+  ) {
+    return null;
+  }
+  return identity;
 }
 
 function cancellationRequestId(result: JarvisCancellationRequestResult): string | undefined {

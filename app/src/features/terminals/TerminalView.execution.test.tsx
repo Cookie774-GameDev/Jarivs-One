@@ -326,15 +326,59 @@ describe('TerminalView canonical execution truth', () => {
 
     latch.observe(payload);
     await expect(
-      attachTerminalViewExecution('jterm_1', payload.sessionId, {
-        isCanonical: () => true,
-        attach,
-      }),
+      attachTerminalViewExecution(
+        'jterm_1',
+        {
+          accountId: 'account-a',
+          projectId: 'project-a',
+          paneId: 'pane-a',
+          sessionId: payload.sessionId,
+          processInstanceId: 'process-instance-1',
+          pid: 4242,
+          processStartedAt: 1_723_456_789_000,
+          runtimeGeneration: 'runtime-generation-1',
+        },
+        {
+          isCanonical: () => true,
+          attach,
+        },
+      ),
     ).resolves.toBe(true);
     expect(latch.bind(payload.sessionId)).toBe(true);
 
-    expect(attach).toHaveBeenCalledWith('jterm_1', 'pty_early');
+    expect(attach).toHaveBeenCalledWith('jterm_1', {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
+      sessionId: 'pty_early',
+      processInstanceId: 'process-instance-1',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-generation-1',
+    });
     expect(order).toEqual(['attach', 'exit:pty_early']);
+  });
+
+  it('attaches the full spawn or fresh-list process binding before publishing readiness', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('processInstanceId: string;');
+    expect(source).toContain('runtimeGeneration: string;');
+    expect(source).toContain('const backendInfo = restoreDecision.backendInfo;');
+    const ready = source.indexOf('onReadyRef.current?.(sid)');
+    const spawnAttach = source.indexOf(
+      'const attached = await attachTerminalExecution(executionId, processAttachment);',
+    );
+    const restoreAttach = source.indexOf(
+      'const attached = await attachTerminalViewExecution(executionId, processAttachment);',
+    );
+    expect(spawnAttach).toBeGreaterThan(0);
+    expect(restoreAttach).toBeGreaterThan(spawnAttach);
+    expect(spawnAttach).toBeLessThan(ready);
+    expect(restoreAttach).toBeLessThan(ready);
   });
 
   it('delivers only the first exact native exit after binding a session', () => {
