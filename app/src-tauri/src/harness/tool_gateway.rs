@@ -468,7 +468,33 @@ fn context_tool_descriptor() -> Value {
                 "operation": { "type": "string", "enum": ["search", "open"] },
                 "query": { "type": "string", "maxLength": 32768 },
                 "limit": { "type": "integer", "minimum": 1, "maximum": 5 },
-                "pointer": { "type": "string", "maxLength": 4096 }
+                "pointer": {
+                    "description": "Use the exact pointer object returned by search. A JSON-encoded pointer string remains accepted for compatibility.",
+                    "oneOf": [
+                        { "type": "string", "maxLength": 4096 },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["id", "recordId", "sourceVersion", "contentHash"],
+                            "properties": {
+                                "id": { "type": "string", "maxLength": 512 },
+                                "recordId": { "type": "string", "maxLength": 512 },
+                                "sourceVersion": { "type": "string", "maxLength": 512 },
+                                "contentHash": {
+                                    "type": "string",
+                                    "pattern": "^[a-f0-9]{64}$"
+                                },
+                                "lineStart": { "type": "integer", "minimum": 1 },
+                                "lineEnd": { "type": "integer", "minimum": 2 },
+                                "byteStart": { "type": "integer", "minimum": 0 },
+                                "byteEnd": { "type": "integer", "minimum": 1 },
+                                "messageId": { "type": "string", "maxLength": 512 },
+                                "eventId": { "type": "string", "maxLength": 512 },
+                                "toolCallId": { "type": "string", "maxLength": 512 }
+                            }
+                        }
+                    ]
+                }
             }
         }
     })
@@ -1266,6 +1292,19 @@ mod tests {
         assert_eq!(
             descriptor["inputSchema"]["properties"]["limit"]["maximum"],
             5
+        );
+        let pointer_schema = &descriptor["inputSchema"]["properties"]["pointer"];
+        assert_eq!(pointer_schema["oneOf"][0]["type"], "string");
+        assert_eq!(pointer_schema["oneOf"][0]["maxLength"], 4096);
+        assert_eq!(pointer_schema["oneOf"][1]["type"], "object");
+        assert_eq!(pointer_schema["oneOf"][1]["additionalProperties"], false);
+        assert_eq!(
+            pointer_schema["oneOf"][1]["required"],
+            json!(["id", "recordId", "sourceVersion", "contentHash"])
+        );
+        assert_eq!(
+            pointer_schema["oneOf"][1]["properties"]["contentHash"]["pattern"],
+            "^[a-f0-9]{64}$"
         );
         assert_eq!(
             descriptor["annotations"],
