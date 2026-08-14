@@ -11,10 +11,16 @@ const fsMocks = vi.hoisted(() => ({
   writeTextFile: vi.fn(),
 }));
 
+const pathMocks = vi.hoisted(() => ({
+  downloadDir: vi.fn(),
+}));
+
 vi.mock('@/lib/fs', async () => ({
   ...(await vi.importActual<typeof import('@/lib/fs')>('@/lib/fs')),
   ...fsMocks,
 }));
+
+vi.mock('@tauri-apps/api/path', () => pathMocks);
 
 vi.mock('@/features/files/projectFiles', async () => ({
   ...(await vi.importActual<typeof import('@/features/files/projectFiles')>(
@@ -36,6 +42,7 @@ describe('project file actions', () => {
     fsMocks.readTextFile.mockResolvedValue({ ok: true, path: 'ok', content: 'old' });
     fsMocks.readTextFileSample.mockResolvedValue({ ok: true, path: 'ok', content: 'sample' });
     fsMocks.writeTextFile.mockResolvedValue({ ok: true, path: 'ok' });
+    pathMocks.downloadDir.mockResolvedValue('C:\\Users\\viper\\Downloads\\');
   });
 
   it('creates new content atomically without an overwrite call', async () => {
@@ -153,6 +160,117 @@ describe('project file actions', () => {
     );
     expect(result.ok).toBe(false);
     expect(fsMocks.writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('reads a child of the OS-resolved Downloads folder with the strict native boundary', async () => {
+    const action = FILE_ACTIONS.find((item) => item.id === 'files.read')!;
+
+    const result = await action.run(
+      { path: 'C:\\Users\\viper\\Downloads\\dogs_story_500_words.txt' },
+      { source: 'ai' },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      summary: 'Read C:\\Users\\viper\\Downloads\\dogs_story_500_words.txt.',
+      data: {
+        path: 'C:\\Users\\viper\\Downloads\\dogs_story_500_words.txt',
+        content: 'sample',
+      },
+    });
+    expect(pathMocks.downloadDir).toHaveBeenCalledOnce();
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith(
+      'C:\\Users\\viper\\Downloads\\dogs_story_500_words.txt',
+      48_000,
+      {
+        root: 'C:\\Users\\viper\\Downloads',
+        strictProjectBoundary: true,
+      },
+    );
+  });
+
+  it('rejects Downloads siblings, traversal, and caller-forged roots before filesystem access', async () => {
+    const action = FILE_ACTIONS.find((item) => item.id === 'files.read')!;
+
+    for (const params of [
+      { path: 'C:\\Users\\viper\\Downloadz\\dogs_story_500_words.txt' },
+      { path: 'C:\\Users\\viper\\Downloads\\..\\Desktop\\dogs_story_500_words.txt' },
+      {
+        path: 'D:\\Forged\\Downloads\\dogs_story_500_words.txt',
+        root: 'D:\\Forged\\Downloads',
+      },
+      {
+        path: 'C:\\Users\\viper\\Downloads\\dogs_story_500_words.txt',
+        root: 'C:\\Users\\viper\\Downloads',
+      },
+    ]) {
+      const result = await action.run(params, { source: 'ai' });
+      expect(result).toEqual({
+        ok: false,
+        error: expect.stringMatching(/outside|requested folder/i),
+      });
+    }
+
+    expect(fsMocks.readTextFileSample).not.toHaveBeenCalled();
+  });
+
+  it('keeps Downloads read-only and never expands create or edit authority', async () => {
+    const downloadsPath = 'C:\\Users\\viper\\Downloads\\dogs_story_500_words.txt';
+    const create = FILE_ACTIONS.find((item) => item.id === 'files.create')!;
+    const edit = FILE_ACTIONS.find((item) => item.id === 'files.edit')!;
+
+    await expect(
+      create.run({ path: downloadsPath, content: 'blocked' }, { source: 'ai' }),
+    ).resolves.toEqual({ ok: false, error: expect.stringMatching(/outside/i) });
+    await expect(
+      edit.run({ path: downloadsPath, content: 'blocked' }, { source: 'ai' }),
+    ).resolves.toEqual({ ok: false, error: expect.stringMatching(/outside/i) });
+
+    expect(fsMocks.createDirectory).not.toHaveBeenCalled();
+    expect(fsMocks.createTextFileWithContent).not.toHaveBeenCalled();
+    expect(fsMocks.readTextFile).not.toHaveBeenCalled();
+    expect(fsMocks.writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the strict native Downloads read detects a symlink escape', async () => {
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: false,
+      path: 'C:\\Users\\viper\\Downloads\\linked\\secret.txt',
+      error: { code: 'symlink_blocked' },
+    });
+    const action = FILE_ACTIONS.find((item) => item.id === 'files.read')!;
+
+    const result = await action.run(
+      { path: 'C:\\Users\\viper\\Downloads\\linked\\secret.txt' },
+      { source: 'ai' },
+    );
+
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/symbolic link/i) });
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith(
+      'C:\\Users\\viper\\Downloads\\linked\\secret.txt',
+      48_000,
+      {
+        root: 'C:\\Users\\viper\\Downloads',
+        strictProjectBoundary: true,
+      },
+    );
+  });
+
+  it('preserves existing active-project reads without invoking Downloads authority', async () => {
+    const action = FILE_ACTIONS.find((item) => item.id === 'files.read')!;
+
+    const result = await action.run(
+      { path: 'C:\\Projects\\FarmLife\\notes.txt' },
+      { source: 'ai' },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(pathMocks.downloadDir).not.toHaveBeenCalled();
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith(
+      'C:\\Projects\\FarmLife\\notes.txt',
+      48_000,
+      { root: 'C:\\Projects\\FarmLife' },
+    );
   });
 });
 
