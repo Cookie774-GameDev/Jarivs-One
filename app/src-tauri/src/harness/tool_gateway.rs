@@ -453,7 +453,7 @@ fn mcp_error(id: Option<&Value>, code: i64, message: &str) -> Vec<u8> {
 fn context_tool_descriptor() -> Value {
     serde_json::json!({
         "name": "vibespace_context",
-        "description": "Search or open the current VibeSpace Context Map within its bounded authority.",
+        "description": "Search, open, or boundedly expand an exact search pointer from the current VibeSpace Context Map.",
         "annotations": {
             "readOnlyHint": true,
             "destructiveHint": false,
@@ -465,9 +465,11 @@ fn context_tool_descriptor() -> Value {
             "additionalProperties": false,
             "required": ["operation"],
             "properties": {
-                "operation": { "type": "string", "enum": ["search", "open"] },
+                "operation": { "type": "string", "enum": ["search", "open", "expand"] },
                 "query": { "type": "string", "maxLength": 32768 },
                 "limit": { "type": "integer", "minimum": 1, "maximum": 5 },
+                "beforeBytes": { "type": "integer", "minimum": 1, "maximum": 2048 },
+                "afterBytes": { "type": "integer", "minimum": 1, "maximum": 2048 },
                 "pointer": {
                     "description": "Use the exact pointer object returned by search. A JSON-encoded pointer string remains accepted for compatibility.",
                     "oneOf": [
@@ -533,7 +535,30 @@ fn context_tool_descriptor() -> Value {
                         }
                     ]
                 }
-            }
+            },
+            "allOf": [
+                {
+                    "if": { "properties": { "operation": { "const": "search" } } },
+                    "then": { "required": ["query"] }
+                },
+                {
+                    "if": { "properties": { "operation": { "const": "open" } } },
+                    "then": { "required": ["pointer"] }
+                },
+                {
+                    "if": { "properties": { "operation": { "const": "expand" } } },
+                    "then": {
+                        "required": ["pointer"],
+                        "properties": {
+                            "pointer": { "type": "object" }
+                        },
+                        "anyOf": [
+                            { "required": ["beforeBytes"] },
+                            { "required": ["afterBytes"] }
+                        ]
+                    }
+                }
+            ]
         }
     })
 }
@@ -1328,9 +1353,59 @@ mod tests {
         assert_eq!(descriptor["name"], "vibespace_context");
         assert_eq!(descriptor["inputSchema"]["additionalProperties"], false);
         assert_eq!(
+            descriptor["inputSchema"]["properties"]["operation"]["enum"],
+            json!(["search", "open", "expand"])
+        );
+        assert_eq!(
             descriptor["inputSchema"]["properties"]["limit"]["maximum"],
             5
         );
+        for direction in ["beforeBytes", "afterBytes"] {
+            assert_eq!(
+                descriptor["inputSchema"]["properties"][direction]["minimum"],
+                1
+            );
+            assert_eq!(
+                descriptor["inputSchema"]["properties"][direction]["maximum"],
+                2048
+            );
+        }
+        assert_eq!(
+            descriptor["inputSchema"]["allOf"],
+            json!([
+                {
+                    "if": { "properties": { "operation": { "const": "search" } } },
+                    "then": { "required": ["query"] }
+                },
+                {
+                    "if": { "properties": { "operation": { "const": "open" } } },
+                    "then": { "required": ["pointer"] }
+                },
+                {
+                    "if": { "properties": { "operation": { "const": "expand" } } },
+                    "then": {
+                        "required": ["pointer"],
+                        "properties": {
+                            "pointer": { "type": "object" }
+                        },
+                        "anyOf": [
+                            { "required": ["beforeBytes"] },
+                            { "required": ["afterBytes"] }
+                        ]
+                    }
+                }
+            ])
+        );
+        assert_eq!(
+            descriptor["inputSchema"]["allOf"][2]["then"]["properties"]["pointer"]["type"],
+            "object"
+        );
+        assert!(descriptor["inputSchema"]["properties"]
+            .get("offset")
+            .is_none());
+        assert!(descriptor["inputSchema"]["properties"]
+            .get("recordId")
+            .is_none());
         let pointer_schema = &descriptor["inputSchema"]["properties"]["pointer"];
         assert_eq!(pointer_schema["oneOf"][0]["type"], "string");
         assert_eq!(pointer_schema["oneOf"][0]["maxLength"], 8192);

@@ -526,11 +526,18 @@ describe('compileJarvisPrompt', () => {
     expect(capabilityLayer).toContain('with `limit=3`');
     expect(capabilityLayer).toContain('Do not make an additional whole-request search');
     expect(capabilityLayer).toContain('finish every search before answering');
-    expect(capabilityLayer).toContain('at most five additional `operation="open"` calls total');
+    expect(capabilityLayer).toContain(
+      'at most six additional evidence calls total across `operation="open"` and `operation="expand"`',
+    );
     expect(capabilityLayer).toContain('no more than two for any one question');
     expect(capabilityLayer).toContain(
       "only with exact pointers returned by that question's search",
     );
+    expect(capabilityLayer).toContain('no more than one evidence retrieval for each cited source');
+    expect(capabilityLayer).toContain('at least one of `beforeBytes` or `afterBytes`');
+    expect(capabilityLayer).toContain('each supplied direction must be at most 2048');
+    expect(capabilityLayer).toContain('`expand` replaces `open` for that source');
+    expect(capabilityLayer).toContain('Never infer a revision');
     expect(capabilityLayer).not.toContain(
       'For file research, first call `vibespace_context` with `operation="search"`, the complete user question',
     );

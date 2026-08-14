@@ -458,9 +458,16 @@ describe('startRuntimeListener agent routing', () => {
       'with `operation="search"` exactly once for each of the five numbered questions',
     );
     expect(prepared).toContain('Run all five searches before answering');
-    expect(prepared).toContain('at most five additional `operation="open"` calls total');
+    expect(prepared).toContain(
+      'at most six additional evidence calls total across `operation="open"` and `operation="expand"`',
+    );
     expect(prepared).toContain('no more than two for any one question');
     expect(prepared).toContain("only with exact pointers returned by that question's search");
+    expect(prepared).toContain('no more than one evidence retrieval for each cited source');
+    expect(prepared).toContain('at least one of `beforeBytes` or `afterBytes`');
+    expect(prepared).toContain('each supplied direction must be at most 2048');
+    expect(prepared).toContain('`expand` replaces `open` for that source');
+    expect(prepared).toContain('Never infer a revision');
     expect(prepared).toContain('answer every numbered question');
   });
 
