@@ -884,10 +884,8 @@ describe('production Context Map RLM repository', () => {
       modifiedAt: 20,
     });
     const contents: Record<string, string> = {
-      'C:\\repo\\0050-orbit.txt':
-        'ORBIT HANDOFF PART ONE. The phrase left for the receiving clerk was glass-peregrine.',
-      'C:\\repo\\0051-orbit.txt':
-        'ORBIT HANDOFF PART TWO. The receiving clerk answered glass-peregrine with harbor-saffron.',
+      'C:\\repo\\0050-orbit.txt': `ORBIT HANDOFF PART ONE. ${'ordinary relay ledger filler '.repeat(30)}The phrase left in part one was glass-peregrine.`,
+      'C:\\repo\\0051-orbit.txt': `ORBIT HANDOFF PART TWO. ${'ordinary relay ledger filler '.repeat(30)}The receiving clerk gave the answer harbor-saffron.`,
     };
     const repository = createContextMapRlmRepository({
       loadMaps: vi.fn(async () => fixtureMaps),

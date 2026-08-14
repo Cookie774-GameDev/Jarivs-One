@@ -176,20 +176,38 @@ function flexibleWhitespaceOffset(content: string, query: string): number {
 }
 
 const SEARCH_STOP_WORDS = new Set([
-  'answer',
+  'after',
+  'between',
+  'both',
+  'everybody',
   'exact',
+  'file',
   'files',
   'from',
+  'give',
+  'did',
+  'me',
+  'neighboring',
+  'only',
   'please',
+  'quote',
   'read',
+  'right',
+  'show',
+  'split',
   'source',
+  'the',
+  'those',
   'what',
+  'where',
   'which',
   'with',
+  'words',
 ]);
 
 const MAX_MEANINGFUL_QUERY_TERMS = 16;
 const MAX_PROPER_NAME_PHRASES = 8;
+const RESPONSE_ANCHOR_TERMS = new Set(['answer', 'code', 'number', 'phrase', 'result', 'value']);
 
 function buildMeaningfulQueryPlan(query: string): {
   terms: readonly string[];
@@ -231,20 +249,33 @@ function meaningfulQueryMatches(
   plan: ReturnType<typeof buildMeaningfulQueryPlan>,
 ): { offset: number; score: number } | undefined {
   const folded = content.toLocaleLowerCase('en-US');
-  const matches = plan.terms
-    .map((term) => ({ term, offset: folded.indexOf(term) }))
-    .filter((match) => match.offset >= 0);
+  const matches = plan.terms.flatMap((term) => {
+    const first = folded.indexOf(term);
+    if (first < 0) return [];
+    const last = folded.lastIndexOf(term);
+    return last === first
+      ? [{ term, offset: first }]
+      : [
+          { term, offset: first },
+          { term, offset: last },
+        ];
+  });
   if (matches.length === 0) return undefined;
   let strongestPhrase: { offset: number; length: number } | undefined;
+  const phraseMatches: Array<{ offset: number; length: number }> = [];
   for (const candidate of plan.phrases) {
-    const offset = folded.indexOf(candidate.phrase);
-    if (
-      offset >= 0 &&
-      (!strongestPhrase ||
+    const first = folded.indexOf(candidate.phrase);
+    if (first < 0) continue;
+    const last = folded.lastIndexOf(candidate.phrase);
+    for (const offset of first === last ? [first] : [first, last]) {
+      phraseMatches.push({ offset, length: candidate.length });
+      if (
+        !strongestPhrase ||
         candidate.length > strongestPhrase.length ||
-        (candidate.length === strongestPhrase.length && offset < strongestPhrase.offset))
-    ) {
-      strongestPhrase = { offset, length: candidate.length };
+        (candidate.length === strongestPhrase.length && offset < strongestPhrase.offset)
+      ) {
+        strongestPhrase = { offset, length: candidate.length };
+      }
     }
   }
   let strongestProperName: { phrase: string; offset: number } | undefined;
@@ -260,15 +291,29 @@ function meaningfulQueryMatches(
       strongestProperName = { phrase, offset };
     }
   }
+  const contextCandidates = [...matches, ...phraseMatches]
+    .map((match) => match.offset)
+    .filter((offset, index, values) => values.indexOf(offset) === index);
+  const densestOffset = contextCandidates
+    .map((offset) => ({
+      offset,
+      density: matches.filter((match) => match.offset >= offset && match.offset < offset + 288)
+        .length,
+    }))
+    .sort((left, right) => right.density - left.density || right.offset - left.offset)[0]?.offset;
+  const responseAnchorOffset = matches
+    .filter((match) => RESPONSE_ANCHOR_TERMS.has(match.term))
+    .sort((left, right) => right.offset - left.offset)[0]?.offset;
   return {
     offset:
       strongestProperName?.offset ??
-      strongestPhrase?.offset ??
-      Math.min(...matches.map((match) => match.offset)),
+      responseAnchorOffset ??
+      densestOffset ??
+      strongestPhrase?.offset,
     // A contiguous entity phrase is far stronger evidence than several common
     // words scattered through an unrelated book.
     score:
-      matches.length +
+      new Set(matches.map((match) => match.term)).size +
       (strongestPhrase ? strongestPhrase.length ** 2 * 10 : 0) +
       (strongestProperName ? 1000 + strongestProperName.phrase.length : 0),
   };

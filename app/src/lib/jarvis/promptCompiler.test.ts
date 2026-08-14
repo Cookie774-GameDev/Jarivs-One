@@ -466,6 +466,11 @@ describe('compileJarvisPrompt', () => {
     expect(capabilityLayer).toContain('with `limit=3`');
     expect(capabilityLayer).toContain('Do not make an additional whole-request search');
     expect(capabilityLayer).toContain('finish every search before answering');
+    expect(capabilityLayer).toContain('at most five additional `operation="open"` calls total');
+    expect(capabilityLayer).toContain('no more than two for any one question');
+    expect(capabilityLayer).toContain(
+      "only with exact pointers returned by that question's search",
+    );
     expect(capabilityLayer).not.toContain(
       'For file research, first call `vibespace_context` with `operation="search"`, the complete user question',
     );

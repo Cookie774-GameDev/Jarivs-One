@@ -454,7 +454,13 @@ describe('startRuntimeListener agent routing', () => {
       JSON.stringify('hey can u read these files and answer these five questions for me'),
     );
     expect(prepared.match(/"limit":3/gu)).toHaveLength(5);
+    expect(prepared).toContain(
+      'with `operation="search"` exactly once for each of the five numbered questions',
+    );
     expect(prepared).toContain('Run all five searches before answering');
+    expect(prepared).toContain('at most five additional `operation="open"` calls total');
+    expect(prepared).toContain('no more than two for any one question');
+    expect(prepared).toContain("only with exact pointers returned by that question's search");
     expect(prepared).toContain('answer every numbered question');
   });
 

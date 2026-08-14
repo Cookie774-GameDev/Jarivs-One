@@ -1658,7 +1658,7 @@ export function prepareOpenCodeMessagesForInteractionMode(
           'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
         ].join('\n')
       : [
-          `Call the real \`vibespace_context\` function once for each of the ${researchQueryCount} numbered questions, using these exact bounded argument objects in order:`,
+          `Call the real \`vibespace_context\` function with \`operation="search"\` exactly once for each of the ${researchQueryCount} numbered questions, using these exact bounded argument objects in order:`,
           ...researchQueries.map(
             (query) =>
               `{"operation":"search","query":${JSON.stringify(
@@ -1666,7 +1666,7 @@ export function prepareOpenCodeMessagesForInteractionMode(
               )},"limit":3}`,
           ),
           `Run all ${researchQueryCount} searches before answering. Do not print or narrate the JSON objects; invoke the real function and wait for every result.`,
-          'Use each matching preview as bounded evidence. Only call `operation="open"` when that question cannot be answered from its previews, using an exact returned pointer.',
+          'Use each matching preview as bounded evidence. After those mandatory searches finish, you may make at most five additional `operation="open"` calls total, no more than two for any one question, only when its previews are insufficient, and only with exact pointers returned by that question\'s search.',
           'Then answer every numbered question in order. For every answer, include the exact matching record title (including its `.txt` filename); cross-record questions must cite both matching files.',
           'Do not cite unrelated context-pack sources or replace a matching search-result title with another filename.',
           'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
