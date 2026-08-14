@@ -222,7 +222,7 @@ describe('TerminalView canonical execution truth', () => {
       binding.indexOf("setInitializationPhase('kernel_terminal_phase_session_bound')"),
     );
     expect(binding.indexOf('setActiveSessionId(sid);')).toBeLessThan(
-      binding.indexOf('exitLatch.bind(sid)'),
+      binding.indexOf('exitLatch.bind(processAttachment)'),
     );
   });
 
@@ -311,8 +311,18 @@ describe('TerminalView canonical execution truth', () => {
 
   it('attaches the exact canonical session before releasing an early native exit', async () => {
     const order: string[] = [];
-    const payload = {
+    const attachment = {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
       sessionId: 'pty_early',
+      processInstanceId: 'process-instance-1',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-generation-1',
+    } as const;
+    const payload = {
+      ...attachment,
       code: 0,
       reason: 'natural_exit' as const,
     };
@@ -326,25 +336,12 @@ describe('TerminalView canonical execution truth', () => {
 
     latch.observe(payload);
     await expect(
-      attachTerminalViewExecution(
-        'jterm_1',
-        {
-          accountId: 'account-a',
-          projectId: 'project-a',
-          paneId: 'pane-a',
-          sessionId: payload.sessionId,
-          processInstanceId: 'process-instance-1',
-          pid: 4242,
-          processStartedAt: 1_723_456_789_000,
-          runtimeGeneration: 'runtime-generation-1',
-        },
-        {
-          isCanonical: () => true,
-          attach,
-        },
-      ),
+      attachTerminalViewExecution('jterm_1', attachment, {
+        isCanonical: () => true,
+        attach,
+      }),
     ).resolves.toBe(true);
-    expect(latch.bind(payload.sessionId)).toBe(true);
+    expect(latch.bind(attachment)).toBe(true);
 
     expect(attach).toHaveBeenCalledWith('jterm_1', {
       accountId: 'account-a',
@@ -384,15 +381,30 @@ describe('TerminalView canonical execution truth', () => {
   it('delivers only the first exact native exit after binding a session', () => {
     const delivered = vi.fn();
     const latch = createTerminalExitLatch(delivered);
+    const attachment = {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
+      sessionId: 'pty_exact',
+      processInstanceId: 'process-exact',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-exact',
+    } as const;
 
-    latch.observe({ sessionId: 'pty_other', code: 1, reason: 'natural_exit' });
-    expect(latch.bind('pty_exact')).toBe(false);
-    latch.observe({ sessionId: 'pty_exact', code: 0, reason: 'natural_exit' });
-    latch.observe({ sessionId: 'pty_exact', code: 1, reason: 'natural_exit' });
+    latch.observe({
+      ...attachment,
+      processInstanceId: 'process-stale',
+      code: 1,
+      reason: 'natural_exit',
+    });
+    expect(latch.bind(attachment)).toBe(false);
+    latch.observe({ ...attachment, code: 0, reason: 'natural_exit' });
+    latch.observe({ ...attachment, code: 1, reason: 'natural_exit' });
 
     expect(delivered).toHaveBeenCalledOnce();
     expect(delivered).toHaveBeenCalledWith({
-      sessionId: 'pty_exact',
+      ...attachment,
       code: 0,
       reason: 'natural_exit',
     });

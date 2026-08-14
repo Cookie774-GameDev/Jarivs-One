@@ -220,6 +220,8 @@ struct OutputPayload {
 #[serde(rename_all = "camelCase")]
 struct ExitPayload {
     session_id: String,
+    #[serde(flatten)]
+    process_binding: NativeProcessBinding,
     code: Option<i32>,
     reason: ExitReason,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -336,14 +338,20 @@ struct LifecycleState {
 /// before removing the session from the shared map.
 struct LifecycleArbiter {
     session_id: String,
+    process_binding: NativeProcessBinding,
     cancellation_token: Option<String>,
     state: StdMutex<LifecycleState>,
 }
 
 impl LifecycleArbiter {
-    fn new(session_id: impl Into<String>, cancellation_token: Option<String>) -> Self {
+    fn new(
+        session_id: impl Into<String>,
+        process_binding: NativeProcessBinding,
+        cancellation_token: Option<String>,
+    ) -> Self {
         Self {
             session_id: session_id.into(),
+            process_binding,
             cancellation_token,
             state: StdMutex::new(LifecycleState {
                 phase: LifecyclePhase::Running,
@@ -452,6 +460,7 @@ impl LifecycleArbiter {
     ) -> ExitPayload {
         ExitPayload {
             session_id: self.session_id.clone(),
+            process_binding: self.process_binding.clone(),
             code,
             reason,
             cancellation_token: (reason == ExitReason::AcceptedCancellation)
@@ -481,9 +490,37 @@ fn finalize_terminal_session(
             let _ = app.emit("terminal://exit", payload);
         },
         |session_id| {
-            sessions.blocking_lock().remove(session_id);
+            remove_matching_session(
+                &mut sessions.blocking_lock(),
+                session_id,
+                &exit.process_binding,
+            );
         },
     );
+}
+
+fn remove_matching_session(
+    sessions: &mut HashMap<String, PtyHandle>,
+    session_id: &str,
+    process_binding: &NativeProcessBinding,
+) -> bool {
+    let matches = should_remove_session(
+        sessions
+            .get(session_id)
+            .map(|handle| &handle.info.process_binding),
+        process_binding,
+    );
+    if matches {
+        sessions.remove(session_id);
+    }
+    matches
+}
+
+fn should_remove_session(
+    current: Option<&NativeProcessBinding>,
+    exited: &NativeProcessBinding,
+) -> bool {
+    current == Some(exited)
 }
 
 #[derive(Clone)]
@@ -541,7 +578,8 @@ async fn deliver_kill(
             let completion = lifecycle.complete_kill(fallback_attempt, false);
             if let Some(exit) = completion.exit {
                 let _ = app.emit("terminal://exit", exit.clone());
-                sessions.lock().await.remove(&exit.session_id);
+                let mut sessions = sessions.lock().await;
+                remove_matching_session(&mut sessions, &exit.session_id, &exit.process_binding);
             }
             completion.result
         }
@@ -1096,6 +1134,7 @@ pub async fn terminal_spawn(
     let session_for_task = session_id.clone();
     let lifecycle = Arc::new(LifecycleArbiter::new(
         session_id.clone(),
+        process_binding.clone(),
         cancellation_token,
     ));
     let lifecycle_for_task = lifecycle.clone();
@@ -1355,9 +1394,18 @@ mod tests {
         default_terminal_cwd, emit_before_remove, native_process_started_at,
         process_started_at_from_filetime_ticks, terminal_launch_spec, valid_cancellation_token,
         validated_kill_request, ExitReason, KillRequest, KillRequestKind, KillResultKind,
-        KillStart, LifecycleArbiter, SpawnResponse, TerminalInfo, TerminalKillResult,
-        TerminalState, MAX_CANCELLATION_TOKEN_BYTES, WINDOWS_UNIX_EPOCH_100NS,
+        KillStart, LifecycleArbiter, NativeProcessBinding, SpawnResponse, TerminalInfo,
+        TerminalKillResult, TerminalState, MAX_CANCELLATION_TOKEN_BYTES, WINDOWS_UNIX_EPOCH_100NS,
     };
+
+    fn exit_process_binding() -> NativeProcessBinding {
+        NativeProcessBinding {
+            process_instance_id: "ptyproc_exit_fixture".to_string(),
+            pid: 4242,
+            process_started_at: 1_723_456_789_000,
+            runtime_generation: "runtime-exit-fixture".to_string(),
+        }
+    }
 
     #[test]
     fn restart_gate_waits_for_in_flight_spawns_and_blocks_new_ones() {
@@ -1597,10 +1645,20 @@ mod tests {
 
     #[test]
     fn kill_after_reader_exit_is_already_exited() {
-        let arbiter = LifecycleArbiter::new("tty_exited", Some("cancel_exited".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_exited",
+            exit_process_binding(),
+            Some("cancel_exited".to_string()),
+        );
         let exit = arbiter
             .observe_exit(Some(0))
             .expect("reader should finalize a natural exit");
+
+        let serialized = serde_json::to_value(&exit).expect("exit payload should serialize");
+        assert_eq!(serialized["processInstanceId"], "ptyproc_exit_fixture");
+        assert_eq!(serialized["pid"], 4242);
+        assert_eq!(serialized["processStartedAt"], 1_723_456_789_000_u64);
+        assert_eq!(serialized["runtimeGeneration"], "runtime-exit-fixture");
 
         assert_eq!(exit.reason, ExitReason::NaturalExit);
         match arbiter.begin_kill(KillRequest::canonical("cancel_exited")) {
@@ -1614,7 +1672,11 @@ mod tests {
 
     #[test]
     fn wrong_or_stale_canonical_token_is_delivery_rejected() {
-        let arbiter = LifecycleArbiter::new("tty_token", Some("cancel_current".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_token",
+            exit_process_binding(),
+            Some("cancel_current".to_string()),
+        );
 
         match arbiter.begin_kill(KillRequest::canonical("cancel_stale")) {
             KillStart::Complete(result) => {
@@ -1628,7 +1690,11 @@ mod tests {
 
     #[test]
     fn native_kill_error_is_delivery_rejected() {
-        let arbiter = LifecycleArbiter::new("tty_rejected", Some("cancel_rejected".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_rejected",
+            exit_process_binding(),
+            Some("cancel_rejected".to_string()),
+        );
         let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_rejected")) {
             KillStart::Deliver(attempt) => attempt,
             KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
@@ -1642,7 +1708,11 @@ mod tests {
 
     #[test]
     fn successful_native_kill_is_signal_delivered() {
-        let arbiter = LifecycleArbiter::new("tty_delivered", Some("cancel_delivered".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_delivered",
+            exit_process_binding(),
+            Some("cancel_delivered".to_string()),
+        );
         let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_delivered")) {
             KillStart::Deliver(attempt) => attempt,
             KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
@@ -1664,7 +1734,11 @@ mod tests {
 
     #[test]
     fn exit_during_delivery_waits_for_accepted_cancellation_truth() {
-        let arbiter = LifecycleArbiter::new("tty_race", Some("cancel_race".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_race",
+            exit_process_binding(),
+            Some("cancel_race".to_string()),
+        );
         let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_race")) {
             KillStart::Deliver(attempt) => attempt,
             KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
@@ -1684,7 +1758,11 @@ mod tests {
 
     #[test]
     fn exit_during_rejected_delivery_remains_natural() {
-        let arbiter = LifecycleArbiter::new("tty_race_rejected", Some("cancel_race".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_race_rejected",
+            exit_process_binding(),
+            Some("cancel_race".to_string()),
+        );
         let attempt = match arbiter.begin_kill(KillRequest::canonical("cancel_race")) {
             KillStart::Deliver(attempt) => attempt,
             KillStart::Complete(_) => panic!("matching token should reserve native delivery"),
@@ -1703,7 +1781,11 @@ mod tests {
 
     #[test]
     fn tokenless_kill_is_manual_and_never_echoes_canonical_token() {
-        let arbiter = LifecycleArbiter::new("tty_manual", Some("cancel_canonical".to_string()));
+        let arbiter = LifecycleArbiter::new(
+            "tty_manual",
+            exit_process_binding(),
+            Some("cancel_canonical".to_string()),
+        );
         let attempt = match arbiter.begin_kill(KillRequest::manual()) {
             KillStart::Deliver(attempt) => attempt,
             KillStart::Complete(_) => panic!("manual termination should reserve native delivery"),
@@ -1726,7 +1808,7 @@ mod tests {
 
     #[test]
     fn arbiter_emits_exactly_one_exit_payload() {
-        let arbiter = LifecycleArbiter::new("tty_once", None);
+        let arbiter = LifecycleArbiter::new("tty_once", exit_process_binding(), None);
 
         let first = arbiter.observe_exit(Some(0));
         let second = arbiter.observe_exit(Some(1));
@@ -1737,7 +1819,7 @@ mod tests {
 
     #[test]
     fn reader_finalization_emits_before_session_map_removal() {
-        let arbiter = LifecycleArbiter::new("tty_finalize", None);
+        let arbiter = LifecycleArbiter::new("tty_finalize", exit_process_binding(), None);
         let payload = arbiter
             .observe_exit(Some(0))
             .expect("reader should own natural finalization");
@@ -1763,6 +1845,17 @@ mod tests {
             events.into_inner(),
             ["emit:tty_finalize", "remove:tty_finalize"].map(String::from)
         );
+    }
+
+    #[test]
+    fn stale_exit_cannot_remove_a_same_session_replacement_process() {
+        let exited = exit_process_binding();
+        let mut replacement = exited.clone();
+        replacement.process_instance_id = "ptyproc_replacement".to_string();
+
+        assert!(super::should_remove_session(Some(&exited), &exited));
+        assert!(!super::should_remove_session(Some(&replacement), &exited));
+        assert!(!super::should_remove_session(None, &exited));
     }
 
     #[test]

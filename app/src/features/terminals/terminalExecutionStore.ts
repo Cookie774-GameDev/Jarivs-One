@@ -95,6 +95,10 @@ export type NativeTerminalKillResult = Readonly<{
 
 export type NativeTerminalExitPayload = Readonly<{
   sessionId: string;
+  processInstanceId: string;
+  pid: number;
+  processStartedAt: number;
+  runtimeGeneration: string;
   code: number | null;
   reason: 'natural_exit' | 'accepted_cancellation' | 'manual_termination';
   cancellationToken?: string;
@@ -215,14 +219,18 @@ const canonicalExecutions = new Map<string, CanonicalExecutionRecord>();
 const canonicalSessionOwners = new Map<string, string>();
 const canonicalProcessOwners = new Map<string, string>();
 const pendingNativeExits = new Map<string, NativeTerminalExitPayload>();
-const settledCanonicalExecutions = new Map<string, { sessionId?: string }>();
+const settledCanonicalExecutions = new Map<string, { processIdentity?: TerminalProcessIdentity }>();
 let terminalExitListener: Promise<void> | undefined;
 
 function stableIdentifier(value: string, label: string): string {
+  return stableBoundedIdentifier(value, label, 256);
+}
+
+function stableBoundedIdentifier(value: string, label: string, maximumLength: number): string {
   if (
     typeof value !== 'string' ||
     !value ||
-    value.length > 256 ||
+    value.length > maximumLength ||
     value !== value.trim() ||
     /[\u0000-\u001f\u007f]/u.test(value)
   ) {
@@ -287,6 +295,83 @@ function sameTerminalProcessIdentity(
   );
 }
 
+function nativeExitIdentityKey(
+  payload: Pick<TerminalProcessIdentity, 'sessionId'> &
+    Partial<
+      Pick<
+        TerminalProcessIdentity,
+        'processInstanceId' | 'pid' | 'processStartedAt' | 'runtimeGeneration'
+      >
+    >,
+): string {
+  return JSON.stringify([
+    payload.sessionId,
+    payload.processInstanceId,
+    payload.pid,
+    payload.processStartedAt,
+    payload.runtimeGeneration,
+  ]);
+}
+
+function validNativeTerminalExitPayload(
+  payload: NativeTerminalExitPayload,
+): NativeTerminalExitPayload | null {
+  try {
+    const reason = payload.reason;
+    if (
+      reason !== 'natural_exit' &&
+      reason !== 'accepted_cancellation' &&
+      reason !== 'manual_termination'
+    ) {
+      return null;
+    }
+    if (
+      payload.code !== null &&
+      (!Number.isInteger(payload.code) || payload.code < -0x8000_0000 || payload.code > 0x7fff_ffff)
+    ) {
+      return null;
+    }
+    const cancellationToken =
+      payload.cancellationToken === undefined
+        ? undefined
+        : stableBoundedIdentifier(payload.cancellationToken, 'cancellationToken', 512);
+    if (
+      (reason === 'accepted_cancellation' && cancellationToken === undefined) ||
+      (reason !== 'accepted_cancellation' && cancellationToken !== undefined) ||
+      !validProcessNumber(payload.pid, 0xffff_ffff) ||
+      !validProcessNumber(payload.processStartedAt, Number.MAX_SAFE_INTEGER) ||
+      typeof payload.processInstanceId !== 'string'
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      sessionId: stableIdentifier(payload.sessionId, 'sessionId'),
+      processInstanceId: stableIdentifier(payload.processInstanceId, 'processInstanceId'),
+      pid: payload.pid,
+      processStartedAt: payload.processStartedAt,
+      runtimeGeneration: stableIdentifier(payload.runtimeGeneration, 'runtimeGeneration'),
+      code: payload.code,
+      reason,
+      ...(cancellationToken === undefined ? {} : { cancellationToken }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+function exitMatchesProcessIdentity(
+  payload: NativeTerminalExitPayload,
+  identity: TerminalProcessIdentity,
+): boolean {
+  return (
+    payload.sessionId === identity.sessionId &&
+    payload.processInstanceId === identity.processInstanceId &&
+    payload.pid === identity.pid &&
+    payload.processStartedAt === identity.processStartedAt &&
+    payload.runtimeGeneration === identity.runtimeGeneration
+  );
+}
+
 function canonicalExecutionId(value: string | undefined): value is `jterm_${string}` {
   return typeof value === 'string' && /^jterm_[A-Za-z0-9_-]+$/.test(value);
 }
@@ -324,7 +409,7 @@ function disposeRecord(record: CanonicalExecutionRecord): void {
 function rememberSettledRecord(record: CanonicalExecutionRecord): void {
   settledCanonicalExecutions.delete(record.request.executionId);
   settledCanonicalExecutions.set(record.request.executionId, {
-    ...(record.sessionId === undefined ? {} : { sessionId: record.sessionId }),
+    ...(record.processIdentity === undefined ? {} : { processIdentity: record.processIdentity }),
   });
   while (settledCanonicalExecutions.size > MAX_EXECUTIONS) {
     const oldest = settledCanonicalExecutions.keys().next().value as string | undefined;
@@ -408,10 +493,13 @@ export async function ensureTerminalExecutionExitListener(): Promise<void> {
 export async function observeTerminalExecutionNativeExit(
   payload: NativeTerminalExitPayload,
 ): Promise<boolean> {
-  const executionId = canonicalSessionOwners.get(payload.sessionId);
-  if (executionId) return settleTerminalExecutionFromNativeExit(executionId, payload);
-  pendingNativeExits.delete(payload.sessionId);
-  pendingNativeExits.set(payload.sessionId, Object.freeze({ ...payload }));
+  const validated = validNativeTerminalExitPayload(payload);
+  if (!validated) return false;
+  const executionId = canonicalSessionOwners.get(validated.sessionId);
+  if (executionId) return settleTerminalExecutionFromNativeExit(executionId, validated);
+  const identityKey = nativeExitIdentityKey(validated);
+  pendingNativeExits.delete(identityKey);
+  pendingNativeExits.set(identityKey, validated);
   while (pendingNativeExits.size > MAX_EXECUTIONS) {
     const oldest = pendingNativeExits.keys().next().value as string | undefined;
     if (oldest === undefined) break;
@@ -756,9 +844,10 @@ export async function attachTerminalExecution(
     canonicalSessionOwners.set(stableSessionId, id);
     canonicalProcessOwners.set(processIdentity.processInstanceId, id);
     markCanonical(id, 'starting', { sessionId: stableSessionId, processIdentity });
-    const pendingExit = pendingNativeExits.get(stableSessionId);
+    const pendingKey = nativeExitIdentityKey(processIdentity);
+    const pendingExit = pendingNativeExits.get(pendingKey);
     if (pendingExit) {
-      pendingNativeExits.delete(stableSessionId);
+      pendingNativeExits.delete(pendingKey);
       await settleTerminalExecutionFromNativeExit(id, pendingExit);
     }
     return true;
@@ -913,7 +1002,16 @@ export async function settleTerminalExecutionFromNativeExit(
   const record = canonicalExecutions.get(id);
   if (!record) {
     const settled = settledCanonicalExecutions.get(id);
-    if (settled && (!settled.sessionId || settled.sessionId === payload.sessionId)) return true;
+    const validated = validNativeTerminalExitPayload(payload);
+    if (settled) {
+      return Boolean(
+        settled.processIdentity &&
+        validated &&
+        exitMatchesProcessIdentity(validated, settled.processIdentity),
+      );
+    }
+    if (!validated) return false;
+    payload = validated;
     if (canonicalExecutionId(id)) {
       markCanonical(id, 'failed', {
         sessionId: payload.sessionId,
@@ -923,7 +1021,10 @@ export async function settleTerminalExecutionFromNativeExit(
     }
     return false;
   }
-  if (record.sessionId !== payload.sessionId) return false;
+  const validated = validNativeTerminalExitPayload(payload);
+  if (!validated || !record.processIdentity) return false;
+  payload = validated;
+  if (!exitMatchesProcessIdentity(payload, record.processIdentity)) return false;
   if (record.settlement) {
     await record.settlement;
     return true;

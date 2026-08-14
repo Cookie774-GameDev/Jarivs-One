@@ -13,6 +13,7 @@ import {
   settleTerminalExecutionFromNativeExit,
   terminalCancellationDisposition,
   terminalExecutionCancellationToken,
+  type NativeTerminalExitPayload,
   useTerminalExecutionStore,
 } from './terminalExecutionStore';
 import {
@@ -57,6 +58,23 @@ describe('terminal execution lifecycle', () => {
     ...processAttachment,
     sessionId,
     processInstanceId: `process-${sessionId}`,
+  });
+  const nativeExit = (
+    overrides: Partial<{
+      sessionId: string;
+      processInstanceId: string;
+      pid: number;
+      processStartedAt: number;
+      runtimeGeneration: string;
+      code: number | null;
+      reason: 'natural_exit' | 'accepted_cancellation' | 'manual_termination';
+      cancellationToken: string;
+    }> = {},
+  ) => ({
+    ...canonicalAttachment(overrides.sessionId),
+    code: 0,
+    reason: 'natural_exit' as const,
+    ...overrides,
   });
 
   beforeEach(() => {
@@ -606,12 +624,15 @@ describe('terminal execution lifecycle', () => {
     );
     expect(harness.recordCancellationVerified).not.toHaveBeenCalled();
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: null,
-      reason: 'accepted_cancellation',
-      cancellationToken: 'jcancel_native_1',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: null,
+        reason: 'accepted_cancellation',
+        cancellationToken: 'jcancel_native_1',
+      }),
+    );
 
     expect(harness.recordCancellationVerified).toHaveBeenCalledWith({
       cancellationRequestId: 'jcancel_1',
@@ -621,11 +642,14 @@ describe('terminal execution lifecycle', () => {
     expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('cancelled');
     expect(harness.execution.dispose).toHaveBeenCalledOnce();
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: 0,
-      reason: 'natural_exit',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    );
     expect(harness.recordResult).not.toHaveBeenCalled();
     expect(harness.execution.dispose).toHaveBeenCalledOnce();
   });
@@ -635,15 +659,92 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
 
-    await observeTerminalExecutionNativeExit({
-      sessionId: 'pty_1',
-      code: 0,
-      reason: 'natural_exit',
-    });
+    await observeTerminalExecutionNativeExit(
+      nativeExit({
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    );
 
     expect(harness.recordResult).toHaveBeenCalledOnce();
     expect(harness.execution.dispose).toHaveBeenCalledOnce();
     expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('complete');
+  });
+
+  it('rejects stale same-session process exits without consuming the exact exit', async () => {
+    const harness = canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
+
+    await expect(
+      observeTerminalExecutionNativeExit(
+        nativeExit({ processInstanceId: 'stale-process-instance' }),
+      ),
+    ).resolves.toBe(false);
+    expect(harness.recordResult).not.toHaveBeenCalled();
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('starting');
+
+    await expect(observeTerminalExecutionNativeExit(nativeExit())).resolves.toBe(true);
+    expect(harness.recordResult).toHaveBeenCalledOnce();
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('complete');
+    await expect(
+      settleTerminalExecutionFromNativeExit(
+        'jterm_1',
+        nativeExit({ runtimeGeneration: 'stale-runtime-generation' }),
+      ),
+    ).resolves.toBe(false);
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('complete');
+    await expect(settleTerminalExecutionFromNativeExit('jterm_1', nativeExit())).resolves.toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ['process instance', { processInstanceId: 'stale-process' }],
+    ['pid reuse', { pid: 4243 }],
+    ['process start', { processStartedAt: 1_723_456_789_001 }],
+    ['runtime generation', { runtimeGeneration: 'runtime-generation-2' }],
+  ])('fails closed on a mismatched %s exit', async (_label, mismatch) => {
+    const harness = canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
+
+    await expect(
+      settleTerminalExecutionFromNativeExit('jterm_1', nativeExit(mismatch)),
+    ).resolves.toBe(false);
+    expect(harness.recordResult).not.toHaveBeenCalled();
+    expect(harness.recordCancellationVerified).not.toHaveBeenCalled();
+    expect(harness.execution.dispose).not.toHaveBeenCalled();
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('starting');
+  });
+
+  it('rejects malformed process-bound exits without retaining or settling them', async () => {
+    const harness = canonicalHarness();
+    expect(await claimTerminalExecution('jterm_1')).toBe(true);
+    await attachTerminalExecution('jterm_1', canonicalAttachment());
+
+    for (const malformed of [
+      {
+        ...nativeExit(),
+        processInstanceId: undefined,
+      } as unknown as NativeTerminalExitPayload,
+      nativeExit({ processInstanceId: '' }),
+      nativeExit({ pid: 0 }),
+      nativeExit({ processStartedAt: Number.NaN }),
+      nativeExit({ runtimeGeneration: 'bad\u0000generation' }),
+      nativeExit({ reason: 'natural_exit', cancellationToken: 'unexpected-token' }),
+      nativeExit({
+        code: null,
+        reason: 'accepted_cancellation',
+        cancellationToken: 'x'.repeat(513),
+      }),
+    ]) {
+      await expect(observeTerminalExecutionNativeExit(malformed)).resolves.toBe(false);
+    }
+
+    expect(harness.recordResult).not.toHaveBeenCalled();
+    expect(harness.execution.dispose).not.toHaveBeenCalled();
   });
 
   it('buffers native exit truth when unmount wins terminal_spawn and consumes it on late attach', async () => {
@@ -651,11 +752,13 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
 
     await expect(
-      observeTerminalExecutionNativeExit({
-        sessionId: 'pty_spawn_race',
-        code: 0,
-        reason: 'natural_exit',
-      }),
+      observeTerminalExecutionNativeExit(
+        nativeExit({
+          sessionId: 'pty_spawn_race',
+          code: 0,
+          reason: 'natural_exit',
+        }),
+      ),
     ).resolves.toBe(false);
     expect(harness.recordResult).not.toHaveBeenCalled();
 
@@ -673,12 +776,15 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: null,
-      reason: 'accepted_cancellation',
-      cancellationToken: 'jcancel_native_1',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: null,
+        reason: 'accepted_cancellation',
+        cancellationToken: 'jcancel_native_1',
+      }),
+    );
 
     expect(harness.requestCancellation).toHaveBeenCalledOnce();
     expect(harness.recordCancellationVerified).toHaveBeenCalledWith({
@@ -715,16 +821,22 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: 0,
-      reason: 'natural_exit',
-    });
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: 0,
-      reason: 'natural_exit',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    );
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    );
 
     expect(natural.recordResult).toHaveBeenCalledOnce();
     expect(natural.recordResult).toHaveBeenCalledWith({
@@ -741,12 +853,15 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
     await requestTerminalExecutionCancellation('jterm_1');
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: null,
-      reason: 'accepted_cancellation',
-      cancellationToken: 'stale-token',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: null,
+        reason: 'accepted_cancellation',
+        cancellationToken: 'stale-token',
+      }),
+    );
 
     expect(stale.recordCancellationVerified).not.toHaveBeenCalled();
     expect(stale.recordResult).not.toHaveBeenCalled();
@@ -755,12 +870,15 @@ describe('terminal execution lifecycle', () => {
     );
     expect(stale.execution.dispose).not.toHaveBeenCalled();
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: null,
-      reason: 'accepted_cancellation',
-      cancellationToken: 'jcancel_native_1',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: null,
+        reason: 'accepted_cancellation',
+        cancellationToken: 'jcancel_native_1',
+      }),
+    );
     expect(stale.recordCancellationVerified).toHaveBeenCalledOnce();
     expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('cancelled');
   });
@@ -771,11 +889,14 @@ describe('terminal execution lifecycle', () => {
     await expect(attachTerminalExecution('jterm_1', canonicalAttachment())).resolves.toBe(true);
 
     await expect(
-      settleTerminalExecutionFromNativeExit('jterm_1', {
-        sessionId: 'pty_1',
-        code: 0,
-        reason: 'natural_exit',
-      }),
+      settleTerminalExecutionFromNativeExit(
+        'jterm_1',
+        nativeExit({
+          sessionId: 'pty_1',
+          code: 0,
+          reason: 'natural_exit',
+        }),
+      ),
     ).resolves.toBe(true);
 
     await vi.waitFor(() => expect(notificationMocks.notifyDone).toHaveBeenCalledOnce());
@@ -813,11 +934,14 @@ describe('terminal execution lifecycle', () => {
       expect(await claimTerminalExecution('jterm_1')).toBe(true);
       await attachTerminalExecution('jterm_1', canonicalAttachment());
 
-      await settleTerminalExecutionFromNativeExit('jterm_1', {
-        sessionId: 'pty_1',
-        code,
-        reason,
-      });
+      await settleTerminalExecutionFromNativeExit(
+        'jterm_1',
+        nativeExit({
+          sessionId: 'pty_1',
+          code,
+          reason,
+        }),
+      );
 
       expect(harness.recordResult).toHaveBeenCalledWith({
         state: 'degraded',
@@ -835,12 +959,15 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: null,
-      reason: 'accepted_cancellation',
-      cancellationToken: 'jcancel_native_1',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: null,
+        reason: 'accepted_cancellation',
+        cancellationToken: 'jcancel_native_1',
+      }),
+    );
     expect(harness.requestCancellation).toHaveBeenCalledOnce();
     expect(harness.recordCancellationVerified).toHaveBeenCalledWith({
       cancellationRequestId: 'jcancel_1',
@@ -874,11 +1001,14 @@ describe('terminal execution lifecycle', () => {
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
 
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: 0,
-      reason: 'natural_exit',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    );
 
     expect(useTerminalExecutionStore.getState().executions.jterm_1).toMatchObject({
       status: 'failed',
@@ -896,11 +1026,14 @@ describe('terminal execution lifecycle', () => {
     });
     await expect(attachTerminalExecution('jterm_restart', 'pty_restart')).resolves.toBe(false);
     await expect(
-      settleTerminalExecutionFromNativeExit('jterm_restart', {
-        sessionId: 'pty_restart',
-        code: 0,
-        reason: 'natural_exit',
-      }),
+      settleTerminalExecutionFromNativeExit(
+        'jterm_restart',
+        nativeExit({
+          sessionId: 'pty_restart',
+          code: 0,
+          reason: 'natural_exit',
+        }),
+      ),
     ).resolves.toBe(false);
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -941,11 +1074,14 @@ describe('terminal execution lifecycle', () => {
     const harness = canonicalHarness();
     expect(await claimTerminalExecution('jterm_1')).toBe(true);
     await attachTerminalExecution('jterm_1', canonicalAttachment());
-    await settleTerminalExecutionFromNativeExit('jterm_1', {
-      sessionId: 'pty_1',
-      code: 0,
-      reason: 'natural_exit',
-    });
+    await settleTerminalExecutionFromNativeExit(
+      'jterm_1',
+      nativeExit({
+        sessionId: 'pty_1',
+        code: 0,
+        reason: 'natural_exit',
+      }),
+    );
 
     await expect(requestTerminalExecutionCancellation('jterm_1')).resolves.toEqual({
       kind: 'already_terminal',

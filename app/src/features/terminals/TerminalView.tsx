@@ -418,14 +418,24 @@ export function createTerminalExitLatch(
   onExactExit: (payload: NativeTerminalExitPayload) => void,
 ): {
   observe(payload: NativeTerminalExitPayload): void;
-  bind(sessionId: string): boolean;
+  bind(attachment: TerminalProcessAttachment): boolean;
 } {
-  const pending = new Map<string, NativeTerminalExitPayload>();
-  let boundSessionId: string | undefined;
+  const pending: NativeTerminalExitPayload[] = [];
+  let boundAttachment: TerminalProcessAttachment | undefined;
   let delivered = false;
 
+  const matches = (
+    payload: NativeTerminalExitPayload,
+    attachment: TerminalProcessAttachment,
+  ): boolean =>
+    payload.sessionId === attachment.sessionId &&
+    payload.processInstanceId === attachment.processInstanceId &&
+    payload.pid === attachment.pid &&
+    payload.processStartedAt === attachment.processStartedAt &&
+    payload.runtimeGeneration === attachment.runtimeGeneration;
+
   const deliver = (payload: NativeTerminalExitPayload): boolean => {
-    if (delivered || payload.sessionId !== boundSessionId) return false;
+    if (!boundAttachment || delivered || !matches(payload, boundAttachment)) return false;
     delivered = true;
     onExactExit(payload);
     return true;
@@ -433,17 +443,30 @@ export function createTerminalExitLatch(
 
   return {
     observe(payload) {
-      if (boundSessionId === undefined) {
-        if (!pending.has(payload.sessionId)) pending.set(payload.sessionId, payload);
+      if (boundAttachment === undefined) {
+        if (pending.length >= MAX_EARLY_TERMINAL_OUTPUT_CHUNKS) pending.shift();
+        pending.push(payload);
         return;
       }
       deliver(payload);
     },
-    bind(sessionId) {
-      if (boundSessionId !== undefined && boundSessionId !== sessionId) return false;
-      boundSessionId = sessionId;
-      const early = pending.get(sessionId);
-      pending.clear();
+    bind(attachment) {
+      if (
+        boundAttachment !== undefined &&
+        !matches(
+          {
+            ...attachment,
+            code: null,
+            reason: 'natural_exit',
+          },
+          boundAttachment,
+        )
+      ) {
+        return false;
+      }
+      boundAttachment = Object.freeze({ ...attachment });
+      const early = pending.find((payload) => matches(payload, attachment));
+      pending.length = 0;
       return early ? deliver(early) : false;
     },
   };
@@ -1663,7 +1686,7 @@ export function TerminalView({
           }
           outputLatch.bind(sid);
           outputSubscription?.bind(sid);
-          if (exitLatch.bind(sid)) return;
+          if (exitLatch.bind(processAttachment)) return;
           sessionCwd = result.cwd || cwd || null;
           console.log(`[Jarvis] Spawned new PTY session: ${sid}`);
 
@@ -1791,7 +1814,7 @@ export function TerminalView({
         setInitializationPhase('kernel_terminal_phase_session_bound');
         outputLatch.bind(sid);
         outputSubscription?.bind(sid);
-        if (exitLatch.bind(sid)) return;
+        if (exitLatch.bind(processAttachment)) return;
       }
 
       // Race fix: if the effect was torn down between awaiting the
