@@ -35,6 +35,7 @@ import {
 
 const MAX_SOURCE_SHARD_BYTES = 1024 * 1024;
 const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
+const MAX_CONCURRENT_SOURCE_VALIDATIONS = 8;
 
 export function requestsMappedFileAuthority(query: string): boolean {
   return /\b(?:files?|filename|source\s+(?:file|filename|path))\b/i.test(query);
@@ -99,6 +100,20 @@ interface RecordAuthority {
   nodeId: string;
   rootDir: string;
   inlineContent?: string;
+}
+
+interface ResolvedAuthoritySource {
+  content: string;
+  bytes: Uint8Array;
+  contentHash: string;
+  sourceVersion: string;
+}
+
+interface ContextMapSearchHit {
+  recordId: string;
+  pointer: ReturnType<typeof createContextPointer>;
+  preview: string;
+  score: number;
 }
 
 function flatten(nodes: readonly ProductionContextNode[]): ProductionContextNode[] {
@@ -173,11 +188,15 @@ const SEARCH_STOP_WORDS = new Set([
   'with',
 ]);
 
-function meaningfulQueryMatches(
-  content: string,
-  query: string,
-): { offset: number; score: number } | undefined {
-  const terms = [
+const MAX_MEANINGFUL_QUERY_TERMS = 16;
+const MAX_PROPER_NAME_PHRASES = 8;
+
+function buildMeaningfulQueryPlan(query: string): {
+  terms: readonly string[];
+  phrases: ReadonlyArray<{ phrase: string; length: number }>;
+  properNames: readonly string[];
+} {
+  const allTerms = [
     ...new Set(
       query
         .toLocaleLowerCase('en-US')
@@ -185,32 +204,62 @@ function meaningfulQueryMatches(
         ?.filter((term) => !SEARCH_STOP_WORDS.has(term)) ?? [],
     ),
   ];
+  const terms =
+    allTerms.length <= MAX_MEANINGFUL_QUERY_TERMS
+      ? allTerms
+      : [
+          ...allTerms.slice(0, MAX_MEANINGFUL_QUERY_TERMS / 2),
+          ...allTerms.slice(-MAX_MEANINGFUL_QUERY_TERMS / 2),
+        ];
+  // One adjacent bigram per retained boundary keeps phrase probing linear
+  // while preserving the entity/handoff anchors used for source ranking.
+  const phrases = terms.slice(0, -1).map((term, index) => ({
+    phrase: `${term} ${terms[index + 1]}`,
+    length: 2,
+  }));
+  const properNames = [
+    ...query.matchAll(/["“]([^"”]{3,256})["”]/gu),
+    ...query.matchAll(/\b(?:[\p{Lu}][\p{L}\p{N}-]*)(?:\s+[\p{Lu}][\p{L}\p{N}-]*)+\b/gu),
+  ]
+    .map((match) => match[1] ?? match[0])
+    .slice(0, MAX_PROPER_NAME_PHRASES);
+  return { terms, phrases, properNames };
+}
+
+function meaningfulQueryMatches(
+  content: string,
+  plan: ReturnType<typeof buildMeaningfulQueryPlan>,
+): { offset: number; score: number } | undefined {
   const folded = content.toLocaleLowerCase('en-US');
-  const matches = terms
+  const matches = plan.terms
     .map((term) => ({ term, offset: folded.indexOf(term) }))
     .filter((match) => match.offset >= 0);
   if (matches.length === 0) return undefined;
-  const phraseMatches: Array<{ offset: number; length: number }> = [];
-  for (let start = 0; start < terms.length - 1; start += 1) {
-    for (let end = terms.length; end >= start + 2; end -= 1) {
-      const phrase = terms.slice(start, end).join(' ');
-      const offset = folded.indexOf(phrase);
-      if (offset >= 0) {
-        phraseMatches.push({ offset, length: end - start });
-        break;
-      }
+  let strongestPhrase: { offset: number; length: number } | undefined;
+  for (const candidate of plan.phrases) {
+    const offset = folded.indexOf(candidate.phrase);
+    if (
+      offset >= 0 &&
+      (!strongestPhrase ||
+        candidate.length > strongestPhrase.length ||
+        (candidate.length === strongestPhrase.length && offset < strongestPhrase.offset))
+    ) {
+      strongestPhrase = { offset, length: candidate.length };
     }
   }
-  const strongestPhrase = phraseMatches.sort((left, right) => right.length - left.length)[0];
-  const properNameMatches = [
-    ...query.matchAll(/\b(?:[\p{Lu}][\p{L}\p{N}-]*)(?:\s+[\p{Lu}][\p{L}\p{N}-]*)+\b/gu),
-  ]
-    .map((match) => match[0])
-    .map((phrase) => ({ phrase, offset: folded.indexOf(phrase.toLocaleLowerCase('en-US')) }))
-    .filter((match) => match.offset >= 0);
-  const strongestProperName = properNameMatches.sort(
-    (left, right) => right.phrase.length - left.phrase.length,
-  )[0];
+  let strongestProperName: { phrase: string; offset: number } | undefined;
+  for (const phrase of plan.properNames) {
+    const offset = folded.indexOf(phrase.toLocaleLowerCase('en-US'));
+    if (
+      offset >= 0 &&
+      (!strongestProperName ||
+        phrase.length > strongestProperName.phrase.length ||
+        (phrase.length === strongestProperName.phrase.length &&
+          offset < strongestProperName.offset))
+    ) {
+      strongestProperName = { phrase, offset };
+    }
+  }
   return {
     offset:
       strongestProperName?.offset ??
@@ -246,18 +295,189 @@ function parseSearchResults(value: unknown): Array<{
   });
 }
 
+function optionalScopeRevision(value: string | null | undefined): readonly unknown[] {
+  return value === undefined ? ['missing'] : ['value', value];
+}
+
+function validateContextScope(scope: ContextScope): ContextScope {
+  for (const field of ['projectId', 'workspaceId', 'worktreeId'] as const) {
+    const value = (scope as ContextScope & Record<string, unknown>)[field];
+    if (value !== undefined && typeof value !== 'string') {
+      throw new Error('invalid context scope');
+    }
+  }
+  return scope;
+}
+
+function authorityBuildRevisionKey(
+  scope: ContextScope,
+  maps: readonly ProductionContextMap[],
+): string {
+  return JSON.stringify([
+    scope.accountId,
+    optionalScopeRevision(scope.workspaceId),
+    optionalScopeRevision(scope.projectId),
+    optionalScopeRevision(scope.worktreeId),
+    [...maps]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((map) => [
+        map.id,
+        map.projectId,
+        map.rootDir,
+        map.status,
+        map.updatedAt,
+        map.sourceType ?? null,
+        map.github?.resolvedCommitSha ?? null,
+        flatten(map.tree.nodes).map((node) => [
+          node.id,
+          node.kind,
+          node.title,
+          node.summary,
+          node.path ?? null,
+          node.sizeBytes ?? null,
+          node.modifiedAt ?? null,
+        ]),
+      ]),
+  ]);
+}
+
+function authorityScopeKey(scope: ContextScope): string {
+  return JSON.stringify([
+    scope.accountId,
+    optionalScopeRevision(scope.workspaceId),
+    optionalScopeRevision(scope.projectId),
+    optionalScopeRevision(scope.worktreeId),
+  ]);
+}
+
+function recordMatchesScope(record: ContextRecord, scope: ContextScope): boolean {
+  return (
+    record.accountId === scope.accountId &&
+    record.workspaceId === scope.workspaceId &&
+    record.projectId === scope.projectId &&
+    record.worktreeId === scope.worktreeId
+  );
+}
+
+function authoritySourceRevisionKey(authority: RecordAuthority): string {
+  const record = authority.record;
+  return JSON.stringify([
+    record.accountId,
+    optionalScopeRevision(record.workspaceId),
+    optionalScopeRevision(record.projectId),
+    optionalScopeRevision(record.worktreeId),
+    authority.mapId,
+    authority.nodeId,
+    authority.rootDir,
+    record.id,
+    record.contentRef,
+    record.contentHash,
+  ]);
+}
+
+function awaitWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException('aborted', 'AbortError'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function mapBoundedInOrder<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  let firstError: unknown;
+  const workerCount = Math.min(Math.max(1, concurrency), values.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (firstError === undefined && nextIndex < values.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        try {
+          results[index] = await mapper(values[index]!, index);
+        } catch (error) {
+          firstError = error;
+        }
+      }
+    }),
+  );
+  if (firstError !== undefined) throw firstError;
+  return results;
+}
+
 export function createContextMapRlmRepository(
   dependencies: ContextMapRlmDependencies,
 ): ContextQueryRepository {
   const authorityByRecordId = new Map<string, RecordAuthority>();
+  const inFlightAuthorityBuilds = new Map<string, Promise<RecordAuthority[]>>();
+  const latestAuthorityGenerationByScope = new Map<string, number>();
+  const authorityInvocationsByScope = new Map<
+    string,
+    Map<
+      number,
+      {
+        status: 'pending' | 'succeeded' | 'failed';
+        scope: ContextScope;
+        authorities?: RecordAuthority[];
+      }
+    >
+  >();
+  const publishedAuthorityGenerationByScope = new Map<string, number>();
 
-  const loadAuthorities = async (
+  const reconcileAuthorityPublication = (scopeKey: string) => {
+    const invocations = authorityInvocationsByScope.get(scopeKey);
+    if (!invocations) return;
+    const ordered = [...invocations.entries()].sort((left, right) => right[0] - left[0]);
+    const newestNonfailed = ordered.find(([, invocation]) => invocation.status !== 'failed');
+    if (newestNonfailed?.[1].status === 'pending') return;
+    const newestSuccess = ordered.find(
+      (entry): entry is [number, (typeof entry)[1] & { authorities: RecordAuthority[] }] =>
+        Boolean(entry[1].status === 'succeeded' && entry[1].authorities),
+    );
+    if (!newestSuccess) return;
+    const [generation, invocation] = newestSuccess;
+    if (generation <= (publishedAuthorityGenerationByScope.get(scopeKey) ?? 0)) return;
+    for (const [recordId, authority] of authorityByRecordId) {
+      if (recordMatchesScope(authority.record, invocation.scope)) {
+        authorityByRecordId.delete(recordId);
+      }
+    }
+    for (const authority of invocation.authorities) {
+      authorityByRecordId.set(authority.record.id, authority);
+    }
+    publishedAuthorityGenerationByScope.set(scopeKey, generation);
+    for (const oldGeneration of invocations.keys()) {
+      if (oldGeneration <= generation) invocations.delete(oldGeneration);
+    }
+  };
+  const inFlightSourceReads = new Map<string, Promise<ResolvedAuthoritySource | undefined>>();
+
+  const buildAuthorities = async (
     scope: ContextScope,
-    signal?: AbortSignal,
+    maps: readonly ProductionContextMap[],
   ): Promise<RecordAuthority[]> => {
-    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-    const maps = await dependencies.loadMaps(scope.projectId ?? null);
-    const authorities: RecordAuthority[] = [];
+    const candidates: Array<{
+      map: ProductionContextMap;
+      node: ProductionContextNode;
+      sourceKind: ContextSourceKind;
+      path: string;
+      inlineContent?: string;
+    }> = [];
     const admittedPaths = new Set<string>();
     for (const map of [...maps].sort((left, right) => right.updatedAt - left.updatedAt)) {
       if (
@@ -275,6 +495,20 @@ export function createContextMapRlmRepository(
         if (!path) continue;
         const pathKey = path.replaceAll('\\', '/').toLocaleLowerCase('en-US');
         if (admittedPaths.has(pathKey)) continue;
+        admittedPaths.add(pathKey);
+        candidates.push({
+          map,
+          node,
+          sourceKind,
+          path,
+          ...(inlineContent ? { inlineContent } : {}),
+        });
+      }
+    }
+    const built = await mapBoundedInOrder(
+      candidates,
+      MAX_CONCURRENT_SOURCE_VALIDATIONS,
+      async ({ map, node, sourceKind, path, inlineContent }) => {
         const stat =
           inlineContent === undefined
             ? await dependencies.stat(path, true, {
@@ -286,19 +520,36 @@ export function createContextMapRlmRepository(
           stat !== undefined &&
           (!stat.ok || stat.kind !== 'file' || (stat.size ?? 0) > MAX_SOURCE_SHARD_BYTES)
         ) {
-          continue;
+          return undefined;
         }
         const hash =
           inlineContent === undefined ? rawSha256(stat?.sha256) : await sha256Text(inlineContent);
-        if (!hash) continue;
+        if (!hash) return undefined;
+        const identityDigest = await sha256Text(
+          JSON.stringify([
+            ['account', scope.accountId],
+            ['workspace', optionalScopeRevision(scope.workspaceId)],
+            ['project', optionalScopeRevision(scope.projectId)],
+            ['worktree', optionalScopeRevision(scope.worktreeId)],
+            ['map', map.id],
+            ['node', node.id],
+            ['root', map.rootDir],
+            ['path', path],
+            ['sourceKind', sourceKind],
+            ['mapUpdatedAt', map.updatedAt],
+            ['nodeModifiedAt', node.modifiedAt ?? null],
+            ['gitCommit', map.github?.resolvedCommitSha ?? null],
+            ['contentHash', hash],
+          ]),
+        );
         const record = createContextRecord({
-          id: `rlm:${map.id}:${node.id}:${hash.slice(0, 16)}`,
+          id: `rlm:${identityDigest}`,
           accountId: scope.accountId,
           ...(scope.workspaceId ? { workspaceId: scope.workspaceId } : {}),
           ...(map.projectId ? { projectId: map.projectId } : {}),
           ...(scope.worktreeId ? { worktreeId: scope.worktreeId } : {}),
           sourceKind,
-          sourceId: `${map.id}:${node.id}`,
+          sourceId: `rlm-source:${identityDigest}`,
           createdAt: Math.max(0, Math.floor(stat?.createdMs ?? node.modifiedAt ?? map.updatedAt)),
           updatedAt: Math.max(0, Math.floor(stat?.modifiedMs ?? node.modifiedAt ?? map.updatedAt)),
           contentHash: hash,
@@ -318,16 +569,62 @@ export function createContextMapRlmRepository(
           rootDir: map.rootDir,
           ...(inlineContent === undefined ? {} : { inlineContent }),
         };
-        admittedPaths.add(pathKey);
-        authorityByRecordId.set(record.id, authority);
-        authorities.push(authority);
-      }
-    }
+        return authority;
+      },
+    );
+    const authorities = built.filter(
+      (authority): authority is RecordAuthority => authority !== undefined,
+    );
     return authorities;
   };
 
-  const readAuthority = async (authority: RecordAuthority, signal?: AbortSignal) => {
+  const loadAuthorities = async (
+    scope: ContextScope,
+    signal?: AbortSignal,
+  ): Promise<RecordAuthority[]> => {
     if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const normalizedScope = validateContextScope(scope);
+    const scopeKey = authorityScopeKey(normalizedScope);
+    const generation = (latestAuthorityGenerationByScope.get(scopeKey) ?? 0) + 1;
+    latestAuthorityGenerationByScope.set(scopeKey, generation);
+    const invocations = authorityInvocationsByScope.get(scopeKey) ?? new Map();
+    authorityInvocationsByScope.set(scopeKey, invocations);
+    const invocation = { status: 'pending' as const, scope: normalizedScope };
+    invocations.set(generation, invocation);
+    try {
+      const maps = await dependencies.loadMaps(normalizedScope.projectId ?? null);
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const revisionKey = authorityBuildRevisionKey(normalizedScope, maps);
+      let build = inFlightAuthorityBuilds.get(revisionKey);
+      if (!build) {
+        build = buildAuthorities(normalizedScope, maps);
+        inFlightAuthorityBuilds.set(revisionKey, build);
+        const release = () => {
+          if (inFlightAuthorityBuilds.get(revisionKey) === build) {
+            inFlightAuthorityBuilds.delete(revisionKey);
+          }
+        };
+        build.then(release, release);
+      }
+      const authorities = await awaitWithSignal(build, signal);
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      invocations.set(generation, {
+        status: 'succeeded',
+        scope: normalizedScope,
+        authorities,
+      });
+      reconcileAuthorityPublication(scopeKey);
+      return authorities;
+    } catch (error) {
+      invocations.set(generation, { status: 'failed', scope: normalizedScope });
+      reconcileAuthorityPublication(scopeKey);
+      throw error;
+    }
+  };
+
+  const readAuthorityFresh = async (
+    authority: RecordAuthority,
+  ): Promise<ResolvedAuthoritySource | undefined> => {
     if (authority.inlineContent !== undefined) {
       const bytes = new TextEncoder().encode(authority.inlineContent);
       return {
@@ -357,6 +654,23 @@ export function createContextMapRlmRepository(
     };
   };
 
+  const readAuthority = async (authority: RecordAuthority, signal?: AbortSignal) => {
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const revisionKey = authoritySourceRevisionKey(authority);
+    let read = inFlightSourceReads.get(revisionKey);
+    if (!read) {
+      read = readAuthorityFresh(authority);
+      inFlightSourceReads.set(revisionKey, read);
+      const release = () => {
+        if (inFlightSourceReads.get(revisionKey) === read) {
+          inFlightSourceReads.delete(revisionKey);
+        }
+      };
+      read.then(release, release);
+    }
+    return awaitWithSignal(read, signal);
+  };
+
   return {
     async listRecords(scope, signal) {
       return (await loadAuthorities(scope, signal)).map((authority) => authority.record);
@@ -366,19 +680,18 @@ export function createContextMapRlmRepository(
     },
     async search(scope, query, signal) {
       const authorities = await loadAuthorities(scope, signal);
+      const authorityOrder = new Map(
+        authorities.map((authority, index) => [authority.record.id, index] as const),
+      );
       const exactQuery = query.startsWith('"') && query.endsWith('"') ? query.slice(1, -1) : query;
+      const meaningfulPlan = buildMeaningfulQueryPlan(exactQuery);
       const maps = new Map<string, RecordAuthority[]>();
       for (const authority of authorities) {
         const group = maps.get(authority.mapId) ?? [];
         group.push(authority);
         maps.set(authority.mapId, group);
       }
-      const hits: Array<{
-        recordId: string;
-        pointer: ReturnType<typeof createContextPointer>;
-        preview: string;
-        score: number;
-      }> = [];
+      const hits: ContextMapSearchHit[] = [];
       for (const [mapId, scopedAuthorities] of maps) {
         let indexed: ReturnType<typeof parseSearchResults> = [];
         try {
@@ -398,83 +711,102 @@ export function createContextMapRlmRepository(
           indexed = [];
         }
         const indexedNodeIds = new Set(indexed.map((match) => match.documentId));
-        for (const match of indexed) {
-          const authority = scopedAuthorities.find((item) => item.nodeId === match.documentId);
-          if (!authority) continue;
-          const source = await readAuthority(authority, signal);
-          if (!source || source.contentHash !== authority.record.contentHash) continue;
-          const folded = source.content.toLocaleLowerCase('en-US');
-          const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
-          const meaningful =
-            exactOffset < 0 ? meaningfulQueryMatches(source.content, exactQuery) : undefined;
-          const excerptOffset = folded.indexOf(match.excerpt.toLocaleLowerCase('en-US'));
-          const queryOffset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
-          const characterStart = Math.max(0, excerptOffset);
-          const pointerStart = queryOffset ?? characterStart;
-          const selected =
-            queryOffset !== undefined
-              ? source.content.slice(
-                  queryOffset,
-                  Math.min(source.content.length, queryOffset + exactQuery.length + 512),
-                )
-              : match.excerpt || source.content.slice(0, 256);
-          const byteStart = utf8ByteOffset(source.content, pointerStart);
-          const byteEnd = byteStart + Math.max(1, new TextEncoder().encode(selected).length);
-          hits.push({
-            recordId: authority.record.id,
-            pointer: createContextPointer({
-              id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
+        const indexedHits = await mapBoundedInOrder(
+          indexed,
+          MAX_CONCURRENT_SOURCE_VALIDATIONS,
+          async (match): Promise<ContextMapSearchHit | undefined> => {
+            const authority = scopedAuthorities.find((item) => item.nodeId === match.documentId);
+            if (!authority) return undefined;
+            const source = await readAuthority(authority, signal);
+            if (!source || source.contentHash !== authority.record.contentHash) return undefined;
+            const folded = source.content.toLocaleLowerCase('en-US');
+            const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
+            const meaningful =
+              exactOffset < 0 ? meaningfulQueryMatches(source.content, meaningfulPlan) : undefined;
+            const excerptOffset = folded.indexOf(match.excerpt.toLocaleLowerCase('en-US'));
+            const queryOffset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
+            const characterStart = Math.max(0, excerptOffset);
+            const pointerStart = queryOffset ?? characterStart;
+            const selected =
+              queryOffset !== undefined
+                ? source.content.slice(
+                    queryOffset,
+                    Math.min(source.content.length, queryOffset + exactQuery.length + 512),
+                  )
+                : match.excerpt || source.content.slice(0, 256);
+            const byteStart = utf8ByteOffset(source.content, pointerStart);
+            const byteEnd = byteStart + Math.max(1, new TextEncoder().encode(selected).length);
+            return {
               recordId: authority.record.id,
-              byteStart,
-              byteEnd,
-              sourceVersion: source.sourceVersion,
-              contentHash: source.contentHash,
-            }),
-            preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
-            // The derivative index finds candidates, but immutable source bytes
-            // remain ranking authority. This prevents stale/generic index scores
-            // from outranking a contiguous entity or handoff match.
-            score:
-              exactOffset >= 0
-                ? 1_000_000_000 + Math.min(match.score, 999)
-                : meaningful
-                  ? meaningful.score * 1_000 + Math.min(match.score, 999)
-                  : match.score,
-          });
-        }
-        for (const authority of scopedAuthorities) {
-          if (indexedNodeIds.has(authority.nodeId)) continue;
-          const source = await readAuthority(authority, signal);
-          if (!source || source.contentHash !== authority.record.contentHash) continue;
-          const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
-          const meaningful =
-            exactOffset < 0 ? meaningfulQueryMatches(source.content, exactQuery) : undefined;
-          const offset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
-          if (offset === undefined) continue;
-          const selected = source.content.slice(
-            offset,
-            Math.min(source.content.length, offset + Math.max(exactQuery.length, 512)),
-          );
-          const byteStart = utf8ByteOffset(source.content, offset);
-          const byteEnd = byteStart + new TextEncoder().encode(selected).length;
-          hits.push({
-            recordId: authority.record.id,
-            pointer: createContextPointer({
-              id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
+              pointer: createContextPointer({
+                id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
+                recordId: authority.record.id,
+                byteStart,
+                byteEnd,
+                sourceVersion: source.sourceVersion,
+                contentHash: source.contentHash,
+              }),
+              preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
+              // The derivative index finds candidates, but immutable source bytes
+              // remain ranking authority. This prevents stale/generic index scores
+              // from outranking a contiguous entity or handoff match.
+              score:
+                exactOffset >= 0
+                  ? 1_000_000_000 + Math.min(match.score, 999)
+                  : meaningful
+                    ? meaningful.score * 1_000 + Math.min(match.score, 999)
+                    : match.score,
+            };
+          },
+        );
+        hits.push(...indexedHits.filter((hit): hit is ContextMapSearchHit => hit !== undefined));
+        const fallbackAuthorities = scopedAuthorities.filter(
+          (authority) => !indexedNodeIds.has(authority.nodeId),
+        );
+        const fallbackHits = await mapBoundedInOrder(
+          fallbackAuthorities,
+          MAX_CONCURRENT_SOURCE_VALIDATIONS,
+          async (authority): Promise<ContextMapSearchHit | undefined> => {
+            const source = await readAuthority(authority, signal);
+            if (!source || source.contentHash !== authority.record.contentHash) return undefined;
+            const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
+            const meaningful =
+              exactOffset < 0 ? meaningfulQueryMatches(source.content, meaningfulPlan) : undefined;
+            const offset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
+            if (offset === undefined) return undefined;
+            const selected = source.content.slice(
+              offset,
+              Math.min(source.content.length, offset + Math.max(exactQuery.length, 512)),
+            );
+            const byteStart = utf8ByteOffset(source.content, offset);
+            const byteEnd = byteStart + new TextEncoder().encode(selected).length;
+            return {
               recordId: authority.record.id,
-              byteStart,
-              byteEnd,
-              sourceVersion: source.sourceVersion,
-              contentHash: source.contentHash,
-            }),
-            preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
-            // Missing derivative-index entries must not suppress a stronger
-            // match in the immutable source bytes.
-            score: exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000,
-          });
-        }
+              pointer: createContextPointer({
+                id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
+                recordId: authority.record.id,
+                byteStart,
+                byteEnd,
+                sourceVersion: source.sourceVersion,
+                contentHash: source.contentHash,
+              }),
+              preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
+              // Missing derivative-index entries must not suppress a stronger
+              // match in the immutable source bytes.
+              score: exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000,
+            };
+          },
+        );
+        hits.push(...fallbackHits.filter((hit): hit is ContextMapSearchHit => hit !== undefined));
       }
-      return hits.sort((left, right) => right.score - left.score);
+      return hits.sort(
+        (left, right) =>
+          right.score - left.score ||
+          (authorityOrder.get(left.recordId) ?? Number.MAX_SAFE_INTEGER) -
+            (authorityOrder.get(right.recordId) ?? Number.MAX_SAFE_INTEGER) ||
+          (left.pointer.byteStart ?? 0) - (right.pointer.byteStart ?? 0) ||
+          (left.pointer.byteEnd ?? 0) - (right.pointer.byteEnd ?? 0),
+      );
     },
     async readSource(record, signal) {
       const authority = authorityByRecordId.get(record.id);
@@ -489,9 +821,16 @@ export function createContextMapRlmRepository(
     },
     async canOpen(record, scope, signal) {
       const authority = authorityByRecordId.get(record.id);
-      if (!authority || record.accountId !== scope.accountId) return false;
+      const normalizedScope = validateContextScope(scope);
+      if (
+        !authority ||
+        !recordMatchesScope(authority.record, normalizedScope) ||
+        JSON.stringify(record) !== JSON.stringify(authority.record)
+      ) {
+        return false;
+      }
       const pathDecision = classifyJarvisSource({
-        path: record.contentRef,
+        path: authority.record.contentRef,
         root: authority.rootDir,
         channel: 'automatic_scan',
         kind: 'text',
@@ -499,15 +838,19 @@ export function createContextMapRlmRepository(
       if (!pathDecision.allowed) return false;
       const sample =
         authority.inlineContent === undefined
-          ? await dependencies.read(record.contentRef, 64 * 1024, {
+          ? await dependencies.read(authority.record.contentRef, 64 * 1024, {
               root: authority.rootDir,
               strictProjectBoundary: true,
             })
-          : { ok: true as const, path: record.contentRef, content: authority.inlineContent };
+          : {
+              ok: true as const,
+              path: authority.record.contentRef,
+              content: authority.inlineContent,
+            };
       if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
       if (!sample.ok) return false;
       return classifyJarvisSource({
-        path: record.contentRef,
+        path: authority.record.contentRef,
         root: authority.rootDir,
         channel: 'automatic_scan',
         kind: 'text',
@@ -519,7 +862,13 @@ export function createContextMapRlmRepository(
       if (!authority) return [];
       return [...authorityByRecordId.values()]
         .filter(
-          (candidate) => candidate.mapId === authority.mapId && candidate.record.id !== recordId,
+          (candidate) =>
+            candidate.mapId === authority.mapId &&
+            candidate.record.id !== recordId &&
+            candidate.record.accountId === authority.record.accountId &&
+            candidate.record.workspaceId === authority.record.workspaceId &&
+            candidate.record.projectId === authority.record.projectId &&
+            candidate.record.worktreeId === authority.record.worktreeId,
         )
         .map((candidate) => candidate.record.id);
     },

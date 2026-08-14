@@ -66,6 +66,592 @@ function maps() {
 }
 
 describe('production Context Map RLM repository', () => {
+  it('shares one authority-build stat pass across five parallel searches', async () => {
+    const fixtureMaps = maps();
+    const content = 'Observatory Lumen uses cobalt-fern verification 47291.';
+    let releaseLexicalSearch!: () => void;
+    const lexicalSearchGate = new Promise<void>((resolve) => {
+      releaseLexicalSearch = resolve;
+    });
+    const stat = vi.fn(async (path) => ({
+      ok: true as const,
+      path,
+      kind: 'file' as const,
+      size: content.length,
+      modifiedMs: 20,
+      sha256: SHA,
+    }));
+    const lexicalSearch = vi.fn(async () => {
+      await lexicalSearchGate;
+      return [];
+    });
+    const read = vi.fn(async (path) => ({ ok: true as const, path, content }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat,
+      read,
+      lexicalSearch,
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const searches = Array.from({ length: 5 }, () => repository.search(scope, 'Observatory Lumen'));
+
+    await vi.waitFor(() => expect(lexicalSearch).toHaveBeenCalledTimes(5));
+    expect(stat).toHaveBeenCalledTimes(1);
+    releaseLexicalSearch();
+
+    const results = await Promise.all(searches);
+    expect(results.every((hits) => hits[0]?.preview.includes('cobalt-fern'))).toBe(true);
+    expect(read).toHaveBeenCalledTimes(1);
+    // The shared source result is still validated after its read.
+    expect(stat).toHaveBeenCalledTimes(2);
+
+    await repository.search(scope, 'Observatory Lumen');
+    expect(read).toHaveBeenCalledTimes(2);
+    // A later sequential search performs a fresh authority build and source
+    // revalidation rather than retaining source bytes.
+    expect(stat).toHaveBeenCalledTimes(4);
+  });
+
+  it('cancels one source-validation waiter without cancelling its concurrent peer', async () => {
+    const content = 'Observatory Lumen uses cobalt-fern verification 47291.';
+    let releaseRead!: () => void;
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const read = vi.fn(async (path) => {
+      await readGate;
+      return { ok: true as const, path, content };
+    });
+    const stat = vi.fn(async (path) => ({
+      ok: true as const,
+      path,
+      kind: 'file' as const,
+      size: content.length,
+      modifiedMs: 20,
+      sha256: SHA,
+    }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat,
+      read,
+      lexicalSearch: vi.fn(async () => []),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+    const cancelled = new AbortController();
+
+    const first = repository.search(scope, 'Observatory Lumen', cancelled.signal);
+    const second = repository.search(scope, 'Observatory Lumen');
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    cancelled.abort();
+
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+    releaseRead();
+    await expect(second).resolves.toHaveLength(1);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(stat).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds concurrent source validation and preserves stable authority ordering', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 20 }, (_, index) => ({
+      id: `file-${String(index + 1).padStart(2, '0')}`,
+      kind: 'file' as const,
+      title: `book-${String(index + 1).padStart(2, '0')}.txt`,
+      summary: '',
+      path: `C:\\repo\\book-${String(index + 1).padStart(2, '0')}.txt`,
+      sizeBytes: 128,
+      modifiedAt: 20,
+    }));
+    let activeReads = 0;
+    let maximumActiveReads = 0;
+    let activeStats = 0;
+    let maximumActiveStats = 0;
+    const read = vi.fn(async (path: string) => {
+      activeReads += 1;
+      maximumActiveReads = Math.max(maximumActiveReads, activeReads);
+      const ordinal = Number(path.match(/(\d+)\.txt$/u)?.[1] ?? 0);
+      await new Promise((resolve) => setTimeout(resolve, 1 + ((20 - ordinal) % 5)));
+      activeReads -= 1;
+      return { ok: true as const, path, content: 'shared anchor' };
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => {
+        activeStats += 1;
+        maximumActiveStats = Math.max(maximumActiveStats, activeStats);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        activeStats -= 1;
+        return {
+          ok: true as const,
+          path,
+          kind: 'file' as const,
+          size: 128,
+          modifiedMs: 20,
+          sha256: SHA,
+        };
+      }),
+      read,
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'shared anchor',
+    );
+
+    expect(maximumActiveReads).toBeGreaterThan(1);
+    expect(maximumActiveReads).toBeLessThanOrEqual(8);
+    expect(maximumActiveStats).toBeGreaterThan(1);
+    expect(maximumActiveStats).toBeLessThanOrEqual(8);
+    expect(read).toHaveBeenCalledTimes(20);
+    const filenames = hits.map((hit) => hit.preview.match(/book-(\d+)\.txt/u)?.[1]);
+    expect([...filenames].sort()).toEqual(
+      Array.from({ length: 20 }, (_, index) => String(index + 1).padStart(2, '0')),
+    );
+    const repeated = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'shared anchor',
+    );
+    expect(repeated.map((hit) => hit.recordId)).toEqual(hits.map((hit) => hit.recordId));
+  });
+
+  it('keeps identical map records isolated across account and workspace scopes', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'file-2',
+      kind: 'file' as const,
+      title: 'second.txt',
+      summary: '',
+      path: 'C:\\repo\\second.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const firstRecords = await repository.listRecords({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+    });
+    const secondRecords = await repository.listRecords({
+      accountId: 'account-2',
+      workspaceId: 'workspace-2',
+      projectId: 'project-1',
+    });
+    const first = firstRecords[0]!;
+    const second = secondRecords[0]!;
+
+    expect(first?.id).not.toBe(second?.id);
+    await expect(repository.getRecord(first!.id)).resolves.toMatchObject({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+    });
+    await expect(repository.getRecord(second!.id)).resolves.toMatchObject({
+      accountId: 'account-2',
+      workspaceId: 'workspace-2',
+    });
+    await expect(repository.relatedRecordIds!(first.id)).resolves.toEqual([firstRecords[1]!.id]);
+  });
+
+  it('evicts a rejected authority build without publishing partial records', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'file-2',
+      kind: 'file' as const,
+      title: 'second.txt',
+      summary: '',
+      path: 'C:\\repo\\second.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    let fail = true;
+    const stat = vi.fn(async (path: string) => {
+      if (fail && path.endsWith('second.txt')) throw new Error('bounded failure');
+      return {
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: 20,
+        sha256: SHA,
+      };
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat,
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    await expect(repository.listRecords(scope)).rejects.toThrow('bounded failure');
+    const partialId = `rlm:${encodeURIComponent('account-1')}::${encodeURIComponent('project-1')}::map-1:file-1:${'a'.repeat(16)}`;
+    await expect(repository.getRecord(partialId)).resolves.toBeUndefined();
+
+    fail = false;
+    await expect(repository.listRecords(scope)).resolves.toHaveLength(2);
+  });
+
+  it('drains bounded authority workers before rejecting and starting a retry', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 20 }, (_, index) => ({
+      id: `file-${index}`,
+      kind: 'file' as const,
+      title: `file-${index}.txt`,
+      summary: '',
+      path: `C:\\repo\\file-${index}.txt`,
+      sizeBytes: 128,
+      modifiedAt: 20,
+    }));
+    let failing = true;
+    let active = 0;
+    let maximumActive = 0;
+    let started = 0;
+    const stat = vi.fn(async (path: string) => {
+      active += 1;
+      started += 1;
+      maximumActive = Math.max(maximumActive, active);
+      if (failing && path.endsWith('file-0.txt')) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        active -= 1;
+        throw new Error('first worker failed');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return {
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: 20,
+        sha256: SHA,
+      };
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat,
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    await expect(repository.listRecords(scope)).rejects.toThrow('first worker failed');
+    expect(active).toBe(0);
+    expect(started).toBeLessThanOrEqual(8);
+
+    failing = false;
+    await expect(repository.listRecords(scope)).resolves.toHaveLength(20);
+    expect(maximumActive).toBeLessThanOrEqual(8);
+  });
+
+  it('isolates in-flight authority builds by map revision and rebuilds sequential requests', async () => {
+    let revision = 20;
+    let releaseStats!: () => void;
+    const statGate = new Promise<void>((resolve) => {
+      releaseStats = resolve;
+    });
+    const stat = vi.fn(async (path) => {
+      await statGate;
+      return {
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: revision,
+        sha256: SHA,
+      };
+    });
+    const loadMaps = vi.fn(async () => {
+      const fixtureMaps = maps();
+      fixtureMaps[0]!.updatedAt = revision;
+      Object.assign(fixtureMaps[0]!.tree.nodes[0]!, { modifiedAt: revision });
+      return fixtureMaps;
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps,
+      stat,
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const firstRevision = repository.listRecords(scope);
+    await vi.waitFor(() => expect(stat).toHaveBeenCalledTimes(1));
+    revision = 21;
+    const secondRevision = repository.listRecords(scope);
+    await vi.waitFor(() => expect(stat).toHaveBeenCalledTimes(2));
+    releaseStats();
+    await Promise.all([firstRevision, secondRevision]);
+
+    await repository.listRecords(scope);
+    expect(stat).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not let an older out-of-order build replace a newer scoped publication', async () => {
+    let revision = 20;
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    let statCall = 0;
+    const stat = vi.fn(async (path) => {
+      statCall += 1;
+      const currentCall = statCall;
+      if (currentCall === 1) await oldGate;
+      return {
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: currentCall === 1 ? 20 : 21,
+        sha256: `sha256:${(currentCall === 1 ? 'a' : 'b').repeat(64)}` as const,
+      };
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => {
+        const fixtureMaps = maps();
+        fixtureMaps[0]!.updatedAt = revision;
+        Object.assign(fixtureMaps[0]!.tree.nodes[0]!, { modifiedAt: revision });
+        return fixtureMaps;
+      }),
+      stat,
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const oldRequest = repository.listRecords(scope);
+    await vi.waitFor(() => expect(stat).toHaveBeenCalledTimes(1));
+    revision = 21;
+    const [newRecord] = await repository.listRecords(scope);
+    releaseOld();
+    const [oldRecord] = await oldRequest;
+
+    await expect(repository.getRecord(newRecord!.id)).resolves.toBeDefined();
+    await expect(repository.getRecord(oldRecord!.id)).resolves.toBeUndefined();
+  });
+
+  it('allocates publication generation before an older delayed loadMaps resolves', async () => {
+    let releaseOldMaps!: () => void;
+    const oldMapsGate = new Promise<void>((resolve) => {
+      releaseOldMaps = resolve;
+    });
+    let loadCall = 0;
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => {
+        loadCall += 1;
+        const currentCall = loadCall;
+        if (currentCall === 1) await oldMapsGate;
+        const fixtureMaps = maps();
+        fixtureMaps[0]!.updatedAt = currentCall === 1 ? 20 : 21;
+        Object.assign(fixtureMaps[0]!.tree.nodes[0]!, {
+          modifiedAt: currentCall === 1 ? 20 : 21,
+        });
+        return fixtureMaps;
+      }),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: loadCall === 1 ? 20 : 21,
+        sha256: `sha256:${(loadCall === 1 ? 'a' : 'b').repeat(64)}` as const,
+      })),
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const oldRequest = repository.listRecords(scope);
+    await vi.waitFor(() => expect(loadCall).toBe(1));
+    const [newRecord] = await repository.listRecords(scope);
+    await expect(repository.getRecord(newRecord!.id)).resolves.toEqual(newRecord);
+    releaseOldMaps();
+    const [oldRecord] = await oldRequest;
+
+    await expect(repository.getRecord(newRecord!.id)).resolves.toBeDefined();
+    await expect(repository.getRecord(oldRecord!.id)).resolves.toBeUndefined();
+  });
+
+  it.each(['projectId', 'workspaceId', 'worktreeId'] as const)(
+    'fails closed when runtime scope %s is null instead of missing',
+    async (field) => {
+      const repository = createContextMapRlmRepository({
+        loadMaps: vi.fn(async () => maps()),
+        stat: vi.fn(),
+        read: vi.fn(),
+        lexicalSearch: vi.fn(),
+      });
+
+      await expect(
+        repository.listRecords({
+          accountId: 'account-1',
+          [field]: null,
+        } as never),
+      ).rejects.toThrow('invalid context scope');
+    },
+  );
+
+  it('uses a fixed-length digest record ID without delimiter or truncated-hash collisions', async () => {
+    const longId = 'map:with:delimiters/'.repeat(40);
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.id = longId;
+    fixtureMaps[0]!.tree.nodes[0]!.id = `${longId}:node`;
+    fixtureMaps[0]!.tree.nodes[0]!.path = 'C:\\repo\\book.txt';
+    let hash: `sha256:${string}` = `sha256:${'a'.repeat(63)}0`;
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: 20,
+        sha256: hash,
+      })),
+      read: vi.fn(),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = {
+      accountId: 'account:one',
+      workspaceId: 'workspace:two',
+      projectId: 'project-1',
+      worktreeId: 'worktree/four',
+    };
+
+    const [first] = await repository.listRecords(scope);
+    hash = `sha256:${'a'.repeat(63)}1`;
+    const [second] = await repository.listRecords(scope);
+
+    expect(first!.id).toMatch(/^rlm:[a-f0-9]{64}$/u);
+    expect(first!.id.length).toBe(68);
+    expect(first!.id.length).toBeLessThanOrEqual(512);
+    expect(second!.id).not.toBe(first!.id);
+  });
+
+  it('fails closed when source bytes change after the authority snapshot', async () => {
+    const changedSha = `sha256:${'b'.repeat(64)}` as const;
+    const stat = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true as const,
+        path: 'C:\\repo\\book.txt',
+        kind: 'file' as const,
+        size: 64,
+        modifiedMs: 20,
+        sha256: SHA,
+      })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        path: 'C:\\repo\\book.txt',
+        kind: 'file' as const,
+        size: 64,
+        modifiedMs: 21,
+        sha256: changedSha,
+      });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat,
+      read: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        content: 'Observatory Lumen uses cobalt-fern.',
+      })),
+      lexicalSearch: vi.fn(async () => [
+        {
+          documentId: 'file-1',
+          excerpt: 'Observatory Lumen uses cobalt-fern.',
+          score: 10,
+        },
+      ]),
+    });
+
+    await expect(
+      repository.search({ accountId: 'account-1', projectId: 'project-1' }, 'Observatory Lumen'),
+    ).resolves.toEqual([]);
+  });
+
+  it('publishes a successful peer when the latest shared-build waiter aborts', async () => {
+    let releaseStat!: () => void;
+    const statGate = new Promise<void>((resolve) => {
+      releaseStat = resolve;
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat: vi.fn(async (path) => {
+        await statGate;
+        return {
+          ok: true as const,
+          path,
+          kind: 'file' as const,
+          size: 128,
+          modifiedMs: 20,
+          sha256: SHA,
+        };
+      }),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content: 'safe source' })),
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+    const controller = new AbortController();
+
+    const successfulPeer = repository.listRecords(scope);
+    const cancelledLatest = repository.listRecords(scope, controller.signal);
+    controller.abort();
+    releaseStat();
+
+    await expect(cancelledLatest).rejects.toMatchObject({ name: 'AbortError' });
+    const [record] = await successfulPeer;
+    await expect(repository.getRecord(record!.id)).resolves.toEqual(record);
+    await expect(repository.readSource!(record!)).resolves.toBeDefined();
+  });
+
+  it('evicts a rejected shared source read so a later search can retry', async () => {
+    let failRead = true;
+    const read = vi.fn(async (path) => {
+      if (failRead) throw new Error('bounded read failure');
+      return { ok: true as const, path, content: 'Observatory Lumen uses cobalt-fern.' };
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read,
+      lexicalSearch: vi.fn(async () => []),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    await expect(
+      Promise.all([
+        repository.search(scope, 'Observatory Lumen'),
+        repository.search(scope, 'Observatory Lumen'),
+      ]),
+    ).rejects.toThrow('bounded read failure');
+    expect(read).toHaveBeenCalledTimes(1);
+
+    failRead = false;
+    await expect(repository.search(scope, 'Observatory Lumen')).resolves.toHaveLength(1);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
   it('creates immutable versioned records from active scoped file authorities', async () => {
     const stat = vi.fn(async (path) => ({
       ok: true as const,
@@ -94,12 +680,12 @@ describe('production Context Map RLM repository', () => {
       accountId: 'account-1',
       projectId: 'project-1',
       sourceKind: 'file_version',
-      sourceId: 'map-1:file-1',
+      sourceId: expect.stringMatching(/^rlm-source:[a-f0-9]{64}$/u),
       contentHash: 'a'.repeat(64),
       contentRef: 'C:\\repo\\book.txt',
       path: 'C:\\repo\\book.txt',
     });
-    expect(records[0]?.id).toContain('map-1:file-1:');
+    expect(records[0]?.id).toMatch(/^rlm:[a-f0-9]{64}$/u);
     expect(stat).toHaveBeenCalledWith(
       'C:\\repo\\book.txt',
       true,
@@ -142,7 +728,7 @@ describe('production Context Map RLM repository', () => {
     const start = new TextEncoder().encode('before\n').length;
     expect(hits).toHaveLength(1);
     expect(hits[0]).toMatchObject({
-      recordId: expect.stringContaining('map-1:file-1:'),
+      recordId: expect.stringMatching(/^rlm:[a-f0-9]{64}$/u),
       pointer: {
         byteStart: start,
         byteEnd: new TextEncoder().encode(content).length,
@@ -174,7 +760,7 @@ describe('production Context Map RLM repository', () => {
 
     expect(hits).toHaveLength(1);
     expect(hits[0]).toMatchObject({
-      recordId: expect.stringContaining('map-1:file-1:'),
+      recordId: expect.stringMatching(/^rlm:[a-f0-9]{64}$/u),
       preview: expect.stringContaining('rare anchor across\nlines exact continuation'),
       pointer: {
         contentHash: 'a'.repeat(64),
@@ -215,6 +801,35 @@ describe('production Context Map RLM repository', () => {
     expect(hits[0]?.score).toBeGreaterThan(1);
   });
 
+  it('retrieves the exact Q1 literature anchor and physical source filename', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes[0]!.title = '0007-pg2600.txt';
+    fixtureMaps[0]!.tree.nodes[0]!.path = 'C:\\repo\\0007-pg2600.txt';
+    const content =
+      'commander in chief the buzz of talk ceased and all eyes were fixed on\nKutúzov who, wearing a white cap with a red band, was walking nearby.';
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: content.length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'in the literature files, what are the eight words right after the bit where talk stopped and everybody watched Kutúzov? quote only those words and show me the file',
+    );
+
+    expect(hits[0]?.preview).toContain('[SOURCE FILE: 0007-pg2600.txt]');
+    expect(hits[0]?.preview).toContain('who, wearing a white cap with a red');
+  });
+
   it('ranks a contiguous entity phrase above scattered generic question words', async () => {
     const fixtureMaps = maps();
     fixtureMaps[0]!.tree.nodes.push({
@@ -251,26 +866,28 @@ describe('production Context Map RLM repository', () => {
       'Please read the files: what color phrase and verification number belong to Observatory Lumen?',
     );
 
-    expect(hits[0]?.recordId).toContain('file-1');
     expect(hits[0]?.preview).toContain('Observatory Lumen');
     expect(hits[0]!.score).toBeGreaterThan(hits[1]!.score);
   });
 
-  it('re-ranks derivative index hits against source content instead of trusting stale index scores', async () => {
+  it('retrieves both exact Q3 neighboring handoff records within the first three results', async () => {
     const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes[0]!.title = '0050-orbit.txt';
+    fixtureMaps[0]!.tree.nodes[0]!.path = 'C:\\repo\\0050-orbit.txt';
     fixtureMaps[0]!.tree.nodes.push({
       id: 'file-2',
       kind: 'file' as const,
-      title: 'handoff-51.txt',
+      title: '0051-orbit.txt',
       summary: '',
-      path: 'C:\\repo\\handoff-51.txt',
+      path: 'C:\\repo\\0051-orbit.txt',
       sizeBytes: 128,
       modifiedAt: 20,
     });
     const contents: Record<string, string> = {
-      'C:\\repo\\book.txt': 'A generic clerk was left near an unrelated neighboring record.',
-      'C:\\repo\\handoff-51.txt':
-        'ORBIT HANDOFF PART TWO. The receiving clerk answers glass-peregrine with harbor-saffron.',
+      'C:\\repo\\0050-orbit.txt':
+        'ORBIT HANDOFF PART ONE. The phrase left for the receiving clerk was glass-peregrine.',
+      'C:\\repo\\0051-orbit.txt':
+        'ORBIT HANDOFF PART TWO. The receiving clerk answered glass-peregrine with harbor-saffron.',
     };
     const repository = createContextMapRlmRepository({
       loadMaps: vi.fn(async () => fixtureMaps),
@@ -286,12 +903,12 @@ describe('production Context Map RLM repository', () => {
       lexicalSearch: vi.fn(async () => [
         {
           documentId: 'file-1',
-          excerpt: contents['C:\\repo\\book.txt'],
+          excerpt: contents['C:\\repo\\0050-orbit.txt'],
           score: 100,
         },
         {
           documentId: 'file-2',
-          excerpt: contents['C:\\repo\\handoff-51.txt'],
+          excerpt: contents['C:\\repo\\0051-orbit.txt'],
           score: 1,
         },
       ]),
@@ -299,11 +916,62 @@ describe('production Context Map RLM repository', () => {
 
     const hits = await repository.search(
       { accountId: 'account-1', projectId: 'project-1' },
-      'the orbit relay handoff is split between neighboring records — what phrase was left and what answer did the receiving clerk pair with it?',
+      'the orbit relay handoff is split between neighboring files — what phrase was left in part one and what answer did the receiving clerk give in part two? show both files',
     );
 
-    expect(hits[0]?.recordId).toContain('file-2');
-    expect(hits[0]?.preview).toContain('harbor-saffron');
+    expect(hits.slice(0, 3).map((hit) => hit.preview)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('[SOURCE FILE: 0050-orbit.txt]'),
+        expect.stringContaining('[SOURCE FILE: 0051-orbit.txt]'),
+      ]),
+    );
+    expect(hits.find((hit) => hit.preview.includes('0050-orbit.txt'))?.preview).toContain(
+      'glass-peregrine',
+    );
+    expect(hits.find((hit) => hit.preview.includes('0051-orbit.txt'))?.preview).toContain(
+      'harbor-saffron',
+    );
+  });
+
+  it('returns deterministic tie ordering when derivative input order changes', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'file-2',
+      kind: 'file' as const,
+      title: 'second.txt',
+      summary: '',
+      path: 'C:\\repo\\second.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    const content = 'shared deterministic anchor';
+    let reverse = false;
+    const indexed = [
+      { documentId: 'file-1', excerpt: content, score: 10 },
+      { documentId: 'file-2', excerpt: content, score: 10 },
+    ];
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: content.length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => {
+        reverse = !reverse;
+        return reverse ? [...indexed].reverse() : indexed;
+      }),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const first = await repository.search(scope, 'shared deterministic anchor');
+    const second = await repository.search(scope, 'shared deterministic anchor');
+
+    expect(second.map((hit) => hit.recordId)).toEqual(first.map((hit) => hit.recordId));
   });
 
   it('recovers source-authoritative hits omitted by a nonempty stale lexical index', async () => {
@@ -346,7 +1014,6 @@ describe('production Context Map RLM repository', () => {
       'From the mapped files only: what recovery color belongs to Observatory Lumen?',
     );
 
-    expect(hits[0]?.recordId).toContain('file-2');
     expect(hits[0]?.preview).toContain('[SOURCE FILE: observatory-lumen.txt]');
     expect(hits[0]?.preview).toContain('cobalt-fern');
   });
@@ -475,6 +1142,67 @@ describe('production Context Map RLM repository', () => {
         projectId: 'project-1',
       }),
     ).resolves.toBe(false);
+  });
+
+  it('denies canOpen for the same account across a foreign workspace/project/worktree scope', async () => {
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content: 'safe text' })),
+      lexicalSearch: vi.fn(),
+    });
+    const sourceScope = {
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      worktreeId: 'worktree-1',
+    };
+    const [record] = await repository.listRecords(sourceScope);
+
+    await expect(
+      repository.canOpen!(record!, {
+        accountId: 'account-1',
+        workspaceId: 'workspace-2',
+        projectId: 'project-1',
+        worktreeId: 'worktree-1',
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('denies a forged record with a valid ID and never reads its substituted path', async () => {
+    const read = vi.fn(async (path) => ({ ok: true as const, path, content: 'safe text' }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: 128,
+        sha256: SHA,
+      })),
+      read,
+      lexicalSearch: vi.fn(),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+    const [record] = await repository.listRecords(scope);
+    const forged = {
+      ...record!,
+      contentRef: 'C:\\repo\\forged.txt',
+      path: 'C:\\repo\\forged.txt',
+    };
+
+    await expect(repository.canOpen!(forged, scope)).resolves.toBe(false);
+    expect(read).not.toHaveBeenCalledWith(
+      'C:\\repo\\forged.txt',
+      expect.anything(),
+      expect.anything(),
+    );
   });
 });
 
