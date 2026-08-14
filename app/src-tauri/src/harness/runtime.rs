@@ -128,6 +128,22 @@ impl OpenCodeRuntimeState {
             "OpenCode executable is no longer a canonical native file.".to_string()
         })?;
         let fingerprint_sha256 = fingerprint_sha256(&canonical)?;
+        self.register_verified(&canonical, fingerprint_sha256, version, source)
+    }
+
+    fn register_verified(
+        &self,
+        canonical_path: &Path,
+        fingerprint_sha256: String,
+        version: String,
+        source: RuntimeSource,
+    ) -> Result<(String, String), String> {
+        let canonical = canonical_native_file(canonical_path).ok_or_else(|| {
+            "OpenCode executable is no longer a canonical native file.".to_string()
+        })?;
+        if canonical != canonical_path {
+            return Err("OpenCode executable changed before registry publication.".to_string());
+        }
         let mut identity_hasher = Sha256::new();
         identity_hasher.update(canonical.to_string_lossy().as_bytes());
         identity_hasher.update(fingerprint_sha256.as_bytes());
@@ -246,10 +262,23 @@ fn empty_detection(
 fn detect_with_probe<F>(
     state: &OpenCodeRuntimeState,
     context: &DiscoveryContext,
-    mut probe: F,
+    probe: F,
 ) -> Result<OpenCodeRuntimeDetection, String>
 where
     F: FnMut(&Path) -> Result<String, String>,
+{
+    detect_with_probe_and_fingerprinter(state, context, probe, fingerprint_sha256)
+}
+
+fn detect_with_probe_and_fingerprinter<F, G>(
+    state: &OpenCodeRuntimeState,
+    context: &DiscoveryContext,
+    mut probe: F,
+    mut fingerprinter: G,
+) -> Result<OpenCodeRuntimeDetection, String>
+where
+    F: FnMut(&Path) -> Result<String, String>,
+    G: FnMut(&Path) -> Result<String, String>,
 {
     let candidates = candidate_paths(context);
     if candidates.is_empty() {
@@ -258,7 +287,7 @@ where
 
     let mut diagnostics = Vec::new();
     for candidate in candidates {
-        let fingerprint_before = match fingerprint_sha256(&candidate.path) {
+        let fingerprint_before = match fingerprinter(&candidate.path) {
             Ok(fingerprint) => fingerprint,
             Err(error) => {
                 diagnostics.push(error);
@@ -276,7 +305,7 @@ where
             diagnostics.push("OpenCode executable changed during its version probe.".to_string());
             continue;
         };
-        let fingerprint_after = match fingerprint_sha256(&canonical_after) {
+        let fingerprint_after = match fingerprinter(&canonical_after) {
             Ok(fingerprint) => fingerprint,
             Err(error) => {
                 diagnostics.push(error);
@@ -301,18 +330,18 @@ where
         }
 
         let version = version.display();
-        let (executable_id, fingerprint_sha256) =
-            match state.register(&candidate.path, version.clone(), candidate.source) {
-                Ok(registration) => registration,
-                Err(error) => {
-                    diagnostics.push(error);
-                    continue;
-                }
-            };
-        if let Err(error) = state.resolve_trusted(&executable_id) {
-            diagnostics.push(error);
-            continue;
-        }
+        let (executable_id, fingerprint_sha256) = match state.register_verified(
+            &canonical_after,
+            fingerprint_after,
+            version.clone(),
+            candidate.source,
+        ) {
+            Ok(registration) => registration,
+            Err(error) => {
+                diagnostics.push(error);
+                continue;
+            }
+        };
         let status = match candidate.source {
             RuntimeSource::System => OpenCodeRuntimeStatus::SystemCompatible,
             RuntimeSource::Managed => OpenCodeRuntimeStatus::ManagedCompatible,
@@ -638,10 +667,11 @@ fn candidate_paths(context: &DiscoveryContext) -> Vec<RuntimeCandidate> {
 #[cfg(test)]
 mod tests {
     use super::{
-        candidate_paths, detect_with_probe, parse_opencode_version, probe_native_version,
-        CandidateOrigin, DiscoveryContext, OpenCodeRuntimeState, OpenCodeRuntimeStatus,
-        RuntimeSource,
+        candidate_paths, detect_with_probe, detect_with_probe_and_fingerprinter,
+        fingerprint_sha256, parse_opencode_version, probe_native_version, CandidateOrigin,
+        DiscoveryContext, OpenCodeRuntimeState, OpenCodeRuntimeStatus, RuntimeSource,
     };
+    use std::cell::Cell;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -871,6 +901,32 @@ mod tests {
             .as_deref()
             .is_some_and(|value| value.starts_with("opencode-runtime-")));
         assert_eq!(result.fingerprint_sha256.as_deref().map(str::len), Some(64));
+    }
+
+    #[test]
+    fn detection_fingerprints_a_successful_candidate_exactly_before_and_after_probe() {
+        let fixture = FixtureRoot::new("detect-two-fingerprints");
+        fixture.native("system/opencode.exe");
+        let context = context(
+            vec![fixture.path().join("system")],
+            BTreeMap::new(),
+            fixture.path().join("missing-managed"),
+        );
+        let fingerprint_reads = Cell::new(0_u8);
+
+        let result = detect_with_probe_and_fingerprinter(
+            &OpenCodeRuntimeState::default(),
+            &context,
+            |_| Ok("opencode 1.18.16".to_string()),
+            |path| {
+                fingerprint_reads.set(fingerprint_reads.get() + 1);
+                fingerprint_sha256(path)
+            },
+        )
+        .expect("runtime detection");
+
+        assert_eq!(result.status, OpenCodeRuntimeStatus::SystemCompatible);
+        assert_eq!(fingerprint_reads.get(), 2);
     }
 
     #[test]
