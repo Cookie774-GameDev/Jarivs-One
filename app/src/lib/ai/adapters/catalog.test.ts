@@ -332,14 +332,28 @@ describe('shell-free provider command vectors', () => {
   it('builds Codex arguments without embedding the prompt', () => {
     const invocation = buildCodexInvocation({
       prompt,
-      modelId: 'gpt-5.5-codex',
+      modelId: 'gpt-5.6-luna',
       workingDirectory: 'C:\\work space',
+      reasoningEffort: 'xhigh',
     });
     expect(invocation).toEqual({
-      args: ['exec', '--json', '--cd', 'C:\\work space', '--model', 'gpt-5.5-codex'],
+      args: [
+        'exec',
+        '--ignore-user-config',
+        '--ephemeral',
+        '--json',
+        '--cd',
+        'C:\\work space',
+        '--model',
+        'gpt-5.6-luna',
+        '-c',
+        'model_reasoning_effort="xhigh"',
+      ],
       stdin: prompt,
       cwd: 'C:\\work space',
     });
+    expect(invocation.args.filter((arg) => arg === '--ignore-user-config')).toHaveLength(1);
+    expect(invocation.args.filter((arg) => arg === '--ephemeral')).toHaveLength(1);
     expect(invocation.args.join(' ')).not.toContain(prompt);
   });
 
@@ -350,7 +364,16 @@ describe('shell-free provider command vectors', () => {
         modelId: 'gpt-5.6-sol',
         reasoningEffort: 'xhigh',
       }).args,
-    ).toEqual(['exec', '--json', '--model', 'gpt-5.6-sol', '-c', 'model_reasoning_effort="xhigh"']);
+    ).toEqual([
+      'exec',
+      '--ignore-user-config',
+      '--ephemeral',
+      '--json',
+      '--model',
+      'gpt-5.6-sol',
+      '-c',
+      'model_reasoning_effort="xhigh"',
+    ]);
     expect(() =>
       buildCodexInvocation({ prompt, reasoningEffort: 'high; Remove-Item C:\\' }),
     ).toThrowError('Codex CLI reasoning effort is unsupported');
@@ -458,6 +481,8 @@ describe('shell-free provider command vectors', () => {
 
     expect(invocation.args).toEqual([
       'exec',
+      '--ignore-user-config',
+      '--ephemeral',
       '--json',
       '--cd',
       optionLookingCwd,

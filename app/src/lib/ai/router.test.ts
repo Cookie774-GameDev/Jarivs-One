@@ -3,6 +3,11 @@ import type { Agent } from '@/types';
 import type { CompiledJarvisPrompt } from '@/lib/jarvis/contracts';
 import { useAuthStore } from '@/stores/auth';
 import { AGENT_DEFAULT_PROVIDER_MODEL } from './agentProviderOptions';
+import {
+  markConnectionSessionChecked,
+  resetConnectionSessionChecksForTests,
+  writeConnectionMetadata,
+} from './connectionState';
 import { selectionFromOption } from './modelSelection';
 import { syncDiscoveredOllamaModels } from './models';
 import { JarvisProviderAttemptFailureError } from './providerAttemptEvidence';
@@ -162,6 +167,7 @@ describe('AI provider routing', () => {
     } catch {
       /* jsdom */
     }
+    resetConnectionSessionChecksForTests();
     syncDiscoveredOllamaModels([]);
     useAuthStore.setState({
       apiKeys: {},
@@ -407,6 +413,10 @@ describe('AI provider routing', () => {
   });
 
   it('routes an external provider CLI selection through its exact subscription adapter', async () => {
+    writeConnectionMetadata({
+      'openai-codex': { installation: 'installed', auth: 'authenticated' },
+    });
+    markConnectionSessionChecked(['openai-codex']);
     const controller = new AbortController();
     const codexAgent: Agent = {
       ...openaiAgent,
@@ -429,7 +439,7 @@ describe('AI provider routing', () => {
         workingDirectory: 'C:\\workspace with spaces',
         provider_options: { reasoning_effort: 'xhigh' },
         connectionRequirements: { tools: true },
-        tools: { vibespace_context: true },
+        tools: { vibespace_context: true, 'terminal.list': false },
       }),
     ).resolves.toMatchObject({
       text: 'cli response',
@@ -445,6 +455,53 @@ describe('AI provider routing', () => {
       reasoningEffort: 'xhigh',
       tools: { vibespace_context: true },
     });
+    expect(codexSend.mock.calls[0]![0].prompt).toContain('EXACT PROTECTED SYSTEM CONTRACT');
+    expect(harnessRun).not.toHaveBeenCalled();
+    expect(openaiRun).not.toHaveBeenCalled();
+  });
+
+  it('omits an ordinary full agent tool map only at the exact external Codex boundary', async () => {
+    writeConnectionMetadata({
+      'openai-codex': { installation: 'installed', auth: 'authenticated' },
+    });
+    markConnectionSessionChecked(['openai-codex']);
+    const codexAgent: Agent = {
+      ...openaiAgent,
+      model: { provider: 'openai', model: 'gpt-5.6-luna' },
+    };
+
+    await expect(
+      runAgent({
+        agent: codexAgent,
+        messages: [
+          { role: 'user', content: 'Create the requested file through an approval card.' },
+        ],
+        connectionId: 'openai-codex',
+        compiledPrompt,
+        requestId: protectedAttempt.requestId,
+        protectedAttempt,
+        provider_options: { reasoning_effort: 'xhigh' },
+        connectionRequirements: { tools: true },
+        tools: {
+          vibespace_context: true,
+          'files.read': true,
+          'files.write': true,
+          'terminal.write': true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      text: 'cli response',
+      provider: 'openai',
+      model: 'gpt-5.6-luna',
+    });
+
+    expect(codexSend).toHaveBeenCalledOnce();
+    expect(codexSend.mock.calls[0]![0]).toMatchObject({
+      connection: { id: 'openai-codex' },
+      modelId: 'gpt-5.6-luna',
+      reasoningEffort: 'xhigh',
+    });
+    expect(codexSend.mock.calls[0]![0].tools).toBeUndefined();
     expect(codexSend.mock.calls[0]![0].prompt).toContain('EXACT PROTECTED SYSTEM CONTRACT');
     expect(harnessRun).not.toHaveBeenCalled();
     expect(openaiRun).not.toHaveBeenCalled();

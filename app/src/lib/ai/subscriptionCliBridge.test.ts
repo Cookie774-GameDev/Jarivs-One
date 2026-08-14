@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { bind, capture, release, send } = vi.hoisted(() => ({
+const { authChecked, authStates, bind, capture, release, send } = vi.hoisted(() => ({
+  authChecked: vi.fn(),
+  authStates: vi.fn(),
   bind: vi.fn(),
   capture: vi.fn(),
   release: vi.fn(),
   send: vi.fn(),
+}));
+
+vi.mock('./connectionState', () => ({
+  isConnectionSessionChecked: authChecked,
+  readConnectionSessionPickerStates: authStates,
 }));
 
 vi.mock('@/lib/harness/toolGatewayAuthority', () => ({
@@ -23,6 +30,10 @@ import { runSubscriptionCliBridge } from './subscriptionCliBridge';
 
 describe('Codex subscription Context Map authority', () => {
   beforeEach(() => {
+    authChecked.mockReset().mockReturnValue(true);
+    authStates.mockReset().mockReturnValue({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
     bind.mockReset().mockReturnValue(true);
     capture.mockReset().mockReturnValue({ scope: {}, generation: 1 });
     release.mockReset();
@@ -32,6 +43,130 @@ describe('Codex subscription Context Map authority', () => {
         yield { type: 'done', finishReason: 'completed' };
       })(),
     );
+  });
+
+  it('requires fresh exact-current-session authentication immediately before send', async () => {
+    const rejectedStates = [
+      {
+        name: 'unknown',
+        checked: true,
+        states: { 'openai-codex': { available: true, auth: 'unknown' } },
+      },
+      {
+        name: 'unauthenticated',
+        checked: true,
+        states: { 'openai-codex': { available: true, auth: 'unauthenticated' } },
+      },
+      {
+        name: 'unavailable',
+        checked: true,
+        states: { 'openai-codex': { available: false, auth: 'authenticated' } },
+      },
+      {
+        name: 'missing',
+        checked: true,
+        states: {},
+      },
+      {
+        name: 'stale prior-session state',
+        checked: false,
+        states: { 'openai-codex': { available: true, auth: 'authenticated' } },
+      },
+      {
+        name: 'connection-mismatched state',
+        checked: true,
+        states: { 'anthropic-claude': { available: true, auth: 'authenticated' } },
+      },
+    ] as const;
+
+    for (const state of rejectedStates) {
+      authChecked.mockReturnValueOnce(state.checked);
+      authStates.mockReturnValueOnce(state.states);
+      await expect(
+        runSubscriptionCliBridge({
+          connection: CODEX_CLI_CONNECTION,
+          requestId: `request-${state.name}`,
+          prompt: 'hello',
+        }),
+      ).rejects.toThrow('not authenticated for this session');
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('re-reads authentication after authority binding and releases on auth loss', async () => {
+    let currentState: Record<
+      string,
+      { available: boolean; auth: 'authenticated' | 'unauthenticated' | 'unknown' }
+    > = {
+      'openai-codex': { available: true, auth: 'authenticated' },
+    };
+    authStates.mockImplementation(() => currentState);
+    bind.mockImplementationOnce(() => {
+      currentState = {
+        'openai-codex': { available: false, auth: 'unauthenticated' },
+      };
+      return true;
+    });
+
+    await expect(
+      runSubscriptionCliBridge({
+        connection: CODEX_CLI_CONNECTION,
+        requestId: 'request-auth-loss',
+        prompt: 'research',
+        tools: { vibespace_context: true },
+      }),
+    ).rejects.toThrow('not authenticated for this session');
+
+    expect(bind).toHaveBeenCalledWith('request-auth-loss', expect.anything());
+    expect(send).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledWith('request-auth-loss');
+  });
+
+  it('preserves pre-aborted AbortError behavior without claiming authority or dispatching', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      runSubscriptionCliBridge({
+        connection: CODEX_CLI_CONNECTION,
+        requestId: 'request-aborted',
+        prompt: 'research',
+        signal: controller.signal,
+        tools: { vibespace_context: true },
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(authChecked).not.toHaveBeenCalled();
+    expect(authStates).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+    expect(bind).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it('releases exact authority when the current request aborts during dispatch', async () => {
+    const controller = new AbortController();
+    send.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'text', delta: 'partial' };
+        controller.abort();
+        yield { type: 'text', delta: 'late' };
+      })(),
+    );
+
+    await expect(
+      runSubscriptionCliBridge({
+        connection: CODEX_CLI_CONNECTION,
+        requestId: 'request-current-abort',
+        prompt: 'research',
+        signal: controller.signal,
+        tools: { vibespace_context: true },
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledWith('request-current-abort');
   });
 
   it('binds exact request authority, propagates only Context Map, and always releases', async () => {

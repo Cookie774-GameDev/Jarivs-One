@@ -38,7 +38,10 @@ export function buildCodexInvocation(request: CliInvocationRequest): CliInvocati
   ) {
     throw new Error('Codex CLI tool scope is unsupported');
   }
-  const args = ['exec', '--json'];
+  const args =
+    enabledTools.length === 1
+      ? ['exec', '--json']
+      : ['exec', '--ignore-user-config', '--ephemeral', '--json'];
   if (request.workingDirectory) args.push('--cd', request.workingDirectory);
   if (request.modelId) args.push('--model', requireModelId(request.modelId, 'Codex'));
   if (request.reasoningEffort) {

@@ -154,6 +154,28 @@ export interface ConnectionRequirements {
   tools?: boolean;
 }
 
+function subscriptionToolScope(
+  connection: ProviderConnection,
+  tools: Readonly<Record<string, boolean>> | undefined,
+  requirements: ConnectionRequirements | undefined,
+): Readonly<{
+  tools?: Readonly<Record<string, boolean>>;
+  requirements?: ConnectionRequirements;
+}> {
+  if (connection.id !== 'openai-codex' || connection.adapterId !== 'codex-cli') {
+    return { tools, requirements };
+  }
+  const enabledTools = Object.entries(tools ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([name]) => name);
+  if (enabledTools.length === 1 && enabledTools[0] === 'vibespace_context') {
+    return { tools: Object.freeze({ vibespace_context: true }), requirements };
+  }
+  if (!requirements) return {};
+  const { tools: _tools, ...nonToolRequirements } = requirements;
+  return Object.keys(nonToolRequirements).length === 0 ? {} : { requirements: nonToolRequirements };
+}
+
 function assertConnectionCapabilities(
   connection: ProviderConnection,
   requirements: ConnectionRequirements = {},
@@ -466,6 +488,7 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
     : undefined;
   if (exactConnection?.mode === 'external-cli') {
     assertConnectionCapabilities(exactConnection, req.connectionRequirements);
+    const toolScope = subscriptionToolScope(exactConnection, req.tools, req.connectionRequirements);
     const transport = req.compiledPrompt
       ? buildProviderPromptTransport({
           compiled: req.compiledPrompt,
@@ -489,8 +512,8 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
         reasoningEffort,
         workingDirectory: req.workingDirectory,
         signal: req.signal,
-        requirements: req.connectionRequirements,
-        tools: req.tools,
+        requirements: toolScope.requirements,
+        tools: toolScope.tools,
         onChunk: req.onChunk,
         onResponseObservation: hooks?.onResponseObservation,
         onActionDispatch: hooks?.onActionDispatch,

@@ -14,6 +14,7 @@ import type {
 import { UnsupportedPromptTransportError } from './providerPromptTransport';
 import type { LLMResponse, LLMResponseObservation, LLMStreamChunk } from './types';
 import type { ProviderId } from '@/types';
+import { isConnectionSessionChecked, readConnectionSessionPickerStates } from './connectionState';
 import {
   bindToolGatewaySessionAuthority,
   captureToolGatewayAuthorityClaim,
@@ -66,6 +67,17 @@ function assertCapabilities(
 
 function usageNumber(value: { value?: number } | undefined): number {
   return typeof value?.value === 'number' && Number.isFinite(value.value) ? value.value : 0;
+}
+
+function assertFreshSubscriptionAuthentication(connection: Readonly<ProviderConnection>): void {
+  const currentState = readConnectionSessionPickerStates()[connection.id];
+  if (
+    !isConnectionSessionChecked(connection.id) ||
+    currentState?.available !== true ||
+    currentState.auth !== 'authenticated'
+  ) {
+    throw new Error('Subscription connection is not authenticated for this session.');
+  }
 }
 
 /**
@@ -125,6 +137,10 @@ export async function runSubscriptionCliBridge(
   let finishReason: string | undefined;
   let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
   try {
+    // Re-read process-local scan authority at the last synchronous boundary
+    // before adapter dispatch. Persisted picker readiness from a prior app
+    // session is never sufficient.
+    assertFreshSubscriptionAuthentication(connection);
     for await (const event of adapter.send({
       requestId: request.requestId,
       connection,
