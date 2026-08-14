@@ -805,8 +805,18 @@ describe('production Context Map RLM repository', () => {
     const fixtureMaps = maps();
     fixtureMaps[0]!.tree.nodes[0]!.title = '0007-pg2600.txt';
     fixtureMaps[0]!.tree.nodes[0]!.path = 'C:\\repo\\0007-pg2600.txt';
-    const content =
-      'commander in chief the buzz of talk ceased and all eyes were fixed on\nKutúzov who, wearing a white cap with a red band, was walking nearby.';
+    fixtureMaps[0]!.tree.nodes.push({
+      id: 'distractor-1',
+      kind: 'file' as const,
+      title: '0025-pg4300.txt',
+      summary: '',
+      path: 'C:\\repo\\0025-pg4300.txt',
+      sizeBytes: 128,
+      modifiedAt: 20,
+    });
+    const content = `The inhabitants discussed İstanbul and a bit of ordinary business. ${'Kutúzov with a letter about unrelated orders. '.repeat(62)}${'unrelated literature filler '.repeat(30)}commander in chief the buzz of talk ceased and all eyes were fixed on\nKutúzov who, wearing a white cap with a red band, was walking nearby. Kutúzov carried a note about a bit of talk in ordinary business. ${'Kutúzov rode away with unrelated dispatches. '.repeat(45)}`;
+    const distractor =
+      'The inhabitants discussed a bit of ordinary business while everybody watched the road.';
     const repository = createContextMapRlmRepository({
       loadMaps: vi.fn(async () => fixtureMaps),
       stat: vi.fn(async (path) => ({
@@ -817,7 +827,11 @@ describe('production Context Map RLM repository', () => {
         modifiedMs: 20,
         sha256: SHA,
       })),
-      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      read: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        content: path.endsWith('0025-pg4300.txt') ? distractor : content,
+      })),
       lexicalSearch: vi.fn(async () => []),
     });
 
@@ -825,9 +839,103 @@ describe('production Context Map RLM repository', () => {
       { accountId: 'account-1', projectId: 'project-1' },
       'in the literature files, what are the eight words right after the bit where talk stopped and everybody watched Kutúzov? quote only those words and show me the file',
     );
+    const entityOffsets = [...content.matchAll(/Kutúzov/gu)].map((match) => match.index);
 
+    expect(entityOffsets).toHaveLength(109);
+    expect(entityOffsets[62]).toBe(content.indexOf('Kutúzov who'));
     expect(hits[0]?.preview).toContain('[SOURCE FILE: 0007-pg2600.txt]');
+    expect(hits[0]?.pointer.byteStart).toBe(
+      new TextEncoder().encode(content.slice(0, content.indexOf('Kutúzov who'))).length,
+    );
+    expect(hits[0]?.preview).toContain('\nKutúzov who, wearing a white cap with a red');
     expect(hits[0]?.preview).toContain('who, wearing a white cap with a red');
+  });
+
+  it('anchors Unicode singleton names without promoting sentence-leading directives', async () => {
+    const fixtureMaps = maps();
+    const content =
+      'Tell the reader about ordinary records. Later everyone watched Élodie, while Łukasz took the cobalt ledger.';
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(content).length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Tell me whom everyone watched: Élodie; show the ledger',
+    );
+
+    expect(hits[0]?.pointer.byteStart).toBe(
+      new TextEncoder().encode(content.slice(0, content.indexOf('Élodie'))).length,
+    );
+    expect(hits[0]?.preview).toContain('\nÉlodie, while Łukasz');
+  });
+
+  it('anchors a singleton name ending in a non-ASCII letter', async () => {
+    const fixtureMaps = maps();
+    const content =
+      'Find ordinary filing instructions first. Much later the witness René recorded the cobalt ledger.';
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(content).length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Find what René recorded in the ledger',
+    );
+
+    expect(hits[0]?.pointer.byteStart).toBe(
+      new TextEncoder().encode(content.slice(0, content.indexOf('René'))).length,
+    );
+    expect(hits[0]?.preview).toContain('\nRené recorded');
+  });
+
+  it('locates only the exact bounded singleton inside a contextual span', async () => {
+    const fixtureMaps = maps();
+    const content =
+      'The clue appeared beside Annette before the exact witness Ann recorded the cobalt ledger.';
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(content).length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Find the clue connected to Ann',
+    );
+
+    expect(hits[0]?.pointer.byteStart).toBe(
+      new TextEncoder().encode(content.slice(0, content.indexOf('Ann recorded'))).length,
+    );
+    expect(hits[0]?.preview).toContain('\nAnn recorded');
   });
 
   it('ranks a contiguous entity phrase above scattered generic question words', async () => {
@@ -883,9 +991,44 @@ describe('production Context Map RLM repository', () => {
       sizeBytes: 128,
       modifiedAt: 20,
     });
+    fixtureMaps[0]!.tree.nodes.push(
+      {
+        id: 'literature-44',
+        kind: 'file' as const,
+        title: '0044-pg1234.txt',
+        summary: '',
+        path: 'C:\\repo\\0044-pg1234.txt',
+        sizeBytes: 128,
+        modifiedAt: 20,
+      },
+      {
+        id: 'literature-80',
+        kind: 'file' as const,
+        title: '0080-pg5678.txt',
+        summary: '',
+        path: 'C:\\repo\\0080-pg5678.txt',
+        sizeBytes: 128,
+        modifiedAt: 20,
+      },
+      {
+        id: 'literature-01',
+        kind: 'file' as const,
+        title: '0001-pg9999.txt',
+        summary: '',
+        path: 'C:\\repo\\0001-pg9999.txt',
+        sizeBytes: 128,
+        modifiedAt: 20,
+      },
+    );
     const contents: Record<string, string> = {
       'C:\\repo\\0050-orbit.txt': `ORBIT HANDOFF PART ONE. ${'ordinary relay ledger filler '.repeat(30)}The phrase left in part one was glass-peregrine.`,
       'C:\\repo\\0051-orbit.txt': `ORBIT HANDOFF PART TWO. ${'ordinary relay ledger filler '.repeat(30)}The receiving clerk gave the answer harbor-saffron.`,
+      'C:\\repo\\0044-pg1234.txt':
+        'A relay handoff between neighboring literature records mentioned a phrase and answer.',
+      'C:\\repo\\0080-pg5678.txt':
+        'Part one and part two describe a receiving clerk, phrase, and answer in generic prose.',
+      'C:\\repo\\0001-pg9999.txt':
+        'A neighboring relay handoff has part one, part two, a phrase, a receiving clerk, and an answer.',
     };
     const repository = createContextMapRlmRepository({
       loadMaps: vi.fn(async () => fixtureMaps),
@@ -909,6 +1052,21 @@ describe('production Context Map RLM repository', () => {
           excerpt: contents['C:\\repo\\0051-orbit.txt'],
           score: 1,
         },
+        {
+          documentId: 'literature-44',
+          excerpt: contents['C:\\repo\\0044-pg1234.txt'],
+          score: 500,
+        },
+        {
+          documentId: 'literature-80',
+          excerpt: contents['C:\\repo\\0080-pg5678.txt'],
+          score: 500,
+        },
+        {
+          documentId: 'literature-01',
+          excerpt: contents['C:\\repo\\0001-pg9999.txt'],
+          score: 500,
+        },
       ]),
     });
 
@@ -929,6 +1087,58 @@ describe('production Context Map RLM repository', () => {
     expect(hits.find((hit) => hit.preview.includes('0051-orbit.txt'))?.preview).toContain(
       'harbor-saffron',
     );
+  });
+
+  it('boosts only exact mapped leaf tokens and never root-path substrings', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes[0]!.title = '0050-orbit.txt';
+    fixtureMaps[0]!.tree.nodes[0]!.path = 'C:\\orbit-root\\0050-orbit.txt';
+    fixtureMaps[0]!.tree.nodes.push(
+      {
+        id: 'orbital',
+        kind: 'file' as const,
+        title: '0051-orbital.txt',
+        summary: '',
+        path: 'C:\\repo\\0051-orbital.txt',
+        sizeBytes: 128,
+        modifiedAt: 20,
+      },
+      {
+        id: 'root-only',
+        kind: 'file' as const,
+        title: '0052-corpus.txt',
+        summary: '',
+        path: 'C:\\orbit-root\\0052-corpus.txt',
+        sizeBytes: 128,
+        modifiedAt: 20,
+      },
+    );
+    const content = 'relay handoff phrase answer';
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: content.length,
+        modifiedMs: 20,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'find the orbit relay handoff phrase and answer',
+    );
+    const scoreByFile = new Map(
+      hits.map((hit) => [hit.preview.match(/\[SOURCE FILE: ([^\]]+)\]/)?.[1], hit.score]),
+    );
+
+    expect(hits[0]?.preview).toContain('[SOURCE FILE: 0050-orbit.txt]');
+    expect(scoreByFile.get('0050-orbit.txt')).toBeGreaterThan(scoreByFile.get('0051-orbital.txt')!);
+    expect(scoreByFile.get('0051-orbital.txt')).toBe(scoreByFile.get('0052-corpus.txt'));
   });
 
   it('returns deterministic tie ordering when derivative input order changes', async () => {

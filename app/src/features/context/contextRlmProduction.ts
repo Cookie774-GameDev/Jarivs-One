@@ -207,7 +207,15 @@ const SEARCH_STOP_WORDS = new Set([
 
 const MAX_MEANINGFUL_QUERY_TERMS = 16;
 const MAX_PROPER_NAME_PHRASES = 8;
+const MAX_CONTEXTUAL_ENTITY_MATCHES = 128;
+const MAX_ENTITY_CONTEXT_TERMS = 8;
+const ENTITY_CONTEXT_RADIUS = 288;
 const RESPONSE_ANCHOR_TERMS = new Set(['answer', 'code', 'number', 'phrase', 'result', 'value']);
+const ENTITY_DIRECTIVE_WORDS = new Set(['find', 'show', 'tell', 'use']);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
 
 function buildMeaningfulQueryPlan(query: string): {
   terms: readonly string[];
@@ -237,9 +245,16 @@ function buildMeaningfulQueryPlan(query: string): {
   }));
   const properNames = [
     ...query.matchAll(/["“]([^"”]{3,256})["”]/gu),
-    ...query.matchAll(/\b(?:[\p{Lu}][\p{L}\p{N}-]*)(?:\s+[\p{Lu}][\p{L}\p{N}-]*)+\b/gu),
+    ...query.matchAll(
+      /(?<![\p{L}\p{N}_])(?:[\p{Lu}][\p{L}\p{N}-]*)(?:\s+[\p{Lu}][\p{L}\p{N}-]*)+(?![\p{L}\p{N}_])/gu,
+    ),
+    ...query.matchAll(/(?<![\p{L}\p{N}_])[\p{Lu}][\p{L}\p{N}-]{2,}(?![\p{L}\p{N}_])/gu),
   ]
     .map((match) => match[1] ?? match[0])
+    .filter((phrase) => {
+      const folded = phrase.normalize('NFKC').toLocaleLowerCase('en-US');
+      return !SEARCH_STOP_WORDS.has(folded) && !ENTITY_DIRECTIVE_WORDS.has(folded);
+    })
     .slice(0, MAX_PROPER_NAME_PHRASES);
   return { terms, phrases, properNames };
 }
@@ -278,17 +293,173 @@ function meaningfulQueryMatches(
       }
     }
   }
-  let strongestProperName: { phrase: string; offset: number } | undefined;
+  let strongestProperName:
+    | {
+        phrase: string;
+        offset: number;
+        density: number;
+        span: number;
+        contextual: boolean;
+        orderAligned: boolean;
+        clueDistance: number;
+      }
+    | undefined;
   for (const phrase of plan.properNames) {
-    const offset = folded.indexOf(phrase.toLocaleLowerCase('en-US'));
+    const foldedPhrase = phrase.toLocaleLowerCase('en-US');
+    const phraseTerms = foldedPhrase.split(/\s+/u);
+    const entityTermIndex = plan.terms.findIndex((term) => phraseTerms.includes(term));
+    const entityPattern = escapeRegExp(phrase);
+    const boundedEntityPattern = `(?<![\\p{L}\\p{N}_])${entityPattern}(?![\\p{L}\\p{N}_])`;
+    const fallbackOffset = content.search(new RegExp(boundedEntityPattern, 'iu'));
+    const contextTerms = plan.terms
+      .filter(
+        (term) =>
+          term.length >= 4 &&
+          term !== foldedPhrase &&
+          !phraseTerms.includes(term) &&
+          !RESPONSE_ANCHOR_TERMS.has(term),
+      )
+      .slice(0, MAX_ENTITY_CONTEXT_TERMS);
+    const termPattern = contextTerms.map(escapeRegExp).join('|');
+    const contextualPattern =
+      termPattern.length === 0
+        ? undefined
+        : new RegExp(
+            `(?:(?<![\\p{L}\\p{N}_])(?:${termPattern})(?![\\p{L}\\p{N}_])[\\s\\S]{0,${ENTITY_CONTEXT_RADIUS}}?${boundedEntityPattern}|${boundedEntityPattern}[\\s\\S]{0,${ENTITY_CONTEXT_RADIUS}}?(?<![\\p{L}\\p{N}_])(?:${termPattern})(?![\\p{L}\\p{N}_]))`,
+            'giu',
+          );
+    let bestContext:
+      | {
+          phrase: string;
+          offset: number;
+          density: number;
+          span: number;
+          contextual: true;
+          orderAligned: boolean;
+          clueDistance: number;
+        }
+      | undefined;
+    if (contextualPattern) {
+      let inspected = 0;
+      for (const match of content.matchAll(contextualPattern)) {
+        if (inspected >= MAX_CONTEXTUAL_ENTITY_MATCHES) break;
+        inspected += 1;
+        const relativeOffset = match[0].search(new RegExp(boundedEntityPattern, 'iu'));
+        if (relativeOffset < 0 || match.index === undefined) continue;
+        const offset = match.index + relativeOffset;
+        let orderAligned = false;
+        let clueDistance = Number.MAX_SAFE_INTEGER;
+        for (const term of contextTerms) {
+          const termIndex = plan.terms.indexOf(term);
+          const termRegex = new RegExp(
+            `(?<![\\p{L}\\p{N}_])${escapeRegExp(term)}(?![\\p{L}\\p{N}_])`,
+            'giu',
+          );
+          for (const termMatch of match[0].matchAll(termRegex)) {
+            if (termMatch.index === undefined) continue;
+            const beforeEntity = termMatch.index < relativeOffset;
+            const aligned =
+              entityTermIndex >= 0 &&
+              ((termIndex < entityTermIndex && beforeEntity) ||
+                (termIndex > entityTermIndex && !beforeEntity));
+            const distance = beforeEntity
+              ? relativeOffset - (termMatch.index + termMatch[0].length)
+              : termMatch.index - (relativeOffset + phrase.length);
+            if (
+              Number(aligned) > Number(orderAligned) ||
+              (aligned === orderAligned && distance < clueDistance)
+            ) {
+              orderAligned = aligned;
+              clueDistance = distance;
+            }
+          }
+        }
+        const contextTokens = new Set(
+          content
+            .slice(
+              Math.max(0, offset - ENTITY_CONTEXT_RADIUS),
+              offset + phrase.length + ENTITY_CONTEXT_RADIUS,
+            )
+            .toLocaleLowerCase('en-US')
+            .match(/[\p{L}\p{N}]+/gu) ?? [],
+        );
+        const candidate = {
+          phrase,
+          offset,
+          density: plan.terms.filter((term) => contextTokens.has(term)).length,
+          span: match[0].length,
+          contextual: true as const,
+          orderAligned,
+          clueDistance,
+        };
+        if (
+          !bestContext ||
+          Number(candidate.orderAligned) > Number(bestContext.orderAligned) ||
+          (candidate.orderAligned === bestContext.orderAligned &&
+            candidate.clueDistance < bestContext.clueDistance) ||
+          (candidate.orderAligned === bestContext.orderAligned &&
+            candidate.clueDistance === bestContext.clueDistance &&
+            candidate.density > bestContext.density) ||
+          (candidate.orderAligned === bestContext.orderAligned &&
+            candidate.clueDistance === bestContext.clueDistance &&
+            candidate.density === bestContext.density &&
+            candidate.span < bestContext.span) ||
+          (candidate.orderAligned === bestContext.orderAligned &&
+            candidate.clueDistance === bestContext.clueDistance &&
+            candidate.density === bestContext.density &&
+            candidate.span === bestContext.span &&
+            candidate.offset < bestContext.offset)
+        ) {
+          bestContext = candidate;
+        }
+      }
+    }
+    const candidate =
+      bestContext ??
+      (fallbackOffset >= 0
+        ? {
+            phrase,
+            offset: fallbackOffset,
+            density: 0,
+            span: Number.MAX_SAFE_INTEGER,
+            contextual: false as const,
+            orderAligned: false,
+            clueDistance: Number.MAX_SAFE_INTEGER,
+          }
+        : undefined);
     if (
-      offset >= 0 &&
+      candidate &&
       (!strongestProperName ||
-        phrase.length > strongestProperName.phrase.length ||
-        (phrase.length === strongestProperName.phrase.length &&
-          offset < strongestProperName.offset))
+        Number(candidate.contextual) > Number(strongestProperName.contextual) ||
+        (candidate.contextual === strongestProperName.contextual &&
+          Number(candidate.orderAligned) > Number(strongestProperName.orderAligned)) ||
+        (candidate.contextual === strongestProperName.contextual &&
+          candidate.orderAligned === strongestProperName.orderAligned &&
+          candidate.clueDistance < strongestProperName.clueDistance) ||
+        (candidate.contextual === strongestProperName.contextual &&
+          candidate.orderAligned === strongestProperName.orderAligned &&
+          candidate.clueDistance === strongestProperName.clueDistance &&
+          candidate.density > strongestProperName.density) ||
+        (candidate.contextual === strongestProperName.contextual &&
+          candidate.orderAligned === strongestProperName.orderAligned &&
+          candidate.clueDistance === strongestProperName.clueDistance &&
+          candidate.density === strongestProperName.density &&
+          phrase.length > strongestProperName.phrase.length) ||
+        (candidate.contextual === strongestProperName.contextual &&
+          candidate.orderAligned === strongestProperName.orderAligned &&
+          candidate.clueDistance === strongestProperName.clueDistance &&
+          candidate.density === strongestProperName.density &&
+          phrase.length === strongestProperName.phrase.length &&
+          candidate.span < strongestProperName.span) ||
+        (candidate.contextual === strongestProperName.contextual &&
+          candidate.orderAligned === strongestProperName.orderAligned &&
+          candidate.clueDistance === strongestProperName.clueDistance &&
+          candidate.density === strongestProperName.density &&
+          phrase.length === strongestProperName.phrase.length &&
+          candidate.span === strongestProperName.span &&
+          candidate.offset < strongestProperName.offset))
     ) {
-      strongestProperName = { phrase, offset };
+      strongestProperName = candidate;
     }
   }
   const contextCandidates = [...matches, ...phraseMatches]
@@ -317,6 +488,28 @@ function meaningfulQueryMatches(
       (strongestPhrase ? strongestPhrase.length ** 2 * 10 : 0) +
       (strongestProperName ? 1000 + strongestProperName.phrase.length : 0),
   };
+}
+
+function mappedSourceIntentScore(
+  authority: RecordAuthority,
+  plan: ReturnType<typeof buildMeaningfulQueryPlan>,
+): number {
+  const safeIdentity =
+    typeof authority.record.title === 'string'
+      ? authority.record.title
+      : (authority.record.contentRef.split(/[\\/]/u).at(-1) ?? '');
+  const safeLeaf = safeIdentity.split(/[\\/]/u).at(-1) ?? '';
+  const identityTokens = new Set(
+    safeLeaf
+      .normalize('NFKC')
+      .toLocaleLowerCase('en-US')
+      .match(/[\p{L}\p{N}]+/gu) ?? [],
+  );
+  const matches = plan.terms.filter(
+    (term) =>
+      term.length >= 4 && identityTokens.has(term.normalize('NFKC').toLocaleLowerCase('en-US')),
+  ).length;
+  return matches * 100_000_000;
 }
 
 function parseSearchResults(value: unknown): Array<{
@@ -796,11 +989,12 @@ export function createContextMapRlmRepository(
               // remain ranking authority. This prevents stale/generic index scores
               // from outranking a contiguous entity or handoff match.
               score:
-                exactOffset >= 0
+                mappedSourceIntentScore(authority, meaningfulPlan) +
+                (exactOffset >= 0
                   ? 1_000_000_000 + Math.min(match.score, 999)
                   : meaningful
                     ? meaningful.score * 1_000 + Math.min(match.score, 999)
-                    : match.score,
+                    : match.score),
             };
           },
         );
@@ -838,7 +1032,9 @@ export function createContextMapRlmRepository(
               preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
               // Missing derivative-index entries must not suppress a stronger
               // match in the immutable source bytes.
-              score: exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000,
+              score:
+                mappedSourceIntentScore(authority, meaningfulPlan) +
+                (exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000),
             };
           },
         );
