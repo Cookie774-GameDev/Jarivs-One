@@ -791,6 +791,14 @@ export function createContextMapRlmRepository(
             ['contentHash', hash],
           ]),
         );
+        const observedCreatedAt = Math.max(
+          0,
+          Math.floor(stat?.createdMs ?? node.modifiedAt ?? map.updatedAt),
+        );
+        const observedModifiedAt = Math.max(
+          0,
+          Math.floor(stat?.modifiedMs ?? node.modifiedAt ?? map.updatedAt),
+        );
         const record = createContextRecord({
           id: `rlm:${identityDigest}`,
           accountId: scope.accountId,
@@ -799,8 +807,8 @@ export function createContextMapRlmRepository(
           ...(scope.worktreeId ? { worktreeId: scope.worktreeId } : {}),
           sourceKind,
           sourceId: `rlm-source:${identityDigest}`,
-          createdAt: Math.max(0, Math.floor(stat?.createdMs ?? node.modifiedAt ?? map.updatedAt)),
-          updatedAt: Math.max(0, Math.floor(stat?.modifiedMs ?? node.modifiedAt ?? map.updatedAt)),
+          createdAt: Math.min(observedCreatedAt, observedModifiedAt),
+          updatedAt: Math.max(observedCreatedAt, observedModifiedAt),
           contentHash: hash,
           contentRef: path,
           title: node.title,

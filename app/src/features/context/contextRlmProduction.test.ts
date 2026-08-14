@@ -66,6 +66,31 @@ function maps() {
 }
 
 describe('production Context Map RLM repository', () => {
+  it('normalizes copied-file timestamp inversion before constructing authority', async () => {
+    const content = 'Observatory Lumen uses cobalt-fern verification 47291.';
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => maps()),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: content.length,
+        createdMs: 200,
+        modifiedMs: 100,
+        sha256: SHA,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => []),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const hits = await repository.search(scope, 'Observatory Lumen');
+    const record = await repository.getRecord(hits[0]!.recordId);
+
+    expect(hits[0]?.preview).toContain('cobalt-fern');
+    expect(record).toMatchObject({ createdAt: 100, updatedAt: 200 });
+  });
+
   it('shares one authority-build stat pass across five parallel searches', async () => {
     const fixtureMaps = maps();
     const content = 'Observatory Lumen uses cobalt-fern verification 47291.';
@@ -78,6 +103,7 @@ describe('production Context Map RLM repository', () => {
       path,
       kind: 'file' as const,
       size: content.length,
+      createdMs: 30,
       modifiedMs: 20,
       sha256: SHA,
     }));
