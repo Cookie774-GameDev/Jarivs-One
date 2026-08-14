@@ -10,6 +10,7 @@ import {
   observeTerminalExecutionNativeExit,
   readTerminalProcessIdentity,
   requestTerminalExecutionCancellation,
+  revokeTerminalExecutionsForAccount,
   settleTerminalExecutionFromNativeExit,
   terminalCancellationDisposition,
   terminalExecutionCancellationToken,
@@ -181,6 +182,7 @@ describe('terminal execution lifecycle', () => {
       accountId?: string;
       runId?: string;
       executionId?: `jterm_${string}`;
+      cancellationToken?: string;
     } = {},
   ) {
     const accountId = request.accountId ?? 'account-a';
@@ -204,13 +206,15 @@ describe('terminal execution lifecycle', () => {
     const recordCancellationVerified = vi.fn<
       JarvisTerminalOwnedExecution['recordCancellationVerified']
     >(async () => ({ kind: 'committed' as const, value: {} as never }));
-    const requestCancellation = vi.fn(async () => ({
-      kind: 'intent_committed' as const,
-      requestState: 'new' as const,
-      authorityState: 'current' as const,
-      cancellationRequestId: 'jcancel_1',
-      aggregate: { kind: 'signal_delivered' as const, ownerIds: [`terminal:${executionId}`] },
-    }));
+    const requestCancellation = vi.fn<JarvisTerminalOwnedExecution['requestCancellation']>(
+      async () => ({
+        kind: 'intent_committed' as const,
+        requestState: 'new' as const,
+        authorityState: 'current' as const,
+        cancellationRequestId: 'jcancel_1',
+        aggregate: { kind: 'signal_delivered' as const, ownerIds: [`terminal:${executionId}`] },
+      }),
+    );
     const execution: JarvisTerminalOwnedExecution = {
       recordResult,
       recordCancellationVerified,
@@ -225,7 +229,7 @@ describe('terminal execution lifecycle', () => {
         accountId,
         runId,
         executionId,
-        cancellationToken: 'jcancel_native_1',
+        cancellationToken: request.cancellationToken ?? 'jcancel_native_1',
         command: 'powershell',
         ...(request.timeoutMs === undefined ? {} : { timeoutMs: request.timeoutMs }),
       },
@@ -352,6 +356,199 @@ describe('terminal execution lifecycle', () => {
       ownerId: 'terminal:jterm_1',
       cancellationToken: 'jcancel_native_1',
     });
+  });
+
+  it('revokes only the exact old account across queued and attached executions', async () => {
+    const active = canonicalHarness({
+      accountId: 'account-a',
+      runId: 'jrun_active',
+      executionId: 'jterm_active',
+      cancellationToken: 'jcancel_native_active',
+    });
+    const queued = canonicalHarness({
+      accountId: 'account-a',
+      runId: 'jrun_queued',
+      executionId: 'jterm_queued',
+      cancellationToken: 'jcancel_native_queued',
+    });
+    const foreign = canonicalHarness({
+      accountId: 'account-b',
+      runId: 'jrun_foreign',
+      executionId: 'jterm_foreign',
+      cancellationToken: 'jcancel_native_foreign',
+    });
+    expect(await claimTerminalExecution('jterm_active')).toBe(true);
+    expect(
+      await attachTerminalExecution('jterm_active', {
+        ...canonicalAttachment('pty_active'),
+        accountId: 'account-a',
+        paneId: 'pane-active',
+      }),
+    ).toBe(true);
+    expect(await claimTerminalExecution('jterm_foreign')).toBe(true);
+    expect(
+      await attachTerminalExecution('jterm_foreign', {
+        ...canonicalAttachment('pty_foreign'),
+        accountId: 'account-b',
+        paneId: 'pane-foreign',
+      }),
+    ).toBe(true);
+    vi.mocked(invoke).mockResolvedValue({
+      kind: 'signal_delivered',
+      requestKind: 'canonical_cancellation',
+      cancellationToken: 'jcancel_native_active',
+    });
+    active.requestCancellation.mockImplementationOnce(async () => {
+      const outcome = await active.registrations.get('terminal:jterm_active')!.abort();
+      expect(outcome).toMatchObject({
+        kind: 'signal_delivered',
+        cancellationToken: 'jcancel_native_active',
+      });
+      return {
+        kind: 'intent_committed',
+        requestState: 'new',
+        authorityState: 'current',
+        cancellationRequestId: 'jcancel_active',
+        aggregate: { kind: 'signal_delivered', ownerIds: ['terminal:jterm_active'] },
+      };
+    });
+    queued.requestCancellation.mockImplementationOnce(async () => {
+      const outcome = await queued.registrations.get('terminal:jterm_queued')!.abort();
+      expect(outcome).toMatchObject({
+        kind: 'queued_tombstoned',
+        queueItemId: 'jterm_queued',
+      });
+      return {
+        kind: 'intent_committed',
+        requestState: 'new',
+        authorityState: 'current',
+        cancellationRequestId: 'jcancel_queued',
+        aggregate: {
+          kind: 'queued_cancelled',
+          ownerId: 'terminal:jterm_queued',
+          queueItemId: 'jterm_queued',
+        },
+      };
+    });
+
+    await expect(revokeTerminalExecutionsForAccount('account-a')).resolves.toEqual({
+      accountId: 'account-a',
+      targeted: 2,
+      revoked: 2,
+      rejected: 0,
+    });
+
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith('terminal_kill', {
+      sessionId: 'pty_active',
+      cancellationToken: 'jcancel_native_active',
+    });
+    expect(foreign.requestCancellation).not.toHaveBeenCalled();
+    expect(useTerminalExecutionStore.getState().executions.jterm_foreign.status).toBe('starting');
+  });
+
+  it('singleflights repeated account revocation and reports fail-closed rejection', async () => {
+    const accepted = canonicalHarness({
+      accountId: 'account-a',
+      runId: 'jrun_active',
+      executionId: 'jterm_active',
+    });
+    expect(await claimTerminalExecution('jterm_active')).toBe(true);
+    await attachTerminalExecution('jterm_active', canonicalAttachment('pty_active'));
+    let resolveCancellation:
+      | ((value: Awaited<ReturnType<JarvisTerminalOwnedExecution['requestCancellation']>>) => void)
+      | undefined;
+    accepted.requestCancellation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCancellation = resolve;
+        }),
+    );
+
+    const first = revokeTerminalExecutionsForAccount('account-a');
+    const second = revokeTerminalExecutionsForAccount('account-a');
+    await vi.waitFor(() => expect(accepted.requestCancellation).toHaveBeenCalledOnce());
+    resolveCancellation?.({
+      kind: 'intent_committed',
+      requestState: 'new',
+      authorityState: 'current',
+      cancellationRequestId: 'jcancel_active',
+      aggregate: { kind: 'signal_delivered', ownerIds: ['terminal:jterm_active'] },
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { accountId: 'account-a', targeted: 1, revoked: 1, rejected: 0 },
+      { accountId: 'account-a', targeted: 1, revoked: 1, rejected: 0 },
+    ]);
+    expect(accepted.requestCancellation).toHaveBeenCalledOnce();
+
+    const rejected = canonicalHarness({
+      accountId: 'account-rejected',
+      runId: 'jrun_rejected',
+      executionId: 'jterm_rejected',
+    });
+    rejected.requestCancellation.mockResolvedValueOnce({
+      kind: 'authority_revoked_before_intent',
+    });
+    await expect(revokeTerminalExecutionsForAccount('account-rejected')).resolves.toEqual({
+      accountId: 'account-rejected',
+      targeted: 1,
+      revoked: 0,
+      rejected: 1,
+    });
+    await expect(revokeTerminalExecutionsForAccount('account-rejected')).resolves.toEqual({
+      accountId: 'account-rejected',
+      targeted: 1,
+      revoked: 1,
+      rejected: 0,
+    });
+    expect(rejected.requestCancellation).toHaveBeenCalledTimes(2);
+
+    const wrongOwner = canonicalHarness({
+      accountId: 'account-wrong-owner',
+      runId: 'jrun_wrong_owner',
+      executionId: 'jterm_wrong_owner',
+    });
+    wrongOwner.requestCancellation.mockResolvedValueOnce({
+      kind: 'intent_committed',
+      requestState: 'new',
+      authorityState: 'current',
+      cancellationRequestId: 'jcancel_wrong_owner',
+      aggregate: { kind: 'signal_delivered', ownerIds: ['provider:unrelated'] },
+    });
+    await expect(revokeTerminalExecutionsForAccount('account-wrong-owner')).resolves.toEqual({
+      accountId: 'account-wrong-owner',
+      targeted: 1,
+      revoked: 0,
+      rejected: 1,
+    });
+
+    const terminalWithoutSettlement = canonicalHarness({
+      accountId: 'account-terminal-race',
+      runId: 'jrun_terminal_race',
+      executionId: 'jterm_terminal_race',
+    });
+    terminalWithoutSettlement.requestCancellation.mockResolvedValueOnce({
+      kind: 'already_terminal',
+      terminalStatus: 'completed',
+    });
+    await expect(revokeTerminalExecutionsForAccount('account-terminal-race')).resolves.toEqual({
+      accountId: 'account-terminal-race',
+      targeted: 1,
+      revoked: 0,
+      rejected: 1,
+    });
+  });
+
+  it('rejects invalid account revocation before touching any execution', async () => {
+    const harness = canonicalHarness();
+
+    await expect(revokeTerminalExecutionsForAccount('   ')).rejects.toThrow(
+      'accountId must be a stable nonblank identifier',
+    );
+
+    expect(harness.requestCancellation).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it('treats an exact repeated session attach as idempotent', async () => {

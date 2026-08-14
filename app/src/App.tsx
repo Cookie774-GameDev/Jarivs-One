@@ -145,6 +145,7 @@ import { useBoundHotkey } from '@/lib/hotkeys';
 import { FullscreenHost } from '@/features/fullscreen';
 import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
+import { revokeTerminalExecutionsForAccount } from '@/features/terminals/terminalExecutionStore';
 import { TerminalCliRuntimeHost } from '@/features/terminals';
 import { ToolGatewayHost } from '@/lib/harness/ToolGatewayHost';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
@@ -761,6 +762,7 @@ function useBoot() {
     let accountScopeGeneration = 0;
     let cloudAuthGeneration = 0;
     let accountRecoveryController: AbortController | undefined;
+    let terminalAccountRevocationBlocked: string | null = null;
     let accountTransition = accountScopeTeardownBarrier;
     let cancelled = false;
     const errors: string[] = [];
@@ -851,14 +853,25 @@ function useBoot() {
       useJarvisTaskRunStore.getState().setAccountScope('');
     }
 
-    async function stopAccountScopedListeners(): Promise<void> {
+    async function stopAccountScopedListeners(
+      options: { revokeTerminalExecutions?: boolean } = {},
+    ): Promise<void> {
       accountScopeGeneration += 1;
       accountRecoveryController?.abort();
       accountRecoveryController = undefined;
       const oldAccountId = activeAccountIdentity?.accountId;
       const oldLiveEvidenceSession = liveEvidenceAccountSession;
+      let terminalAccountRevocationIncomplete = false;
       setCommandCenterBinding(undefined);
       liveEvidenceAccountSession = undefined;
+      if (oldAccountId && options.revokeTerminalExecutions) {
+        try {
+          const outcome = await revokeTerminalExecutionsForAccount(oldAccountId);
+          terminalAccountRevocationIncomplete = outcome.rejected > 0;
+        } catch {
+          terminalAccountRevocationIncomplete = true;
+        }
+      }
       if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
       const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunLifecycle].filter(
         (stop): stop is () => void | Promise<void> => Boolean(stop),
@@ -881,6 +894,13 @@ function useBoot() {
       for (const result of results) {
         if (result.status === 'rejected') addError('account scope teardown', result.reason);
       }
+      if (terminalAccountRevocationIncomplete) {
+        terminalAccountRevocationBlocked = oldAccountId ?? terminalAccountRevocationBlocked;
+        throw new Error('terminal_account_revocation_incomplete');
+      }
+      if (oldAccountId === terminalAccountRevocationBlocked) {
+        terminalAccountRevocationBlocked = null;
+      }
     }
 
     async function transitionAccountScopedListeners(
@@ -894,7 +914,17 @@ function useBoot() {
       ) {
         return;
       }
-      await stopAccountScopedListeners();
+      if (terminalAccountRevocationBlocked) {
+        const blockedAccountId = terminalAccountRevocationBlocked;
+        const retry = await revokeTerminalExecutionsForAccount(blockedAccountId);
+        if (retry.rejected > 0) throw new Error('terminal_account_revocation_incomplete');
+        if (terminalAccountRevocationBlocked === blockedAccountId) {
+          terminalAccountRevocationBlocked = null;
+        }
+      }
+      await stopAccountScopedListeners({
+        revokeTerminalExecutions: !sameAccountIdentity(nextIdentity, activeAccountIdentity),
+      });
       if (
         cancelled ||
         !accountListenersBootReady ||
@@ -1010,7 +1040,9 @@ function useBoot() {
           return;
         }
         const precedingTransition = accountTransition;
-        const immediateTeardown = stopAccountScopedListeners();
+        const immediateTeardown = stopAccountScopedListeners({
+          revokeTerminalExecutions: true,
+        });
         accountTransition = Promise.allSettled([precedingTransition, immediateTeardown]).then(
           () => undefined,
         );

@@ -88,18 +88,32 @@ describe('App trusted kernel host composition', () => {
     );
   });
 
-  it('invalidates the old account synchronously before account listener teardown', () => {
+  it('awaits exact old-account terminal revocation before invalidating kernel authority', () => {
     const teardownStart = source.indexOf('async function stopAccountScopedListeners');
     const teardownEnd = source.indexOf('async function transitionAccountScopedListeners');
     const teardown = source.slice(teardownStart, teardownEnd);
     const capture = teardown.indexOf('activeAccountIdentity?.accountId');
+    const revokeTerminals = teardown.indexOf('await revokeTerminalExecutionsForAccount');
     const invalidate = teardown.indexOf('invalidateActiveKernelAccount');
     const clear = teardown.indexOf('activeAccountIdentity = null');
     const invokeStops = teardown.indexOf('stops.map');
     expect(capture).toBeGreaterThan(-1);
-    expect(invalidate).toBeGreaterThan(capture);
+    expect(revokeTerminals).toBeGreaterThan(capture);
+    expect(invalidate).toBeGreaterThan(revokeTerminals);
     expect(clear).toBeGreaterThan(invalidate);
     expect(invokeStops).toBeGreaterThan(clear);
+    expect(teardown).toContain('terminal_account_revocation_incomplete');
+    expect(source).toMatch(
+      /stopAccountScopedListeners\(\{\s*revokeTerminalExecutions:\s*!sameAccountIdentity\(/,
+    );
+    const transition = source.slice(
+      source.indexOf('async function transitionAccountScopedListeners'),
+      source.indexOf('function syncAccountScopedListeners'),
+    );
+    expect(transition.indexOf('if (terminalAccountRevocationBlocked)')).toBeGreaterThan(-1);
+    expect(transition.indexOf('if (terminalAccountRevocationBlocked)')).toBeLessThan(
+      transition.indexOf('const accountId = nextIdentity.accountId'),
+    );
   });
 
   it('creates the Command Center host only after the exact account session opens', () => {

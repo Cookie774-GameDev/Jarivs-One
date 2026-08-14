@@ -211,6 +211,7 @@ type CanonicalExecutionRecord = {
   settled: boolean;
   disposed: boolean;
   settlement?: Promise<void>;
+  accountRevocation?: Promise<boolean>;
 };
 
 const MAX_EXECUTIONS = 100;
@@ -943,6 +944,64 @@ export async function requestTerminalExecutionCancellation(
     });
   }
   return result;
+}
+
+export type TerminalAccountRevocationResult = Readonly<{
+  accountId: string;
+  targeted: number;
+  revoked: number;
+  rejected: number;
+}>;
+
+function accountRevocationAccepted(
+  record: CanonicalExecutionRecord,
+  result: JarvisCancellationRequestResult | null,
+): boolean {
+  if (result?.kind === 'already_terminal') return record.disposed || record.settled;
+  if (result?.kind !== 'intent_committed') return false;
+  const ownerId = `terminal:${record.request.executionId}`;
+  return result.aggregate.kind === 'queued_cancelled'
+    ? result.aggregate.ownerId === ownerId &&
+        result.aggregate.queueItemId === record.request.executionId
+    : result.aggregate.kind === 'signal_delivered' && result.aggregate.ownerIds.includes(ownerId);
+}
+
+async function revokeTerminalExecution(record: CanonicalExecutionRecord): Promise<boolean> {
+  if (record.disposed || record.settled) return true;
+  if (record.accountRevocation) return record.accountRevocation;
+  const revocation = requestTerminalExecutionCancellation(record.request.executionId)
+    .then((result) => accountRevocationAccepted(record, result))
+    .catch(() => false);
+  record.accountRevocation = revocation;
+  const accepted = await revocation;
+  if (!accepted && record.accountRevocation === revocation) {
+    record.accountRevocation = undefined;
+  }
+  return accepted;
+}
+
+/**
+ * Requests canonical cancellation for every execution owned by one exact
+ * account before App revokes that account's kernel authority. Requests are
+ * intentionally serialized to avoid a teardown-time native IPC burst.
+ */
+export async function revokeTerminalExecutionsForAccount(
+  accountIdInput: string,
+): Promise<TerminalAccountRevocationResult> {
+  const accountId = stableIdentifier(accountIdInput, 'accountId');
+  const records = [...canonicalExecutions.values()].filter(
+    (record) => !record.disposed && !record.settled && record.request.accountId === accountId,
+  );
+  let revoked = 0;
+  for (const record of records) {
+    if (await revokeTerminalExecution(record)) revoked += 1;
+  }
+  return Object.freeze({
+    accountId,
+    targeted: records.length,
+    revoked,
+    rejected: records.length - revoked,
+  });
 }
 
 function resultReference(
