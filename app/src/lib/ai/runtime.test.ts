@@ -571,6 +571,25 @@ End with exact search count, expand count, and aggregate expanded bytes. If you 
     expect(prepared).toContain('one expansion per exact cited source');
     expect(prepared).toContain('no more than two evidence calls for any one question');
     expect(prepared).toContain('expanded physical text must not exceed 24 KiB');
+    expect(prepared).toContain(
+      'Use search previews only to select pointers; expansions are the only physical evidence',
+    );
+    expect(prepared).toContain(
+      'choose exactly one current, non-`STATUS SUPERSEDED_UNTRUSTED` search-result row',
+    );
+    expect(prepared).toContain('semantically responsive to the corresponding numbered question');
+    expect(prepared).toContain(
+      'A matching filename, recordId, sourceVersion, contentHash, or score alone is insufficient',
+    );
+    expect(prepared).toContain(
+      'Copy the complete pointer object from that single row byte-for-byte as one atomic value',
+    );
+    expect(prepared).toContain(
+      'never reconstruct it or mix its id, recordId, byte range, sourceVersion, or contentHash',
+    );
+    expect(prepared).toContain(
+      'If a required source has no unique eligible row, output FAIL without making a replacement search, open, or expand call.',
+    );
     expect(prepared).toContain('all eleven required calls');
     expect(prepared).not.toContain('you may make at most six');
     expect(prepared.endsWith(outputSuffix)).toBe(true);

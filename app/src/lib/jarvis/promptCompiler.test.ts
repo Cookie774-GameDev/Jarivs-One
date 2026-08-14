@@ -592,6 +592,44 @@ describe('compileJarvisPrompt', () => {
     );
   });
 
+  it('protects mandatory evidence by requiring one atomic question-responsive search row', async () => {
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        userText: `## Validated mandatory Context physical-evidence contract
+Use only vibespace_context.
+You MUST make exactly six \`operation="expand"\` calls after the five required searches.`,
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+
+    expect(capabilityLayer).toContain(
+      'Use search previews only to select pointers; expansions are the only physical evidence',
+    );
+    expect(capabilityLayer).toContain(
+      'choose exactly one current, non-`STATUS SUPERSEDED_UNTRUSTED` search-result row',
+    );
+    expect(capabilityLayer).toContain(
+      'semantically responsive to the corresponding numbered question',
+    );
+    expect(capabilityLayer).toContain(
+      'A matching filename, recordId, sourceVersion, contentHash, or score alone is insufficient',
+    );
+    expect(capabilityLayer).toContain(
+      'Copy the complete pointer object from that single row byte-for-byte as one atomic value',
+    );
+    expect(capabilityLayer).toContain(
+      'never reconstruct it or mix its id, recordId, byte range, sourceVersion, or contentHash',
+    );
+    expect(capabilityLayer).toContain(
+      'If a required source has no unique eligible row, output FAIL without making a replacement search, open, or expand call.',
+    );
+    expect(capabilityLayer).toContain(
+      'exactly five `operation="search"` calls with `limit=3`, then exactly six `operation="expand"` calls',
+    );
+    expect(capabilityLayer).toContain('supply only `beforeBytes=256`');
+    expect(capabilityLayer).toContain('within 24 KiB');
+  });
+
   it('uses the same immutable identity source for typed and voice chat', async () => {
     const typed = compileJarvisPrompt(await envelope({ surface: 'typed_chat' }));
     const voice = compileJarvisPrompt(

@@ -10,7 +10,9 @@ import { classifyJarvisSource } from '@/lib/jarvis/sourcePolicy';
 import {
   createContextQueryService,
   type ContextQueryRepository,
+  type ContextSearchItem,
   type ContextScope,
+  type ContextSourceRead,
 } from './contextQueryService';
 import {
   createCorpusScaleMetadata,
@@ -22,6 +24,7 @@ import {
 import {
   createContextPointer,
   createContextRecord,
+  type ContextPointer,
   type ContextRecord,
   type ContextSourceKind,
 } from './losslessContext';
@@ -45,6 +48,8 @@ import {
 const MAX_SOURCE_SHARD_BYTES = 1024 * 1024;
 const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
 const MAX_CONCURRENT_SOURCE_VALIDATIONS = 8;
+const MAX_CONTEXT_MAP_SEARCH_RESULTS = 20;
+const MAX_ISSUED_POINTER_CAPABILITIES = 128;
 const LARGE_ADDRESS_DESCRIPTOR = '.vibespace-large-address-v1.json';
 const MAX_LARGE_ADDRESS_DESCRIPTOR_BYTES = 64 * 1024;
 const MAX_LARGE_ADDRESS_SHARD_BYTES = 4 * 1024;
@@ -794,6 +799,34 @@ function authorityScopeKey(scope: ContextScope): string {
   ]);
 }
 
+function issuedPointerCapabilityKey(
+  scope: ContextScope,
+  pointer: ContextPointer,
+  record: ContextRecord,
+  source: Pick<ContextSourceRead, 'contentHash' | 'sourceVersion'>,
+): string {
+  return JSON.stringify([
+    authorityScopeKey(scope),
+    record.id,
+    record.sourceId,
+    record.contentHash,
+    record.updatedAt,
+    pointer.id,
+    pointer.recordId,
+    pointer.byteStart ?? null,
+    pointer.byteEnd ?? null,
+    pointer.lineStart ?? null,
+    pointer.lineEnd ?? null,
+    pointer.messageId ?? null,
+    pointer.eventId ?? null,
+    pointer.toolCallId ?? null,
+    pointer.sourceVersion,
+    pointer.contentHash,
+    source.sourceVersion,
+    source.contentHash,
+  ]);
+}
+
 function recordMatchesScope(record: ContextRecord, scope: ContextScope): boolean {
   return (
     record.accountId === scope.accountId &&
@@ -882,6 +915,71 @@ export function createContextMapRlmRepository(
     >
   >();
   const publishedAuthorityGenerationByScope = new Map<string, number>();
+  const searchPointerCandidates = new Map<string, true>();
+  const issuedPointerCapabilities = new Map<string, true>();
+
+  const retainBoundedPointerKey = (registry: Map<string, true>, key: string) => {
+    registry.delete(key);
+    registry.set(key, true);
+    while (registry.size > MAX_ISSUED_POINTER_CAPABILITIES) {
+      const oldest = registry.keys().next().value;
+      if (typeof oldest !== 'string') break;
+      registry.delete(oldest);
+    }
+  };
+
+  const rememberSearchPointerCandidates = (
+    hits: readonly ContextMapSearchHit[],
+    scope: ContextScope,
+  ) => {
+    const normalizedScope = validateContextScope(scope);
+    for (const hit of hits) {
+      const authority = authorityByRecordId.get(hit.recordId);
+      if (!authority) continue;
+      retainBoundedPointerKey(
+        searchPointerCandidates,
+        issuedPointerCapabilityKey(normalizedScope, hit.pointer, authority.record, {
+          sourceVersion: hit.pointer.sourceVersion,
+          contentHash: hit.pointer.contentHash,
+        }),
+      );
+    }
+  };
+
+  const issuePointerCapabilities = (
+    items: readonly ContextSearchItem[],
+    scope: ContextScope,
+  ): boolean => {
+    const normalizedScope = validateContextScope(scope);
+    const keys: string[] = [];
+    for (const item of items) {
+      const authority = authorityByRecordId.get(item.record.id);
+      if (!authority) continue;
+      if (
+        !recordMatchesScope(authority.record, normalizedScope) ||
+        JSON.stringify(authority.record) !== JSON.stringify(item.record) ||
+        item.pointer.recordId !== authority.record.id ||
+        item.pointer.byteStart === undefined ||
+        item.pointer.byteEnd === undefined ||
+        item.pointer.id !==
+          `ptr:${authority.record.id}:${item.pointer.byteStart}:${item.pointer.byteEnd}` ||
+        item.pointer.contentHash !== authority.record.contentHash ||
+        item.pointer.sourceVersion !== `sha256:${authority.record.contentHash}`
+      ) {
+        return false;
+      }
+      const key = issuedPointerCapabilityKey(normalizedScope, item.pointer, authority.record, {
+        sourceVersion: item.pointer.sourceVersion,
+        contentHash: item.pointer.contentHash,
+      });
+      if (!searchPointerCandidates.has(key)) return false;
+      keys.push(key);
+    }
+    for (const key of keys) {
+      retainBoundedPointerKey(issuedPointerCapabilities, key);
+    }
+    return true;
+  };
 
   const reconcileAuthorityPublication = (scopeKey: string) => {
     const invocations = authorityInvocationsByScope.get(scopeKey);
@@ -1450,7 +1548,7 @@ export function createContextMapRlmRepository(
         );
         hits.push(...fallbackHits.filter((hit): hit is ContextMapSearchHit => hit !== undefined));
       }
-      return hits.sort(
+      const sortedHits = hits.sort(
         (left, right) =>
           right.score - left.score ||
           (authorityOrder.get(left.recordId) ?? Number.MAX_SAFE_INTEGER) -
@@ -1458,6 +1556,9 @@ export function createContextMapRlmRepository(
           (left.pointer.byteStart ?? 0) - (right.pointer.byteStart ?? 0) ||
           (left.pointer.byteEnd ?? 0) - (right.pointer.byteEnd ?? 0),
       );
+      const candidates = sortedHits.slice(0, MAX_CONTEXT_MAP_SEARCH_RESULTS);
+      rememberSearchPointerCandidates(candidates, scope);
+      return candidates;
     },
     async readSource(record, signal) {
       const authority = authorityByRecordId.get(record.id);
@@ -1507,6 +1608,26 @@ export function createContextMapRlmRepository(
         kind: 'text',
         contentSample: sample.content,
       }).allowed;
+    },
+    validatePointer(pointer, record, source, scope, signal) {
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      if (
+        pointer.recordId !== record.id ||
+        pointer.byteStart === undefined ||
+        pointer.byteEnd === undefined ||
+        pointer.id !== `ptr:${record.id}:${pointer.byteStart}:${pointer.byteEnd}` ||
+        pointer.sourceVersion !== source.sourceVersion ||
+        pointer.contentHash !== source.contentHash
+      ) {
+        return false;
+      }
+      return issuedPointerCapabilities.has(
+        issuedPointerCapabilityKey(validateContextScope(scope), pointer, record, source),
+      );
+    },
+    issuePointers(items, scope, signal) {
+      if (signal?.aborted) return false;
+      return issuePointerCapabilities(items, scope);
     },
     async relatedRecordIds(recordId) {
       const authority = authorityByRecordId.get(recordId);
@@ -1597,20 +1718,15 @@ function synthesizeEvidencePack(request: RlmSynthesisRequest) {
   return Promise.resolve({ answer, citations });
 }
 
-export function createProductionRlmContextTool() {
-  const contextMapRepository = createContextMapRlmRepository({
-    loadMaps: (projectId) =>
-      loadPersistedContextMaps(projectId) as unknown as Promise<readonly ProductionContextMap[]>,
-    stat: statProjectPath,
-    read: readTextFileSample,
-    lexicalSearch: createTauriContextLexicalSearchExecutor(),
-  });
-  const historyRepository = createHistoryRlmRepository({ load: loadProductionRlmHistory });
+export function createProductionFederatedRlmRepository(
+  contextMapRepository: ContextQueryRepository,
+  historyRepository: ContextQueryRepository,
+): ContextQueryRepository {
   const federatedRepository = createFederatedRlmRepository([
     contextMapRepository,
     historyRepository,
   ]);
-  const repository: ContextQueryRepository = {
+  return {
     ...federatedRepository,
     search(scope, query, signal) {
       // Explicit file/source questions must not be answered from previous chat
@@ -1620,7 +1736,46 @@ export function createProductionRlmContextTool() {
         ? contextMapRepository.search(scope, query, signal)
         : federatedRepository.search(scope, query, signal);
     },
+    async validatePointer(pointer, record, source, scope, signal) {
+      const mappedRecord = await contextMapRepository.getRecord(record.id, signal);
+      if (mappedRecord) {
+        if (
+          JSON.stringify(mappedRecord) !== JSON.stringify(record) ||
+          !contextMapRepository.validatePointer
+        ) {
+          return false;
+        }
+        return contextMapRepository.validatePointer(pointer, record, source, scope, signal);
+      }
+      const historyRecord = await historyRepository.getRecord(record.id, signal);
+      if (!historyRecord || JSON.stringify(historyRecord) !== JSON.stringify(record)) {
+        return false;
+      }
+      return historyRepository.validatePointer
+        ? historyRepository.validatePointer(pointer, record, source, scope, signal)
+        : true;
+    },
+    issuePointers(items, scope, signal) {
+      return contextMapRepository.issuePointers
+        ? contextMapRepository.issuePointers(items, scope, signal)
+        : true;
+    },
   };
+}
+
+export function createProductionRlmContextTool() {
+  const contextMapRepository = createContextMapRlmRepository({
+    loadMaps: (projectId) =>
+      loadPersistedContextMaps(projectId) as unknown as Promise<readonly ProductionContextMap[]>,
+    stat: statProjectPath,
+    read: readTextFileSample,
+    lexicalSearch: createTauriContextLexicalSearchExecutor(),
+  });
+  const historyRepository = createHistoryRlmRepository({ load: loadProductionRlmHistory });
+  const repository = createProductionFederatedRlmRepository(
+    contextMapRepository,
+    historyRepository,
+  );
   const queryService = createContextQueryService({
     repository,
     limits: {

@@ -36,6 +36,18 @@ export interface ContextQueryRepository {
   ): Promise<readonly ContextSearchHit[]>;
   readSource(record: ContextRecord, signal?: AbortSignal): Promise<ContextSourceRead | undefined>;
   canOpen(record: ContextRecord, scope: ContextScope, signal?: AbortSignal): Promise<boolean>;
+  validatePointer?(
+    pointer: ContextPointer,
+    record: ContextRecord,
+    source: ContextSourceRead,
+    scope: ContextScope,
+    signal?: AbortSignal,
+  ): boolean | Promise<boolean>;
+  issuePointers?(
+    items: readonly ContextSearchItem[],
+    scope: ContextScope,
+    signal?: AbortSignal,
+  ): boolean;
   relatedRecordIds?(recordId: string, signal?: AbortSignal): Promise<readonly string[]>;
 }
 
@@ -53,6 +65,7 @@ export type ContextQueryErrorCode =
   | 'record_missing'
   | 'source_missing'
   | 'source_stale'
+  | 'pointer_invalid'
   | 'continuation_invalid'
   | 'query_invalid';
 
@@ -141,7 +154,10 @@ function byteRangeForPointer(
 } {
   const bounds = pointerBounds(pointer);
   if (bounds.kind === 'bytes') {
-    return { start: Math.min(bounds.start, bytes.length), end: Math.min(bounds.end, bytes.length) };
+    if (bounds.start >= bytes.length || bounds.end > bytes.length) {
+      throw new ContextQueryError('pointer_invalid');
+    }
+    return { start: bounds.start, end: bounds.end };
   }
   const newlineOffsets = [0];
   for (let index = 0; index < bytes.length; index += 1) {
@@ -249,6 +265,7 @@ export function createContextQueryService(dependencies: {
     pointer: ContextPointer,
     scope: ContextScope,
     signal?: AbortSignal,
+    validatePointer = true,
   ) => {
     const record = await resolveRecord(pointer.recordId, scope, signal);
     if (!(await repository.canOpen(record, scope, signal))) {
@@ -265,6 +282,12 @@ export function createContextQueryService(dependencies: {
     ) {
       throw new ContextQueryError('source_stale');
     }
+    if (validatePointer && repository.validatePointer) {
+      const valid = await repository.validatePointer(pointer, record, source, scope, signal);
+      abortIfNeeded(signal);
+      if (!valid) throw new ContextQueryError('pointer_invalid');
+    }
+    abortIfNeeded(signal);
     return { record, source };
   };
 
@@ -326,6 +349,14 @@ export function createContextQueryService(dependencies: {
       });
     }
     const hasMore = cursor < permitted.length;
+    abortIfNeeded(input.signal);
+    if (
+      items.length > 0 &&
+      repository.issuePointers &&
+      !repository.issuePointers(items, input.scope, input.signal)
+    ) {
+      throw new ContextQueryError('pointer_invalid');
+    }
     return {
       items,
       truncated: hasMore,
@@ -345,13 +376,16 @@ export function createContextQueryService(dependencies: {
     };
   };
 
-  const open = async (input: {
-    scope: ContextScope;
-    pointer: ContextPointer;
-    continuation?: string;
-    maxBytes?: number;
-    signal?: AbortSignal;
-  }): Promise<ContextOpenResult> => {
+  const openResolved = async (
+    input: {
+      scope: ContextScope;
+      pointer: ContextPointer;
+      continuation?: string;
+      maxBytes?: number;
+      signal?: AbortSignal;
+    },
+    validatePointer: boolean,
+  ): Promise<ContextOpenResult> => {
     abortIfNeeded(input.signal);
     const continued = takeContinuation(input.continuation, 'open');
     if (
@@ -361,7 +395,12 @@ export function createContextQueryService(dependencies: {
       throw new ContextQueryError('continuation_invalid');
     }
     const pointer = continued?.pointer ?? input.pointer;
-    const { record, source } = await readAuthority(pointer, input.scope, input.signal);
+    const { record, source } = await readAuthority(
+      pointer,
+      input.scope,
+      input.signal,
+      validatePointer,
+    );
     const requested = byteRangeForPointer(pointer, source.bytes);
     const start = continued?.nextByte ?? requested.start;
     const requestedEnd = continued?.requestedEnd ?? requested.end;
@@ -400,6 +439,14 @@ export function createContextQueryService(dependencies: {
     };
   };
 
+  const open = async (input: {
+    scope: ContextScope;
+    pointer: ContextPointer;
+    continuation?: string;
+    maxBytes?: number;
+    signal?: AbortSignal;
+  }): Promise<ContextOpenResult> => openResolved(input, true);
+
   const expand = async (input: {
     scope: ContextScope;
     pointer: ContextPointer;
@@ -419,7 +466,7 @@ export function createContextQueryService(dependencies: {
       byteStart: Math.max(0, range.start - before),
       byteEnd: Math.min(source.bytes.length, range.end + after),
     });
-    return open({ scope: input.scope, pointer: expanded, signal: input.signal });
+    return openResolved({ scope: input.scope, pointer: expanded, signal: input.signal }, false);
   };
 
   const sources = async (input: { scope: ContextScope; limit?: number; signal?: AbortSignal }) => {

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { VibeSpaceHarness } from '@/lib/harness/types';
+import { createContextQueryService } from './contextQueryService';
+import { createContextPointer } from './losslessContext';
 import {
   createContextMapRlmRepository,
   createOllamaRlmChildRunner,
+  createProductionFederatedRlmRepository,
   requestsMappedFileAuthority,
 } from './contextRlmProduction';
 
@@ -1469,7 +1472,7 @@ describe('production Context Map RLM repository', () => {
       'C:\\repo\\0001-pg9999.txt':
         'A neighboring relay handoff has part one, part two, a phrase, a receiving clerk, and an answer.',
     };
-    const repository = createContextMapRlmRepository({
+    const dependencies = {
       loadMaps: vi.fn(async () => fixtureMaps),
       stat: vi.fn(async (path) => ({
         ok: true as const,
@@ -1507,12 +1510,24 @@ describe('production Context Map RLM repository', () => {
           score: 500,
         },
       ]),
-    });
+    };
+    const repository = createContextMapRlmRepository(dependencies);
 
-    const hits = await repository.search(
-      { accountId: 'account-1', projectId: 'project-1' },
-      'the orbit relay handoff is split between neighboring files — what phrase was left in part one and what answer did the receiving clerk give in part two? show both files',
+    const productionFederatedRepository = createProductionFederatedRlmRepository(
+      repository,
+      repository,
     );
+    const service = createContextQueryService({ repository: productionFederatedRepository });
+    const q3Scope = { accountId: 'account-1', projectId: 'project-1' };
+    const q3Query =
+      'the orbit relay handoff is split between neighboring files — what phrase was left in part one and what answer did the receiving clerk give in part two? show both files';
+    const unpublishedRepositoryHits = await repository.search(q3Scope, q3Query);
+    const firstPage = await service.search({
+      scope: q3Scope,
+      query: q3Query,
+      limit: 3,
+    });
+    const hits = firstPage.items;
 
     expect(hits.slice(0, 3).map((hit) => hit.preview)).toEqual(
       expect.arrayContaining([
@@ -1526,6 +1541,169 @@ describe('production Context Map RLM repository', () => {
     expect(hits.find((hit) => hit.preview.includes('0051-orbit.txt'))?.preview).toContain(
       'harbor-saffron',
     );
+
+    const left = hits.find((hit) => hit.preview.includes('0050-orbit.txt'))!;
+    const right = hits.find((hit) => hit.preview.includes('0051-orbit.txt'))!;
+    expect(left.pointer.id).toBe(
+      `ptr:${left.record.id}:${left.pointer.byteStart}:${left.pointer.byteEnd}`,
+    );
+    expect(right.pointer.id).toBe(
+      `ptr:${right.record.id}:${right.pointer.byteStart}:${right.pointer.byteEnd}`,
+    );
+    expect(right.pointer).not.toEqual(left.pointer);
+
+    await expect(
+      service.expand({
+        scope: q3Scope,
+        pointer: right.pointer,
+        beforeBytes: 16,
+      }),
+    ).resolves.toMatchObject({
+      text: expect.stringContaining('harbor-saffron'),
+    });
+    const hybrid = createContextPointer({
+      ...right.pointer,
+      id: left.pointer.id,
+    });
+    await expect(
+      service.expand({
+        scope: q3Scope,
+        pointer: hybrid,
+        beforeBytes: 16,
+      }),
+    ).rejects.toMatchObject({ code: 'pointer_invalid' });
+
+    const alternateSourceSpan = createContextPointer({
+      ...right.pointer,
+      byteStart: left.pointer.byteStart,
+      byteEnd: left.pointer.byteEnd,
+      id: `ptr:${right.record.id}:${left.pointer.byteStart}:${left.pointer.byteEnd}`,
+    });
+    await expect(
+      service.expand({
+        scope: q3Scope,
+        pointer: alternateSourceSpan,
+        beforeBytes: 16,
+      }),
+    ).rejects.toMatchObject({ code: 'pointer_invalid' });
+
+    const hiddenHit = unpublishedRepositoryHits.find(
+      (candidate) => !hits.some((item) => item.pointer.id === candidate.pointer.id),
+    )!;
+    await expect(
+      service.open({
+        scope: q3Scope,
+        pointer: hiddenHit.pointer,
+      }),
+    ).rejects.toMatchObject({ code: 'pointer_invalid' });
+    const continuationPage = await service.search({
+      scope: q3Scope,
+      query: q3Query,
+      limit: 3,
+      continuation: firstPage.continuation,
+    });
+    expect(continuationPage.items.some((item) => item.pointer.id === hiddenHit.pointer.id)).toBe(
+      true,
+    );
+    await expect(
+      service.open({
+        scope: q3Scope,
+        pointer: hiddenHit.pointer,
+      }),
+    ).resolves.toMatchObject({ status: 'current' });
+
+    const forgedInBoundsStart = right.pointer.byteStart! + 1;
+    const forgedInBounds = createContextPointer({
+      ...right.pointer,
+      byteStart: forgedInBoundsStart,
+      id: `ptr:${right.record.id}:${forgedInBoundsStart}:${right.pointer.byteEnd}`,
+    });
+    await expect(
+      service.expand({
+        scope: q3Scope,
+        pointer: forgedInBounds,
+        beforeBytes: 16,
+      }),
+    ).rejects.toMatchObject({ code: 'pointer_invalid' });
+
+    const freshRepository = createContextMapRlmRepository(dependencies);
+    const freshService = createContextQueryService({ repository: freshRepository });
+    await expect(
+      freshService.expand({
+        scope: { accountId: 'account-1', projectId: 'project-1' },
+        pointer: right.pointer,
+        beforeBytes: 16,
+      }),
+    ).rejects.toMatchObject({ code: 'pointer_invalid' });
+
+    const freshHits = (
+      await freshService.search({
+        scope: q3Scope,
+        query: q3Query,
+        limit: 3,
+      })
+    ).items;
+    const reissuedRight = freshHits.find((hit) => hit.preview.includes('0051-orbit.txt'))!;
+    expect(reissuedRight.pointer).toEqual(right.pointer);
+    const repeatedConcurrentPointers = await Promise.all(
+      Array.from({ length: 5 }, async () => {
+        const repeatedHits = await freshService.search({
+          scope: q3Scope,
+          query: q3Query,
+          limit: 3,
+        });
+        return repeatedHits.items.map((hit) => hit.pointer);
+      }),
+    );
+    expect(repeatedConcurrentPointers).toEqual(
+      Array.from({ length: 5 }, () => freshHits.map((hit) => hit.pointer)),
+    );
+    await expect(
+      freshService.expand({
+        scope: q3Scope,
+        pointer: reissuedRight.pointer,
+        beforeBytes: 16,
+      }),
+    ).resolves.toMatchObject({
+      text: expect.stringContaining('harbor-saffron'),
+    });
+
+    const atomicRepository = createContextMapRlmRepository(dependencies);
+    const atomicHits = await atomicRepository.search(q3Scope, q3Query);
+    const atomicRight = atomicHits.find((hit) => hit.preview.includes('0051-orbit.txt'))!;
+    const atomicRecord = (await atomicRepository.getRecord(atomicRight.recordId))!;
+    const atomicForgedStart = atomicRight.pointer.byteStart! + 1;
+    const atomicForgedPointer = createContextPointer({
+      ...atomicRight.pointer,
+      byteStart: atomicForgedStart,
+      id: `ptr:${atomicRight.recordId}:${atomicForgedStart}:${atomicRight.pointer.byteEnd}`,
+    });
+    expect(
+      atomicRepository.issuePointers!(
+        [
+          {
+            record: atomicRecord,
+            pointer: atomicRight.pointer,
+            preview: atomicRight.preview,
+            score: atomicRight.score,
+          },
+          {
+            record: atomicRecord,
+            pointer: atomicForgedPointer,
+            preview: atomicRight.preview,
+            score: atomicRight.score,
+          },
+        ],
+        q3Scope,
+      ),
+    ).toBe(false);
+    const atomicService = createContextQueryService({ repository: atomicRepository });
+    await expect(
+      atomicService.open({
+        scope: q3Scope,
+        pointer: atomicRight.pointer,
+      }),
+    ).rejects.toMatchObject({ code: 'pointer_invalid' });
   });
 
   it('boosts only exact mapped leaf tokens and never root-path substrings', async () => {

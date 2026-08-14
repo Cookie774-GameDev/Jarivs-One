@@ -386,6 +386,9 @@ function renderCapabilities(
             ? [
                 'For this explicit mandatory physical-evidence turn, complete exactly five `operation="search"` calls with `limit=3`, then exactly six `operation="expand"` calls before answering.',
                 'Search previews are insufficient. Use one exact returned pointer for each of the six named cited sources, no more than two evidence calls per question and one retrieval per cited source.',
+                'Use search previews only to select pointers; expansions are the only physical evidence for the final answer. For each required source, choose exactly one current, non-`STATUS SUPERSEDED_UNTRUSTED` search-result row whose filename and preview are semantically responsive to the corresponding numbered question.',
+                'A matching filename, recordId, sourceVersion, contentHash, or score alone is insufficient. Copy the complete pointer object from that single row byte-for-byte as one atomic value; never reconstruct it or mix its id, recordId, byte range, sourceVersion, or contentHash with fields from another row.',
+                'If a required source has no unique eligible row, output FAIL without making a replacement search, open, or expand call.',
                 'For every actual expansion argument object, supply only `beforeBytes=256`; the caller-declared `afterBytes=0` is an omission sentinel and must be omitted entirely rather than sent as zero.',
                 'Never substitute `open`, `address`, an additional whole-request search, or another tool. Keep aggregate expanded physical text within 24 KiB and fail instead of inferring missing provenance.',
               ]
