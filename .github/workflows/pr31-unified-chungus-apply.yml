@@ -69,6 +69,32 @@ jobs:
           diff -u "$expected" "$actual"
 
           tar -xJf "$payload_tar" -C .
+
+          # TypeScript 5.9 narrows BlobPart to ArrayBuffer-backed views. The
+          # recovered implementation always owns a fresh ArrayBuffer; express
+          # that invariant explicitly without changing playback behavior.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/features/voice/audioPlayback.ts')
+          text = path.read_text()
+          allocation = '  const bytes = new Uint8Array(bin.length);'
+          blob_line = '  return new Blob([bytes], { type: mime });'
+          if allocation not in text or blob_line not in text:
+              raise SystemExit('audioPlayback compatibility target not found')
+          text = text.replace(
+              allocation,
+              '  const buffer = new ArrayBuffer(bin.length);\n'
+              '  const bytes = new Uint8Array(buffer);',
+              1,
+          )
+          text = text.replace(
+              blob_line,
+              '  return new Blob([buffer], { type: mime });',
+              1,
+          )
+          path.write_text(text)
+          PY
+
           git diff --check
           test -z "$(git status --short -- install/install.ps1)"
 
