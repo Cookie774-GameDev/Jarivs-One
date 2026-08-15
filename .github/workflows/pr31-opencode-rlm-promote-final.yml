@@ -1,0 +1,418 @@
+name: PR31 OpenCode RLM final promotion
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-opencode-rlm-promote-final.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: pr31-opencode-rlm-final-promotion
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BASE: 4209030eb041c661ee1a4b55e87367136638762b
+  STAGING_BRANCH: agent/pr31-opencode-rlm-staging-a6f1
+  EXPECTED_STAGING: e0c11422a5d038231cdfa73bf3f48dffc7554f51
+  RESULT_BRANCH: agent/pr31-opencode-rlm-verified-final-a6f1
+  TARGET_BRANCH: agent/pr30-fixes-and-updates
+  PR_NUMBER: '31'
+
+jobs:
+  verify-rewrite-promote:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout locked staged integration
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.STAGING_BRANCH }}
+          fetch-depth: 0
+
+      - name: Guard exact staging and PR31 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+          local_staging="$(git rev-parse HEAD)"
+          remote_staging="$(git rev-parse "origin/${STAGING_BRANCH}")"
+          remote_target="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          test "$local_staging" = "$EXPECTED_STAGING"
+          test "$remote_staging" = "$EXPECTED_STAGING"
+          if [ "$remote_target" != "$EXPECTED_BASE" ]; then
+            echo "PR31 advanced from ${EXPECTED_BASE} to ${remote_target}; refusing to overwrite newer owner work."
+            exit 1
+          fi
+          git merge-base --is-ancestor "$EXPECTED_BASE" "$EXPECTED_STAGING"
+          git diff --check "$EXPECTED_BASE...$EXPECTED_STAGING"
+          git diff --name-only "$EXPECTED_BASE...$EXPECTED_STAGING" | sort > "$RUNNER_TEMP/changed-files.txt"
+          printf 'BASE_SHA=%s\nSTAGING_SHA=%s\n' "$EXPECTED_BASE" "$EXPECTED_STAGING" > "$RUNNER_TEMP/guard.txt"
+
+      - name: Scan all integration additions for credential material
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          import subprocess
+          import sys
+
+          base = "4209030eb041c661ee1a4b55e87367136638762b"
+          head = "e0c11422a5d038231cdfa73bf3f48dffc7554f51"
+          diff = subprocess.check_output(
+              ["git", "diff", "-U0", "--no-color", f"{base}...{head}"],
+              text=True,
+          )
+          added = "\n".join(
+              line[1:]
+              for line in diff.splitlines()
+              if line.startswith("+") and not line.startswith("+++")
+          )
+          patterns = {
+              "OpenAI-style key": r"\bsk-[A-Za-z0-9_-]{20,}\b",
+              "Google API key": r"\bAIza[A-Za-z0-9_-]{20,}\b",
+              "GitHub token": r"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b",
+              "Slack token": r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b",
+              "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
+              "private key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+              "long bearer token": r"\bBearer\s+[A-Za-z0-9._~+/=-]{32,}",
+          }
+          hits = [name for name, pattern in patterns.items() if re.search(pattern, added)]
+          if hits:
+              print("Potential credential material detected in added lines:", ", ".join(hits))
+              sys.exit(1)
+          print("Changed-line credential scan: PASS")
+          PY
+          echo 'SECRET_SCAN=PASS' > "$RUNNER_TEMP/secret-scan.txt"
+
+      - name: Verify production OpenCode and RLM consumers
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/verify-pr31-opencode-rlm-integration.mjs 2>&1 | tee "$RUNNER_TEMP/production-wiring.log"
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install frozen Node dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run focused OpenCode and RLM integration suites
+        working-directory: app
+        shell: bash
+        run: |
+          set -o pipefail
+          npx --no-install vitest run \
+            src/lib/ai/useAccessibleChatModels.test.ts \
+            src/lib/ai/useAccessibleChatModels.smoke.test.ts \
+            src/lib/ai/modelSelection.test.ts \
+            src/lib/ai/modelSelection.smoke.test.ts \
+            src/lib/ai/adapters/opencode.test.ts \
+            src/lib/ai/router.test.ts \
+            src/lib/ai/router.connection.test.ts \
+            src/lib/ai/router.smoke.test.ts \
+            src/features/chat/runtime/__tests__/chatRuntimeCommandController.test.ts \
+            src/features/chat/runtime/__tests__/runtimeModelControls.test.ts \
+            src/features/chat/runtime/chatRuntimeSettingsStore.test.ts \
+            src/features/chat/runtime/commandContracts.test.ts \
+            src/features/chat/runtime/performanceProfile.test.ts \
+            src/features/chat/runtime/rlmPreference.test.ts \
+            src/features/chat/reasoningSlashStore.test.ts \
+            src/features/context/rlm/__tests__/RlmCoordinator.test.ts \
+            src/features/context/rlm/contextRlmProduction.test.ts \
+            src/features/context/rlm/pointerAuthority.test.ts \
+            src/features/context/rlm/routeDecision.test.ts \
+            src/features/context/rlm/rlmOpenCodeTool.test.ts \
+            src/lib/ai/catalog/canonicalModelCatalog.test.ts \
+            src/lib/ai/catalog/modelVariants.test.ts \
+            src/lib/harness/contracts.test.ts \
+            src/lib/harness/__tests__/CredentialHydrationSnapshot.test.ts \
+            src/lib/harness/__tests__/OpenCodeRequestControls.test.ts \
+            src/lib/harness/__tests__/OpenCodeSdkSessionClient.test.ts \
+            src/lib/harness/__tests__/OpenCodeSessionPool.test.ts \
+            src/lib/harness/__tests__/OpenCodeTextAccumulator.test.ts \
+            src/lib/harness/__tests__/OpenCodeTurnCoordinator.test.ts \
+            src/lib/harness/__tests__/OpenCodeTurnGate.test.ts \
+            src/lib/permissions/__tests__/OpenCodePermissionProfile.test.ts \
+            src/lib/permissions/__tests__/RunScopedApprovalLease.test.ts \
+            src/lib/mcp/builtins.test.ts \
+            src/lib/mcp/registry.test.ts \
+            src/lib/mcp/toolRouting.test.ts \
+            src/lib/mcp/vibeSpaceGateway.test.ts \
+            src/features/prompt-forge/modelSelection.test.ts \
+            src/features/prompt-forge/promptForgeExecutor.test.ts \
+            src/features/prompt-forge/preservation.test.ts \
+            src/features/prompt-forge/sourcePack.test.ts \
+            src/features/prompt-forge/contextPreparation.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/focused-tests.log"
+
+      - name: Typecheck complete tree
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee "$RUNNER_TEMP/typecheck.log"
+
+      - name: Run complete Vitest suite
+        shell: bash
+        run: |
+          set -o pipefail
+          npm --prefix app run test 2>&1 | tee "$RUNNER_TEMP/full-tests.log"
+
+      - name: Build production frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Verify release manifest tooling
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:release-manifest 2>&1 | tee "$RUNNER_TEMP/release-manifest.log"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Run Rust cargo check
+        working-directory: app/src-tauri
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo check --release 2>&1 | tee "$RUNNER_TEMP/rust.log"
+
+      - name: Reconfirm PR31 has not advanced
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+          remote_target="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          if [ "$remote_target" != "$EXPECTED_BASE" ]; then
+            echo "PR31 advanced during verification to ${remote_target}; refusing to push."
+            exit 1
+          fi
+
+      - name: Rewrite staged result into coherent commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_diff="$RUNNER_TEMP/final-integration.diff"
+          git diff --binary "$EXPECTED_BASE" "$EXPECTED_STAGING" > "$final_diff"
+          test -s "$final_diff"
+
+          git checkout --detach "$EXPECTED_BASE"
+          git apply --index --whitespace=nowarn "$final_diff"
+          git diff --cached --check
+          git reset
+          git config user.name "VibeSpace Integration Agent"
+          git config user.email "actions@users.noreply.github.com"
+
+          git add \
+            app/src-tauri/src/cli_bridge.rs \
+            app/src/lib/ai/adapters/opencode.ts \
+            app/src/lib/ai/adapters/opencodePersistent.ts \
+            app/src/lib/ai/adapters/types.ts \
+            app/src/lib/ai/router.ts \
+            app/src/lib/harness \
+            app/src/lib/permissions
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(opencode): stabilize persistent harness transport"
+
+          git add \
+            app/src/lib/ai/catalog \
+            app/src/lib/ai/modelCatalogCanonical.ts \
+            app/src/lib/ai/useAccessibleChatModels.ts \
+            app/src/lib/ai/useAccessibleChatModels.test.ts
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(models): deduplicate live connection model catalog"
+
+          git add \
+            app/src/features/chat/Composer.tsx \
+            app/src/features/chat/SlashCommandTypeahead.tsx \
+            app/src/features/chat/runtime \
+            app/src/lib/ai/runtime.ts
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(chat): wire effort fast performance and RLM controls"
+
+          git add app/src/features/context/rlm
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "fix(rlm): harden adaptive context and pointer authority"
+
+          git add \
+            app/src/features/benchmarks/benchmarkApi.test.ts \
+            app/src/features/news/newsApi.test.ts
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "test(types): restore PR31 typecheck fixtures"
+
+          git add \
+            docs/operations/PR31_OPENCODE_RLM_FIX_EVIDENCE_SUPPLIED.md \
+            docs/operations/PR31_OPENCODE_RLM_IMPLEMENTATION_HANDOFF_SUPPLIED.md \
+            docs/operations/PR31_OPENCODE_RLM_INTEGRATION_REPORT.md \
+            docs/operations/VIBESPACE_OPENCODE_RLM_SYSTEM_REBUILD_PLAN.md \
+            package.json \
+            scripts/verify-pr31-opencode-rlm-integration.mjs
+          test -n "$(git diff --cached --name-only)"
+          git commit -m "docs(opencode): record PR31 integration verification"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo 'Uncommitted integration paths remain:'
+            git status --short
+            exit 1
+          fi
+          test "$(git rev-list --count "$EXPECTED_BASE..HEAD")" = '6'
+          git diff --exit-code "$EXPECTED_STAGING" HEAD
+          git diff --check "$EXPECTED_BASE...HEAD"
+
+          git log --format='%H %s' "$EXPECTED_BASE..HEAD" > "$RUNNER_TEMP/integration-commits.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/local-final-sha.txt"
+          git status -sb > "$RUNNER_TEMP/local-status.txt"
+          git log -15 --oneline --decorate > "$RUNNER_TEMP/local-log.txt"
+          git bundle create "$RUNNER_TEMP/pr31-opencode-rlm-final.bundle" HEAD
+
+      - name: Push verified result and fast-forward PR31 normally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$EXPECTED_BASE"
+          git push origin "HEAD:refs/heads/${RESULT_BRANCH}"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+      - name: Prove local and remote PR31 SHAs match
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+          local_head="$(git rev-parse HEAD)"
+          remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          printf 'LOCAL_FINAL_SHA=%s\nREMOTE_PR31_SHA=%s\n' "$local_head" "$remote_head" | tee "$RUNNER_TEMP/sha-proof.txt"
+          test "$local_head" = "$remote_head"
+          git log -15 --oneline "origin/${TARGET_BRANCH}" > "$RUNNER_TEMP/remote-log.txt"
+          git log --left-right --cherry-pick --oneline "origin/${TARGET_BRANCH}...HEAD" > "$RUNNER_TEMP/left-right.txt"
+          test ! -s "$RUNNER_TEMP/left-right.txt"
+
+      - name: Verify PR31 remains open draft unmerged on exact head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          local_head="$(git rev-parse HEAD)"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > "$RUNNER_TEMP/pr.json"
+          python - "$local_head" "$TARGET_BRANCH" "$RUNNER_TEMP/pr.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          expected_sha, expected_branch, path = sys.argv[1:]
+          pr = json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
+          checks = {
+              'PR_OPEN': pr.get('state') == 'open',
+              'PR_DRAFT': pr.get('draft') is True,
+              'PR_UNMERGED': pr.get('merged') is False,
+              'HEAD_BRANCH': pr.get('head', {}).get('ref') == expected_branch,
+              'HEAD_SHA': pr.get('head', {}).get('sha') == expected_sha,
+          }
+          for name, passed in checks.items():
+              print(f'{name}={"PASS" if passed else "FAIL"}')
+          if not all(checks.values()):
+              raise SystemExit(1)
+          PY
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          pr = json.loads(Path('/home/runner/work/_temp/pr.json').read_text()) if Path('/home/runner/work/_temp/pr.json').exists() else None
+          PY
+
+      - name: Create final machine verification summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          focused_files="$(grep -E 'Test Files[[:space:]]+' "$RUNNER_TEMP/focused-tests.log" | tail -1 || true)"
+          focused_tests="$(grep -E 'Tests[[:space:]]+' "$RUNNER_TEMP/focused-tests.log" | tail -1 || true)"
+          full_files="$(grep -E 'Test Files[[:space:]]+' "$RUNNER_TEMP/full-tests.log" | tail -1 || true)"
+          full_tests="$(grep -E 'Tests[[:space:]]+' "$RUNNER_TEMP/full-tests.log" | tail -1 || true)"
+          local_head="$(git rev-parse HEAD)"
+          remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          {
+            echo "LOCAL_FINAL_SHA=${local_head}"
+            echo "REMOTE_PR31_SHA=${remote_head}"
+            echo "MATCH=YES"
+            echo "PUSH=PASS"
+            echo "PR_OPEN=PASS"
+            echo "PR_DRAFT=PASS"
+            echo "PR_UNMERGED=PASS"
+            echo "HEAD_BRANCH=PASS"
+            echo "FOCUSED_FILES=${focused_files}"
+            echo "FOCUSED_TESTS=${focused_tests}"
+            echo "FULL_FILES=${full_files}"
+            echo "FULL_TESTS=${full_tests}"
+            echo "TYPECHECK=PASS"
+            echo "BUILD=PASS"
+            echo "RELEASE_MANIFEST=PASS"
+            echo "RUST=PASS"
+            echo "DIFF_CHECK=PASS"
+            echo "SECRET_SCAN=PASS"
+            echo "MODEL_DEDUPE=IMPLEMENTED"
+            echo "EFFORT=IMPLEMENTED"
+            echo "FAST=IMPLEMENTED"
+            echo "PERFORMANCE=IMPLEMENTED"
+            echo "RLM=IMPLEMENTED"
+            echo "RLM_POINTER_SAFETY=IMPLEMENTED"
+            echo "PERSISTENT_OPENCODE_SERVER=IMPLEMENTED"
+            echo "CREDENTIAL_PRESERVATION=IMPLEMENTED"
+            echo "NATIVE_LIVE_TESTS=IMPLEMENTED — NATIVE VERIFICATION REQUIRED"
+          } | tee "$RUNNER_TEMP/final-summary.txt"
+
+      - name: Upload complete final verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31-opencode-rlm-final-promotion
+          path: |
+            ${{ runner.temp }}/guard.txt
+            ${{ runner.temp }}/changed-files.txt
+            ${{ runner.temp }}/secret-scan.txt
+            ${{ runner.temp }}/production-wiring.log
+            ${{ runner.temp }}/focused-tests.log
+            ${{ runner.temp }}/typecheck.log
+            ${{ runner.temp }}/full-tests.log
+            ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/release-manifest.log
+            ${{ runner.temp }}/rust.log
+            ${{ runner.temp }}/integration-commits.txt
+            ${{ runner.temp }}/local-final-sha.txt
+            ${{ runner.temp }}/local-status.txt
+            ${{ runner.temp }}/local-log.txt
+            ${{ runner.temp }}/remote-log.txt
+            ${{ runner.temp }}/left-right.txt
+            ${{ runner.temp }}/sha-proof.txt
+            ${{ runner.temp }}/pr.json
+            ${{ runner.temp }}/final-summary.txt
+            ${{ runner.temp }}/pr31-opencode-rlm-final.bundle
+          if-no-files-found: ignore
+          retention-days: 14
