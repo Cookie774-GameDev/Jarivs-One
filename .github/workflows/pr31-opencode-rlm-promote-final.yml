@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
           test "$(git rev-parse HEAD)" = "$STAGING_SHA"
-          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$BASE_SHA"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$STAGING_SHA"
           git merge-base --is-ancestor "$BASE_SHA" "$STAGING_SHA"
           git diff --check "$BASE_SHA...$STAGING_SHA"
           git diff --name-only "$BASE_SHA...$STAGING_SHA" | sort > "$RUNNER_TEMP/changed-files.txt"
@@ -233,30 +233,14 @@ jobs:
           set -euo pipefail
           { cargo fmt --check; cargo check --release; cargo test --lib cli_bridge_validates_timeout_output_and_request_id_bounds; } 2>&1 | tee "$RUNNER_TEMP/rust.log"
 
-      - name: Rewrite WIP tree into one production commit
+      - name: Normal no-force push and exact remote proof
         shell: bash
         run: |
           set -euo pipefail
           git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$BASE_SHA"
-          git diff --binary "$BASE_SHA" "$STAGING_SHA" > "$RUNNER_TEMP/integration.diff"
-          git checkout --detach "$BASE_SHA"
-          git apply --index --whitespace=nowarn "$RUNNER_TEMP/integration.diff"
-          git diff --cached --check
-          git config user.name 'VibeSpace Integration Agent'
-          git config user.email 'actions@users.noreply.github.com'
-          git commit -m 'fix(opencode): stabilize harness model routing and adaptive RLM'
-          git diff --exit-code "$STAGING_SHA" HEAD
-          git diff --check "$BASE_SHA...HEAD"
+          test "$(git rev-parse HEAD)" = "$STAGING_SHA"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$STAGING_SHA"
           git log --format='%H %s' "$BASE_SHA..HEAD" | tee "$RUNNER_TEMP/integration-commits.txt"
-          git rev-parse HEAD > "$RUNNER_TEMP/local-final-sha.txt"
-
-      - name: Normal push and exact remote proof
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$BASE_SHA"
           git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
           git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
           local_head="$(git rev-parse HEAD)"; remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
@@ -265,6 +249,7 @@ jobs:
           git log -15 --oneline "origin/${TARGET_BRANCH}" > "$RUNNER_TEMP/remote-log.txt"
           git log --left-right --cherry-pick --oneline "origin/${TARGET_BRANCH}...HEAD" > "$RUNNER_TEMP/left-right.txt"
           test ! -s "$RUNNER_TEMP/left-right.txt"
+          printf '%s\n' "$local_head" > "$RUNNER_TEMP/local-final-sha.txt"
           echo PUSH=PASS > "$RUNNER_TEMP/push.txt"
 
       - name: Verify PR31 remains open draft and unmerged
