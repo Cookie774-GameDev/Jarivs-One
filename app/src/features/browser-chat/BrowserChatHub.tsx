@@ -45,7 +45,12 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
 import type { ProviderSurfaceNavigation } from './providerSurface';
-import { migrateLegacyBrowserChatPreferences, useBrowserChatStore } from './browserChatStore';
+import {
+  browserChatStore,
+  findExclusiveBrowserChatId,
+  migrateLegacyBrowserChatPreferences,
+  useBrowserChatStore,
+} from './browserChatStore';
 import { BROWSER_CHAT_PROVIDERS, browserChatProvider } from './providerRegistry';
 import { browserChatSurface } from './providerSurface';
 import { buildBrowserAgentPrompt } from './browserAgentPrompt';
@@ -631,6 +636,13 @@ export function BrowserChatHub({
   };
 
   const createBrowserChat = async () => {
+    const existingId = findExclusiveBrowserChatId(browserChatStore.getState(), provider.id);
+    if (existingId) {
+      setProvider(provider.id, existingId);
+      setEngine('browser', existingId);
+      setActiveChat(existingId as ChatId);
+      return;
+    }
     const nextId = await createChat({
       forceNew: true,
       title: `${provider.label} browser chat`,
@@ -662,6 +674,28 @@ export function BrowserChatHub({
       !accountProfileKey ||
       savingProviderNavigation
     ) {
+      return;
+    }
+    const existingId = findExclusiveBrowserChatId(
+      browserChatStore.getState(),
+      navigation.providerId,
+    );
+    if (existingId) {
+      const existingSession = sessions.find((session) => session.binding.chatId === existingId);
+      if (existingSession) {
+        openBrowserSession(existingSession.binding);
+        void updateBrowserSession(existingSession.binding, {
+          lastOpenedAt: navigation.timestamp,
+          resumeUrl: navigation.url,
+          providerConversationKey: navigation.providerConversationKey,
+          bindingState: 'bound',
+        });
+      } else {
+        setProvider(navigation.providerId, existingId);
+        setEngine('browser', existingId);
+        setActiveChat(existingId as ChatId);
+      }
+      setPendingProviderNavigation(null);
       return;
     }
     setSavingProviderNavigation(true);
@@ -788,6 +822,7 @@ export function BrowserChatHub({
       await bindingRepository.remove({ accountId, workspaceId: bindingWorkspaceId }, binding.id);
       setSessions((current) => current.filter((session) => session.binding.id !== binding.id));
       setEngine('native', binding.chatId);
+      await browserChatSurface.hideAll();
     } catch (cause) {
       toast.error(
         'Browser Chat removal failed',

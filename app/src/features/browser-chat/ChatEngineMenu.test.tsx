@@ -34,4 +34,20 @@ describe('ChatEngineMenu', () => {
     expect(navigateChat).toHaveBeenCalledOnce();
     expect(Object.keys(browserChatStore.getState())).not.toContain('modelId');
   });
+
+  it('switches into the single existing ChatGPT Browser Chat', async () => {
+    const navigateChat = vi.fn();
+    const transitionEngine = vi.fn(async () => ({
+      status: 'reused' as const,
+      chatId: 'chat-chatgpt',
+      engine: 'browser' as const,
+    }));
+    render(<ChatEngineMenu onNavigateChat={navigateChat} transitionEngine={transitionEngine} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /chat modes/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /browser chat/i }));
+
+    await waitFor(() => expect(useUIStore.getState().activeChatId).toBe('chat-chatgpt'));
+    expect(navigateChat).toHaveBeenCalledOnce();
+  });
 });

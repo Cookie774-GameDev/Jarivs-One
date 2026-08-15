@@ -71,6 +71,9 @@ export function ChatEngineMenu({
                     targetEngine: option.id,
                   }).then((result) => {
                     if (result.status !== 'failed') {
+                      if (result.chatId !== activeChatId) {
+                        useUIStore.getState().setActiveChat(result.chatId);
+                      }
                       onNavigateChat?.();
                       setOpen(false);
                     }

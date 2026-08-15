@@ -86,6 +86,40 @@ export function resolveChatEngine(
   return state.chatPreferences[chatId]?.engine ?? 'native';
 }
 
+export function findExclusiveBrowserChatId(
+  state: Pick<BrowserChatState, 'chatPreferences'>,
+  providerId: BrowserChatProviderId = 'chatgpt',
+): string | null {
+  for (const [chatId, preference] of Object.entries(state.chatPreferences)) {
+    if (
+      validChatId(chatId) &&
+      preference.engine === 'browser' &&
+      preference.providerId === providerId
+    ) {
+      return chatId;
+    }
+  }
+  return null;
+}
+
+function exclusiveBrowserPreferences(
+  current: Record<string, BrowserChatPreference>,
+  chatId: string,
+  engine: VibeSpaceChatEngine,
+  providerId: BrowserChatProviderId,
+): Record<string, BrowserChatPreference> {
+  const chatPreferences = { ...current };
+  if (engine === 'browser') {
+    for (const [id, preference] of Object.entries(chatPreferences)) {
+      if (id !== chatId && preference.engine === 'browser' && preference.providerId === providerId) {
+        chatPreferences[id] = { ...preference, engine: 'native' };
+      }
+    }
+  }
+  chatPreferences[chatId] = { engine, providerId };
+  return chatPreferences;
+}
+
 function validatedChatPreferences(value: unknown): Record<string, BrowserChatPreference> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
   const result: Record<string, BrowserChatPreference> = {};
@@ -228,19 +262,18 @@ export function createBrowserChatStore(storage: BrowserChatStorage = localStorag
         chatPreferences: {},
         providerRuntime: {},
         setEngine: (engine, chatId) =>
-          set((current) =>
-            validChatId(chatId)
-              ? {
-                  chatPreferences: {
-                    ...current.chatPreferences,
-                    [chatId]: {
-                      engine,
-                      providerId: current.chatPreferences[chatId]?.providerId ?? 'chatgpt',
-                    },
-                  },
-                }
-              : { engine },
-          ),
+          set((current) => {
+            if (!validChatId(chatId)) return { engine };
+            const providerId = current.chatPreferences[chatId]?.providerId ?? current.providerId;
+            return {
+              chatPreferences: exclusiveBrowserPreferences(
+                current.chatPreferences,
+                chatId,
+                engine,
+                providerId,
+              ),
+            };
+          }),
         setProvider: (providerId, chatId) =>
           set((current) =>
             validChatId(chatId)

@@ -2,6 +2,7 @@ export { BrowserChatHub } from './BrowserChatHub';
 export { ChatEngineMenu } from './ChatEngineMenu';
 export {
   browserChatStore,
+  findExclusiveBrowserChatId,
   resolveChatEngine,
   useBrowserChatStore,
   type VibeSpaceChatEngine,

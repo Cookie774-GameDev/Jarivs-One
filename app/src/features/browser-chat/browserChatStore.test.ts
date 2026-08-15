@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BROWSER_CHAT_STORAGE_KEY,
   createBrowserChatStore,
+  findExclusiveBrowserChatId,
   migrateLegacyBrowserChatPreferences,
   resolveChatEngine,
   type BrowserChatPreference,
@@ -71,6 +72,17 @@ describe('Browser Chat engine state', () => {
     expect(store.getState().chatPreferences).not.toHaveProperty('collapsed-chat');
     expect(store.getState().chatPreferences).toHaveProperty('retained-chat');
     expect(storage.getItem(BROWSER_CHAT_STORAGE_KEY)).not.toContain('collapsed-chat');
+  });
+
+  it('keeps only one ChatGPT Browser Chat open and reuses that chat', () => {
+    const store = createBrowserChatStore(memoryStorage());
+    store.getState().setEngine('browser', 'chat-chatgpt');
+    store.getState().setProvider('chatgpt', 'chat-chatgpt');
+    store.getState().setEngine('browser', 'chat-second');
+
+    expect(findExclusiveBrowserChatId(store.getState(), 'chatgpt')).toBe('chat-second');
+    expect(resolveChatEngine(store.getState(), 'chat-chatgpt')).toBe('native');
+    expect(resolveChatEngine(store.getState(), 'chat-second')).toBe('browser');
   });
 
   it('defaults every unconfigured new conversation to native without changing explicit Browser chats', () => {

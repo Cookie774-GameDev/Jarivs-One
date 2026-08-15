@@ -1654,6 +1654,7 @@ export function Composer({
         if (result.status === 'failed') {
           toast.error('Could not switch chat mode', 'The current chat was left unchanged.');
         } else {
+          useUIStore.getState().setActiveChat(result.chatId);
           useUIStore.getState().setRoute('chat');
         }
       });
