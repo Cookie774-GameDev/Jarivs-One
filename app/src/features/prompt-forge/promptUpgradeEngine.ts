@@ -48,6 +48,7 @@ export type PromptUpgradeEngineInput = Readonly<{
   defaultLocalModel: string;
   privacyMode: PromptForgePrivacyMode;
   allowPublicResearch: boolean;
+  regenerationInstructions?: string | null;
   imageAttachments?: readonly ChatImageAttachment[];
   workingDirectory?: string;
   additionalSources?: readonly PromptForgeSourceCandidate[];
@@ -130,7 +131,8 @@ export async function runPromptUpgrade(
     return {
       ok: false,
       originalDraft,
-      reason: 'No accessible upgrade model is available.',
+      reason:
+        'Please assign a prompt-upgrade model in Settings. You can use Spark or Flash if one is connected.',
       errorCode: 'model_unavailable',
       job: null,
     };
@@ -201,7 +203,7 @@ export async function runPromptUpgrade(
     chatId: input.chatId,
     projectId: input.projectId,
     originalDraft,
-    regenerationInstructions: null,
+    regenerationInstructions: input.regenerationInstructions ?? null,
     originalAttachments: input.originalAttachments ?? [],
     modelSelection: input.modelSelection,
     privacyMode: input.privacyMode,

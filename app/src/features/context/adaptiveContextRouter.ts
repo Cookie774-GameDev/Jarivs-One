@@ -71,9 +71,10 @@ export function decideContextMode(input: ContextModeSignals): ContextModeDecisio
     reasons.push('rlm_unavailable_fallback');
   } else if (reasons.length > 0) {
     mode = 'rlm';
-  } else if (input.activeWorkingSetSufficient && input.smallBoundedTask) {
+  } else if (input.smallBoundedTask) {
     mode = 'direct';
-    reasons.push('active_working_set_sufficient', 'small_bounded_task');
+    if (input.activeWorkingSetSufficient) reasons.push('active_working_set_sufficient');
+    reasons.push('small_bounded_task');
   } else {
     mode = 'retrieval';
     if (input.exactIdentifierLookup && input.historicalLookup) {

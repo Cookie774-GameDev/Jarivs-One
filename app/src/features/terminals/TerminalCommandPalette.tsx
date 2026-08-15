@@ -28,6 +28,7 @@ import type {
 import {
   canInsertUpgradedPromptIntoTerminal,
   runTerminalPromptUpgrade,
+  terminalDraftFromSession,
   terminalModelOptionsFromPicker,
 } from './terminalPromptUpgrade';
 
@@ -174,6 +175,8 @@ export function TerminalCommandPalette({
   const [upgradeStatus, setUpgradeStatus] = React.useState<string | null>(null);
   const [upgradeBusy, setUpgradeBusy] = React.useState(false);
   const [upgradeError, setUpgradeError] = React.useState<string | null>(null);
+  const [upgradeAddContextOpen, setUpgradeAddContextOpen] = React.useState(false);
+  const [upgradeAddContext, setUpgradeAddContext] = React.useState('');
   const upgradeAbortRef = React.useRef<AbortController | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const upgradeTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -208,6 +211,8 @@ export function TerminalCommandPalette({
     setUpgradeStatus(null);
     setUpgradeError(null);
     setUpgradeBusy(false);
+    setUpgradeAddContextOpen(false);
+    setUpgradeAddContext('');
     upgradeAbortRef.current?.abort();
     upgradeAbortRef.current = null;
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -227,6 +232,13 @@ export function TerminalCommandPalette({
 
   const select = (item: PaletteItem | undefined) => {
     if (!item) return;
+    if (item.detail === 'upgrade') {
+      const seeded = terminalDraftFromSession(sessionId) || upgradeDraft.trim();
+      if (seeded) setUpgradeDraft(seeded);
+      setDetail('upgrade');
+      if (seeded) void runUpgrade(seeded);
+      return;
+    }
     if (item.detail) {
       setDetail(item.detail);
       return;
@@ -244,8 +256,9 @@ export function TerminalCommandPalette({
     setUpgradeStatus(null);
   };
 
-  const runUpgrade = async () => {
-    if (upgradeBusy || !upgradeDraft.trim()) return;
+  const runUpgrade = async (draftOverride?: string, instructions?: string) => {
+    const draft = (draftOverride ?? upgradeDraft).trim();
+    if (upgradeBusy || !draft) return;
     const controller = new AbortController();
     upgradeAbortRef.current = controller;
     setUpgradeBusy(true);
@@ -261,7 +274,8 @@ export function TerminalCommandPalette({
           sessionId,
           paneId: paneId ?? null,
         },
-        originalDraft: upgradeDraft,
+        originalDraft: draft,
+        ...(instructions?.trim() ? { regenerationInstructions: instructions.trim() } : {}),
         modelSelection: promptForgeModelSelection,
         modelOptions,
         currentChatSelection:
@@ -434,7 +448,7 @@ export function TerminalCommandPalette({
         <div className="min-h-0 flex-1 overflow-auto p-4 text-secondary text-foreground">
           <h3 className="font-display text-ui-strong">Upgrade prompt</h3>
           <p className="mt-1 text-metadata text-muted-foreground">
-            Uses this terminal’s session, project, transcript, and shared Prompt Upgrade engine.
+            Uses the text already typed in this terminal, plus project and local file context.
             Running work is never interrupted while upgrading.
           </p>
           <p className="mt-1 font-mono text-metadata text-muted-foreground">
@@ -442,7 +456,7 @@ export function TerminalCommandPalette({
             {agentSlug ? ` · agent ${agentSlug}` : ''}
           </p>
           <label className="mt-3 block text-metadata text-muted-foreground" htmlFor="terminal-upgrade-draft">
-            Draft for this terminal agent
+            Draft from this terminal
           </label>
           <textarea
             id="terminal-upgrade-draft"
@@ -450,7 +464,7 @@ export function TerminalCommandPalette({
             value={upgradeDraft}
             onChange={(e) => setUpgradeDraft(e.target.value)}
             rows={5}
-            placeholder="Describe what this terminal agent should do…"
+            placeholder="Type in the terminal first — this uses that draft automatically."
             disabled={upgradeBusy}
             className="mt-1 w-full resize-y rounded-md border border-border bg-paper px-3 py-2 text-body text-foreground outline-none focus:border-accent-copper disabled:opacity-60"
           />
@@ -481,6 +495,60 @@ export function TerminalCommandPalette({
               {upgradeError}
             </p>
           ) : null}
+          {upgradeAddContextOpen ? (
+            <div className="mt-3 flex min-w-0 gap-1.5">
+              <input
+                aria-label="Additional prompt context"
+                value={upgradeAddContext}
+                onChange={(event) => setUpgradeAddContext(event.target.value)}
+                placeholder="Add constraints or missing context…"
+                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-secondary outline-none focus:border-accent-copper/50"
+              />
+              <button
+                type="button"
+                disabled={!upgradeAddContext.trim() || upgradeBusy}
+                className="rounded-md border border-accent-copper/60 bg-accent-copper/10 px-3 py-1.5 text-secondary text-accent-copper disabled:opacity-50"
+                onClick={() => {
+                  const instructions = upgradeAddContext.trim();
+                  if (!instructions) return;
+                  setUpgradeAddContextOpen(false);
+                  void runUpgrade(upgradeDraft, instructions);
+                }}
+              >
+                Apply
+              </button>
+            </div>
+          ) : null}
+          {upgradedText ? (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                aria-label="Accept upgraded prompt"
+                onClick={() => void insertUpgraded()}
+                className="rounded-md border border-accent-copper/60 bg-accent-copper/10 px-2.5 py-1.5 text-secondary text-accent-copper"
+              >
+                Accept
+              </button>
+              <button
+                type="button"
+                aria-label="Retry prompt upgrade"
+                disabled={upgradeBusy || !upgradeDraft.trim()}
+                onClick={() => void runUpgrade()}
+                className="rounded-md border border-border px-2.5 py-1.5 text-secondary text-foreground disabled:opacity-50"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                aria-label="Add context to prompt upgrade"
+                aria-expanded={upgradeAddContextOpen}
+                onClick={() => setUpgradeAddContextOpen((value) => !value)}
+                className="rounded-md border border-border px-2.5 py-1.5 text-secondary text-foreground"
+              >
+                Add context
+              </button>
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {upgradeBusy ? (
               <button
@@ -490,7 +558,7 @@ export function TerminalCommandPalette({
               >
                 Cancel upgrade
               </button>
-            ) : (
+            ) : upgradedText ? null : (
               <button
                 type="button"
                 disabled={!upgradeDraft.trim()}

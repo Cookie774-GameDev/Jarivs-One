@@ -7,7 +7,12 @@ import {
   type HarnessRuntimeManager,
   type OpenCodeServerConnection,
 } from './runtimeManager';
-import { parseOpenCodeProviderResponse, resolveOpenCodeSelection } from './providerReconciliation';
+import {
+  catalogContainsSelection,
+  parseOpenCodeProviderResponse,
+  resolveOpenCodeSelection,
+  trustedCatalogForSelection,
+} from './providerReconciliation';
 import type { OpenCodeSseEvent } from './sseParser';
 import type {
   CreateHarnessSession,
@@ -26,11 +31,19 @@ interface OpenCodeHarnessOptions {
   maxReconnectAttempts?: number;
   reconnectDelay?: (attempt: number) => Promise<void>;
   qwenEndpoint?: () => string | undefined;
+  /**
+   * How long a send may wait for OpenCode `/config/providers`. The full
+   * provider scan regularly takes tens of seconds; greetings must not block
+   * on it when the user already selected an exact model.
+   */
+  providerCatalogTimeoutMs?: number;
 }
 
 const MAX_RECENT_EVENTS = 256;
 const MAX_ERROR_LENGTH = 2_048;
 const MAX_RECOVERED_ASSISTANT_TEXT = 1_500_000;
+const PROVIDER_CATALOG_TTL_MS = 5 * 60_000;
+const DEFAULT_PROVIDER_CATALOG_TIMEOUT_MS = 1_200;
 
 type FullTextSnapshotState = {
   assistantMessageIds: Set<string>;
@@ -158,7 +171,14 @@ export class OpenCodeHarness implements VibeSpaceHarness {
   private readonly maxReconnectAttempts: number;
   private readonly reconnectDelay: (attempt: number) => Promise<void>;
   private readonly qwenEndpoint: () => string | undefined;
+  private readonly providerCatalogTimeoutMs: number;
   private appliedQwenEndpoint?: Readonly<{ generation: string; endpoint: string }>;
+  private providerCache?: Readonly<{
+    generation: string;
+    providers: readonly HarnessProvider[];
+    fetchedAt: number;
+  }>;
+  private providerFlight?: Promise<readonly HarnessProvider[]>;
   private disposed = false;
 
   constructor(
@@ -170,6 +190,10 @@ export class OpenCodeHarness implements VibeSpaceHarness {
       options.reconnectDelay ??
       ((attempt) => new Promise((resolve) => setTimeout(resolve, Math.min(1_000, attempt * 150))));
     this.qwenEndpoint = options.qwenEndpoint ?? verifiedQwenCompatibleBaseUrl;
+    this.providerCatalogTimeoutMs = Math.max(
+      0,
+      Math.min(10_000, options.providerCatalogTimeoutMs ?? DEFAULT_PROVIDER_CATALOG_TIMEOUT_MS),
+    );
   }
 
   private connection(): OpenCodeServerConnection {
@@ -221,6 +245,62 @@ export class OpenCodeHarness implements VibeSpaceHarness {
     return { source: connection.source, version: connection.version };
   }
 
+  private cachedProviders(generation: string): readonly HarnessProvider[] | undefined {
+    if (
+      !this.providerCache ||
+      this.providerCache.generation !== generation ||
+      Date.now() - this.providerCache.fetchedAt > PROVIDER_CATALOG_TTL_MS
+    ) {
+      return undefined;
+    }
+    return this.providerCache.providers;
+  }
+
+  private async refreshProviders(): Promise<readonly HarnessProvider[]> {
+    if (this.providerFlight) return this.providerFlight;
+    const connection = this.connection();
+    this.providerFlight = this.client(connection)
+      .configProviders()
+      .then((raw) => {
+        const providers = parseOpenCodeProviderResponse(raw);
+        this.providerCache = Object.freeze({
+          generation: connection.generation,
+          providers,
+          fetchedAt: Date.now(),
+        });
+        return providers;
+      })
+      .finally(() => {
+        this.providerFlight = undefined;
+      });
+    return this.providerFlight;
+  }
+
+  private async resolveSelectionForSend(
+    selection: HarnessSendRequest['selection'],
+  ): Promise<ReturnType<typeof resolveOpenCodeSelection>> {
+    const connection = this.connection();
+    const cached = this.cachedProviders(connection.generation);
+    if (cached && catalogContainsSelection(selection, cached)) {
+      return resolveOpenCodeSelection(selection, cached);
+    }
+    const refresh = this.refreshProviders();
+    const raced = await Promise.race([
+      refresh.then((providers) => ({ ok: true as const, providers })),
+      new Promise<{ ok: false }>((resolve) => {
+        setTimeout(() => resolve({ ok: false }), this.providerCatalogTimeoutMs);
+      }),
+    ]);
+    if (raced.ok) return resolveOpenCodeSelection(selection, raced.providers);
+    if (cached && catalogContainsSelection(selection, cached)) {
+      return resolveOpenCodeSelection(selection, cached);
+    }
+    return resolveOpenCodeSelection(selection, [
+      ...(cached ?? []),
+      ...trustedCatalogForSelection(selection),
+    ]);
+  }
+
   async createSession(input: CreateHarnessSession): Promise<HarnessSession> {
     await this.ensureReady();
     const session = await this.client().createSession(
@@ -267,10 +347,7 @@ export class OpenCodeHarness implements VibeSpaceHarness {
 
     try {
       await this.ensureQwenEndpoint(input.selection.providerId, connection, client);
-      const resolvedSelection = resolveOpenCodeSelection(
-        input.selection,
-        await this.listProviders(),
-      );
+      const resolvedSelection = await this.resolveSelectionForSend(input.selection);
       let iterator = client.events(controller.signal, workingDirectory)[Symbol.asyncIterator]();
       let pending = nextEvent(iterator);
       await waitForServerConnected(pending);
@@ -402,7 +479,11 @@ export class OpenCodeHarness implements VibeSpaceHarness {
   }
 
   async listProviders(): Promise<readonly HarnessProvider[]> {
-    return parseOpenCodeProviderResponse(await this.client().configProviders());
+    const cached = this.runtime.getConnection()
+      ? this.cachedProviders(this.connection().generation)
+      : undefined;
+    if (cached) return cached;
+    return this.refreshProviders();
   }
 
   async listModels(providerId?: string): Promise<readonly HarnessModel[]> {

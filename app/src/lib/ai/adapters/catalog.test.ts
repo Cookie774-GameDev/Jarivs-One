@@ -42,6 +42,7 @@ const EXPECTED_CONNECTIONS = [
   'xai-api',
   'deepseek-api',
   'zai-api',
+  'zai-coding-plan',
   'qwen-code',
   'qwen-api',
   'groq-api',
@@ -127,6 +128,7 @@ describe('provider capability catalog', () => {
       'xai-api': 'native-api',
       'deepseek-api': 'native-api',
       'zai-api': 'native-api',
+      'zai-coding-plan': 'external-cli',
       'qwen-code': 'external-cli',
       'qwen-api': 'native-api',
       'groq-api': 'native-api',
@@ -138,12 +140,35 @@ describe('provider capability catalog', () => {
     });
   });
 
-  it('does not invent external bridges for xAI, DeepSeek, or Z.AI', () => {
-    for (const id of ['xai', 'deepseek', 'zai'] as const) {
+  it('does not invent external bridges for xAI or DeepSeek', () => {
+    for (const id of ['xai', 'deepseek'] as const) {
       expect(PROVIDER_CATALOG[id].externalCli).toBeUndefined();
       expect(PROVIDER_CATALOG[id].connections).toHaveLength(1);
       expect(PROVIDER_CATALOG[id].connections[0]?.mode).toBe('native-api');
     }
+  });
+
+  it('keeps Z.AI API and Z.AI Coding Plan as separate catalog identities', () => {
+    expect(PROVIDER_CATALOG.zai.connections.map((connection) => connection.id)).toEqual([
+      'zai-api',
+      'zai-coding-plan',
+    ]);
+    expect(PROVIDER_CATALOG.zai.connections[0]).toMatchObject({
+      id: 'zai-api',
+      mode: 'native-api',
+      authSource: 'api-key',
+    });
+    expect(PROVIDER_CATALOG.zai.connections[1]).toMatchObject({
+      id: 'zai-coding-plan',
+      mode: 'external-cli',
+      adapterId: 'opencode-cli',
+      authSource: 'opencode-provider-session',
+    });
+    expect(PROVIDER_CATALOG.zai.externalCli).toMatchObject({
+      connectionId: 'zai-coding-plan',
+      executableName: 'opencode',
+      modelListArgs: ['models', 'zai', '--refresh'],
+    });
   });
 
   it('keeps executable metadata off native and local connection descriptors', () => {
@@ -195,6 +220,7 @@ describe('provider capability catalog', () => {
     });
     expect(getProviderConnectionDescriptor('qwen-code').capabilities).toEqual(external);
     expect(getProviderConnectionDescriptor('opencode-cli').capabilities).toEqual(external);
+    expect(getProviderConnectionDescriptor('zai-coding-plan').capabilities).toEqual(external);
 
     const native = {
       text: true,
@@ -256,32 +282,49 @@ describe('provider capability catalog', () => {
     expect(PROVIDER_CATALOG.google.externalCli).toMatchObject({
       executableName: 'gemini',
       versionArgs: ['--version'],
+      modelListArgs: ['/model'],
     });
     expect(PROVIDER_CATALOG.google.externalCli?.authProbeArgs).toBeUndefined();
     expect(PROVIDER_CATALOG.github.externalCli).toMatchObject({
       executableName: 'copilot',
       versionArgs: ['version'],
+      modelListArgs: ['/model'],
     });
     expect(PROVIDER_CATALOG.github.externalCli?.authProbeArgs).toBeUndefined();
     expect(PROVIDER_CATALOG.qwen.externalCli).toMatchObject({
       executableName: 'qwen',
       versionArgs: ['--version'],
+      modelListArgs: ['/model'],
     });
     expect(PROVIDER_CATALOG.qwen.externalCli?.authProbeArgs).toBeUndefined();
     expect(PROVIDER_CATALOG.opencode.externalCli).toMatchObject({
       executableName: 'opencode',
       versionArgs: ['--version'],
       authProbeArgs: ['auth', 'list'],
-      modelListArgs: ['models'],
+      modelListArgs: ['models', 'openai', '--refresh'],
     });
   });
 
   it('publishes a frozen current model catalog only for the Codex subscription connection', () => {
-    expect(CONNECTION_MODEL_OPTIONS['openai-codex']).toEqual([
-      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', contextWindowTokens: 1_000_000 },
-      { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', contextWindowTokens: 1_000_000 },
-      { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna', contextWindowTokens: 1_000_000 },
+    expect(CONNECTION_MODEL_OPTIONS['openai-codex']?.map((option) => option.id)).toEqual([
+      'gpt-5.3-codex-spark',
+      'gpt-5.3-codex',
+      'gpt-5.4-mini',
+      'gpt-5.4',
+      'gpt-5.5-codex',
+      'gpt-5.5',
+      'gpt-5.5-pro',
+      'gpt-5.6-luna',
+      'gpt-5.6-terra',
+      'gpt-5.6-sol',
     ]);
+    expect(
+      CONNECTION_MODEL_OPTIONS['openai-codex']?.find((option) => option.id === 'gpt-5.3-codex-spark'),
+    ).toEqual({
+      id: 'gpt-5.3-codex-spark',
+      label: 'GPT-5.3 Codex Spark',
+      contextWindowTokens: 128_000,
+    });
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['openai-codex'])).toBe(true);
     expect(
@@ -424,6 +467,16 @@ describe('shell-free provider command vectors', () => {
     });
     expect(buildOpenCodeInvocation({ prompt, modelId: 'anthropic/claude-sonnet' })).toEqual({
       args: ['run', '--format', 'json', '--model', 'anthropic/claude-sonnet'],
+      stdin: prompt,
+    });
+    expect(
+      buildOpenCodeInvocation({
+        prompt,
+        modelId: 'gpt-5.3-codex-spark',
+        reasoningEffort: 'xhigh',
+      }),
+    ).toEqual({
+      args: ['run', '--format', 'json', '--model', 'openai/gpt-5.3-codex-spark#xhigh'],
       stdin: prompt,
     });
   });

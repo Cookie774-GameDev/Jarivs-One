@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { decideContextMode } from './adaptiveContextRouter';
 
 describe('adaptive direct/retrieval/RLM router', () => {
+  it('chooses direct mode for a short greeting with no corpus work', () => {
+    expect(
+      decideContextMode({
+        question: 'Hi there, GPT-5.3 Spark',
+        estimatedCorpusTokens: 0,
+        modelWindowTokens: 128_000,
+        smallBoundedTask: true,
+        sourceFamilyCount: 0,
+        ambiguity: 0,
+      }),
+    ).toMatchObject({
+      mode: 'direct',
+      recursiveChildCallsAllowed: false,
+      broadContextScanAllowed: false,
+      reasons: ['small_bounded_task'],
+    });
+  });
+
   it('chooses direct mode for a small active working-set edit', () => {
     expect(
       decideContextMode({

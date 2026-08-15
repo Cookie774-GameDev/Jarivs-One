@@ -295,6 +295,78 @@ describe('OpenCodeHarness', () => {
     expect(eventRequests).toBe(2);
   });
 
+  it('does not wait for a hanging /config/providers scan before submitting the prompt', async () => {
+    let promptAt = 0;
+    const started = Date.now();
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') {
+        return new Promise(() => undefined);
+      }
+      if (path === '/event') {
+        return sse(
+          { type: 'server.connected', properties: {} },
+          {
+            type: 'message.part.updated',
+            properties: {
+              sessionID: 'session-1',
+              delta: 'Hi',
+              part: { type: 'text' },
+            },
+          },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
+      }
+      if (path.endsWith('/prompt_async')) {
+        promptAt = Date.now() - started;
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), {
+      fetch,
+      providerCatalogTimeoutMs: 20,
+    });
+
+    await expect(collect(harness.send(request()))).resolves.toEqual([
+      { type: 'assistant.delta', text: 'Hi' },
+      { type: 'done', finishReason: 'idle' },
+    ]);
+    expect(promptAt).toBeGreaterThan(0);
+    expect(promptAt).toBeLessThan(1_500);
+  });
+
+  it('reuses a warm provider catalog on the next send', async () => {
+    let providerFetches = 0;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/config/providers') {
+        providerFetches += 1;
+        return providerResponse();
+      }
+      if (path === '/event') {
+        return sse(
+          { type: 'server.connected', properties: {} },
+          {
+            type: 'message.part.updated',
+            properties: {
+              sessionID: 'session-1',
+              delta: 'ok',
+              part: { type: 'text' },
+            },
+          },
+          { type: 'session.idle', properties: { sessionID: 'session-1' } },
+        );
+      }
+      if (path.endsWith('/prompt_async')) return new Response(null, { status: 204 });
+      throw new Error(`Unexpected request ${path}`);
+    });
+    const harness = new OpenCodeHarness(runtime(), { fetch });
+    await collect(harness.send(request()));
+    await collect(harness.send(request()));
+    expect(providerFetches).toBe(1);
+  });
+
   it('honors cancellation and aborts the active OpenCode session', async () => {
     const controller = new AbortController();
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {

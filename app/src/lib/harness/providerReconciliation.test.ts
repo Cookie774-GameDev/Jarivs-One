@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  catalogContainsSelection,
   parseOpenCodeProviderResponse,
   reconcileHarnessProviderCatalog,
   resolveOpenCodeSelection,
+  trustedCatalogForSelection,
 } from './providerReconciliation';
 import type { HarnessProvider } from './types';
 
@@ -352,5 +354,26 @@ describe('exact OpenCode selection mapping', () => {
         provider('ollama', 'qwen3.5:4b'),
       ]),
     ).toThrowError(expect.objectContaining({ code: 'MODEL_NOT_AVAILABLE' }));
+  });
+
+  it('builds a trusted one-model catalog so send can proceed without a full provider scan', () => {
+    const catalog = trustedCatalogForSelection({
+      providerId: 'openai',
+      modelId: 'gpt-5.3-codex-spark',
+    });
+    expect(catalog).toEqual([
+      {
+        id: 'openai',
+        name: 'openai',
+        models: [{ id: 'gpt-5.3-codex-spark', name: 'gpt-5.3-codex-spark' }],
+        connected: true,
+      },
+    ]);
+    expect(
+      catalogContainsSelection({ providerId: 'openai', modelId: 'gpt-5.3-codex-spark' }, catalog),
+    ).toBe(true);
+    expect(
+      resolveOpenCodeSelection({ providerId: 'openai', modelId: 'gpt-5.3-codex-spark' }, catalog),
+    ).toEqual({ providerId: 'openai', modelId: 'gpt-5.3-codex-spark' });
   });
 });

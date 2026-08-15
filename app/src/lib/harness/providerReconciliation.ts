@@ -185,6 +185,40 @@ export function resolveOpenCodeSelection(
   return { providerId: provider.id, modelId: input.modelId };
 }
 
+/** True when the live/cached catalog already contains this exact selection. */
+export function catalogContainsSelection(
+  input: OpenCodeSelectionInput,
+  providers: readonly HarnessProvider[],
+): boolean {
+  try {
+    resolveOpenCodeSelection(input, providers);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Trusted one-provider catalog for a user-selected model so a send is not
+ * blocked on OpenCode's full /config/providers scan. The selected identity is
+ * still sent unchanged; OpenCode rejects it if the runtime truly lacks it.
+ */
+export function trustedCatalogForSelection(
+  input: OpenCodeSelectionInput,
+): readonly HarnessProvider[] {
+  const modelId = boundedIdentity(input.modelId, MAX_MODEL_ID);
+  if (!modelId) return [];
+  const id = runtimeProviderId(input);
+  return Object.freeze([
+    {
+      id,
+      name: boundedName(input.providerId, id),
+      models: Object.freeze([{ id: modelId, name: boundedName(modelId, modelId) }]),
+      connected: true,
+    },
+  ]);
+}
+
 export function reconcileHarnessProviderCatalog(
   catalog: readonly HarnessProvider[],
   runtime: readonly HarnessProvider[],

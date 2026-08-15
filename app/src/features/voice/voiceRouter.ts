@@ -44,8 +44,9 @@ export function getActiveVoiceSessionId(): number {
   return activeVoiceSessionId;
 }
 
-/** True only while the voice panel is open and its session has not been cancelled. */
+/** True while the voice panel is open, or Settings "speak replies" is enabled for chat. */
 export function canVoiceModuleSpeak(): boolean {
+  if (useAuthStore.getState().speakReplies === true) return true;
   return voiceModuleMarkedOpen && activeVoiceSessionId > 0 && useUIStore.getState().voiceModalOpen;
 }
 

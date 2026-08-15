@@ -23,6 +23,7 @@ describe('chat model catalog', () => {
       'anthropic',
       'openrouter',
       'deepseek',
+      'zai',
       'mistral',
       'together',
       'xai',
@@ -31,6 +32,25 @@ describe('chat model catalog', () => {
       'local',
     ]);
     expect(isRealChatProvider('openrouter')).toBe(true);
+  });
+
+  it('does not advertise retired DeepSeek, Gemini, Anthropic, or Groq picker IDs', () => {
+    const ids = getModelOptions('google')
+      .concat(getModelOptions('anthropic'))
+      .concat(getModelOptions('groq'))
+      .concat(getModelOptions('deepseek'))
+      .map((model) => model.id);
+    expect(ids).not.toEqual(expect.arrayContaining([
+      'deepseek-chat',
+      'deepseek-reasoner',
+      'gemini-2.0-flash',
+      'claude-3-5-haiku-20241022',
+      'mixtral-8x7b-32768',
+      'llama-3.1-8b-instant',
+    ]));
+    expect(defaultModelForProvider('deepseek')).toBe('deepseek-v4-flash');
+    expect(defaultModelForProvider('zai')).toBe('glm-5.1');
+    expect(defaultModelForProvider('groq')).toBe('openai/gpt-oss-20b');
   });
 
   it('ships the current Qwen catalog with Qwen 3.7 Plus as the safe default', () => {

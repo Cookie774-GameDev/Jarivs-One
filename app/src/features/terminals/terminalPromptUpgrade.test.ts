@@ -5,8 +5,10 @@ import {
   canInsertUpgradedPromptIntoTerminal,
   clipForUpgradeSource,
   prepareUpgradedPromptInsert,
+  terminalDraftFromSession,
   terminalPromptUpgradeChatId,
 } from './terminalPromptUpgrade';
+import { useTerminalTranscriptStore } from './transcriptStore';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
 
 const baseEvidence = (overrides: Partial<TerminalPromptEvidence> = {}): TerminalPromptEvidence =>
@@ -45,6 +47,34 @@ describe('terminalPromptUpgrade', () => {
     expect(a).not.toBe(b);
     expect(a).not.toBe(c);
     expect(a.startsWith('terminal:')).toBe(true);
+  });
+
+  it('reads the live terminal draft and includes it as a source', () => {
+    useTerminalTranscriptStore.setState({
+      sessions: {
+        'pty-1': {
+          sessionId: 'pty-1',
+          agentSlug: null,
+          command: null,
+          text: 'PS C:\\demo>',
+          lastWriteAt: 1,
+          bytesSeen: 12,
+          currentInput: 'make an html game',
+        },
+      },
+    });
+    expect(terminalDraftFromSession('pty-1')).toBe('make an html game');
+    const sources = buildTerminalPromptUpgradeSources({
+      scope: {
+        accountId: 'acc',
+        projectId: 'proj-1',
+        sessionId: 'pty-1',
+        paneId: 'pane-1',
+      },
+      now: 1_000,
+    });
+    expect(sources.some((source) => source.id === 'terminal-draft:pty-1')).toBe(true);
+    expect(sources.some((source) => source.content.includes('make an html game'))).toBe(true);
   });
 
   it('builds session + project sources without dumping unbounded history', () => {

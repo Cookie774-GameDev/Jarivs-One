@@ -744,8 +744,17 @@ export function TerminalView({
     onBlurRef.current = onBlur;
   }, [onBlur]);
 
+  const flushCurrentInput = () => {
+    const sid = sessionRef.current;
+    if (!sid) return;
+    useTerminalTranscriptStore.getState().setCurrentInput(sid, currentInputRef.current);
+  };
+
   useEffect(() => {
-    const openPalette = () => setTerminalPaletteOpen(true);
+    const openPalette = () => {
+      flushCurrentInput();
+      setTerminalPaletteOpen(true);
+    };
     const onPaletteRequest = (event: Event) => {
       if (!terminalPaletteRequestTargetsPane(event, paneId)) return;
       openPalette();
@@ -791,12 +800,6 @@ export function TerminalView({
     setPowerUpTitle(title);
     if (powerUpTimerRef.current) clearTimeout(powerUpTimerRef.current);
     powerUpTimerRef.current = setTimeout(() => setPowerUpTitle(null), 1500);
-  };
-
-  const flushCurrentInput = () => {
-    const sid = sessionRef.current;
-    if (!sid) return;
-    useTerminalTranscriptStore.getState().setCurrentInput(sid, currentInputRef.current);
   };
 
   const scheduleCurrentInputFlush = () => {
@@ -1432,6 +1435,7 @@ export function TerminalView({
         });
         publishPromptEvidence(slashIntegration.snapshot());
         if (capture.openPalette) {
+          flushCurrentInput();
           setTerminalPaletteOpen(true);
           return;
         }

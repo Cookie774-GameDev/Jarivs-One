@@ -36,6 +36,7 @@ export const REAL_CHAT_PROVIDERS: readonly ProviderId[] = [
   'anthropic',
   'openrouter',
   'deepseek',
+  'zai',
   'mistral',
   'together',
   'xai',
@@ -51,6 +52,7 @@ const CLOUD_KEY_PROVIDERS: readonly ProviderId[] = [
   'anthropic',
   'openrouter',
   'deepseek',
+  'zai',
   'mistral',
   'together',
   'xai',
@@ -74,12 +76,6 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   },
   {
     provider: 'google',
-    id: 'gemini-2.0-flash',
-    label: 'Gemini 2.0 Flash',
-    contextWindowTokens: 1_000_000,
-  },
-  {
-    provider: 'google',
     id: 'gemini-3.5-flash',
     label: 'Gemini 3.5 Flash',
     contextWindowTokens: 1_048_576,
@@ -93,22 +89,28 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     contextWindowTokens: 1_000_000,
   },
   {
+    provider: 'google',
+    id: 'gemini-3.1-pro-preview',
+    label: 'Gemini 3.1 Pro Preview',
+    contextWindowTokens: 1_000_000,
+  },
+  {
     provider: 'groq',
     id: GROQ_DEFAULT_MODEL,
-    label: 'Llama 3.3 70B Versatile',
+    label: 'GPT-OSS 20B (Groq)',
     contextWindowTokens: 131_072,
   },
   {
     provider: 'groq',
-    id: 'llama-3.1-8b-instant',
-    label: 'Llama 3.1 8B Instant',
+    id: 'openai/gpt-oss-120b',
+    label: 'GPT-OSS 120B (Groq)',
     contextWindowTokens: 131_072,
   },
   {
     provider: 'groq',
-    id: 'mixtral-8x7b-32768',
-    label: 'Mixtral 8x7B',
-    contextWindowTokens: 32_768,
+    id: 'llama-3.3-70b-versatile',
+    label: 'Llama 3.3 70B (Groq)',
+    contextWindowTokens: 128_000,
   },
   {
     provider: 'openai',
@@ -125,6 +127,30 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     provider: 'openai',
     id: 'gpt-4.1-mini',
     label: 'GPT-4.1 Mini',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.3-codex-spark',
+    label: 'GPT-5.3 Codex Spark',
+    contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.3-codex',
+    label: 'GPT-5.3 Codex',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.4-mini',
+    label: 'GPT-5.4 Mini',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.4',
+    label: 'GPT-5.4',
     contextWindowTokens: 1_000_000,
   },
   {
@@ -146,14 +172,32 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     contextWindowTokens: 1_000_000,
   },
   {
+    provider: 'openai',
+    id: 'gpt-5.6-luna',
+    label: 'GPT-5.6 Luna',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.6-terra',
+    label: 'GPT-5.6 Terra',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'openai',
+    id: 'gpt-5.6-sol',
+    label: 'GPT-5.6 Sol',
+    contextWindowTokens: 1_000_000,
+  },
+  {
     provider: 'anthropic',
     id: ANTHROPIC_DEFAULT_MODEL,
     label: 'Claude Sonnet 5',
   },
   {
     provider: 'anthropic',
-    id: 'claude-3-5-haiku-20241022',
-    label: 'Claude 3.5 Haiku',
+    id: 'claude-haiku-4-5',
+    label: 'Claude Haiku 4.5',
     contextWindowTokens: 200_000,
   },
   {
@@ -179,6 +223,12 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     id: 'deepseek-v4-pro',
     label: 'DeepSeek V4 Pro',
     contextWindowTokens: 128_000,
+  },
+  {
+    provider: 'zai',
+    id: 'glm-5.1',
+    label: 'GLM 5.1',
+    contextWindowTokens: 200_000,
   },
   {
     provider: 'openrouter',
@@ -499,6 +549,8 @@ export function defaultModelForProvider(
       return GROQ_DEFAULT_MODEL;
     case 'deepseek':
       return DEEPSEEK_DEFAULT_MODEL;
+    case 'zai':
+      return 'glm-5.1';
     case 'openrouter':
       return OPENROUTER_DEFAULT_MODEL;
     case 'mistral':

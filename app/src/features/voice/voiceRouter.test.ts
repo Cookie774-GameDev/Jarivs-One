@@ -195,7 +195,11 @@ describe('voice module gate', () => {
     voiceModalOpen = true;
     syncVoiceModuleOpenState(false);
     syncVoiceModuleOpenState(true);
-    useAuthStore.setState({ voiceEngine: 'system', voicePreset: 'jarvis-prime' });
+    useAuthStore.setState({
+      voiceEngine: 'system',
+      voicePreset: 'jarvis-prime',
+      speakReplies: false,
+    });
   });
 
   it('speakWithSettings does nothing when the voice module is closed', async () => {
@@ -220,6 +224,15 @@ describe('voice module gate', () => {
     await speakWithSettings('Hello from Jarvis.');
     expect(h.speakText).toHaveBeenCalledTimes(1);
   });
+
+  it('speakWithSettings runs for chat replies when speakReplies is on and the panel is closed', async () => {
+    voiceModalOpen = false;
+    syncVoiceModuleOpenState(false);
+    useAuthStore.setState({ speakReplies: true });
+    h.speakText.mockResolvedValue(undefined);
+    await speakWithSettings('Hello from Jarvis.');
+    expect(h.speakText).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('voice module lifecycle', () => {
@@ -229,6 +242,7 @@ describe('voice module lifecycle', () => {
     voiceModalOpen = true;
     syncVoiceModuleOpenState(true);
     registerActiveStreamingVoiceSession(null);
+    useAuthStore.setState({ speakReplies: false });
   });
 
   afterEach(async () => {
