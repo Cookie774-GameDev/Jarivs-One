@@ -6,6 +6,7 @@ import { SakuraBackdrop } from '@/features/appearance/sakura';
 import { BrowserChatSurfaceGuard } from '@/features/browser-chat/BrowserChatSurfaceGuard';
 import { FocusModeExit, useFullscreenStore } from '@/features/fullscreen';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import { isTauri } from '@/lib/utils';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
@@ -79,7 +80,7 @@ export function AppShell({ children }: AppShellProps) {
             data-workbench-fullscreen="true"
             data-workbench-detached={workbenchDetached ? 'true' : 'false'}
           >
-            {!workbenchDetached && <BrowserChatSurfaceGuard />}
+            {isTauri && !workbenchDetached && <BrowserChatSurfaceGuard />}
             <NightlySecondBrainHost />
             {sakuraActive && <SakuraBackdrop route={route} />}
             <div
@@ -120,7 +121,7 @@ export function AppShell({ children }: AppShellProps) {
           data-focus-mode={focusActive ? 'true' : undefined}
           data-focus-mode-route={focusActive ? route : undefined}
         >
-          <BrowserChatSurfaceGuard />
+          {isTauri && <BrowserChatSurfaceGuard />}
           <NightlySecondBrainHost />
           {sakuraActive && <SakuraBackdrop route={route} />}
           <div
