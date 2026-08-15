@@ -1,24 +1,13 @@
-import * as React from 'react';
-
-import { startBenchmarkRefreshScheduler, type BenchmarkRefreshOutcome } from './benchmarkRefresh';
+import type { BenchmarkRefreshOutcome } from './benchmarkRefresh';
 
 export const BENCHMARK_REFRESH_COMPLETE_EVENT = 'vibespace:benchmark-refresh-complete';
 export type BenchmarkRefreshCompleteEvent = CustomEvent<BenchmarkRefreshOutcome>;
 
 /**
- * App-wide, zero-UI scheduler host. It owns one timeout only and performs no
- * polling while waiting for the configured local wall-clock time.
+ * Compatibility host retained so existing app composition does not change.
+ * Benchmark ingestion is now owned by the hourly Cloudflare Cron + D1 pipeline;
+ * the desktop app must never run a competing local ingestion scheduler.
  */
 export function BenchmarkRefreshHost() {
-  React.useEffect(() => {
-    if (import.meta.env.MODE === 'test') return;
-    return startBenchmarkRefreshScheduler((outcome) => {
-      window.dispatchEvent(
-        new CustomEvent<BenchmarkRefreshOutcome>(BENCHMARK_REFRESH_COMPLETE_EVENT, {
-          detail: outcome,
-        }),
-      );
-    });
-  }, []);
   return null;
 }
