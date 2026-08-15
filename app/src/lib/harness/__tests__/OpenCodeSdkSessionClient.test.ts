@@ -3,9 +3,10 @@ import {
   CatalogVariantPromptAdapter,
   OpenCodeSdkSessionClient,
   type ModelControlPromptAdapter,
+  type OpenCodeRawEvent,
 } from '../OpenCodeSdkSessionClient';
 
-function asyncEvents(events: readonly unknown[]) {
+function asyncEvents(events: readonly OpenCodeRawEvent[]) {
   return {
     async *[Symbol.asyncIterator]() {
       for (const event of events) yield event;
@@ -13,7 +14,7 @@ function asyncEvents(events: readonly unknown[]) {
   };
 }
 
-function fakeClient(events: readonly unknown[] = []) {
+function fakeClient(events: readonly OpenCodeRawEvent[] = []) {
   return {
     global: { health: vi.fn(async () => ({ data: { healthy: true, version: '1.2.3' } })) },
     config: { providers: vi.fn(async () => ({ data: { providers: [] } })) },

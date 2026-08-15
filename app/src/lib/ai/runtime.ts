@@ -4204,7 +4204,7 @@ export function startRuntimeListener(
         },
         chatId: String(chatId),
         accountId: resolveAccountIdentity(authState)?.accountId,
-        workspaceId: chatRecord?.workspace_id ? String(chatRecord.workspace_id) : authState.workspaceId,
+        workspaceId: (chatRecord?.workspace_id ? String(chatRecord.workspace_id) : authState.workspaceId) ?? undefined,
         projectId: projectId ? String(projectId) : undefined,
         runtimeSettings,
         interactionMode,

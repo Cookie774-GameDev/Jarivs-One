@@ -64,6 +64,16 @@ export function openCodeScopeKey(scope: Readonly<HarnessScope>): string {
   ]);
 }
 
+function legacyOpenCodeScopeKeys(scope: Readonly<HarnessScope>): readonly string[] {
+  return [
+    JSON.stringify([
+      cleanScopePart(scope.accountId, true),
+      cleanScopePart(scope.projectId),
+      cleanScopePart(scope.workingDirectory),
+    ]),
+  ];
+}
+
 /**
  * Owns warm OpenCode runtime scopes. A chat maps to a session, never a process.
  * Readiness and per-chat session creation are single-flight. Disposal is
@@ -73,6 +83,14 @@ export class OpenCodeSessionPool {
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly starting = new Map<string, Promise<RuntimeEntry>>();
   private readonly scopeEpoch = new Map<string, number>();
+  private readonly chatRequests = new Map<
+    string,
+    Promise<{
+      client: OpenCodeSessionClient;
+      sessionId: string;
+      runtimeGeneration: string;
+    }>
+  >();
   private globalEpoch = 0;
 
   constructor(
@@ -169,7 +187,20 @@ export class OpenCodeSessionPool {
     title?: string,
   ): Promise<string> {
     if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
-    const persisted = await this.options.registry?.load(key, chatId);
+    const registry = this.options.registry;
+    let persistedKey = key;
+    let persisted = (await registry?.load(key, chatId)) ?? null;
+    if (!persisted && registry) {
+      for (const legacyKey of legacyOpenCodeScopeKeys(entry.scope)) {
+        if (legacyKey === key) continue;
+        const candidate = await registry.load(legacyKey, chatId);
+        if (candidate) {
+          persisted = candidate;
+          persistedKey = legacyKey;
+          break;
+        }
+      }
+    }
     if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
     if (persisted?.runtimeGeneration === entry.handle.generation) {
       const valid = entry.client.getSession
@@ -178,6 +209,9 @@ export class OpenCodeSessionPool {
       if (valid?.id === persisted.sessionId) {
         if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
         entry.sessions.set(chatId, persisted.sessionId);
+        if (registry && persistedKey !== key) {
+          await registry.save(key, chatId, persisted).catch(() => undefined);
+        }
         return persisted.sessionId;
       }
     }
@@ -213,31 +247,45 @@ export class OpenCodeSessionPool {
   }> {
     const cleanChatId = cleanScopePart(chatId, true);
     const key = openCodeScopeKey(scope);
-    const entry = await this.ensureReady(scope);
-    if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
-    let sessionId = entry.sessions.get(cleanChatId);
-    if (!sessionId) {
-      let creating = entry.sessionStarting.get(cleanChatId);
-      if (!creating) {
-        creating = this.createOrRestoreSession(key, entry, cleanChatId, title)
-          .finally(() => entry.sessionStarting.delete(cleanChatId));
-        entry.sessionStarting.set(cleanChatId, creating);
-      }
-      sessionId = await creating;
+    const requestKey = `${key}\u0000${cleanChatId}`;
+    let request = this.chatRequests.get(requestKey);
+    if (!request) {
+      request = (async () => {
+        const entry = await this.ensureReady(scope);
+        if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
+        let sessionId = entry.sessions.get(cleanChatId);
+        if (!sessionId) {
+          let creating = entry.sessionStarting.get(cleanChatId);
+          if (!creating) {
+            creating = this.createOrRestoreSession(key, entry, cleanChatId, title)
+              .finally(() => entry.sessionStarting.delete(cleanChatId));
+            entry.sessionStarting.set(cleanChatId, creating);
+          }
+          sessionId = await creating;
+        }
+        entry.lastUsedAt = this.now();
+        return { client: entry.client, sessionId, runtimeGeneration: entry.handle.generation };
+      })().finally(() => {
+        if (this.chatRequests.get(requestKey) === request) this.chatRequests.delete(requestKey);
+      });
+      this.chatRequests.set(requestKey, request);
     }
-    entry.lastUsedAt = this.now();
-    return { client: entry.client, sessionId, runtimeGeneration: entry.handle.generation };
+    return request;
   }
 
   async cancelChat(scope: HarnessScope, chatId: string): Promise<void> {
     const cleanChatId = cleanScopePart(chatId, true);
-    const entry = this.entries.get(openCodeScopeKey(scope));
-    if (!entry || entry.disposed) return;
-    let sessionId = entry.sessions.get(cleanChatId);
-    if (!sessionId) {
-      sessionId = await entry.sessionStarting.get(cleanChatId)?.catch(() => undefined);
+    const key = openCodeScopeKey(scope);
+    const inFlight = this.chatRequests.get(`${key}\u0000${cleanChatId}`);
+    if (inFlight) {
+      const session = await inFlight.catch(() => undefined);
+      if (session) await session.client.abort(session.sessionId);
+      return;
     }
-    if (!sessionId || entry.disposed) return;
+    const entry = this.entries.get(key);
+    if (!entry || entry.disposed) return;
+    const sessionId = entry.sessions.get(cleanChatId);
+    if (!sessionId) return;
     await entry.client.abort(sessionId);
   }
 

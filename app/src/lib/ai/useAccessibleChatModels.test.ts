@@ -5,6 +5,7 @@ import { syncDiscoveredOllamaModels } from './models';
 import {
   buildConnectionPickerGroups,
   buildModelPickerGroups,
+  requestOpenCodeModelCatalogRefresh,
   useAccessibleChatModels,
 } from './useAccessibleChatModels';
 import {
@@ -38,12 +39,12 @@ vi.mock('./connectionState', async (importOriginal) => ({
   isConnectionSessionChecked,
 }));
 
-vi.mock('./adapters/opencode', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./adapters/opencode')>();
+vi.mock('./adapters/opencodePersistent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./adapters/opencodePersistent')>();
   return {
     ...actual,
-    openCodeCliAdapter: Object.freeze({
-      ...actual.openCodeCliAdapter,
+    openCodePersistentAdapter: Object.freeze({
+      ...actual.openCodePersistentAdapter,
       listModels: listOpenCodeModels,
     }),
   };
@@ -58,6 +59,7 @@ describe('useAccessibleChatModels', () => {
     isConnectionSessionChecked.mockReturnValue(false);
     listOpenCodeModels.mockReset();
     listOpenCodeModels.mockResolvedValue([]);
+    requestOpenCodeModelCatalogRefresh();
     syncDiscoveredOllamaModels([]);
     useAuthStore.setState({ defaultLocalModel: '', apiKeys: {}, offlineMode: false, plan: 'free' });
   });

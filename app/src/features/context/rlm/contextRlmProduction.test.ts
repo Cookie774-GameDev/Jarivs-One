@@ -15,7 +15,7 @@ function result(path = 'src/example.ts'): RepositoryRetrievalResult {
         representation: 'full',
         content: 'export const answer = 42;',
         tokens: 8,
-        whySelected: ['task_intent'],
+        whySelected: ['task_relevance'],
         symbols: [],
         evidence: {
           mapId: 'map-1',

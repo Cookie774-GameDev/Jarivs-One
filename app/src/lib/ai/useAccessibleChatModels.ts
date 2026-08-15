@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ProviderId } from '@/types';
 import { useAuthStore } from '@/stores/auth';
 import { getProviderDisplayName } from './providerRegistry';
@@ -34,6 +34,7 @@ import {
   KERNEL_SMOKE_PROVIDER_ID,
 } from './providers/kernelSmoke';
 import {
+  canonicalModelId,
   canonicalProviderModelId,
   dedupeModelMetadata,
   modelRouteLabel,
@@ -99,7 +100,7 @@ const OPEN_CODE_MODEL_CACHE_TTL_MS = 60_000;
 const OPEN_CODE_MODEL_FAILURE_RETRY_MS = 15_000;
 let openCodeCatalogGeneration = 0;
 let openCodeModelCache:
-  | { readonly loadedAt: number; readonly models: readonly PickerCatalogModel[] }
+  | { readonly generation: number; readonly loadedAt: number; readonly models: readonly PickerCatalogModel[] }
   | undefined;
 let openCodeModelLoad:
   | { readonly generation: number; readonly promise: Promise<readonly PickerCatalogModel[]> }
@@ -112,12 +113,33 @@ function connectionAuthLabel(state: ConnectionPickerState): string {
   return 'Authentication unknown';
 }
 
+function dedupeModelMetadataInOrder(
+  records: readonly Readonly<PickerCatalogModel>[],
+): PickerCatalogModel[] {
+  const byId = new Map<string, PickerCatalogModel>();
+  const order: string[] = [];
+  for (const raw of records) {
+    const candidate = dedupeModelMetadata([raw])[0];
+    if (!candidate) continue;
+    const key = canonicalModelId(candidate.id);
+    const current = byId.get(key);
+    if (!current) {
+      order.push(key);
+      byId.set(key, candidate);
+      continue;
+    }
+    const merged = dedupeModelMetadata([current, candidate])[0];
+    if (merged) byId.set(key, merged);
+  }
+  return order.map((key) => byId.get(key)!).filter(Boolean);
+}
+
 function asCatalogModels(
   models: readonly Readonly<{ id: string; label: string; variants?: readonly string[] }>[],
   source: ModelCatalogSource,
   lastVerifiedAt?: number,
 ): PickerCatalogModel[] {
-  return dedupeModelMetadata(
+  return dedupeModelMetadataInOrder(
     models.map((model) => ({
       ...model,
       source,
@@ -137,6 +159,7 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
   if (
     !force
     && openCodeModelCache
+    && openCodeModelCache.generation === generation
     && now - openCodeModelCache.loadedAt < OPEN_CODE_MODEL_CACHE_TTL_MS
   ) {
     return openCodeModelCache.models;
@@ -153,7 +176,7 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
       const normalized = asCatalogModels(models, 'opencode-live', loadedAt);
       // An older auth/refresh request must never overwrite a newer catalog.
       if (generation === openCodeCatalogGeneration) {
-        openCodeModelCache = { loadedAt, models: normalized };
+        openCodeModelCache = { generation, loadedAt, models: normalized };
       }
       return normalized;
     })
@@ -195,7 +218,7 @@ export function buildConnectionPickerGroups(args: {
   const groups = new Map<string, ModelPickerGroup>();
 
   for (const connection of args.connections) {
-    const models = dedupeModelMetadata(
+    const models = dedupeModelMetadataInOrder(
       args.modelsByConnection?.[connection.id] ??
         args.modelsByProvider[connection.providerId] ??
         [],
@@ -226,7 +249,7 @@ export function buildConnectionPickerGroups(args: {
         label: model.label,
         connection,
         connectionId: connection.id,
-        modeLabel: `${connection.displayName} · ${CONNECTION_MODE_LABELS[connection.mode]}`,
+        modeLabel: CONNECTION_MODE_LABELS[connection.mode],
         authLabel: connectionAuthLabel(state),
         available: state.available && authAllowsUse && model.available !== false,
         catalogSource: model.source,
@@ -237,19 +260,13 @@ export function buildConnectionPickerGroups(args: {
     groups.set(connection.providerId, group);
   }
 
-  // Remove stale/unavailable duplicates when the same canonical model has a
-  // healthy route. Distinct healthy API/subscription routes remain explicit and
-  // connection-qualified so billing/auth identity is never silently merged.
+  // Dedupe only within an exact connection+canonical-model route. Distinct
+  // API/subscription routes—including unavailable sign-in rows—remain visible
+  // so auth, billing, and provider identity are never silently collapsed.
   for (const group of groups.values()) {
-    const availableByModel = new Set(
-      group.options
-        .filter((option) => option.available !== false)
-        .map((option) => pickerCanonicalModelId(group.provider, option.modelId)),
-    );
     const uniqueByRoute = new Map<string, ModelPickerOption>();
     for (const option of group.options) {
       const modelKey = pickerCanonicalModelId(group.provider, option.modelId);
-      if (option.available === false && availableByModel.has(modelKey)) continue;
       const routeKey = `${option.connectionId ?? ''}\u0000${modelKey}`;
       if (!uniqueByRoute.has(routeKey)) uniqueByRoute.set(routeKey, option);
     }
@@ -259,24 +276,17 @@ export function buildConnectionPickerGroups(args: {
       const key = pickerCanonicalModelId(group.provider, option.modelId);
       routeCounts.set(key, (routeCounts.get(key) ?? 0) + 1);
     }
-    group.options = visible
-      .map((option) => {
-        const key = pickerCanonicalModelId(group.provider, option.modelId);
-        return {
-          ...option,
-          label: modelRouteLabel(
-            option.label,
-            option.connection?.displayName,
-            routeCounts.get(key) ?? 1,
-          ),
-        };
-      })
-      .sort(
-        (a, b) =>
-          Number(b.available !== false) - Number(a.available !== false)
-          || a.label.localeCompare(b.label)
-          || a.id.localeCompare(b.id),
-      );
+    group.options = visible.map((option) => {
+      const key = pickerCanonicalModelId(group.provider, option.modelId);
+      return {
+        ...option,
+        label: modelRouteLabel(
+          option.label,
+          option.connection?.displayName,
+          routeCounts.get(key) ?? 1,
+        ),
+      };
+    });
   }
 
   return [...groups.values()];
@@ -331,15 +341,32 @@ export function useAccessibleChatModels() {
   const [openCodeModels, setOpenCodeModels] = useState<readonly PickerCatalogModel[]>([]);
 
   const openCodeSessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+  const openCodeSessionChecked = isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id);
   const openCodeReady =
     !offlineMode &&
-    isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id) &&
+    openCodeSessionChecked &&
     openCodeSessionState?.available === true &&
     openCodeSessionState.auth === 'authenticated';
+  const openCodeStateSignature = [
+    openCodeSessionChecked,
+    openCodeSessionState?.available === true,
+    openCodeSessionState?.auth ?? 'unknown',
+  ].join(':');
+  const openCodeStateSignatureRef = useRef(openCodeStateSignature);
+  openCodeStateSignatureRef.current = openCodeStateSignature;
 
   useEffect(() => {
     const updateConnection = () => {
-      invalidateOpenCodeModelCatalog();
+      const sessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+      const nextSignature = [
+        isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id),
+        sessionState?.available === true,
+        sessionState?.auth ?? 'unknown',
+      ].join(':');
+      if (nextSignature !== openCodeStateSignatureRef.current) {
+        openCodeStateSignatureRef.current = nextSignature;
+        invalidateOpenCodeModelCatalog();
+      }
       setConnectionRevision((value) => value + 1);
     };
     const refreshCatalog = () => {
@@ -400,13 +427,9 @@ export function useAccessibleChatModels() {
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
 
   const groups = useMemo(() => {
-    const modernOpenCodeHealthy = openCodeReady && openCodeModels.length > 0;
-    const pickerConnections = (offlineMode
+    const pickerConnections = offlineMode
       ? PROVIDER_CONNECTIONS.filter((connection) => connection.mode === 'local')
-      : PROVIDER_CONNECTIONS
-    ).filter(
-      (connection) => !(modernOpenCodeHealthy && connection.id === CODEX_CLI_CONNECTION.id),
-    );
+      : PROVIDER_CONNECTIONS;
     const legacy = buildModelPickerGroups({ apiKeys, offlineMode, plan, defaultLocalModel });
     const modelsByProvider: Record<string, PickerCatalogModel[]> = Object.fromEntries(
       legacy.map((group) => [

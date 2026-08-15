@@ -23,6 +23,8 @@ import {
 } from './pointerAuthority';
 import { decideContextRoute } from './routeDecision';
 
+type RlmInvestigationInput = Parameters<RlmInvestigationWorker['investigate']>[0];
+
 const MAX_VISIBLE_HITS = 8;
 const MAX_RLM_SUBQUERIES = 3;
 
@@ -242,7 +244,7 @@ function investigationWorker(
   service: RepositoryContextQueryService,
 ): RlmInvestigationWorker {
   return Object.freeze({
-    async investigate(input) {
+    async investigate(input: RlmInvestigationInput) {
       const queries = subqueries(input.question).slice(0, Math.max(1, input.maxSubcalls));
       const evidence: EvidenceSpan[] = [];
       const seen = new Set<string>();
@@ -286,7 +288,7 @@ function investigationWorker(
 }
 
 function formatPromptBlock(
-  route: 'retrieval' | 'rlm',
+  route: ProductionRlmContextResult['route'],
   evidence: readonly EvidenceSpan[],
   unresolved: readonly string[],
 ): string {

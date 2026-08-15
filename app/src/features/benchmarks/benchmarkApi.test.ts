@@ -22,7 +22,7 @@ const row = {
   costPerTaskUsd: 0.5,
   contextWindowTokens: 200000,
   openWeights: false,
-  sourceName: 'Artificial Analysis',
+  sourceName: 'Artificial Analysis' as const,
   sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
   methodologyVersion: '3.0',
   sourceObservedAt: '2026-08-14T23:00:00Z',

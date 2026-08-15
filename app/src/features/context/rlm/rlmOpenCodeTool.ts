@@ -38,7 +38,7 @@ const DEFAULT_DEPENDENCIES: RlmOpenCodeToolDependencies = Object.freeze({
     }
     return { accountId: identity.accountId, projectId };
   },
-  async query(input) {
+  async query(input: Parameters<RlmOpenCodeToolDependencies['query']>[0]) {
     const { prepareProductionRlmContext } = await import('./contextRlmProduction');
     return prepareProductionRlmContext({
       accountId: input.accountId,
@@ -84,7 +84,7 @@ export function createRlmOpenCodeTool(
       required: ['question'],
       additionalProperties: false,
     },
-    async invoke(input) {
+    async invoke(input: RlmOpenCodeToolInput) {
       const question = input?.question?.trim();
       if (!question || question.length > 4_096 || /[\u0000-\u001f\u007f]/u.test(question)) {
         throw new Error('question must be safe, non-empty text of at most 4096 characters');

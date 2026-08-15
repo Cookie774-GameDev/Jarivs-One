@@ -30,7 +30,7 @@ describe('OpenCodeTurnCoordinator', () => {
       selection: {
         connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'gpt-5.6-sol', metadata,
       },
-      policy: { mode: 'ask', access: 'read', approveAllForRun: false, projectRoot: 'C:/project' },
+      policy: { mode: 'ask', access: 'read-only', approveAllForRun: false, projectRoot: 'C:/project' },
     });
     expect(result.kind).toBe('command');
     expect(sendAsync).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe('OpenCodeTurnCoordinator', () => {
         connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'spark',
         metadata: { connectionId: 'openai-chatgpt-pro', modelId: 'spark', variants: [{ id: 'medium' }] },
       },
-      policy: { mode: 'ask', access: 'read', approveAllForRun: false, projectRoot: 'C:/project' },
+      policy: { mode: 'ask', access: 'read-only', approveAllForRun: false, projectRoot: 'C:/project' },
     });
     expect(result.kind).toBe('rejected');
     expect(sessions.sessionForChat).not.toHaveBeenCalled();

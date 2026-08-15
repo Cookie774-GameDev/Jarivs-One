@@ -116,14 +116,14 @@ function mergeStringVariants(
 }
 
 /** Deduplicate metadata inside one exact connection. */
-export function dedupeModelMetadata<T extends SimpleModelCatalogRecord>(
-  records: readonly Readonly<T>[],
-): T[] {
-  const byId = new Map<string, T>();
+export function dedupeModelMetadata(
+  records: readonly Readonly<SimpleModelCatalogRecord>[],
+): SimpleModelCatalogRecord[] {
+  const byId = new Map<string, SimpleModelCatalogRecord>();
   for (const raw of records) {
     const id = raw.id.trim();
     if (!id) continue;
-    const candidate = { ...raw, id, label: raw.label.trim() || id } as T;
+    const candidate: SimpleModelCatalogRecord = { ...raw, id, label: raw.label.trim() || id };
     const key = canonicalModelId(id);
     const current = byId.get(key);
     if (!current) {
@@ -136,7 +136,7 @@ export function dedupeModelMetadata<T extends SimpleModelCatalogRecord>(
       ...loser,
       ...winner,
       variants: mergeStringVariants(current.variants, candidate.variants),
-    } as T);
+    });
   }
   return [...byId.values()].sort(
     (a, b) => a.label.localeCompare(b.label) || canonicalModelId(a.id).localeCompare(canonicalModelId(b.id)),

@@ -98,7 +98,7 @@ describe('live AI news API adapter', () => {
   });
 
   it('uses the configured origin and bounded request path', async () => {
-    const fetcher = vi.fn(async () =>
+    const fetcher = vi.fn(async (_input: RequestInfo | URL) =>
       new Response(JSON.stringify(responsePayload()), {
         status: 200,
         headers: { 'content-type': 'application/json' },
