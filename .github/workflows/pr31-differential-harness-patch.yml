@@ -1,0 +1,61 @@
+name: Patch PR31 differential harness
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-differential-harness-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/pr31-opencode-rlm-verify-a6f1
+          fetch-depth: 0
+
+      - name: Patch only the differential runner isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/pr31-opencode-rlm-promote-final.yml')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = {
+              '      - name: Install frozen Node dependencies once\n':
+                  '      - name: Install frozen staged Node dependencies\n',
+              '          ln -s "$GITHUB_WORKSPACE/node_modules" "$BASE_DIR/node_modules"\n':
+                  '          (cd "$BASE_DIR" && npm ci --no-audit --no-fund)\n',
+              '              "$GITHUB_WORKSPACE/node_modules/.bin/vitest" run \\\n':
+                  '              "$tree/node_modules/.bin/vitest" run \\\n',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'expected workflow fragment missing: {old!r}')
+              text = text.replace(old, new, 1)
+
+          trigger = '      - .github/pr31-differential-trigger.txt\n'
+          marker = '      - .github/workflows/pr31-opencode-rlm-promote-final.yml\n'
+          if trigger not in text:
+              if marker not in text:
+                  raise SystemExit('workflow path marker missing')
+              text = text.replace(marker, marker + trigger, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- .github/workflows/pr31-opencode-rlm-promote-final.yml
+          git config user.name 'VibeSpace Integration Agent'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/pr31-opencode-rlm-promote-final.yml
+          git commit -m 'ci(pr31): isolate base dependencies for differential gate'
+          git push origin HEAD:agent/pr31-opencode-rlm-verify-a6f1
