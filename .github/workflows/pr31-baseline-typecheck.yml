@@ -1,0 +1,35 @@
+name: PR31 exact-base typecheck
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-baseline-typecheck.yml
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_BASE: 4209030eb041c661ee1a4b55e87367136638762b
+
+jobs:
+  typecheck-base:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR31 base
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.EXPECTED_BASE }}
+          fetch-depth: 1
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install frozen dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck exact base
+        run: npm run typecheck
