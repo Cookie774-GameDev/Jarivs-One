@@ -1,0 +1,176 @@
+name: PR31 fresh native and remote proof
+
+on:
+  push:
+    branches: [agent/pr31-opencode-rlm-verify-a6f1]
+    paths: [.github/workflows/pr31-rust-fresh-final-proof.yml]
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: pr31-rust-fresh-final-proof
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 4209030eb041c661ee1a4b55e87367136638762b
+  STAGING_SHA: e0c11422a5d038231cdfa73bf3f48dffc7554f51
+  TARGET_BRANCH: agent/pr30-fixes-and-updates
+  PR_NUMBER: '31'
+
+jobs:
+  fresh-native-and-remote-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact PR31 head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.STAGING_SHA }}
+          fetch-depth: 0
+
+      - name: Guard exact current branch and source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          test "$(git rev-parse HEAD)" = "$STAGING_SHA"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$STAGING_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$STAGING_SHA"
+          git diff --check "$BASE_SHA...$STAGING_SHA"
+          git diff --name-only "$BASE_SHA...$STAGING_SHA" -- 'app/src-tauri/**/*.rs' | sort | tee "$RUNNER_TEMP/changed-rust-files.txt"
+          test "$(cat "$RUNNER_TEMP/changed-rust-files.txt")" = 'app/src-tauri/src/cli_bridge.rs'
+          grep -F 'const MAX_TIMEOUT_MS: u64 = 86_400_000;' app/src-tauri/src/cli_bridge.rs
+          grep -F 'validate_runtime_limits(86_400_000, 1_048_576).is_ok()' app/src-tauri/src/cli_bridge.rs
+          grep -F 'validate_runtime_limits(86_400_001, 1_048_576).is_err()' app/src-tauri/src/cli_bridge.rs
+          printf 'LOCAL_AT_START=%s\nREMOTE_AT_START=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse "origin/${TARGET_BRANCH}")" > "$RUNNER_TEMP/guard.txt"
+
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install Linux native dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Changed-file rustfmt check
+        working-directory: app/src-tauri
+        shell: bash
+        run: |
+          set -o pipefail
+          rustfmt --edition 2021 --check src/cli_bridge.rs 2>&1 | tee "$RUNNER_TEMP/changed-rustfmt.log"
+          echo CHANGED_RUSTFMT=PASS > "$RUNNER_TEMP/changed-rustfmt-status.txt"
+
+      - name: Fresh Cargo release check
+        working-directory: app/src-tauri
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/pr31-fresh-cargo-target
+          CARGO_INCREMENTAL: '0'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo check --release 2>&1 | tee "$RUNNER_TEMP/fresh-cargo-check.log"
+          echo FRESH_CARGO_CHECK_RELEASE=PASS > "$RUNNER_TEMP/fresh-cargo-check-status.txt"
+
+      - name: Fresh focused native test
+        working-directory: app/src-tauri
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/pr31-fresh-cargo-target
+          CARGO_INCREMENTAL: '0'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --lib cli_bridge_validates_timeout_output_and_request_id_bounds 2>&1 | tee "$RUNNER_TEMP/fresh-native-test.log"
+          echo FRESH_NATIVE_FOCUSED_TEST=PASS > "$RUNNER_TEMP/fresh-native-test-status.txt"
+
+      - name: Normal no-force push and exact SHA proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          test "$(git rev-parse HEAD)" = "$STAGING_SHA"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$STAGING_SHA"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}" 2>&1 | tee "$RUNNER_TEMP/push.log"
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          local_head="$(git rev-parse HEAD)"
+          remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          printf 'LOCAL_FINAL_SHA=%s\nREMOTE_PR31_SHA=%s\nSHA_MATCH=%s\n' \
+            "$local_head" "$remote_head" "$([ "$local_head" = "$remote_head" ] && echo YES || echo NO)" | tee "$RUNNER_TEMP/sha-proof.txt"
+          test "$local_head" = "$remote_head"
+          git log -15 --oneline "origin/${TARGET_BRANCH}" | tee "$RUNNER_TEMP/remote-log.txt"
+          git log --left-right --cherry-pick --oneline "origin/${TARGET_BRANCH}...HEAD" > "$RUNNER_TEMP/left-right.txt"
+          test ! -s "$RUNNER_TEMP/left-right.txt"
+          git log --format='%H %s' "$BASE_SHA..HEAD" | tee "$RUNNER_TEMP/integration-commits.txt"
+          echo PUSH=PASS > "$RUNNER_TEMP/push-status.txt"
+
+      - name: Verify exact PR31 safety state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > "$RUNNER_TEMP/pr.json"
+          python - "$(git rev-parse HEAD)" "$TARGET_BRANCH" "$RUNNER_TEMP/pr.json" "$RUNNER_TEMP/pr-state.txt" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          sha, branch, source, output = sys.argv[1:]
+          pr = json.loads(Path(source).read_text(encoding='utf-8'))
+          checks = {
+              'PR_OPEN': pr.get('state') == 'open',
+              'PR_DRAFT': pr.get('draft') is True,
+              'PR_UNMERGED': pr.get('merged') is False,
+              'HEAD_BRANCH': pr.get('head', {}).get('ref') == branch,
+              'HEAD_SHA': pr.get('head', {}).get('sha') == sha,
+          }
+          text = ''.join(f'{key}={"PASS" if value else "FAIL"}\n' for key, value in checks.items())
+          Path(output).write_text(text, encoding='utf-8')
+          print(text, end='')
+          if not all(checks.values()):
+              raise SystemExit(1)
+          PY
+          {
+            cat "$RUNNER_TEMP/sha-proof.txt"
+            cat "$RUNNER_TEMP/push-status.txt"
+            cat "$RUNNER_TEMP/pr-state.txt"
+            cat "$RUNNER_TEMP/changed-rustfmt-status.txt"
+            cat "$RUNNER_TEMP/fresh-cargo-check-status.txt"
+            cat "$RUNNER_TEMP/fresh-native-test-status.txt"
+            echo RUST_INTEGRATION_GATE=PASS
+          } | tee "$RUNNER_TEMP/final-proof.txt"
+
+      - name: Upload fresh native and remote proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31-fresh-native-and-remote-proof
+          path: |
+            ${{ runner.temp }}/guard.txt
+            ${{ runner.temp }}/changed-rust-files.txt
+            ${{ runner.temp }}/changed-rustfmt.log
+            ${{ runner.temp }}/changed-rustfmt-status.txt
+            ${{ runner.temp }}/fresh-cargo-check.log
+            ${{ runner.temp }}/fresh-cargo-check-status.txt
+            ${{ runner.temp }}/fresh-native-test.log
+            ${{ runner.temp }}/fresh-native-test-status.txt
+            ${{ runner.temp }}/push.log
+            ${{ runner.temp }}/push-status.txt
+            ${{ runner.temp }}/sha-proof.txt
+            ${{ runner.temp }}/remote-log.txt
+            ${{ runner.temp }}/left-right.txt
+            ${{ runner.temp }}/integration-commits.txt
+            ${{ runner.temp }}/pr.json
+            ${{ runner.temp }}/pr-state.txt
+            ${{ runner.temp }}/final-proof.txt
+          if-no-files-found: warn
+          retention-days: 14
