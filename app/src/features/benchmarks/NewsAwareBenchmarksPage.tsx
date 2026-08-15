@@ -1,13 +1,11 @@
 import * as React from 'react';
-import { BenchmarksPage } from './BenchmarksPage';
-import { NewsModelBenchmarkLane } from './NewsModelBenchmarkLane';
+import { BenchmarkIntelligencePage } from './BenchmarkIntelligencePage';
 
-/** Adds the automatic news-to-benchmark comparison lane without changing the leaderboard itself. */
+/**
+ * Compatibility alias retained for old imports. The news-comparison lane is
+ * intentionally not mounted: the Benchmarks route now renders the authoritative
+ * Artificial Analysis leaderboard directly.
+ */
 export function NewsAwareBenchmarksPage() {
-  return (
-    <div className="min-h-full w-full">
-      <NewsModelBenchmarkLane />
-      <BenchmarksPage />
-    </div>
-  );
+  return <BenchmarkIntelligencePage />;
 }
