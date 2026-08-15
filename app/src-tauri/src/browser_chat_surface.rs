@@ -5,7 +5,13 @@
 //! registry, navigation is allowlisted, and provider profile directories are hashed per
 //! VibeSpace account/provider instead of being shared globally.
 
-use std::{fmt::Write as _, sync::Mutex};
+use std::{
+    fmt::Write as _,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -33,6 +39,16 @@ static SURFACE_STATE: Mutex<SurfaceState> = Mutex::new(SurfaceState {
     visible_label: None,
     surfaces: Vec::new(),
 });
+
+// Hide commands increment this before waiting for the native operation mutex. An in-flight open
+// therefore knows it is stale before it can show the child on a route that has already changed.
+static SURFACE_VISIBILITY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+const LEGACY_SURFACE_LABELS: [&str; 3] = [
+    "browser-chat-chatgpt",
+    "browser-chat-claude",
+    "browser-chat-gemini",
+];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -146,8 +162,12 @@ fn apply_bounds(provider: &Webview, bounds: &BrowserChatBounds) -> Result<(), St
         .map_err(|error| format!("browser_chat_size_failed:{error}"))
 }
 
-fn hide_surface(app: &AppHandle, label: &str) -> Result<(), String> {
+fn deactivate_surface(app: &AppHandle, label: &str) -> Result<(), String> {
     if let Some(webview) = app.get_webview(label) {
+        // On Windows/WebView2 a hidden child can briefly retain its last compositor surface.
+        // Move and shrink first so a delayed compositor frame cannot cover another VibeSpace route.
+        let _ = webview.set_position(LogicalPosition::new(-32_000.0, -32_000.0));
+        let _ = webview.set_size(LogicalSize::new(1.0, 1.0));
         webview
             .hide()
             .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
@@ -162,10 +182,22 @@ fn hide_surfaces_except(
 ) -> Result<(), String> {
     for surface in &state.surfaces {
         if Some(surface.label.as_str()) != selected {
-            hide_surface(app, &surface.label)?;
+            deactivate_surface(app, &surface.label)?;
+        }
+    }
+
+    // Older PR-31 builds used static labels. Hide those too so a renderer hot reload or an
+    // in-place upgrade cannot leave a legacy provider view floating over the current shell.
+    for label in LEGACY_SURFACE_LABELS {
+        if Some(label) != selected {
+            deactivate_surface(app, label)?;
         }
     }
     Ok(())
+}
+
+fn visibility_generation_is_current(requested: u64) -> bool {
+    SURFACE_VISIBILITY_GENERATION.load(Ordering::Acquire) == requested
 }
 
 fn host_matches(host: &str, suffix: &str) -> bool {
@@ -239,6 +271,7 @@ fn open_provider(
     provider: ProviderConfig,
     profile_key: String,
     bounds: BrowserChatBounds,
+    requested_generation: u64,
 ) -> Result<bool, String> {
     let digest = profile_digest(&profile_key)?;
     let label = surface_label(provider.id, &digest)?;
@@ -264,17 +297,39 @@ fn open_provider(
         let created = main
             .add_child(builder, position, size)
             .map_err(|error| format!("browser_chat_create_failed:{error}"))?;
+        (created, true)
+    };
+
+    if !state
+        .surfaces
+        .iter()
+        .any(|surface| surface.label == label)
+    {
         state.surfaces.push(SurfaceRecord {
             provider_id: provider.id,
             label: label.clone(),
         });
-        (created, true)
-    };
+    }
+
+    if !visibility_generation_is_current(requested_generation) {
+        deactivate_surface(&app, &label)?;
+        if state.visible_label.as_deref() == Some(label.as_str()) {
+            state.visible_label = None;
+        }
+        return Ok(created);
+    }
 
     let should_focus = created || state.visible_label.as_deref() != Some(label.as_str());
     webview
         .show()
         .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
+
+    if !visibility_generation_is_current(requested_generation) {
+        deactivate_surface(&app, &label)?;
+        state.visible_label = None;
+        return Ok(created);
+    }
+
     if should_focus {
         webview
             .set_focus()
@@ -297,9 +352,16 @@ pub async fn browser_chat_surface_open(
     validate_profile_key(&provider_profile_key)?;
     let provider = provider_config(&provider_id)?;
     let status_provider_id = provider.id.to_string();
+    let requested_generation = SURFACE_VISIBILITY_GENERATION.load(Ordering::Acquire);
 
     let created = tauri::async_runtime::spawn_blocking(move || {
-        open_provider(app, provider, provider_profile_key, bounds)
+        open_provider(
+            app,
+            provider,
+            provider_profile_key,
+            bounds,
+            requested_generation,
+        )
     })
     .await
     .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
@@ -316,6 +378,7 @@ pub async fn browser_chat_surface_hide_all(
     caller: WebviewWindow,
 ) -> Result<(), String> {
     ensure_main_caller(caller.label())?;
+    SURFACE_VISIBILITY_GENERATION.fetch_add(1, Ordering::AcqRel);
     tauri::async_runtime::spawn_blocking(move || {
         let mut state = SURFACE_STATE
             .lock()
@@ -337,6 +400,7 @@ pub async fn browser_chat_surface_hide(
 ) -> Result<(), String> {
     ensure_main_caller(caller.label())?;
     let provider = provider_config(&provider_id)?;
+    SURFACE_VISIBILITY_GENERATION.fetch_add(1, Ordering::AcqRel);
     tauri::async_runtime::spawn_blocking(move || {
         let mut state = SURFACE_STATE
             .lock()
@@ -348,8 +412,10 @@ pub async fn browser_chat_surface_hide(
             .map(|surface| surface.label.clone())
             .collect();
         for label in &labels {
-            hide_surface(&app, label)?;
+            deactivate_surface(&app, label)?;
         }
+        let legacy_label = format!("browser-chat-{}", provider.id);
+        deactivate_surface(&app, &legacy_label)?;
         if state
             .visible_label
             .as_ref()
@@ -428,6 +494,14 @@ mod tests {
             surface_label("chatgpt", &account_a).expect("valid label"),
             surface_label("chatgpt", &account_b).expect("valid label")
         );
+    }
+
+    #[test]
+    fn route_hide_generation_invalidates_an_older_open() {
+        let current = SURFACE_VISIBILITY_GENERATION.load(Ordering::Acquire);
+        assert!(visibility_generation_is_current(current));
+        SURFACE_VISIBILITY_GENERATION.fetch_add(1, Ordering::AcqRel);
+        assert!(!visibility_generation_is_current(current));
     }
 
     #[test]
