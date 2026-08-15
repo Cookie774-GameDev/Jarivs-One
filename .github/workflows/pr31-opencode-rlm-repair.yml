@@ -1,0 +1,436 @@
+name: PR31 OpenCode RLM focused repair
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-opencode-rlm-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr31-opencode-rlm-focused-repair
+  cancel-in-progress: true
+
+env:
+  STAGING_BRANCH: agent/pr31-opencode-rlm-staging-a6f1
+
+jobs:
+  repair-and-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout isolated staged integration
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.STAGING_BRANCH }}
+          fetch-depth: 0
+
+      - name: Repair model catalog and session compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one replacement, found {count}: {old[:80]!r}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          picker = Path('app/src/lib/ai/useAccessibleChatModels.ts')
+          replace_once(
+              picker,
+              "import { useCallback, useEffect, useMemo, useState } from 'react';",
+              "import { useCallback, useEffect, useMemo, useRef, useState } from 'react';",
+          )
+          replace_once(
+              picker,
+              "  | { readonly loadedAt: number; readonly models: readonly PickerCatalogModel[] }",
+              "  | { readonly generation: number; readonly loadedAt: number; readonly models: readonly PickerCatalogModel[] }",
+          )
+          replace_once(
+              picker,
+              "    && openCodeModelCache\n    && now - openCodeModelCache.loadedAt < OPEN_CODE_MODEL_CACHE_TTL_MS",
+              "    && openCodeModelCache\n    && openCodeModelCache.generation === generation\n    && now - openCodeModelCache.loadedAt < OPEN_CODE_MODEL_CACHE_TTL_MS",
+          )
+          replace_once(
+              picker,
+              "        openCodeModelCache = { loadedAt, models: normalized };",
+              "        openCodeModelCache = { generation, loadedAt, models: normalized };",
+          )
+          replace_once(
+              picker,
+              "        modeLabel: `${connection.displayName} · ${CONNECTION_MODE_LABELS[connection.mode]}`,
+",
+              "        modeLabel: CONNECTION_MODE_LABELS[connection.mode],\n",
+          )
+
+          text = picker.read_text(encoding='utf-8')
+          block_start = text.index('  // Remove stale/unavailable duplicates')
+          block_end = text.index('\n\n  return [...groups.values()];', block_start)
+          replacement = '''  // Dedupe only within an exact connection+canonical-model route. Distinct
+  // API/subscription routes—including unavailable sign-in rows—remain visible
+  // so auth, billing, and provider identity are never silently collapsed.
+  for (const group of groups.values()) {
+    const uniqueByRoute = new Map<string, ModelPickerOption>();
+    for (const option of group.options) {
+      const modelKey = pickerCanonicalModelId(group.provider, option.modelId);
+      const routeKey = `${option.connectionId ?? ''}\\u0000${modelKey}`;
+      if (!uniqueByRoute.has(routeKey)) uniqueByRoute.set(routeKey, option);
+    }
+    const visible = [...uniqueByRoute.values()];
+    const routeCounts = new Map<string, number>();
+    for (const option of visible) {
+      const key = pickerCanonicalModelId(group.provider, option.modelId);
+      routeCounts.set(key, (routeCounts.get(key) ?? 0) + 1);
+    }
+    group.options = visible.map((option) => {
+      const key = pickerCanonicalModelId(group.provider, option.modelId);
+      return {
+        ...option,
+        label: modelRouteLabel(
+          option.label,
+          option.connection?.displayName,
+          routeCounts.get(key) ?? 1,
+        ),
+      };
+    });
+  }'''
+          picker.write_text(text[:block_start] + replacement + text[block_end:], encoding='utf-8')
+
+          replace_once(
+              picker,
+              '''  const openCodeSessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+  const openCodeReady =
+    !offlineMode &&
+    isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id) &&
+    openCodeSessionState?.available === true &&
+    openCodeSessionState.auth === 'authenticated';
+''',
+              '''  const openCodeSessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+  const openCodeSessionChecked = isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id);
+  const openCodeReady =
+    !offlineMode &&
+    openCodeSessionChecked &&
+    openCodeSessionState?.available === true &&
+    openCodeSessionState.auth === 'authenticated';
+  const openCodeStateSignature = [
+    openCodeSessionChecked,
+    openCodeSessionState?.available === true,
+    openCodeSessionState?.auth ?? 'unknown',
+  ].join(':');
+  const openCodeStateSignatureRef = useRef(openCodeStateSignature);
+  openCodeStateSignatureRef.current = openCodeStateSignature;
+''',
+          )
+          replace_once(
+              picker,
+              '''    const updateConnection = () => {
+      invalidateOpenCodeModelCatalog();
+      setConnectionRevision((value) => value + 1);
+    };
+''',
+              '''    const updateConnection = () => {
+      const sessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+      const nextSignature = [
+        isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id),
+        sessionState?.available === true,
+        sessionState?.auth ?? 'unknown',
+      ].join(':');
+      if (nextSignature !== openCodeStateSignatureRef.current) {
+        openCodeStateSignatureRef.current = nextSignature;
+        invalidateOpenCodeModelCatalog();
+      }
+      setConnectionRevision((value) => value + 1);
+    };
+''',
+          )
+
+          text = picker.read_text(encoding='utf-8')
+          block_start = text.index('    const modernOpenCodeHealthy =')
+          block_end = text.index('    const legacy =', block_start)
+          picker.write_text(
+              text[:block_start]
+              + "    const pickerConnections = offlineMode\n      ? PROVIDER_CONNECTIONS.filter((connection) => connection.mode === 'local')\n      : PROVIDER_CONNECTIONS;\n"
+              + text[block_end:],
+              encoding='utf-8',
+          )
+
+          picker_test = Path('app/src/lib/ai/useAccessibleChatModels.test.ts')
+          replace_once(
+              picker_test,
+              '''  buildModelPickerGroups,
+  useAccessibleChatModels,
+''',
+              '''  buildModelPickerGroups,
+  requestOpenCodeModelCatalogRefresh,
+  useAccessibleChatModels,
+''',
+          )
+          replace_once(
+              picker_test,
+              '''vi.mock('./adapters/opencode', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./adapters/opencode')>();
+  return {
+    ...actual,
+    openCodeCliAdapter: Object.freeze({
+      ...actual.openCodeCliAdapter,
+      listModels: listOpenCodeModels,
+    }),
+  };
+});
+''',
+              '''vi.mock('./adapters/opencodePersistent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./adapters/opencodePersistent')>();
+  return {
+    ...actual,
+    openCodePersistentAdapter: Object.freeze({
+      ...actual.openCodePersistentAdapter,
+      listModels: listOpenCodeModels,
+    }),
+  };
+});
+''',
+          )
+          replace_once(
+              picker_test,
+              '''    listOpenCodeModels.mockResolvedValue([]);
+    syncDiscoveredOllamaModels([]);
+''',
+              '''    listOpenCodeModels.mockResolvedValue([]);
+    requestOpenCodeModelCatalogRefresh();
+    syncDiscoveredOllamaModels([]);
+''',
+          )
+
+          pool = Path('app/src/lib/harness/OpenCodeSessionPool.ts')
+          replace_once(
+              pool,
+              '''export function openCodeScopeKey(scope: Readonly<HarnessScope>): string {
+  return JSON.stringify([
+    cleanScopePart(scope.accountId, true),
+    cleanScopePart(scope.workspaceId),
+    cleanScopePart(scope.projectId),
+    cleanScopePart(scope.worktreeId),
+    cleanScopePart(scope.workingDirectory),
+  ]);
+}
+''',
+              '''export function openCodeScopeKey(scope: Readonly<HarnessScope>): string {
+  return JSON.stringify([
+    cleanScopePart(scope.accountId, true),
+    cleanScopePart(scope.workspaceId),
+    cleanScopePart(scope.projectId),
+    cleanScopePart(scope.worktreeId),
+    cleanScopePart(scope.workingDirectory),
+  ]);
+}
+
+function legacyOpenCodeScopeKeys(scope: Readonly<HarnessScope>): readonly string[] {
+  return [
+    JSON.stringify([
+      cleanScopePart(scope.accountId, true),
+      cleanScopePart(scope.projectId),
+      cleanScopePart(scope.workingDirectory),
+    ]),
+  ];
+}
+''',
+          )
+          replace_once(
+              pool,
+              '''  private readonly scopeEpoch = new Map<string, number>();
+  private globalEpoch = 0;
+''',
+              '''  private readonly scopeEpoch = new Map<string, number>();
+  private readonly chatRequests = new Map<
+    string,
+    Promise<{
+      client: OpenCodeSessionClient;
+      sessionId: string;
+      runtimeGeneration: string;
+    }>
+  >();
+  private globalEpoch = 0;
+''',
+          )
+          replace_once(
+              pool,
+              '''    const persisted = await this.options.registry?.load(key, chatId);
+    if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
+''',
+              '''    const registry = this.options.registry;
+    let persistedKey = key;
+    let persisted = (await registry?.load(key, chatId)) ?? null;
+    if (!persisted && registry) {
+      for (const legacyKey of legacyOpenCodeScopeKeys(entry.scope)) {
+        if (legacyKey === key) continue;
+        const candidate = await registry.load(legacyKey, chatId);
+        if (candidate) {
+          persisted = candidate;
+          persistedKey = legacyKey;
+          break;
+        }
+      }
+    }
+    if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
+''',
+          )
+          replace_once(
+              pool,
+              '''        if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
+        entry.sessions.set(chatId, persisted.sessionId);
+        return persisted.sessionId;
+''',
+              '''        if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
+        entry.sessions.set(chatId, persisted.sessionId);
+        if (registry && persistedKey !== key) {
+          await registry.save(key, chatId, persisted).catch(() => undefined);
+        }
+        return persisted.sessionId;
+''',
+          )
+
+          text = pool.read_text(encoding='utf-8')
+          method_start = text.index('  async sessionForChat(')
+          method_end = text.index('\n\n  async cancelChat(', method_start)
+          session_method = '''  async sessionForChat(scope: HarnessScope, chatId: string, title?: string): Promise<{
+    client: OpenCodeSessionClient;
+    sessionId: string;
+    runtimeGeneration: string;
+  }> {
+    const cleanChatId = cleanScopePart(chatId, true);
+    const key = openCodeScopeKey(scope);
+    const requestKey = `${key}\\u0000${cleanChatId}`;
+    let request = this.chatRequests.get(requestKey);
+    if (!request) {
+      request = (async () => {
+        const entry = await this.ensureReady(scope);
+        if (entry.disposed) throw new Error('HARNESS_SCOPE_DISPOSED');
+        let sessionId = entry.sessions.get(cleanChatId);
+        if (!sessionId) {
+          let creating = entry.sessionStarting.get(cleanChatId);
+          if (!creating) {
+            creating = this.createOrRestoreSession(key, entry, cleanChatId, title)
+              .finally(() => entry.sessionStarting.delete(cleanChatId));
+            entry.sessionStarting.set(cleanChatId, creating);
+          }
+          sessionId = await creating;
+        }
+        entry.lastUsedAt = this.now();
+        return { client: entry.client, sessionId, runtimeGeneration: entry.handle.generation };
+      })().finally(() => {
+        if (this.chatRequests.get(requestKey) === request) this.chatRequests.delete(requestKey);
+      });
+      this.chatRequests.set(requestKey, request);
+    }
+    return request;
+  }'''
+          pool.write_text(text[:method_start] + session_method + text[method_end:], encoding='utf-8')
+
+          text = pool.read_text(encoding='utf-8')
+          method_start = text.index('  async cancelChat(')
+          method_end = text.index('\n\n  /** Crash/recovery path', method_start)
+          cancel_method = '''  async cancelChat(scope: HarnessScope, chatId: string): Promise<void> {
+    const cleanChatId = cleanScopePart(chatId, true);
+    const key = openCodeScopeKey(scope);
+    const inFlight = this.chatRequests.get(`${key}\\u0000${cleanChatId}`);
+    if (inFlight) {
+      const session = await inFlight.catch(() => undefined);
+      if (session) await session.client.abort(session.sessionId);
+      return;
+    }
+    const entry = this.entries.get(key);
+    if (!entry || entry.disposed) return;
+    const sessionId = entry.sessions.get(cleanChatId);
+    if (!sessionId) return;
+    await entry.client.abort(sessionId);
+  }'''
+          pool.write_text(text[:method_start] + cancel_method + text[method_end:], encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff --stat
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install frozen dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run previously failing regressions
+        working-directory: app
+        run: npx --no-install vitest run src/lib/ai/useAccessibleChatModels.test.ts src/lib/ai/useAccessibleChatModels.smoke.test.ts src/lib/harness/__tests__/OpenCodeSessionPool.test.ts
+
+      - name: Run complete focused integration set
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --no-install vitest run \
+            src/lib/ai/useAccessibleChatModels.test.ts \
+            src/lib/ai/useAccessibleChatModels.smoke.test.ts \
+            src/lib/ai/modelSelection.test.ts \
+            src/lib/ai/modelSelection.smoke.test.ts \
+            src/lib/ai/adapters/opencode.test.ts \
+            src/lib/ai/router.test.ts \
+            src/lib/ai/router.connection.test.ts \
+            src/lib/ai/router.smoke.test.ts \
+            src/features/chat/runtime/__tests__/chatRuntimeCommandController.test.ts \
+            src/features/chat/runtime/__tests__/runtimeModelControls.test.ts \
+            src/features/chat/runtime/chatRuntimeSettingsStore.test.ts \
+            src/features/chat/runtime/commandContracts.test.ts \
+            src/features/chat/runtime/performanceProfile.test.ts \
+            src/features/chat/runtime/rlmPreference.test.ts \
+            src/features/chat/reasoningSlashStore.test.ts \
+            src/features/context/rlm/__tests__/RlmCoordinator.test.ts \
+            src/features/context/rlm/contextRlmProduction.test.ts \
+            src/features/context/rlm/pointerAuthority.test.ts \
+            src/features/context/rlm/routeDecision.test.ts \
+            src/features/context/rlm/rlmOpenCodeTool.test.ts \
+            src/lib/ai/catalog/canonicalModelCatalog.test.ts \
+            src/lib/ai/catalog/modelVariants.test.ts \
+            src/lib/harness/contracts.test.ts \
+            src/lib/harness/__tests__/CredentialHydrationSnapshot.test.ts \
+            src/lib/harness/__tests__/OpenCodeRequestControls.test.ts \
+            src/lib/harness/__tests__/OpenCodeSdkSessionClient.test.ts \
+            src/lib/harness/__tests__/OpenCodeSessionPool.test.ts \
+            src/lib/harness/__tests__/OpenCodeTextAccumulator.test.ts \
+            src/lib/harness/__tests__/OpenCodeTurnCoordinator.test.ts \
+            src/lib/harness/__tests__/OpenCodeTurnGate.test.ts \
+            src/lib/permissions/__tests__/OpenCodePermissionProfile.test.ts \
+            src/lib/permissions/__tests__/RunScopedApprovalLease.test.ts \
+            src/lib/mcp/builtins.test.ts \
+            src/lib/mcp/registry.test.ts \
+            src/lib/mcp/toolRouting.test.ts \
+            src/lib/mcp/vibeSpaceGateway.test.ts \
+            src/features/prompt-forge/modelSelection.test.ts \
+            src/features/prompt-forge/promptForgeExecutor.test.ts \
+            src/features/prompt-forge/preservation.test.ts \
+            src/features/prompt-forge/sourcePack.test.ts \
+            src/features/prompt-forge/contextPreparation.test.ts
+
+      - name: Typecheck repaired tree
+        run: npm run typecheck
+
+      - name: Commit repaired staged tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "VibeSpace Integration Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            app/src/lib/ai/useAccessibleChatModels.ts \
+            app/src/lib/ai/useAccessibleChatModels.test.ts \
+            app/src/lib/harness/OpenCodeSessionPool.ts
+          git commit -m "fix(opencode): preserve model routes and session continuity"
+          git push origin "HEAD:refs/heads/${STAGING_BRANCH}"
