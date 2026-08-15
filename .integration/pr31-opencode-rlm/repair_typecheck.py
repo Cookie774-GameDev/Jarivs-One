@@ -37,10 +37,10 @@ context = Path("app/src/features/context/rlm/contextRlmProduction.ts")
 replace_exact(
     context,
     """} from './pointerAuthority';
-import { decideRlmRoute } from './routeDecision';
+import { decideContextRoute } from './routeDecision';
 """,
     """} from './pointerAuthority';
-import { decideRlmRoute } from './routeDecision';
+import { decideContextRoute } from './routeDecision';
 
 type RlmInvestigationInput = Parameters<RlmInvestigationWorker['investigate']>[0];
 """,
