@@ -1,0 +1,310 @@
+name: PR31 OpenCode RLM final verification
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr31-opencode-rlm-final-verification
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BASE: 4209030eb041c661ee1a4b55e87367136638762b
+  TARGET_BRANCH: agent/pr30-fixes-and-updates
+  RESULT_BRANCH: agent/pr31-opencode-rlm-verified-a6f1
+  PATCH_SHA256: 2a6c6772223f960432c799243670fa44a317efda5c3d6f7918d7a7449353d033
+  PATCH_XZ_SHA256: 4356066298fc07a0ee16e69a98d7e1ab94a51ca328798b22539a3f61ef8b3578
+
+jobs:
+  verify-integrate-and-stage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout isolated verification branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and apply exact integration patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_xz="$RUNNER_TEMP/pr31-opencode-rlm.patch.xz"
+          patch_file="$RUNNER_TEMP/pr31-opencode-rlm.patch"
+
+          cat .integration/pr31-opencode-rlm/patch.xz.b64.* | base64 --decode > "$patch_xz"
+          echo "${PATCH_XZ_SHA256}  ${patch_xz}" | sha256sum --check --strict
+          xz --decompress --stdout "$patch_xz" > "$patch_file"
+          echo "${PATCH_SHA256}  ${patch_file}" | sha256sum --check --strict
+
+          git fetch origin
+          current_target="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          if [ "$current_target" != "$EXPECTED_BASE" ]; then
+            echo "PR31 advanced from ${EXPECTED_BASE} to ${current_target}; refusing to overwrite newer work."
+            exit 1
+          fi
+
+          git checkout --detach "$EXPECTED_BASE"
+          git apply --index "$patch_file"
+          git diff --cached --check
+          git diff --cached --name-only | sort > "$RUNNER_TEMP/expected-changed-files.txt"
+
+      - name: Scan changed lines for credential material
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import re
+          import subprocess
+          import sys
+
+          diff = subprocess.check_output(
+              ["git", "diff", "--cached", "-U0", "--no-color"],
+              text=True,
+          )
+          added = "\n".join(
+              line[1:]
+              for line in diff.splitlines()
+              if line.startswith("+") and not line.startswith("+++")
+          )
+          patterns = {
+              "OpenAI-style key": r"\bsk-[A-Za-z0-9_-]{20,}\b",
+              "Google API key": r"\bAIza[A-Za-z0-9_-]{20,}\b",
+              "GitHub token": r"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b",
+              "Slack token": r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b",
+              "AWS access key": r"\bAKIA[0-9A-Z]{16}\b",
+              "private key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+              "long bearer token": r"\bBearer\s+[A-Za-z0-9._~+/=-]{32,}",
+          }
+          hits = [name for name, pattern in patterns.items() if re.search(pattern, added)]
+          if hits:
+              print("Potential credential material detected in added lines:", ", ".join(hits))
+              sys.exit(1)
+          print("Changed-line credential scan: PASS")
+          PY
+
+      - name: Verify production consumers and integration invariants
+        run: node scripts/verify-pr31-opencode-rlm-integration.mjs
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install frozen Node dependency graph
+        run: npm install
+
+      - name: Run focused OpenCode and RLM regression suites
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --no-install vitest run \
+            src/lib/ai/useAccessibleChatModels.test.ts \
+            src/lib/ai/useAccessibleChatModels.smoke.test.ts \
+            src/lib/ai/modelSelection.test.ts \
+            src/lib/ai/modelSelection.smoke.test.ts \
+            src/lib/ai/adapters/opencode.test.ts \
+            src/lib/ai/router.test.ts \
+            src/lib/ai/router.connection.test.ts \
+            src/lib/ai/router.smoke.test.ts \
+            src/features/chat/runtime/__tests__/chatRuntimeCommandController.test.ts \
+            src/features/chat/runtime/__tests__/runtimeModelControls.test.ts \
+            src/features/chat/runtime/chatRuntimeSettingsStore.test.ts \
+            src/features/chat/runtime/commandContracts.test.ts \
+            src/features/chat/runtime/performanceProfile.test.ts \
+            src/features/chat/runtime/rlmPreference.test.ts \
+            src/features/chat/reasoningSlashStore.test.ts \
+            src/features/context/rlm/__tests__/RlmCoordinator.test.ts \
+            src/features/context/rlm/contextRlmProduction.test.ts \
+            src/features/context/rlm/pointerAuthority.test.ts \
+            src/features/context/rlm/routeDecision.test.ts \
+            src/features/context/rlm/rlmOpenCodeTool.test.ts \
+            src/lib/ai/catalog/canonicalModelCatalog.test.ts \
+            src/lib/ai/catalog/modelVariants.test.ts \
+            src/lib/harness/contracts.test.ts \
+            src/lib/harness/__tests__/CredentialHydrationSnapshot.test.ts \
+            src/lib/harness/__tests__/OpenCodeRequestControls.test.ts \
+            src/lib/harness/__tests__/OpenCodeSdkSessionClient.test.ts \
+            src/lib/harness/__tests__/OpenCodeSessionPool.test.ts \
+            src/lib/harness/__tests__/OpenCodeTextAccumulator.test.ts \
+            src/lib/harness/__tests__/OpenCodeTurnCoordinator.test.ts \
+            src/lib/harness/__tests__/OpenCodeTurnGate.test.ts \
+            src/lib/permissions/__tests__/OpenCodePermissionProfile.test.ts \
+            src/lib/permissions/__tests__/RunScopedApprovalLease.test.ts \
+            src/lib/mcp/builtins.test.ts \
+            src/lib/mcp/registry.test.ts \
+            src/lib/mcp/toolRouting.test.ts \
+            src/lib/mcp/vibeSpaceGateway.test.ts \
+            src/features/prompt-forge/modelSelection.test.ts \
+            src/features/prompt-forge/promptForgeExecutor.test.ts \
+            src/features/prompt-forge/preservation.test.ts \
+            src/features/prompt-forge/sourcePack.test.ts \
+            src/features/prompt-forge/contextPreparation.test.ts \
+            2>&1 | tee "$RUNNER_TEMP/focused-tests.log"
+
+      - name: Typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee "$RUNNER_TEMP/typecheck.log"
+
+      - name: Run complete Vitest suite
+        shell: bash
+        run: |
+          set -o pipefail
+          npm --prefix app run test 2>&1 | tee "$RUNNER_TEMP/full-tests.log"
+
+      - name: Build production frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Verify release manifest tooling
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:release-manifest 2>&1 | tee "$RUNNER_TEMP/release-manifest.log"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Run Rust cargo check
+        working-directory: app/src-tauri
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo check --release 2>&1 | tee "$RUNNER_TEMP/rust.log"
+
+      - name: Recheck diff integrity after all gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --check
+          git diff --name-only HEAD | sort > "$RUNNER_TEMP/actual-changed-files.txt"
+          diff -u "$RUNNER_TEMP/expected-changed-files.txt" "$RUNNER_TEMP/actual-changed-files.txt"
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Create coherent integration commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset
+          git config user.name "VibeSpace Integration Agent"
+          git config user.email "actions@users.noreply.github.com"
+
+          git add \
+            app/src-tauri/src/cli_bridge.rs \
+            app/src/lib/ai/adapters/opencode.ts \
+            app/src/lib/ai/adapters/opencodePersistent.ts \
+            app/src/lib/ai/adapters/types.ts \
+            app/src/lib/ai/router.ts \
+            app/src/lib/harness \
+            app/src/lib/permissions
+          git commit -m "fix(opencode): stabilize persistent harness transport"
+
+          git add \
+            app/src/lib/ai/catalog \
+            app/src/lib/ai/modelCatalogCanonical.ts \
+            app/src/lib/ai/useAccessibleChatModels.ts
+          git commit -m "fix(models): deduplicate live connection model catalog"
+
+          git add \
+            app/src/features/chat/Composer.tsx \
+            app/src/features/chat/SlashCommandTypeahead.tsx \
+            app/src/features/chat/runtime \
+            app/src/features/context/rlm \
+            app/src/lib/ai/runtime.ts \
+            app/src/lib/mcp/builtins.ts \
+            app/src/stores/auth.ts
+          git commit -m "fix(chat): wire persistent controls and adaptive RLM"
+
+          git add \
+            docs/operations/PR31_OPENCODE_RLM_FIX_EVIDENCE_SUPPLIED.md \
+            docs/operations/PR31_OPENCODE_RLM_IMPLEMENTATION_HANDOFF_SUPPLIED.md \
+            docs/operations/PR31_OPENCODE_RLM_INTEGRATION_REPORT.md \
+            docs/operations/VIBESPACE_OPENCODE_RLM_SYSTEM_REBUILD_PLAN.md \
+            package.json \
+            scripts/verify-pr31-opencode-rlm-integration.mjs
+          git commit -m "docs(opencode): record PR31 integration verification"
+
+          test -z "$(git status --porcelain)"
+          git log --format='%H %s' "$EXPECTED_BASE..HEAD" > "$RUNNER_TEMP/integration-commits.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/final-sha.txt"
+          git bundle create "$RUNNER_TEMP/pr31-opencode-rlm-verified.bundle" HEAD
+
+      - name: Confirm PR31 did not advance during verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin
+          current_target="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          if [ "$current_target" != "$EXPECTED_BASE" ]; then
+            echo "PR31 advanced during verification to ${current_target}; result branch will not be pushed."
+            exit 1
+          fi
+
+      - name: Push verified result branch without force
+        shell: bash
+        run: git push origin "HEAD:refs/heads/${RESULT_BRANCH}"
+
+      - name: Record verification summary
+        shell: bash
+        run: |
+          {
+            echo "PATCH_SHA256=${PATCH_SHA256}"
+            echo "BASE_SHA=${EXPECTED_BASE}"
+            echo "FINAL_SHA=$(cat "$RUNNER_TEMP/final-sha.txt")"
+            echo "FOCUSED_TESTS=PASS"
+            echo "TYPECHECK=PASS"
+            echo "FULL_TESTS=PASS"
+            echo "BUILD=PASS"
+            echo "RELEASE_MANIFEST=PASS"
+            echo "RUST=PASS"
+            echo "DIFF_CHECK=PASS"
+            echo "SECRET_SCAN=PASS"
+          } > "$RUNNER_TEMP/final-verification.txt"
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31-opencode-rlm-final-verification
+          path: |
+            ${{ runner.temp }}/focused-tests.log
+            ${{ runner.temp }}/typecheck.log
+            ${{ runner.temp }}/full-tests.log
+            ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/release-manifest.log
+            ${{ runner.temp }}/rust.log
+            ${{ runner.temp }}/expected-changed-files.txt
+            ${{ runner.temp }}/actual-changed-files.txt
+            ${{ runner.temp }}/integration-commits.txt
+            ${{ runner.temp }}/final-sha.txt
+            ${{ runner.temp }}/final-verification.txt
+            ${{ runner.temp }}/pr31-opencode-rlm-verified.bundle
+          if-no-files-found: ignore
+          retention-days: 7
