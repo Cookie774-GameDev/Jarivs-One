@@ -1,0 +1,67 @@
+name: PR31 broad failure diagnostic
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-broad-failure-diagnostic.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr31-broad-failure-diagnostic
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: 4209030eb041c661ee1a4b55e87367136638762b
+  STAGING_SHA: e0c11422a5d038231cdfa73bf3f48dffc7554f51
+
+jobs:
+  compare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install frozen dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run affected suites on exact PR31 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$BASE_SHA"
+          cd app
+          npx --no-install vitest run src/App.accountIdentity.test.tsx
+          npx --no-install vitest run src/features/news/NewsPanel.live.test.tsx
+          npx --no-install vitest run src/features/benchmarks/BenchmarkIntelligencePage.test.tsx
+
+      - name: Run affected suites on locked staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$STAGING_SHA"
+          cd app
+          npx --no-install vitest run src/App.accountIdentity.test.tsx
+          npx --no-install vitest run src/features/news/NewsPanel.live.test.tsx
+          npx --no-install vitest run src/features/benchmarks/BenchmarkIntelligencePage.test.tsx
+
+      - name: Run affected suites together on locked staging
+        working-directory: app
+        run: >-
+          npx --no-install vitest run
+          src/App.accountIdentity.test.tsx
+          src/features/news/NewsPanel.live.test.tsx
+          src/features/benchmarks/BenchmarkIntelligencePage.test.tsx
