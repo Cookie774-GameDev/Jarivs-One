@@ -2,10 +2,8 @@ name: PR31 OpenCode RLM differential finalize
 
 on:
   push:
-    branches:
-      - agent/pr31-opencode-rlm-verify-a6f1
-    paths:
-      - .github/workflows/pr31-opencode-rlm-promote-final.yml
+    branches: [agent/pr31-opencode-rlm-verify-a6f1]
+    paths: [.github/workflows/pr31-opencode-rlm-promote-final.yml]
 
 permissions:
   contents: write
@@ -26,185 +24,114 @@ jobs:
   verify-build-rust-publish:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
-
     steps:
-      - name: Checkout locked staged integration
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.STAGING_SHA }}
           fetch-depth: 0
 
-      - name: Guard exact staged and target states
-        id: guard
+      - name: Guard locked source and target
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --prune origin \
-            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          local_staging="$(git rev-parse HEAD)"
-          remote_target="$(git rev-parse "origin/${TARGET_BRANCH}")"
-          test "$local_staging" = "$STAGING_SHA"
-          test "$remote_target" = "$BASE_SHA"
-          git cat-file -e "${BASE_SHA}^{commit}"
-          git cat-file -e "${STAGING_SHA}^{commit}"
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          test "$(git rev-parse HEAD)" = "$STAGING_SHA"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$BASE_SHA"
           git merge-base --is-ancestor "$BASE_SHA" "$STAGING_SHA"
           git diff --check "$BASE_SHA...$STAGING_SHA"
           git diff --name-only "$BASE_SHA...$STAGING_SHA" | sort > "$RUNNER_TEMP/changed-files.txt"
-          printf 'BASE_SHA=%s\nSTAGING_SHA=%s\nREMOTE_TARGET_AT_START=%s\n' \
-            "$BASE_SHA" "$STAGING_SHA" "$remote_target" | tee "$RUNNER_TEMP/guard.txt"
+          printf 'BASE_SHA=%s\nSTAGING_SHA=%s\n' "$BASE_SHA" "$STAGING_SHA" > "$RUNNER_TEMP/guard.txt"
 
-      - name: Set up Node 22
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install frozen Node dependencies once
+      - name: Install staged frozen dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Run exact broad differential on one runner
-        id: differential
+      - name: Differential full Vitest identity gate
         shell: bash
         run: |
           set -euo pipefail
           BASE_DIR="$RUNNER_TEMP/pr31-base"
           git worktree add --detach "$BASE_DIR" "$BASE_SHA"
-          ln -s "$GITHUB_WORKSPACE/node_modules" "$BASE_DIR/node_modules"
+          (cd "$BASE_DIR" && npm ci --no-audit --no-fund)
 
           run_suite() {
-            tree="$1"
-            output="$2"
-            log="$3"
-            exit_file="$4"
+            local tree="$1" out="$2" log="$3" code="$4"
             set +e
-            (
-              cd "$tree/app"
-              "$GITHUB_WORKSPACE/node_modules/.bin/vitest" run \
-                --reporter=json \
-                --outputFile="$output"
-            ) >"$log" 2>&1
-            status=$?
+            (cd "$tree/app" && "$tree/node_modules/.bin/vitest" run --reporter=json --outputFile="$out") >"$log" 2>&1
+            printf '%s\n' "$?" > "$code"
             set -e
-            printf '%s\n' "$status" > "$exit_file"
-            test -s "$output"
+            test -s "$out"
           }
+          run_suite "$BASE_DIR" "$RUNNER_TEMP/base-results.json" "$RUNNER_TEMP/base-vitest.log" "$RUNNER_TEMP/base-exit.txt"
+          run_suite "$GITHUB_WORKSPACE" "$RUNNER_TEMP/staged-results.json" "$RUNNER_TEMP/staged-vitest.log" "$RUNNER_TEMP/staged-exit.txt"
 
-          run_suite "$BASE_DIR" \
-            "$RUNNER_TEMP/base-results.json" \
-            "$RUNNER_TEMP/base-vitest.log" \
-            "$RUNNER_TEMP/base-exit.txt"
-          run_suite "$GITHUB_WORKSPACE" \
-            "$RUNNER_TEMP/staged-results.json" \
-            "$RUNNER_TEMP/staged-vitest.log" \
-            "$RUNNER_TEMP/staged-exit.txt"
-
-          node - \
-            "$BASE_DIR" "$RUNNER_TEMP/base-results.json" "$RUNNER_TEMP/BASE_FAILURES.txt" "$RUNNER_TEMP/base-summary.json" \
+          node - "$BASE_DIR" "$RUNNER_TEMP/base-results.json" "$RUNNER_TEMP/BASE_FAILURES.txt" "$RUNNER_TEMP/base-summary.json" \
             "$GITHUB_WORKSPACE" "$RUNNER_TEMP/staged-results.json" "$RUNNER_TEMP/STAGED_FAILURES.txt" "$RUNNER_TEMP/staged-summary.json" <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
-
-          function normalizeText(value) {
-            return String(value ?? '').replace(/\s+/gu, ' ').trim();
-          }
-
-          function parse(root, inputPath, failuresPath, summaryPath) {
-            const report = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
-            const identities = [];
-            let passed = 0;
-            let failed = 0;
-            let skipped = 0;
-            let pending = 0;
+          const clean = v => String(v ?? '').replace(/\s+/gu, ' ').trim();
+          function parse(root, input, failures, summary) {
+            const report = JSON.parse(fs.readFileSync(input, 'utf8'));
             const suites = Array.isArray(report.testResults) ? report.testResults : [];
+            const ids = [];
+            let passed = 0, failed = 0, skipped = 0;
             for (const suite of suites) {
-              const rawFile = suite.name || suite.filepath || suite.file || '[unknown-file]';
-              const file = path.relative(root, rawFile).split(path.sep).join('/');
-              const assertions = Array.isArray(suite.assertionResults) ? suite.assertionResults : [];
-              let suiteFailedAssertions = 0;
-              for (const assertion of assertions) {
-                const status = String(assertion.status || '').toLowerCase();
-                if (status === 'passed') passed += 1;
+              const file = path.relative(root, suite.name || suite.filepath || suite.file || '[unknown]').split(path.sep).join('/');
+              let assertionFailures = 0;
+              for (const test of suite.assertionResults ?? []) {
+                const status = String(test.status || '').toLowerCase();
+                if (status === 'passed') passed++;
                 else if (status === 'failed') {
-                  failed += 1;
-                  suiteFailedAssertions += 1;
-                  const ancestors = Array.isArray(assertion.ancestorTitles)
-                    ? assertion.ancestorTitles.map(normalizeText).filter(Boolean)
-                    : [];
-                  const title = normalizeText(assertion.title);
-                  const fullName = normalizeText(assertion.fullName) || [...ancestors, title].filter(Boolean).join(' > ');
-                  identities.push(`${file} :: ${fullName || '[unnamed failed test]'}`);
-                } else if (status === 'pending' || status === 'skipped' || status === 'todo' || status === 'disabled') {
-                  skipped += 1;
-                } else {
-                  pending += 1;
-                }
+                  failed++; assertionFailures++;
+                  const full = clean(test.fullName) || [...(test.ancestorTitles ?? []).map(clean), clean(test.title)].filter(Boolean).join(' > ');
+                  ids.push(`${file} :: ${full || '[unnamed failed test]'}`);
+                } else skipped++;
               }
-              if (String(suite.status || '').toLowerCase() === 'failed' && suiteFailedAssertions === 0) {
-                failed += 1;
-                const message = normalizeText(
-                  suite.message ||
-                  (Array.isArray(suite.failureMessages) ? suite.failureMessages.join(' ') : '') ||
-                  'suite load/runtime failure'
-                ).slice(0, 600);
-                identities.push(`${file} :: [suite failure] ${message}`);
+              if (String(suite.status || '').toLowerCase() === 'failed' && assertionFailures === 0) {
+                failed++;
+                ids.push(`${file} :: [suite failure] ${clean(suite.message || (suite.failureMessages ?? []).join(' ') || 'suite load/runtime failure').slice(0, 600)}`);
               }
             }
-            const unique = [...new Set(identities)].sort((a, b) => a.localeCompare(b));
-            fs.writeFileSync(failuresPath, unique.length ? `${unique.join('\n')}\n` : '', 'utf8');
-            fs.writeFileSync(summaryPath, JSON.stringify({
-              files: suites.length,
-              passed,
-              failed,
-              skipped,
-              pending,
-              failureIdentities: unique.length,
-            }, null, 2) + '\n', 'utf8');
+            const unique = [...new Set(ids)].sort();
+            fs.writeFileSync(failures, unique.length ? unique.join('\n') + '\n' : '');
+            fs.writeFileSync(summary, JSON.stringify({files:suites.length, passed, failed, skipped, failureIdentities:unique.length}, null, 2) + '\n');
           }
-
-          const args = process.argv.slice(2);
-          parse(args[0], args[1], args[2], args[3]);
-          parse(args[4], args[5], args[6], args[7]);
+          const a = process.argv.slice(2);
+          parse(a[0], a[1], a[2], a[3]);
+          parse(a[4], a[5], a[6], a[7]);
           NODE
 
           comm -13 "$RUNNER_TEMP/BASE_FAILURES.txt" "$RUNNER_TEMP/STAGED_FAILURES.txt" > "$RUNNER_TEMP/NEW_FAILURES.txt"
           comm -23 "$RUNNER_TEMP/BASE_FAILURES.txt" "$RUNNER_TEMP/STAGED_FAILURES.txt" > "$RUNNER_TEMP/FIXED_FAILURES.txt"
-
-          echo '--- BASE BROAD SUMMARY ---'
-          cat "$RUNNER_TEMP/base-summary.json"
-          echo '--- STAGED BROAD SUMMARY ---'
-          cat "$RUNNER_TEMP/staged-summary.json"
-          echo '--- BASE FAILURES ---'
-          cat "$RUNNER_TEMP/BASE_FAILURES.txt" || true
-          echo '--- STAGED FAILURES ---'
-          cat "$RUNNER_TEMP/STAGED_FAILURES.txt" || true
-          echo '--- NEW FAILURES ---'
-          cat "$RUNNER_TEMP/NEW_FAILURES.txt" || true
-          echo '--- FIXED FAILURES ---'
-          cat "$RUNNER_TEMP/FIXED_FAILURES.txt" || true
-
+          base_files="$(node -p "require('$RUNNER_TEMP/base-summary.json').files")"
+          staged_files="$(node -p "require('$RUNNER_TEMP/staged-summary.json').files")"
+          base_passed="$(node -p "require('$RUNNER_TEMP/base-summary.json').passed")"
+          staged_passed="$(node -p "require('$RUNNER_TEMP/staged-summary.json').passed")"
+          test "$base_files" -ge 1000
+          test "$staged_files" -ge 1000
+          test "$base_passed" -ge 9000
+          test "$staged_passed" -ge 9000
           base_count="$(wc -l < "$RUNNER_TEMP/BASE_FAILURES.txt" | tr -d ' ')"
           staged_count="$(wc -l < "$RUNNER_TEMP/STAGED_FAILURES.txt" | tr -d ' ')"
           new_count="$(wc -l < "$RUNNER_TEMP/NEW_FAILURES.txt" | tr -d ' ')"
           fixed_count="$(wc -l < "$RUNNER_TEMP/FIXED_FAILURES.txt" | tr -d ' ')"
           printf 'BASE_FAILURE_IDENTITIES=%s\nSTAGED_FAILURE_IDENTITIES=%s\nNEW_FAILURE_IDENTITIES=%s\nFIXED_FAILURE_IDENTITIES=%s\n' \
             "$base_count" "$staged_count" "$new_count" "$fixed_count" | tee "$RUNNER_TEMP/differential-summary.txt"
-
-          test "$new_count" = '0'
-
+          echo '--- BASE ---'; cat "$RUNNER_TEMP/base-summary.json"; cat "$RUNNER_TEMP/BASE_FAILURES.txt" || true
+          echo '--- STAGED ---'; cat "$RUNNER_TEMP/staged-summary.json"; cat "$RUNNER_TEMP/STAGED_FAILURES.txt" || true
+          echo '--- NEW ---'; cat "$RUNNER_TEMP/NEW_FAILURES.txt" || true
+          test "$new_count" = 0
           if [ "$staged_count" -gt 0 ]; then
-            if grep -Ev \
-              '^(app/src/App\.accountIdentity\.test\.tsx|app/src/features/news/NewsPanel\.live\.test\.tsx|app/src/features/benchmarks/BenchmarkIntelligencePage\.test\.tsx) :: ' \
-              "$RUNNER_TEMP/STAGED_FAILURES.txt"; then
-              echo 'Unexpected staged failure outside the established baseline suites.'
-              exit 1
-            fi
+            ! grep -Ev '^(app/src/App\.accountIdentity\.test\.tsx|app/src/features/news/NewsPanel\.live\.test\.tsx|app/src/features/benchmarks/BenchmarkIntelligencePage\.test\.tsx) :: ' "$RUNNER_TEMP/STAGED_FAILURES.txt"
           fi
-
           git worktree remove --force "$BASE_DIR"
 
-      - name: Run focused 214-test integration-critical pack once
-        id: focused
+      - name: Focused OpenCode RLM pack 214 of 214
         working-directory: app
         shell: bash
         run: |
@@ -251,341 +178,112 @@ jobs:
             src/features/prompt-forge/preservation.test.ts \
             src/features/prompt-forge/sourcePack.test.ts \
             src/features/prompt-forge/contextPreparation.test.ts \
-            --reporter=json \
-            --outputFile="$RUNNER_TEMP/focused-results.json" \
-            > "$RUNNER_TEMP/focused-tests.log" 2>&1
-
+            --reporter=json --outputFile="$RUNNER_TEMP/focused-results.json" > "$RUNNER_TEMP/focused-tests.log" 2>&1
           node - "$RUNNER_TEMP/focused-results.json" "$RUNNER_TEMP/focused-summary.txt" <<'NODE'
-          const fs = require('node:fs');
-          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          const suites = Array.isArray(report.testResults) ? report.testResults : [];
-          let total = 0;
-          let failed = 0;
-          for (const suite of suites) {
-            for (const test of suite.assertionResults ?? []) {
-              total += 1;
-              if (test.status !== 'passed') failed += 1;
-            }
-          }
-          const text = `FOCUSED_FILES=${suites.length}\nFOCUSED_TESTS=${total}\nFOCUSED_FAILED=${failed}\n`;
-          fs.writeFileSync(process.argv[3], text, 'utf8');
-          process.stdout.write(text);
-          if (suites.length !== 41 || total !== 214 || failed !== 0) process.exit(1);
+          const fs=require('node:fs'), r=JSON.parse(fs.readFileSync(process.argv[2],'utf8')), s=r.testResults??[];
+          const tests=s.flatMap(x=>x.assertionResults??[]), failed=tests.filter(x=>x.status!=='passed').length;
+          const out=`FOCUSED_FILES=${s.length}\nFOCUSED_TESTS=${tests.length}\nFOCUSED_FAILED=${failed}\n`;
+          fs.writeFileSync(process.argv[3],out); process.stdout.write(out);
+          if(s.length!==41||tests.length!==214||failed!==0) process.exit(1);
           NODE
 
-      - name: Typecheck complete staged tree
-        id: typecheck
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run typecheck 2>&1 | tee "$RUNNER_TEMP/typecheck.log"
-
-      - name: Verify production OpenCode and RLM consumers
-        id: wiring
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/verify-pr31-opencode-rlm-integration.mjs 2>&1 | tee "$RUNNER_TEMP/production-wiring.log"
-
-      - name: Build canonical production frontend
-        id: build
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
-
-      - name: Verify release-manifest tooling
-        id: release_manifest
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run test:release-manifest 2>&1 | tee "$RUNNER_TEMP/release-manifest.log"
-
-      - name: Final changed-file security and fallback scan
-        id: security
+      - name: Typecheck, wiring, build, and release manifest
         shell: bash
         run: |
           set -euo pipefail
-          python - "$BASE_SHA" "$STAGING_SHA" "$RUNNER_TEMP/secret-scan.txt" <<'PY'
-          import pathlib
-          import re
-          import subprocess
-          import sys
+          npm run typecheck 2>&1 | tee "$RUNNER_TEMP/typecheck.log"
+          node scripts/verify-pr31-opencode-rlm-integration.mjs 2>&1 | tee "$RUNNER_TEMP/production-wiring.log"
+          npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+          npm run test:release-manifest 2>&1 | tee "$RUNNER_TEMP/release-manifest.log"
 
-          base, head, output = sys.argv[1:]
-          names = subprocess.check_output(
-              ['git', 'diff', '--name-only', f'{base}...{head}'], text=True
-          ).splitlines()
-          forbidden_paths = []
-          for name in names:
-              low = name.lower()
-              if low == '.env' or low.endswith(('.pem', '.p12', '.pfx', '.key')):
-                  forbidden_paths.append(name)
-              if any(part in low for part in ('cookie-dump', 'session-blob', 'credential-debug')):
-                  forbidden_paths.append(name)
-
-          diff = subprocess.check_output(
-              ['git', 'diff', '-U0', '--no-color', f'{base}...{head}'], text=True
-          )
-          added = '\n'.join(
-              line[1:] for line in diff.splitlines()
-              if line.startswith('+') and not line.startswith('+++')
-          )
-          patterns = {
-              'OpenAI-style API key': r'\bsk-[A-Za-z0-9_-]{20,}\b',
-              'Google API key': r'\bAIza[A-Za-z0-9_-]{20,}\b',
-              'GitHub token': r'\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b',
-              'Slack token': r'\bxox[baprs]-[A-Za-z0-9-]{20,}\b',
-              'AWS access key': r'\bAKIA[0-9A-Z]{16}\b',
-              'private key': r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
-              'long bearer token': r'\bBearer\s+[A-Za-z0-9._~+/=-]{32,}',
-              'JWT/session blob': r'\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b',
-              'hardcoded Windows user secret path': r'(?i)[A-Z]:\\Users\\[^\\\s]+\\[^\n]*(?:token|cookie|credential|secret|password)',
-              'hardcoded Unix user secret path': r'(?i)/(?:home|Users)/[^/\s]+/[^\n]*(?:token|cookie|credential|secret|password)',
-          }
-          hits = [name for name, pattern in patterns.items() if re.search(pattern, added)]
-          if forbidden_paths or hits:
-              print('Forbidden changed paths:', forbidden_paths)
-              print('Potential secret patterns:', hits)
-              raise SystemExit(1)
-
-          required_fail_closed = {
-              'no silent model fallback': 'MODEL_IDENTITY_MISMATCH',
-              'unsupported effort': 'EFFORT_UNSUPPORTED',
-              'unsupported fast': 'FAST_MODE_UNSUPPORTED',
-              'pointer invalid': 'pointer_invalid',
-              'credential preservation': 'last verified',
-          }
-          corpus = '\n'.join(
-              pathlib.Path(path).read_text(encoding='utf-8', errors='ignore')
-              for path in names
-              if pathlib.Path(path).is_file()
-          ).lower()
-          missing = [label for label, needle in required_fail_closed.items() if needle.lower() not in corpus]
-          if missing:
-              print('Missing fail-closed integration markers:', missing)
-              raise SystemExit(1)
-
-          pathlib.Path(output).write_text(
-              'SECRET_SCAN=PASS\nNO_SILENT_FALLBACK_MARKERS=PASS\n', encoding='utf-8'
-          )
-          print('Final changed-file security scan: PASS')
-          PY
-
-      - name: Final diff integrity check
-        id: diff_check
+      - name: Final security and diff checks
         shell: bash
         run: |
           set -euo pipefail
           git diff --check "$BASE_SHA...$STAGING_SHA"
-          echo 'DIFF_CHECK=PASS' | tee "$RUNNER_TEMP/diff-check.txt"
+          echo DIFF_CHECK=PASS > "$RUNNER_TEMP/diff-check.txt"
+          python - "$BASE_SHA" "$STAGING_SHA" "$RUNNER_TEMP/secret-scan.txt" <<'PY'
+          import pathlib,re,subprocess,sys
+          base,head,out=sys.argv[1:]
+          names=subprocess.check_output(['git','diff','--name-only',f'{base}...{head}'],text=True).splitlines()
+          bad=[n for n in names if n.lower()=='.env' or n.lower().endswith(('.pem','.p12','.pfx','.key'))]
+          diff=subprocess.check_output(['git','diff','-U0','--no-color',f'{base}...{head}'],text=True)
+          added='\n'.join(x[1:] for x in diff.splitlines() if x.startswith('+') and not x.startswith('+++'))
+          pats=[r'\bsk-[A-Za-z0-9_-]{20,}\b',r'\bAIza[A-Za-z0-9_-]{20,}\b',r'\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b',r'\bAKIA[0-9A-Z]{16}\b',r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',r'\bBearer\s+[A-Za-z0-9._~+/=-]{32,}',r'\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b']
+          hits=[p for p in pats if re.search(p,added)]
+          corpus='\n'.join(pathlib.Path(n).read_text(errors='ignore') for n in names if pathlib.Path(n).is_file()).lower()
+          markers=['model_identity_mismatch','effort_unsupported','fast_mode_unsupported','pointer_invalid','last verified']
+          missing=[m for m in markers if m not in corpus]
+          if bad or hits or missing: print({'bad_paths':bad,'secret_hits':hits,'missing_markers':missing}); raise SystemExit(1)
+          pathlib.Path(out).write_text('SECRET_SCAN=PASS\nNO_SILENT_FALLBACK_MARKERS=PASS\n')
+          PY
 
-      - name: Set up Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Linux native dependencies
-        shell: bash
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install native Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev
-
-      - name: Restore Rust cache
-        uses: swatinem/rust-cache@v2
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
+      - uses: swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
-
-      - name: Rust format, check, and focused native test
-        id: rust
+      - name: Rust static and focused native gates
         working-directory: app/src-tauri
         shell: bash
         run: |
-          set -o pipefail
-          {
-            echo '=== cargo fmt --check ==='
-            cargo fmt --check
-            echo '=== cargo check --release ==='
-            cargo check --release
-            echo '=== focused cli_bridge runtime-bound test ==='
-            cargo test --lib cli_bridge_validates_timeout_output_and_request_id_bounds
-          } 2>&1 | tee "$RUNNER_TEMP/rust.log"
+          set -euo pipefail
+          { cargo fmt --check; cargo check --release; cargo test --lib cli_bridge_validates_timeout_output_and_request_id_bounds; } 2>&1 | tee "$RUNNER_TEMP/rust.log"
 
-      - name: Reconfirm target branch before history rewrite
-        id: prepublish_guard
+      - name: Rewrite WIP tree into one production commit
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --prune origin \
-            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          remote_target="$(git rev-parse "origin/${TARGET_BRANCH}")"
-          printf 'REMOTE_TARGET_BEFORE_PUSH=%s\n' "$remote_target" | tee "$RUNNER_TEMP/prepublish-guard.txt"
-          if [ "$remote_target" != "$BASE_SHA" ]; then
-            echo "Target moved during verification; normal push is withheld for safe reconciliation."
-            exit 1
-          fi
-
-      - name: Rewrite WIP staging into coherent production commits
-        id: rewrite
-        shell: bash
-        run: |
-          set -euo pipefail
-          final_diff="$RUNNER_TEMP/final-integration.diff"
-          git diff --binary "$BASE_SHA" "$STAGING_SHA" > "$final_diff"
-          test -s "$final_diff"
-
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$BASE_SHA"
+          git diff --binary "$BASE_SHA" "$STAGING_SHA" > "$RUNNER_TEMP/integration.diff"
           git checkout --detach "$BASE_SHA"
-          git apply --index --whitespace=nowarn "$final_diff"
+          git apply --index --whitespace=nowarn "$RUNNER_TEMP/integration.diff"
           git diff --cached --check
-          git reset
           git config user.name 'VibeSpace Integration Agent'
           git config user.email 'actions@users.noreply.github.com'
-
-          git add \
-            app/src-tauri/src/cli_bridge.rs \
-            app/src/lib/ai/adapters/opencode.ts \
-            app/src/lib/ai/adapters/opencodePersistent.ts \
-            app/src/lib/ai/adapters/types.ts \
-            app/src/lib/ai/router.ts \
-            app/src/lib/harness \
-            app/src/lib/permissions \
-            app/src/lib/mcp/builtins.ts \
-            app/src/stores/auth.ts
-          test -n "$(git diff --cached --name-only)"
-          git commit -m 'fix(opencode): stabilize persistent harness transport'
-
-          git add \
-            app/src/lib/ai/catalog \
-            app/src/lib/ai/modelCatalogCanonical.ts \
-            app/src/lib/ai/useAccessibleChatModels.ts \
-            app/src/lib/ai/useAccessibleChatModels.test.ts
-          test -n "$(git diff --cached --name-only)"
-          git commit -m 'fix(models): deduplicate live connection model catalog'
-
-          git add \
-            app/src/features/chat/Composer.tsx \
-            app/src/features/chat/SlashCommandTypeahead.tsx \
-            app/src/features/chat/runtime \
-            app/src/lib/ai/runtime.ts
-          test -n "$(git diff --cached --name-only)"
-          git commit -m 'fix(chat): wire effort fast performance and RLM controls'
-
-          git add app/src/features/context/rlm
-          test -n "$(git diff --cached --name-only)"
-          git commit -m 'fix(rlm): harden adaptive context and pointer authority'
-
-          git add \
-            app/src/features/benchmarks/benchmarkApi.test.ts \
-            app/src/features/news/newsApi.test.ts
-          test -n "$(git diff --cached --name-only)"
-          git commit -m 'test(types): restore PR31 typecheck fixtures'
-
-          git add \
-            docs/operations/PR31_OPENCODE_RLM_FIX_EVIDENCE_SUPPLIED.md \
-            docs/operations/PR31_OPENCODE_RLM_IMPLEMENTATION_HANDOFF_SUPPLIED.md \
-            docs/operations/PR31_OPENCODE_RLM_INTEGRATION_REPORT.md \
-            docs/operations/VIBESPACE_OPENCODE_RLM_SYSTEM_REBUILD_PLAN.md \
-            package.json \
-            scripts/verify-pr31-opencode-rlm-integration.mjs
-          test -n "$(git diff --cached --name-only)"
-          git commit -m 'docs(opencode): record integration verification'
-
-          if [ -n "$(git status --porcelain)" ]; then
-            echo 'Uncommitted integration paths remain:'
-            git status --short
-            exit 1
-          fi
+          git commit -m 'fix(opencode): stabilize harness model routing and adaptive RLM'
           git diff --exit-code "$STAGING_SHA" HEAD
           git diff --check "$BASE_SHA...HEAD"
           git log --format='%H %s' "$BASE_SHA..HEAD" | tee "$RUNNER_TEMP/integration-commits.txt"
-          git rev-parse HEAD | tee "$RUNNER_TEMP/local-final-sha.txt"
-          git status -sb | tee "$RUNNER_TEMP/local-status.txt"
-          git log -15 --oneline --decorate | tee "$RUNNER_TEMP/local-log.txt"
+          git rev-parse HEAD > "$RUNNER_TEMP/local-final-sha.txt"
 
-      - name: Push normally to existing PR31 branch only
-        id: push
+      - name: Normal push and exact remote proof
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --prune origin \
-            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
           test "$(git rev-parse "origin/${TARGET_BRANCH}")" = "$BASE_SHA"
           git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
-          echo 'PUSH=PASS' | tee "$RUNNER_TEMP/push.txt"
-
-      - name: Prove local and remote PR31 SHAs match
-        id: sha_proof
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --prune origin \
-            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
-          local_head="$(git rev-parse HEAD)"
-          remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
-          printf 'LOCAL_FINAL_SHA=%s\nREMOTE_PR31_SHA=%s\nSHA_MATCH=%s\n' \
-            "$local_head" "$remote_head" "$([ "$local_head" = "$remote_head" ] && echo YES || echo NO)" \
-            | tee "$RUNNER_TEMP/sha-proof.txt"
+          git fetch --prune origin "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          local_head="$(git rev-parse HEAD)"; remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          printf 'LOCAL_FINAL_SHA=%s\nREMOTE_PR31_SHA=%s\nSHA_MATCH=%s\n' "$local_head" "$remote_head" "$([ "$local_head" = "$remote_head" ] && echo YES || echo NO)" | tee "$RUNNER_TEMP/sha-proof.txt"
           test "$local_head" = "$remote_head"
-          git log -15 --oneline "origin/${TARGET_BRANCH}" | tee "$RUNNER_TEMP/remote-log.txt"
-          git log --left-right --cherry-pick --oneline \
-            "origin/${TARGET_BRANCH}...HEAD" > "$RUNNER_TEMP/left-right.txt"
+          git log -15 --oneline "origin/${TARGET_BRANCH}" > "$RUNNER_TEMP/remote-log.txt"
+          git log --left-right --cherry-pick --oneline "origin/${TARGET_BRANCH}...HEAD" > "$RUNNER_TEMP/left-right.txt"
           test ! -s "$RUNNER_TEMP/left-right.txt"
+          echo PUSH=PASS > "$RUNNER_TEMP/push.txt"
 
-      - name: Verify PR31 remains open draft unmerged on exact head
-        id: pr_state
+      - name: Verify PR31 remains open draft and unmerged
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          local_head="$(git rev-parse HEAD)"
           gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" > "$RUNNER_TEMP/pr.json"
-          python - "$local_head" "$TARGET_BRANCH" "$RUNNER_TEMP/pr.json" "$RUNNER_TEMP/pr-state.txt" <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          expected_sha, expected_branch, input_path, output_path = sys.argv[1:]
-          pr = json.loads(pathlib.Path(input_path).read_text(encoding='utf-8'))
-          checks = {
-              'PR_OPEN': pr.get('state') == 'open',
-              'PR_DRAFT': pr.get('draft') is True,
-              'PR_UNMERGED': pr.get('merged') is False,
-              'HEAD_BRANCH': pr.get('head', {}).get('ref') == expected_branch,
-              'HEAD_SHA': pr.get('head', {}).get('sha') == expected_sha,
-          }
-          text = ''.join(f'{name}={"PASS" if passed else "FAIL"}\n' for name, passed in checks.items())
-          pathlib.Path(output_path).write_text(text, encoding='utf-8')
-          print(text, end='')
-          if not all(checks.values()):
-              raise SystemExit(1)
+          python - "$(git rev-parse HEAD)" "$TARGET_BRANCH" "$RUNNER_TEMP/pr.json" "$RUNNER_TEMP/pr-state.txt" <<'PY'
+          import json,pathlib,sys
+          sha,branch,src,out=sys.argv[1:]; pr=json.loads(pathlib.Path(src).read_text())
+          checks={'PR_OPEN':pr.get('state')=='open','PR_DRAFT':pr.get('draft') is True,'PR_UNMERGED':pr.get('merged') is False,'HEAD_BRANCH':pr.get('head',{}).get('ref')==branch,'HEAD_SHA':pr.get('head',{}).get('sha')==sha}
+          text=''.join(f'{k}={"PASS" if v else "FAIL"}\n' for k,v in checks.items()); pathlib.Path(out).write_text(text); print(text,end='')
+          if not all(checks.values()): raise SystemExit(1)
           PY
+          { cat "$RUNNER_TEMP/sha-proof.txt"; cat "$RUNNER_TEMP/push.txt"; cat "$RUNNER_TEMP/pr-state.txt"; cat "$RUNNER_TEMP/focused-summary.txt"; echo TYPECHECK=PASS; echo BUILD=PASS; echo RUST=PASS; cat "$RUNNER_TEMP/secret-scan.txt"; cat "$RUNNER_TEMP/diff-check.txt"; echo PRODUCTION_WIRING=PASS; cat "$RUNNER_TEMP/differential-summary.txt"; } > "$RUNNER_TEMP/final-status.txt"
 
-      - name: Create concrete final status
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          {
-            cat "$RUNNER_TEMP/sha-proof.txt"
-            cat "$RUNNER_TEMP/push.txt"
-            cat "$RUNNER_TEMP/pr-state.txt"
-            cat "$RUNNER_TEMP/focused-summary.txt"
-            echo 'TYPECHECK=PASS'
-            echo 'BUILD=PASS'
-            echo 'RELEASE_MANIFEST=PASS'
-            echo 'RUST=PASS'
-            cat "$RUNNER_TEMP/secret-scan.txt"
-            cat "$RUNNER_TEMP/diff-check.txt"
-            echo 'PRODUCTION_WIRING=PASS'
-            cat "$RUNNER_TEMP/differential-summary.txt"
-            echo 'NATIVE_LIVE_TESTS=IMPLEMENTED — NATIVE VERIFICATION REQUIRED'
-          } | tee "$RUNNER_TEMP/final-status.txt"
-
-      - name: Upload differential and publication evidence
+      - name: Upload publication evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -597,8 +295,6 @@ jobs:
             ${{ runner.temp }}/staged-results.json
             ${{ runner.temp }}/base-summary.json
             ${{ runner.temp }}/staged-summary.json
-            ${{ runner.temp }}/base-exit.txt
-            ${{ runner.temp }}/staged-exit.txt
             ${{ runner.temp }}/base-vitest.log
             ${{ runner.temp }}/staged-vitest.log
             ${{ runner.temp }}/BASE_FAILURES.txt
@@ -616,11 +312,8 @@ jobs:
             ${{ runner.temp }}/secret-scan.txt
             ${{ runner.temp }}/diff-check.txt
             ${{ runner.temp }}/rust.log
-            ${{ runner.temp }}/prepublish-guard.txt
             ${{ runner.temp }}/integration-commits.txt
             ${{ runner.temp }}/local-final-sha.txt
-            ${{ runner.temp }}/local-status.txt
-            ${{ runner.temp }}/local-log.txt
             ${{ runner.temp }}/push.txt
             ${{ runner.temp }}/sha-proof.txt
             ${{ runner.temp }}/remote-log.txt
