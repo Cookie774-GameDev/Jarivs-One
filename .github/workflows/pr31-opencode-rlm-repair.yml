@@ -6,6 +6,8 @@ on:
       - agent/pr31-opencode-rlm-verify-a6f1
     paths:
       - .github/workflows/pr31-opencode-rlm-repair.yml
+      - .integration/pr31-opencode-rlm/repair_focused_regressions.py
+      - .integration/pr31-opencode-rlm/repair_model_order.py
 
 permissions:
   contents: write
@@ -35,7 +37,9 @@ jobs:
         with:
           ref: ${{ env.REPAIR_ASSET_REF }}
           path: .repair-assets
-          sparse-checkout: .integration/pr31-opencode-rlm/repair_focused_regressions.py
+          sparse-checkout: |
+            .integration/pr31-opencode-rlm/repair_focused_regressions.py
+            .integration/pr31-opencode-rlm/repair_model_order.py
           sparse-checkout-cone-mode: false
 
       - name: Apply focused production repair
@@ -43,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           python .repair-assets/.integration/pr31-opencode-rlm/repair_focused_regressions.py
+          python .repair-assets/.integration/pr31-opencode-rlm/repair_model_order.py
           rm -rf .repair-assets
           git diff --check
           git diff --stat
