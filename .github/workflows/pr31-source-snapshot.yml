@@ -1,0 +1,41 @@
+name: PR31 isolated source snapshot
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-source-snapshot
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact snapshot branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record and archive tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD > PR31_SNAPSHOT_HEAD.txt
+          git ls-files -z \
+            | grep -zv '^\.github/workflows/pr31-source-snapshot\.yml$' \
+            | tar --null -T - -czf pr31-source.tar.gz
+          sha256sum pr31-source.tar.gz > pr31-source.tar.gz.sha256
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31-source-snapshot
+          path: |
+            pr31-source.tar.gz
+            pr31-source.tar.gz.sha256
+            PR31_SNAPSHOT_HEAD.txt
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
