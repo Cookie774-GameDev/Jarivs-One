@@ -1,0 +1,210 @@
+name: PR31 UnifiedChungus guarded recovery
+
+on:
+  push:
+    branches:
+      - UnifiedChungus
+    paths:
+      - '.integration/unified-chungus/**'
+      - '.github/workflows/pr31-unified-chungus-apply.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr31-unified-chungus-guarded-recovery
+  cancel-in-progress: false
+
+env:
+  PAYLOAD_SHA256: f0e7fbe794befde96d0fddc72ec6c8e772d1cee4f57c17e865613499e3180835
+
+jobs:
+  recover-verify-and-commit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact UnifiedChungus staging commit
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct, verify, and extract owned recovery payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload_b64="$RUNNER_TEMP/pr31-unified-chungus.tar.xz.b64"
+          payload_tar="$RUNNER_TEMP/pr31-unified-chungus.tar.xz"
+          expected="$RUNNER_TEMP/expected-files.txt"
+          actual="$RUNNER_TEMP/actual-files.txt"
+          changed="$RUNNER_TEMP/changed-files.txt"
+
+          cat .integration/unified-chungus/payload.* > "$payload_b64"
+          base64 --decode "$payload_b64" > "$payload_tar"
+          echo "${PAYLOAD_SHA256}  ${payload_tar}" | sha256sum --check --strict
+
+          cat > "$expected" <<'EOF'
+          .github/workflows/pr31-unified-chungus.yml
+          app/src/features/voice/JarvisVoiceHeader.test.tsx
+          app/src/features/voice/JarvisVoiceHeader.tsx
+          app/src/features/voice/JarvisVoiceModelSelector.test.tsx
+          app/src/features/voice/JarvisVoiceModelSelector.tsx
+          app/src/features/voice/JarvisVoiceTranscript.test.tsx
+          app/src/features/voice/JarvisVoiceTranscript.tsx
+          app/src/features/voice/Orb.tsx
+          app/src/features/voice/VoiceActivityWaveform.tsx
+          app/src/features/voice/audioPlayback.ts
+          app/src/features/voice/jarvisPlaybackEnergy.test.ts
+          app/src/features/voice/jarvisPlaybackEnergy.ts
+          app/src/features/voice/microphoneLevelMeter.test.ts
+          app/src/features/voice/microphoneLevelMeter.ts
+          app/src/features/voice/voice.sakura.css
+          docs/operations/PR31_UNIFIED_CHUNGUS_INTEGRATION.md
+          EOF
+          sed -i 's/^          //' "$expected"
+          sort -o "$expected" "$expected"
+
+          tar -tJf "$payload_tar" \
+            | sed -e '/\/$/d' -e 's#^\./##' \
+            | sort > "$actual"
+          diff -u "$expected" "$actual"
+
+          tar -xJf "$payload_tar" -C .
+          git diff --check
+          test -z "$(git status --short -- install/install.ps1)"
+
+          {
+            git diff --name-only
+            git ls-files --others --exclude-standard
+          } | sed '/^$/d' | sort -u > "$changed"
+          test -s "$changed"
+          unexpected="$RUNNER_TEMP/unexpected-files.txt"
+          comm -23 "$changed" "$expected" > "$unexpected"
+          test ! -s "$unexpected" || {
+            echo "Unexpected changed paths:"
+            cat "$unexpected"
+            exit 41
+          }
+
+      - name: Scan recovered files for credential material
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re
+          files = [
+              pathlib.Path('.github/workflows/pr31-unified-chungus.yml'),
+              pathlib.Path('app/src/features/voice/JarvisVoiceHeader.test.tsx'),
+              pathlib.Path('app/src/features/voice/JarvisVoiceHeader.tsx'),
+              pathlib.Path('app/src/features/voice/JarvisVoiceModelSelector.test.tsx'),
+              pathlib.Path('app/src/features/voice/JarvisVoiceModelSelector.tsx'),
+              pathlib.Path('app/src/features/voice/JarvisVoiceTranscript.test.tsx'),
+              pathlib.Path('app/src/features/voice/JarvisVoiceTranscript.tsx'),
+              pathlib.Path('app/src/features/voice/Orb.tsx'),
+              pathlib.Path('app/src/features/voice/VoiceActivityWaveform.tsx'),
+              pathlib.Path('app/src/features/voice/audioPlayback.ts'),
+              pathlib.Path('app/src/features/voice/jarvisPlaybackEnergy.test.ts'),
+              pathlib.Path('app/src/features/voice/jarvisPlaybackEnergy.ts'),
+              pathlib.Path('app/src/features/voice/microphoneLevelMeter.test.ts'),
+              pathlib.Path('app/src/features/voice/microphoneLevelMeter.ts'),
+              pathlib.Path('app/src/features/voice/voice.sakura.css'),
+              pathlib.Path('docs/operations/PR31_UNIFIED_CHUNGUS_INTEGRATION.md'),
+          ]
+          text = '\n'.join(path.read_text(errors='replace') for path in files)
+          patterns = {
+              'private_key': r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
+              'github_token': r'gh[pousr]_[A-Za-z0-9]{30,}',
+              'openai_key': r'sk-(?:proj-)?[A-Za-z0-9_-]{20,}',
+              'stripe_live': r'(?:sk|rk)_live_[A-Za-z0-9]{16,}',
+              'aws_access': r'AKIA[0-9A-Z]{16}',
+              'jwt': r'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}',
+          }
+          hits = [name for name, pattern in patterns.items() if re.search(pattern, text)]
+          if hits:
+              raise SystemExit('Credential-like content detected: ' + ', '.join(hits))
+          print('Recovered-file credential scan: PASS')
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Focused Jarvis voice recovery tests
+        run: >-
+          npm --prefix app run test -- --run
+          src/features/voice/JarvisVoiceHeader.test.tsx
+          src/features/voice/JarvisVoiceModelSelector.test.tsx
+          src/features/voice/JarvisVoiceTranscript.test.tsx
+          src/features/voice/jarvisPlaybackEnergy.test.ts
+          src/features/voice/microphoneLevelMeter.test.ts
+
+      - name: Verify existing OpenCode and RLM integration
+        run: npm run verify:pr31-opencode-rlm
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Full Vitest suite
+        run: npm --prefix app run test
+
+      - name: Release manifest gate
+        run: npm run test:release-manifest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Rust release check
+        working-directory: app/src-tauri
+        env:
+          CARGO_INCREMENTAL: '0'
+        run: cargo check --release
+
+      - name: Commit verified recovery without touching protected paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git restore --worktree package-lock.json app/package-lock.json 2>/dev/null || true
+          test -z "$(git status --short -- install/install.ps1)"
+
+          git add \
+            app/src/features/voice/JarvisVoiceHeader.tsx \
+            app/src/features/voice/JarvisVoiceHeader.test.tsx \
+            app/src/features/voice/JarvisVoiceTranscript.tsx \
+            app/src/features/voice/JarvisVoiceTranscript.test.tsx \
+            app/src/features/voice/JarvisVoiceModelSelector.tsx \
+            app/src/features/voice/JarvisVoiceModelSelector.test.tsx \
+            app/src/features/voice/VoiceActivityWaveform.tsx \
+            app/src/features/voice/Orb.tsx \
+            app/src/features/voice/audioPlayback.ts \
+            app/src/features/voice/jarvisPlaybackEnergy.ts \
+            app/src/features/voice/jarvisPlaybackEnergy.test.ts \
+            app/src/features/voice/microphoneLevelMeter.ts \
+            app/src/features/voice/microphoneLevelMeter.test.ts \
+            app/src/features/voice/voice.sakura.css \
+            docs/operations/PR31_UNIFIED_CHUNGUS_INTEGRATION.md
+
+          git diff --cached --check
+          test -z "$(git diff --cached --name-only -- install/install.ps1)"
+          git config user.name "VibeSpace PR31 UnifiedChungus"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -m "feat(pr31): unify latest Jarvis voice and verification"
+
+          git fetch origin UnifiedChungus
+          test "$(git rev-parse "origin/UnifiedChungus")" = "$GITHUB_SHA"
+          git push origin HEAD:UnifiedChungus
