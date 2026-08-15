@@ -157,7 +157,26 @@ export default defineConfig({
       // Dependencies are hoisted one level above `app`. Fontsource CSS resolves
       // its WOFF files through /@fs during development, so explicitly allow
       // that exact dependency directory instead of broad filesystem access.
-      allow: [path.resolve(__dirname), path.resolve(__dirname, '../node_modules')],
+      // app/node_modules/web-tree-sitter is a junction into another worktree;
+      // allow the realpath so Vite can load web-tree-sitter.wasm?url.
+      allow: [
+        path.resolve(__dirname),
+        path.resolve(__dirname, '../node_modules'),
+        ...(() => {
+          const extra = [
+            path.resolve(__dirname, 'node_modules/web-tree-sitter'),
+            path.resolve(__dirname, '../node_modules/web-tree-sitter'),
+            path.resolve(__dirname, 'node_modules/gpt-tokenizer'),
+          ];
+          return extra.flatMap((candidate) => {
+            try {
+              return fs.existsSync(candidate) ? [candidate, fs.realpathSync(candidate)] : [candidate];
+            } catch {
+              return [candidate];
+            }
+          });
+        })(),
+      ],
     },
     hmr: host
       ? {

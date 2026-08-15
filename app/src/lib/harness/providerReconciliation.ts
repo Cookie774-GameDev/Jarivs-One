@@ -74,6 +74,20 @@ function boundedPrice(value: unknown): number | undefined {
     : undefined;
 }
 
+function liveModelVariants(model: UnknownRecord): readonly string[] | undefined {
+  const raw = model.variants;
+  if (Array.isArray(raw)) {
+    const variants = raw.filter(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    );
+    return variants.length > 0 ? Object.freeze(variants) : undefined;
+  }
+  const record = asRecord(raw);
+  if (!record) return undefined;
+  const variants = Object.keys(record).filter((key) => key.length > 0 && key.length <= 32);
+  return variants.length > 0 ? Object.freeze(variants) : undefined;
+}
+
 function modelPricing(value: unknown): Readonly<HarnessModelPricing> | undefined {
   const cost = asRecord(value);
   if (!cost || !exactKeys(cost, ['input', 'output', 'cache'])) return undefined;
@@ -128,12 +142,14 @@ export function parseOpenCodeProviderResponse(value: unknown): readonly HarnessP
             ? inputModalities.includes('image')
             : undefined;
       const supportsTools = typeof model.tool_call === 'boolean' ? model.tool_call : undefined;
+      const variants = liveModelVariants(model);
       parsedModels.push({
         id: modelId,
         name: boundedName(model.name, modelId),
         ...(contextWindowTokens ? { contextWindowTokens } : {}),
         ...(typeof supportsImages === 'boolean' ? { supportsImages } : {}),
         ...(typeof supportsTools === 'boolean' ? { supportsTools } : {}),
+        ...(variants ? { variants } : {}),
         ...(pricing ? { pricing } : {}),
       });
     }

@@ -233,6 +233,20 @@ describe('voice module gate', () => {
     await speakWithSettings('Hello from Jarvis.');
     expect(h.speakText).toHaveBeenCalledTimes(1);
   });
+
+  it('routes Jarvis output through Jarvis High even when Settings still lists another engine', async () => {
+    voiceModalOpen = true;
+    syncVoiceModuleOpenState(true);
+    useAuthStore.setState({
+      voiceEngine: 'system',
+      voicePreset: 'jarvis-prime',
+      speakReplies: false,
+    });
+    h.speakText.mockResolvedValue(undefined);
+    await speakWithSettings('Hello from Jarvis.');
+    expect(h.ensureJarvisReady).toHaveBeenCalled();
+    expect(h.speakText).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('voice module lifecycle', () => {

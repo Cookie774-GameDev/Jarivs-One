@@ -35,7 +35,20 @@ function harnessFixture() {
       })();
     }),
     cancel: vi.fn(async () => undefined),
-    listProviders: vi.fn(async () => []),
+    listProviders: vi.fn(async () => [
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        connected: true,
+        models: [
+          {
+            id: 'gpt-5.6-sol',
+            name: 'gpt-5.6-sol',
+            variants: ['low', 'medium', 'high', 'xhigh'],
+          },
+        ],
+      },
+    ]),
     listModels: vi.fn(async () => []),
     respondToApproval: vi.fn(async () => undefined),
     dispose: vi.fn(async () => undefined),

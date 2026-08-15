@@ -1,4 +1,5 @@
 import type * as React from 'react';
+import { subscribeJarvisPlaybackEnergy } from './jarvisPlaybackEnergy';
 
 interface SignalTrack {
   stop(): void;
@@ -41,7 +42,48 @@ export interface VoiceSignalController {
   stop(): void;
 }
 
-const clamp = (value: number) => Math.min(1, Math.max(0, value));
+export const VOICE_SIGNAL_GATE = 0.018;
+export const VOICE_SIGNAL_CEILING = 0.24;
+export const VOICE_SIGNAL_ATTACK = 0.42;
+export const VOICE_SIGNAL_RELEASE = 0.12;
+
+export function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+export function computeRms(samples: ArrayLike<number>, center = 128, scale = 128): number {
+  if (samples.length === 0) return 0;
+  let squareSum = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const centered = (samples[index] - center) / scale;
+    squareSum += centered * centered;
+  }
+  return Math.sqrt(squareSum / samples.length);
+}
+
+export function normalizeVoiceLevel(
+  rms: number,
+  gate = VOICE_SIGNAL_GATE,
+  ceiling = VOICE_SIGNAL_CEILING,
+): number {
+  if (!Number.isFinite(rms) || rms <= gate) return 0;
+  return clampUnit((rms - gate) / Math.max(0.0001, ceiling - gate));
+}
+
+export function smoothVoiceLevel(
+  current: number,
+  target: number,
+  attack = VOICE_SIGNAL_ATTACK,
+  release = VOICE_SIGNAL_RELEASE,
+): number {
+  const rate = target > current ? attack : release;
+  return clampUnit(current + (target - current) * rate);
+}
+
+export function waveformBarWeight(index: number, count: number): number {
+  if (count <= 1) return 1;
+  return Math.pow(Math.sin((index / (count - 1)) * Math.PI), 1.35);
+}
 
 function browserDependencies(): VoiceSignalDependencies {
   return {
@@ -70,6 +112,7 @@ export function createVoiceSignalController(
   let source: SignalSource | null = null;
   let analyser: SignalAnalyser | null = null;
   let audioContext: SignalAudioContext | null = null;
+  let unsubscribePlayback: (() => void) | null = null;
 
   const cancelAnimation = () => {
     if (frame !== null) dependencies.cancelFrame(frame);
@@ -90,6 +133,8 @@ export function createVoiceSignalController(
   const reset = () => {
     generation += 1;
     cancelAnimation();
+    unsubscribePlayback?.();
+    unsubscribePlayback = null;
     releaseAudio();
     levelRef.current = 0;
   };
@@ -132,10 +177,9 @@ export function createVoiceSignalController(
           const centered = (value - 128) / 128;
           squareSum += centered * centered;
         }
-        const rms = Math.sqrt(squareSum / Math.max(1, samples.length));
-        const normalized = clamp((rms - 0.012) / 0.22);
-        const smoothing = normalized > levelRef.current ? 0.5 : 0.16;
-        levelRef.current = clamp(levelRef.current + (normalized - levelRef.current) * smoothing);
+        const rms = computeRms(samples);
+        const normalized = normalizeVoiceLevel(rms);
+        levelRef.current = smoothVoiceLevel(levelRef.current, normalized);
         frame = dependencies.requestFrame(sample);
       };
       frame = dependencies.requestFrame(sample);
@@ -151,17 +195,10 @@ export function createVoiceSignalController(
   const startSpeaking = () => {
     reset();
     const activeGeneration = generation;
-    const sample = (time: number) => {
+    unsubscribePlayback = subscribeJarvisPlaybackEnergy((energy) => {
       if (generation !== activeGeneration) return;
-      const target = clamp(
-        0.24 +
-          Math.abs(Math.sin(time * 0.011)) * 0.38 +
-          Math.abs(Math.sin(time * 0.019 + 1.1)) * 0.22,
-      );
-      levelRef.current += (target - levelRef.current) * 0.42;
-      frame = dependencies.requestFrame(sample);
-    };
-    frame = dependencies.requestFrame(sample);
+      levelRef.current = smoothVoiceLevel(levelRef.current, clampUnit(energy));
+    });
   };
 
   return { startListening, startSpeaking, stop: reset };

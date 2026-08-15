@@ -50,12 +50,9 @@ export class StreamingVoiceSession {
   }
 
   private isSessionLive(): boolean {
-    return (
-      !this.stopped &&
-      this.sessionId > 0 &&
-      this.sessionId === getActiveVoiceSessionId() &&
-      canVoiceModuleSpeak()
-    );
+    if (this.stopped || !canVoiceModuleSpeak()) return false;
+    if (this.sessionId === 0) return true;
+    return this.sessionId === getActiveVoiceSessionId();
   }
 
   /** @deprecated Temporary raw compatibility boundary; Task 16B removes its final caller. */

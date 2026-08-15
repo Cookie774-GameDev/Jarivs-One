@@ -12,18 +12,43 @@
  */
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
 import path from 'node:path';
+
+function allowedFsRoots(): string[] {
+  const candidates = [
+    path.resolve(__dirname),
+    path.resolve(__dirname, 'node_modules'),
+    path.resolve(__dirname, '../node_modules'),
+    path.resolve(__dirname, 'node_modules/web-tree-sitter'),
+    path.resolve(__dirname, '../node_modules/web-tree-sitter'),
+    path.resolve(__dirname, 'node_modules/gpt-tokenizer'),
+  ];
+  const allowed = new Set<string>();
+  for (const candidate of candidates) {
+    allowed.add(candidate);
+    try {
+      if (fs.existsSync(candidate)) allowed.add(fs.realpathSync(candidate));
+    } catch {
+      /* keep the unresolved path */
+    }
+  }
+  return [...allowed];
+}
+
+const localTreeSitter = path.resolve(__dirname, '../node_modules/web-tree-sitter');
 
 export default defineConfig({
   plugins: [react()],
   server: {
     fs: {
-      allow: [path.resolve(__dirname), path.resolve(__dirname, '../node_modules')],
+      allow: allowedFsRoots(),
     },
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      ...(fs.existsSync(localTreeSitter) ? { 'web-tree-sitter': localTreeSitter } : {}),
     },
   },
   test: {

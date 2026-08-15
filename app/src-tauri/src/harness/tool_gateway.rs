@@ -58,7 +58,9 @@ pub struct ToolGatewayRequest {
     pub message_id: String,
     pub tool: String,
     pub args: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
 }
 

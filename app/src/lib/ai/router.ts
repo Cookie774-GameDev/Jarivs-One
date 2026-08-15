@@ -35,6 +35,7 @@ import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './ada
 import { kernelSmokeCliAdapter } from './adapters/cliBridge';
 import { llmContentToText } from './types';
 import { runSubscriptionCliBridge } from './subscriptionCliBridge';
+import { shouldDispatchOpenCodeThroughHarness } from './openCodeProductionTransport';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import {
   isKernelSmokeBindingActive,
@@ -341,16 +342,6 @@ function classifyLocalFailure(error: unknown): LocalInferenceFailure {
     : 'inference_failed';
 }
 
-const OPEN_CODE_MODEL_VARIANTS = new Set([
-  'none',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'max',
-]);
-
 function resolveOpenCodeVariant(
   options: Readonly<Record<string, unknown>> | undefined,
 ): string | undefined {
@@ -360,7 +351,7 @@ function resolveOpenCodeVariant(
   );
   if (candidates.length === 0) return undefined;
   const unique = [...new Set(candidates)];
-  if (unique.length !== 1 || !OPEN_CODE_MODEL_VARIANTS.has(unique[0]!)) {
+  if (unique.length !== 1) {
     throw new Error('OpenCode model variant is invalid or ambiguous.');
   }
   return unique[0];
@@ -412,10 +403,6 @@ function resolveOpenCodeSelection(req: RunAgentRequest): HarnessModelSelection {
       !(providerId === 'ollama' && req.agent.model.provider === 'local')
     ) {
       throw new Error(`Selected model does not match provider connection: ${req.connectionId}`);
-    }
-    const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
-    if (exactModels && !exactModels.some((option) => option.id === req.agent.model.model)) {
-      throw new Error(`${req.agent.model.model} is unavailable for ${connection.displayName}`);
     }
     return {
       providerId,
@@ -486,7 +473,10 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
   const exactConnection = req.connectionId
     ? getProviderConnectionDescriptor(req.connectionId)
     : undefined;
-  if (exactConnection?.mode === 'external-cli') {
+  if (
+    exactConnection?.mode === 'external-cli' &&
+    !shouldDispatchOpenCodeThroughHarness(exactConnection)
+  ) {
     assertConnectionCapabilities(exactConnection, req.connectionRequirements);
     const toolScope = subscriptionToolScope(exactConnection, req.tools, req.connectionRequirements);
     const transport = req.compiledPrompt

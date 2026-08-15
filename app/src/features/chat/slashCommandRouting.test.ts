@@ -24,6 +24,7 @@ const expected = {
   model: ['vibespace-ui', 'local'],
   effort: ['vibespace-ui', 'local'],
   mode: ['vibespace-ui', 'local'],
+  rlm: ['vibespace-ui', 'local'],
   attach: ['vibespace-context', 'attachment'],
   clearfiles: ['vibespace-ui', 'local'],
   output: ['vibespace-ui', 'local'],

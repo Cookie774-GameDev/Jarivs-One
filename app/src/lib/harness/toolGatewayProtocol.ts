@@ -349,6 +349,7 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
         case 'describe':
         case 'checkpoint':
           return { operation };
+        case 'query':
         case 'search':
           args = exactKeys(
             selectSemanticFields(envelope, ['operation', 'query', 'limit', 'continuation']),
@@ -546,14 +547,8 @@ export function parseToolGatewayRequest(value: unknown): ToolGatewayRequest {
   if (typeof envelope.tool !== 'string' || !catalog.has(envelope.tool)) {
     invalid('semantic tool is unavailable.');
   }
-  if (
-    (envelope.directory !== undefined &&
-      (typeof envelope.directory !== 'string' || !absoluteDirectory(envelope.directory))) ||
-    (envelope.worktree !== undefined &&
-      (typeof envelope.worktree !== 'string' || !absoluteDirectory(envelope.worktree)))
-  ) {
-    invalid('directory scope is invalid.');
-  }
+  const directory = optionalAbsoluteDirectory(envelope.directory);
+  const worktree = optionalAbsoluteDirectory(envelope.worktree);
   const tool = envelope.tool as ToolGatewayTool;
   return {
     protocolVersion: 1,
@@ -562,9 +557,17 @@ export function parseToolGatewayRequest(value: unknown): ToolGatewayRequest {
     messageId,
     tool,
     args: validateArgs(tool, envelope.args),
-    ...(typeof envelope.directory === 'string' ? { directory: envelope.directory } : {}),
-    ...(typeof envelope.worktree === 'string' ? { worktree: envelope.worktree } : {}),
+    ...(directory ? { directory } : {}),
+    ...(worktree ? { worktree } : {}),
   };
+}
+
+function optionalAbsoluteDirectory(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || !absoluteDirectory(value)) {
+    invalid('directory scope is invalid.');
+  }
+  return value;
 }
 
 function fallbackResponse(requestId: string): ToolGatewayResponse {

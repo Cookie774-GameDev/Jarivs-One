@@ -298,6 +298,29 @@ describe('tool gateway protocol', () => {
     }
   });
 
+  it('accepts Tauri-emitted null optional directory and worktree as omitted', () => {
+    const parsed = parseToolGatewayRequest({
+      protocolVersion: 1,
+      requestId: 'request-1',
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      tool: 'app.getState',
+      args: {},
+      directory: null,
+      worktree: null,
+    });
+    expect(parsed).toEqual({
+      protocolVersion: 1,
+      requestId: 'request-1',
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      tool: 'app.getState',
+      args: {},
+    });
+    expect(parsed).not.toHaveProperty('directory');
+    expect(parsed).not.toHaveProperty('worktree');
+  });
+
   it.each([
     null,
     [],

@@ -40,6 +40,30 @@ function finiteNonNegative(value: number, fallback = 0): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
+export function routeDefaultContextQuery(
+  question: string,
+  extra: Partial<ContextModeSignals> = {},
+): ContextModeDecision {
+  const trimmed = question.trim();
+  const looksLikeOrdinaryChat =
+    trimmed.length > 0 &&
+    trimmed.length <= 240 &&
+    !/\b(?:search|investigate|corpus|entire project|infinite context|rlm)\b/iu.test(trimmed);
+  return decideContextMode({
+    estimatedCorpusTokens: extra.estimatedCorpusTokens ?? 0,
+    modelWindowTokens: extra.modelWindowTokens ?? 128_000,
+    sourceFamilyCount: extra.sourceFamilyCount ?? 0,
+    ambiguity: extra.ambiguity ?? 0,
+    rlmAvailable: extra.rlmAvailable ?? true,
+    smallBoundedTask: extra.smallBoundedTask ?? looksLikeOrdinaryChat,
+    entireProjectHistory:
+      extra.entireProjectHistory ?? /\bentire project history\b/iu.test(trimmed),
+    explicitRlm: extra.explicitRlm ?? /\brlm\b/iu.test(trimmed),
+    ...extra,
+    question: extra.question ?? trimmed,
+  });
+}
+
 export function decideContextMode(input: ContextModeSignals): ContextModeDecision {
   const estimatedCorpusTokens = finiteNonNegative(input.estimatedCorpusTokens);
   const modelWindowTokens = Math.max(1, finiteNonNegative(input.modelWindowTokens, 1));

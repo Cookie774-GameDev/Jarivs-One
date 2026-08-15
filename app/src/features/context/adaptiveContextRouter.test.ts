@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { decideContextMode } from './adaptiveContextRouter';
+import { decideContextMode, routeDefaultContextQuery } from './adaptiveContextRouter';
 
 describe('adaptive direct/retrieval/RLM router', () => {
+  it('keeps default-on RLM lazy so an ordinary short chat is Direct, not recursive search', () => {
+    const decision = routeDefaultContextQuery('Hi Jarvis, what time is it?');
+    expect(decision.mode).toBe('direct');
+    expect(decision.recursiveChildCallsAllowed).toBe(false);
+    expect(decision.reasons).toContain('small_bounded_task');
+  });
+
+  it('escalates default query to RLM only when investigation signals are present', () => {
+    const decision = routeDefaultContextQuery('Investigate the entire project history for the leak', {
+      entireProjectHistory: true,
+      estimatedCorpusTokens: 4_000_000,
+    });
+    expect(decision.mode).toBe('rlm');
+    expect(decision.recursiveChildCallsAllowed).toBe(true);
+  });
+
   it('chooses direct mode for a short greeting with no corpus work', () => {
     expect(
       decideContextMode({

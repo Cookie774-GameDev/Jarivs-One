@@ -181,6 +181,14 @@ import {
 } from './slashProjectFiles';
 import { buildVibeSpaceReferenceRequest, classifySlashCommand } from './slashCommandRouting';
 import {
+  formatRlmStatus,
+  markRlmIndexRefreshed,
+  parseRlmSlashArgument,
+  resolveRlmEnabled,
+  RLM_SLASH_OPTIONS,
+  setChatRlmEnabled,
+} from '@/features/context/rlmPreferenceStore';
+import {
   clearRedoStack,
   NOTHING_TO_REDO_TEXT,
   NOTHING_TO_UNDO_TEXT,
@@ -270,10 +278,18 @@ import type { ReasoningMode, ReasoningSelection } from '@/lib/ai/reasoningContro
 import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
 import {
   cycleInteractionMode,
-  parsePermissionModeArg,
   PERMISSION_MODE_OPTIONS,
 } from '@/features/jarvis-interaction/modes';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
+import {
+  formatPermissionPolicy,
+  parsePermissionSlashArg,
+  PERMISSION_ACCESS_OPTIONS,
+  PERMISSION_APPROVE_OPTIONS,
+  readPermissionAccess,
+  setApproveAllForRun,
+  setPermissionAccess,
+} from '@/features/jarvis-interaction/permissionAccessStore';
 import type { JarvisInteractionMode } from '@/features/jarvis-interaction/types';
 import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
 import { shouldCancelForLiveModeRestriction } from './modeTransitionSafety';
@@ -785,6 +801,7 @@ export function Composer({
   const [selectedSlashCmd, setSelectedSlashCmd] = useState<string>('');
   const [optionPickerCtx, setOptionPickerCtx] = useState<OptionPickerContext | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string>('');
+  const [permissionPickerStep, setPermissionPickerStep] = useState<'mode' | 'access'>('mode');
   const interactionMode = useJarvisInteractionStore((s) => s.modeForChat(chatId));
   const setInteractionMode = useJarvisInteractionStore((s) => s.setChatMode);
   const [reasoningPreference, setReasoningPreference] = useState(() =>
@@ -1245,6 +1262,22 @@ export function Composer({
       return projectFileOptions;
     }
 
+    if (cmd === 'rlm') {
+      const resolved = resolveRlmEnabled({
+        chatId: String(chatId),
+        workspaceId: workspaceId ?? undefined,
+      });
+      return RLM_SLASH_OPTIONS.map((option) => ({
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        metadata:
+          (option.id === 'on' && resolved.enabled) || (option.id === 'off' && !resolved.enabled)
+            ? 'active'
+            : undefined,
+      }));
+    }
+
     if ((cmd === 'effort' || cmd === 'mode') && reasoningPickerState) {
       return reasoningPickerState.options.map((option) => ({
         ...option,
@@ -1253,12 +1286,48 @@ export function Composer({
     }
 
     if (normalizeSlashCmd(cmd) === 'permissions') {
-      return PERMISSION_MODE_OPTIONS.map((option) => ({
-        id: option.id,
-        label: option.title,
-        description: option.description,
-        metadata: option.id === interactionMode ? 'active' : undefined,
-      }));
+      const accessState = readPermissionAccess(String(chatId));
+      if (permissionPickerStep === 'mode') {
+        return PERMISSION_MODE_OPTIONS.map((option) => ({
+          id: option.id,
+          label: option.title,
+          description: option.description,
+          metadata: option.id === interactionMode ? 'active' : undefined,
+        }));
+      }
+      return [
+        ...PERMISSION_ACCESS_OPTIONS.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description,
+          metadata: option.id === accessState.access ? 'active' : undefined,
+        })),
+        ...PERMISSION_APPROVE_OPTIONS.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description,
+          metadata:
+            option.id === 'approve-all' && accessState.approveAll
+              ? 'active'
+              : option.id === 'approve-all-off' && !accessState.approveAll
+                ? 'active'
+                : undefined,
+        })),
+        {
+          id: 'status',
+          label: 'Effective policy',
+          description: formatPermissionPolicy({
+            mode: interactionMode,
+            access: accessState.access,
+            approveAll: accessState.approveAll,
+          }),
+        },
+        {
+          id: 'done',
+          label: 'Done',
+          description: 'Close the permissions control',
+        },
+      ];
     }
 
     return [];
@@ -1271,6 +1340,9 @@ export function Composer({
     projectFileOptions,
     interactionMode,
     reasoningPickerState,
+    chatId,
+    workspaceId,
+    permissionPickerStep,
   ]);
 
   // Load project files when /file picker opens
@@ -1571,6 +1643,8 @@ export function Composer({
         canonicalCmd === 'chat' ||
         cmd.cmd === 'effort' ||
         cmd.cmd === 'mode' ||
+        cmd.cmd === 'rlm' ||
+        cmd.cmd === 'permissions' ||
         canonicalCmd === 'md' ||
         cmd.cmd === 'theme' ||
         isGlobalThemePickerCommand(cmd.cmd))
@@ -1584,13 +1658,20 @@ export function Composer({
             ? loadConsolePreferences().profile
             : canonicalCmd === 'chat'
               ? storedChatEngine(String(chatId))
-              : cmd.cmd === 'effort' || cmd.cmd === 'mode'
-                ? (buildReasoningSlashPickerState({
-                    command: cmd.cmd,
-                    selection: reasoningSelectionFromChatModel(chatModelSelection),
-                    preference: reasoningPreference,
-                  }).selectedId ?? '')
-                : '',
+              : cmd.cmd === 'rlm'
+                ? resolveRlmEnabled({
+                    chatId: String(chatId),
+                    workspaceId: workspaceId ?? undefined,
+                  }).enabled
+                  ? 'on'
+                  : 'off'
+                : cmd.cmd === 'effort' || cmd.cmd === 'mode'
+                  ? (buildReasoningSlashPickerState({
+                      command: cmd.cmd,
+                      selection: reasoningSelectionFromChatModel(chatModelSelection),
+                      preference: reasoningPreference,
+                    }).selectedId ?? '')
+                  : '',
       );
       setOptionPickerCtx({ cmd, query: '' });
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -1710,6 +1791,55 @@ export function Composer({
       return;
     }
 
+    if (canonical === 'rlm') {
+      const action = parseRlmSlashArgument(option.id);
+      if (action === 'on' || action === 'off') {
+        const resolved = setChatRlmEnabled(String(chatId), action === 'on');
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [{ kind: 'text', text: formatRlmStatus(resolved, { projectId, workspaceId }) }],
+        });
+      } else if (action === 'status') {
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [
+            {
+              kind: 'text',
+              text: formatRlmStatus(
+                resolveRlmEnabled({ chatId: String(chatId), workspaceId: workspaceId ?? undefined }),
+                { projectId, workspaceId },
+              ),
+            },
+          ],
+        });
+      } else if (action === 'refresh') {
+        markRlmIndexRefreshed();
+        window.dispatchEvent(new CustomEvent('jarvis:context-tree-updated'));
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [
+            {
+              kind: 'text',
+              text: formatRlmStatus(
+                resolveRlmEnabled({ chatId: String(chatId), workspaceId: workspaceId ?? undefined }),
+                { projectId, workspaceId },
+              ),
+            },
+          ],
+        });
+      } else if (action === 'trace') {
+        useUIStore.getState().setRoute('context');
+      }
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      setText('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
     if (canonical === 'md' && isMarkdownDocumentKind(option.id)) {
       setConfirmedCommands((current) => [
         ...current.filter((command) => command.cmd !== 'md'),
@@ -1723,15 +1853,47 @@ export function Composer({
 
     // /permissions picker: set Agent / Plan / Ask mode only — never attach a chip.
     if (canonical === 'permissions') {
-      const nextMode = parsePermissionModeArg(option.id) ?? (option.id as 'ask' | 'plan' | 'agent');
-      if (nextMode === 'ask' || nextMode === 'plan' || nextMode === 'agent') {
-        applyInteractionMode(nextMode);
-        // Drop any stale permissions chip from older builds.
-        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
-        // Quiet: mode chip already shows the active mode — no toast spam.
+      const parsed = parsePermissionSlashArg(option.id);
+      if (parsed?.kind === 'mode') {
+        applyInteractionMode(parsed.value);
+        setPermissionPickerStep('access');
+        setSelectedOptionId(readPermissionAccess(String(chatId)).access);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
       }
+      if (parsed?.kind === 'access') {
+        setPermissionAccess(String(chatId), parsed.value);
+        setSelectedOptionId(parsed.value);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      if (parsed?.kind === 'approve-all') {
+        setApproveAllForRun(String(chatId), parsed.value);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      if (parsed?.kind === 'status') {
+        const accessState = readPermissionAccess(String(chatId));
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [
+            {
+              kind: 'text',
+              text: formatPermissionPolicy({
+                mode: interactionMode,
+                access: accessState.access,
+                approveAll: accessState.approveAll,
+              }),
+            },
+          ],
+        });
+      }
+      setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+      setPermissionPickerStep('mode');
       setOptionPickerCtx(null);
       setSelectedOptionId('');
+      setText('');
       requestAnimationFrame(() => textareaRef.current?.focus());
       return;
     }
@@ -1903,20 +2065,87 @@ export function Composer({
       openAttachPicker('mode');
       return true;
     }
+    if (cmd === 'rlm') {
+      const action = parseRlmSlashArgument(rest);
+      if (!rest) {
+        openAttachPicker('rlm');
+        return true;
+      }
+      if (!action) {
+        await addSystem('Usage: /rlm on | off | status | refresh');
+        return true;
+      }
+      if (action === 'on' || action === 'off') {
+        const resolved = setChatRlmEnabled(String(chatId), action === 'on');
+        await addSystem(formatRlmStatus(resolved, { projectId, workspaceId }));
+        return true;
+      }
+      if (action === 'status') {
+        await addSystem(
+          formatRlmStatus(resolveRlmEnabled({ chatId: String(chatId), workspaceId: workspaceId ?? undefined }), {
+            projectId,
+            workspaceId,
+          }),
+        );
+        return true;
+      }
+      if (action === 'refresh') {
+        markRlmIndexRefreshed();
+        window.dispatchEvent(new CustomEvent('jarvis:context-tree-updated'));
+        await addSystem(
+          formatRlmStatus(resolveRlmEnabled({ chatId: String(chatId), workspaceId: workspaceId ?? undefined }), {
+            projectId,
+            workspaceId,
+          }),
+        );
+        return true;
+      }
+      useUIStore.getState().setRoute('context');
+      setText('');
+      return true;
+    }
     if (cmd === 'chat') {
       openAttachPicker('chat');
       return true;
     }
     if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms' || cmd === 'access') {
-      const parsed = rest ? parsePermissionModeArg(rest) : null;
-      if (parsed) {
-        applyInteractionMode(parsed);
-        // Mode change only — do not attach /permissions as a confirmed chip.
+      const parsed = rest ? parsePermissionSlashArg(rest) : undefined;
+      if (parsed?.kind === 'mode') {
+        applyInteractionMode(parsed.value);
         setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
         setText('');
         return true;
       }
-      // Open the permissions option picker (still not an attachment).
+      if (parsed?.kind === 'access') {
+        setPermissionAccess(String(chatId), parsed.value);
+        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+        setText('');
+        return true;
+      }
+      if (parsed?.kind === 'approve-all') {
+        setApproveAllForRun(String(chatId), parsed.value);
+        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+        setText('');
+        return true;
+      }
+      if (parsed?.kind === 'status') {
+        const accessState = readPermissionAccess(String(chatId));
+        await addSystem(
+          formatPermissionPolicy({
+            mode: interactionMode,
+            access: accessState.access,
+            approveAll: accessState.approveAll,
+          }),
+        );
+        return true;
+      }
+      if (rest && !parsed) {
+        await addSystem(
+          'Usage: /permissions agent | plan | ask | read | write | full | approve-all | status',
+        );
+        return true;
+      }
+      setPermissionPickerStep('mode');
       openAttachPicker('permissions');
       return true;
     }
@@ -2316,7 +2545,7 @@ export function Composer({
           '/context, /plug, /skills, /file open pickers. /file lists files in your open project. ' +
           '/attach <path>, /clearfiles (or /clearfile) clears attachments. ' +
           '/undo removes the last full turn; /redo restores it. ' +
-          '/usage, /model, /theme, /appearance, /commands, /multitask, /ask, /plan.',
+          '/usage, /model, /rlm, /permissions, /theme, /appearance, /commands, /multitask, /ask, /plan.',
       );
       return true;
     }
@@ -4733,6 +4962,7 @@ export function Composer({
                   ) : null}
                   <ModeIndicator
                     mode={interactionMode}
+                    chatId={String(chatId)}
                     compact={compact}
                     onSelectMode={(nextMode) => {
                       applyInteractionMode(nextMode);

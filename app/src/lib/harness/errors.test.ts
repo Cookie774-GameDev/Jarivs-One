@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HarnessError, redactHarnessText, toHarnessErrorPayload } from './errors';
+import {
+  classifyOpenCodeAuthFailure,
+  HarnessError,
+  OPENCODE_PROVIDER_AUTH_FAILED_MESSAGE,
+  redactHarnessText,
+  toHarnessErrorPayload,
+} from './errors';
 
 describe('harness errors', () => {
   it('redacts secrets and bounds diagnostics in serialized harness failures', () => {
@@ -31,6 +37,18 @@ describe('harness errors', () => {
       repair: 'Retry the harness operation.',
       recoverable: true,
     });
+  });
+
+  it('classifies OpenCode token-refresh 401 as a recoverable provider auth failure', () => {
+    expect(classifyOpenCodeAuthFailure('Token refresh failed: 401')).toMatchObject({
+      code: 'HARNESS_AUTH_FAILED',
+      message: OPENCODE_PROVIDER_AUTH_FAILED_MESSAGE,
+      recoverable: true,
+    });
+    expect(classifyOpenCodeAuthFailure('OAuth token refresh failed for openai-codex')).toMatchObject({
+      code: 'HARNESS_AUTH_FAILED',
+    });
+    expect(classifyOpenCodeAuthFailure('OpenCode ended without a terminal completion event.')).toBeUndefined();
   });
 
   it('redacts basic authorization and common provider secret assignments', () => {

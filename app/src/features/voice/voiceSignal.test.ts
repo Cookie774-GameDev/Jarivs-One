@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createVoiceSignalController } from './voiceSignal';
+import {
+  computeRms,
+  createVoiceSignalController,
+  normalizeVoiceLevel,
+  smoothVoiceLevel,
+} from './voiceSignal';
+import { setJarvisPlaybackEnergy } from './jarvisPlaybackEnergy';
 
 function harness() {
   let nextFrame = 1;
@@ -50,6 +56,22 @@ function harness() {
   };
 }
 
+describe('voice signal math', () => {
+  it('measures silence, gated noise, and louder samples truthfully', () => {
+    expect(computeRms([128, 128, 128, 128])).toBe(0);
+    expect(normalizeVoiceLevel(0)).toBe(0);
+    expect(normalizeVoiceLevel(0.01)).toBe(0);
+    expect(normalizeVoiceLevel(0.12)).toBeGreaterThan(normalizeVoiceLevel(0.04));
+  });
+
+  it('attacks faster than it releases', () => {
+    const rising = smoothVoiceLevel(0, 1, 0.4, 0.1);
+    const falling = smoothVoiceLevel(1, 0, 0.4, 0.1);
+    expect(rising).toBeCloseTo(0.4);
+    expect(falling).toBeCloseTo(0.9);
+  });
+});
+
 describe('createVoiceSignalController', () => {
   it('measures microphone waveform energy and releases every audio resource', async () => {
     const test = harness();
@@ -77,16 +99,18 @@ describe('createVoiceSignalController', () => {
     expect(test.audioContext.close).toHaveBeenCalledTimes(1);
   });
 
-  it('drives a bounded speaking envelope without requesting the microphone', () => {
+  it('follows real Jarvis playback energy and stays silent without output', () => {
     const test = harness();
     const levelRef = { current: 0 };
     const controller = createVoiceSignalController(levelRef, test.deps);
 
     controller.startSpeaking();
-    test.runFrame(250);
-    expect(levelRef.current).toBeGreaterThan(0.1);
-    expect(levelRef.current).toBeLessThanOrEqual(1);
+    expect(levelRef.current).toBe(0);
     expect(test.getUserMedia).not.toHaveBeenCalled();
+
+    setJarvisPlaybackEnergy(0.8);
+    expect(levelRef.current).toBeGreaterThan(0.2);
+    expect(levelRef.current).toBeLessThanOrEqual(1);
 
     controller.stop();
     expect(levelRef.current).toBe(0);

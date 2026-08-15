@@ -189,6 +189,7 @@ import {
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
 import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
+import { setPermissionAccess } from '@/features/jarvis-interaction/permissionAccessStore';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 
@@ -373,6 +374,15 @@ describe('startRuntimeListener agent routing', () => {
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
 
+  it('does not advertise tools for an ordinary short Ask Mode chat', () => {
+    const tools = openCodeToolsForInteractionMode('ask', [
+      { role: 'user', content: 'Reply with the single word pong.' },
+    ]);
+    expect(Object.values(tools).every((enabled) => enabled === false)).toBe(true);
+    expect(tools['terminal.list']).toBe(false);
+    expect(tools.vibespace_context).toBe(false);
+  });
+
   it('uses read-only OpenCode tools in Ask and Plan and the exact catalog in Agent', () => {
     for (const mode of ['ask', 'plan'] as const) {
       const tools = openCodeToolsForInteractionMode(mode);
@@ -386,6 +396,17 @@ describe('startRuntimeListener agent routing', () => {
     expect(agentTools['terminal.write']).toBe(true);
     expect(agentTools['app.navigate']).toBe(true);
     expect(Object.keys(agentTools)).toHaveLength(TOOL_GATEWAY_CATALOG.length);
+
+    setPermissionAccess('chat-read', 'read');
+    const readTools = openCodeToolsForInteractionMode('agent', [], { chatId: 'chat-read' });
+    expect(readTools['context.read']).toBe(true);
+    expect(readTools['profile.allAboutMe.update']).toBe(false);
+    expect(readTools['terminal.write']).toBe(false);
+
+    setPermissionAccess('chat-write', 'write');
+    const writeTools = openCodeToolsForInteractionMode('agent', [], { chatId: 'chat-write' });
+    expect(writeTools['profile.allAboutMe.update']).toBe(true);
+    expect(writeTools['terminal.write']).toBe(false);
 
     const contextTools = openCodeToolsForInteractionMode('agent', [
       { role: 'user', content: 'Search the active Context Map with vibespace_context.' },

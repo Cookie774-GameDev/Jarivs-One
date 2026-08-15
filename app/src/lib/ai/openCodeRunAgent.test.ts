@@ -11,6 +11,7 @@ import type {
 } from '@/lib/harness/types';
 import { useAuthStore } from '@/stores/auth';
 import { createOpenCodeRunAgentAdapter } from './openCodeRunAgent';
+import { HarnessError } from '@/lib/harness/errors';
 
 const agent: Agent = {
   id: 'agent_test' as Agent['id'],
@@ -68,7 +69,20 @@ function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
     deleteSession,
     send,
     cancel: vi.fn(async () => undefined),
-    listProviders: vi.fn(async () => []),
+    listProviders: vi.fn(async () => [
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        connected: true,
+        models: [
+          {
+            id: 'gpt-exact',
+            name: 'gpt-exact',
+            variants: ['low', 'medium', 'high', 'xhigh'],
+          },
+        ],
+      },
+    ]),
     listModels: vi.fn(async () => []),
     respondToApproval: vi.fn(async () => undefined),
     dispose: vi.fn(async () => undefined),
@@ -77,6 +91,62 @@ function fakeHarness(eventRuns: readonly (readonly HarnessEvent[])[]) {
 }
 
 describe('runAgent OpenCode adapter', () => {
+  it('refuses send when the live OpenCode catalog is missing or the variant is unsupported', async () => {
+    const empty = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
+    empty.harness.listProviders = vi.fn(async () => []);
+    const adapter = createOpenCodeRunAgentAdapter(empty.harness);
+    await expect(
+      adapter.run({
+        agent,
+        messages: [{ role: 'user', content: 'hello' }],
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        scopeId: 'scope-catalog-empty',
+      }),
+    ).rejects.toThrowError(/Static model lists cannot execute/);
+    expect(empty.send).not.toHaveBeenCalled();
+
+    const live = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
+    const liveAdapter = createOpenCodeRunAgentAdapter(live.harness);
+    await expect(
+      liveAdapter.run({
+        agent,
+        messages: [{ role: 'user', content: 'hello' }],
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        variant: 'max',
+        scopeId: 'scope-live-variant',
+      }),
+    ).rejects.toThrowError(/unsupported/);
+    expect(live.send).not.toHaveBeenCalled();
+
+    await liveAdapter.run({
+      agent,
+      messages: [{ role: 'user', content: 'hello' }],
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      variant: 'high',
+      scopeId: 'scope-live-ok',
+    });
+    expect(live.send).toHaveBeenCalledWith(expect.objectContaining({ variant: 'high' }));
+  });
+
+  it('fails closed on a Token refresh 401 instead of completing the turn', async () => {
+    const fake = fakeHarness([
+      [{ type: 'error', code: 'HARNESS_AUTH_FAILED', message: 'Token refresh failed: 401' }],
+    ]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    await expect(
+      adapter.run({
+        agent,
+        messages: [{ role: 'user', content: 'hello' }],
+        selection: { providerId: 'openai', modelId: 'gpt-exact' },
+        scopeId: 'scope-auth-401',
+      }),
+    ).rejects.toMatchObject({
+      name: 'HarnessError',
+      code: 'HARNESS_AUTH_FAILED',
+    });
+    expect(fake.send).toHaveBeenCalledOnce();
+  });
+
   it('binds a newly created OpenCode session before it can send tools', async () => {
     const fake = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
     const claim = authorityClaim(1);
@@ -130,7 +200,10 @@ describe('runAgent OpenCode adapter', () => {
 
     await expect(result).rejects.toThrow(/authority is unavailable/i);
     expect(authority.bind).toHaveBeenCalledWith('session-late', initialAuthority);
-    expect(fake.deleteSession).toHaveBeenCalledWith('session-late', undefined);
+    expect(fake.deleteSession).toHaveBeenCalledWith(
+      'session-late',
+      expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+    );
     expect(fake.send).not.toHaveBeenCalled();
   });
 
@@ -167,16 +240,24 @@ describe('runAgent OpenCode adapter', () => {
     currentAuthority = authorityClaim(2);
     await adapter.run(childInput);
 
-    expect(fake.deleteSession).toHaveBeenCalledWith('session-1', undefined);
-    expect(fake.deleteSession).toHaveBeenCalledWith('session-2', undefined);
+    expect(fake.deleteSession).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+    );
+    expect(fake.deleteSession).toHaveBeenCalledWith(
+      'session-2',
+      expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+    );
     expect(fake.createSession).toHaveBeenNthCalledWith(3, {
       chatId: 'parent-scope',
       title: 'Test',
+      workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
     });
     expect(fake.createSession).toHaveBeenNthCalledWith(4, {
       chatId: 'child-scope',
       title: 'Test',
       parentSessionId: 'session-3',
+      workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
     });
     expect(fake.send).toHaveBeenNthCalledWith(
       2,
@@ -214,7 +295,10 @@ describe('runAgent OpenCode adapter', () => {
     });
 
     await expect(result).rejects.toThrow(/authority changed/i);
-    expect(fake.deleteSession).toHaveBeenCalledWith('session-1', undefined);
+    expect(fake.deleteSession).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+    );
     expect(authority.release).toHaveBeenCalledWith('session-1');
     expect(fake.send).not.toHaveBeenCalled();
   });
@@ -364,6 +448,7 @@ describe('runAgent OpenCode adapter', () => {
       chatId: 'chat-child',
       title: 'Test',
       parentSessionId: 'session-1',
+      workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
     });
     expect(onSessionBound).toHaveBeenCalledWith({
       sessionId: 'session-2',
@@ -396,11 +481,13 @@ describe('runAgent OpenCode adapter', () => {
     expect(fake.createSession).toHaveBeenNthCalledWith(1, {
       chatId: 'chat-parent',
       title: 'Test',
+      workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
     });
     expect(fake.createSession).toHaveBeenNthCalledWith(2, {
       chatId: 'chat-child',
       title: 'Test',
       parentSessionId: 'session-1',
+      workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
     });
     expect(fake.send.mock.calls[0]?.[0].sessionId).toBe('session-2');
     expect(fake.send.mock.calls[1]?.[0].sessionId).toBe('session-1');
@@ -491,7 +578,10 @@ describe('runAgent OpenCode adapter', () => {
     await adapter.run({ ...base, messages: [{ role: 'user', content: 'first' }] });
     await adapter.run({ ...base, messages: [{ role: 'user', content: 'edited' }] });
 
-    expect(fake.deleteSession).toHaveBeenCalledWith('session-1', undefined);
+    expect(fake.deleteSession).toHaveBeenCalledWith(
+      'session-1',
+      expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+    );
     expect(fake.createSession).toHaveBeenCalledTimes(2);
     expect(fake.send.mock.calls[1]?.[0]).toMatchObject({
       sessionId: 'session-2',
@@ -753,6 +843,28 @@ describe('runAgent OpenCode adapter', () => {
         onChunk: () => during.abort(),
       }),
     ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('supplies a safe absolute working directory when the caller omits one', async () => {
+    const fake = fakeHarness([[exactUsageEvent, { type: 'done', finishReason: 'stop' }]]);
+    const adapter = createOpenCodeRunAgentAdapter(fake.harness);
+    await adapter.run({
+      agent,
+      scopeId: 'chat-default-cwd',
+      selection: { providerId: 'openai', modelId: 'gpt-exact' },
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+    expect(fake.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-default-cwd',
+        workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+      }),
+    );
+    expect(fake.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workingDirectory: expect.stringMatching(/^[A-Za-z]:[\\/]|^\//),
+      }),
+    );
   });
 
   it('rejects relative working directories and malformed image payloads before dispatch', async () => {

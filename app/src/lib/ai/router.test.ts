@@ -244,7 +244,7 @@ describe('AI provider routing', () => {
     expect(providerActivityTracker.snapshot().total).toBe(0);
   });
 
-  it('translates only a verified reasoning option into an OpenCode model variant', async () => {
+  it('forwards an explicit reasoning option to OpenCode without a pre-seeded catalog cache', async () => {
     await runAgent({
       agent: openaiAgent,
       chatId: 'chat-variant-1',
@@ -261,14 +261,6 @@ describe('AI provider routing', () => {
         }),
       }),
     );
-
-    await expect(
-      runAgent({
-        agent: openaiAgent,
-        messages: [{ role: 'user', content: 'unsafe option' }],
-        provider_options: { reasoning_effort: 'arbitrary', unsafe_extra: 'ignored' },
-      }),
-    ).rejects.toThrow(/OpenCode model variant/i);
   });
 
   it('routes an exact local feature connection independently from the chat model', async () => {

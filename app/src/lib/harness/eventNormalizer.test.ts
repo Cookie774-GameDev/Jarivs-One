@@ -103,6 +103,25 @@ describe('normalizeOpenCodeEvent', () => {
         'session-1',
       ),
     ).toEqual([{ type: 'error', message: 'Bearer [REDACTED]' }]);
+    expect(
+      normalizeOpenCodeEvent(
+        {
+          type: 'session.error',
+          properties: {
+            sessionID: 'session-1',
+            error: { message: 'Token refresh failed: 401' },
+          },
+        },
+        'session-1',
+      ),
+    ).toEqual([
+      {
+        type: 'error',
+        code: 'HARNESS_AUTH_FAILED',
+        message:
+          'OpenAI ChatGPT sign-in expired. Reconnect OpenAI with ChatGPT in the OpenCode terminal (/connect), or pick a local model. The connector can still show Connected while the saved refresh token is dead.',
+      },
+    ]);
   });
 
   it('normalizes file edits without leaking unbounded paths', () => {

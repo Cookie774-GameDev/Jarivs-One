@@ -1,4 +1,4 @@
-import { HarnessError, redactHarnessText } from './errors';
+import { classifyOpenCodeAuthFailure, HarnessError, redactHarnessText } from './errors';
 import { verifiedQwenCompatibleBaseUrl } from '@/lib/ai/nativeConnectionProbe';
 import { normalizeOpenCodeEvent } from './eventNormalizer';
 import { createOpenCodeHttpClient, type OpenCodeHttpClient } from './openCodeClient';
@@ -448,15 +448,18 @@ export class OpenCodeHarness implements VibeSpaceHarness {
       }
     } catch (error) {
       if (!controller.signal.aborted) {
+        const detail = safeError(error, connection);
+        const authFailure = classifyOpenCodeAuthFailure(detail);
         yield {
           type: 'error',
           code:
-            error instanceof HarnessError
+            authFailure?.code ??
+            (error instanceof HarnessError
               ? error.code
               : promptSubmitted
                 ? 'HARNESS_CRASHED'
-                : 'HARNESS_START_FAILED',
-          message: safeError(error, connection),
+                : 'HARNESS_START_FAILED'),
+          message: authFailure?.message ?? detail,
         };
       }
     } finally {

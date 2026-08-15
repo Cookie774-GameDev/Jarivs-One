@@ -1,9 +1,13 @@
 import { createContextPointer, type ContextPointer } from './losslessContext';
 import type { ContextScope } from './contextQueryService';
+import { routeDefaultContextQuery } from './adaptiveContextRouter';
+import { recordRlmRoute, resolveRlmEnabled } from './rlmPreferenceStore';
 import type { RlmBudget } from './rlmRuntime';
 
 export const RLM_OPENCODE_TOOL_NAME = 'vibespace_context' as const;
+export const RLM_HIGH_LEVEL_QUERY = 'query' as const;
 export const RLM_CONTEXT_OPERATIONS = [
+  'query',
   'describe',
   'search',
   'open',
@@ -209,6 +213,38 @@ export function createRlmOpenCodeTool(dependencies: {
     const operation = base.operation as RlmContextOperation;
 
     switch (operation) {
+      case 'query': {
+        const args = exactKeys(rawInput, ['operation', 'query'], ['limit']);
+        const question = text(args.query);
+        const rlmEnabled = resolveRlmEnabled({ workspaceId: lease.workspaceId }).enabled;
+        const decision = routeDefaultContextQuery(question, { rlmAvailable: rlmEnabled });
+        recordRlmRoute(decision.mode, 'ok');
+        if (decision.mode === 'rlm') {
+          return dependencies.rlmRuntime.investigate({
+            question,
+            scope,
+            budget: rlmBudget,
+            signal,
+            decision,
+          });
+        }
+        if (decision.mode === 'direct') {
+          return {
+            mode: decision.mode,
+            reasons: decision.reasons,
+            skippedRecursiveSearch: true,
+            evidence: [],
+          };
+        }
+        return dependencies.queryService.search({
+          scope,
+          query: question,
+          ...(optionalPositiveInteger(args.limit, 100) === undefined
+            ? {}
+            : { limit: optionalPositiveInteger(args.limit, 100) }),
+          signal,
+        });
+      }
       case 'describe': {
         exactKeys(rawInput, ['operation']);
         return dependencies.queryService.describe({ scope, signal });
@@ -288,6 +324,15 @@ export function createRlmOpenCodeTool(dependencies: {
       }
       case 'investigate': {
         const args = exactKeys(rawInput, ['operation', 'query']);
+        if (!resolveRlmEnabled({ workspaceId: lease.workspaceId }).enabled) {
+          recordRlmRoute('retrieval', 'ok');
+          return dependencies.queryService.search({
+            scope,
+            query: text(args.query),
+            signal,
+          });
+        }
+        recordRlmRoute('rlm', 'ok');
         return dependencies.rlmRuntime.investigate({
           question: text(args.query),
           scope,

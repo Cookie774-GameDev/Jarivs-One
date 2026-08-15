@@ -51,6 +51,7 @@ const ROUTES = {
   model: { owner: 'vibespace-ui', execution: 'local' },
   effort: { owner: 'vibespace-ui', execution: 'local' },
   mode: { owner: 'vibespace-ui', execution: 'local' },
+  rlm: { owner: 'vibespace-ui', execution: 'local' },
   attach: { owner: 'vibespace-context', execution: 'attachment' },
   clearfiles: { owner: 'vibespace-ui', execution: 'local' },
   output: { owner: 'vibespace-ui', execution: 'local' },

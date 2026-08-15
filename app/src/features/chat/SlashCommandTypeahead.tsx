@@ -109,11 +109,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
     cmd: 'permissions',
     aliases: ['permission', 'perms', 'access'],
-    description: 'Set chat mode: Agent, Plan, or Ask',
+    description: 'Set mode, access, and Approve All for this run',
     icon: Shield,
     category: 'chat',
     takesArg: true,
-    argPlaceholder: 'agent | plan | ask',
+    argPlaceholder: 'agent | plan | ask | read | write | full | approve-all',
     hasOptions: true,
   },
   {
@@ -242,6 +242,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     category: 'chat',
     takesArg: true,
     argPlaceholder: 'token saver | normal | token final boss',
+    hasOptions: true,
+  },
+  {
+    cmd: 'rlm',
+    description: 'Turn default-on RLM context on or off, or show status',
+    icon: Brain,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: 'on | off | status | refresh',
     hasOptions: true,
   },
   {

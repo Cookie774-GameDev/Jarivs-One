@@ -601,6 +601,14 @@ export {
   type ContextModeSignals,
 } from './adaptiveContextRouter';
 export {
+  formatRlmStatus,
+  parseRlmSlashArgument,
+  resolveRlmEnabled,
+  setChatRlmEnabled,
+  type ResolvedRlmPreference,
+  type RlmSlashAction,
+} from './rlmPreferenceStore';
+export {
   RLM_CHILD_MODEL,
   RLM_CHILD_PROVIDER,
   RlmRuntimeError,

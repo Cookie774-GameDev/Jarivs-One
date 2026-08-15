@@ -73,7 +73,7 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(findSlashCommandDef('permissions')).toMatchObject({
       cmd: 'permissions',
       hasOptions: true,
-      argPlaceholder: 'agent | plan | ask',
+      argPlaceholder: 'agent | plan | ask | read | write | full | approve-all',
     });
   });
 
@@ -159,6 +159,16 @@ describe('orderSlashCommandsForDisplay', () => {
       takesArg: true,
       hasOptions: true,
       description: 'Switch the global VibeSpace appearance',
+    });
+  });
+
+  it('offers /rlm as a default-on context control', () => {
+    expect(findSlashCommandDef('rlm')).toMatchObject({
+      cmd: 'rlm',
+      category: 'chat',
+      takesArg: true,
+      hasOptions: true,
+      argPlaceholder: 'on | off | status | refresh',
     });
   });
 

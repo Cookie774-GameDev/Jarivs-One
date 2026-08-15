@@ -49,6 +49,16 @@ import {
   inferFallbackActionProposals,
   shouldReplaceModelActionsWithFileCreateFallback,
 } from '@/lib/actions/fallbackActions';
+import { routeDefaultContextQuery } from '@/features/context/adaptiveContextRouter';
+import { resolveRlmEnabled } from '@/features/context/rlmPreferenceStore';
+import {
+  accessAllowsTool,
+  expireApproveAllForRun,
+  readPermissionAccess,
+} from '@/features/jarvis-interaction/permissionAccessStore';
+import { openCodeHarness } from '@/lib/harness/openCodeHarness';
+import { grantToolGatewayMutation } from '@/lib/harness/toolGatewayAuthority';
+import { recordOpenCodeApprovalStatus } from '@/lib/harness/openCodeApprovalState';
 import { buildAgentTerminalContext } from '@/features/terminals/agentContext';
 import { getPluginContextBlock, getPluginStatusContextBlock } from '@/features/plugins';
 import type { CanonicalPluginArtifactCapability } from '@/features/plugins/runtime';
@@ -190,6 +200,11 @@ import {
   oversizedMessageSummary,
 } from '@/features/chat/oversizedMessageAttachment';
 import { resolveReasoningPolicy, type ReasoningPreference } from './reasoningControls';
+import {
+  getLiveOpenCodeProviders,
+  liveVariantsForSelection,
+} from './openCodeProductionTransport';
+import { classifyOpenCodeAuthFailure, HarnessError } from '@/lib/harness/errors';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
 import {
@@ -1638,20 +1653,32 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode, needsVisiblePlan
 export function openCodeToolsForInteractionMode(
   mode: JarvisInteractionMode,
   messages: readonly LLMMessage[] = [],
+  scope?: { chatId?: string; workspaceId?: string },
 ): Readonly<Record<string, boolean>> {
   const latestUserText = [...messages]
     .reverse()
     .find((message) => message.role === 'user')?.content;
-  const requestsContextMapTool =
-    latestUserText !== undefined && requestsReadOnlyContextTool(llmContentToText(latestUserText));
+  const userText = latestUserText === undefined ? '' : llmContentToText(latestUserText);
+  const requestsContextMapTool = userText.length > 0 && requestsReadOnlyContextTool(userText);
+  const ordinaryDirectAsk =
+    mode !== 'agent' &&
+    userText.length > 0 &&
+    !requestsContextMapTool &&
+    routeDefaultContextQuery(userText, {
+      rlmAvailable: resolveRlmEnabled(scope).enabled,
+    }).mode === 'direct';
+  const access = readPermissionAccess(scope?.chatId ?? '').access;
   return Object.freeze(
     Object.fromEntries(
-      TOOL_GATEWAY_CATALOG.map((tool) => [
-        tool,
-        requestsContextMapTool
-          ? tool === 'vibespace_context'
-          : mode === 'agent' || !MUTATING_TOOL_GATEWAY_TOOLS.has(tool),
-      ]),
+      TOOL_GATEWAY_CATALOG.map((tool) => {
+        const mutating = MUTATING_TOOL_GATEWAY_TOOLS.has(tool);
+        const modeAllows = ordinaryDirectAsk
+          ? false
+          : requestsContextMapTool
+            ? tool === 'vibespace_context'
+            : mode === 'agent' || !mutating;
+        return [tool, modeAllows && accessAllowsTool(access, tool, mutating)];
+      }),
     ),
   );
 }
@@ -2797,6 +2824,11 @@ function safeErrorMessage(error: unknown, fallback = 'unknown'): string {
   }
 }
 
+function isOpenCodeProviderAuthFailure(error: unknown): boolean {
+  if (error instanceof HarnessError && error.code === 'HARNESS_AUTH_FAILED') return true;
+  return classifyOpenCodeAuthFailure(safeErrorMessage(error, '')) !== undefined;
+}
+
 function safeErrorDetail(error: unknown): unknown {
   try {
     if (error instanceof Error) {
@@ -3866,6 +3898,10 @@ export function startRuntimeListener(
                 : {}),
             },
             preference: effectiveReasoningPreference,
+            liveVariants: liveVariantsForSelection(getLiveOpenCodeProviders(), {
+              providerId: chatModelSelection.providerId,
+              modelId: chatModelSelection.modelId,
+            }),
           })
         : null;
     const bufferExactLiteralStreaming =
@@ -4704,7 +4740,9 @@ export function startRuntimeListener(
           files: (detail.filePaths?.length ?? 0) > 0,
           tools: (detail.pluginIds?.length ?? 0) > 0,
         },
-        workingDirectory: projectId ? (getStoredProjectRoot(projectId) ?? undefined) : undefined,
+        workingDirectory: projectId
+          ? getStoredProjectRoot(projectId).trim() || undefined
+          : undefined,
         signal: controller.signal,
         onChunk: (chunk: LLMStreamChunk) => {
           if (controller.signal.aborted) return;
@@ -4728,7 +4766,9 @@ export function startRuntimeListener(
           }
           if (chunk.done && !bufferExactLiteralStreaming) flushNow();
         },
-        tools: openCodeToolsForInteractionMode(interactionMode, llmMessages),
+        tools: openCodeToolsForInteractionMode(interactionMode, llmMessages, {
+          chatId: String(chatId),
+        }),
         ...(structuredAgent
           ? {
               onHarnessSessionBound: (binding: { sessionId: string; parentSessionId?: string }) =>
@@ -4745,11 +4785,25 @@ export function startRuntimeListener(
           ) {
             return;
           }
+          const request = openCodePermissionRequest(approval);
+          if (
+            readPermissionAccess(String(chatId)).approveAll &&
+            request.risk !== 'high'
+          ) {
+            grantToolGatewayMutation(approval.sessionId, approval.capability, 'once');
+            recordOpenCodeApprovalStatus(approval.sessionId, approval.id, 'approved');
+            await openCodeHarness.respondToApproval({
+              sessionId: approval.sessionId,
+              approvalId: approval.id,
+              response: 'once',
+            });
+            return;
+          }
           cancelPendingFlush();
           await settleStreamingWrites();
           liveOpenCodePermissions.push({
             kind: 'permission_request',
-            request: openCodePermissionRequest(approval),
+            request,
           });
           await bindings.updateMessage(placeholder.id, {
             parts: [{ kind: 'text', text: acc }, ...currentOpenCodePermissionParts()],
@@ -4771,6 +4825,7 @@ export function startRuntimeListener(
         });
       }
 
+      expireApproveAllForRun(String(chatId));
       await mirrorShadowOutcome('completed', true);
       controller.signal.throwIfAborted();
 
@@ -5042,11 +5097,16 @@ export function startRuntimeListener(
           });
         }
       }
+      expireApproveAllForRun(String(chatId));
       useAgentStore.getState().setRunState(agent.id, aborted ? 'idle' : 'error');
       useAgentStore.getState().setVerb(agent.id, undefined);
       useChatActivityStore.getState().update(chatId, agentActivityId, {
         status: aborted ? 'cancelled' : 'error',
-        title: aborted ? `@${agent.slug} cancelled` : `@${agent.slug} failed`,
+        title: aborted
+          ? `@${agent.slug} cancelled`
+          : isOpenCodeProviderAuthFailure(err)
+            ? `@${agent.slug} needs OpenAI sign-in`
+            : `@${agent.slug} failed`,
         subtitle: aborted ? 'Cancelled by user' : safeErrorMessage(err, 'Unknown error'),
         ts: Date.now(),
       });

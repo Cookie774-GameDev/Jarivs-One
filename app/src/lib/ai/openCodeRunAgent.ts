@@ -22,6 +22,11 @@ import type {
   LLMResponseObservation,
   LLMStreamChunk,
 } from './types';
+import {
+  assertProductionOpenCodeSend,
+  resolveProductionWorkingDirectory,
+} from './openCodeProductionTransport';
+import { classifyOpenCodeAuthFailure, HarnessError } from '@/lib/harness/errors';
 
 const MAX_SESSIONS = 128;
 const MAX_SCOPE_ID = 512;
@@ -100,21 +105,8 @@ function normalizeScopeId(value: string): string {
   return scope;
 }
 
-function validateWorkingDirectory(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const directory = value.trim();
-  const absoluteWindows = /^[A-Za-z]:[\\/]/.test(directory);
-  const absoluteUnc = /^\\\\[^\\]+\\[^\\]+/.test(directory);
-  const absolutePosix = directory.startsWith('/');
-  if (
-    !directory ||
-    directory.length > 4_096 ||
-    directory.includes('\u0000') ||
-    (!absoluteWindows && !absoluteUnc && !absolutePosix)
-  ) {
-    throw new Error('OpenCode requires a safe absolute working directory.');
-  }
-  return directory;
+function validateWorkingDirectory(value: string | undefined): string {
+  return resolveProductionWorkingDirectory(value);
 }
 
 function roleLabel(role: LLMMessage['role']): string {
@@ -293,6 +285,12 @@ export function createOpenCodeRunAgentAdapter(
         throw new Error('OpenCode child session cannot use itself as its parent.');
       }
       const workingDirectory = validateWorkingDirectory(input.workingDirectory);
+      const liveProviders = await harness.listProviders();
+      assertProductionOpenCodeSend({
+        providers: liveProviders,
+        selection,
+        variant: input.variant,
+      });
       // Validate the complete caller payload before creating any server state.
       promptParts(input.messages);
       const messageFingerprints = await Promise.all(input.messages.map(fingerprintMessage));
@@ -440,6 +438,18 @@ export function createOpenCodeRunAgentAdapter(
           done = true;
           break;
         } else if (event.type === 'error') {
+          const authFailure = classifyOpenCodeAuthFailure(event.message);
+          if (authFailure || event.code === 'HARNESS_AUTH_FAILED') {
+            throw new HarnessError(
+              authFailure ?? {
+                code: 'HARNESS_AUTH_FAILED',
+                message: event.message,
+                repair:
+                  'Run /connect in OpenCode and sign in with ChatGPT, or switch VibeSpace Chat to a local model.',
+                recoverable: true,
+              },
+            );
+          }
           throw new Error(event.message);
         }
       }

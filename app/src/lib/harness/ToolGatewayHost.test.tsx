@@ -96,6 +96,33 @@ describe('ToolGatewayHost', () => {
     expect(tauri.invoke).toHaveBeenCalledWith('tool_gateway_respond', { response });
   });
 
+  it('dispatches a Tauri payload whose optional directory and worktree are null', async () => {
+    const response: ToolGatewayResponse = {
+      requestId: 'request-null-scope',
+      ok: true,
+      code: 'ok',
+      message: 'done',
+    };
+    const execute = vi.fn(async () => response);
+    render(<ToolGatewayHost runtime={{ execute }} />);
+    await mounted();
+    await emit({
+      ...request('request-null-scope'),
+      directory: null,
+      worktree: null,
+    });
+
+    expect(execute).toHaveBeenCalledWith({
+      protocolVersion: 1,
+      requestId: 'request-null-scope',
+      sessionId: 'session-a',
+      messageId: 'message-a',
+      tool: 'app.getState',
+      args: {},
+    });
+    expect(tauri.invoke).toHaveBeenCalledWith('tool_gateway_respond', { response });
+  });
+
   it('fails malformed requests closed and only recovers a safe own request ID', async () => {
     const execute = vi.fn();
     render(<ToolGatewayHost runtime={{ execute }} />);

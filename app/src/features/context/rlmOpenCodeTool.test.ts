@@ -95,6 +95,34 @@ describe('OpenCode RLM context tool adapter', () => {
     );
   });
 
+  it('uses query as the high-level entry and stays lazy for ordinary short chat', async () => {
+    const deps = dependencies();
+    const tool = createRlmOpenCodeTool({ ...deps, now: () => 1_000 });
+    const result = await tool.execute({ operation: 'query', query: 'Hi Jarvis' }, lease);
+
+    expect(deps.rlmRuntime.investigate).not.toHaveBeenCalled();
+    expect(deps.queryService.search).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      mode: 'direct',
+      skippedRecursiveSearch: true,
+      evidence: [],
+    });
+  });
+
+  it('routes a default query with investigation signals through the RLM runtime', async () => {
+    const deps = dependencies();
+    const tool = createRlmOpenCodeTool({ ...deps, now: () => 1_000 });
+    await tool.execute(
+      { operation: 'query', query: 'Investigate the entire project history for the leak' },
+      lease,
+    );
+    expect(deps.rlmRuntime.investigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        question: 'Investigate the entire project history for the leak',
+      }),
+    );
+  });
+
   it('routes investigate through the bounded RLM runtime with conservative budgets', async () => {
     const deps = dependencies();
     const tool = createRlmOpenCodeTool({ ...deps, now: () => 1_000 });

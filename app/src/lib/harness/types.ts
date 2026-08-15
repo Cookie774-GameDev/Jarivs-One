@@ -44,6 +44,7 @@ export interface HarnessModel {
   contextWindowTokens?: number;
   supportsImages?: boolean;
   supportsTools?: boolean;
+  variants?: readonly string[];
   pricing?: Readonly<HarnessModelPricing>;
 }
 

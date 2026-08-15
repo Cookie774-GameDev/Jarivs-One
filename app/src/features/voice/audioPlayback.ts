@@ -6,6 +6,8 @@
  * leaked object URLs / audio elements.
  */
 
+import { tapJarvisPlaybackElement } from './jarvisPlaybackEnergy';
+
 export interface PlaybackOptions {
   volume?: number;
   signal?: AbortSignal;
@@ -29,9 +31,11 @@ export async function playBase64Audio(
   const url = URL.createObjectURL(base64ToBlob(b64, mime));
   const audio = new Audio(url);
   audio.volume = Math.min(1, Math.max(0, options.volume ?? 1));
+  const releaseTap = tapJarvisPlaybackElement(audio);
 
   let settled = false;
   const cleanup = () => {
+    releaseTap();
     try {
       audio.pause();
       audio.src = '';

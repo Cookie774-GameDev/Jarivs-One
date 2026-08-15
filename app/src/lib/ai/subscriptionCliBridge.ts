@@ -90,6 +90,11 @@ export async function runSubscriptionCliBridge(
   request: SubscriptionCliBridgeRequest,
 ): Promise<LLMResponse> {
   const { connection } = request;
+  if (connection.adapterId === 'opencode-cli' || connection.id === 'opencode-cli') {
+    throw new Error(
+      'OpenCode production send uses the persistent serve harness, not opencode run.',
+    );
+  }
   const adapter = SUBSCRIPTION_ADAPTERS[connection.adapterId];
   if (!adapter) throw new Error(`Provider adapter is unavailable: ${connection.adapterId}`);
   if (connection.mode !== 'external-cli') {

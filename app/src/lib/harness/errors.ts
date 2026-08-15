@@ -20,6 +20,29 @@ export class HarnessError extends Error {
   }
 }
 
+export const OPENCODE_PROVIDER_AUTH_FAILED_MESSAGE =
+  'OpenAI ChatGPT sign-in expired. Reconnect OpenAI with ChatGPT in the OpenCode terminal (/connect), or pick a local model. The connector can still show Connected while the saved refresh token is dead.';
+
+export const OPENCODE_PROVIDER_AUTH_FAILED_REPAIR =
+  'Run /connect in OpenCode and sign in with ChatGPT, or switch VibeSpace Chat to a local model.';
+
+export function classifyOpenCodeAuthFailure(message: string): HarnessErrorPayload | undefined {
+  const text = message.trim();
+  if (!text) return undefined;
+  const refresh = /token refresh failed|oauth token refresh failed|failed to refresh token/i.test(
+    text,
+  );
+  const unauthorizedRefresh =
+    /\b401\b/.test(text) && /refresh|oauth|unauthorized/i.test(text);
+  if (!refresh && !unauthorizedRefresh) return undefined;
+  return {
+    code: 'HARNESS_AUTH_FAILED',
+    message: OPENCODE_PROVIDER_AUTH_FAILED_MESSAGE,
+    repair: OPENCODE_PROVIDER_AUTH_FAILED_REPAIR,
+    recoverable: true,
+  };
+}
+
 export function redactHarnessText(value: string): string {
   return value
     .replace(/\b(https?:\/\/)[^/\s@]+@/gi, '$1[REDACTED]@')

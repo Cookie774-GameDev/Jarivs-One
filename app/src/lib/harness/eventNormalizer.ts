@@ -1,4 +1,4 @@
-import { redactHarnessText } from './errors';
+import { classifyOpenCodeAuthFailure, redactHarnessText } from './errors';
 import type { HarnessEvent } from './types';
 
 const MAX_DELTA_LENGTH = 32_768;
@@ -217,8 +217,17 @@ export function normalizeOpenCodeEvent(
     const status = asRecord(properties.status);
     if (status?.type === 'idle') return [{ type: 'done', finishReason: 'idle' }];
   }
-  if (eventType === 'session.error')
-    return [{ type: 'error', message: readErrorMessage(properties) }];
+  if (eventType === 'session.error') {
+    const message = readErrorMessage(properties);
+    const authFailure = classifyOpenCodeAuthFailure(message);
+    return [
+      {
+        type: 'error',
+        message: authFailure?.message ?? message,
+        ...(authFailure ? { code: authFailure.code } : {}),
+      },
+    ];
+  }
 
   return [];
 }

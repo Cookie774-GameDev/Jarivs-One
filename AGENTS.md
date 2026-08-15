@@ -15,6 +15,18 @@
 
 Web mode runs on `http://localhost:5173`. Native-only capabilities such as PTY terminals, keyring access, global shortcuts, desktop dictation, and local Kokoro integration require the Tauri shell. A native feature reporting that its backend is unavailable in plain web mode is expected unless the feature has a documented browser fallback.
 
+## Official app testing (hard gate)
+
+ALWAYS test VibeSpace / Jarvis in the official full native desktop app. NOTHING ELSE.
+
+This is a standing user mandate. Do not ask to use the web. Do not use the web.
+
+- Allowed: the live native window from `npm run tauri:dev`, or the built `jarvis.exe` / packaged VibeSpace app.
+- Drive that window like a human. Click, type, send, navigate, and watch the real UI.
+- Forbidden as product / live / manual / visual QA: Vite web preview (`http://localhost:5173`), Playwright, Chrome DevTools, BrowserMCP, or any regular browser tab of the web build.
+- Unit and focused tests may still run as code checks. They do not replace an official-app check.
+- If the official app is not running, start it. Never fall back to the web.
+
 ## Required checks
 
 Mirror `.github/workflows/ci.yml` before requesting review:
