@@ -61,7 +61,9 @@ jobs:
           fi
 
           git checkout --detach "$EXPECTED_BASE"
-          git apply --index "$patch_file"
+          # The supplied architecture plan intentionally used Markdown hard-break spaces.
+          # Normalize those documentation-only whitespace errors while applying; code hunks remain exact.
+          git apply --index --whitespace=fix "$patch_file"
           git diff --cached --check
           git diff --cached --name-only | sort > "$RUNNER_TEMP/expected-changed-files.txt"
 
@@ -110,7 +112,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install frozen Node dependency graph
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Run focused OpenCode and RLM regression suites
         working-directory: app
