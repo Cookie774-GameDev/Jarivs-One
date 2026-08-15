@@ -97,6 +97,7 @@ const CONFIG_KEY = 'vibespace-benchmark-refresh-config-v2';
 const AUDIT_KEY = 'vibespace-benchmark-refresh-audit-v1';
 const LAST_RUN_KEY = 'vibespace-benchmark-refresh-last-run-v1';
 const MAX_AUDIT_ENTRIES = 40;
+let refreshInFlight: Promise<BenchmarkRefreshOutcome> | null = null;
 export const DEFAULT_BENCHMARK_REFRESH_CONFIG: BenchmarkRefreshConfig = {
   enabled: true,
   intervalMinutes: 60,
@@ -217,6 +218,19 @@ export function lastBenchmarkRefreshAt(): number | null {
 }
 
 export async function refreshBenchmarkDataset(
+  trigger: BenchmarkRefreshAuditEntry['trigger'],
+): Promise<BenchmarkRefreshOutcome> {
+  if (refreshInFlight) return refreshInFlight;
+  const task = runBenchmarkRefresh(trigger);
+  refreshInFlight = task;
+  try {
+    return await task;
+  } finally {
+    if (refreshInFlight === task) refreshInFlight = null;
+  }
+}
+
+async function runBenchmarkRefresh(
   trigger: BenchmarkRefreshAuditEntry['trigger'],
 ): Promise<BenchmarkRefreshOutcome> {
   const startedAt = Date.now();

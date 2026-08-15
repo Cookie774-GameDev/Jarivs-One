@@ -86,6 +86,11 @@ export interface AuthProbeResult {
   detail?: string;
 }
 
+export interface ProviderDiscoveredModel {
+  id: string;
+  label: string;
+}
+
 export interface ProviderRequest {
   requestId: string;
   connection: ProviderConnection;
@@ -113,6 +118,7 @@ export interface ProviderAdapter {
   id: string;
   detect?: () => Promise<DetectionResult>;
   probeAuth?: (connection: ProviderConnection) => Promise<AuthProbeResult>;
+  listModels?: () => Promise<readonly Readonly<ProviderDiscoveredModel>[]>;
   send?: (request: ProviderRequest) => AsyncIterable<ProviderEvent>;
   cancel?: (requestId: string) => Promise<void>;
   getUsage?: (connection: ProviderConnection) => Promise<UsageSnapshot>;

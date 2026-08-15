@@ -122,6 +122,31 @@ export {
   type RetrievedContextReference,
 } from './contextRetrievalService';
 export {
+  MAX_ADDRESSABLE_CORPUS_TOKENS,
+  CorpusScaleError,
+  createCorpusScaleMetadata,
+  parseCorpusTokenCount,
+  parseSerializedCorpusScaleMetadata,
+  serializeCorpusScaleMetadata,
+  type CorpusScaleMetadata,
+  type CorpusTokenCountInput,
+  type SerializedCorpusScaleMetadata,
+} from './corpusScale';
+export {
+  RECURSIVE_CONTEXT_LIMITS,
+  RecursiveContextError,
+  createRecursiveContextPlanner,
+  type RecursiveContextBudgets,
+  type RecursiveContextDependencies,
+  type RecursiveContextEvidence,
+  type RecursiveContextEvidenceProvenance,
+  type RecursiveContextRequest,
+  type RecursiveContextResult,
+  type RecursiveContextRoundRequest,
+  type RecursiveContextRoundResult,
+  type RecursiveContextStopReason,
+} from './recursiveContextPlanner';
+export {
   CODE_ENTRY_POINT_SIGNAL_KINDS,
   buildCodeIntelligenceSummary,
   planAffectedCodeSummaryRegeneration,

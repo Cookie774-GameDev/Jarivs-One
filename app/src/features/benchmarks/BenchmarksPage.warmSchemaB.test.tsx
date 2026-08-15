@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/stores/ui';
 
 const fixtures = vi.hoisted(() => {
-  const fetchedAt = Date.parse('2026-07-11T12:00:00Z');
+  // This suite exercises the Warm layout's fresh-data state. Keep the fixture fresh
+  // instead of letting a fixed calendar date eventually cross the 30-day stale limit.
+  const fetchedAt = Date.now();
   const rows = Array.from({ length: 12 }, (_, index) => ({
     model: `Schema Model ${index + 1}`,
     provider: index < 8 ? 'Provider A' : 'Provider B',

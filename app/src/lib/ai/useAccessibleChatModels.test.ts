@@ -104,8 +104,8 @@ describe('useAccessibleChatModels', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]?.label).toBe('OpenAI');
     expect(groups[0]?.options.map((option) => option.modeLabel)).toEqual([
-      'Subscription bridge · External agent',
-      'Native Jarvis Chat · API billed',
+      'Subscription bridge ┬╖ External agent',
+      'Native Jarvis Chat ┬╖ API billed',
     ]);
     expect(groups[0]?.options[1]).toMatchObject({
       available: false,

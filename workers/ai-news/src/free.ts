@@ -352,6 +352,16 @@ function freshnessForLatestRun(latestRun: unknown): {
       warning: 'The latest hourly refresh failed. Showing the last retained data.',
     };
   }
+  if (ageMs > FRESHNESS_WARNING_MS) {
+    return {
+      state: 'stale',
+      ageMs,
+      warning:
+        row.status === 'partial'
+          ? 'Hourly news data is stale and the last refresh was partial. Showing the last retained data.'
+          : 'Hourly news data is stale. Showing the last retained data.',
+    };
+  }
   if (row.status === 'partial') {
     return {
       state: 'degraded',
@@ -359,19 +369,12 @@ function freshnessForLatestRun(latestRun: unknown): {
       warning: 'Some sources failed during the latest hourly refresh.',
     };
   }
-  if (ageMs > FRESHNESS_WARNING_MS) {
-    return {
-      state: 'stale',
-      ageMs,
-      warning: 'Hourly news data is stale. Showing the last retained data.',
-    };
-  }
   return { state: 'fresh', ageMs };
 }
 
 async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionResult | null> {
-  const startedAt = scheduledAt ?? new Date().toISOString();
-  const runKey = `hourly:${startedAt}`;
+  const startedAt = new Date().toISOString();
+  const runKey = `hourly:${scheduledAt ?? startedAt}`;
   const lease = await acquireIngestionLease(env, runKey);
   if (lease.state !== 'acquired') {
     await recordSkippedIngestion(env);
@@ -406,12 +409,23 @@ async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionRe
       collected
         .flatMap((entry) => entry.items)
         .filter(isLikelyAiNews)
-        .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)),
+        .sort(compareCandidates),
     );
 
     const maxItems = clampInteger(env.MAX_ITEMS_PER_RUN, 30, 1, 40);
     const selected = candidates.slice(0, maxItems).map(enrichWithoutAi);
+    if (selected.length === 0) {
+      errors.push({
+        source: 'scheduler',
+        message: 'No usable dated news entries were found',
+      });
+    }
     const collectedAt = new Date().toISOString();
+
+    // Fetching is the longest phase. Renew and verify the fencing token before
+    // any retained data is mutated, so a recovered scheduler invocation cannot
+    // be overwritten by an expired holder.
+    await renewIngestionLease(env, runKey, fencingToken);
 
     let stored = 0;
     if (selected.length) {
@@ -422,7 +436,12 @@ async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionRe
              raw_title, raw_text, ai_headline, ai_summary, company, model_names,
              category, verification_status, importance_score, dedupe_key,
              published_at, collected_at, metadata_json
-           ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')`,
+           )
+           SELECT ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}'
+           WHERE EXISTS (
+             SELECT 1 FROM ingestion_leases
+             WHERE lock_key = 'hourly' AND run_key = ? AND fencing_token = ?
+           )`,
         ).bind(
           item.sourcePlatform,
           item.externalId,
@@ -440,6 +459,8 @@ async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionRe
           item.dedupeKey,
           item.publishedAt,
           collectedAt,
+          runKey,
+          fencingToken,
         ),
       );
 
@@ -447,17 +468,12 @@ async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionRe
       stored = results.reduce((total, result) => total + Number(result.meta.changes ?? 0), 0);
     }
 
-    const retentionDays = clampInteger(env.RETENTION_DAYS, 45, 7, 180);
-    await env.DB.prepare(`DELETE FROM news_items WHERE published_at < datetime('now', ?)`)
-      .bind(`-${retentionDays} days`)
-      .run();
-
     const completedAt = new Date().toISOString();
     const status: IngestionResult['status'] =
-      errors.length === 0 ? 'success' : selected.length > 0 ? 'partial' : 'failed';
+      selected.length === 0 ? 'failed' : errors.length === 0 ? 'success' : 'partial';
     finalStatus = status;
 
-    const audit = await env.DB.prepare(
+    const auditStatement = env.DB.prepare(
       `INSERT INTO ingestion_runs (
          started_at, completed_at, status, fetched_count, stored_count, error_json
        )
@@ -466,19 +482,32 @@ async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionRe
          SELECT 1 FROM ingestion_leases
          WHERE lock_key = 'hourly' AND run_key = ? AND fencing_token = ?
        )`,
-    )
-      .bind(
-        startedAt,
-        completedAt,
-        status,
-        candidates.length,
-        stored,
-        JSON.stringify(errors),
-        runKey,
-        fencingToken,
-      )
-      .run();
-    completedRun = Number(audit.meta.changes ?? 0) === 1;
+    ).bind(
+      startedAt,
+      completedAt,
+      status,
+      candidates.length,
+      stored,
+      JSON.stringify(errors),
+      runKey,
+      fencingToken,
+    );
+    const retentionDays = clampInteger(env.RETENTION_DAYS, 45, 7, 180);
+    const retentionStatement = env.DB.prepare(
+      `DELETE FROM news_items
+         WHERE published_at < datetime('now', ?)
+           AND EXISTS (
+             SELECT 1 FROM ingestion_leases
+             WHERE lock_key = 'hourly' AND run_key = ? AND fencing_token = ?
+           )`,
+    ).bind(`-${retentionDays} days`, runKey, fencingToken);
+    // D1 batch executes transactionally. Every mutation is fence-guarded; the
+    // insert batch is also idempotent, so recovery can safely replay after loss.
+    const [audit] = await env.DB.batch([auditStatement, retentionStatement]);
+    completedRun = Number(audit?.meta.changes ?? 0) === 1;
+    if (!completedRun) {
+      throw new Error('Ingestion lease lost before audit finalization');
+    }
 
     const result: IngestionResult = {
       status,
@@ -552,6 +581,20 @@ async function recordSkippedIngestion(env: Env): Promise<void> {
   )
     .bind(now)
     .run();
+}
+
+async function renewIngestionLease(env: Env, runKey: string, fencingToken: string): Promise<void> {
+  const renewedUntil = new Date(Date.now() + INGESTION_LEASE_MS).toISOString();
+  const result = await env.DB.prepare(
+    `UPDATE ingestion_leases
+     SET lease_until = ?
+     WHERE lock_key = 'hourly' AND run_key = ? AND fencing_token = ?`,
+  )
+    .bind(renewedUntil, runKey, fencingToken)
+    .run();
+  if (Number(result.meta.changes ?? 0) !== 1) {
+    throw new Error('Ingestion lease lost before persistence');
+  }
 }
 
 async function recordUnexpectedIngestionFailure(
@@ -656,7 +699,7 @@ async function collectFeed(source: FeedSource): Promise<NewsCandidate[]> {
       readTag(block, ['pubDate', 'published', 'updated', 'dc:date']),
     );
 
-    if (!title || !url) return [];
+    if (!title || !url || !publishedAt) return [];
     return [
       {
         sourcePlatform: source.platform,
@@ -845,6 +888,14 @@ function uniqueCandidates(items: NewsCandidate[]): NewsCandidate[] {
   });
 }
 
+function compareCandidates(left: NewsCandidate, right: NewsCandidate): number {
+  const publishedDelta = Date.parse(right.publishedAt) - Date.parse(left.publishedAt);
+  if (publishedDelta !== 0) return publishedDelta;
+  const titleDelta = normalize(left.title).localeCompare(normalize(right.title), 'en');
+  if (titleDelta !== 0) return titleDelta;
+  return left.sourceUrl.localeCompare(right.sourceUrl, 'en');
+}
+
 function isLikelyAiNews(item: NewsCandidate): boolean {
   if (item.sourcePlatform !== 'media') return true;
   const text = ` ${item.title} ${item.text} `.toLowerCase();
@@ -904,7 +955,12 @@ function findModelNames(text: string): string[] {
     const matches = text.match(pattern) ?? [];
     for (const match of matches.slice(0, 3)) names.add(match.trim() || family);
   }
-  return [...names].slice(0, 8);
+  return [...names]
+    .sort((left, right) => {
+      const normalized = normalize(left).localeCompare(normalize(right), 'en');
+      return normalized || left.localeCompare(right, 'en');
+    })
+    .slice(0, 8);
 }
 
 function scoreImportance(item: NewsCandidate, text: string): number {
@@ -970,9 +1026,9 @@ function decodeEntities(value: string): string {
     );
 }
 
-function normalizeDate(value: string): string {
+function normalizeDate(value: string): string | null {
   const timestamp = Date.parse(cleanText(value));
-  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString();
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
 function normalize(value: string): string {

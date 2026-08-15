@@ -1,13 +1,22 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./benchmarkData', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./benchmarkData')>();
+  return { ...actual, fetchBenchmarks: vi.fn() };
+});
 
 import type { BenchmarkRow } from './benchmarkData';
+import { fetchBenchmarks } from './benchmarkData';
 import {
   deduplicateBenchmarkRows,
   nextBenchmarkRefreshAt,
   readBenchmarkRefreshConfig,
+  refreshBenchmarkDataset,
   shouldRunMissedBenchmarkRefresh,
   writeBenchmarkRefreshConfig,
 } from './benchmarkRefresh';
+
+const mockedFetchBenchmarks = vi.mocked(fetchBenchmarks);
 
 function row(model: string, votes: number, fetchedAt: number): BenchmarkRow {
   return {
@@ -24,7 +33,10 @@ function row(model: string, votes: number, fetchedAt: number): BenchmarkRow {
 }
 
 describe('benchmark refresh policy', () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockedFetchBenchmarks.mockReset();
+  });
 
   it('defaults to an hourly cadence and schedules from the last successful run', () => {
     expect(readBenchmarkRefreshConfig()).toEqual({ enabled: true, intervalMinutes: 60 });
@@ -67,5 +79,37 @@ describe('benchmark refresh policy', () => {
     expect(
       result.rows.find((candidate) => candidate.model.trim().toLowerCase() === 'gpt-x')?.votes,
     ).toBe(20);
+  });
+
+  it('records one audit for concurrent refresh requests', async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockedFetchBenchmarks.mockImplementationOnce(async () => {
+      await gate;
+      return {
+        rows: [row('GPT-X', 10, 100)],
+        fromSnapshot: false,
+        dataset: {
+          metricLabel: 'Arena score',
+          sourceName: 'LMArena',
+          sourceUrl: 'https://lmarena.ai/leaderboard',
+          benchmarkDate: 100,
+          ingestedAt: 100,
+          confidence: 'high',
+          normalizationNote: 'Arena only.',
+        },
+      };
+    });
+
+    const first = refreshBenchmarkDataset('scheduled');
+    const second = refreshBenchmarkDataset('manual');
+    release?.();
+    const [left, right] = await Promise.all([first, second]);
+
+    expect(mockedFetchBenchmarks).toHaveBeenCalledTimes(1);
+    expect(left.audit.id).toBe(right.audit.id);
+    expect(left.audit.trigger).toBe('scheduled');
   });
 });

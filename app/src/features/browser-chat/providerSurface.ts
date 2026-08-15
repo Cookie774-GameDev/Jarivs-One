@@ -4,16 +4,10 @@ import { isTauri } from '@/lib/utils';
 import { openExternal } from '@/lib/tauri';
 import {
   BROWSER_CHAT_PROVIDERS,
-  isBrowserChatProviderId,
   type BrowserChatProviderDefinition,
   type BrowserChatProviderId,
 } from './providerRegistry';
-import { CHATGPT_APPS_URL } from './mcpConnection';
-import { normalizeProviderNavigation, type ProviderNavigationKind } from './providerNavigation';
-import {
-  isBrowserChatAccountProfileKey,
-  type BrowserChatAccountProfileKey,
-} from './providerProfileScope';
+import { CHATGPT_PLUGINS_URL } from './mcpConnection';
 
 export interface ProviderSurfaceBounds {
   readonly x: number;
@@ -26,65 +20,37 @@ export interface ManagedProviderSurface {
   readonly label: string;
   show(): Promise<void>;
   hide(): Promise<void>;
-  navigate(url: string): Promise<void>;
   setFocus(): Promise<void>;
   setPosition(position: { x: number; y: number }): Promise<void>;
   setSize(size: { width: number; height: number }): Promise<void>;
 }
 
-export interface NativeProviderSurfaceNavigation {
-  readonly providerId: string;
-  readonly surfaceId: string;
-  readonly accountProfileKey: string;
-  readonly url: string;
-  readonly timestamp: number;
-  readonly kind: string;
-}
-
-export interface ProviderSurfaceNavigation {
-  readonly providerId: BrowserChatProviderId;
-  readonly surfaceId: string;
-  readonly accountProfileKey: BrowserChatAccountProfileKey;
-  readonly url: string;
-  readonly timestamp: number;
-  readonly kind: ProviderNavigationKind;
-  readonly providerConversationKey?: string;
-  readonly providerProjectKey?: string;
-}
-
 export interface ProviderSurfacePlatform {
   readonly desktop: boolean;
-  getSurface(label: string): Promise<ManagedProviderSurface | null>;
+  getSurface(label: string, profileKey?: string): Promise<ManagedProviderSurface | null>;
   createSurface(
     label: string,
     options: WebviewOptions,
+    profileKey?: string,
   ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
-  hideAllSurfaces?(): Promise<void>;
   openExternal(url: string): Promise<void>;
+  hideAllSurfaces?(): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
-  subscribeNavigation?(
-    listener: (navigation: NativeProviderSurfaceNavigation) => void,
-  ): Promise<() => void>;
 }
 
 export interface ProviderSurfaceController {
   openManaged(
     provider: BrowserChatProviderDefinition,
     bounds: ProviderSurfaceBounds,
-    navigationUrl?: string,
-    accountProfileKey?: BrowserChatAccountProfileKey,
+    profileKey?: string,
   ): Promise<
     | { kind: 'managed'; providerId: BrowserChatProviderId }
     | { kind: 'system_browser'; providerId: BrowserChatProviderId }
   >;
   openSystemBrowser(provider: BrowserChatProviderDefinition): Promise<void>;
-  openExternalNavigation(provider: BrowserChatProviderDefinition, url: string): Promise<void>;
   openChatGptPlugins(): Promise<void>;
   hideAll(): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
-  subscribeNavigation?(
-    listener: (navigation: ProviderSurfaceNavigation) => void,
-  ): Promise<() => void>;
 }
 
 export type NativeBrowserChatInvoke = (
@@ -92,24 +58,32 @@ export type NativeBrowserChatInvoke = (
   args?: Record<string, unknown>,
 ) => Promise<unknown>;
 
+const DEFAULT_PROVIDER_PROFILE_KEY = 'vibespace-account:local-default';
+
+function normalizedProfileKey(profileKey: string | undefined): string {
+  const value = (profileKey ?? DEFAULT_PROVIDER_PROFILE_KEY).trim();
+  if (!value || value.length > 256 || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new Error('Browser Chat provider profile key is invalid.');
+  }
+  return value;
+}
+
 export function createNativeManagedProviderSurface(
-  surfaceKey: string,
+  label: string,
   invoke: NativeBrowserChatInvoke,
+  profileKey: string = DEFAULT_PROVIDER_PROFILE_KEY,
 ): ManagedProviderSurface {
-  const separator = surfaceKey.lastIndexOf(':');
-  const label = separator >= 0 ? surfaceKey.slice(0, separator) : '';
-  const accountProfileKey = separator >= 0 ? surfaceKey.slice(separator + 1) : '';
   const provider = BROWSER_CHAT_PROVIDERS.find((candidate) => candidate.windowLabel === label);
-  if (!provider || !isBrowserChatAccountProfileKey(accountProfileKey)) {
+  if (!provider) {
     throw new Error('Unsupported Browser Chat provider window label.');
   }
+  const providerProfileKey = normalizedProfileKey(profileKey);
   let bounds: ProviderSurfaceBounds = {
     x: Number.NaN,
     y: Number.NaN,
     width: Number.NaN,
     height: Number.NaN,
   };
-  let navigationUrl: string | undefined;
 
   return {
     label,
@@ -117,24 +91,18 @@ export function createNativeManagedProviderSurface(
       assertBounds(bounds);
       await invoke('browser_chat_surface_open', {
         providerId: provider.id,
+        providerProfileKey,
         bounds,
-        accountProfileKey,
-        ...(navigationUrl ? { navigationUrl } : {}),
       });
-      navigationUrl = undefined;
     },
     async hide() {
       await invoke('browser_chat_surface_hide', {
         providerId: provider.id,
-        accountProfileKey,
       });
     },
-    async navigate(url) {
-      navigationUrl = url;
-    },
     async setFocus() {
-      // The guarded native open command focuses the provider after applying
-      // its final bounds, avoiding the broken JavaScript window dispatcher.
+      // The guarded native open command focuses only on creation/activation.
+      // Geometry-only updates never steal focus from the VibeSpace shell.
     },
     async setPosition(position) {
       bounds = { ...bounds, ...position };
@@ -162,91 +130,100 @@ export function createProviderSurfaceController(
   platform: ProviderSurfacePlatform,
 ): ProviderSurfaceController {
   const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
-  const lastRequestedNavigation = new Map<string, string>();
-  const knownSurfaceKeys = new Set<string>();
-  let visibilityRevision = 0;
-  const hideExcept = async (selectedSurfaceKey?: string) => {
+  let operationTail: Promise<void> = Promise.resolve();
+  let visibilityGeneration = 0;
+
+  const serialized = <T,>(operation: () => Promise<T>): Promise<T> => {
+    const result = operationTail.then(operation, operation);
+    operationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+
+  const hideExcept = async (selected?: BrowserChatProviderId) => {
     await Promise.all(
-      [...knownSurfaceKeys]
-        .filter((surfaceKey) => surfaceKey !== selectedSurfaceKey)
-        .map(async (surfaceKey) => {
-          const surface = await platform.getSurface(surfaceKey);
+      BROWSER_CHAT_PROVIDERS.filter((provider) => provider.id !== selected).map(
+        async (provider) => {
+          const surface = await platform.getSurface(provider.windowLabel);
           if (surface) await surface.hide();
-        }),
+        },
+      ),
     );
   };
 
   return {
-    async openManaged(provider, bounds, navigationUrl = provider.homeUrl, accountProfileKey) {
-      assertBounds(bounds);
-      if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
-        throw new Error('Unsupported Browser Chat provider definition.');
-      }
-      if (!isBrowserChatAccountProfileKey(accountProfileKey)) {
-        throw new Error('Browser Chat account profile is unavailable.');
-      }
-      const normalized = normalizeProviderNavigation(provider.id, navigationUrl);
-      if (!normalized) {
-        throw new Error('Unsupported Browser Chat provider location.');
-      }
-      const targetUrl = normalized.normalizedUrl;
-      if (!platform.desktop) {
-        await platform.openExternal(targetUrl);
-        return { kind: 'system_browser', providerId: provider.id };
-      }
-
-      const requestedVisibilityRevision = visibilityRevision;
-      const surfaceKey = `${provider.windowLabel}:${accountProfileKey}`;
-      await hideExcept(surfaceKey);
-      const relative = {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      };
-      let surface = await platform.getSurface(surfaceKey);
-      let created = false;
-      if (!surface) {
-        let pending = pendingCreations.get(surfaceKey);
-        if (!pending) {
-          pending = Promise.resolve(
-            platform.createSurface(surfaceKey, {
-              url: targetUrl,
-              dataDirectory: accountProfileKey,
-              x: relative.x,
-              y: relative.y,
-              width: relative.width,
-              height: relative.height,
-              focus: false,
-            }),
-          );
-          pendingCreations.set(surfaceKey, pending);
+    async openManaged(provider, bounds, requestedProfileKey) {
+      const requestedGeneration = visibilityGeneration;
+      return serialized(async () => {
+        assertBounds(bounds);
+        if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
+          throw new Error('Unsupported Browser Chat provider definition.');
         }
-        try {
-          surface = await pending;
-          created = true;
-        } finally {
-          if (pendingCreations.get(surfaceKey) === pending) {
-            pendingCreations.delete(surfaceKey);
+        const profileKey = normalizedProfileKey(requestedProfileKey ?? provider.profileKey);
+        if (!platform.desktop) {
+          await platform.openExternal(provider.homeUrl);
+          return { kind: 'system_browser' as const, providerId: provider.id };
+        }
+
+        await hideExcept(provider.id);
+        const relative = {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        };
+        const surfaceKey = `${provider.windowLabel}:${profileKey}`;
+        let surface = await platform.getSurface(provider.windowLabel, profileKey);
+        if (!surface) {
+          let pending = pendingCreations.get(surfaceKey);
+          if (!pending) {
+            pending = Promise.resolve(
+              platform.createSurface(
+                provider.windowLabel,
+                {
+                  url: provider.homeUrl,
+                  dataDirectory: provider.profileKey,
+                  x: relative.x,
+                  y: relative.y,
+                  width: relative.width,
+                  height: relative.height,
+                  focus: false,
+                },
+                profileKey,
+              ),
+            );
+            pendingCreations.set(surfaceKey, pending);
+          }
+          try {
+            surface = await pending;
+          } finally {
+            if (pendingCreations.get(surfaceKey) === pending) {
+              pendingCreations.delete(surfaceKey);
+            }
           }
         }
-      }
-      knownSurfaceKeys.add(surfaceKey);
-      if (lastRequestedNavigation.get(surfaceKey) !== targetUrl) {
-        if (!created) {
-          await surface.navigate(targetUrl);
+
+        await surface.setPosition({ x: relative.x, y: relative.y });
+        await surface.setSize({ width: relative.width, height: relative.height });
+
+        // A route-leave hide increments the generation immediately, even while
+        // native creation is still in flight. Never allow that stale open to
+        // become visible after the user has already left Browser Chat.
+        if (requestedGeneration !== visibilityGeneration) {
+          await surface.hide();
+          return { kind: 'managed' as const, providerId: provider.id };
         }
-        lastRequestedNavigation.set(surfaceKey, targetUrl);
-      }
-      await surface.setPosition({ x: relative.x, y: relative.y });
-      await surface.setSize({ width: relative.width, height: relative.height });
-      if (requestedVisibilityRevision !== visibilityRevision) {
-        await surface.hide();
-        return { kind: 'managed', providerId: provider.id };
-      }
-      await surface.show();
-      await surface.setFocus();
-      return { kind: 'managed', providerId: provider.id };
+
+        await surface.show();
+        if (requestedGeneration !== visibilityGeneration) {
+          await surface.hide();
+          return { kind: 'managed' as const, providerId: provider.id };
+        }
+        await surface.setFocus();
+        return { kind: 'managed' as const, providerId: provider.id };
+      });
     },
 
     async openSystemBrowser(provider) {
@@ -256,67 +233,23 @@ export function createProviderSurfaceController(
       await platform.openExternal(provider.homeUrl);
     },
 
-    async openExternalNavigation(provider, url) {
-      if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
-        throw new Error('Unsupported Browser Chat provider definition.');
-      }
-      const normalized = normalizeProviderNavigation(provider.id, url);
-      if (!normalized) {
-        throw new Error('Unsupported Browser Chat provider location.');
-      }
-      await platform.openExternal(normalized.normalizedUrl);
-    },
-
     async openChatGptPlugins() {
-      await platform.openExternal(CHATGPT_APPS_URL);
+      await platform.openExternal(CHATGPT_PLUGINS_URL);
     },
 
     async hideAll() {
-      visibilityRevision += 1;
-      if (platform.hideAllSurfaces) {
-        await platform.hideAllSurfaces();
-      } else {
-        await hideExcept();
-      }
+      visibilityGeneration += 1;
+      await serialized(async () => {
+        if (platform.hideAllSurfaces) {
+          await platform.hideAllSurfaces();
+        } else {
+          await hideExcept();
+        }
+      });
     },
 
     async subscribeHostGeometry(listener) {
       return platform.subscribeHostGeometry?.(listener) ?? (() => undefined);
-    },
-
-    async subscribeNavigation(listener) {
-      return (
-        (await platform.subscribeNavigation?.((event) => {
-          if (
-            !isBrowserChatProviderId(event.providerId) ||
-            !isBrowserChatAccountProfileKey(event.accountProfileKey) ||
-            !Number.isFinite(event.timestamp) ||
-            event.timestamp < 0
-          ) {
-            return;
-          }
-          const provider = BROWSER_CHAT_PROVIDERS.find(
-            (candidate) => candidate.id === event.providerId,
-          );
-          if (!provider || event.surfaceId !== provider.windowLabel) return;
-          const normalized = normalizeProviderNavigation(event.providerId, event.url);
-          if (!normalized || normalized.kind !== event.kind) return;
-          lastRequestedNavigation.set(
-            `${provider.windowLabel}:${event.accountProfileKey}`,
-            normalized.normalizedUrl,
-          );
-          listener({
-            providerId: event.providerId,
-            surfaceId: event.surfaceId,
-            accountProfileKey: event.accountProfileKey,
-            url: normalized.normalizedUrl,
-            timestamp: event.timestamp,
-            kind: normalized.kind,
-            providerConversationKey: normalized.conversationKey,
-            providerProjectKey: normalized.projectKey,
-          });
-        })) ?? (() => undefined)
-      );
     },
   };
 }
@@ -335,54 +268,32 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
     };
   }
 
-  const [{ invoke }, { getCurrentWindow }, { listen }] = await Promise.all([
-    import('@tauri-apps/api/core'),
-    import('@tauri-apps/api/window'),
-    import('@tauri-apps/api/event'),
-  ]);
-  const currentWindow = getCurrentWindow();
+  const { invoke } = await import('@tauri-apps/api/core');
   const nativeInvoke: NativeBrowserChatInvoke = (command, args) => invoke(command, args);
-  const managedSurfaces = new Map<string, ManagedProviderSurface>();
 
   return {
     desktop: true,
-    async getSurface(label) {
-      let surface = managedSurfaces.get(label);
-      if (!surface) {
-        surface = createNativeManagedProviderSurface(label, nativeInvoke);
-        managedSurfaces.set(label, surface);
-      }
-      return surface;
+    async getSurface(label, profileKey) {
+      return createNativeManagedProviderSurface(
+        label,
+        nativeInvoke,
+        normalizedProfileKey(profileKey),
+      );
     },
-    async createSurface(label, options) {
-      const surface = createNativeManagedProviderSurface(label, nativeInvoke);
+    async createSurface(label, options, profileKey) {
+      const surface = createNativeManagedProviderSurface(
+        label,
+        nativeInvoke,
+        normalizedProfileKey(profileKey),
+      );
       await surface.setPosition({ x: options.x, y: options.y });
       await surface.setSize({ width: options.width, height: options.height });
-      if (typeof options.url === 'string') {
-        await surface.navigate(options.url);
-      }
-      managedSurfaces.set(label, surface);
       return surface;
     },
     async hideAllSurfaces() {
       await nativeInvoke('browser_chat_surface_hide_all');
     },
     openExternal,
-    async subscribeHostGeometry(listener) {
-      const [unlistenMoved, unlistenScale] = await Promise.all([
-        currentWindow.onMoved(listener),
-        currentWindow.onScaleChanged(listener),
-      ]);
-      return () => {
-        unlistenMoved();
-        unlistenScale();
-      };
-    },
-    async subscribeNavigation(listener) {
-      return listen<NativeProviderSurfaceNavigation>('browser-chat://navigation', (event) => {
-        listener(event.payload);
-      });
-    },
   };
 }
 
@@ -394,14 +305,11 @@ async function controller(): Promise<ProviderSurfaceController> {
 }
 
 export const browserChatSurface: ProviderSurfaceController = {
-  async openManaged(provider, bounds, navigationUrl, accountProfileKey) {
-    return (await controller()).openManaged(provider, bounds, navigationUrl, accountProfileKey);
+  async openManaged(provider, bounds, profileKey) {
+    return (await controller()).openManaged(provider, bounds, profileKey);
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);
-  },
-  async openExternalNavigation(provider, url) {
-    return (await controller()).openExternalNavigation(provider, url);
   },
   async openChatGptPlugins() {
     return (await controller()).openChatGptPlugins();
@@ -411,8 +319,5 @@ export const browserChatSurface: ProviderSurfaceController = {
   },
   async subscribeHostGeometry(listener) {
     return (await controller()).subscribeHostGeometry?.(listener) ?? (() => undefined);
-  },
-  async subscribeNavigation(listener) {
-    return (await controller()).subscribeNavigation?.(listener) ?? (() => undefined);
   },
 };

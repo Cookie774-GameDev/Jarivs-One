@@ -1,9 +1,24 @@
-/**
- * Public surface for the benchmarks feature.
- * Internal refresh scheduler helpers stay module-private (not shipped to end users).
- */
-export { NewsAwareBenchmarksPage as BenchmarksPage } from './NewsAwareBenchmarksPage';
-export { BenchmarksPage as BenchmarkLeaderboardPage } from './BenchmarksPage';
+/** Public surface for the backend-authoritative benchmarks feature. */
+export { BenchmarkIntelligencePage as BenchmarksPage } from './BenchmarkIntelligencePage';
+export { BenchmarkIntelligencePage as BenchmarkLeaderboardPage } from './BenchmarkIntelligencePage';
+export { BenchmarkIntelligencePage } from './BenchmarkIntelligencePage';
+export {
+  blendedTokenPrice,
+  clearLegacyBenchmarkCaches,
+  configuredBenchmarkApiUrl,
+  fetchBenchmarkLeaderboard,
+  intelligencePerDollar,
+  parseBenchmarkResponse,
+  type BenchmarkApiResponse,
+  type BenchmarkDatasetMetadata,
+  type BenchmarkFetchResult,
+  type BenchmarkFreshness,
+  type BenchmarkFreshnessState,
+  type BenchmarkModelRow,
+} from './benchmarkApi';
+
+// Legacy utilities remain exported for narrow compatibility, but they no
+// longer own the default route or any ingestion schedule.
 export { BarChart } from './BarChart';
 export {
   fetchBenchmarks,

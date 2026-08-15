@@ -2,117 +2,130 @@ import * as React from 'react';
 import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { browserChatStore, useBrowserChatStore } from './browserChatStore';
+import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
+import { useBrowserChatStore } from './browserChatStore';
 import type { BrowserChatProviderDefinition } from './providerRegistry';
 import {
   browserChatSurface,
-  type ProviderSurfaceNavigation,
   type ProviderSurfaceController,
   type ProviderSurfaceBounds,
 } from './providerSurface';
-import type { BrowserChatAccountProfileKey } from './providerProfileScope';
 
 interface BrowserProviderSurfaceProps {
   readonly provider: BrowserChatProviderDefinition;
-  readonly accountProfileKey: BrowserChatAccountProfileKey;
-  readonly navigationUrl?: string;
   readonly runtime?: ProviderSurfaceController;
-  readonly onNavigation?: (navigation: ProviderSurfaceNavigation) => void;
+}
+
+const GEOMETRY_EPSILON = 0.5;
+const TRANSITION_FOLLOW_MS = 500;
+
+function boundsEqual(
+  left: ProviderSurfaceBounds | null,
+  right: ProviderSurfaceBounds,
+): boolean {
+  return Boolean(
+    left &&
+      Math.abs(left.x - right.x) <= GEOMETRY_EPSILON &&
+      Math.abs(left.y - right.y) <= GEOMETRY_EPSILON &&
+      Math.abs(left.width - right.width) <= GEOMETRY_EPSILON &&
+      Math.abs(left.height - right.height) <= GEOMETRY_EPSILON,
+  );
+}
+
+function geometryAncestors(host: HTMLElement): Element[] {
+  const result: Element[] = [host];
+  let current = host.parentElement;
+  while (current && result.length < 16) {
+    result.push(current);
+    current = current.parentElement;
+  }
+  return result;
 }
 
 export function BrowserProviderSurface({
   provider,
-  accountProfileKey,
-  navigationUrl,
   runtime = browserChatSurface,
-  onNavigation,
 }: BrowserProviderSurfaceProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
+  const hiddenRef = React.useRef(false);
   const [error, setError] = React.useState<string | null>(null);
+  const route = useUIStore((state) => state.route);
+  const activeChatId = useUIStore((state) => state.activeChatId);
+  const engine = useBrowserChatStore(
+    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
+  );
+  const providerProfileKey = useAuthStore((state) => {
+    const accountId = state.cloudSession?.user_id ?? state.localUserId ?? 'local-unassigned';
+    return `vibespace-account:${accountId}`;
+  });
+  const surfaceVisible = route === 'chat' && engine === 'browser';
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
-  const onNavigationRef = React.useRef(onNavigation);
-  const navigationUrlRef = React.useRef(navigationUrl);
-  const navigationTargetRef = React.useRef({ providerId: provider.id, navigationUrl });
-  const synchronizeRef = React.useRef<((force?: boolean) => void) | null>(null);
-  onNavigationRef.current = onNavigation;
-  navigationUrlRef.current = navigationUrl;
 
-  React.useEffect(() => {
-    if (!runtime.subscribeNavigation) return;
-    let disposed = false;
-    let unsubscribe: (() => void) | undefined;
-    void runtime
-      .subscribeNavigation((navigation) => {
-        if (
-          !disposed &&
-          navigation.providerId === provider.id &&
-          navigation.accountProfileKey === accountProfileKey
-        ) {
-          setProviderRuntime(provider.id, {
-            pageStatus: 'ready',
-            toolBridgeStatus: provider.toolBridgeStatus,
-          });
-          onNavigationRef.current?.(navigation);
-        }
-      })
-      .then((nextUnsubscribe) => {
-        if (disposed) {
-          nextUnsubscribe();
-        } else {
-          unsubscribe = nextUnsubscribe;
-        }
-      });
-    return () => {
-      disposed = true;
-      unsubscribe?.();
-    };
-  }, [
-    accountProfileKey,
-    provider.id,
-    provider.toolBridgeStatus,
-    runtime,
-    setProviderRuntime,
-  ]);
+  const requestHide = React.useCallback(
+    async (force = false) => {
+      if (hiddenRef.current && !force) return;
+      hiddenRef.current = true;
+      await runtime.hideAll().catch(() => undefined);
+    },
+    [runtime],
+  );
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
+    if (!surfaceVisible) {
+      void requestHide();
+      return;
+    }
+
     const host = hostRef.current;
     if (!host) return;
+
     let disposed = false;
-    let frame = 0;
+    let syncFrame = 0;
+    let transitionFrame = 0;
+    let transitionUntil = 0;
     let unsubscribeHostGeometry: (() => void) | undefined;
     let updateInFlight = false;
     let queuedBounds: ProviderSurfaceBounds | null = null;
-    let lastResizeBounds: ProviderSurfaceBounds | null = null;
+    let lastBounds: ProviderSurfaceBounds | null = null;
+    let hostVisible = false;
+    let hiddenApplied = false;
+    let forceNextSync = false;
+
+    const hideManagedSurface = (force = false) => {
+      hostVisible = false;
+      queuedBounds = null;
+      lastBounds = null;
+      if (hiddenApplied && !force) return;
+      hiddenApplied = true;
+      void requestHide(force);
+    };
 
     const openLatestBounds = async (initialBounds: ProviderSurfaceBounds) => {
       if (updateInFlight) {
         queuedBounds = initialBounds;
         return;
       }
+
       updateInFlight = true;
       let nextBounds: ProviderSurfaceBounds | null = initialBounds;
       try {
-        while (nextBounds && !disposed) {
+        while (nextBounds && !disposed && hostVisible) {
           const bounds = nextBounds;
           queuedBounds = null;
           try {
-            const result = await runtime.openManaged(
-              provider,
-              bounds,
-              navigationUrlRef.current,
-              accountProfileKey,
-            );
-            if (!disposed) {
-              setError(null);
-              if (result.kind === 'system_browser') {
-                setProviderRuntime(provider.id, {
-                  pageStatus: 'system_browser',
-                  toolBridgeStatus: provider.toolBridgeStatus,
-                });
-              }
+            const result = await runtime.openManaged(provider, bounds, providerProfileKey);
+            if (disposed || !hostVisible) {
+              await requestHide(true);
+              break;
             }
+            setError(null);
+            setProviderRuntime(provider.id, {
+              pageStatus: result.kind === 'managed' ? 'ready' : 'system_browser',
+              toolBridgeStatus: provider.toolBridgeStatus,
+            });
           } catch (cause) {
-            if (!disposed) {
+            if (!disposed && hostVisible) {
               const message =
                 cause instanceof Error ? cause.message : 'Managed provider surface failed.';
               setError(message);
@@ -130,50 +143,105 @@ export function BrowserProviderSurface({
       }
     };
 
-    const synchronize = (force = false) => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        if (disposed) return;
-        const rect = host.getBoundingClientRect();
-        if (rect.width < 1 || rect.height < 1) return;
-        const bounds: ProviderSurfaceBounds = {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-        };
-        if (
-          !force &&
-          lastResizeBounds &&
-          lastResizeBounds.x === bounds.x &&
-          lastResizeBounds.y === bounds.y &&
-          lastResizeBounds.width === bounds.width &&
-          lastResizeBounds.height === bounds.height
-        ) {
-          return;
-        }
-        lastResizeBounds = bounds;
-        void openLatestBounds(bounds);
-      });
-    };
-    synchronizeRef.current = synchronize;
+    const synchronizeNow = (force = false) => {
+      if (disposed || !surfaceVisible) {
+        hideManagedSurface(true);
+        return;
+      }
 
-    if (
-      browserChatStore.getState().providerRuntime[provider.id]?.pageStatus !== 'ready'
-    ) {
+      const rect = host.getBoundingClientRect();
+      const rendered =
+        document.visibilityState !== 'hidden' &&
+        host.isConnected &&
+        rect.width >= 1 &&
+        rect.height >= 1;
+
+      if (!rendered) {
+        hideManagedSurface();
+        return;
+      }
+
+      hostVisible = true;
+      hiddenApplied = false;
+      hiddenRef.current = false;
+      const bounds: ProviderSurfaceBounds = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      };
+
+      if (!force && boundsEqual(lastBounds, bounds)) return;
+
+      lastBounds = bounds;
       setProviderRuntime(provider.id, {
         pageStatus: 'opening',
         toolBridgeStatus: provider.toolBridgeStatus,
       });
-    }
-    synchronize();
-    const observer =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => synchronize());
-    const handleWindowResize = () => synchronize();
-    observer?.observe(host);
-    window.addEventListener('resize', handleWindowResize);
+      void openLatestBounds(bounds);
+    };
+
+    const scheduleSynchronize = (force = false) => {
+      forceNextSync ||= force;
+      if (syncFrame) return;
+      syncFrame = window.requestAnimationFrame(() => {
+        syncFrame = 0;
+        const shouldForce = forceNextSync;
+        forceNextSync = false;
+        synchronizeNow(shouldForce);
+      });
+    };
+
+    const followActiveTransition = () => {
+      transitionFrame = 0;
+      if (disposed) return;
+      synchronizeNow();
+      if (performance.now() < transitionUntil) {
+        transitionFrame = window.requestAnimationFrame(followActiveTransition);
+      }
+    };
+
+    const startTransitionFollow = () => {
+      transitionUntil = Math.max(transitionUntil, performance.now() + TRANSITION_FOLLOW_MS);
+      if (!transitionFrame) {
+        transitionFrame = window.requestAnimationFrame(followActiveTransition);
+      }
+    };
+
+    const handleVisibilityChange = () => scheduleSynchronize(true);
+    const handleGeometryEvent = () => scheduleSynchronize();
+    const handleTransitionStart = () => startTransitionFollow();
+
+    synchronizeNow(true);
+
+    const observedElements = geometryAncestors(host);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => scheduleSynchronize());
+    for (const element of observedElements) resizeObserver?.observe(element);
+
+    const mutationObserver =
+      typeof MutationObserver === 'undefined'
+        ? null
+        : new MutationObserver(() => scheduleSynchronize());
+    mutationObserver?.observe(document.body, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['class', 'style', 'hidden', 'data-state'],
+    });
+
+    window.addEventListener('resize', handleGeometryEvent);
+    document.addEventListener('scroll', handleGeometryEvent, true);
+    document.addEventListener('transitionrun', handleTransitionStart, true);
+    document.addEventListener('transitionend', handleGeometryEvent, true);
+    document.addEventListener('animationstart', handleTransitionStart, true);
+    document.addEventListener('animationend', handleGeometryEvent, true);
+    document.addEventListener('fullscreenchange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     void runtime
-      .subscribeHostGeometry?.(() => synchronize(true))
+      .subscribeHostGeometry?.(() => scheduleSynchronize(true))
       .then((unsubscribe) => {
         if (disposed) {
           unsubscribe();
@@ -184,31 +252,24 @@ export function BrowserProviderSurface({
 
     return () => {
       disposed = true;
-      window.cancelAnimationFrame(frame);
-      observer?.disconnect();
-      window.removeEventListener('resize', handleWindowResize);
+      hostVisible = false;
+      queuedBounds = null;
+      window.cancelAnimationFrame(syncFrame);
+      window.cancelAnimationFrame(transitionFrame);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener('resize', handleGeometryEvent);
+      document.removeEventListener('scroll', handleGeometryEvent, true);
+      document.removeEventListener('transitionrun', handleTransitionStart, true);
+      document.removeEventListener('transitionend', handleGeometryEvent, true);
+      document.removeEventListener('animationstart', handleTransitionStart, true);
+      document.removeEventListener('animationend', handleGeometryEvent, true);
+      document.removeEventListener('fullscreenchange', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribeHostGeometry?.();
-      synchronizeRef.current = null;
-      void runtime.hideAll();
+      void requestHide();
     };
-  }, [accountProfileKey, provider, runtime, setProviderRuntime]);
-
-  React.useEffect(() => {
-    const previous = navigationTargetRef.current;
-    if (previous.providerId === provider.id && previous.navigationUrl === navigationUrl) return;
-    navigationTargetRef.current = { providerId: provider.id, navigationUrl };
-    const providerChanged = previous.providerId !== provider.id;
-    if (
-      !providerChanged ||
-      browserChatStore.getState().providerRuntime[provider.id]?.pageStatus !== 'ready'
-    ) {
-      setProviderRuntime(provider.id, {
-        pageStatus: 'opening',
-        toolBridgeStatus: provider.toolBridgeStatus,
-      });
-    }
-    synchronizeRef.current?.(true);
-  }, [navigationUrl, provider.id, provider.toolBridgeStatus, setProviderRuntime]);
+  }, [provider, providerProfileKey, requestHide, runtime, setProviderRuntime, surfaceVisible]);
 
   return (
     <div

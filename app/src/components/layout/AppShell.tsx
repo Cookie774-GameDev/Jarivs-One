@@ -3,8 +3,11 @@ import { AnimatePresence, MotionConfig, type Transition } from 'motion/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { resolveTheme, useUIStore } from '@/stores/ui';
 import { SakuraBackdrop } from '@/features/appearance/sakura';
+import { BrowserChatBindingHost } from '@/features/browser-chat/BrowserChatBindingHost';
+import { BrowserChatSurfaceGuard } from '@/features/browser-chat/BrowserChatSurfaceGuard';
 import { FocusModeExit, useFullscreenStore } from '@/features/fullscreen';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import { isTauri } from '@/lib/utils';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
@@ -53,7 +56,8 @@ export function AppShell({ children }: AppShellProps) {
   const theme = useUIStore((s) => s.theme);
   const focusActive = useFullscreenStore((s) => s.focusActive);
   const sakuraActive = resolveTheme(theme) === 'sakura';
-  const workbenchFullscreen = route === 'workbench' || isWorkbenchDetachedSearch();
+  const workbenchDetached = isWorkbenchDetachedSearch();
+  const workbenchFullscreen = route === 'workbench' || workbenchDetached;
   const dedicatedFocusRoute = route === 'chat' || route === 'terminal';
   const showTopBar = !focusActive;
   const showNavigation = !focusActive || !dedicatedFocusRoute;
@@ -75,8 +79,9 @@ export function AppShell({ children }: AppShellProps) {
             data-shell-route={route}
             data-sakura-shell={sakuraActive ? 'true' : undefined}
             data-workbench-fullscreen="true"
-            data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
+            data-workbench-detached={workbenchDetached ? 'true' : 'false'}
           >
+            {isTauri && !workbenchDetached && <BrowserChatSurfaceGuard />}
             <NightlySecondBrainHost />
             {sakuraActive && <SakuraBackdrop route={route} />}
             <div
@@ -117,6 +122,8 @@ export function AppShell({ children }: AppShellProps) {
           data-focus-mode={focusActive ? 'true' : undefined}
           data-focus-mode-route={focusActive ? route : undefined}
         >
+          {isTauri && route === 'chat' && <BrowserChatBindingHost />}
+          {isTauri && <BrowserChatSurfaceGuard />}
           <NightlySecondBrainHost />
           {sakuraActive && <SakuraBackdrop route={route} />}
           <div

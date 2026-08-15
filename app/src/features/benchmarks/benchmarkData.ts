@@ -6,14 +6,14 @@
  *      snapshots, structured JSON, free, no auth).
  *   2. Fall back to direct LMArena endpoints via `nativeFetch` (bypasses
  *      Tauri WebView CORS when packaged).
- *   3. If all live sources fail, retain only a recent last-known-good live
- *      dataset. A cold start reports unavailable rather than inventing scores.
+ *   3. If all live sources fail, serve the embedded `SNAPSHOT_ROWS` fallback.
+ *      Snapshot rows are never written to the 1-hour live cache.
  *
  * Cache: live results only, 1 hour TTL (`jarvis-benchmark-cache`).
  */
 import type { ProviderId } from '@/types/common';
 import { nativeFetch } from '@/lib/nativeFetch';
-import { isTauri } from '@/lib/utils';
+import { LEADERBOARD_SNAPSHOT_ROWS, LEADERBOARD_SNAPSHOT_TS } from './leaderboardSnapshot20260711';
 
 export interface BenchmarkRow {
   model: string;
@@ -150,7 +150,7 @@ function dedupeRows(rows: BenchmarkRow[]): BenchmarkRow[] {
   const indexes = new Map<string, number>();
 
   for (const row of rows) {
-    const key = row.model.trim().toLocaleLowerCase();
+    const key = `${row.provider.trim().toLocaleLowerCase()}:${row.model.trim().toLocaleLowerCase()}`;
     const existingIndex = indexes.get(key);
     if (existingIndex == null) {
       indexes.set(key, unique.length);
@@ -187,20 +187,39 @@ export function isSupportedProvider(p: string): p is ProviderId {
 
 const WULONG_TEXT_LEADERBOARD =
   'https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name=text';
-const CLOUDFLARE_WORKER_ROOT = 'https://vibespace-ai-news.vibespace-viper.workers.dev/';
-const CLOUDFLARE_BENCHMARK_ENDPOINT =
-  'https://vibespace-ai-news.vibespace-viper.workers.dev/api/benchmarks';
 const LMARENA_ENDPOINTS = [
   'https://lmarena.ai/api/leaderboard',
   'https://lmarena.ai/leaderboard/text/overall',
   'https://lmarena.ai/leaderboard',
 ] as const;
 const CACHE_KEY = 'jarvis-benchmark-cache-v5';
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — live rows only
-const MIN_STRUCTURED_MODEL_COUNT = 10;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour ΓÇö live rows only
+const REQUIRED_MODEL_COUNT = 50;
 /** Reject cached rows whose Arena snapshot is older than this. */
 const MAX_ROW_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 12_000;
+
+interface LiveDataset {
+  rows: BenchmarkRow[];
+  sourceName: string;
+  sourceUrl: string;
+}
+
+let liveRefreshInFlight: Promise<LiveDataset & { ingestedAt: number }> | null = null;
+
+/**
+ * Snapshot timestamp ΓÇö curated Top 50 UNIQUE models (AA Intelligence, 2026-07-11).
+ * The live fetch path is authoritative on Refresh; this labels curated rows.
+ */
+export const SNAPSHOT_TS = LEADERBOARD_SNAPSHOT_TS;
+
+/**
+ * Curated Top 50 unique models (one base model per row).
+ * Rank score = Artificial Analysis Intelligence Index; prices/context from OpenRouter.
+ */
+export const SNAPSHOT_ROWS: BenchmarkRow[] = LEADERBOARD_SNAPSHOT_ROWS.map((row) => ({
+  ...row,
+}));
 
 interface CacheEntry {
   rows: BenchmarkRow[];
@@ -213,13 +232,28 @@ interface CacheEntry {
 function isLiveCacheEntry(entry: CacheEntry, allowExpired = false): boolean {
   if (entry.fromSnapshot) return false;
   if (typeof entry.cachedAt !== 'number') return false;
-  if (!Array.isArray(entry.rows) || entry.rows.length < MIN_STRUCTURED_MODEL_COUNT) return false;
+  if (!Array.isArray(entry.rows) || entry.rows.length < REQUIRED_MODEL_COUNT) return false;
   if (!allowExpired && Date.now() - entry.cachedAt > CACHE_TTL_MS) return false;
   if (entry.rows.some((r) => r.source === 'snapshot')) return false;
+  if (
+    (entry.sourceName !== undefined || entry.sourceUrl !== undefined) &&
+    !isKnownLiveSource(entry.sourceName, entry.sourceUrl)
+  ) {
+    return false;
+  }
   const newestFetched = Math.max(...entry.rows.map((r) => r.fetched_at));
   if (!Number.isFinite(newestFetched)) return false;
   if (Date.now() - newestFetched > MAX_ROW_AGE_MS) return false;
   return true;
+}
+
+function isKnownLiveSource(sourceName: unknown, sourceUrl: unknown): boolean {
+  if (sourceName === 'LMArena via Wu Long archive') return sourceUrl === WULONG_TEXT_LEADERBOARD;
+  return (
+    sourceName === 'LMArena' &&
+    typeof sourceUrl === 'string' &&
+    (LMARENA_ENDPOINTS as readonly string[]).includes(sourceUrl)
+  );
 }
 
 function readCache(allowExpired = false): CacheEntry | null {
@@ -240,7 +274,7 @@ function writeCache(entry: CacheEntry): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
   } catch {
-    /* quota exceeded — silently ignore, the page still works without cache */
+    /* quota exceeded ΓÇö silently ignore, the page still works without cache */
   }
 }
 
@@ -250,9 +284,8 @@ export interface FetchResult {
   reason?: string;
   cached?: boolean;
   stale?: boolean;
-  unavailable?: boolean;
   dataset: {
-    metricLabel: string;
+    metricLabel: 'Arena score' | 'Artificial Analysis Intelligence Index';
     sourceName: string;
     sourceUrl: string;
     benchmarkDate: number;
@@ -264,7 +297,7 @@ export interface FetchResult {
 
 /**
  * Best-effort normalizer. The real LMArena API shape is undocumented, so
- * we accept a few plausible shapes and fail closed if we
+ * we accept a few plausible shapes and short-circuit to snapshot if we
  * can't recognize what we got back.
  */
 function normalize(raw: unknown, ts: number): BenchmarkRow[] {
@@ -283,10 +316,12 @@ function normalize(raw: unknown, ts: number): BenchmarkRow[] {
     const o = c as Record<string, unknown>;
     const model = pickString(o, ['model', 'name', 'model_name']);
     const provider = pickString(o, ['provider', 'organization', 'org']);
-    const score = pickNumber(o, ['arena_score', 'elo', 'rating', 'score']);
+    // A generic `score` can represent a completely different benchmark.
+    // Accept only fields that identify an Arena/Elo-style metric here.
+    const score = pickNumber(o, ['arena_score', 'elo', 'rating']);
     if (!model || !provider || score == null) continue;
-    const ciLow = pickNumber(o, ['ci_low', 'lower', 'lower_bound']) ?? score - 5;
-    const ciHigh = pickNumber(o, ['ci_high', 'upper', 'upper_bound']) ?? score + 5;
+    const ciLow = pickNumber(o, ['ci_low', 'lower', 'lower_bound']) ?? score;
+    const ciHigh = pickNumber(o, ['ci_high', 'upper', 'upper_bound']) ?? score;
     rows.push({
       model,
       provider: provider.toLowerCase(),
@@ -386,7 +421,7 @@ export function normalizeWulong(raw: unknown, fallbackTs: number): BenchmarkRow[
 
   for (const entry of payload.models) {
     if (!entry?.model || entry.score == null || !Number.isFinite(entry.score)) continue;
-    const ci = entry.ci ?? 5;
+    const ci = entry.ci != null && Number.isFinite(entry.ci) ? Math.max(0, entry.ci) : 0;
     const score = Math.round(entry.score);
     const vendor = entry.vendor?.trim() || 'unknown';
     rows.push({
@@ -406,91 +441,27 @@ export function normalizeWulong(raw: unknown, fallbackTs: number): BenchmarkRow[
   return dedupeRows(rows);
 }
 
-interface StructuredBenchmarkFeed {
-  rows: BenchmarkRow[];
-  sourceName: string;
-  sourceUrl: string;
-  ingestedAt: number;
-}
-
-async function fetchLiveRows(now: number): Promise<StructuredBenchmarkFeed> {
+async function fetchLiveRows(now: number): Promise<LiveDataset> {
   const errors: string[] = [];
-
-  try {
-    const capabilityResponse = await nativeFetch(CLOUDFLARE_WORKER_ROOT, {
-      timeoutMs: FETCH_TIMEOUT_MS,
-      headers: { Accept: 'application/json' },
-    });
-    if (!capabilityResponse.ok) {
-      throw new Error(`cloudflare capability: HTTP ${capabilityResponse.status}`);
-    }
-    const capability = (await capabilityResponse.json()) as { endpoints?: unknown };
-    const endpoints = Array.isArray(capability.endpoints) ? capability.endpoints : [];
-    if (endpoints.includes('/api/benchmarks')) {
-      const res = await nativeFetch(CLOUDFLARE_BENCHMARK_ENDPOINT, {
-        timeoutMs: FETCH_TIMEOUT_MS,
-        headers: { Accept: 'application/json' },
-      });
-      if (!res.ok) throw new Error(`cloudflare: HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        benchmarkDate?: string;
-        ingestedAt?: string;
-        source?: { name?: string; url?: string };
-        rows?: unknown[];
-      };
-      const rows = normalizeWulong(
-        {
-          meta: { fetched_at: data.benchmarkDate },
-          models: data.rows,
-        },
-        now,
-      );
-      if (rows.length < MIN_STRUCTURED_MODEL_COUNT) {
-        throw new Error(
-          `cloudflare: incomplete leaderboard (${rows.length}/${MIN_STRUCTURED_MODEL_COUNT} minimum models)`,
-        );
-      }
-      return {
-        rows,
-        sourceName: data.source?.name?.trim() || 'Arena via VibeSpace Cloud',
-        sourceUrl: data.source?.url?.trim() || CLOUDFLARE_BENCHMARK_ENDPOINT,
-        ingestedAt: data.ingestedAt ? Date.parse(data.ingestedAt) || now : now,
-      };
-    }
-  } catch (err) {
-    errors.push(err instanceof Error ? err.message : String(err));
-  }
-
-  if (!isTauri) {
-    throw new Error(
-      [
-        ...errors,
-        'Direct Arena sources require the desktop HTTP bridge when the cloud snapshot is unavailable.',
-      ].join(' | '),
-    );
-  }
 
   try {
     const res = await nativeFetch(WULONG_TEXT_LEADERBOARD, {
       timeoutMs: FETCH_TIMEOUT_MS,
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) throw new Error(`wulong: HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as unknown;
     const rows = normalizeWulong(data, now);
-    if (rows.length < MIN_STRUCTURED_MODEL_COUNT) {
-      throw new Error(
-        `wulong: incomplete leaderboard (${rows.length}/${MIN_STRUCTURED_MODEL_COUNT} minimum models)`,
-      );
+    if (rows.length < REQUIRED_MODEL_COUNT) {
+      throw new Error(`incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`);
     }
     return {
       rows,
-      sourceName: 'Arena via Wu Long archive',
+      sourceName: 'LMArena via Wu Long archive',
       sourceUrl: WULONG_TEXT_LEADERBOARD,
-      ingestedAt: now,
     };
   } catch (err) {
-    errors.push(err instanceof Error ? err.message : String(err));
+    errors.push(boundedLeaderboardError('wulong', err));
   }
 
   for (const url of LMARENA_ENDPOINTS) {
@@ -499,51 +470,76 @@ async function fetchLiveRows(now: number): Promise<StructuredBenchmarkFeed> {
         timeoutMs: FETCH_TIMEOUT_MS,
         headers: { Accept: 'application/json,text/html;q=0.9,*/*;q=0.8' },
       });
-      if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const contentType = res.headers.get('content-type') ?? '';
       const data = contentType.includes('application/json')
         ? ((await res.json()) as unknown)
         : extractLeaderboardJson(await res.text());
       const rows = normalize(data, now);
-      if (rows.length < MIN_STRUCTURED_MODEL_COUNT) {
-        throw new Error(
-          `${url}: incomplete leaderboard (${rows.length}/${MIN_STRUCTURED_MODEL_COUNT} minimum models)`,
-        );
+      if (rows.length < REQUIRED_MODEL_COUNT) {
+        throw new Error(`incomplete leaderboard (${rows.length}/${REQUIRED_MODEL_COUNT} models)`);
       }
-      return {
-        rows,
-        sourceName: 'LMArena',
-        sourceUrl: url,
-        ingestedAt: now,
-      };
+      return { rows, sourceName: 'LMArena', sourceUrl: url };
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
+      errors.push(boundedLeaderboardError('lmarena', err));
     }
   }
 
   throw new Error(errors.join(' | ') || 'Live leaderboard unavailable');
 }
 
+function boundedLeaderboardError(source: 'wulong' | 'lmarena', error: unknown): string {
+  if (error instanceof Error) {
+    const http = /^HTTP (\d{3})$/u.exec(error.message);
+    if (http) return `${source}: HTTP ${http[1]}`;
+    const incomplete = /incomplete leaderboard \((\d+)\/(\d+) models\)/u.exec(error.message);
+    if (incomplete) {
+      return `${source}: incomplete leaderboard (${incomplete[1]}/${incomplete[2]} models)`;
+    }
+  }
+  return `${source}: request failed`;
+}
+
+async function refreshLiveDataset(): Promise<LiveDataset & { ingestedAt: number }> {
+  if (liveRefreshInFlight) return liveRefreshInFlight;
+  const task = (async () => {
+    const ingestedAt = Date.now();
+    const dataset = await fetchLiveRows(ingestedAt);
+    writeCache({
+      rows: dataset.rows,
+      fromSnapshot: false,
+      cachedAt: ingestedAt,
+      sourceName: dataset.sourceName,
+      sourceUrl: dataset.sourceUrl,
+    });
+    return { ...dataset, ingestedAt };
+  })();
+  liveRefreshInFlight = task;
+  try {
+    return await task;
+  } finally {
+    if (liveRefreshInFlight === task) liveRefreshInFlight = null;
+  }
+}
+
 /**
  * Fetch benchmarks. A normal load uses a fresh live cache when possible and
- * otherwise refreshes the structured sources. A cold-start failure returns an
- * honest unavailable state; only last-known-good live rows may be retained.
+ * otherwise refreshes the structured sources. The embedded snapshot is the
+ * final cold-start fallback only.
  */
 export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<FetchResult> {
-  const unavailable: FetchResult = {
-    rows: [],
-    fromSnapshot: false,
-    stale: true,
-    unavailable: true,
+  const curated: FetchResult = {
+    rows: enrichRows(SNAPSHOT_ROWS),
+    fromSnapshot: true,
     dataset: {
-      metricLabel: 'Arena rating',
-      sourceName: 'Arena',
-      sourceUrl: WULONG_TEXT_LEADERBOARD,
-      benchmarkDate: 0,
-      ingestedAt: Date.now(),
-      confidence: 'medium',
+      metricLabel: 'Artificial Analysis Intelligence Index',
+      sourceName: 'Artificial Analysis',
+      sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
+      benchmarkDate: SNAPSHOT_TS,
+      ingestedAt: SNAPSHOT_TS,
+      confidence: 'high',
       normalizationNote:
-        'No verified structured Arena dataset is available. VibeSpace does not synthesize fallback scores.',
+        'This snapshot is displayed as its own Intelligence Index dataset and is never numerically merged with Arena scores.',
     },
   };
 
@@ -556,42 +552,33 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         fromSnapshot: cached.fromSnapshot,
         cached: true,
         dataset: {
-          metricLabel: 'Arena rating',
-          sourceName: cached.sourceName ?? 'Arena',
-          sourceUrl: cached.sourceUrl ?? CLOUDFLARE_BENCHMARK_ENDPOINT,
+          metricLabel: 'Arena score',
+          sourceName: cached.sourceName ?? 'LMArena via Wu Long archive',
+          sourceUrl: cached.sourceUrl ?? WULONG_TEXT_LEADERBOARD,
           benchmarkDate,
           ingestedAt: cached.cachedAt,
           confidence: 'medium',
           normalizationNote:
-            'Arena ratings are comparable only within the same Arena feed and are never merged with provider-published evaluations.',
+            'Arena rows are ranked only against the same Arena feed and are not merged with Intelligence Index scores.',
         },
       };
     }
   }
 
-  const now = Date.now();
   try {
-    const feed = await fetchLiveRows(now);
-    const { rows } = feed;
-    writeCache({
-      rows,
-      fromSnapshot: false,
-      cachedAt: now,
-      sourceName: feed.sourceName,
-      sourceUrl: feed.sourceUrl,
-    });
+    const { rows, ingestedAt, sourceName, sourceUrl } = await refreshLiveDataset();
     return {
       rows: enrichRows(rows),
       fromSnapshot: false,
       dataset: {
-        metricLabel: 'Arena rating',
-        sourceName: feed.sourceName,
-        sourceUrl: feed.sourceUrl,
+        metricLabel: 'Arena score',
+        sourceName,
+        sourceUrl,
         benchmarkDate: Math.max(...rows.map((row) => row.fetched_at)),
-        ingestedAt: feed.ingestedAt,
+        ingestedAt,
         confidence: 'medium',
         normalizationNote:
-          'Arena ratings are comparable only within the same Arena feed and are never merged with provider-published evaluations.',
+          'Arena rows are ranked only against the same Arena feed and are not merged with Intelligence Index scores.',
       },
     };
   } catch (err) {
@@ -605,9 +592,9 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         stale: true,
         reason,
         dataset: {
-          metricLabel: 'Arena rating',
-          sourceName: staleCache.sourceName ?? 'Arena',
-          sourceUrl: staleCache.sourceUrl ?? CLOUDFLARE_BENCHMARK_ENDPOINT,
+          metricLabel: 'Arena score',
+          sourceName: staleCache.sourceName ?? 'LMArena via Wu Long archive',
+          sourceUrl: staleCache.sourceUrl ?? WULONG_TEXT_LEADERBOARD,
           benchmarkDate: Math.max(...staleCache.rows.map((row) => row.fetched_at)),
           ingestedAt: staleCache.cachedAt,
           confidence: 'medium',
@@ -616,7 +603,7 @@ export async function fetchBenchmarks(opts?: { force?: boolean }): Promise<Fetch
         },
       };
     }
-    return { ...unavailable, reason };
+    return { ...curated, reason, stale: Date.now() - SNAPSHOT_TS > CACHE_TTL_MS };
   }
 }
 

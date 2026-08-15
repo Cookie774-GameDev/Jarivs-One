@@ -138,6 +138,7 @@ export interface CliProviderDefinition {
   authProbeArgs?: readonly string[];
   classifyAuthProbe?: (probe: Readonly<CliProbeResult>) => AuthProbeResult;
   modelListArgs?: readonly string[];
+  parseModelList?: (output: string) => readonly Readonly<{ id: string; label: string }>[];
   buildInvocation: (request: CliInvocationRequest) => CliInvocation;
   normalizeRecord: ProviderRecordNormalizer;
 }
@@ -692,6 +693,24 @@ async function probeProviderAuth(definition: CliProviderDefinition): Promise<Aut
   }
 }
 
+async function listProviderModels(
+  definition: CliProviderDefinition,
+): Promise<readonly Readonly<{ id: string; label: string }>[]> {
+  if (!definition.modelListArgs || !definition.parseModelList) return Object.freeze([]);
+  const executable = await findExecutable(definition.executableName);
+  if (!executable) return Object.freeze([]);
+  const probe = await probeCliBridge({
+    executableId: executable.executableId,
+    args: [...definition.modelListArgs],
+    timeoutMs: DEFAULT_PROBE_TIMEOUT_MS,
+    outputLimitBytes: DEFAULT_PROBE_OUTPUT_LIMIT_BYTES,
+  });
+  if (probe.timedOut || probe.exitCode !== 0 || probe.stdout.truncated) {
+    throw new Error('CLI model discovery failed');
+  }
+  return definition.parseModelList(probe.stdout.data);
+}
+
 async function* sendProviderRequest(
   definition: CliProviderDefinition,
   request: ProviderRequest,
@@ -780,6 +799,9 @@ export function createCliProviderAdapter(definition: CliProviderDefinition): Pro
     id: definition.adapterId,
     detect: () => detectProvider(definition),
     probeAuth: () => probeProviderAuth(definition),
+    ...(definition.modelListArgs && definition.parseModelList
+      ? { listModels: () => listProviderModels(definition) }
+      : {}),
     send: (request: ProviderRequest) => sendProviderRequest(definition, request),
     cancel: async (requestId: string) => {
       await cancelCliBridge(requestId);

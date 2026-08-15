@@ -80,8 +80,8 @@ export {
 export type { ConnectionPickerState } from './connectionState';
 
 export const CONNECTION_MODE_LABELS = Object.freeze({
-  'external-cli': 'Subscription bridge · External agent',
-  'native-api': 'Native Jarvis Chat · API billed',
+  'external-cli': 'Subscription bridge ┬╖ External agent',
+  'native-api': 'Native Jarvis Chat ┬╖ API billed',
   local: 'Local runtime',
 });
 

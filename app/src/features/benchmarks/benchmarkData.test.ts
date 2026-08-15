@@ -1,20 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const runtime = vi.hoisted(() => ({ tauri: true }));
-
 vi.mock('@/lib/nativeFetch', () => ({
   nativeFetch: vi.fn(),
 }));
-
-vi.mock('@/lib/utils', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/utils')>();
-  return {
-    ...actual,
-    get isTauri() {
-      return runtime.tauri;
-    },
-  };
-});
 
 import { nativeFetch } from '@/lib/nativeFetch';
 import {
@@ -27,7 +15,6 @@ import {
 const mockedFetch = vi.mocked(nativeFetch);
 
 beforeEach(() => {
-  runtime.tauri = true;
   clearBenchmarkCache();
   mockedFetch.mockReset();
 });
@@ -100,25 +87,20 @@ describe('benchmarkData live sources', () => {
   });
 
   it('returns live Wu Long rows when the API succeeds', async () => {
-    mockedFetch
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 503,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          meta: { fetched_at: new Date().toISOString() },
-          models: Array.from({ length: 50 }, (_, index) => ({
-            model: index === 0 ? 'claude-opus-4-6' : `live-model-${index + 1}`,
-            vendor: index === 0 ? 'Anthropic' : 'OpenAI',
-            score: 1499 - index,
-            ci: 4,
-            votes: 1,
-          })),
-        }),
-        headers: { get: () => 'application/json' },
-      } as unknown as Response);
+    mockedFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        meta: { fetched_at: new Date().toISOString() },
+        models: Array.from({ length: 50 }, (_, index) => ({
+          model: index === 0 ? 'claude-opus-4-6' : `live-model-${index + 1}`,
+          vendor: index === 0 ? 'Anthropic' : 'OpenAI',
+          score: 1499 - index,
+          ci: 4,
+          votes: 1,
+        })),
+      }),
+      headers: { get: () => 'application/json' },
+    } as unknown as Response);
 
     const result = await fetchBenchmarks({ force: true });
     expect(result.fromSnapshot).toBe(false);
@@ -126,101 +108,80 @@ describe('benchmarkData live sources', () => {
     expect(result.rows[0]?.model).toBe('claude-opus-4-6');
   });
 
-  it('prefers the hourly Cloudflare benchmark snapshot before direct upstream fallbacks', async () => {
-    mockedFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ endpoints: ['/api/news', '/api/benchmarks'] }),
-        headers: { get: () => 'application/json' },
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          freeOnly: true,
-          source: {
-            kind: 'independent-preference',
-            name: 'Arena',
-            url: 'https://arena.ai/leaderboard/text',
-          },
-          benchmarkDate: '2026-08-10T18:00:00.000Z',
-          ingestedAt: '2026-08-10T18:07:00.000Z',
-          metric: 'Arena rating',
-          rows: Array.from({ length: 20 }, (_, index) => ({
-            rank: index + 1,
-            model: `worker-model-${index + 1}`,
-            vendor: 'OpenAI',
-            license: 'proprietary',
-            score: 1500 - index,
-            ci: 4,
-            votes: 500 + index,
-          })),
-        }),
-        headers: { get: () => 'application/json' },
-      } as unknown as Response);
-
-    const result = await fetchBenchmarks({ force: true });
-
-    expect(result.rows).toHaveLength(20);
-    expect(result.rows[0]?.model).toBe('worker-model-1');
-    expect(String(mockedFetch.mock.calls[0]?.[0])).toBe(
-      'https://vibespace-ai-news.vibespace-viper.workers.dev/',
-    );
-    expect(String(mockedFetch.mock.calls[1]?.[0])).toBe(
-      'https://vibespace-ai-news.vibespace-viper.workers.dev/api/benchmarks',
-    );
-    expect(mockedFetch).toHaveBeenCalledTimes(2);
-  });
-
-  it('skips the Worker benchmark route until the deployed service advertises it', async () => {
-    mockedFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ endpoints: ['/api/news', '/api/news.json'] }),
-        headers: { get: () => 'application/json' },
-      } as unknown as Response)
-      .mockResolvedValueOnce({
+  it('shares one live refresh across concurrent callers', async () => {
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockedFetch.mockImplementationOnce(async () => {
+      await gate;
+      return {
         ok: true,
         json: async () => ({
           meta: { fetched_at: new Date().toISOString() },
-          models: Array.from({ length: 20 }, (_, index) => ({
-            model: `direct-model-${index + 1}`,
+          models: Array.from({ length: 50 }, (_, index) => ({
+            model: `single-flight-${index + 1}`,
             vendor: 'OpenAI',
             score: 1500 - index,
-            ci: 4,
-            votes: 500 + index,
           })),
         }),
         headers: { get: () => 'application/json' },
-      } as unknown as Response);
+      } as unknown as Response;
+    });
 
-    const result = await fetchBenchmarks({ force: true });
+    const first = fetchBenchmarks({ force: true });
+    const second = fetchBenchmarks({ force: true });
+    release?.();
+    const [left, right] = await Promise.all([first, second]);
 
-    expect(result.rows).toHaveLength(20);
-    expect(result.rows[0]?.model).toBe('direct-model-1');
-    expect(mockedFetch.mock.calls.map((call) => String(call[0]))).toEqual([
-      'https://vibespace-ai-news.vibespace-viper.workers.dev/',
-      'https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name=text',
-    ]);
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(left.rows).toEqual(right.rows);
+    expect(left.dataset.ingestedAt).toBe(right.dataset.ingestedAt);
   });
 
-  it('does not issue known-CORS-blocked direct requests from the web runtime', async () => {
-    runtime.tauri = false;
-    mockedFetch.mockResolvedValueOnce({
+  it('preserves the exact direct LMArena source when Wu Long fails, including cache reads', async () => {
+    mockedFetch.mockRejectedValueOnce(new Error('Wu Long unavailable')).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ endpoints: ['/api/news', '/api/news.json'] }),
+      json: async () =>
+        Array.from({ length: 50 }, (_, index) => ({
+          model: `direct-model-${index + 1}`,
+          provider: 'OpenAI',
+          arena_score: 1500 - index,
+        })),
       headers: { get: () => 'application/json' },
     } as unknown as Response);
 
-    const result = await fetchBenchmarks({ force: true });
+    const live = await fetchBenchmarks({ force: true });
+    const cached = await fetchBenchmarks();
 
-    expect(result.unavailable).toBe(true);
-    expect(result.rows).toEqual([]);
-    expect(mockedFetch.mock.calls.map((call) => String(call[0]))).toEqual([
-      'https://vibespace-ai-news.vibespace-viper.workers.dev/',
-    ]);
+    const cache = JSON.parse(localStorage.getItem('jarvis-benchmark-cache-v5') ?? '{}') as {
+      cachedAt?: number;
+    };
+    localStorage.setItem(
+      'jarvis-benchmark-cache-v5',
+      JSON.stringify({ ...cache, cachedAt: Date.now() - 2 * 60 * 60 * 1000 }),
+    );
+    mockedFetch.mockRejectedValue(new Error('all live sources unavailable'));
+    const fallback = await fetchBenchmarks({ force: true });
+
+    expect(live.dataset).toMatchObject({
+      sourceName: 'LMArena',
+      sourceUrl: 'https://lmarena.ai/api/leaderboard',
+    });
+    expect(cached.cached).toBe(true);
+    expect(cached.dataset).toMatchObject({
+      sourceName: 'LMArena',
+      sourceUrl: 'https://lmarena.ai/api/leaderboard',
+    });
+    expect(fallback).toMatchObject({ cached: true, stale: true });
+    expect(fallback.dataset).toMatchObject({
+      sourceName: 'LMArena',
+      sourceUrl: 'https://lmarena.ai/api/leaderboard',
+    });
+    expect(mockedFetch).toHaveBeenCalledTimes(6);
   });
 
-  it('accepts a valid structured leaderboard without requiring exactly fifty rows', async () => {
+  it('keeps the complete Top 50 when a live source returns a partial leaderboard', async () => {
     mockedFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -234,28 +195,37 @@ describe('benchmarkData live sources', () => {
     } as unknown as Response);
 
     const result = await fetchBenchmarks({ force: true });
-    expect(result.fromSnapshot).toBe(false);
-    expect(result.rows).toHaveLength(20);
-    expect(result.rows[0]?.model).toBe('partial-model-1');
+    expect(result.fromSnapshot).toBe(true);
+    expect(result.rows).toHaveLength(50);
+    expect(result.reason).toContain('incomplete leaderboard (20/50 models)');
   });
 
-  it('does not invent benchmark rows when every live source fails', async () => {
+  it('falls back to snapshot when every live source fails', async () => {
     mockedFetch.mockRejectedValue(new Error('network down'));
     const result = await fetchBenchmarks({ force: true });
-    expect(result.fromSnapshot).toBe(false);
-    expect(result.unavailable).toBe(true);
-    expect(result.rows).toEqual([]);
-    expect(result.reason).toContain('network down');
-    expect(result.dataset.metricLabel).toBe('Arena rating');
+    expect(result.fromSnapshot).toBe(true);
+    expect(result.rows).toHaveLength(50);
+    expect(result.rows[0]?.model).toBe('Claude Fable 5');
+    expect(result.rows[0]?.arena_score).toBe(68);
+    expect(result.rows[0]?.cost_per_1m_input_usd).toBe(10);
+    expect(result.rows[0]?.source).toBe('snapshot');
   });
 
-  it('attempts every structured source before returning an honest unavailable state', async () => {
+  it('attempts a structured refresh before using the embedded cold-start fallback', async () => {
     mockedFetch.mockRejectedValue(new Error('offline'));
     const result = await fetchBenchmarks();
-    expect(result.unavailable).toBe(true);
-    expect(result.rows).toEqual([]);
-    expect(result.dataset.sourceName).toBe('Arena');
-    expect(mockedFetch.mock.calls.length).toBeGreaterThan(1);
+    expect(result.fromSnapshot).toBe(true);
+    expect(result.rows).toHaveLength(50);
+    expect(result.rows[0]?.model).toBe('Claude Fable 5');
+    expect(result.rows[1]?.model).toBe('GPT-5.6 Sol');
+    expect(result.rows[5]?.model).toBe('Grok 4.5');
+    expect(result.rows[9]?.model).toBe('Gemini 2.5 Pro');
+    expect(result.rows[9]?.arena_score).toBe(49.6);
+    expect(result.rows[49]?.model).toBe('GPT-OSS 20B');
+    // One unique model per row ΓÇö no reasoning-variant duplicates.
+    const names = result.rows.map((r) => r.model);
+    expect(new Set(names).size).toBe(50);
+    expect(mockedFetch).toHaveBeenCalled();
   });
 
   it('keeps a stale last-known-good live dataset when the hourly refresh fails', async () => {
@@ -277,7 +247,8 @@ describe('benchmarkData live sources', () => {
         })),
       }),
     );
-    mockedFetch.mockRejectedValue(new Error('upstream unavailable'));
+    const privateDetail = 'upstream unavailable: token=private';
+    mockedFetch.mockRejectedValue(new Error(privateDetail));
 
     const result = await fetchBenchmarks();
 
@@ -285,12 +256,27 @@ describe('benchmarkData live sources', () => {
     expect(result.cached).toBe(true);
     expect(result.stale).toBe(true);
     expect(result.rows[0]?.model).toBe('known-good-1');
-    expect(result.reason).toContain('upstream unavailable');
+    expect(result.reason).toContain('request failed');
+    expect(result.reason).not.toContain(privateDetail);
   });
 
-  it('never writes a synthetic snapshot into the live cache', async () => {
-    mockedFetch.mockRejectedValue(new Error('offline'));
-    await fetchBenchmarks({ force: true });
-    expect(localStorage.getItem('jarvis-benchmark-cache-v5')).toBeNull();
+  it('keeps OpenRouter list prices and modalities on snapshot rows', async () => {
+    const result = await fetchBenchmarks();
+    const withPrice = result.rows.filter(
+      (r) => r.cost_per_1m_input_usd != null && r.cost_per_1m_output_usd != null,
+    );
+    expect(withPrice.length).toBe(50);
+    const sol = result.rows.find((r) => r.model === 'GPT-5.6 Sol');
+    expect(sol?.cost_per_1m_input_usd).toBe(5);
+    expect(sol?.cost_per_1m_output_usd).toBe(30);
+    expect(sol?.context_window).toBe(1_050_000);
+    expect(sol?.supports_image).toBe(true);
+    const gemini = result.rows.find((r) => r.model === 'Gemini 3.5 Flash');
+    expect(gemini?.cost_per_1m_input_usd).toBe(1.5);
+    expect(gemini?.cost_per_1m_output_usd).toBe(9);
+    expect(gemini?.supports_video).toBe(true);
+    const oss = result.rows.find((r) => r.model === 'GPT-OSS 20B');
+    expect(oss?.arena_score).toBe(14.9);
+    expect(oss?.open_source).toBe(true);
   });
 });

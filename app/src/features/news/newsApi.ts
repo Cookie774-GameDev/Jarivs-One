@@ -1,10 +1,16 @@
 import type { NewsItem, NewsKind } from './newsCatalog';
 
+export type LiveMediaType = 'image' | 'video' | 'none';
+
 export interface LiveNewsItem extends NewsItem {
   platform: string;
   verification: 'official' | 'confirmed';
   company?: string;
   category?: string;
+  videoUrl?: string;
+  mediaType: LiveMediaType;
+  mediaSource?: string;
+  sourceReferences?: Array<{ name: string; url: string; platform?: string }>;
 }
 
 export interface LiveNewsResponse {
@@ -34,7 +40,15 @@ function requiredString(record: Record<string, unknown>, key: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error('AI news response is malformed.');
   }
-  return value;
+  return value.trim();
+}
+
+function optionalString(record: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
 }
 
 function requiredId(record: Record<string, unknown>): string {
@@ -45,7 +59,79 @@ function requiredId(record: Record<string, unknown>): string {
   return String(value);
 }
 
-function kindForCategory(category: string): NewsKind {
+function requiredIsoTimestamp(record: Record<string, unknown>, key: string): string {
+  const value = requiredString(record, key);
+  if (!/^\d{4}-\d{2}-\d{2}T/i.test(value) || !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+    throw new Error('AI news response discarded publication time precision.');
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) throw new Error('AI news response is malformed.');
+  return new Date(timestamp).toISOString();
+}
+
+function optionalIsoTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+}
+
+function safeHttpsUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return undefined;
+    if (url.username || url.password) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => entry.trim())
+    .slice(0, 12);
+}
+
+function parseSourceReferences(value: unknown): LiveNewsItem['sourceReferences'] {
+  if (!Array.isArray(value)) return undefined;
+  const references = value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return [];
+    const record = entry as Record<string, unknown>;
+    const name = optionalString(record, 'name', 'sourceName');
+    const url = safeHttpsUrl(record.url ?? record.sourceUrl);
+    if (!name || !url) return [];
+    return [
+      {
+        name,
+        url,
+        ...(typeof record.platform === 'string' ? { platform: record.platform } : {}),
+      },
+    ];
+  });
+  return references.length ? references : undefined;
+}
+
+function youtubeIdForUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.hostname === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0];
+    if (url.hostname.endsWith('youtube.com')) {
+      if (url.pathname === '/watch') return url.searchParams.get('v') ?? undefined;
+      const match = /^\/(?:shorts|embed)\/([^/?#]+)/.exec(url.pathname);
+      return match?.[1];
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function kindForItem(category: string, mediaType: LiveMediaType, youtubeId?: string): NewsKind {
+  if (mediaType === 'video' || youtubeId) return 'youtube';
   return /model|release|launch/i.test(category) ? 'model_drop' : 'ai_news';
 }
 
@@ -123,34 +209,64 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
       throw new Error('AI news response is malformed.');
     }
     const category = requiredString(item, 'category');
+    const sourceUrl = safeHttpsUrl(item.url ?? item.sourceUrl);
+    if (!sourceUrl) throw new Error('AI news response is malformed.');
+
+    const videoUrl = safeHttpsUrl(item.videoUrl ?? item.video_url);
+    let imageUrl = safeHttpsUrl(item.imageUrl ?? item.image_url);
+    const explicitMediaType = optionalString(item, 'mediaType', 'media_type');
+    const youtubeId = youtubeIdForUrl(videoUrl ?? sourceUrl);
+    if (!imageUrl && youtubeId) imageUrl = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+    const mediaType: LiveMediaType =
+      explicitMediaType === 'video' || videoUrl || youtubeId
+        ? 'video'
+        : explicitMediaType === 'image' || imageUrl
+          ? 'image'
+          : 'none';
+    const imageCredit =
+      optionalString(item, 'imageCredit', 'image_credit') ??
+      (youtubeId && imageUrl ? `Official YouTube thumbnail · ${source}` : '');
+    const mediaSource = optionalString(item, 'mediaSource', 'media_source');
+    const company = optionalString(item, 'company');
+    const modelNames = readStringArray(item.modelNames ?? item.model_names);
+    const tags = [...new Set([platform, verification, category, company, ...modelNames].filter(Boolean))] as string[];
+    const sourceReferences = parseSourceReferences(item.sourceReferences ?? item.source_references);
+
     return {
       id: requiredId(item),
       title: requiredString(item, 'title'),
       summary: plainText(requiredString(item, 'summary')),
-      url: requiredString(item, 'url'),
-      publishedAt: requiredString(item, 'publishedAt').slice(0, 10),
+      url: sourceUrl,
+      publishedAt: requiredIsoTimestamp(item, 'publishedAt'),
       source,
       platform,
       verification,
-      company: typeof item.company === 'string' ? item.company : undefined,
+      ...(company ? { company } : {}),
       category,
-      kind: kindForCategory(category),
-      imageUrl: '',
-      imageCredit: '',
+      kind: kindForItem(category, mediaType, youtubeId),
+      imageUrl: imageUrl ?? '',
+      imageCredit,
       credit: `${verification === 'official' ? 'Official source' : 'Confirmed source'} · ${source}`,
-      tags: [platform, verification, category].filter(Boolean),
+      ...(youtubeId ? { youtubeId } : {}),
+      ...(videoUrl ? { videoUrl } : {}),
+      mediaType,
+      ...(mediaSource ? { mediaSource } : {}),
+      ...(sourceReferences ? { sourceReferences } : {}),
+      tags,
     };
   });
 
+  const generatedAt = optionalIsoTimestamp(root.generatedAt);
+  const latestRun =
+    root.latestRun && typeof root.latestRun === 'object' && !Array.isArray(root.latestRun)
+      ? (root.latestRun as Record<string, unknown>)
+      : undefined;
+  const lastCompletedAt = optionalIsoTimestamp(root.lastCompletedAt ?? latestRun?.completed_at);
+
   return {
     freeOnly: true,
-    generatedAt: typeof root.generatedAt === 'string' ? root.generatedAt : undefined,
-    lastCompletedAt:
-      typeof root.lastCompletedAt === 'string'
-        ? root.lastCompletedAt
-        : typeof (root.latestRun as Record<string, unknown> | undefined)?.completed_at === 'string'
-          ? String((root.latestRun as Record<string, unknown>).completed_at)
-          : undefined,
+    ...(generatedAt ? { generatedAt } : {}),
+    ...(lastCompletedAt ? { lastCompletedAt } : {}),
     freshness: parseFreshness(root.freshness),
     items,
   };
