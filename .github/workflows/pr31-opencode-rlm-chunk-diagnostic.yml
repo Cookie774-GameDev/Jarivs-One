@@ -1,0 +1,36 @@
+name: PR31 patch chunk diagnostic
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify every frozen patch chunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .integration/pr31-opencode-rlm
+          cat > "$RUNNER_TEMP/expected.sha256" <<'EOF'
+          4d70841f4e98eec6f7a280f4e45bf596017256fb172cefeec8d2d78439baae23  patch.xz.b64.00
+          6ee6524b0c2e9863e8c03386fe5dbde6b2d88b6eb607358196ca7efdfa28c852  patch.xz.b64.01
+          0d85ea593c9caa9d164978b429b622751a52d4b8622c6a50e54085a4d9bf0ab7  patch.xz.b64.02
+          135ff5545d5b21649e61f8a94e11655ec8b51a1daecd07f85a5bba6567791666  patch.xz.b64.03
+          9c85e716fb908403ca8392c8b87f3f9ff1711da9d5ce2ef589bb06c4988074b4  patch.xz.b64.04
+          f74ca93f093f46dd06360673bee3692b15143318e8904321e1b390bd36a5b5bc  patch.xz.b64.05
+          39f9eb0158c75eebc371457ee12fb5b07454f4b27bbc400211d69e396437738c  patch.xz.b64.06
+          63bc8a18c34615eea65113a8f880a26535fc4d1d13e754dc5d14daa1288bcccf  patch.xz.b64.07
+          EOF
+          sha256sum patch.xz.b64.*
+          wc -c patch.xz.b64.*
+          sha256sum --check --strict "$RUNNER_TEMP/expected.sha256"
+          cat patch.xz.b64.* | base64 --decode > "$RUNNER_TEMP/patch.xz"
+          sha256sum "$RUNNER_TEMP/patch.xz"
+          echo '4356066298fc07a0ee16e69a98d7e1ab94a51ca328798b22539a3f61ef8b3578  '"$RUNNER_TEMP/patch.xz" | sha256sum --check --strict
