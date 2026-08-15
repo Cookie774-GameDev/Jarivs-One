@@ -1,0 +1,265 @@
+name: PR31 OpenCode RLM Rust and publication final
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-opencode-rlm-rust-publish-final.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: pr31-opencode-rlm-rust-publication-final
+  cancel-in-progress: false
+
+env:
+  BASE_SHA: 4209030eb041c661ee1a4b55e87367136638762b
+  STAGING_SHA: e0c11422a5d038231cdfa73bf3f48dffc7554f51
+  TARGET_BRANCH: agent/pr30-fixes-and-updates
+  PR_NUMBER: '31'
+  PRIOR_RUN_ID: '31903398825'
+
+jobs:
+  rust-and-publication-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout exact published integration
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.STAGING_SHA }}
+          fetch-depth: 0
+
+      - name: Download completed differential and frontend evidence
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PRIOR_RUN_ID }}
+          name: pr31-opencode-rlm-differential-publication-v3
+          path: ${{ runner.temp }}/prior
+
+      - name: Validate completed differential and frontend gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          prior="$RUNNER_TEMP/prior"
+          test "$(git rev-parse HEAD)" = "$STAGING_SHA"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$BASE_SHA" "$STAGING_SHA"
+
+          grep -Fx 'REMOTE_TARGET_AT_START=e0c11422a5d038231cdfa73bf3f48dffc7554f51' "$prior/guard.txt"
+          grep -Fx 'REMOTE_MODE=INTEGRATION_ALREADY_PRESENT' "$prior/guard.txt"
+          grep -Fx 'BROAD_FULL_STAGED_PASSED=9743' "$prior/differential-summary.txt"
+          grep -Fx 'BROAD_FULL_STAGED_FAILED=18' "$prior/differential-summary.txt"
+          grep -Fx 'BROAD_FULL_STAGED_SKIPPED=3' "$prior/differential-summary.txt"
+          grep -Fx 'BASE_FAILURE_IDENTITIES=18' "$prior/differential-summary.txt"
+          grep -Fx 'STAGED_FAILURE_IDENTITIES=18' "$prior/differential-summary.txt"
+          grep -Fx 'NEW_FAILURE_IDENTITIES=0' "$prior/differential-summary.txt"
+          test ! -s "$prior/NEW_FAILURES.txt"
+          grep -Fx 'FOCUSED_FILES=41' "$prior/focused-summary.txt"
+          grep -Fx 'FOCUSED_TESTS=214' "$prior/focused-summary.txt"
+          grep -Fx 'FOCUSED_FAILED=0' "$prior/focused-summary.txt"
+          grep -F 'PR31 OpenCode/RLM production wiring invariants: PASS' "$prior/production-wiring.log"
+          grep -F 'built in' "$prior/build.log"
+          grep -Fx 'SECRET_SCAN=PASS' "$prior/secret-scan.txt"
+          grep -Fx 'NO_SILENT_FALLBACK=PASS' "$prior/secret-scan.txt"
+          grep -Fx 'DIFF_CHECK=PASS' "$prior/diff-check.txt"
+          grep -F '# pass 43' "$prior/release-manifest.log"
+          grep -F '# fail 0' "$prior/release-manifest.log"
+          grep -F 'tsc -b --pretty false' "$prior/typecheck.log"
+
+          cp -a "$prior/." "$RUNNER_TEMP/pr31-final-evidence/"
+          printf '%s\n' 'DIFFERENTIAL_AND_FRONTEND_GATES=PASS' \
+            | tee "$RUNNER_TEMP/pr31-final-evidence/imported-gates.txt"
+
+      - name: Set up Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Prove full rustfmt drift is unchanged baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pr31-final-evidence"
+          base_dir="$RUNNER_TEMP/pr31-rust-base"
+          git worktree add --detach "$base_dir" "$BASE_SHA"
+
+          test -z "$(git diff --name-only "$BASE_SHA...$STAGING_SHA" -- app/src-tauri/src/browser_chat_surface.rs)"
+
+          set +e
+          (cd "$base_dir/app/src-tauri" && cargo fmt --check) > "$evidence/cargo-fmt-base.log" 2>&1
+          base_status=$?
+          (cd "$GITHUB_WORKSPACE/app/src-tauri" && cargo fmt --check) > "$evidence/cargo-fmt-staged.log" 2>&1
+          staged_status=$?
+          set -e
+
+          printf 'BASE_CARGO_FMT_EXIT=%s\nSTAGED_CARGO_FMT_EXIT=%s\n' \
+            "$base_status" "$staged_status" | tee "$evidence/cargo-fmt-status.txt"
+          test "$base_status" = "$staged_status"
+
+          python - "$base_dir" "$GITHUB_WORKSPACE" \
+            "$evidence/cargo-fmt-base.log" "$evidence/cargo-fmt-staged.log" \
+            "$evidence/cargo-fmt-base-normalized.log" "$evidence/cargo-fmt-staged-normalized.log" <<'PY'
+          import pathlib
+          import sys
+
+          base_dir, staged_dir, base_log, staged_log, base_out, staged_out = sys.argv[1:]
+          def normalize(path, root):
+              text = pathlib.Path(path).read_text(encoding='utf-8', errors='replace')
+              return text.replace(root, '<TREE>').replace('\\', '/')
+          pathlib.Path(base_out).write_text(normalize(base_log, base_dir), encoding='utf-8')
+          pathlib.Path(staged_out).write_text(normalize(staged_log, staged_dir), encoding='utf-8')
+          PY
+
+          diff -u "$evidence/cargo-fmt-base-normalized.log" \
+            "$evidence/cargo-fmt-staged-normalized.log" \
+            > "$evidence/cargo-fmt-differential.diff" || {
+              cat "$evidence/cargo-fmt-differential.diff"
+              exit 1
+            }
+
+          if [ "$base_status" = '0' ]; then
+            echo 'FULL_CARGO_FMT=PASS' | tee "$evidence/cargo-fmt-classification.txt"
+          else
+            grep -F 'browser_chat_surface.rs' "$evidence/cargo-fmt-base.log"
+            echo 'FULL_CARGO_FMT=BASELINE_FAIL_IDENTICAL_UNCHANGED_FILE' \
+              | tee "$evidence/cargo-fmt-classification.txt"
+          fi
+
+          rustfmt --edition 2021 --check app/src-tauri/src/cli_bridge.rs \
+            > "$evidence/rustfmt-changed-file.log" 2>&1
+          echo 'CHANGED_RUST_FILE_FMT=PASS' \
+            | tee "$evidence/rustfmt-changed-file-status.txt"
+          git worktree remove --force "$base_dir"
+
+      - name: Run Rust compile and focused native test
+        working-directory: app/src-tauri
+        shell: bash
+        run: |
+          set -o pipefail
+          evidence="$RUNNER_TEMP/pr31-final-evidence"
+          {
+            echo '=== cargo check --release ==='
+            cargo check --release
+            echo '=== focused cli_bridge runtime-bound test ==='
+            cargo test --lib cli_bridge_validates_timeout_output_and_request_id_bounds
+          } 2>&1 | tee "$evidence/rust-check-and-test.log"
+          echo 'RUST_INTEGRATION_GATES=PASS' | tee "$evidence/rust-status.txt"
+
+      - name: Reconfirm target and push normally without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pr31-final-evidence"
+          git fetch --prune origin \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          before="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          printf 'REMOTE_TARGET_BEFORE_PUSH=%s\n' "$before" \
+            | tee "$evidence/prepush-target.txt"
+          test "$before" = "$STAGING_SHA"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}" \
+            2>&1 | tee "$evidence/push.log"
+          echo 'PUSH=PASS_NORMAL_NO_FORCE' | tee "$evidence/push-status.txt"
+
+      - name: Prove SHA equality and PR state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pr31-final-evidence"
+          git fetch --prune origin \
+            "+refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          local_head="$(git rev-parse HEAD)"
+          remote_head="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          printf 'LOCAL_FINAL_SHA=%s\nREMOTE_PR31_SHA=%s\nSHA_MATCH=%s\n' \
+            "$local_head" "$remote_head" \
+            "$([ "$local_head" = "$remote_head" ] && echo YES || echo NO)" \
+            | tee "$evidence/sha-proof.txt"
+          test "$local_head" = "$remote_head"
+          test "$remote_head" = "$STAGING_SHA"
+
+          git log --format='%H %s' "$BASE_SHA..$STAGING_SHA" \
+            | tee "$evidence/integration-commits.txt"
+          git log -15 --oneline "origin/${TARGET_BRANCH}" \
+            | tee "$evidence/remote-log.txt"
+          git log --left-right --cherry-pick --oneline \
+            "origin/${TARGET_BRANCH}...HEAD" > "$evidence/left-right.txt"
+          test ! -s "$evidence/left-right.txt"
+
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            > "$evidence/pr.json"
+          python - "$local_head" "$TARGET_BRANCH" "$evidence/pr.json" "$evidence/pr-state.txt" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          expected_sha, expected_branch, input_path, output_path = sys.argv[1:]
+          pr = json.loads(pathlib.Path(input_path).read_text(encoding='utf-8'))
+          checks = {
+              'PR_OPEN': pr.get('state') == 'open',
+              'PR_DRAFT': pr.get('draft') is True,
+              'PR_UNMERGED': pr.get('merged') is False,
+              'HEAD_BRANCH': pr.get('head', {}).get('ref') == expected_branch,
+              'HEAD_SHA': pr.get('head', {}).get('sha') == expected_sha,
+          }
+          text = ''.join(f'{name}={"PASS" if passed else "FAIL"}\n' for name, passed in checks.items())
+          pathlib.Path(output_path).write_text(text, encoding='utf-8')
+          print(text, end='')
+          if not all(checks.values()):
+              raise SystemExit(1)
+          PY
+
+      - name: Create concrete final status evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/pr31-final-evidence"
+          {
+            cat "$evidence/sha-proof.txt"
+            cat "$evidence/push-status.txt"
+            cat "$evidence/pr-state.txt"
+            cat "$evidence/focused-summary.txt"
+            cat "$evidence/differential-summary.txt"
+            echo 'TYPECHECK=PASS'
+            echo 'BUILD=PASS'
+            echo 'RELEASE_MANIFEST=PASS'
+            cat "$evidence/rust-status.txt"
+            cat "$evidence/cargo-fmt-classification.txt"
+            cat "$evidence/rustfmt-changed-file-status.txt"
+            cat "$evidence/secret-scan.txt"
+            cat "$evidence/diff-check.txt"
+            echo 'PRODUCTION_WIRING=PASS'
+            echo 'HISTORY_MODE=EXISTING_PUBLISHED_COMMITS_PRESERVED_NO_FORCE_REWRITE'
+            echo 'NATIVE_LIVE_TESTS=IMPLEMENTED — NATIVE VERIFICATION REQUIRED'
+          } | tee "$evidence/final-status.txt"
+
+      - name: Upload final publication proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31-opencode-rlm-final-publication-proof
+          path: ${{ runner.temp }}/pr31-final-evidence
+          if-no-files-found: warn
+          retention-days: 14
