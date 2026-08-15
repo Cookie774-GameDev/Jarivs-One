@@ -22,6 +22,7 @@ export function BrowserProviderSurface({
   runtime = browserChatSurface,
 }: BrowserProviderSurfaceProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
+  const hiddenRef = React.useRef(false);
   const [error, setError] = React.useState<string | null>(null);
   const route = useUIStore((state) => state.route);
   const activeChatId = useUIStore((state) => state.activeChatId);
@@ -34,10 +35,18 @@ export function BrowserProviderSurface({
   });
   const surfaceVisible = route === 'chat' && engine === 'browser';
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
+  const requestHide = React.useCallback(
+    async (force = false) => {
+      if (hiddenRef.current && !force) return;
+      hiddenRef.current = true;
+      await runtime.hideAll().catch(() => undefined);
+    },
+    [runtime],
+  );
 
   React.useLayoutEffect(() => {
     if (!surfaceVisible) {
-      void runtime.hideAll().catch(() => undefined);
+      void requestHide();
       return;
     }
 
@@ -58,7 +67,7 @@ export function BrowserProviderSurface({
       lastResizeBounds = null;
       if (hiddenApplied) return;
       hiddenApplied = true;
-      void runtime.hideAll().catch(() => undefined);
+      void requestHide();
     };
 
     const openLatestBounds = async (initialBounds: ProviderSurfaceBounds) => {
@@ -75,7 +84,7 @@ export function BrowserProviderSurface({
           try {
             const result = await runtime.openManaged(provider, bounds, providerProfileKey);
             if (disposed || !hostVisible || !surfaceVisible) {
-              await runtime.hideAll().catch(() => undefined);
+              await requestHide(true);
               break;
             }
             setError(null);
@@ -122,6 +131,7 @@ export function BrowserProviderSurface({
 
         hostVisible = true;
         hiddenApplied = false;
+        hiddenRef.current = false;
         const bounds: ProviderSurfaceBounds = {
           x: rect.x,
           y: rect.y,
@@ -174,9 +184,9 @@ export function BrowserProviderSurface({
       window.removeEventListener('resize', handleWindowResize);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribeHostGeometry?.();
-      void runtime.hideAll().catch(() => undefined);
+      void requestHide();
     };
-  }, [provider, providerProfileKey, runtime, setProviderRuntime, surfaceVisible]);
+  }, [provider, providerProfileKey, requestHide, runtime, setProviderRuntime, surfaceVisible]);
 
   return (
     <div
