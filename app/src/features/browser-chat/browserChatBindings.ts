@@ -247,7 +247,7 @@ export function createBrowserChatBindingRepository(
       const existing = existingBindings.find(
         (binding) => binding.id === input.id || binding.nativeChatId === input.nativeChatId,
       );
-      const candidate = sanitizeBinding(
+      const candidateAtExistingRevision = sanitizeBinding(
         {
           ...existing,
           ...input,
@@ -258,13 +258,18 @@ export function createBrowserChatBindingRepository(
           resumeUrl: input.resumeUrl ?? existing?.resumeUrl,
           lastOpenedAt: input.lastOpenedAt ?? existing?.lastOpenedAt,
           createdAt: existing?.createdAt ?? input.createdAt ?? now,
-          updatedAt: input.updatedAt ?? now,
+          updatedAt: existing?.updatedAt ?? input.updatedAt ?? now,
         },
         accountId,
       );
-      if (!candidate) throw new Error('browser_chat_binding_invalid');
-      if (existing && equivalentBinding(existing, candidate)) return structuredClone(existing);
+      if (!candidateAtExistingRevision) throw new Error('browser_chat_binding_invalid');
+      if (existing && equivalentBinding(existing, candidateAtExistingRevision)) {
+        return structuredClone(existing);
+      }
 
+      const candidate = existing
+        ? { ...candidateAtExistingRevision, updatedAt: now }
+        : candidateAtExistingRevision;
       const next = existingBindings.filter(
         (binding) => binding.id !== candidate.id && binding.nativeChatId !== candidate.nativeChatId,
       );
