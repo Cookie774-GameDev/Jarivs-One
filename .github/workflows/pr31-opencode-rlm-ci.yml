@@ -1,0 +1,176 @@
+name: PR31 OpenCode RLM isolated integration
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-ci-bootstrap
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr31-opencode-rlm-isolated-integration
+  cancel-in-progress: false
+
+jobs:
+  integrate-verify-and-stage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 55
+    env:
+      BASE_SHA: 4209030eb041c661ee1a4b55e87367136638762b
+      TARGET_BRANCH: agent/pr30-fixes-and-updates
+      RESULT_BRANCH: agent/pr31-opencode-rlm-ci-result
+      PATCH_FILE_ID: 1cSYBDj46pqRWYbWOaPzN6Gq2AxgkT4OZ
+      PATCH_SHA256: c6a9c6c6c4a05613d998c4134c84a033b34788b0083ed18fafd87d74bb2dfb60
+    steps:
+      - name: Checkout isolated bootstrap branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download and verify frozen integration patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_path="$RUNNER_TEMP/PR31_OPENCODE_RLM_FORWARD_PORT.patch"
+          primary="https://drive.usercontent.google.com/download?id=${PATCH_FILE_ID}&export=download&confirm=t"
+          fallback="https://drive.google.com/uc?export=download&id=${PATCH_FILE_ID}&confirm=t"
+          curl --fail --location --retry 4 --retry-all-errors "$primary" --output "$patch_path" || \
+            curl --fail --location --retry 4 --retry-all-errors "$fallback" --output "$patch_path"
+          echo "${PATCH_SHA256}  ${patch_path}" | sha256sum --check --strict
+          test -s "$patch_path"
+
+      - name: Anchor to unchanged PR31 head and apply semantically reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_path="$RUNNER_TEMP/PR31_OPENCODE_RLM_FORWARD_PORT.patch"
+          git fetch origin "${TARGET_BRANCH}"
+          remote_sha="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          test "$remote_sha" = "$BASE_SHA" || {
+            echo "Target advanced from ${BASE_SHA} to ${remote_sha}; refusing stale integration."
+            exit 32
+          }
+          git checkout --detach "$BASE_SHA"
+          git apply --index --whitespace=error-all "$patch_path"
+          git diff --cached --check
+          git status --short
+
+      - name: Scan added lines for credential material
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --cached --unified=0 > "$RUNNER_TEMP/integration.diff"
+          python3 - "$RUNNER_TEMP/integration.diff" <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path(sys.argv[1]).read_text(errors='replace')
+          added = '\n'.join(line[1:] for line in text.splitlines() if line.startswith('+') and not line.startswith('+++'))
+          patterns = {
+              'private_key': r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
+              'github_token': r'gh[pousr]_[A-Za-z0-9]{30,}',
+              'openai_key': r'sk-(?:proj-)?[A-Za-z0-9_-]{20,}',
+              'stripe_live': r'(?:sk|rk)_live_[A-Za-z0-9]{16,}',
+              'aws_access': r'AKIA[0-9A-Z]{16}',
+              'jwt': r'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}',
+          }
+          hits = [name for name, pattern in patterns.items() if re.search(pattern, added)]
+          if hits:
+              raise SystemExit('Credential-like additions detected: ' + ', '.join(hits))
+          print('Added-line credential scan: PASS')
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Verify production OpenCode RLM wiring
+        run: npm run verify:pr31-opencode-rlm
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Full Vitest suite
+        run: npm --prefix app run test
+
+      - name: Release manifest test
+        run: npm run test:release-manifest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Rust cargo check
+        working-directory: app/src-tauri
+        run: cargo check --release
+
+      - name: Create coherent integration commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git restore --worktree package-lock.json app/package-lock.json 2>/dev/null || true
+          git reset
+          git config user.name "VibeSpace PR31 Integration"
+          git config user.email "actions@users.noreply.github.com"
+
+          git add \
+            app/src-tauri/src/cli_bridge.rs \
+            app/src/lib/ai/adapters \
+            app/src/lib/ai/catalog \
+            app/src/lib/ai/modelCatalogCanonical.ts \
+            app/src/lib/ai/router.ts \
+            app/src/lib/ai/runtime.ts \
+            app/src/lib/ai/useAccessibleChatModels.ts \
+            app/src/lib/harness
+          git commit -m "fix(opencode): stabilize persistent chat transport"
+
+          git add \
+            app/src/features/chat/Composer.tsx \
+            app/src/features/chat/SlashCommandTypeahead.tsx \
+            app/src/features/chat/runtime \
+            app/src/features/context/rlm \
+            app/src/lib/permissions
+          git commit -m "fix(chat): wire exact controls and adaptive RLM"
+
+          git add \
+            package.json \
+            scripts/verify-pr31-opencode-rlm-integration.mjs \
+            docs/operations/PR31_OPENCODE_RLM_FIX_EVIDENCE_SUPPLIED.md \
+            docs/operations/PR31_OPENCODE_RLM_IMPLEMENTATION_HANDOFF_SUPPLIED.md \
+            docs/operations/PR31_OPENCODE_RLM_INTEGRATION_REPORT.md \
+            docs/operations/VIBESPACE_OPENCODE_RLM_SYSTEM_REBUILD_PLAN.md
+          git commit -m "test(opencode): record PR31 integration evidence"
+
+          git diff --exit-code
+          git diff --cached --exit-code
+          git log --oneline --decorate -6
+
+      - name: Push verified result branch without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "${RESULT_BRANCH}"
+          result_sha="$(git rev-parse "origin/${RESULT_BRANCH}")"
+          test "$result_sha" = "$BASE_SHA" || {
+            echo "Result branch moved unexpectedly from ${BASE_SHA} to ${result_sha}."
+            exit 33
+          }
+          git push origin "HEAD:refs/heads/${RESULT_BRANCH}"
