@@ -80,7 +80,7 @@ describe('Browser Chat engine state', () => {
 
     expect(resolveChatEngine(store.getState(), 'new-chat')).toBe('native');
     expect(resolveChatEngine(store.getState(), 'explicit-browser-chat')).toBe('browser');
-    expect(resolveChatEngine(store.getState(), null)).toBe('browser');
+    expect(resolveChatEngine(store.getState(), null)).toBe('native');
   });
 
   it('persists only local Browser Chat preferences', () => {

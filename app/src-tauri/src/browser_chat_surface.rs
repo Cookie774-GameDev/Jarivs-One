@@ -162,15 +162,22 @@ fn apply_bounds(provider: &Webview, bounds: &BrowserChatBounds) -> Result<(), St
         .map_err(|error| format!("browser_chat_size_failed:{error}"))
 }
 
+fn is_browser_chat_label(label: &str) -> bool {
+    label == "browser-chat-chatgpt"
+        || label == "browser-chat-claude"
+        || label == "browser-chat-gemini"
+        || label.starts_with("browser-chat-")
+}
+
 fn deactivate_surface(app: &AppHandle, label: &str) -> Result<(), String> {
     if let Some(webview) = app.get_webview(label) {
-        // On Windows/WebView2 a hidden child can briefly retain its last compositor surface.
-        // Move and shrink first so a delayed compositor frame cannot cover another VibeSpace route.
+        // On Windows/WebView2 a hidden child can retain its last compositor surface
+        // and stay painted over the default VibeSpace page. Park it off-screen, hide
+        // it, then close it so only an explicit Browser Chat open can recreate it.
         let _ = webview.set_position(LogicalPosition::new(-32_000.0, -32_000.0));
         let _ = webview.set_size(LogicalSize::new(1.0, 1.0));
-        webview
-            .hide()
-            .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
+        let _ = webview.hide();
+        let _ = webview.close();
     }
     Ok(())
 }
@@ -192,6 +199,16 @@ fn hide_surfaces_except(
         if Some(label) != selected {
             deactivate_surface(app, label)?;
         }
+    }
+
+    let leftover: Vec<String> = app
+        .webviews()
+        .into_iter()
+        .map(|(label, _)| label)
+        .filter(|label| is_browser_chat_label(label) && Some(label.as_str()) != selected)
+        .collect();
+    for label in leftover {
+        deactivate_surface(app, &label)?;
     }
     Ok(())
 }
@@ -385,6 +402,7 @@ pub async fn browser_chat_surface_hide_all(
             .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
         hide_surfaces_except(&app, &state, None)?;
         state.visible_label = None;
+        state.surfaces.clear();
         Ok::<(), String>(())
     })
     .await
@@ -433,6 +451,14 @@ pub async fn browser_chat_surface_hide(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn treats_legacy_and_profile_scoped_labels_as_browser_chat_surfaces() {
+        assert!(is_browser_chat_label("browser-chat-chatgpt"));
+        assert!(is_browser_chat_label("browser-chat-chatgpt-0123456789abcdef"));
+        assert!(!is_browser_chat_label("main"));
+        assert!(!is_browser_chat_label("workbench"));
+    }
 
     #[test]
     fn accepts_only_registry_owned_provider_ids() {

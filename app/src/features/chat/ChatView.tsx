@@ -72,7 +72,7 @@ export function ChatView() {
     };
   }, [activeChatId, engine, isVisualEmptyChat]);
 
-  if (engine === 'browser') {
+  if (engine === 'browser' && activeChatId) {
     return (
       <TooltipProvider delayDuration={400}>
         <BrowserChatHub chatId={activeChatId} />

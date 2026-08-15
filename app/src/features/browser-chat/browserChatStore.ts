@@ -80,7 +80,9 @@ export function resolveChatEngine(
   state: Pick<BrowserChatState, 'engine' | 'chatPreferences'>,
   chatId?: string | null,
 ): VibeSpaceChatEngine {
-  if (!validChatId(chatId)) return state.engine;
+  // The default VibeSpace chat page must stay native. A persisted global
+  // Browser Chat selection must not overlay ChatGPT on every route/chat.
+  if (!validChatId(chatId)) return 'native';
   return state.chatPreferences[chatId]?.engine ?? 'native';
 }
 

@@ -38,9 +38,13 @@ describe('BrowserProviderSurface', () => {
     vi.restoreAllMocks();
   });
 
-  beforeEach(() => {
-    useUIStore.setState({ route: 'chat', activeChatId: null });
-    browserChatStore.setState({ engine: 'browser', chatPreferences: {} });
+  beforeEach(async () => {
+    useUIStore.setState({ route: 'chat', activeChatId: 'chat-browser' });
+    await browserChatStore.persist.rehydrate();
+    browserChatStore.setState({
+      engine: 'native',
+      chatPreferences: { 'chat-browser': { engine: 'browser', providerId: 'chatgpt' } },
+    });
     useAuthStore.setState({
       localUserId: 'local-a',
       cloudSession: {

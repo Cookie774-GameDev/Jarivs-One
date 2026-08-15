@@ -15,7 +15,7 @@ describe('ChatView Browser Goal activation', () => {
   });
 
   it('preserves native chat and mounts the dedicated Browser Chat hub only for the browser engine', () => {
-    expect(source).toContain("engine === 'browser'");
+    expect(source).toContain("engine === 'browser' && activeChatId");
     expect(source).toContain('resolveChatEngine(state, activeChatId)');
     expect(source).toContain('<BrowserChatHub');
     expect(source).toContain('<ChatThread');

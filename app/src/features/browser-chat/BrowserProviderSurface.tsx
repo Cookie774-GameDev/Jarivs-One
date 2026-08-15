@@ -4,7 +4,7 @@ import { ExternalLink, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
-import { useBrowserChatStore } from './browserChatStore';
+import { resolveChatEngine, useBrowserChatStore } from './browserChatStore';
 import type { BrowserChatProviderDefinition } from './providerRegistry';
 import {
   browserChatSurface,
@@ -52,14 +52,12 @@ export function BrowserProviderSurface({
   const [error, setError] = React.useState<string | null>(null);
   const route = useUIStore((state) => state.route);
   const activeChatId = useUIStore((state) => state.activeChatId);
-  const engine = useBrowserChatStore(
-    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
-  );
+  const engine = useBrowserChatStore((state) => resolveChatEngine(state, activeChatId));
   const providerProfileKey = useAuthStore((state) => {
     const accountId = state.cloudSession?.user_id ?? state.localUserId ?? 'local-unassigned';
     return `vibespace-account:${accountId}`;
   });
-  const surfaceVisible = route === 'chat' && engine === 'browser';
+  const surfaceVisible = Boolean(activeChatId) && route === 'chat' && engine === 'browser';
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
 
   const requestHide = React.useCallback(
