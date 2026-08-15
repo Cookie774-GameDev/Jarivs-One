@@ -39,17 +39,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          payload_b64='${{ runner.temp }}/pr31_publish_v2.sh.gz.b64'
-          payload_gz='${{ runner.temp }}/pr31_publish_v2.sh.gz'
-          script='${{ runner.temp }}/pr31_publish_v2.sh'
-          cat .github/pr31-opencode-rlm/payload.00 \
-              .github/pr31-opencode-rlm/payload.01 \
-              .github/pr31-opencode-rlm/payload.02 \
-              .github/pr31-opencode-rlm/payload.03 > "$payload_b64"
-          echo 'e05fa0cf7a23816f68032f90e0c1dad6149bc38139d1bcf94a8810a94e194a5d  '"$payload_b64" | sha256sum -c -
+          payload_b64='${{ runner.temp }}/pr31_publish_v3.sh.gz.b64'
+          payload_gz='${{ runner.temp }}/pr31_publish_v3.sh.gz'
+          script='${{ runner.temp }}/pr31_publish_v3.sh'
+          cat .github/pr31-opencode-rlm/payload.v3.00 \
+              .github/pr31-opencode-rlm/payload.v3.01 \
+              .github/pr31-opencode-rlm/payload.v3.02 \
+              .github/pr31-opencode-rlm/payload.v3.03 > "$payload_b64"
+          echo 'd0a95d77a7f750405d12925cfaadc387445c410a15d201f62b6f0edfc75e09b9  '"$payload_b64" | sha256sum -c -
           base64 --decode "$payload_b64" > "$payload_gz"
           gzip --decompress --stdout "$payload_gz" > "$script"
-          echo '3ad048682a9b8f9e7afd116279143ed075f8cd3387104a259bb92f682ef9e594  '"$script" | sha256sum -c -
+          echo 'c22aab390c06e0b53086db71ad680f5c8eaa08dd166258e3c0d8bfc2d607c158  '"$script" | sha256sum -c -
           chmod +x "$script"
           bash "$script"
 
@@ -57,7 +57,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pr31-opencode-rlm-differential-publication-v2
+          name: pr31-opencode-rlm-differential-publication-v3
           path: ${{ runner.temp }}/pr31-final-evidence
           if-no-files-found: warn
           retention-days: 14
