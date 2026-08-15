@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, type Transition } from 'motion/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { resolveTheme, useUIStore } from '@/stores/ui';
 import { SakuraBackdrop } from '@/features/appearance/sakura';
+import { BrowserChatBindingHost } from '@/features/browser-chat/BrowserChatBindingHost';
 import { BrowserChatSurfaceGuard } from '@/features/browser-chat/BrowserChatSurfaceGuard';
 import { FocusModeExit, useFullscreenStore } from '@/features/fullscreen';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
@@ -121,6 +122,7 @@ export function AppShell({ children }: AppShellProps) {
           data-focus-mode={focusActive ? 'true' : undefined}
           data-focus-mode-route={focusActive ? route : undefined}
         >
+          {isTauri && route === 'chat' && <BrowserChatBindingHost />}
           {isTauri && <BrowserChatSurfaceGuard />}
           <NightlySecondBrainHost />
           {sakuraActive && <SakuraBackdrop route={route} />}
