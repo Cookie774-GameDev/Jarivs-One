@@ -8,6 +8,7 @@ on:
       - .github/workflows/pr31-opencode-rlm-repair.yml
       - .integration/pr31-opencode-rlm/repair_focused_regressions.py
       - .integration/pr31-opencode-rlm/repair_model_order.py
+      - .integration/pr31-opencode-rlm/repair_typecheck.py
 
 permissions:
   contents: write
@@ -23,7 +24,7 @@ env:
 jobs:
   repair-and-test:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 50
 
     steps:
       - name: Checkout isolated staged integration
@@ -40,6 +41,7 @@ jobs:
           sparse-checkout: |
             .integration/pr31-opencode-rlm/repair_focused_regressions.py
             .integration/pr31-opencode-rlm/repair_model_order.py
+            .integration/pr31-opencode-rlm/repair_typecheck.py
           sparse-checkout-cone-mode: false
 
       - name: Apply focused production repair
@@ -48,6 +50,7 @@ jobs:
           set -euo pipefail
           python .repair-assets/.integration/pr31-opencode-rlm/repair_focused_regressions.py
           python .repair-assets/.integration/pr31-opencode-rlm/repair_model_order.py
+          python .repair-assets/.integration/pr31-opencode-rlm/repair_typecheck.py
           rm -rf .repair-assets
           git diff --check
           git diff --stat
@@ -69,6 +72,18 @@ jobs:
           src/lib/ai/useAccessibleChatModels.test.ts
           src/lib/ai/useAccessibleChatModels.smoke.test.ts
           src/lib/harness/__tests__/OpenCodeSessionPool.test.ts
+
+      - name: Run typecheck-repair regressions
+        working-directory: app
+        run: >-
+          npx --no-install vitest run
+          src/features/benchmarks/benchmarkApi.test.ts
+          src/features/news/newsApi.test.ts
+          src/features/context/rlm/contextRlmProduction.test.ts
+          src/features/context/rlm/rlmOpenCodeTool.test.ts
+          src/lib/ai/catalog/canonicalModelCatalog.test.ts
+          src/lib/harness/__tests__/OpenCodeSdkSessionClient.test.ts
+          src/lib/harness/__tests__/OpenCodeTurnCoordinator.test.ts
 
       - name: Run complete focused integration set
         working-directory: app
@@ -128,9 +143,18 @@ jobs:
           git config user.name "VibeSpace Integration Agent"
           git config user.email "actions@users.noreply.github.com"
           git add \
+            app/src/features/benchmarks/benchmarkApi.test.ts \
+            app/src/features/news/newsApi.test.ts \
+            app/src/features/context/rlm/contextRlmProduction.test.ts \
+            app/src/features/context/rlm/contextRlmProduction.ts \
+            app/src/features/context/rlm/rlmOpenCodeTool.ts \
+            app/src/lib/ai/catalog/canonicalModelCatalog.ts \
+            app/src/lib/ai/runtime.ts \
             app/src/lib/ai/useAccessibleChatModels.ts \
             app/src/lib/ai/useAccessibleChatModels.test.ts \
-            app/src/lib/harness/OpenCodeSessionPool.ts
-          git commit -m "fix(opencode): preserve model routes and session continuity"
+            app/src/lib/harness/OpenCodeSessionPool.ts \
+            app/src/lib/harness/__tests__/OpenCodeSdkSessionClient.test.ts \
+            app/src/lib/harness/__tests__/OpenCodeTurnCoordinator.test.ts
+          git commit -m "fix(opencode): preserve routes sessions and typed RLM wiring"
           test -z "$(git status --porcelain)"
           git push origin "HEAD:refs/heads/${STAGING_BRANCH}"
