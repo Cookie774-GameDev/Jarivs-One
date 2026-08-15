@@ -87,17 +87,30 @@ export interface AuthProbeResult {
 export interface ProviderDiscoveredModel {
   id: string;
   label: string;
+  /** Exact live upstream variant ids, when exposed by this connection. */
+  variants?: readonly string[];
 }
 
 export interface ProviderRequest {
   requestId: string;
   connection: ProviderConnection;
+  /** Stable VibeSpace identity/scope binding used by persistent transports. */
+  chatId?: string;
+  accountId?: string;
+  workspaceId?: string;
+  projectId?: string;
+  worktreeId?: string;
   prompt: string;
   modelId?: string;
   reasoningEffort?: string;
   systemPrompt?: string;
   workingDirectory?: string;
   sessionId?: string;
+  /** Exact per-turn VibeSpace controls; adapters must reject unsupported values. */
+  runtimeSettings?: import('@/features/chat/runtime/chatRuntimeCommandController').ChatRuntimeSettings;
+  interactionMode?: import('@/lib/permissions/OpenCodePermissionProfile').InteractionMode;
+  accessLevel?: import('@/lib/permissions/OpenCodePermissionProfile').AccessLevel;
+  approveAllForRun?: boolean;
   signal?: AbortSignal;
   onResponseObservation?: (
     observation:

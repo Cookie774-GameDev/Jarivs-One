@@ -56,11 +56,18 @@ import { normalizeAssistantPersonaId } from '@/lib/assistantPersona';
 function normalizeLocalSttModelId(raw: string | null | undefined): FasterWhisperModelId {
   return normalizeLocalSttCatalogId(raw) as FasterWhisperModelId;
 }
+
+// The secure keychain remains authoritative, but hydration is deliberately
+// non-destructive. The snapshot resolves before App's outer five-second boot
+// guard and supersedes stale reads whenever the user mutates a provider key.
+const credentialHydrationSnapshot = new CredentialHydrationSnapshot(4_500);
+
 import {
   normalizePromptForgeModelSelection,
   type PromptForgeModelSelection,
 } from '@/features/prompt-forge/contracts';
 import { DEFAULT_PROMPT_FORGE_MODEL_SELECTION } from '@/features/prompt-forge/modelSelection';
+import { CredentialHydrationSnapshot } from '@/lib/harness/CredentialHydrationSnapshot';
 
 interface AuthState {
   /** Local-only profile (no cloud account) */
@@ -304,6 +311,8 @@ export const useAuthStore = create<AuthState>()(
         set((s) => {
           const trimmed = key.trim();
           if (isSecretApiKeyProvider(provider)) {
+            if (trimmed) credentialHydrationSnapshot.mergeVerified({ [provider]: trimmed });
+            else credentialHydrationSnapshot.removeProviders([provider]);
             void secureSetApiKey(provider, trimmed).catch((err) => {
               console.warn(`[credentials] Could not save ${provider} API key`, err);
             });
@@ -313,6 +322,7 @@ export const useAuthStore = create<AuthState>()(
       clearApiKey: (provider) =>
         set((s) => {
           if (isSecretApiKeyProvider(provider)) {
+            credentialHydrationSnapshot.removeProviders([provider]);
             void secureDeleteApiKey(provider).catch((err) => {
               console.warn(`[credentials] Could not delete ${provider} API key`, err);
             });
@@ -321,8 +331,20 @@ export const useAuthStore = create<AuthState>()(
           return { apiKeys: rest };
         }),
       hydrateApiKeysFromVault: async () => {
-        const secureKeys = await loadSecureApiKeys();
-        set((s) => ({ apiKeys: { ...s.apiKeys, ...secureKeys } }));
+        const current = useAuthStore.getState().apiKeys;
+        credentialHydrationSnapshot.mergeVerified(
+          Object.fromEntries(
+            SECRET_API_KEY_PROVIDERS.flatMap((provider) => {
+              const value = current[provider]?.trim();
+              return value ? [[provider, value] as const] : [];
+            }),
+          ),
+        );
+        const hydrated = await credentialHydrationSnapshot.hydrate(
+          () => loadSecureApiKeys(),
+          { mode: 'merge' },
+        );
+        set((s) => ({ apiKeys: { ...s.apiKeys, ...hydrated.values } }));
       },
       setDefaultProvider: (p) => set({ defaultProvider: p }),
       setSelectedModel: (provider, model) =>

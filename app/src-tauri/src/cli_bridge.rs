@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
 const MIN_TIMEOUT_MS: u64 = 100;
-const MAX_TIMEOUT_MS: u64 = 300_000;
+const MAX_TIMEOUT_MS: u64 = 86_400_000; // App-lifetime persistent OpenCode server (24h); still cancellable.
 const MIN_OUTPUT_LIMIT_BYTES: usize = 1_024;
 const MAX_OUTPUT_LIMIT_BYTES: usize = 1_048_576;
 const PROVIDER_EXECUTABLE_NAMES: [&str; 11] = [
@@ -1915,9 +1915,10 @@ mod tests {
     #[test]
     fn cli_bridge_validates_timeout_output_and_request_id_bounds() {
         assert!(validate_runtime_limits(100, 1_024).is_ok());
-        assert!(validate_runtime_limits(300_000, 1_048_576).is_ok());
+        assert!(validate_runtime_limits(86_400_000, 1_048_576).is_ok());
+        assert!(validate_runtime_limits(86_400_001, 1_048_576).is_err());
         assert!(validate_runtime_limits(99, 1_024).is_err());
-        assert!(validate_runtime_limits(300_001, 1_024).is_err());
+        assert!(validate_runtime_limits(300_001, 1_024).is_ok());
         assert!(validate_runtime_limits(100, 1_023).is_err());
         assert!(validate_runtime_limits(100, 1_048_577).is_err());
 

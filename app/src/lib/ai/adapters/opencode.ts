@@ -203,4 +203,6 @@ export const OPENCODE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   normalizeRecord: normalizeOpenCodeRecord,
 });
 
-export const openCodeCliAdapter = createCliProviderAdapter(OPENCODE_CLI_DEFINITION);
+export const openCodeDiagnosticCliAdapter = createCliProviderAdapter(OPENCODE_CLI_DEFINITION);
+/** @deprecated Production chat uses the persistent OpenCode server adapter. */
+export const openCodeCliAdapter = openCodeDiagnosticCliAdapter;

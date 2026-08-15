@@ -21,6 +21,11 @@ import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { useUIStore } from '@/stores/ui';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  DEFAULT_CHAT_RUNTIME_SETTINGS,
+  type ChatRuntimeSettings,
+} from '@/features/chat/runtime/chatRuntimeCommandController';
+import type { AccessLevel } from '@/lib/permissions/OpenCodePermissionProfile';
 import { jarvisProviderAttemptEvidenceRevalidator, runAgent } from './router';
 import {
   runBoundedLocalFinalBossRevision,
@@ -134,10 +139,7 @@ import {
   localKnowledgeChunkSourceMetadata,
   retrieveApprovedLocalKnowledge,
 } from '@/features/context/retrieval';
-import {
-  formatRepositoryRetrievalItem,
-  retrieveLiveRepositoryContext,
-} from '@/features/context/repositoryRetrievalRuntime';
+import { prepareProductionRlmContext } from '@/features/context/rlm/contextRlmProduction';
 import { modelSupportsVision, type ChatImageAttachment } from './vision';
 import {
   ALL_ABOUT_ME_FILE_LOCATION,
@@ -1286,6 +1288,12 @@ export interface SendDetail {
   modelSelectionOverride?: ChatModelSelection;
   /** Captured per-chat reasoning controls for this exact send. */
   reasoningPreference?: ReasoningPreference;
+  /** Exact persistent OpenCode/RLM controls captured at dispatch. */
+  runtimeSettings?: ChatRuntimeSettings;
+  /** Independent tool access ceiling for this turn. */
+  accessLevel?: AccessLevel;
+  /** One scoped run only; never a durable blanket permission grant. */
+  approveAllForRun?: boolean;
   /** Captured Token Optimize mode. Off preserves the legacy request path exactly. */
   tokenOptimizationMode?: TokenOptimizationMode;
   /** User-configured output ceiling, applied only when Token Optimize is enabled. */
@@ -3092,6 +3100,10 @@ export function startRuntimeListener(
     let projectContextTree = '';
     let repositoryContext: JarvisRuntimeContextBlock[] = [];
     let localKnowledgeContext: JarvisRuntimeContextBlock[] = [];
+    const runtimeSettings: ChatRuntimeSettings = {
+      ...DEFAULT_CHAT_RUNTIME_SETTINGS,
+      ...(detail.runtimeSettings ?? {}),
+    };
     let connectedFilesContext = '';
     let mentionedAgentContext = '';
     let explicitContext = '';
@@ -3129,50 +3141,59 @@ export function startRuntimeListener(
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
     }
-    if (
-      tokenOptimizationMode !== 'off' &&
-      typeof projectId === 'string' &&
-      projectId.trim().length > 0
-    ) {
+    if (typeof projectId === 'string' && projectId.trim().length > 0) {
       try {
         const identity = resolveAccountIdentity(authState);
         if (identity) {
-          const repositoryResult = await retrieveLiveRepositoryContext({
+          const rlm = await prepareProductionRlmContext({
             accountId: identity.accountId,
             projectId,
-            taskText: text,
-            tokenBudget:
-              tokenOptimizationMode === 'saver'
-                ? 3_000
-                : tokenOptimizationMode === 'normal'
-                  ? 6_000
-                  : 12_000,
+            question: text,
+            settings: runtimeSettings,
             explicitEntityIds: (detail.contextNodes ?? []).map(({ nodeId }) => nodeId),
+            signal: controller.signal,
           });
-          const observedAt = Date.now();
-          repositoryContext = await Promise.all(
-            repositoryResult.items.map(async (item, index) => ({
-              key: 'repository_context' as const,
-              text: formatRepositoryRetrievalItem(item),
-              source: {
-                id: `jrepo_${(
-                  await hashJarvisText(`${item.path}\u0000${item.evidence.contentHash}`)
-                ).slice(0, 16)}`,
-                label: item.path,
-                uri: item.path,
-                observedAt,
-                contentHash: item.evidence.contentHash.replace(/^sha256:/u, ''),
+          controller.signal.throwIfAborted();
+          if (rlm.promptBlock) {
+            const observedAt = Date.now();
+            const digest = await hashJarvisText(rlm.promptBlock);
+            repositoryContext = [
+              {
+                key: 'repository_context',
+                text: rlm.promptBlock,
+                source: {
+                  id: `jrepo_${digest.slice(0, 16)}`,
+                  label: `VibeSpace Context/RLM · ${rlm.route}`,
+                  uri: 'context/rlm',
+                  observedAt,
+                  contentHash: digest,
+                },
+                score: 1,
               },
-              score: Math.max(0.1, 1 - index / Math.max(1, repositoryResult.items.length)),
-            })),
-          );
+            ];
+          }
+          devConsole.log({
+            channel: 'ai',
+            level: 'info',
+            message: `VibeSpace Context route → ${rlm.route}`,
+            detail: {
+              chatId,
+              projectId,
+              route: rlm.route,
+              evidenceCount: rlm.evidenceCount,
+              childCalls: rlm.childCalls,
+              maxDepth: rlm.maxDepth,
+              truncated: rlm.truncated,
+            },
+          });
         }
       } catch (err) {
+        if (isAbortError(err)) throw err;
         repositoryContext = [];
         devConsole.log({
           channel: 'ai',
           level: 'warn',
-          message: 'Bounded repository Context retrieval failed safely',
+          message: 'Adaptive VibeSpace Context/RLM retrieval failed safely',
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
@@ -4181,6 +4202,14 @@ export function startRuntimeListener(
           files: (detail.filePaths?.length ?? 0) > 0,
           tools: (detail.pluginIds?.length ?? 0) > 0,
         },
+        chatId: String(chatId),
+        accountId: resolveAccountIdentity(authState)?.accountId,
+        workspaceId: chatRecord?.workspace_id ? String(chatRecord.workspace_id) : authState.workspaceId,
+        projectId: projectId ? String(projectId) : undefined,
+        runtimeSettings,
+        interactionMode,
+        accessLevel: detail.accessLevel,
+        approveAllForRun: detail.approveAllForRun === true,
         workingDirectory: projectId ? (getStoredProjectRoot(projectId) ?? undefined) : undefined,
         signal: controller.signal,
         onChunk: (chunk: LLMStreamChunk) => {

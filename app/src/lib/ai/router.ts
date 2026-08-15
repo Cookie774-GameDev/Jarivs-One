@@ -53,7 +53,9 @@ import { claudeCliAdapter } from './adapters/claude';
 import { geminiCliAdapter } from './adapters/gemini';
 import { copilotCliAdapter } from './adapters/copilot';
 import { qwenCliAdapter } from './adapters/qwen';
-import { openCodeCliAdapter } from './adapters/opencode';
+import { openCodePersistentAdapter } from './adapters/opencodePersistent';
+import type { ChatRuntimeSettings } from '@/features/chat/runtime/chatRuntimeCommandController';
+import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
 import { kernelSmokeCliAdapter } from './adapters/cliBridge';
 import { llmContentToText } from './types';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
@@ -130,7 +132,7 @@ const externalAdapters: Readonly<Record<string, ProviderAdapter>> = Object.freez
   [geminiCliAdapter.id]: geminiCliAdapter,
   [copilotCliAdapter.id]: copilotCliAdapter,
   [qwenCliAdapter.id]: qwenCliAdapter,
-  [openCodeCliAdapter.id]: openCodeCliAdapter,
+  [openCodePersistentAdapter.id]: openCodePersistentAdapter,
   ...(KERNEL_SMOKE_ENABLED ? { [kernelSmokeCliAdapter.id]: kernelSmokeCliAdapter } : {}),
 });
 
@@ -241,6 +243,15 @@ type ExternalConnectionArgs = {
   prompt: string;
   modelId?: string;
   reasoningEffort?: string;
+  chatId?: string;
+  accountId?: string;
+  workspaceId?: string;
+  projectId?: string;
+  worktreeId?: string;
+  runtimeSettings?: ChatRuntimeSettings;
+  interactionMode?: InteractionMode;
+  accessLevel?: AccessLevel;
+  approveAllForRun?: boolean;
   systemPrompt?: string;
   workingDirectory?: string;
   signal?: AbortSignal;
@@ -267,7 +278,7 @@ async function runExternalConnectionAuthorized(
     throw new Error(`Provider adapter mismatch for connection: ${connection.id}`);
   }
   const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
-  if (exactModels && args.modelId && !exactModels.some((model) => model.id === args.modelId)) {
+  if (connection.adapterId !== 'opencode-cli' && exactModels && args.modelId && !exactModels.some((model) => model.id === args.modelId)) {
     throw new Error(`${args.modelId} is unavailable for ${connection.displayName}`);
   }
   assertConnectionCapabilities(connection, args.requirements);
@@ -302,6 +313,15 @@ async function runExternalConnectionAuthorized(
     prompt: args.prompt,
     modelId: args.modelId,
     reasoningEffort: args.reasoningEffort,
+    chatId: args.chatId,
+    accountId: args.accountId,
+    workspaceId: args.workspaceId,
+    projectId: args.projectId,
+    worktreeId: args.worktreeId,
+    runtimeSettings: args.runtimeSettings,
+    interactionMode: args.interactionMode,
+    accessLevel: args.accessLevel,
+    approveAllForRun: args.approveAllForRun,
     systemPrompt: args.systemPrompt,
     workingDirectory: args.workingDirectory,
     signal: args.signal,
@@ -466,6 +486,16 @@ export interface RunAgentRequest {
   workingDirectory?: string;
   compiledPrompt?: Readonly<CompiledJarvisPrompt>;
   requestId?: string;
+  /** Persistent OpenCode scope and exact VibeSpace turn controls. */
+  chatId?: string;
+  accountId?: string;
+  workspaceId?: string;
+  projectId?: string;
+  worktreeId?: string;
+  runtimeSettings?: ChatRuntimeSettings;
+  interactionMode?: InteractionMode;
+  accessLevel?: AccessLevel;
+  approveAllForRun?: boolean;
   protectedAttempt?: Readonly<{
     accountId: string;
     runId: string;
@@ -578,6 +608,7 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
     }
     const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
     if (
+      connection.adapterId !== 'opencode-cli' &&
       exactModels &&
       !exactModels.some((modelOption) => modelOption.id === req.agent.model.model)
     ) {
@@ -618,6 +649,15 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
               typeof req.provider_options?.reasoning_effort === 'string'
                 ? req.provider_options.reasoning_effort
                 : undefined,
+            chatId: req.chatId,
+            accountId: req.accountId,
+            workspaceId: req.workspaceId,
+            projectId: req.projectId,
+            worktreeId: req.worktreeId,
+            runtimeSettings: req.runtimeSettings,
+            interactionMode: req.interactionMode,
+            accessLevel: req.accessLevel,
+            approveAllForRun: req.approveAllForRun,
             systemPrompt: protectedDispatch ? undefined : req.agent.system_prompt,
             workingDirectory: req.workingDirectory,
             signal: req.signal,

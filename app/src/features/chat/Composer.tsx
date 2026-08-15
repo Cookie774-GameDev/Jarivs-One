@@ -280,6 +280,16 @@ import {
   writeChatReasoningEffort,
   writeChatReasoningMode,
 } from './reasoningSlashStore';
+import {
+  applyChatRuntimeCommand,
+  parseChatRuntimeCommand,
+} from './runtime/chatRuntimeCommandController';
+import {
+  clearApproveAllForRun,
+  readChatRuntimePolicyState,
+  writeChatRuntimePolicyState,
+  type ChatRuntimePolicyState,
+} from './runtime/chatRuntimeSettingsStore';
 import { requestTokenBoss } from './token-boss/events';
 import {
   resolveTokenBossProvider,
@@ -753,6 +763,9 @@ export function Composer({
   const [reasoningPreference, setReasoningPreference] = useState(() =>
     readChatReasoningPreference(String(chatId)),
   );
+  const [runtimePolicy, setRuntimePolicy] = useState<ChatRuntimePolicyState>(() =>
+    readChatRuntimePolicyState(String(chatId)),
+  );
   const [confirmedCommands, setConfirmedCommands] = useState<ConfirmedCommand[]>([]);
   const [confirmedAgentMentions, setConfirmedAgentMentions] = useState<ConfirmedAgentMention[]>([]);
   const [sending, setSending] = useState(false);
@@ -776,6 +789,10 @@ export function Composer({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashTypeaheadRef = useRef<SlashCommandTypeaheadRef>(null);
+
+  useEffect(() => {
+    setRuntimePolicy(readChatRuntimePolicyState(String(chatId)));
+  }, [chatId]);
 
   useEffect(() => {
     cleanupExpiredOversizedMessageAttachments();
@@ -1831,6 +1848,83 @@ export function Composer({
       requestAnimationFrame(() => textareaRef.current?.focus());
       return true;
     };
+    if (cmd === 'fast' || cmd === 'performance' || cmd === 'rlm') {
+      const parsed = parseChatRuntimeCommand(`/${cmd}${rest ? ` ${rest}` : ''}`);
+      if (!parsed) {
+        await addSystem(`Invalid /${cmd} value. Use /${cmd} status for the current setting.`);
+        return true;
+      }
+      const result = applyChatRuntimeCommand(runtimePolicy.settings, parsed);
+      const next = writeChatRuntimePolicyState(String(chatId), { ...runtimePolicy, settings: result.settings });
+      setRuntimePolicy(next);
+      if (result.kind === 'action') {
+        await addSystem(result.action === 'refresh-rlm' ? 'RLM refresh requested for the next turn.' : 'RLM trace is available in the Context diagnostics surface.');
+      } else if (result.kind === 'picker') {
+        await addSystem(`Use /${cmd} ${cmd === 'fast' ? 'on | off | status' : cmd === 'performance' ? 'responsive | balanced | quality | status' : 'on | off | status | refresh | trace'}.`);
+      } else {
+        await addSystem(result.message);
+      }
+      return true;
+    }
+    if (cmd === 'access') {
+      const value = rest.toLowerCase();
+      if (!value || value === 'status') {
+        await addSystem(`Access: ${runtimePolicy.access}`);
+        return true;
+      }
+      const access = value === 'read' || value === 'readonly' || value === 'read-only'
+        ? 'read-only'
+        : value === 'write' || value === 'write-access'
+          ? 'write'
+          : value === 'full' || value === 'full-access'
+            ? 'full'
+            : null;
+      if (!access) {
+        await addSystem('Use /access read-only | write | full | status.');
+        return true;
+      }
+      const next = writeChatRuntimePolicyState(String(chatId), { ...runtimePolicy, access });
+      setRuntimePolicy(next);
+      await addSystem(`Access set to ${access}. Interaction mode remains ${interactionMode}.`);
+      return true;
+    }
+    if (cmd === 'approveall' || cmd === 'approve-all') {
+      const value = rest.toLowerCase();
+      if (!value || value === 'status') {
+        await addSystem(`Approve All for next run: ${runtimePolicy.approveAllForRun ? 'on' : 'off'}`);
+        return true;
+      }
+      if (value !== 'on' && value !== 'off') {
+        await addSystem('Use /approveall on | off | status.');
+        return true;
+      }
+      const next = writeChatRuntimePolicyState(String(chatId), {
+        ...runtimePolicy,
+        approveAllForRun: value === 'on',
+      });
+      setRuntimePolicy(next);
+      await addSystem(value === 'on'
+        ? 'Approve All enabled for the next scoped run only; hard denies remain enforced.'
+        : 'Approve All disabled.');
+      return true;
+    }
+    if (cmd === 'effort' && rest) {
+      const parsed = parseChatRuntimeCommand(`/effort ${rest}`);
+      if (parsed) {
+        const result = applyChatRuntimeCommand(runtimePolicy.settings, parsed);
+        const next = writeChatRuntimePolicyState(String(chatId), { ...runtimePolicy, settings: result.settings });
+        setRuntimePolicy(next);
+        if (result.kind === 'updated' || result.kind === 'status') await addSystem(result.message);
+        if (result.kind === 'updated') {
+          const effort = parseReasoningEffortArgument(rest);
+          if (effort !== undefined) {
+            writeChatReasoningEffort(String(chatId), effort);
+            setReasoningPreference(readChatReasoningPreference(String(chatId)));
+          }
+        }
+        return true;
+      }
+    }
     if (cmd === 'effort') {
       if (rest) {
         const effort = parseReasoningEffortArgument(rest);
@@ -1862,7 +1956,7 @@ export function Composer({
       openAttachPicker('chat');
       return true;
     }
-    if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms' || cmd === 'access') {
+    if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms') {
       const parsed = rest ? parsePermissionModeArg(rest) : null;
       if (parsed) {
         applyInteractionMode(parsed);
@@ -2687,6 +2781,9 @@ export function Composer({
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
             modelSelectionOverride: useAuthStore.getState().chatModelSelection,
             reasoningPreference: readChatReasoningPreference(String(chatId)),
+            runtimeSettings: runtimePolicy.settings,
+            accessLevel: runtimePolicy.access,
+            approveAllForRun: runtimePolicy.approveAllForRun,
             tokenOptimizationMode,
             tokenOptimizationOutputLimit: tokenOptimizationPreferences.defaultMaxOutputTokens,
             showTokenOptimizationReport:
@@ -2698,6 +2795,10 @@ export function Composer({
           },
         }),
       );
+      if (runtimePolicy.approveAllForRun) {
+        const cleared = clearApproveAllForRun(String(chatId));
+        setRuntimePolicy(cleared);
+      }
       voiceReplyRequestedRef.current = false;
       if (!overrideText || options.promptForgeApproved) setText('');
       setAttachedFiles([]);
