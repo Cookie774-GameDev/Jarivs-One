@@ -19,7 +19,7 @@ import { nativeFetch } from '@/lib/nativeFetch';
 export interface OpenAICompatibleConfig {
   id: ProviderId;
   name: string;
-  baseUrl: string;
+  baseUrl: string | (() => string);
   apiKeyStoreKey: ProviderId;
   defaultModel: string;
   extraHeaders?: Record<string, string>;
@@ -46,8 +46,6 @@ function toOpenAiCompatibleContent(content: string | LLMContentPart[]) {
 }
 
 export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMProvider {
-  const chatUrl = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-
   return {
     id: cfg.id,
     name: cfg.name,
@@ -94,6 +92,8 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
       };
 
       const fetchImpl = cfg.transport === 'native' ? nativeFetch : globalThis.fetch;
+      const baseUrl = typeof cfg.baseUrl === 'function' ? cfg.baseUrl() : cfg.baseUrl;
+      const chatUrl = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
       const res = await fetchImpl(chatUrl, {
         method: 'POST',
         headers,

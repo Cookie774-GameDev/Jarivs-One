@@ -212,6 +212,28 @@ function extractRawMultiFileEntries(
   return { kind: 'valid', files };
 }
 
+type ExactMultiFileReadRequest =
+  | { kind: 'not_multi' }
+  | { kind: 'invalid' }
+  | { kind: 'valid'; paths: readonly string[] };
+
+function extractExactMultiFileReadRequest(text: string): ExactMultiFileReadRequest {
+  if (/\bcreate\s+exactly\b/i.test(text)) return { kind: 'not_multi' };
+  if (!/\bfiles\.read\b/i.test(text)) return { kind: 'not_multi' };
+  if (!/\b(?:read|inspect|review|audit|open|show|load|check)\b/i.test(text)) {
+    return { kind: 'not_multi' };
+  }
+  const paths = [
+    ...text.matchAll(
+      /\b([A-Za-z]:\\(?:[^\\\s\r\n:*?"<>|]+\\)*[^\\\s\r\n:*?"<>|]+\.[A-Za-z0-9]{1,12})\b/g,
+    ),
+  ].map((match) => match[1] ?? '');
+  const unique = [...new Set(paths.filter((path) => path.length > 0 && path.length <= 32_768))];
+  if (unique.length < 2) return { kind: 'not_multi' };
+  if (unique.length > 10) return { kind: 'invalid' };
+  return { kind: 'valid', paths: unique };
+}
+
 function extractExactMultiFileCreateRequest(
   text: string,
   defaultWriteDir: string | null,
@@ -307,6 +329,14 @@ function extractBulkOpenTerminalRequest(text: string): { count: number; command?
     );
   const command = commandMatch?.[1]?.replace('open-code', 'opencode');
   return command ? { count, command } : { count };
+}
+
+function extractSimpleOpenTerminalRequest(text: string): boolean {
+  if (extractSingleTerminalRunRequest(text)) return false;
+  if (extractBulkOpenTerminalRequest(normalized(text))) return false;
+  return /\b(?:open|create|spawn|launch|start)\s+(?:me\s+)?(?:a|one|1)?\s*(?:new\s+)?(?:real\s+)?terminals?\b/.test(
+    text,
+  );
 }
 
 function extractSingleTerminalRunRequest(text: string): { command: string } | null {
@@ -549,6 +579,36 @@ function extractAgentRunRequest(text: string): { task: string; agentId: string }
  * Keep this intentionally narrow: it should only cover obvious app-control
  * requests where a real registered action already exists.
  */
+/**
+ * Tiny local models often emit a valid `command.run` (or other non-file)
+ * card for an explicit files.create request. Prefer the deterministic
+ * files.create fallback so Test03-style write turns stay on the approved
+ * filesystem path.
+ */
+export function shouldReplaceModelActionsWithFileCreateFallback(
+  modelActionIds: readonly string[],
+  fallbackProposals: readonly { action_id: string }[],
+): boolean {
+  if (fallbackProposals.length === 0) return false;
+  if (!fallbackProposals.every((proposal) => proposal.action_id === 'files.create')) {
+    return false;
+  }
+  const modelFileCreates = modelActionIds.filter((id) => id === 'files.create').length;
+  return fallbackProposals.length > modelFileCreates;
+}
+
+export function shouldReplaceModelActionsWithFileReadFallback(
+  modelActionIds: readonly string[],
+  fallbackProposals: readonly { action_id: string }[],
+): boolean {
+  if (fallbackProposals.length === 0) return false;
+  if (!fallbackProposals.every((proposal) => proposal.action_id === 'files.read')) {
+    return false;
+  }
+  const modelFileReads = modelActionIds.filter((id) => id === 'files.read').length;
+  return fallbackProposals.length > modelFileReads;
+}
+
 export function inferFallbackActionProposals(
   userText: string,
   assistantText: string,
@@ -574,6 +634,13 @@ export function inferFallbackActionProposals(
   if (exactMultiFileCreate.kind === 'valid') {
     return exactMultiFileCreate.files.map((file) =>
       proposal('files.create', file, `Write ${file.path} after user approval.`),
+    );
+  }
+  const exactMultiFileRead = extractExactMultiFileReadRequest(userText);
+  if (exactMultiFileRead.kind === 'invalid') return proposals;
+  if (exactMultiFileRead.kind === 'valid') {
+    return exactMultiFileRead.paths.map((path) =>
+      proposal('files.read', { path }, `Read ${path} after user approval.`),
     );
   }
 
@@ -645,6 +712,17 @@ export function inferFallbackActionProposals(
         'terminal.run',
         singleTerminalRun,
         `Open one terminal pane and run ${singleTerminalRun.command} after user approval.`,
+      ),
+    );
+    return proposals;
+  }
+
+  if (extractSimpleOpenTerminalRequest(userText)) {
+    proposals.push(
+      proposal(
+        'terminal.bulkOpen',
+        { count: 1 },
+        'Open one new terminal pane after user approval.',
       ),
     );
     return proposals;

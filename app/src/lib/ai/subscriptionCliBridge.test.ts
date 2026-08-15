@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { authChecked, authStates, bind, capture, release, send } = vi.hoisted(() => ({
-  authChecked: vi.fn(),
-  authStates: vi.fn(),
-  bind: vi.fn(),
-  capture: vi.fn(),
-  release: vi.fn(),
-  send: vi.fn(),
+const { authChecked, authStates, bind, capture, ensureDetection, release, send } = vi.hoisted(
+  () => ({
+    authChecked: vi.fn(),
+    authStates: vi.fn(),
+    bind: vi.fn(),
+    capture: vi.fn(),
+    ensureDetection: vi.fn(),
+    release: vi.fn(),
+    send: vi.fn(),
+  }),
+);
+
+vi.mock('./adapters/autoDetectConnections', () => ({
+  ensureExternalConnectionAutoDetection: ensureDetection,
 }));
 
 vi.mock('./connectionState', () => ({
@@ -36,6 +43,7 @@ describe('Codex subscription Context Map authority', () => {
     });
     bind.mockReset().mockReturnValue(true);
     capture.mockReset().mockReturnValue({ scope: {}, generation: 1 });
+    ensureDetection.mockReset().mockResolvedValue({});
     release.mockReset();
     send.mockReset().mockImplementation(() =>
       (async function* () {
@@ -43,6 +51,72 @@ describe('Codex subscription Context Map authority', () => {
         yield { type: 'done', finishReason: 'completed' };
       })(),
     );
+  });
+
+  it('joins pending current-session detection before exact dispatch', async () => {
+    let checked = false;
+    let resolveDetection: (() => void) | undefined;
+    ensureDetection.mockImplementationOnce(
+      () =>
+        new Promise<Record<string, never>>((resolve) => {
+          resolveDetection = () => {
+            checked = true;
+            resolve({});
+          };
+        }),
+    );
+    authChecked.mockImplementation(() => checked);
+    authStates.mockImplementation(() =>
+      checked ? { 'openai-codex': { available: true, auth: 'authenticated' } } : {},
+    );
+
+    const response = runSubscriptionCliBridge({
+      connection: CODEX_CLI_CONNECTION,
+      requestId: 'request-detection-join',
+      prompt: 'hello',
+      modelId: 'gpt-5.6-luna',
+      reasoningEffort: 'xhigh',
+    });
+
+    await Promise.resolve();
+    expect(ensureDetection).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+
+    resolveDetection?.();
+    await expect(response).resolves.toMatchObject({ text: 'answer', model: 'gpt-5.6-luna' });
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0]![0]).toMatchObject({
+      connection: CODEX_CLI_CONNECTION,
+      modelId: 'gpt-5.6-luna',
+      reasoningEffort: 'xhigh',
+    });
+  });
+
+  it('preserves AbortError when cancelled during current-session detection', async () => {
+    const controller = new AbortController();
+    let resolveDetection: (() => void) | undefined;
+    ensureDetection.mockImplementationOnce(
+      () =>
+        new Promise<Record<string, never>>((resolve) => {
+          resolveDetection = () => resolve({});
+        }),
+    );
+    const response = runSubscriptionCliBridge({
+      connection: CODEX_CLI_CONNECTION,
+      requestId: 'request-detection-abort',
+      prompt: 'research',
+      signal: controller.signal,
+      tools: { vibespace_context: true },
+    });
+
+    await Promise.resolve();
+    controller.abort();
+    resolveDetection?.();
+    await expect(response).rejects.toMatchObject({ name: 'AbortError' });
+    expect(capture).not.toHaveBeenCalled();
+    expect(bind).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 
   it('requires fresh exact-current-session authentication immediately before send', async () => {
@@ -138,6 +212,7 @@ describe('Codex subscription Context Map authority', () => {
 
     expect(authChecked).not.toHaveBeenCalled();
     expect(authStates).not.toHaveBeenCalled();
+    expect(ensureDetection).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
     expect(bind).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();

@@ -49,6 +49,29 @@ function kindForCategory(category: string): NewsKind {
   return /model|release|launch/i.test(category) ? 'model_drop' : 'ai_news';
 }
 
+function plainText(value: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: '&',
+    apos: "'",
+    gt: '>',
+    lt: '<',
+    nbsp: ' ',
+    quot: '"',
+  };
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/giu, '$1')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/giu, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, ' ')
+    .replace(/<[^>]+>/gu, ' ')
+    .replace(/&([a-z]+);/giu, (entity, name: string) => namedEntities[name.toLowerCase()] ?? entity)
+    .replace(/&#(\d+);/gu, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/giu, (_, code: string) =>
+      String.fromCodePoint(Number.parseInt(code, 16)),
+    )
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 function parseFreshness(value: unknown): LiveNewsResponse['freshness'] {
   if (value === undefined) return undefined;
   const freshness = asRecord(value);
@@ -103,7 +126,7 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
     return {
       id: requiredId(item),
       title: requiredString(item, 'title'),
-      summary: requiredString(item, 'summary'),
+      summary: plainText(requiredString(item, 'summary')),
       url: requiredString(item, 'url'),
       publishedAt: requiredString(item, 'publishedAt').slice(0, 10),
       source,

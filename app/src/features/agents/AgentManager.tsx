@@ -1,11 +1,11 @@
 /**
  * AgentManager - the settings-section UI for viewing, editing, cloning, and
- * deleting agents.
+ * moving user-created agents into the recoverable Recycle Bin.
  *
  * Layout: a list of agents on the left, a detail editor on the right.
  * whenever the selection changes. "Save" persists the diff to IndexedDB and
  * updates the runtime store; "Clone" creates a durable non-builtin copy with a
- * fresh id; "Delete" removes a non-builtin agent entirely.
+ * fresh id; "Delete" archives a non-builtin agent for 90-day recovery.
  */
 import * as React from 'react';
 import {
@@ -82,6 +82,8 @@ import {
 } from '@/features/jarvis-creator/contracts';
 import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
 import { BuildYourOwnAIHub } from '@/features/model-foundry';
+import { RecycleBinConfirmDialog } from '@/features/recycle-bin/RecycleBinConfirmDialog';
+import { recycleBinService } from '@/features/recycle-bin/recycleBinService';
 import {
   foundryModelOptions,
   loadJobs as loadFoundryJobs,
@@ -297,7 +299,6 @@ export function AgentManager() {
   const agents = useAgentStore((s) => s.agents);
   const registerMany = useAgentStore((s) => s.registerMany);
   const registerAgent = useAgentStore((s) => s.registerAgent);
-  const unregisterAgent = useAgentStore((s) => s.unregisterAgent);
 
   const agentList = React.useMemo(() => {
     const arr = Object.values(agents);
@@ -311,6 +312,7 @@ export function AgentManager() {
 
   const [selectedId, setSelectedId] = React.useState<AgentId | null>(null);
   const [modelFoundryOpen, setModelFoundryOpen] = React.useState(false);
+  const [deleteCandidate, setDeleteCandidate] = React.useState<Agent | null>(null);
   const [activatedFoundryJob, setActivatedFoundryJob] = React.useState<FoundryJob | null>(null);
 
   // Auto-select the first agent when the list materialises or the current one
@@ -1007,21 +1009,6 @@ export function AgentManager() {
     });
   };
 
-  const handleDelete = async () => {
-    if (!selectedAgent || selectedAgent.builtin) return;
-    const name = selectedAgent.name;
-    try {
-      await agentRepo.delete(selectedAgent.id);
-      unregisterAgent(selectedAgent.id);
-      toast.info('Deleted', `Removed "${name}"`);
-    } catch (err) {
-      toast.error(
-        'Delete failed',
-        err instanceof Error ? err.message : 'Could not delete this agent.',
-      );
-    }
-  };
-
   const seedDefaults = () => {
     const defaults = getDefaultAgents();
     registerMany(defaults);
@@ -1172,7 +1159,11 @@ export function AgentManager() {
                     Create with Jarvis
                   </Button>
                   {!selectedAgent.builtin && (
-                    <Button variant="ghost" size="sm" onClick={handleDelete}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeleteCandidate(selectedAgent)}
+                    >
                       <Trash2 className="h-3.5 w-3.5" />
                       Delete
                     </Button>
@@ -1775,6 +1766,21 @@ export function AgentManager() {
         }}
       />
       <NoBsCinematic open={showNoBsConfirmation} onComplete={handleNoBsCinematicComplete} />
+      <RecycleBinConfirmDialog
+        open={deleteCandidate !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteCandidate(null);
+        }}
+        title={`Move ${deleteCandidate?.name ?? 'agent'} to Recycle Bin?`}
+        description="This removes the agent from active use. You can restore it from Settings → General for 90 days."
+        confirmLabel="Move to Recycle Bin"
+        onConfirm={async () => {
+          if (!deleteCandidate) return;
+          const name = deleteCandidate.name;
+          await recycleBinService.moveAgentToRecycleBin(deleteCandidate);
+          toast.info('Moved to Recycle Bin', `"${name}" can be restored for 90 days.`);
+        }}
+      />
     </>
   );
 }

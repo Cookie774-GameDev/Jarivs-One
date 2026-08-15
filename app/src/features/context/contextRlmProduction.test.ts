@@ -483,10 +483,10 @@ describe('production Context Map RLM repository', () => {
         ok: true as const,
         path,
         kind: 'file' as const,
-        size: content.length,
+        size: new TextEncoder().encode(content).length,
         createdMs: 200,
         modifiedMs: 100,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => []),
@@ -507,14 +507,14 @@ describe('production Context Map RLM repository', () => {
     const lexicalSearchGate = new Promise<void>((resolve) => {
       releaseLexicalSearch = resolve;
     });
-    const stat = vi.fn(async (path) => ({
+    const stat = vi.fn(async (path: string, _includeSha256?: boolean) => ({
       ok: true as const,
       path,
       kind: 'file' as const,
       size: content.length,
       createdMs: 30,
       modifiedMs: 20,
-      sha256: SHA,
+      sha256: await contentSha(content),
     }));
     const lexicalSearch = vi.fn(async () => {
       await lexicalSearchGate;
@@ -532,20 +532,23 @@ describe('production Context Map RLM repository', () => {
     const searches = Array.from({ length: 5 }, () => repository.search(scope, 'Observatory Lumen'));
 
     await vi.waitFor(() => expect(lexicalSearch).toHaveBeenCalledTimes(5));
-    expect(stat).toHaveBeenCalledTimes(1);
+    // Small-map sizing is checked before derivative search so the repository
+    // can decide whether a missing/partial index is safe to bypass.
+    expect(stat).toHaveBeenCalledTimes(5);
+    expect(stat.mock.calls.every(([, includeSha256]) => includeSha256 === false)).toBe(true);
     releaseLexicalSearch();
 
     const results = await Promise.all(searches);
     expect(results.every((hits) => hits[0]?.preview.includes('cobalt-fern'))).toBe(true);
     expect(read).toHaveBeenCalledTimes(1);
     // The shared source result is still validated after its read.
-    expect(stat).toHaveBeenCalledTimes(2);
+    expect(stat).toHaveBeenCalledTimes(11);
 
     await repository.search(scope, 'Observatory Lumen');
     expect(read).toHaveBeenCalledTimes(2);
     // A later sequential search performs a fresh authority build and source
     // revalidation rather than retaining source bytes.
-    expect(stat).toHaveBeenCalledTimes(4);
+    expect(stat).toHaveBeenCalledTimes(14);
   });
 
   it('cancels one source-validation waiter without cancelling its concurrent peer', async () => {
@@ -564,7 +567,7 @@ describe('production Context Map RLM repository', () => {
       kind: 'file' as const,
       size: content.length,
       modifiedMs: 20,
-      sha256: SHA,
+      sha256: await contentSha(content),
     }));
     const repository = createContextMapRlmRepository({
       loadMaps: vi.fn(async () => maps()),
@@ -584,7 +587,7 @@ describe('production Context Map RLM repository', () => {
     releaseRead();
     await expect(second).resolves.toHaveLength(1);
     expect(read).toHaveBeenCalledTimes(1);
-    expect(stat).toHaveBeenCalledTimes(2);
+    expect(stat).toHaveBeenCalledTimes(5);
   });
 
   it('bounds concurrent source validation and preserves stable authority ordering', async () => {
@@ -621,9 +624,9 @@ describe('production Context Map RLM repository', () => {
           ok: true as const,
           path,
           kind: 'file' as const,
-          size: 128,
+          size: new TextEncoder().encode('shared anchor').length,
           modifiedMs: 20,
-          sha256: SHA,
+          sha256: await contentSha('shared anchor'),
         };
       }),
       read,
@@ -1031,9 +1034,9 @@ describe('production Context Map RLM repository', () => {
           ok: true as const,
           path,
           kind: 'file' as const,
-          size: 128,
+          size: new TextEncoder().encode('safe source').length,
           modifiedMs: 20,
-          sha256: SHA,
+          sha256: await contentSha('safe source'),
         };
       }),
       read: vi.fn(async (path) => ({ ok: true as const, path, content: 'safe source' })),
@@ -1065,9 +1068,9 @@ describe('production Context Map RLM repository', () => {
         ok: true as const,
         path,
         kind: 'file' as const,
-        size: 128,
+        size: new TextEncoder().encode('Observatory Lumen uses cobalt-fern.').length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha('Observatory Lumen uses cobalt-fern.'),
       })),
       read,
       lexicalSearch: vi.fn(async () => []),
@@ -1138,7 +1141,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: content.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => [
@@ -1167,7 +1170,7 @@ describe('production Context Map RLM repository', () => {
       pointer: {
         byteStart: start,
         byteEnd: new TextEncoder().encode(content).length,
-        contentHash: 'a'.repeat(64),
+        contentHash: (await contentSha(content)).slice('sha256:'.length),
       },
     });
   });
@@ -1182,7 +1185,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: content.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => []),
@@ -1198,7 +1201,7 @@ describe('production Context Map RLM repository', () => {
       recordId: expect.stringMatching(/^rlm:[a-f0-9]{64}$/u),
       preview: expect.stringContaining('rare anchor across\nlines exact continuation'),
       pointer: {
-        contentHash: 'a'.repeat(64),
+        contentHash: (await contentSha(content)).slice('sha256:'.length),
       },
     });
   });
@@ -1216,7 +1219,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: new TextEncoder().encode(content).length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path, maxBytes) => {
         expect(maxBytes).toBe(1024 * 1024);
@@ -1258,9 +1261,10 @@ describe('production Context Map RLM repository', () => {
         ok: true as const,
         path,
         kind: 'file' as const,
-        size: content.length,
+        size: new TextEncoder().encode(path.endsWith('0025-pg4300.txt') ? distractor : content)
+          .length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(path.endsWith('0025-pg4300.txt') ? distractor : content),
       })),
       read: vi.fn(async (path) => ({
         ok: true as const,
@@ -1305,7 +1309,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: new TextEncoder().encode(content).length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => []),
@@ -1334,7 +1338,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: new TextEncoder().encode(content).length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => []),
@@ -1363,7 +1367,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: new TextEncoder().encode(content).length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => []),
@@ -1393,14 +1397,19 @@ describe('production Context Map RLM repository', () => {
     });
     const repository = createContextMapRlmRepository({
       loadMaps: vi.fn(async () => fixtureMaps),
-      stat: vi.fn(async (path) => ({
-        ok: true as const,
-        path,
-        kind: 'file' as const,
-        size: 128,
-        modifiedMs: 20,
-        sha256: SHA,
-      })),
+      stat: vi.fn(async (path) => {
+        const content = path.endsWith('book.txt')
+          ? 'Observatory Lumen is cobalt-fern, verification number 47291.'
+          : 'Many records discuss color phrases and verification numbers.';
+        return {
+          ok: true as const,
+          path,
+          kind: 'file' as const,
+          size: new TextEncoder().encode(content).length,
+          modifiedMs: 20,
+          sha256: await contentSha(content),
+        };
+      }),
       read: vi.fn(async (path) => ({
         ok: true as const,
         path,
@@ -1480,7 +1489,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: contents[path]!.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(contents[path]!),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content: contents[path]! })),
       lexicalSearch: vi.fn(async () => [
@@ -1739,7 +1748,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: content.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => []),
@@ -1783,7 +1792,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: content.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(content),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content })),
       lexicalSearch: vi.fn(async () => {
@@ -1822,7 +1831,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: contents[path]!.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(contents[path]!),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content: contents[path]! })),
       lexicalSearch: vi.fn(async () => [
@@ -1841,6 +1850,292 @@ describe('production Context Map RLM repository', () => {
 
     expect(hits[0]?.preview).toContain('[SOURCE FILE: observatory-lumen.txt]');
     expect(hits[0]?.preview).toContain('cobalt-fern');
+  });
+
+  it('validates only bounded lexical candidates for a 312-file map', async () => {
+    const content = 'Observatory Lumen uses candidate-first cobalt-fern 47291.';
+    const hash = await contentSha(content);
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 312 }, (_, index) => ({
+      id: `file-${String(index).padStart(3, '0')}`,
+      kind: 'file' as const,
+      title: `shard-${String(index).padStart(3, '0')}.txt`,
+      summary: '',
+      path: `C:\\repo\\shard-${String(index).padStart(3, '0')}.txt`,
+      sizeBytes: content.length,
+      modifiedAt: 20,
+    }));
+    const stat = vi.fn(async (path: string) => ({
+      ok: true as const,
+      path,
+      kind: 'file' as const,
+      size: new TextEncoder().encode(content).length,
+      modifiedMs: 20,
+      sha256: hash,
+    }));
+    const read = vi.fn(async (path: string) => ({ ok: true as const, path, content }));
+    const lexicalSearch = vi.fn(async (request: { limit: number }) => {
+      expect(request.limit).toBe(8);
+      return Array.from({ length: 8 }, (_, index) => ({
+        documentId: `file-${String(index).padStart(3, '0')}`,
+        excerpt: 'untrusted derivative excerpt',
+        score: 100 - index,
+      }));
+    });
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat,
+      read,
+      lexicalSearch,
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Observatory Lumen cobalt-fern',
+    );
+
+    expect(hits).toHaveLength(8);
+    expect(lexicalSearch).toHaveBeenCalledTimes(1);
+    expect(stat.mock.calls.length).toBeLessThanOrEqual(16);
+    expect(read).toHaveBeenCalledTimes(8);
+    expect(stat.mock.calls.some(([path]) => String(path).endsWith('shard-311.txt'))).toBe(false);
+    expect(hits.every((hit) => !hit.preview.includes('untrusted derivative excerpt'))).toBe(true);
+  });
+
+  it('returns no large-map hits when its derivative index is empty', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 312 }, (_, index) => ({
+      id: `file-${index}`,
+      kind: 'file' as const,
+      title: `shard-${index}.txt`,
+      summary: '',
+      path: `C:\\repo\\shard-${index}.txt`,
+      sizeBytes: 128,
+      modifiedAt: 20,
+    }));
+    const stat = vi.fn();
+    const read = vi.fn();
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat,
+      read,
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    await expect(
+      repository.search(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'Observatory Lumen cobalt-fern',
+      ),
+    ).resolves.toEqual([]);
+    expect(stat).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('does not search a large persisted map until its exact native index is ready', async () => {
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 312 }, (_, index) => ({
+      id: `file-${index}`,
+      kind: 'file' as const,
+      title: `shard-${index}.txt`,
+      summary: '',
+      path: `C:\\repo\\shard-${index}.txt`,
+      sizeBytes: 128,
+      modifiedAt: 20,
+    }));
+    const lexicalSearch = vi.fn(async () => [
+      { documentId: 'file-0', excerpt: 'must remain unavailable', score: 100 },
+    ]);
+    const indexStatus = vi.fn(async () => ({ documentCount: 311, needsRebuild: false }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(),
+      read: vi.fn(),
+      lexicalSearch,
+      indexStatus,
+    });
+
+    await expect(
+      repository.search(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'Observatory Lumen cobalt-fern',
+      ),
+    ).resolves.toEqual([]);
+    expect(indexStatus).toHaveBeenCalledWith('account-1', 'map-1');
+    expect(lexicalSearch).not.toHaveBeenCalled();
+  });
+
+  it('caps large-map lexical fanout at five maps and twenty physical candidates globally', async () => {
+    const content = 'global candidate cap Observatory Lumen cobalt-fern';
+    const hash = await contentSha(content);
+    const fixtureMaps = Array.from({ length: 6 }, (_, mapIndex) => ({
+      ...maps()[0]!,
+      id: `map-${mapIndex}`,
+      rootDir: `C:\\repo-${mapIndex}`,
+      updatedAt: 100 - mapIndex,
+      tree: {
+        nodes: Array.from({ length: 30 }, (__, nodeIndex) => ({
+          id: `file-${nodeIndex}`,
+          kind: 'file' as const,
+          title: `shard-${nodeIndex}.txt`,
+          summary: '',
+          path: `C:\\repo-${mapIndex}\\shard-${nodeIndex}.txt`,
+          sizeBytes: content.length,
+          modifiedAt: 20,
+        })),
+      },
+    }));
+    const lexicalSearch = vi.fn(async () =>
+      Array.from({ length: 8 }, (_, index) => ({
+        documentId: `file-${index}`,
+        excerpt: content,
+        score: 100 - index,
+      })),
+    );
+    const read = vi.fn(async (path: string) => ({ ok: true as const, path, content }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(content).length,
+        modifiedMs: 20,
+        sha256: hash,
+      })),
+      read,
+      lexicalSearch,
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Observatory Lumen cobalt-fern',
+    );
+
+    expect(lexicalSearch).toHaveBeenCalledTimes(5);
+    expect(read).toHaveBeenCalledTimes(20);
+    expect(hits).toHaveLength(20);
+    expect(read.mock.calls.some(([path]) => String(path).startsWith('C:\\repo-5\\'))).toBe(false);
+  });
+
+  it('does not emit an indexed candidate whose current physical bytes do not match the query', async () => {
+    const content = 'current physical bytes contain unrelated material only';
+    const hash = await contentSha(content);
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 129 }, (_, index) => ({
+      id: `file-${index}`,
+      kind: 'file' as const,
+      title: `shard-${index}.txt`,
+      summary: '',
+      path: `C:\\repo\\shard-${index}.txt`,
+      sizeBytes: content.length,
+      modifiedAt: 20,
+    }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(content).length,
+        modifiedMs: 20,
+        sha256: hash,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content })),
+      lexicalSearch: vi.fn(async () => [
+        {
+          documentId: 'file-0',
+          excerpt: 'Observatory Lumen cobalt-fern from a stale derivative index',
+          score: 1_000_000,
+        },
+      ]),
+    });
+
+    await expect(
+      repository.search(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'Observatory Lumen cobalt-fern',
+      ),
+    ).resolves.toEqual([]);
+  });
+
+  it('rejects a lexical candidate when returned bytes do not match both physical SHA observations', async () => {
+    const indexedContent = 'Observatory Lumen uses indexed cobalt-fern 47291.';
+    const returnedContent = 'Observatory Lumen uses changed cobalt-fern 47291.';
+    const indexedHash = await contentSha(indexedContent);
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 129 }, (_, index) => ({
+      id: `file-${index}`,
+      kind: 'file' as const,
+      title: `shard-${index}.txt`,
+      summary: '',
+      path: `C:\\repo\\shard-${index}.txt`,
+      sizeBytes: indexedContent.length,
+      modifiedAt: 20,
+    }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat: vi.fn(async (path) => ({
+        ok: true as const,
+        path,
+        kind: 'file' as const,
+        size: new TextEncoder().encode(returnedContent).length,
+        modifiedMs: 20,
+        sha256: indexedHash,
+      })),
+      read: vi.fn(async (path) => ({ ok: true as const, path, content: returnedContent })),
+      lexicalSearch: vi.fn(async () => [
+        { documentId: 'file-0', excerpt: indexedContent, score: 100 },
+      ]),
+    });
+
+    await expect(
+      repository.search(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'Observatory Lumen cobalt-fern',
+      ),
+    ).resolves.toEqual([]);
+  });
+
+  it('preserves empty-index physical fallback for a 96-file map below 8 MiB', async () => {
+    const content = `${'bounded filler '.repeat(4_000)} Observatory Lumen cobalt-fern 47291.`;
+    const bytes = new TextEncoder().encode(content).length;
+    const hash = await contentSha(content);
+    expect(bytes * 96).toBeLessThanOrEqual(8 * 1024 * 1024);
+    const fixtureMaps = maps();
+    fixtureMaps[0]!.tree.nodes = Array.from({ length: 96 }, (_, index) => ({
+      id: `file-${String(index).padStart(3, '0')}`,
+      kind: 'file' as const,
+      title: `shard-${String(index).padStart(3, '0')}.txt`,
+      summary: '',
+      path: `C:\\repo\\shard-${String(index).padStart(3, '0')}.txt`,
+      sizeBytes: bytes,
+      modifiedAt: 20,
+    }));
+    const stat = vi.fn(async (path: string, includeSha256: boolean) => ({
+      ok: true as const,
+      path,
+      kind: 'file' as const,
+      size: bytes,
+      modifiedMs: 20,
+      ...(includeSha256 ? { sha256: hash } : {}),
+    }));
+    const read = vi.fn(async (path: string) => ({ ok: true as const, path, content }));
+    const repository = createContextMapRlmRepository({
+      loadMaps: vi.fn(async () => fixtureMaps),
+      stat,
+      read,
+      lexicalSearch: vi.fn(async () => []),
+    });
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Observatory Lumen cobalt-fern',
+    );
+
+    expect(hits).toHaveLength(20);
+    expect(read).toHaveBeenCalledTimes(96);
+    expect(stat.mock.calls.filter(([, includeSha]) => includeSha === false)).toHaveLength(96);
   });
 
   it('rejects traversing relative node paths before native filesystem access', async () => {
@@ -1909,7 +2204,7 @@ describe('production Context Map RLM repository', () => {
         kind: 'file' as const,
         size: localContent.length,
         modifiedMs: 20,
-        sha256: SHA,
+        sha256: await contentSha(localContent),
       })),
       read: vi.fn(async (path) => ({ ok: true as const, path, content: localContent })),
       lexicalSearch: vi.fn(async () => []),

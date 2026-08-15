@@ -25,9 +25,10 @@ The Worker performs deterministic filtering, categories, company detection, mode
 - NVIDIA Generative AI
 - Ollama GitHub releases
 - Hugging Face Transformers GitHub releases
-- A broad Google News RSS query covering OpenAI, Anthropic, Claude, Gemini, DeepSeek, Qwen, Mistral, and Grok
+- Qwen's official project blog
 
-Official company and project feeds are labeled `official`. The broad news feed is labeled `confirmed`, never `official`.
+Official company and project feeds are labeled `official`. Optional feeds configured through
+`EXTRA_FEEDS` remain `confirmed`, never `official`.
 
 ## Deploy once
 
@@ -39,17 +40,14 @@ npm run setup:free
 
 Cloudflare may open a browser so you can sign in. Current Wrangler automatically creates the D1 resource because `wrangler.jsonc` contains a draft `DB` binding without an account-specific ID.
 
-The setup command:
-
-1. Deploys the Worker and automatically provisions D1.
-2. Applies all ordered D1 migrations and creates the database tables.
-3. Deploys the final Worker configuration.
+The setup command validates the configured D1 binding, applies every ordered migration, and then
+deploys the Worker once. It does not publish a route before its tables exist.
 
 No billing upgrade or API keys are required.
 
 Migration history is sequential: `0001_init.sql` is the deployed base schema,
-and `0002_ingestion_lease.sql` adds fenced ingestion leases. Existing and new
-databases both apply that same `0001` → `0002` sequence.
+`0002_ingestion_lease.sql` adds fenced ingestion leases, and
+`0003_benchmark_snapshots.sql` adds retained structured Arena snapshots.
 
 ## Hourly schedule
 

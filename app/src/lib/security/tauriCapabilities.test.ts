@@ -101,7 +101,11 @@ describe('Tauri capability hardening', () => {
       'https://api.mistral.ai',
       'https://api.together.xyz',
       'https://api.x.ai',
+      'https://token-plan.ap-southeast-1.maas.aliyuncs.com',
+      'https://coding-intl.dashscope.aliyuncs.com',
       'https://dashscope-us.aliyuncs.com',
+      'https://dashscope.aliyuncs.com',
+      'https://dashscope-intl.aliyuncs.com',
     ];
     const defaultUrls = readHttpAllowUrls();
     const workbenchUrls = readHttpAllowUrls(readWorkbenchCapability());

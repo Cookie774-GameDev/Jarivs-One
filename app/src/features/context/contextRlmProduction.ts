@@ -37,7 +37,10 @@ import {
   type RlmChildRequest,
   type RlmSynthesisRequest,
 } from './rlmRuntime';
-import { createTauriContextLexicalSearchExecutor } from './contextSearchPipeline';
+import {
+  createTauriContextLexicalSearchExecutor,
+  createTauriContextSearchIndexPort,
+} from './contextSearchPipeline';
 import { loadPersistedContextMaps } from './contextPersistence';
 import {
   createFederatedRlmRepository,
@@ -50,6 +53,11 @@ const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
 const MAX_CONCURRENT_SOURCE_VALIDATIONS = 8;
 const MAX_CONTEXT_MAP_SEARCH_RESULTS = 20;
 const MAX_ISSUED_POINTER_CAPABILITIES = 128;
+const MAX_ACTIVE_SEARCH_MAPS = 5;
+const MAX_LEXICAL_CANDIDATES_PER_MAP = 8;
+const MAX_PHYSICAL_SEARCH_CANDIDATES = 20;
+const MAX_SEARCH_SOURCE_BYTES = 8 * 1024 * 1024;
+const MAX_SMALL_MAP_FALLBACK_FILES = 128;
 const LARGE_ADDRESS_DESCRIPTOR = '.vibespace-large-address-v1.json';
 const MAX_LARGE_ADDRESS_DESCRIPTOR_BYTES = 64 * 1024;
 const MAX_LARGE_ADDRESS_SHARD_BYTES = 4 * 1024;
@@ -113,6 +121,27 @@ interface ContextMapRlmDependencies {
     }>,
     signal?: AbortSignal,
   ): Promise<unknown>;
+  indexStatus?(
+    accountId: string,
+    mapId: string,
+  ): Promise<Readonly<{ documentCount: number; needsRebuild: boolean }>>;
+}
+
+interface SearchAuthorityCandidate {
+  map: ProductionContextMap;
+  node: ProductionContextNode;
+  sourceKind: ContextSourceKind;
+  path: string;
+  order: number;
+  inlineContent?: string;
+}
+
+interface SearchCandidateSnapshot {
+  candidate: SearchAuthorityCandidate;
+  size: number;
+  hash: string;
+  createdMs?: number;
+  modifiedMs?: number;
 }
 
 interface RecordAuthority {
@@ -457,6 +486,27 @@ function buildMeaningfulQueryPlan(query: string): {
     })
     .slice(0, MAX_PROPER_NAME_PHRASES);
   return { terms, phrases, properNames };
+}
+
+function lexicalQueriesForPlan(plan: ReturnType<typeof buildMeaningfulQueryPlan>): string[] {
+  const maximalProperNames = plan.properNames.filter((candidate, index, names) => {
+    const folded = candidate.toLocaleLowerCase('en-US');
+    return !names.some(
+      (other, otherIndex) =>
+        otherIndex !== index &&
+        other.length > candidate.length &&
+        other.toLocaleLowerCase('en-US').includes(folded),
+    );
+  });
+  const candidates =
+    maximalProperNames.length > 0
+      ? maximalProperNames
+      : plan.phrases.slice(0, 4).map(({ phrase }) => phrase);
+  const fallback = plan.terms.slice(0, 4).join(' ');
+  return [...new Set((candidates.length > 0 ? candidates : [fallback]).filter(Boolean))].slice(
+    0,
+    4,
+  );
 }
 
 function meaningfulQueryMatches(
@@ -1008,6 +1058,110 @@ export function createContextMapRlmRepository(
     }
   };
   const inFlightSourceReads = new Map<string, Promise<ResolvedAuthoritySource | undefined>>();
+  const inFlightCandidateValidations = new Map<
+    string,
+    Promise<{ authority: RecordAuthority; source: ResolvedAuthoritySource } | undefined>
+  >();
+
+  const enumerateSearchCandidates = (
+    scope: ContextScope,
+    maps: readonly ProductionContextMap[],
+  ): { maps: ProductionContextMap[]; candidates: SearchAuthorityCandidate[] } => {
+    const selectedMaps = [...maps]
+      .filter(
+        (map) =>
+          map.status === 'active' &&
+          (scope.projectId === undefined || map.projectId === scope.projectId),
+      )
+      .sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
+      .slice(0, MAX_ACTIVE_SEARCH_MAPS);
+    const candidates: SearchAuthorityCandidate[] = [];
+    const admittedPaths = new Set<string>();
+    for (const map of selectedMaps) {
+      const sourceKind = sourceKindForMap(map);
+      for (const node of flatten(map.tree.nodes)) {
+        const inlineContent =
+          sourceKind === 'file_version' ? undefined : node.summary.trim() || undefined;
+        if ((node.kind !== 'file' && inlineContent === undefined) || !node.path) continue;
+        const path = sourceKind === 'file_version' ? sourcePath(map.rootDir, node.path) : node.path;
+        if (!path) continue;
+        const pathKey = path.replaceAll('\\', '/').toLocaleLowerCase('en-US');
+        if (admittedPaths.has(pathKey)) continue;
+        admittedPaths.add(pathKey);
+        candidates.push({
+          map,
+          node,
+          sourceKind,
+          path,
+          order: candidates.length,
+          ...(inlineContent ? { inlineContent } : {}),
+        });
+      }
+    }
+    return { maps: selectedMaps, candidates };
+  };
+
+  const createCandidateAuthority = async (
+    scope: ContextScope,
+    candidate: SearchAuthorityCandidate,
+    hash: string,
+    createdMs?: number,
+    modifiedMs?: number,
+  ): Promise<RecordAuthority> => {
+    const { map, node, sourceKind, path, inlineContent } = candidate;
+    const identityDigest = await sha256Text(
+      JSON.stringify([
+        ['account', scope.accountId],
+        ['workspace', optionalScopeRevision(scope.workspaceId)],
+        ['project', optionalScopeRevision(scope.projectId)],
+        ['worktree', optionalScopeRevision(scope.worktreeId)],
+        ['map', map.id],
+        ['node', node.id],
+        ['root', map.rootDir],
+        ['path', path],
+        ['sourceKind', sourceKind],
+        ['mapUpdatedAt', map.updatedAt],
+        ['nodeModifiedAt', node.modifiedAt ?? null],
+        ['gitCommit', map.github?.resolvedCommitSha ?? null],
+        ['contentHash', hash],
+      ]),
+    );
+    const observedCreatedAt = Math.max(
+      0,
+      Math.floor(createdMs ?? node.modifiedAt ?? map.updatedAt),
+    );
+    const observedModifiedAt = Math.max(
+      0,
+      Math.floor(modifiedMs ?? node.modifiedAt ?? map.updatedAt),
+    );
+    const record = createContextRecord({
+      id: `rlm:${identityDigest}`,
+      accountId: scope.accountId,
+      ...(scope.workspaceId ? { workspaceId: scope.workspaceId } : {}),
+      ...(map.projectId ? { projectId: map.projectId } : {}),
+      ...(scope.worktreeId ? { worktreeId: scope.worktreeId } : {}),
+      sourceKind,
+      sourceId: `rlm-source:${identityDigest}`,
+      createdAt: Math.min(observedCreatedAt, observedModifiedAt),
+      updatedAt: Math.max(observedCreatedAt, observedModifiedAt),
+      contentHash: hash,
+      contentRef: path,
+      title: node.title,
+      path,
+      ...(sourceKind === 'git' && map.github?.resolvedCommitSha
+        ? { gitCommit: map.github.resolvedCommitSha }
+        : {}),
+      trustLevel: 'app_verified',
+      sensitivity: 'private',
+    });
+    return {
+      record,
+      mapId: map.id,
+      nodeId: node.id,
+      rootDir: map.rootDir,
+      ...(inlineContent === undefined ? {} : { inlineContent }),
+    };
+  };
 
   const buildAuthorities = async (
     scope: ContextScope,
@@ -1196,9 +1350,17 @@ export function createContextMapRlmRepository(
     if (!stat.ok || stat.kind !== 'file') return undefined;
     const hash = rawSha256(stat.sha256);
     if (!hash) return undefined;
+    const bytes = new TextEncoder().encode(result.content);
+    if (
+      bytes.length !== stat.size ||
+      bytes.length > MAX_SOURCE_SHARD_BYTES ||
+      (await sha256Text(result.content)) !== hash
+    ) {
+      return undefined;
+    }
     return {
       content: result.content,
-      bytes: new TextEncoder().encode(result.content),
+      bytes,
       contentHash: hash,
       sourceVersion: `sha256:${hash}`,
     };
@@ -1219,6 +1381,128 @@ export function createContextMapRlmRepository(
       read.then(release, release);
     }
     return awaitWithSignal(read, signal);
+  };
+
+  const snapshotSearchCandidate = async (
+    candidate: SearchAuthorityCandidate,
+  ): Promise<SearchCandidateSnapshot | undefined> => {
+    if (candidate.inlineContent !== undefined) {
+      const size = new TextEncoder().encode(candidate.inlineContent).length;
+      if (size > MAX_SOURCE_SHARD_BYTES) return undefined;
+      return {
+        candidate,
+        size,
+        hash: await sha256Text(candidate.inlineContent),
+      };
+    }
+    const stat = await dependencies.stat(candidate.path, true, {
+      root: candidate.map.rootDir,
+      strictProjectBoundary: true,
+    });
+    const hash = stat.ok ? rawSha256(stat.sha256) : undefined;
+    if (
+      !stat.ok ||
+      stat.kind !== 'file' ||
+      !hash ||
+      stat.size === undefined ||
+      stat.size < 0 ||
+      stat.size > MAX_SOURCE_SHARD_BYTES
+    ) {
+      return undefined;
+    }
+    return {
+      candidate,
+      size: stat.size,
+      hash,
+      ...(stat.createdMs === undefined ? {} : { createdMs: stat.createdMs }),
+      ...(stat.modifiedMs === undefined ? {} : { modifiedMs: stat.modifiedMs }),
+    };
+  };
+
+  const validateSearchCandidateFresh = async (
+    scope: ContextScope,
+    snapshot: SearchCandidateSnapshot,
+  ): Promise<{ authority: RecordAuthority; source: ResolvedAuthoritySource } | undefined> => {
+    const { candidate } = snapshot;
+    if (candidate.inlineContent !== undefined) {
+      const authority = await createCandidateAuthority(scope, candidate, snapshot.hash);
+      return {
+        authority,
+        source: {
+          content: candidate.inlineContent,
+          bytes: new TextEncoder().encode(candidate.inlineContent),
+          contentHash: snapshot.hash,
+          sourceVersion: `sha256:${snapshot.hash}`,
+        },
+      };
+    }
+    const result = await dependencies.read(candidate.path, MAX_SOURCE_SHARD_BYTES, {
+      root: candidate.map.rootDir,
+      strictProjectBoundary: true,
+    });
+    if (!result.ok) return undefined;
+    const bytes = new TextEncoder().encode(result.content);
+    if (bytes.length !== snapshot.size || bytes.length > MAX_SOURCE_SHARD_BYTES) return undefined;
+    const bytesHash = await sha256Text(result.content);
+    if (bytesHash !== snapshot.hash) return undefined;
+    const postStat = await dependencies.stat(candidate.path, true, {
+      root: candidate.map.rootDir,
+      strictProjectBoundary: true,
+    });
+    const postHash = postStat.ok ? rawSha256(postStat.sha256) : undefined;
+    if (
+      !postStat.ok ||
+      postStat.kind !== 'file' ||
+      postStat.size !== snapshot.size ||
+      postHash !== snapshot.hash
+    ) {
+      return undefined;
+    }
+    const authority = await createCandidateAuthority(
+      scope,
+      candidate,
+      snapshot.hash,
+      snapshot.createdMs,
+      snapshot.modifiedMs,
+    );
+    return {
+      authority,
+      source: {
+        content: result.content,
+        bytes,
+        contentHash: snapshot.hash,
+        sourceVersion: `sha256:${snapshot.hash}`,
+      },
+    };
+  };
+
+  const validateSearchCandidate = async (
+    scope: ContextScope,
+    snapshot: SearchCandidateSnapshot,
+    signal?: AbortSignal,
+  ) => {
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const key = JSON.stringify([
+      authorityScopeKey(scope),
+      snapshot.candidate.map.id,
+      snapshot.candidate.map.updatedAt,
+      snapshot.candidate.node.id,
+      snapshot.candidate.path,
+      snapshot.size,
+      snapshot.hash,
+    ]);
+    let validation = inFlightCandidateValidations.get(key);
+    if (!validation) {
+      validation = validateSearchCandidateFresh(scope, snapshot);
+      inFlightCandidateValidations.set(key, validation);
+      const release = () => {
+        if (inFlightCandidateValidations.get(key) === validation) {
+          inFlightCandidateValidations.delete(key);
+        }
+      };
+      validation.then(release, release);
+    }
+    return awaitWithSignal(validation, signal);
   };
 
   const address = async (
@@ -1425,140 +1709,236 @@ export function createContextMapRlmRepository(
       return authorityByRecordId.get(recordId)?.record;
     },
     async search(scope, query, signal) {
-      const authorities = await loadAuthorities(scope, signal);
-      const authorityOrder = new Map(
-        authorities.map((authority, index) => [authority.record.id, index] as const),
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const normalizedScope = validateContextScope(scope);
+      const loadedMaps = await dependencies.loadMaps(normalizedScope.projectId ?? null);
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const { maps, candidates: admittedCandidates } = enumerateSearchCandidates(
+        normalizedScope,
+        loadedMaps,
       );
       const exactQuery = query.startsWith('"') && query.endsWith('"') ? query.slice(1, -1) : query;
       const meaningfulPlan = buildMeaningfulQueryPlan(exactQuery);
-      const maps = new Map<string, RecordAuthority[]>();
-      for (const authority of authorities) {
-        const group = maps.get(authority.mapId) ?? [];
-        group.push(authority);
-        maps.set(authority.mapId, group);
+      const candidatesByMap = new Map<string, SearchAuthorityCandidate[]>();
+      for (const candidate of admittedCandidates) {
+        const grouped = candidatesByMap.get(candidate.map.id) ?? [];
+        grouped.push(candidate);
+        candidatesByMap.set(candidate.map.id, grouped);
       }
-      const hits: ContextMapSearchHit[] = [];
-      for (const [mapId, scopedAuthorities] of maps) {
-        let indexed: ReturnType<typeof parseSearchResults> = [];
-        try {
-          indexed = parseSearchResults(
-            await dependencies.lexicalSearch(
-              {
-                accountId: scope.accountId,
-                mapId,
-                mode: 'full_text',
-                query,
-                limit: 100,
-              },
-              signal,
-            ),
+
+      let useSmallFallback = admittedCandidates.length <= MAX_SMALL_MAP_FALLBACK_FILES;
+      if (useSmallFallback) {
+        const preflight = await mapBoundedInOrder(
+          admittedCandidates,
+          MAX_CONCURRENT_SOURCE_VALIDATIONS,
+          async (candidate): Promise<number | undefined> => {
+            if (candidate.inlineContent !== undefined) {
+              return new TextEncoder().encode(candidate.inlineContent).length;
+            }
+            const stat = await dependencies.stat(candidate.path, false, {
+              root: candidate.map.rootDir,
+              strictProjectBoundary: true,
+            });
+            return stat.ok &&
+              stat.kind === 'file' &&
+              stat.size !== undefined &&
+              stat.size >= 0 &&
+              stat.size <= MAX_SOURCE_SHARD_BYTES
+              ? stat.size
+              : undefined;
+          },
+        );
+        useSmallFallback =
+          preflight.every((size) => size !== undefined) &&
+          preflight.reduce((total, size) => total + (size ?? 0), 0) <= MAX_SEARCH_SOURCE_BYTES;
+      }
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const searchableMaps =
+        useSmallFallback || !dependencies.indexStatus
+          ? maps
+          : (
+              await mapBoundedInOrder(
+                maps,
+                MAX_ACTIVE_SEARCH_MAPS,
+                async (map): Promise<ProductionContextMap | undefined> => {
+                  try {
+                    const status = await dependencies.indexStatus!(
+                      normalizedScope.accountId,
+                      map.id,
+                    );
+                    const expectedDocuments = candidatesByMap.get(map.id)?.length ?? 0;
+                    return !status.needsRebuild && status.documentCount === expectedDocuments
+                      ? map
+                      : undefined;
+                  } catch {
+                    return undefined;
+                  }
+                },
+              )
+            ).filter((map): map is ProductionContextMap => map !== undefined);
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const lexicalQueries = lexicalQueriesForPlan(meaningfulPlan);
+      const lexicalGroups = await mapBoundedInOrder(
+        searchableMaps,
+        MAX_ACTIVE_SEARCH_MAPS,
+        async (map): Promise<SearchAuthorityCandidate[]> => {
+          const matchesByDocument = new Map<
+            string,
+            ReturnType<typeof parseSearchResults>[number]
+          >();
+          const perQueryLimit = Math.max(
+            1,
+            Math.floor(MAX_LEXICAL_CANDIDATES_PER_MAP / Math.max(1, lexicalQueries.length)),
           );
-        } catch {
-          indexed = [];
-        }
-        const indexedNodeIds = new Set(indexed.map((match) => match.documentId));
-        const indexedHits = await mapBoundedInOrder(
-          indexed,
-          MAX_CONCURRENT_SOURCE_VALIDATIONS,
-          async (match): Promise<ContextMapSearchHit | undefined> => {
-            const authority = scopedAuthorities.find((item) => item.nodeId === match.documentId);
-            if (!authority) return undefined;
-            const source = await readAuthority(authority, signal);
-            if (!source || source.contentHash !== authority.record.contentHash) return undefined;
-            const folded = source.content.toLocaleLowerCase('en-US');
-            const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
-            const meaningful =
-              exactOffset < 0 ? meaningfulQueryMatches(source.content, meaningfulPlan) : undefined;
-            const excerptOffset = folded.indexOf(match.excerpt.toLocaleLowerCase('en-US'));
-            const queryOffset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
-            const characterStart = Math.max(0, excerptOffset);
-            const pointerStart = queryOffset ?? characterStart;
-            const selected =
-              queryOffset !== undefined
-                ? source.content.slice(
-                    queryOffset,
-                    Math.min(source.content.length, queryOffset + exactQuery.length + 512),
-                  )
-                : match.excerpt || source.content.slice(0, 256);
-            const byteStart = utf8ByteOffset(source.content, pointerStart);
-            const byteEnd = byteStart + Math.max(1, new TextEncoder().encode(selected).length);
-            return {
-              recordId: authority.record.id,
-              pointer: createContextPointer({
-                id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
-                recordId: authority.record.id,
-                byteStart,
-                byteEnd,
-                sourceVersion: source.sourceVersion,
-                contentHash: source.contentHash,
-              }),
-              preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
-              // The derivative index finds candidates, but immutable source bytes
-              // remain ranking authority. This prevents stale/generic index scores
-              // from outranking a contiguous entity or handoff match.
-              score:
-                mappedSourceIntentScore(authority, meaningfulPlan) +
-                (exactOffset >= 0
-                  ? 1_000_000_000 + Math.min(match.score, 999)
-                  : meaningful
-                    ? meaningful.score * 1_000 + Math.min(match.score, 999)
-                    : match.score),
-            };
-          },
-        );
-        hits.push(...indexedHits.filter((hit): hit is ContextMapSearchHit => hit !== undefined));
-        const fallbackAuthorities = scopedAuthorities.filter(
-          (authority) => !indexedNodeIds.has(authority.nodeId),
-        );
-        const fallbackHits = await mapBoundedInOrder(
-          fallbackAuthorities,
-          MAX_CONCURRENT_SOURCE_VALIDATIONS,
-          async (authority): Promise<ContextMapSearchHit | undefined> => {
-            const source = await readAuthority(authority, signal);
-            if (!source || source.contentHash !== authority.record.contentHash) return undefined;
-            const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
-            const meaningful =
-              exactOffset < 0 ? meaningfulQueryMatches(source.content, meaningfulPlan) : undefined;
-            const offset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
-            if (offset === undefined) return undefined;
-            const selected = source.content.slice(
-              offset,
-              Math.min(source.content.length, offset + Math.max(exactQuery.length, 512)),
-            );
-            const byteStart = utf8ByteOffset(source.content, offset);
-            const byteEnd = byteStart + new TextEncoder().encode(selected).length;
-            return {
-              recordId: authority.record.id,
-              pointer: createContextPointer({
-                id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
-                recordId: authority.record.id,
-                byteStart,
-                byteEnd,
-                sourceVersion: source.sourceVersion,
-                contentHash: source.contentHash,
-              }),
-              preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
-              // Missing derivative-index entries must not suppress a stronger
-              // match in the immutable source bytes.
-              score:
-                mappedSourceIntentScore(authority, meaningfulPlan) +
-                (exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000),
-            };
-          },
-        );
-        hits.push(...fallbackHits.filter((hit): hit is ContextMapSearchHit => hit !== undefined));
-      }
-      const sortedHits = hits.sort(
-        (left, right) =>
-          right.score - left.score ||
-          (authorityOrder.get(left.recordId) ?? Number.MAX_SAFE_INTEGER) -
-            (authorityOrder.get(right.recordId) ?? Number.MAX_SAFE_INTEGER) ||
-          (left.pointer.byteStart ?? 0) - (right.pointer.byteStart ?? 0) ||
-          (left.pointer.byteEnd ?? 0) - (right.pointer.byteEnd ?? 0),
+          for (const lexicalQuery of lexicalQueries) {
+            try {
+              for (const match of parseSearchResults(
+                await dependencies.lexicalSearch(
+                  {
+                    accountId: normalizedScope.accountId,
+                    mapId: map.id,
+                    mode: 'full_text',
+                    query: lexicalQuery,
+                    limit: perQueryLimit,
+                  },
+                  signal,
+                ),
+              )) {
+                const current = matchesByDocument.get(match.documentId);
+                if (!current || match.score > current.score) {
+                  matchesByDocument.set(match.documentId, match);
+                }
+              }
+            } catch {
+              continue;
+            }
+            if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+          }
+          const matches = [...matchesByDocument.values()];
+          if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+          const byNodeId = new Map(
+            (candidatesByMap.get(map.id) ?? []).map((candidate) => [candidate.node.id, candidate]),
+          );
+          return matches
+            .map((match) => ({ match, candidate: byNodeId.get(match.documentId) }))
+            .filter(
+              (
+                entry,
+              ): entry is {
+                match: (typeof matches)[number];
+                candidate: SearchAuthorityCandidate;
+              } => entry.candidate !== undefined,
+            )
+            .sort(
+              (left, right) =>
+                right.match.score - left.match.score ||
+                left.candidate.order - right.candidate.order,
+            )
+            .slice(0, MAX_LEXICAL_CANDIDATES_PER_MAP)
+            .map((entry) => entry.candidate);
+        },
       );
-      const candidates = sortedHits.slice(0, MAX_CONTEXT_MAP_SEARCH_RESULTS);
-      rememberSearchPointerCandidates(candidates, scope);
-      return candidates;
+      const lexicalCandidates: SearchAuthorityCandidate[] = [];
+      const seenCandidates = new Set<string>();
+      for (const candidate of lexicalGroups.flat()) {
+        const key = `${candidate.map.id}\0${candidate.node.id}`;
+        if (seenCandidates.has(key)) continue;
+        seenCandidates.add(key);
+        lexicalCandidates.push(candidate);
+      }
+      const selectedCandidates = (useSmallFallback ? admittedCandidates : lexicalCandidates).slice(
+        0,
+        useSmallFallback ? MAX_SMALL_MAP_FALLBACK_FILES : MAX_PHYSICAL_SEARCH_CANDIDATES,
+      );
+      if (selectedCandidates.length === 0) return [];
+
+      const rawSnapshots = await mapBoundedInOrder(
+        selectedCandidates,
+        MAX_CONCURRENT_SOURCE_VALIDATIONS,
+        snapshotSearchCandidate,
+      );
+      const snapshots: SearchCandidateSnapshot[] = [];
+      let selectedBytes = 0;
+      for (const snapshot of rawSnapshots) {
+        if (!snapshot || selectedBytes + snapshot.size > MAX_SEARCH_SOURCE_BYTES) continue;
+        selectedBytes += snapshot.size;
+        snapshots.push(snapshot);
+      }
+      const validated = await mapBoundedInOrder(
+        snapshots,
+        MAX_CONCURRENT_SOURCE_VALIDATIONS,
+        (snapshot) => validateSearchCandidate(normalizedScope, snapshot, signal),
+      );
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      const hitAuthorities: Array<{
+        hit: ContextMapSearchHit;
+        authority: RecordAuthority;
+        order: number;
+      }> = [];
+      for (const resolved of validated) {
+        if (!resolved || resolved.source.contentHash !== resolved.authority.record.contentHash) {
+          continue;
+        }
+        const { authority, source } = resolved;
+        const exactOffset = flexibleWhitespaceOffset(source.content, exactQuery);
+        const meaningful =
+          exactOffset < 0 ? meaningfulQueryMatches(source.content, meaningfulPlan) : undefined;
+        const offset = exactOffset >= 0 ? exactOffset : meaningful?.offset;
+        if (offset === undefined) continue;
+        const selected = source.content.slice(
+          offset,
+          Math.min(source.content.length, offset + Math.max(exactQuery.length, 512)),
+        );
+        const byteStart = utf8ByteOffset(source.content, offset);
+        const byteEnd = byteStart + new TextEncoder().encode(selected).length;
+        const candidate = snapshots.find(
+          (entry) =>
+            entry.candidate.map.id === authority.mapId &&
+            entry.candidate.node.id === authority.nodeId,
+        )!.candidate;
+        hitAuthorities.push({
+          authority,
+          order: candidate.order,
+          hit: {
+            recordId: authority.record.id,
+            pointer: createContextPointer({
+              id: `ptr:${authority.record.id}:${byteStart}:${byteEnd}`,
+              recordId: authority.record.id,
+              byteStart,
+              byteEnd,
+              sourceVersion: source.sourceVersion,
+              contentHash: source.contentHash,
+            }),
+            preview: `[SOURCE FILE: ${authority.record.title}]\n${selected}`.slice(0, 320),
+            score:
+              mappedSourceIntentScore(authority, meaningfulPlan) +
+              (exactOffset >= 0 ? 1_000_000_000 : meaningful!.score * 1_000),
+          },
+        });
+      }
+      const sorted = hitAuthorities.sort(
+        (left, right) =>
+          right.hit.score - left.hit.score ||
+          left.order - right.order ||
+          (left.hit.pointer.byteStart ?? 0) - (right.hit.pointer.byteStart ?? 0) ||
+          (left.hit.pointer.byteEnd ?? 0) - (right.hit.pointer.byteEnd ?? 0),
+      );
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      for (const { authority } of sorted) {
+        for (const [recordId, existing] of authorityByRecordId) {
+          if (
+            existing.mapId === authority.mapId &&
+            existing.nodeId === authority.nodeId &&
+            recordMatchesScope(existing.record, normalizedScope)
+          ) {
+            authorityByRecordId.delete(recordId);
+          }
+        }
+        authorityByRecordId.set(authority.record.id, authority);
+      }
+      const hits = sorted.slice(0, MAX_CONTEXT_MAP_SEARCH_RESULTS).map((entry) => entry.hit);
+      rememberSearchPointerCandidates(hits, normalizedScope);
+      return hits;
     },
     async readSource(record, signal) {
       const authority = authorityByRecordId.get(record.id);
@@ -1764,12 +2144,14 @@ export function createProductionFederatedRlmRepository(
 }
 
 export function createProductionRlmContextTool() {
+  const indexPort = createTauriContextSearchIndexPort();
   const contextMapRepository = createContextMapRlmRepository({
     loadMaps: (projectId) =>
       loadPersistedContextMaps(projectId) as unknown as Promise<readonly ProductionContextMap[]>,
     stat: statProjectPath,
     read: readTextFileSample,
     lexicalSearch: createTauriContextLexicalSearchExecutor(),
+    indexStatus: (accountId, mapId) => indexPort.status(accountId, mapId),
   });
   const historyRepository = createHistoryRlmRepository({ load: loadProductionRlmHistory });
   const repository = createProductionFederatedRlmRepository(

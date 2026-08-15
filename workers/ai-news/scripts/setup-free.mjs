@@ -13,7 +13,6 @@ function run(args) {
 console.log('VibeSpace free hourly AI news setup');
 console.log('Cloudflare may open a browser once so you can sign in.');
 
-run(['wrangler', 'deploy', '--config', 'wrangler.jsonc']);
 run(['wrangler', 'd1', 'migrations', 'apply', 'DB', '--remote', '--config', 'wrangler.jsonc']);
 run(['wrangler', 'deploy', '--config', 'wrangler.jsonc']);
 

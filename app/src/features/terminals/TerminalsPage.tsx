@@ -61,6 +61,7 @@ import {
 } from './terminalProjectMove';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { projectRepo } from '@/lib/db';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { captureLiveTree, getLiveTree } from './terminalLiveCache';
@@ -214,6 +215,32 @@ export function canClaimCanonicalTerminalCommand(
   return countLeaves(projected) < MAX_PANES;
 }
 
+type TerminalClaimScope = Readonly<{
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+}>;
+
+function readCurrentTerminalClaimScope(treeProjectId: string | null): TerminalClaimScope | null {
+  const auth = useAuthStore.getState();
+  const accountId = getActiveAccountIdentity()?.accountId.trim() ?? '';
+  const workspaceId = String(auth.workspaceId ?? '').trim();
+  const projectId = String(auth.projectId ?? '').trim();
+  if (!accountId || !workspaceId || !projectId || projectId !== treeProjectId) return null;
+  return Object.freeze({ accountId, workspaceId, projectId });
+}
+
+export async function claimCanonicalTerminalCommandForScope(
+  current: PaneNode,
+  priorClaimedItems: readonly TerminalCommand[],
+  item: Extract<TerminalCommand, { kind: 'shell' }> & { canonical: object },
+  scope: TerminalClaimScope | null,
+  claim: typeof claimTerminalExecution = claimTerminalExecution,
+): Promise<boolean> {
+  if (!scope || !canClaimCanonicalTerminalCommand(current, priorClaimedItems, item)) return false;
+  return claim(item.canonical.executionId, scope);
+}
+
 export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean }) {
   const projectId = useAuthStore((s) => s.projectId);
   const currentProjectId = projectId ?? null;
@@ -333,10 +360,12 @@ export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean 
         do {
           rerun = false;
           const items = await claimTerminalCommands(async (item, priorClaimedItems) => {
-            if (!canClaimCanonicalTerminalCommand(projectedTree, priorClaimedItems, item)) {
-              return false;
-            }
-            return claimTerminalExecution(item.canonical.executionId);
+            return claimCanonicalTerminalCommandForScope(
+              projectedTree,
+              priorClaimedItems,
+              item,
+              readCurrentTerminalClaimScope(treeProjectId),
+            );
           });
           if (items.length > 0) {
             projectedTree = applyTerminalCommandBatch(projectedTree, items);
@@ -353,7 +382,7 @@ export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean 
       if (state.queue.length > 0) void drainAndProcess();
     });
     return unsub;
-  }, [tree]);
+  }, [tree, treeProjectId]);
 
   const handleChange = React.useCallback(
     (next: PaneTreeChange) => {

@@ -53,6 +53,7 @@ test('ordinary native authority registers the exact bounded file mutation comman
     .split(/\r?\n/u)
     .map((line) => line.trim().replace(/,$/u, ''))
     .filter(Boolean)
+    .filter((line) => !line.startsWith('//'))
     .join('\n');
   const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
   const authorityHash = rustStringConstant(source, 'ORDINARY_HANDLER_AUTHORITY_SHA256');

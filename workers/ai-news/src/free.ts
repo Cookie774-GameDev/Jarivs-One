@@ -4,6 +4,7 @@ interface Env {
   MAX_ITEMS_PER_RUN?: string;
   RETENTION_DAYS?: string;
   EXTRA_FEEDS?: string;
+  BENCHMARK_SOURCE_URL?: string;
 }
 
 type Verification = 'official' | 'confirmed';
@@ -51,6 +52,8 @@ const SOURCE_TIMEOUT_MS = 12_000;
 const SOURCE_RETRY_DELAYS_MS = [250, 1_000] as const;
 const FRESHNESS_WARNING_MS = 2 * 60 * 60 * 1000;
 const MAX_FEED_BYTES = 2_000_000;
+const MIN_BENCHMARK_ROWS = 10;
+const MAX_BENCHMARK_ROWS = 100;
 
 const DEFAULT_FEEDS: FeedSource[] = [
   {
@@ -103,10 +106,11 @@ const DEFAULT_FEEDS: FeedSource[] = [
     company: 'Hugging Face',
   },
   {
-    name: 'AI Model News',
-    url: 'https://news.google.com/rss/search?q=%28OpenAI%20OR%20Anthropic%20OR%20Claude%20OR%20Gemini%20OR%20DeepSeek%20OR%20Qwen%20OR%20Mistral%20OR%20Grok%29%20AI%20model&hl=en-US&gl=US&ceid=US%3Aen',
-    platform: 'media',
-    verification: 'confirmed',
+    name: 'Qwen Blog',
+    url: 'https://qwenlm.github.io/blog/index.xml',
+    platform: 'official',
+    verification: 'official',
+    company: 'Qwen',
   },
 ];
 
@@ -122,7 +126,7 @@ const MODEL_PATTERNS: Array<[RegExp, string]> = [
 ];
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const headers = corsHeaders(env);
 
@@ -141,7 +145,13 @@ export default {
             service: 'VibeSpace Free AI News',
             freeOnly: true,
             schedule: '7 * * * *',
-            endpoints: ['/health', '/api/sources', '/api/news', '/api/news.json'],
+            endpoints: [
+              '/health',
+              '/api/sources',
+              '/api/news',
+              '/api/news.json',
+              '/api/benchmarks',
+            ],
           },
           200,
           headers,
@@ -163,6 +173,10 @@ export default {
 
       if (url.pathname === '/api/news' || url.pathname === '/api/news.json') {
         return await getNews(url, env, headers);
+      }
+
+      if (url.pathname === '/api/benchmarks') {
+        return await getBenchmarks(env, headers);
       }
 
       return json({ error: 'Not found' }, 404, headers);
@@ -223,7 +237,7 @@ async function getNews(url: URL, env: Env, headers: Headers): Promise<Response> 
   const items = (result.results ?? []).map((row) => ({
     id: row.id,
     title: row.ai_headline || row.raw_title,
-    summary: row.ai_summary || '',
+    summary: cleanText(String(row.ai_summary || '')),
     url: row.source_url,
     source: {
       platform: row.source_platform,
@@ -251,6 +265,58 @@ async function getNews(url: URL, env: Env, headers: Headers): Promise<Response> 
       latestRun,
       freshness: freshnessForLatestRun(latestRun),
       items,
+    },
+    200,
+    headers,
+  );
+}
+
+async function getBenchmarks(env: Env, headers: Headers): Promise<Response> {
+  const snapshot = await env.DB.prepare(
+    `SELECT source_name, source_url, benchmark_date, ingested_at, row_count, payload_json
+     FROM benchmark_snapshots ORDER BY id DESC LIMIT 1`,
+  ).first<Record<string, unknown>>();
+  if (!snapshot) {
+    return json(
+      {
+        error: 'No verified benchmark snapshot is available yet.',
+        source: { kind: 'independent-preference', name: 'Arena' },
+        rows: [],
+      },
+      503,
+      headers,
+    );
+  }
+
+  const parsed = safeJsonArray(snapshot.payload_json);
+  const rows = validateBenchmarkRows(parsed);
+  if (rows.length < MIN_BENCHMARK_ROWS) {
+    return json(
+      {
+        error: 'The retained benchmark snapshot did not pass validation.',
+        source: { kind: 'independent-preference', name: 'Arena' },
+        rows: [],
+      },
+      503,
+      headers,
+    );
+  }
+
+  return json(
+    {
+      freeOnly: true,
+      source: {
+        kind: 'independent-preference',
+        name: String(snapshot.source_name || 'Arena'),
+        url: String(snapshot.source_url || ''),
+      },
+      benchmarkDate: String(snapshot.benchmark_date || ''),
+      ingestedAt: String(snapshot.ingested_at || ''),
+      rowCount: rows.length,
+      metric: 'Arena rating',
+      normalizationNote:
+        'Arena preference ratings are comparable only within this snapshot and are never merged with provider-published evaluations.',
+      rows,
     },
     200,
     headers,
@@ -324,6 +390,17 @@ async function runIngestion(env: Env, scheduledAt?: string): Promise<IngestionRe
     const errors = collected
       .filter((entry) => entry.error)
       .map((entry) => ({ source: entry.source, message: entry.error ?? 'Source failed' }));
+
+    if (env.BENCHMARK_SOURCE_URL) {
+      try {
+        await refreshBenchmarkSnapshot(env, env.BENCHMARK_SOURCE_URL);
+      } catch (error) {
+        errors.push({ source: 'Arena benchmark', message: boundedSourceError(error) });
+        console.error('Arena benchmark refresh failed', {
+          kind: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
+    }
 
     const candidates = uniqueCandidates(
       collected
@@ -769,7 +846,7 @@ function uniqueCandidates(items: NewsCandidate[]): NewsCandidate[] {
 }
 
 function isLikelyAiNews(item: NewsCandidate): boolean {
-  if (item.sourceName !== 'AI Model News') return true;
+  if (item.sourcePlatform !== 'media') return true;
   const text = ` ${item.title} ${item.text} `.toLowerCase();
   return [
     ' ai ',
@@ -938,6 +1015,124 @@ function safeJsonArray(value: unknown): unknown[] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+interface BenchmarkSnapshotRow {
+  rank: number;
+  model: string;
+  vendor: string;
+  license: string | null;
+  score: number;
+  ci: number;
+  votes: number;
+}
+
+function validateBenchmarkRows(value: unknown): BenchmarkSnapshotRow[] {
+  if (!Array.isArray(value)) return [];
+  const rows: BenchmarkSnapshotRow[] = [];
+  const seen = new Set<string>();
+  for (const raw of value.slice(0, MAX_BENCHMARK_ROWS)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    const model = typeof row.model === 'string' ? row.model.trim().slice(0, 160) : '';
+    const vendor = typeof row.vendor === 'string' ? row.vendor.trim().slice(0, 100) : '';
+    const score = typeof row.score === 'number' ? row.score : Number.NaN;
+    const ci = typeof row.ci === 'number' ? row.ci : 0;
+    const votes = typeof row.votes === 'number' ? row.votes : 0;
+    const key = model.toLowerCase();
+    if (
+      !model ||
+      !vendor ||
+      seen.has(key) ||
+      !Number.isFinite(score) ||
+      score < 0 ||
+      score > 5_000 ||
+      !Number.isFinite(ci) ||
+      ci < 0 ||
+      ci > 500 ||
+      !Number.isFinite(votes) ||
+      votes < 0
+    ) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({
+      rank: rows.length + 1,
+      model,
+      vendor,
+      license:
+        typeof row.license === 'string' && row.license.trim()
+          ? row.license.trim().slice(0, 80)
+          : null,
+      score: Math.round(score),
+      ci: Math.round(ci),
+      votes: Math.round(votes),
+    });
+  }
+  return rows;
+}
+
+async function refreshBenchmarkSnapshot(env: Env, sourceUrl: string): Promise<void> {
+  if (!sourceUrl.startsWith('https://')) throw new Error('Benchmark source URL is invalid');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SOURCE_TIMEOUT_MS);
+  try {
+    const response = await fetch(sourceUrl, {
+      headers: { Accept: 'application/json', 'User-Agent': 'VibeSpaceBenchmarks/1.0' },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      cancelResponseBody(response);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (contentLength > MAX_FEED_BYTES) {
+      cancelResponseBody(response);
+      throw new Error('Feed is larger than 2 MB');
+    }
+    const body = await readBoundedFeedBody(response, controller.signal);
+    let payload: unknown;
+    try {
+      payload = JSON.parse(body) as unknown;
+    } catch {
+      throw new Error('Benchmark response failed');
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error('Benchmark response failed');
+    }
+    const root = payload as Record<string, unknown>;
+    const rows = validateBenchmarkRows(root.models);
+    if (rows.length < MIN_BENCHMARK_ROWS) {
+      throw new Error('Benchmark response failed');
+    }
+    const meta =
+      root.meta && typeof root.meta === 'object' && !Array.isArray(root.meta)
+        ? (root.meta as Record<string, unknown>)
+        : {};
+    const benchmarkDateRaw =
+      typeof meta.fetched_at === 'string' ? meta.fetched_at : new Date().toISOString();
+    const benchmarkDate = Number.isFinite(Date.parse(benchmarkDateRaw))
+      ? new Date(benchmarkDateRaw).toISOString()
+      : new Date().toISOString();
+    const reportedSource =
+      typeof meta.source_url === 'string' && meta.source_url.startsWith('https://')
+        ? meta.source_url
+        : sourceUrl;
+    const ingestedAt = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO benchmark_snapshots (
+         source_name, source_url, benchmark_date, ingested_at, row_count, payload_json
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+      .bind('Arena', reportedSource, benchmarkDate, ingestedAt, rows.length, JSON.stringify(rows))
+      .run();
+    await env.DB.prepare(
+      `DELETE FROM benchmark_snapshots
+       WHERE id NOT IN (SELECT id FROM benchmark_snapshots ORDER BY id DESC LIMIT 72)`,
+    ).run();
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

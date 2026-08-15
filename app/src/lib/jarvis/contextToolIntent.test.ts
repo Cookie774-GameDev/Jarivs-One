@@ -3,6 +3,7 @@ import {
   parseDirectContextEvidenceContinuation,
   parseMandatoryContextEvidenceResearch,
   requestsDirectContextAddress,
+  requestsReadOnlyContextTool,
 } from './contextToolIntent';
 
 const LIVE_TEST07_MANDATORY_RESEARCH = `Use only the production vibespace_context tool against the currently approved physical Test07 Context Map. Current physical bytes are the only authority. Complete both stages below in this single provider turn before writing any answer.
@@ -527,5 +528,15 @@ describe('bounded Test07 evidence intent', () => {
     LIVE_TEST07_MANDATORY_RESEARCH.replace('shard-0095.txt', 'shard-0000.txt'),
   ])('rejects malformed mandatory research intent: %s', (prompt) => {
     expect(parseMandatoryContextEvidenceResearch(prompt)).toBeNull();
+  });
+});
+
+describe('requestsReadOnlyContextTool', () => {
+  it('does not rewrite an explicit files.read of absolute disk paths into Context search', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        'Please read them with the real files.read action.\nC:\\Users\\viper\\Downloads\\proof.txt',
+      ),
+    ).toBe(false);
   });
 });

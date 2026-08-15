@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { __setCachedDefaultWriteDirForTests } from './defaultWriteDir';
-import { inferFallbackActionProposals } from './fallbackActions';
+import {
+  inferFallbackActionProposals,
+  shouldReplaceModelActionsWithFileCreateFallback,
+  shouldReplaceModelActionsWithFileReadFallback,
+} from './fallbackActions';
 
 function exactMultiFileRequest(
   count: string | number,
@@ -80,6 +84,70 @@ const LIVE_TEST03_PROMPT = `Create exactly ten new files in \`${LIVE_TEST03_BASE
 
 ${LIVE_TEST03_FILES.map(({ name, content }) => `${name}\n${content}`).join('\n')}`;
 
+describe('shouldReplaceModelActionsWithFileCreateFallback', () => {
+  it('replaces a valid command.run card when the user asked for files.create', () => {
+    expect(
+      shouldReplaceModelActionsWithFileCreateFallback(['command.run'], [
+        { action_id: 'files.create' },
+        { action_id: 'files.create' },
+      ]),
+    ).toBe(true);
+  });
+
+  it('keeps a complete model files.create set and ignores empty or mixed fallbacks', () => {
+    expect(
+      shouldReplaceModelActionsWithFileCreateFallback(
+        Array.from({ length: 10 }, () => 'files.create'),
+        Array.from({ length: 10 }, () => ({ action_id: 'files.create' })),
+      ),
+    ).toBe(false);
+    expect(
+      shouldReplaceModelActionsWithFileCreateFallback(['files.create'], [
+        { action_id: 'files.create' },
+      ]),
+    ).toBe(false);
+    expect(shouldReplaceModelActionsWithFileCreateFallback(['command.run'], [])).toBe(false);
+    expect(
+      shouldReplaceModelActionsWithFileCreateFallback(['command.run'], [
+        { action_id: 'files.create' },
+        { action_id: 'command.run' },
+      ]),
+    ).toBe(false);
+  });
+
+  it('replaces a partial files.create card when the user asked for ten files', () => {
+    expect(
+      shouldReplaceModelActionsWithFileCreateFallback(
+        ['files.create'],
+        Array.from({ length: 10 }, () => ({ action_id: 'files.create' })),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('shouldReplaceModelActionsWithFileReadFallback', () => {
+  it('replaces a question-only or empty model action set with files.read', () => {
+    expect(
+      shouldReplaceModelActionsWithFileReadFallback([], [{ action_id: 'files.read' }]),
+    ).toBe(true);
+    expect(
+      shouldReplaceModelActionsWithFileReadFallback(
+        [],
+        Array.from({ length: 10 }, () => ({ action_id: 'files.read' })),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps a complete model files.read set', () => {
+    expect(
+      shouldReplaceModelActionsWithFileReadFallback(
+        ['files.read'],
+        [{ action_id: 'files.read' }],
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('inferFallbackActionProposals', () => {
   it('does not reinterpret a protected Context tool directive as files.read', () => {
     const proposals = inferFallbackActionProposals(
@@ -148,6 +216,19 @@ describe('inferFallbackActionProposals', () => {
     expect(proposals[0]).toMatchObject({
       action_id: 'terminal.sendAll',
       params: { command: 'opencode' },
+    });
+  });
+
+  it('proposes opening one terminal pane when the user only asks to open a terminal', () => {
+    const proposals = inferFallbackActionProposals(
+      "Hey Jarvis, please open a new terminal for me. Don't run anything else yet — just open a real terminal and tell me when it's ready.",
+      'I cannot open terminals.',
+    );
+
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      action_id: 'terminal.bulkOpen',
+      params: { count: 1 },
     });
   });
 
@@ -361,6 +442,34 @@ describe('inferFallbackActionProposals', () => {
     expect(proposals[0]?.params.root).toBeUndefined();
   });
 
+  it('emits ten files.read cards for an explicit ten-file disk read request', () => {
+    const base = `${LIVE_TEST03_ROOT}\\VibeSpace-Test03-Ten-Files-20260814-Grok4`;
+    const names = [
+      '01_readme.txt',
+      '02_checklist.txt',
+      '03_summary.txt',
+      '04_plan.md',
+      '05_notes.md',
+      '06_results.md',
+      '07_index.html',
+      '08_report.html',
+      '09_cards.html',
+      '10_status.html',
+    ];
+    const prompt = [
+      'Read these 10 existing files from disk using only registered files.read actions.',
+      'Do not guess or remember contents.',
+      ...names.map((name) => `${base}\\${name}`),
+    ].join('\n');
+    const proposals = inferFallbackActionProposals(prompt, 'Certainly, sir.');
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(
+      Array.from({ length: 10 }, () => 'files.read'),
+    );
+    expect(proposals.map((proposal) => proposal.params.path)).toEqual(
+      names.map((name) => `${base}\\${name}`),
+    );
+  });
+
   it('proposes files.read when the user asks to inspect an absolute file path', () => {
     const proposals = inferFallbackActionProposals(
       'Read this file directly: "C:\\Users\\viper\\Downloads\\source.txt"',
@@ -476,6 +585,28 @@ describe('inferFallbackActionProposals', () => {
       entries.map((entry) => ({
         path: `C:\\Users\\viper\\Downloads\\${entry.name}`,
         content: `${entry.content}\n`,
+      })),
+    );
+  });
+
+  it('emits ten files.create cards for a fresh Downloads Test03 raw-marker prompt', () => {
+    const base = `${LIVE_TEST03_ROOT}\\VibeSpace-Test03-Ten-Files-20260814-Grok2`;
+    __setCachedDefaultWriteDirForTests(LIVE_TEST03_ROOT);
+    const prompt = `Create exactly ten new files in \`${base}\` using only ten registered \`files.create\` actions. For every action use root \`${LIVE_TEST03_ROOT}\`, the exact absolute path, and the exact UTF-8 content below, including the final newline. Emit all ten action blocks in one response so I can use Approve all. Do not use a terminal, shell, script, patch, helper file, or \`files.edit\`. Do not claim creation until every approved action succeeds. If any target exists or any action fails, stop and report failure; do not rename, overwrite, or substitute.
+
+${LIVE_TEST03_FILES.map(({ name, content }) => `${name}\n${content}`).join('\n')}`;
+
+    const proposals = inferFallbackActionProposals(prompt, 'command.run echo created');
+    expect(proposals).toHaveLength(10);
+    expect(proposals.map(({ action_id }) => action_id)).toEqual(
+      Array.from({ length: 10 }, () => 'files.create'),
+    );
+    expect(shouldReplaceModelActionsWithFileCreateFallback(['command.run'], proposals)).toBe(true);
+    expect(proposals.map(({ params }) => params)).toEqual(
+      LIVE_TEST03_FILES.map(({ name, content }) => ({
+        path: `${base}\\${name}`,
+        content,
+        root: LIVE_TEST03_ROOT,
       })),
     );
   });

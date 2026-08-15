@@ -610,6 +610,38 @@ export function extractAbsoluteFilePaths(text: string): string[] {
   return Array.from(new Set(text.match(WINDOWS_FILE_PATH_RE) ?? [])).slice(0, 8);
 }
 
+export function connectionSupportsFileAttachments(selection: {
+  mode?: string;
+  connectionId?: string;
+  capabilities?: { files?: boolean };
+}): boolean {
+  if (selection.mode === 'single' && selection.connectionId) {
+    try {
+      const connection = getProviderConnectionDescriptor(selection.connectionId);
+      if (connection.capabilities?.files === true) return true;
+      if (connection.capabilities?.files === false) return false;
+    } catch {
+      // Fall through to the selection's own capability snapshot.
+    }
+  }
+  return selection.capabilities?.files === true;
+}
+
+export function resolveSendFilePaths(input: {
+  attachedFiles: readonly string[];
+  sendText: string;
+  oversizedPath?: string;
+  supportsFiles: boolean;
+}): string[] {
+  return Array.from(
+    new Set([
+      ...(input.oversizedPath ? [input.oversizedPath] : []),
+      ...input.attachedFiles,
+      ...(input.supportsFiles ? extractAbsoluteFilePaths(input.sendText) : []),
+    ]),
+  ).slice(0, 8);
+}
+
 export function getQueuedMessageNotice(
   draft: string,
   flushMode: QueueFlushMode = 'after-run',
@@ -2716,13 +2748,12 @@ export function Composer({
         0,
         8,
       );
-      const messageFilePaths = Array.from(
-        new Set([
-          ...(oversizedAttachment ? [oversizedAttachment.path] : []),
-          ...nextAttachedFiles,
-          ...extractAbsoluteFilePaths(sendText),
-        ]),
-      ).slice(0, 8);
+      const messageFilePaths = resolveSendFilePaths({
+        attachedFiles: nextAttachedFiles,
+        sendText,
+        ...(oversizedAttachment ? { oversizedPath: oversizedAttachment.path } : {}),
+        supportsFiles: connectionSupportsFileAttachments(auth.chatModelSelection),
+      });
       activeCancellationKeyRef.current = String(userMessage.id);
       const tokenOptimizationPreferences = browserTokenOptimizationPreferences.getSnapshot();
       const tokenOptimizationMode = browserTokenOptimizationPreferences.resolveMode(String(chatId));
@@ -3014,6 +3045,14 @@ export function Composer({
           return;
         }
       }
+    }
+
+    // Match the advertised Mod+Enter shortcut without changing the bare
+    // Enter queue contract. Running turns keep their existing queue controls.
+    if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey) && !jarvisRunning) {
+      e.preventDefault();
+      void handleSend(undefined, { flushMode: 'after-run' });
+      return;
     }
 
     // Bare Tab while running: queue until the full reply finishes.

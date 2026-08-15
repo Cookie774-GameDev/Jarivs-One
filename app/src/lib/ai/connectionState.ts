@@ -253,16 +253,29 @@ export function writeConnectionMetadata(metadata: ConnectionMetadata): Connectio
       metadataPersistenceDirty = true;
     }
   }
-  const pickerStates: Partial<Record<string, ConnectionPickerState>> = Object.fromEntries(
-    Object.entries(canonical).map(([id, record]) => [
-      id,
-      {
-        available: record?.installation === 'installed' && record.disabled !== true,
-        auth: record?.auth ?? 'unknown',
-      },
-    ]),
+  const pickerStates: Partial<Record<string, ConnectionPickerState>> = {
+    ...readConnectionPickerStates(),
+    ...Object.fromEntries(
+      Object.entries(canonical).map(([id, record]) => [
+        id,
+        {
+          available: record?.installation === 'installed' && record.disabled !== true,
+          auth: record?.auth ?? 'unknown',
+        },
+      ]),
+    ),
+  };
+  sessionPickerStates = canonicalPickerStates(
+    Object.fromEntries(
+      Object.entries(canonical).map(([id, record]) => [
+        id,
+        {
+          available: record?.installation === 'installed' && record.disabled !== true,
+          auth: record?.auth ?? 'unknown',
+        },
+      ]),
+    ),
   );
-  sessionPickerStates = canonicalPickerStates(pickerStates);
   writeConnectionPickerStates(pickerStates);
 
   // Real auth-loss event: authenticated → unauthenticated (not first hydrate).

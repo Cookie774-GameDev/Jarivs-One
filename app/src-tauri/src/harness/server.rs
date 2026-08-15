@@ -361,20 +361,11 @@ fn qwen_provider_config(environment_name: &str) -> Value {
         ("qwen3.7-max", "Qwen 3.7 Max"),
         ("qwen3.7-max-2026-06-08", "Qwen 3.7 Max (2026-06-08)"),
         ("qwen3.7-plus", "Qwen 3.7 Plus"),
-        (
-            "qwen3.7-plus-2026-05-26",
-            "Qwen 3.7 Plus (2026-05-26)",
-        ),
+        ("qwen3.7-plus-2026-05-26", "Qwen 3.7 Plus (2026-05-26)"),
         ("qwen3.6-plus", "Qwen 3.6 Plus"),
-        (
-            "qwen3.6-plus-2026-04-02",
-            "Qwen 3.6 Plus (2026-04-02)",
-        ),
+        ("qwen3.6-plus-2026-04-02", "Qwen 3.6 Plus (2026-04-02)"),
         ("qwen3.6-flash", "Qwen 3.6 Flash"),
-        (
-            "qwen3.6-flash-2026-04-16",
-            "Qwen 3.6 Flash (2026-04-16)",
-        ),
+        ("qwen3.6-flash-2026-04-16", "Qwen 3.6 Flash (2026-04-16)"),
         ("qwen3.6-27b", "Qwen 3.6 27B"),
         ("qwen3-coder-next", "Qwen3 Coder Next"),
     ]

@@ -8,8 +8,8 @@
  * is a near-clone of `providers/openai.ts` with three differences:
  *   - the API URL points at api.groq.com,
  *   - the API key is read from `apiKeys.groq`,
- *   - the default model is Llama-3.3-70B-Versatile, which Groq serves on
- *     its free tier at sub-second TTFT.
+ *   - the default model is Groq's current GPT-OSS 20B chat ID. Live
+ *     `/openai/v1/models` remains the catalog authority.
  *
  * Why this matters for Jarvis: the user can sign up at
  * `https://console.groq.com/keys` for free (no card), paste the
@@ -34,11 +34,10 @@ import { sanitizeReasoningProviderOptions } from '../reasoningControls';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 /**
- * Default Groq model. Llama-3.3-70B-Versatile is the highest-quality
- * model on Groq's free tier today; if it's deprecated upstream, callers
- * pin a different value via `agent.model.model`.
+ * Default Groq model when discovery has not returned yet. Retired Llama
+ * and Mixtral IDs are not advertised.
  */
-export const GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+export const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-20b';
 
 export function buildGroqRequestBody(req: LLMRequest) {
   const model = req.agent.model.model || GROQ_DEFAULT_MODEL;

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  authorizeCanonicalTerminalSpawn,
   attachTerminalExecution,
-  claimTerminalExecution,
+  bindLegacyTerminalExecutionOwner,
+  claimTerminalExecution as claimTerminalExecutionWithScope,
   createCanonicalTerminalEvidenceAuthority,
   createJarvisTerminalExecutionAcceptor,
   failTerminalExecutionBeforeNativeExit,
@@ -43,6 +45,19 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue(undef
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async () => vi.fn()),
 }));
+
+const exactClaimScope = {
+  accountId: 'account-a',
+  workspaceId: 'workspace-a',
+  projectId: 'project-a',
+} as const;
+
+function claimTerminalExecution(
+  executionId: string,
+  scope: Readonly<{ accountId: string; workspaceId: string; projectId: string }> = exactClaimScope,
+) {
+  return claimTerminalExecutionWithScope(executionId, scope);
+}
 
 describe('terminal execution lifecycle', () => {
   const processAttachment = {
@@ -164,6 +179,117 @@ describe('terminal execution lifecycle', () => {
     expect(useTerminalExecutionStore.getState().executions.exec_start.status).toBe('running');
   });
 
+  it('atomically binds an owned legacy execution to its authoritative native process attachment', async () => {
+    markTerminalExecution('exec_legacy', 'queued', {
+      accountId: 'account-a',
+      runId: 'run-a',
+    });
+
+    await expect(attachTerminalExecution('exec_legacy', processAttachment)).resolves.toBe(true);
+    markTerminalExecution('exec_legacy', 'running');
+
+    expect(useTerminalExecutionStore.getState().executions.exec_legacy).toMatchObject({
+      status: 'running',
+      accountId: 'account-a',
+      runId: 'run-a',
+      sessionId: 'pty_1',
+      processIdentity: {
+        accountId: 'account-a',
+        projectId: 'project-a',
+        runId: 'run-a',
+        executionId: 'exec_legacy',
+        paneId: 'pane-a',
+        sessionId: 'pty_1',
+        processInstanceId: 'process-instance-1',
+        pid: 4242,
+        processStartedAt: 1_723_456_789_000,
+        runtimeGeneration: 'runtime-generation-1',
+      },
+    });
+
+    await expect(
+      attachTerminalExecution('exec_legacy', {
+        ...processAttachment,
+        processInstanceId: 'replacement-process',
+      }),
+    ).resolves.toBe(false);
+    markTerminalExecution('exec_duplicate', 'queued', {
+      accountId: 'account-a',
+      runId: 'run-duplicate',
+    });
+    await expect(attachTerminalExecution('exec_duplicate', processAttachment)).resolves.toBe(false);
+    markTerminalExecution('exec_foreign', 'queued', {
+      accountId: 'account-b',
+      runId: 'run-b',
+    });
+    await expect(attachTerminalExecution('exec_foreign', processAttachment)).resolves.toBe(false);
+  });
+
+  it('holds an attach-before-owner binding inert until the exact legacy owner is published', async () => {
+    markTerminalExecution('exec_pending_owner', 'queued');
+
+    await expect(attachTerminalExecution('exec_pending_owner', processAttachment)).resolves.toBe(
+      true,
+    );
+    expect(
+      useTerminalExecutionStore.getState().executions.exec_pending_owner?.processIdentity,
+    ).toBeUndefined();
+
+    expect(bindLegacyTerminalExecutionOwner('exec_pending_owner', 'account-a', 'run-a')).toBe(true);
+
+    expect(useTerminalExecutionStore.getState().executions.exec_pending_owner).toMatchObject({
+      accountId: 'account-a',
+      runId: 'run-a',
+      sessionId: 'pty_1',
+      processIdentity: {
+        accountId: 'account-a',
+        projectId: 'project-a',
+        runId: 'run-a',
+        executionId: 'exec_pending_owner',
+        paneId: 'pane-a',
+        sessionId: 'pty_1',
+        processInstanceId: 'process-instance-1',
+      },
+    });
+
+    markTerminalExecution('exec_pending_foreign', 'queued');
+    await expect(attachTerminalExecution('exec_pending_foreign', processAttachment)).resolves.toBe(
+      true,
+    );
+    expect(bindLegacyTerminalExecutionOwner('exec_pending_foreign', 'account-b', 'run-b')).toBe(
+      false,
+    );
+    expect(useTerminalExecutionStore.getState().executions.exec_pending_foreign).toMatchObject({
+      status: 'failed',
+    });
+    expect(
+      useTerminalExecutionStore.getState().executions.exec_pending_foreign?.processIdentity,
+    ).toBeUndefined();
+
+    markTerminalExecution('exec_pending_conflict', 'queued');
+    await expect(attachTerminalExecution('exec_pending_conflict', processAttachment)).resolves.toBe(
+      true,
+    );
+    await expect(
+      attachTerminalExecution('exec_pending_conflict', {
+        ...processAttachment,
+        processInstanceId: 'replacement-process',
+      }),
+    ).resolves.toBe(false);
+
+    markTerminalExecution('exec_pending_settled', 'queued');
+    await expect(attachTerminalExecution('exec_pending_settled', processAttachment)).resolves.toBe(
+      true,
+    );
+    markTerminalExecution('exec_pending_settled', 'complete', { exitCode: 0 });
+    expect(bindLegacyTerminalExecutionOwner('exec_pending_settled', 'account-a', 'run-a')).toBe(
+      false,
+    );
+    await expect(attachTerminalExecution('exec_pending_settled', processAttachment)).resolves.toBe(
+      false,
+    );
+  });
+
   it('does not let a late startup result overwrite cancellation', () => {
     markTerminalExecution('exec_cancelled', 'starting');
     markTerminalExecution('exec_cancelled', 'cancelled');
@@ -227,6 +353,8 @@ describe('terminal execution lifecycle', () => {
     const acceptor = createJarvisTerminalExecutionAcceptor({
       request: {
         accountId,
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
         runId,
         executionId,
         cancellationToken: request.cancellationToken ?? 'jcancel_native_1',
@@ -268,6 +396,67 @@ describe('terminal execution lifecycle', () => {
     expect(Object.values(useTerminalExecutionStore.getState().executions)[0]).not.toHaveProperty(
       'execution',
     );
+  });
+
+  it('revalidates exact account workspace and project after claim before native spawn', async () => {
+    canonicalHarness();
+    await expect(
+      claimTerminalExecution('jterm_1', {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+      }),
+    ).resolves.toBe(true);
+
+    expect(
+      authorizeCanonicalTerminalSpawn('jterm_1', {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+      }),
+    ).toBe('jcancel_native_1');
+    expect(
+      authorizeCanonicalTerminalSpawn('jterm_1', {
+        accountId: 'account-a',
+        workspaceId: 'workspace-b',
+        projectId: 'project-a',
+      }),
+    ).toBeUndefined();
+    expect(
+      authorizeCanonicalTerminalSpawn('jterm_1', {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-b',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('leaves a scoped canonical command queued when the active account or project changed', async () => {
+    canonicalHarness();
+
+    await expect(
+      claimTerminalCommands(({ canonical }) =>
+        claimTerminalExecution(canonical.executionId, {
+          accountId: 'account-b',
+          workspaceId: 'workspace-a',
+          projectId: 'project-a',
+        }),
+      ),
+    ).resolves.toEqual([]);
+    expect(useTerminalCommandQueue.getState().queue.map((item) => item.id)).toEqual(['jterm_1']);
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('queued');
+
+    await expect(
+      claimTerminalCommands(({ canonical }) =>
+        claimTerminalExecution(canonical.executionId, {
+          accountId: 'account-a',
+          workspaceId: 'workspace-a',
+          projectId: 'project-b',
+        }),
+      ),
+    ).resolves.toEqual([]);
+    expect(useTerminalCommandQueue.getState().queue.map((item) => item.id)).toEqual(['jterm_1']);
+    expect(useTerminalExecutionStore.getState().executions.jterm_1.status).toBe('queued');
   });
 
   it('cancels before claim through the exact queue tombstone and canonical transition', async () => {
@@ -385,7 +574,12 @@ describe('terminal execution lifecycle', () => {
         paneId: 'pane-active',
       }),
     ).toBe(true);
-    expect(await claimTerminalExecution('jterm_foreign')).toBe(true);
+    expect(
+      await claimTerminalExecution('jterm_foreign', {
+        ...exactClaimScope,
+        accountId: 'account-b',
+      }),
+    ).toBe(true);
     expect(
       await attachTerminalExecution('jterm_foreign', {
         ...canonicalAttachment('pty_foreign'),

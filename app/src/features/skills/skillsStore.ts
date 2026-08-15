@@ -37,9 +37,11 @@ interface SkillsCatalogState {
 
 interface SkillsStoreState extends SkillsCatalogState {
   scopeKey: string;
+  getCustomSkill: (id: string) => CustomSkillRecord | undefined;
   addCustomSkill: (
     partial?: Partial<Pick<CustomSkillRecord, 'name' | 'description' | 'emoji'>>,
   ) => string;
+  restoreCustomSkill: (record: CustomSkillRecord) => void;
   updateCustomSkill: (
     id: string,
     patch: Partial<Omit<CustomSkillRecord, 'id' | 'createdAt'>>,
@@ -252,14 +254,9 @@ function loadCatalog(scopeKey: string): SkillsCatalogState {
   }
 }
 
-function persistCatalog(state: SkillsStoreState): void {
-  if (state.scopeKey === SESSION_SCOPE || typeof window === 'undefined') return;
-  const catalog = recoverCatalog({
-    customSkills: state.customSkills,
-    presetOverrides: state.presetOverrides,
-    deletedPresets: state.deletedPresets,
-  });
-  window.localStorage.setItem(storageKey(state.scopeKey), JSON.stringify(catalog));
+function persistCatalog(scopeKey: string, catalog: SkillsCatalogState): void {
+  if (scopeKey === SESSION_SCOPE || typeof window === 'undefined') return;
+  window.localStorage.setItem(storageKey(scopeKey), JSON.stringify(catalog));
 }
 
 function commitCatalog(
@@ -272,13 +269,18 @@ function commitCatalog(
     presetOverrides: patch.presetOverrides ?? get().presetOverrides,
     deletedPresets: patch.deletedPresets ?? get().deletedPresets,
   });
+  persistCatalog(get().scopeKey, normalized);
   set(normalized);
-  persistCatalog(get());
 }
 
 export const useSkillsStore = create<SkillsStoreState>()((set, get) => ({
   ...emptyCatalog(),
   scopeKey: SESSION_SCOPE,
+
+  getCustomSkill: (id) => {
+    const skill = get().customSkills.find((candidate) => candidate.id === id);
+    return skill ? (normalizeCustomSkill(skill) ?? undefined) : undefined;
+  },
 
   addCustomSkill: (partial) => {
     const id = newCustomId();
@@ -300,6 +302,15 @@ export const useSkillsStore = create<SkillsStoreState>()((set, get) => ({
     };
     commitCatalog(set, get, { customSkills: [record, ...get().customSkills] });
     return id;
+  },
+
+  restoreCustomSkill: (record) => {
+    const normalized = normalizeCustomSkill(record);
+    if (!normalized) throw new Error('This skill cannot be restored.');
+    if (get().customSkills.some((skill) => skill.id === normalized.id)) {
+      throw new Error('A skill with this identity already exists.');
+    }
+    commitCatalog(set, get, { customSkills: [normalized, ...get().customSkills] });
   },
 
   updateCustomSkill: (id, patch) => {

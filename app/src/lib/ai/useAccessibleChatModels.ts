@@ -22,13 +22,26 @@ import {
   readConnectionMetadata,
   readConnectionPickerStates,
   readConnectionSessionPickerStates,
+  writeConnectionPickerStates,
   type ConnectionPickerState,
 } from './connectionState';
+import { probeQwenApiCredential, reconcileNativeProbeState } from './nativeConnectionProbe';
 import {
   kernelSmokeProvider,
   KERNEL_SMOKE_BINDING_EVENT,
   KERNEL_SMOKE_PROVIDER_ID,
 } from './providers/kernelSmoke';
+import { ensureExternalConnectionAutoDetection } from './adapters/autoDetectConnections';
+import {
+  getDiscoveredOpenAiSubscriptionModels,
+  resolveOpenAiSubscriptionModels,
+  setDiscoveredOpenAiSubscriptionModels,
+  subscribeDiscoveredOpenAiSubscriptionModels,
+} from './openCodeOpenAiCatalog';
+import {
+  getDiscoveredConnectionModels,
+  subscribeDiscoveredConnectionModels,
+} from './connectionCatalog';
 
 /** @deprecated Use getProviderDisplayName from providerRegistry */
 export const MODEL_PROVIDER_LABELS: Partial<Record<ProviderId, string>> = new Proxy(
@@ -85,6 +98,7 @@ export function buildConnectionPickerGroups(args: {
   modelsByProvider: Partial<Record<string, readonly { id: string; label: string }[]>>;
   modelsByConnection?: Partial<Record<string, readonly { id: string; label: string }[]>>;
   stateByConnection?: Partial<Record<string, ConnectionPickerState>>;
+  credentialSavedByProvider?: Partial<Record<string, boolean>>;
 }): ModelPickerGroup[] {
   const familyByProvider = new Map(
     Object.values(PROVIDER_CATALOG).map((family) => [family.id as string, family]),
@@ -103,10 +117,16 @@ export function buildConnectionPickerGroups(args: {
         getProviderDisplayName(connection.providerId as ProviderId),
       options: [],
     };
-    const state = args.stateByConnection?.[connection.id] ?? {
+    let state = args.stateByConnection?.[connection.id] ?? {
       available: connection.mode !== 'external-cli',
       auth: connection.mode === 'local' ? ('authenticated' as const) : ('unknown' as const),
     };
+    if (
+      connection.mode === 'native-api' &&
+      args.credentialSavedByProvider?.[connection.providerId] === false
+    ) {
+      state = { available: false, auth: 'unauthenticated' };
+    }
     const authAllowsUse =
       connection.id === CODEX_CLI_CONNECTION.id
         ? state.auth === 'authenticated'
@@ -183,11 +203,97 @@ export function useAccessibleChatModels() {
       window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
     };
   }, []);
+  useEffect(() => {
+    if (offlineMode) return;
+    void ensureExternalConnectionAutoDetection().catch(() => undefined);
+  }, [offlineMode]);
+  useEffect(() => {
+    return subscribeDiscoveredOpenAiSubscriptionModels(() => {
+      setConnectionRevision((value) => value + 1);
+    });
+  }, []);
+  useEffect(() => {
+    return subscribeDiscoveredConnectionModels(() => {
+      setConnectionRevision((value) => value + 1);
+    });
+  }, []);
+  useEffect(() => {
+    if (offlineMode) return;
+    let cancelled = false;
+    void import('@/lib/harness/openCodeHarness')
+      .then(async ({ openCodeHarness }) => {
+        const openai = await openCodeHarness.listModels('openai');
+        if (!cancelled && openai.length > 0) {
+          setDiscoveredOpenAiSubscriptionModels(
+            openai.map((model) => ({ id: model.id, label: model.name || model.id })),
+          );
+        }
+        const zai = await openCodeHarness.listModels('zai');
+        if (cancelled || zai.length === 0) return;
+        const { setDiscoveredConnectionModels } = await import('./connectionCatalog');
+        setDiscoveredConnectionModels(
+          'zai-coding-plan',
+          zai.map((model) => ({
+            id: model.id,
+            label: model.name || model.id,
+            source: 'opencode_refresh' as const,
+            lastVerifiedAt: Date.now(),
+          })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [offlineMode]);
+  useEffect(() => {
+    if (offlineMode) return;
+    let cancelled = false;
+    void import('./providerModelCatalog').then(async ({ loadProviderModels }) => {
+      const ctx = { apiKeys, offlineMode, plan, defaultLocalModel };
+      for (const provider of [
+        'openai',
+        'anthropic',
+        'google',
+        'groq',
+        'deepseek',
+        'zai',
+        'qwen',
+        'mistral',
+        'together',
+        'xai',
+        'openrouter',
+      ] as const) {
+        if (cancelled || !apiKeys[provider]?.trim()) continue;
+        await loadProviderModels(provider, ctx).catch(() => undefined);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKeys, offlineMode, plan, defaultLocalModel]);
+  useEffect(() => {
+    if (offlineMode) return;
+    const qwenKey = apiKeys.qwen?.trim();
+    if (!qwenKey) return;
+    let cancelled = false;
+    void probeQwenApiCredential(qwenKey).then((state) => {
+      if (cancelled) return;
+      const current = readConnectionPickerStates();
+      writeConnectionPickerStates({
+        ...current,
+        'qwen-api': reconcileNativeProbeState(current['qwen-api'], state),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKeys.qwen, offlineMode]);
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
 
   const groups = useMemo(() => {
     const pickerConnections = PROVIDER_CONNECTIONS.filter((connection) =>
-      offlineMode ? connection.mode === 'local' : connection.mode !== 'external-cli',
+      offlineMode ? connection.mode === 'local' : true,
     );
     const legacy = buildModelPickerGroups({ apiKeys, offlineMode, plan, defaultLocalModel });
     const modelsByProvider: Record<string, { id: string; label: string }[]> = Object.fromEntries(
@@ -254,11 +360,29 @@ export function useAccessibleChatModels() {
         return [connection.id, state];
       }),
     );
+    const modelsByConnection: Partial<Record<string, readonly { id: string; label: string }[]>> = {
+      ...CONNECTION_MODEL_OPTIONS,
+      'openai-codex': resolveOpenAiSubscriptionModels(CONNECTION_MODEL_OPTIONS['openai-codex']),
+    };
+    for (const connection of pickerConnections) {
+      const discovered = getDiscoveredConnectionModels(connection.id);
+      if (discovered.length === 0) continue;
+      modelsByConnection[connection.id] = discovered.map((model) => ({
+        id: model.id,
+        label: model.label,
+      }));
+    }
     return buildConnectionPickerGroups({
       connections: pickerConnections,
       modelsByProvider,
-      modelsByConnection: CONNECTION_MODEL_OPTIONS,
+      modelsByConnection,
       stateByConnection,
+      credentialSavedByProvider: Object.fromEntries(
+        pickerConnections.map((connection) => [
+          connection.providerId,
+          Boolean(apiKeys[connection.providerId as ProviderId]),
+        ]),
+      ),
     })
       .map((group) => ({
         ...group,

@@ -106,6 +106,8 @@ export type NativeTerminalExitPayload = Readonly<{
 
 export type CanonicalTerminalExecutionRequest = Readonly<{
   accountId: string;
+  workspaceId?: string;
+  projectId?: string;
   runId: string;
   executionId: string;
   cancellationToken: string;
@@ -219,6 +221,7 @@ const executionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const canonicalExecutions = new Map<string, CanonicalExecutionRecord>();
 const canonicalSessionOwners = new Map<string, string>();
 const canonicalProcessOwners = new Map<string, string>();
+const pendingLegacyProcessAttachments = new Map<string, TerminalProcessAttachment>();
 const pendingNativeExits = new Map<string, NativeTerminalExitPayload>();
 const settledCanonicalExecutions = new Map<string, { processIdentity?: TerminalProcessIdentity }>();
 let terminalExitListener: Promise<void> | undefined;
@@ -254,6 +257,9 @@ function createTerminalProcessIdentity(
     }
     const projectId =
       attachment.projectId === null ? null : stableIdentifier(attachment.projectId, 'projectId');
+    if (record.request.projectId !== undefined && projectId !== record.request.projectId) {
+      return null;
+    }
     const identity = Object.freeze({
       accountId: record.request.accountId,
       projectId,
@@ -278,6 +284,84 @@ function createTerminalProcessIdentity(
   }
 }
 
+function createLegacyTerminalProcessIdentity(
+  execution: TerminalExecution,
+  attachment: TerminalProcessAttachment,
+): TerminalProcessIdentity | null {
+  try {
+    if (
+      !execution.accountId ||
+      !execution.runId ||
+      stableIdentifier(attachment.accountId, 'accountId') !==
+        stableIdentifier(execution.accountId, 'accountId')
+    ) {
+      return null;
+    }
+    const identity = Object.freeze({
+      accountId: execution.accountId,
+      projectId:
+        attachment.projectId === null ? null : stableIdentifier(attachment.projectId, 'projectId'),
+      runId: stableIdentifier(execution.runId, 'runId'),
+      executionId: stableIdentifier(execution.id, 'executionId'),
+      paneId: stableIdentifier(attachment.paneId, 'paneId'),
+      sessionId: stableIdentifier(attachment.sessionId, 'sessionId'),
+      processInstanceId: stableIdentifier(attachment.processInstanceId, 'processInstanceId'),
+      pid: attachment.pid,
+      processStartedAt: attachment.processStartedAt,
+      runtimeGeneration: stableIdentifier(attachment.runtimeGeneration, 'runtimeGeneration'),
+    });
+    if (
+      !validProcessNumber(identity.pid, 0xffff_ffff) ||
+      !validProcessNumber(identity.processStartedAt, Number.MAX_SAFE_INTEGER)
+    ) {
+      return null;
+    }
+    return identity;
+  } catch {
+    return null;
+  }
+}
+
+function validateTerminalProcessAttachment(
+  attachment: TerminalProcessAttachment,
+): TerminalProcessAttachment | null {
+  try {
+    const validated = Object.freeze({
+      accountId: stableIdentifier(attachment.accountId, 'accountId'),
+      projectId:
+        attachment.projectId === null ? null : stableIdentifier(attachment.projectId, 'projectId'),
+      paneId: stableIdentifier(attachment.paneId, 'paneId'),
+      sessionId: stableIdentifier(attachment.sessionId, 'sessionId'),
+      processInstanceId: stableIdentifier(attachment.processInstanceId, 'processInstanceId'),
+      pid: attachment.pid,
+      processStartedAt: attachment.processStartedAt,
+      runtimeGeneration: stableIdentifier(attachment.runtimeGeneration, 'runtimeGeneration'),
+    });
+    return validProcessNumber(validated.pid, 0xffff_ffff) &&
+      validProcessNumber(validated.processStartedAt, Number.MAX_SAFE_INTEGER)
+      ? validated
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function sameTerminalProcessAttachment(
+  left: TerminalProcessAttachment,
+  right: TerminalProcessAttachment,
+): boolean {
+  return (
+    left.accountId === right.accountId &&
+    left.projectId === right.projectId &&
+    left.paneId === right.paneId &&
+    left.sessionId === right.sessionId &&
+    left.processInstanceId === right.processInstanceId &&
+    left.pid === right.pid &&
+    left.processStartedAt === right.processStartedAt &&
+    left.runtimeGeneration === right.runtimeGeneration
+  );
+}
+
 function sameTerminalProcessIdentity(
   left: TerminalProcessIdentity,
   right: TerminalProcessIdentity,
@@ -294,6 +378,20 @@ function sameTerminalProcessIdentity(
     left.processStartedAt === right.processStartedAt &&
     left.runtimeGeneration === right.runtimeGeneration
   );
+}
+
+function readConflictingLegacyProcessOwner(
+  key: 'sessionId' | 'processInstanceId',
+  value: string,
+  claimantId: string,
+): string | undefined {
+  return Object.values(useTerminalExecutionStore.getState().executions).find(
+    (execution) =>
+      execution.id !== claimantId &&
+      !canonicalExecutions.has(execution.id) &&
+      execution.processIdentity?.[key] === value &&
+      !['complete', 'failed', 'cancelled'].includes(execution.status),
+  )?.id;
 }
 
 function nativeExitIdentityKey(
@@ -427,6 +525,7 @@ function clearCanonicalExecutions(): void {
   canonicalExecutions.clear();
   canonicalSessionOwners.clear();
   canonicalProcessOwners.clear();
+  pendingLegacyProcessAttachments.clear();
   pendingNativeExits.clear();
   settledCanonicalExecutions.clear();
 }
@@ -605,6 +704,12 @@ export function createJarvisTerminalExecutionAcceptor(
   const request = Object.freeze({
     ...dependencies.request,
     accountId: stableIdentifier(dependencies.request.accountId, 'accountId'),
+    ...(dependencies.request.workspaceId === undefined
+      ? {}
+      : { workspaceId: stableIdentifier(dependencies.request.workspaceId, 'workspaceId') }),
+    ...(dependencies.request.projectId === undefined
+      ? {}
+      : { projectId: stableIdentifier(dependencies.request.projectId, 'projectId') }),
     runId: stableIdentifier(dependencies.request.runId, 'runId'),
     executionId: stableIdentifier(dependencies.request.executionId, 'executionId'),
     cancellationToken: stableIdentifier(
@@ -701,9 +806,19 @@ export function createJarvisTerminalExecutionAcceptor(
   });
 }
 
-export async function claimTerminalExecution(executionId: string): Promise<boolean> {
+export async function claimTerminalExecution(
+  executionId: string,
+  scope: Readonly<{ accountId: string; workspaceId: string; projectId: string }>,
+): Promise<boolean> {
   const record = canonicalExecutions.get(executionId);
   if (!record || record.disposed || record.settled) return false;
+  if (
+    record.request.accountId !== scope.accountId ||
+    record.request.workspaceId !== scope.workspaceId ||
+    record.request.projectId !== scope.projectId
+  ) {
+    return false;
+  }
   if (record.claimed) return true;
   replaceWithNativeOwner(record);
   record.claimed = true;
@@ -719,6 +834,28 @@ export function terminalExecutionCancellationToken(
   return record && record.claimed && !record.settled && !record.disposed
     ? record.request.cancellationToken
     : undefined;
+}
+
+export function authorizeCanonicalTerminalSpawn(
+  executionId: string | undefined,
+  scope: Readonly<{ accountId: string; workspaceId: string; projectId: string | null }>,
+): string | undefined {
+  if (!executionId) return undefined;
+  const record = canonicalExecutions.get(executionId);
+  if (!record || !record.claimed || record.settled || record.disposed) return undefined;
+  if (record.request.workspaceId === undefined && record.request.projectId === undefined) {
+    return record.request.cancellationToken;
+  }
+  if (
+    record.request.workspaceId === undefined ||
+    record.request.projectId === undefined ||
+    record.request.accountId !== scope.accountId ||
+    record.request.workspaceId !== scope.workspaceId ||
+    record.request.projectId !== scope.projectId
+  ) {
+    return undefined;
+  }
+  return record.request.cancellationToken;
 }
 
 export function hasCanonicalTerminalExecution(executionId: string | undefined): boolean {
@@ -750,6 +887,7 @@ export function markTerminalExecution(
     useTerminalExecutionStore.getState().mark(id, status, patch);
   }
   if (['complete', 'failed', 'cancelled'].includes(status)) {
+    pendingLegacyProcessAttachments.delete(id);
     clearExecutionTimeout(id);
     return;
   }
@@ -780,6 +918,73 @@ export function markTerminalExecution(
   executionTimeouts.set(id, timer);
 }
 
+function attachOwnedLegacyProcess(
+  id: string,
+  execution: TerminalExecution,
+  attachment: TerminalProcessAttachment,
+): boolean {
+  const processIdentity = createLegacyTerminalProcessIdentity(execution, attachment);
+  if (!processIdentity) return false;
+  if (
+    execution.processIdentity &&
+    !sameTerminalProcessIdentity(execution.processIdentity, processIdentity)
+  ) {
+    return false;
+  }
+  const sessionOwner =
+    canonicalSessionOwners.get(processIdentity.sessionId) ??
+    readConflictingLegacyProcessOwner('sessionId', processIdentity.sessionId, id);
+  const processOwner =
+    canonicalProcessOwners.get(processIdentity.processInstanceId) ??
+    readConflictingLegacyProcessOwner('processInstanceId', processIdentity.processInstanceId, id);
+  if ((sessionOwner && sessionOwner !== id) || (processOwner && processOwner !== id)) {
+    return false;
+  }
+  useTerminalExecutionStore.getState().mark(id, execution.status, {
+    sessionId: processIdentity.sessionId,
+    processIdentity,
+  });
+  return true;
+}
+
+export function bindLegacyTerminalExecutionOwner(
+  id: string,
+  accountId: string,
+  runId: string,
+): boolean {
+  let stableAccountId: string;
+  let stableRunId: string;
+  try {
+    stableAccountId = stableIdentifier(accountId, 'accountId');
+    stableRunId = stableIdentifier(runId, 'runId');
+  } catch {
+    return false;
+  }
+  if (canonicalExecutions.has(id) || settledCanonicalExecutions.has(id)) return false;
+  const execution = useTerminalExecutionStore.getState().executions[id];
+  if (
+    !execution ||
+    ['complete', 'failed', 'cancelled'].includes(execution.status) ||
+    (execution.accountId && execution.accountId !== stableAccountId) ||
+    (execution.runId && execution.runId !== stableRunId)
+  ) {
+    return false;
+  }
+  useTerminalExecutionStore.getState().mark(id, execution.status, {
+    accountId: stableAccountId,
+    runId: stableRunId,
+  });
+  const owned = useTerminalExecutionStore.getState().executions[id]!;
+  const pending = pendingLegacyProcessAttachments.get(id);
+  if (!pending) return true;
+  pendingLegacyProcessAttachments.delete(id);
+  if (attachOwnedLegacyProcess(id, owned, pending)) return true;
+  useTerminalExecutionStore.getState().mark(id, 'failed', {
+    settlementError: 'legacy_terminal_native_attach_rejected',
+  });
+  return false;
+}
+
 export async function attachTerminalExecution(
   id: string | undefined,
   attachment: string | TerminalProcessAttachment,
@@ -798,8 +1003,12 @@ export async function attachTerminalExecution(
     ) {
       return false;
     }
-    const sessionOwner = canonicalSessionOwners.get(processIdentity.sessionId);
-    const processOwner = canonicalProcessOwners.get(processIdentity.processInstanceId);
+    const sessionOwner =
+      canonicalSessionOwners.get(processIdentity.sessionId) ??
+      readConflictingLegacyProcessOwner('sessionId', processIdentity.sessionId, id);
+    const processOwner =
+      canonicalProcessOwners.get(processIdentity.processInstanceId) ??
+      readConflictingLegacyProcessOwner('processInstanceId', processIdentity.processInstanceId, id);
     if ((sessionOwner && sessionOwner !== id) || (processOwner && processOwner !== id)) {
       return false;
     }
@@ -813,8 +1022,12 @@ export async function attachTerminalExecution(
     ) {
       return false;
     }
-    const currentSessionOwner = canonicalSessionOwners.get(processIdentity.sessionId);
-    const currentProcessOwner = canonicalProcessOwners.get(processIdentity.processInstanceId);
+    const currentSessionOwner =
+      canonicalSessionOwners.get(processIdentity.sessionId) ??
+      readConflictingLegacyProcessOwner('sessionId', processIdentity.sessionId, id);
+    const currentProcessOwner =
+      canonicalProcessOwners.get(processIdentity.processInstanceId) ??
+      readConflictingLegacyProcessOwner('processInstanceId', processIdentity.processInstanceId, id);
     if (
       (currentSessionOwner && currentSessionOwner !== id) ||
       (currentProcessOwner && currentProcessOwner !== id)
@@ -865,6 +1078,24 @@ export async function attachTerminalExecution(
   if (execution?.status === 'cancelled') {
     await invoke<NativeTerminalKillResult>('terminal_kill', { sessionId }).catch(() => undefined);
     return false;
+  }
+  if (execution && ['complete', 'failed'].includes(execution.status)) return false;
+  if (execution?.accountId || execution?.runId) {
+    if (typeof attachment === 'string') return false;
+    return attachOwnedLegacyProcess(id, execution, attachment);
+  }
+  if (typeof attachment !== 'string') {
+    const validated = validateTerminalProcessAttachment(attachment);
+    if (!validated) return false;
+    const pending = pendingLegacyProcessAttachments.get(id);
+    if (pending && !sameTerminalProcessAttachment(pending, validated)) return false;
+    pendingLegacyProcessAttachments.delete(id);
+    pendingLegacyProcessAttachments.set(id, validated);
+    while (pendingLegacyProcessAttachments.size > MAX_EXECUTIONS) {
+      const oldest = pendingLegacyProcessAttachments.keys().next().value as string | undefined;
+      if (!oldest) break;
+      pendingLegacyProcessAttachments.delete(oldest);
+    }
   }
   markTerminalExecution(id, 'starting', { sessionId });
   return true;

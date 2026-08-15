@@ -13,6 +13,7 @@ import {
   readConnectionSessionPickerStates,
   resetConnectionSessionChecksForTests,
   writeConnectionMetadata,
+  writeConnectionPickerStates,
 } from './connectionState';
 
 describe('AI connection state persistence', () => {
@@ -64,6 +65,24 @@ describe('AI connection state persistence', () => {
     expect(changed).toHaveBeenCalledOnce();
 
     window.removeEventListener(AI_CONNECTION_STATE_EVENT, changed);
+  });
+
+  it('preserves independently probed native API health when external metadata changes', () => {
+    writeConnectionPickerStates({
+      'qwen-api': { available: false, auth: 'unauthenticated' },
+    });
+
+    writeConnectionMetadata({
+      'openai-codex': {
+        installation: 'installed',
+        auth: 'authenticated',
+      },
+    });
+
+    expect(readConnectionPickerStates()).toEqual({
+      'qwen-api': { available: false, auth: 'unauthenticated' },
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
   });
 
   it('fails closed over malformed storage and keeps disabled connections unavailable', () => {

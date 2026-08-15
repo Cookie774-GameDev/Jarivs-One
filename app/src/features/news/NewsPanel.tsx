@@ -58,6 +58,7 @@ const KIND_FILTERS: ReadonlyArray<{ id: KindFilter; label: string }> = [
 ];
 
 const SECTIONS: readonly NewsSectionId[] = ['today', 'last_week', 'more'];
+const NEWS_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 function KindIcon({ kind, className }: { kind: NewsKind; className?: string }) {
   if (kind === 'youtube') return <Play className={className} />;
@@ -210,6 +211,8 @@ export function NewsPanel({
   React.useEffect(() => {
     if (!open || !endpoint || !runtimeEffectsEnabled) return;
     void refresh();
+    const timer = window.setInterval(() => void refresh(), NEWS_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
   }, [endpoint, open, refresh, runtimeEffectsEnabled]);
 
   // Escape closes the panel.

@@ -1675,28 +1675,69 @@ export function createJarvisKernelRuntime(
           event.producerSourceEvidence?.producerKind === 'provider' &&
           event.producerSourceEvidence.phase === 'result',
       );
-      const providerResult = providerResultEvents[0]?.producerSourceEvidence;
-      const responseCheckpoints = runEvents.filter(
+      const isCompletedResponseCheckpoint = (event: (typeof runEvents)[number]): boolean =>
+        event.type === 'message' &&
+        event.status === 'approval_required' &&
+        event.producerSourceEvidence?.producerKind === 'provider' &&
+        event.producerSourceEvidence.phase === 'result' &&
+        event.producerSourceEvidence.state === 'completed';
+      let responseCheckpoints = runEvents.filter(
         (event) =>
           event.idempotencyKey === `action-response-ready:${responseBackedApprovalId}` &&
-          event.type === 'message' &&
-          event.status === 'approval_required' &&
-          event.producerSourceEvidence?.producerKind === 'provider' &&
-          event.producerSourceEvidence.phase === 'result' &&
-          event.producerSourceEvidence.state === 'completed',
+          isCompletedResponseCheckpoint(event),
       );
       if (
-        providerResultEvents.length !== 1 ||
-        providerResult?.producerKind !== 'provider' ||
-        providerResult.state !== 'completed' ||
-        providerResult.accountId !== canonicalParent.accountId ||
-        providerResult.runId !== canonicalParent.id ||
-        providerResult.requestId !== providerScope.requestId ||
-        providerResult.attemptNumber !== providerScope.attemptNumber ||
-        providerResult.producerIdentity.providerId !== providerScope.producerIdentity.providerId ||
-        providerResult.producerIdentity.modelId !== providerScope.producerIdentity.modelId ||
-        responseCheckpoints.length !== 1 ||
-        responseCheckpoints[0]!.seq !== providerResultEvents[0]!.seq
+        responseCheckpoints.length !== 1 &&
+        (approval.actionId === 'files.create' || approval.actionId === 'files.read')
+      ) {
+        const siblings = await repositories.approval.listByRun(
+          canonicalParent.accountId,
+          canonicalParent.id,
+          {
+            requestId: providerScope.requestId,
+            attemptNumber: providerScope.attemptNumber,
+            limit: 10,
+          },
+        );
+        const filesCreateBatch = siblings.filter(
+          (candidate) =>
+            candidate.actionId === approval.actionId &&
+            (candidate.status === 'pending' ||
+              candidate.status === 'approved' ||
+              candidate.status === 'consumed'),
+        );
+        if (
+          filesCreateBatch.length >= 2 &&
+          filesCreateBatch.length <= 10 &&
+          filesCreateBatch.some((candidate) => candidate.id === approval.id)
+        ) {
+          const checkpointKeys = new Set(
+            filesCreateBatch.map((candidate) => `action-response-ready:${candidate.id}`),
+          );
+          responseCheckpoints = runEvents.filter(
+            (event) =>
+              checkpointKeys.has(event.idempotencyKey) && isCompletedResponseCheckpoint(event),
+          );
+        }
+      }
+      const checkpoint = responseCheckpoints.length === 1 ? responseCheckpoints[0] : undefined;
+      const matchedProviderResult = checkpoint
+        ? providerResultEvents.find((event) => event.seq === checkpoint.seq)
+        : providerResultEvents.length === 1
+          ? providerResultEvents[0]
+          : undefined;
+      const matchedEvidence = matchedProviderResult?.producerSourceEvidence;
+      if (
+        !checkpoint ||
+        !matchedProviderResult ||
+        matchedEvidence?.producerKind !== 'provider' ||
+        matchedEvidence.state !== 'completed' ||
+        matchedEvidence.accountId !== canonicalParent.accountId ||
+        matchedEvidence.runId !== canonicalParent.id ||
+        matchedEvidence.requestId !== providerScope.requestId ||
+        matchedEvidence.attemptNumber !== providerScope.attemptNumber ||
+        matchedEvidence.producerIdentity.providerId !== providerScope.producerIdentity.providerId ||
+        matchedEvidence.producerIdentity.modelId !== providerScope.producerIdentity.modelId
       ) {
         throw new Error('kernel_action_scope_mismatch');
       }
@@ -1719,7 +1760,43 @@ export function createJarvisKernelRuntime(
       .filter((row) => row.idempotency_key === responseKey)
       .toArray();
     if (matches.length > 1) throw new Error('kernel_action_response_checkpoint_conflict');
-    return matches.length === 1;
+    if (matches.length === 1) return true;
+    const siblings = await repositories.approval.listByRun(
+      scope.parentRun.accountId,
+      scope.parentRun.id,
+      {
+        requestId: scope.requestId,
+        attemptNumber: scope.attemptNumber,
+        limit: 10,
+      },
+    );
+    const self = siblings.find((candidate) => candidate.id === approvalId);
+    if (
+      !self ||
+      (self.actionId !== 'files.create' && self.actionId !== 'files.read')
+    ) {
+      return false;
+    }
+    const fileBatch = siblings.filter(
+      (candidate) =>
+        candidate.actionId === self.actionId &&
+        (candidate.status === 'pending' ||
+          candidate.status === 'approved' ||
+          candidate.status === 'consumed'),
+    );
+    if (fileBatch.length < 2 || fileBatch.length > 10) {
+      return false;
+    }
+    const checkpointKeys = new Set(
+      fileBatch.map((candidate) => `action-response-ready:${candidate.id}`),
+    );
+    const siblingMatches = await input.db.jarvis_events
+      .where('run_id')
+      .equals(scope.parentRun.id)
+      .filter((row) => checkpointKeys.has(row.idempotency_key))
+      .toArray();
+    if (siblingMatches.length > 1) throw new Error('kernel_action_response_checkpoint_conflict');
+    return siblingMatches.length === 1;
   };
 
   const issueApprovalLifecycle = (

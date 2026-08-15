@@ -725,6 +725,7 @@ function useBoot() {
   const registerMany = useAgentStore((s) => s.registerMany);
   const [commandCenterBinding, setCommandCenterBinding] =
     React.useState<JarvisCommandCenterBinding>();
+  const [runtimeListenerReady, setRuntimeListenerReady] = React.useState(!plan.agentRuntimeEnabled);
 
   React.useEffect(() => {
     let stopRuntime: (() => void) | undefined;
@@ -766,8 +767,16 @@ function useBoot() {
     let accountTransition = accountScopeTeardownBarrier;
     let cancelled = false;
     const errors: string[] = [];
+    const publishRuntimeListenerReady = (ready: boolean): void => {
+      if (ready) {
+        document.documentElement.dataset.jarvisRuntimeListenerReady = 'true';
+      } else {
+        delete document.documentElement.dataset.jarvisRuntimeListenerReady;
+      }
+    };
 
     quarantineAccountScopedState();
+    publishRuntimeListenerReady(!plan.agentRuntimeEnabled);
 
     function addError(label: string, err: unknown): void {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1368,6 +1377,8 @@ function useBoot() {
             await messageRepo.update(id, patch);
           },
         });
+        publishRuntimeListenerReady(true);
+        setRuntimeListenerReady(true);
       }
 
       // Phase 5: background loops
@@ -1413,6 +1424,7 @@ function useBoot() {
 
     return () => {
       cancelled = true;
+      publishRuntimeListenerReady(false);
       releaseEnqueueCloudAuthority();
       accountListenersBootReady = false;
       accountTransitionRequest += 1;
@@ -1440,7 +1452,7 @@ function useBoot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return commandCenterBinding;
+  return { commandCenterBinding, runtimeListenerReady };
 }
 
 function KernelBridgeBootstrap() {
@@ -2136,7 +2148,7 @@ function WorkspaceLifecycleHosts() {
 }
 
 function WorkspaceRuntimeBoundary({ children }: React.PropsWithChildren) {
-  const commandCenterBinding = useBoot();
+  const { commandCenterBinding, runtimeListenerReady } = useBoot();
   const plan = resolveRuntimePlan();
 
   return (
@@ -2145,7 +2157,7 @@ function WorkspaceRuntimeBoundary({ children }: React.PropsWithChildren) {
         <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
       ) : null}
       {plan.lifecycleEnabled ? <VibeSpaceMcpRuntimeHost /> : null}
-      {children}
+      {runtimeListenerReady ? children : null}
     </JarvisCommandCenterProvider>
   );
 }

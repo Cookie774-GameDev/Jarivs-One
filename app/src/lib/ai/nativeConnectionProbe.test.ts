@@ -3,6 +3,7 @@ import {
   QWEN_COMPATIBLE_BASE_URLS,
   activeQwenCompatibleBaseUrl,
   probeQwenApiCredential,
+  qwenCatalogIdentity,
   reconcileNativeProbeState,
   resetActiveQwenCompatibleBaseUrlForTests,
   verifiedQwenCompatibleBaseUrl,
@@ -56,6 +57,23 @@ describe('probeQwenApiCredential', () => {
     expect(verifiedQwenCompatibleBaseUrl()).toBe(
       'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
     );
+    expect(qwenCatalogIdentity()).toEqual({
+      region: 'intl',
+      billingMode: 'payg',
+      endpoint: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    });
+    expect(
+      qwenCatalogIdentity('https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1'),
+    ).toEqual({
+      region: 'ap-southeast-1',
+      billingMode: 'token-plan',
+      endpoint: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    });
+    expect(qwenCatalogIdentity('https://coding-intl.dashscope.aliyuncs.com/v1')).toEqual({
+      region: 'intl',
+      billingMode: 'coding-plan',
+      endpoint: 'https://coding-intl.dashscope.aliyuncs.com/v1',
+    });
   });
 
   it('clears a previously verified endpoint when the current credential is rejected', async () => {

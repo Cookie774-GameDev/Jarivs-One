@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyTerminalCommandBatch,
   canClaimCanonicalTerminalCommand,
+  claimCanonicalTerminalCommandForScope,
   commandForAgent,
   summarizeTerminalResetCancellations,
 } from './TerminalsPage';
@@ -252,5 +253,63 @@ describe('commandForAgent', () => {
     expect(claimController).not.toHaveBeenCalled();
     expect(useTerminalCommandQueue.getState().queue).toHaveLength(1);
     expect(useTerminalCommandQueue.getState().queue[0]?.id).toBe('jterm_full');
+  });
+
+  it('passes the exact active account workspace and tree project into canonical claim', async () => {
+    const canonical = {
+      kind: 'shell' as const,
+      id: 'jterm_scoped',
+      command: 'powershell',
+      canonical: {
+        accountId: 'account-a',
+        runId: 'jrun_1',
+        executionId: 'jterm_scoped',
+        ownerId: 'approval:jappr_1',
+        cancellationToken: 'jcancel_native_scoped',
+      },
+    };
+    const claim = vi.fn(async () => true);
+
+    await expect(
+      claimCanonicalTerminalCommandForScope(
+        newLeaf(),
+        [],
+        canonical,
+        {
+          accountId: 'account-a',
+          workspaceId: 'workspace-a',
+          projectId: 'project-a',
+        },
+        claim,
+      ),
+    ).resolves.toBe(true);
+
+    expect(claim).toHaveBeenCalledOnce();
+    expect(claim).toHaveBeenCalledWith('jterm_scoped', {
+      accountId: 'account-a',
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+    });
+  });
+
+  it('does not claim or project a canonical command without a current tree scope', async () => {
+    const canonical = {
+      kind: 'shell' as const,
+      id: 'jterm_unscoped',
+      command: 'powershell',
+      canonical: {
+        accountId: 'account-a',
+        runId: 'jrun_1',
+        executionId: 'jterm_unscoped',
+        ownerId: 'approval:jappr_1',
+        cancellationToken: 'jcancel_native_unscoped',
+      },
+    };
+    const claim = vi.fn(async () => true);
+
+    await expect(
+      claimCanonicalTerminalCommandForScope(newLeaf(), [], canonical, null, claim),
+    ).resolves.toBe(false);
+    expect(claim).not.toHaveBeenCalled();
   });
 });

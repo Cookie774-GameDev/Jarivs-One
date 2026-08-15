@@ -14,8 +14,30 @@ import {
   isProviderConnected,
   type ProviderConnectionContext,
 } from './providerRegistry';
+import { setDiscoveredConnectionModels } from './connectionCatalog';
+import { verifiedQwenCompatibleBaseUrl } from './nativeConnectionProbe';
 
-export type ModelAvailability = 'stable' | 'preview' | 'experimental' | 'deprecated' | 'custom';
+const NATIVE_CONNECTION_ID_BY_PROVIDER: Partial<Record<ProviderId, string>> = {
+  openai: 'openai-api',
+  anthropic: 'anthropic-api',
+  google: 'google-gemini-api',
+  groq: 'groq-api',
+  deepseek: 'deepseek-api',
+  zai: 'zai-api',
+  qwen: 'qwen-api',
+  mistral: 'mistral-api',
+  together: 'together-api',
+  xai: 'xai-api',
+  openrouter: 'openrouter-api',
+};
+
+export type ModelAvailability =
+  | 'stable'
+  | 'preview'
+  | 'experimental'
+  | 'deprecated'
+  | 'custom'
+  | 'unverified';
 
 export interface RegistryModelOption {
   id: string;
@@ -59,7 +81,7 @@ const FRONTIER_BY_PROVIDER: Partial<Record<ProviderId, string[]>> = {
   xai: [HIVE_FRONTIER_MODELS.grok],
   deepseek: [HIVE_FRONTIER_MODELS.deepseek_pro, HIVE_FRONTIER_MODELS.deepseek_flash],
   mistral: [HIVE_FRONTIER_MODELS.mistral_large],
-  groq: ['llama-3.3-70b-versatile'],
+  groq: ['openai/gpt-oss-20b'],
 };
 
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -151,11 +173,19 @@ export function getModelsForProvider(
     return [];
   }
 
-  const staticModels = staticOptionsForProvider(providerId, ctx);
-  const frontier = frontierOptionsForProvider(providerId);
   const cached = dynamicModelCache.get(providerId)?.models ?? [];
-
-  return mergeModelOptions(providerId, [frontier, staticModels, cached]);
+  if (cached.length > 0) {
+    return mergeModelOptions(providerId, [cached]);
+  }
+  const staticModels = staticOptionsForProvider(providerId, ctx).map((option) => ({
+    ...option,
+    availability: 'unverified' as const,
+  }));
+  const frontier = frontierOptionsForProvider(providerId).map((option) => ({
+    ...option,
+    availability: 'unverified' as const,
+  }));
+  return mergeModelOptions(providerId, [frontier, staticModels]);
 }
 
 export function getModelLabelForProvider(
@@ -175,7 +205,10 @@ export function modelBelongsToProvider(providerId: ProviderId, modelId: string):
   );
   if (staticMatch) return true;
   const frontier = FRONTIER_BY_PROVIDER[providerId] ?? [];
-  return frontier.some((candidate) => candidate.toLowerCase() === id.toLowerCase());
+  if (frontier.some((candidate) => candidate.toLowerCase() === id.toLowerCase())) return true;
+  return (dynamicModelCache.get(providerId)?.models ?? []).some(
+    (option) => option.id.toLowerCase() === id.toLowerCase(),
+  );
 }
 
 export function validateProviderModelSelection(
@@ -216,7 +249,38 @@ export function validateProviderModelSelection(
     };
   }
 
+  if (match.availability === 'unverified') {
+    return {
+      ok: true,
+      warning: 'STALE / UNVERIFIED catalog. Refresh models before treating this ID as current.',
+    };
+  }
+
   return { ok: true };
+}
+
+export function resolveSelectedModelOrDisable(
+  providerId: ProviderId,
+  selectedModelId: string,
+  ctx: ProviderConnectionContext,
+): { status: 'available' | 'missing'; modelId: string; error?: string } {
+  const trimmed = sanitizeModelId(selectedModelId);
+  if (!trimmed) {
+    return {
+      status: 'missing',
+      modelId: '',
+      error: `Select a ${getProviderDisplayName(providerId)} model.`,
+    };
+  }
+  const match = getModelsForProvider(providerId, ctx).find(
+    (option) => option.id.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (match) return { status: 'available', modelId: match.id };
+  return {
+    status: 'missing',
+    modelId: trimmed,
+    error: `${trimmed} is no longer available for ${getProviderDisplayName(providerId)}. Choose another model.`,
+  };
 }
 
 export function resolveModelOnProviderChange(
@@ -264,9 +328,9 @@ function parseOpenAiCompatibleModels(
       type?: string;
       capabilities?: { completion_chat?: boolean };
     }>;
-  },
+  } | unknown[],
 ): RegistryModelOption[] {
-  const rows = payload.data ?? [];
+  const rows = Array.isArray(payload) ? payload : payload.data ?? [];
   return rows
     .filter(
       (row) => !row.type || row.type === 'chat' || row.type === 'language' || row.type === 'code',
@@ -349,20 +413,31 @@ async function fetchModelsFromProvider(
     case 'groq':
     case 'openrouter':
     case 'deepseek':
+    case 'zai':
     case 'mistral':
     case 'together':
     case 'xai':
     case 'qwen': {
       const endpoints: Record<string, string> = {
         groq: 'https://api.groq.com/openai/v1/models',
-        openrouter: 'https://openrouter.ai/api/v1/models',
+        openrouter: 'https://openrouter.ai/api/v1/models/user',
         deepseek: 'https://api.deepseek.com/models',
+        zai: 'https://api.z.ai/api/paas/v4/models',
         mistral: 'https://api.mistral.ai/v1/models',
-        together: 'https://api.together.xyz/v1/models',
-        xai: 'https://api.x.ai/v1/models',
-        qwen: 'https://dashscope-us.aliyuncs.com/compatible-mode/v1/models',
+        together: 'https://api.together.xyz/models',
+        xai: 'https://api.x.ai/v1/language-models',
+        qwen: '',
       };
-      const base = endpoints[providerId];
+      const base =
+        providerId === 'qwen'
+          ? (() => {
+              const verified = verifiedQwenCompatibleBaseUrl();
+              if (!verified) {
+                throw new Error('Qwen has no authenticated endpoint for the current credential.');
+              }
+              return `${verified}/models`;
+            })()
+          : endpoints[providerId];
       if (!base) return [];
       const res = await timedFetch(base, {
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -412,6 +487,18 @@ export async function loadProviderModels(
         models: dynamic,
         stale: false,
       });
+      const connectionId = NATIVE_CONNECTION_ID_BY_PROVIDER[providerId];
+      if (connectionId && dynamic.length > 0) {
+        setDiscoveredConnectionModels(
+          connectionId,
+          dynamic.map((model) => ({
+            id: model.id,
+            label: model.label,
+            source: 'provider_list' as const,
+            lastVerifiedAt: Date.now(),
+          })),
+        );
+      }
       return getModelsForProvider(providerId, ctx);
     } catch (err) {
       dynamicModelCache.set(providerId, {

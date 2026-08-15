@@ -17,6 +17,8 @@ export type JarvisTerminalRegisteredActionDispatcherDependencies = Readonly<{
   newCancellationToken(): string;
   createAcceptor(input: {
     accountId: string;
+    workspaceId?: string;
+    projectId?: string;
     runId: string;
     executionId: string;
     cancellationToken: string;
@@ -25,6 +27,9 @@ export type JarvisTerminalRegisteredActionDispatcherDependencies = Readonly<{
     cwd?: string;
     timeoutMs?: number;
   }): JarvisTerminalExecutionAcceptor;
+  resolveProtectedScope?(
+    context: RegisteredActionExecutionContext,
+  ): Promise<ProtectedTerminalScope | null>;
 }>;
 
 export function createJarvisTerminalRegisteredActionDispatcher(
@@ -38,7 +43,7 @@ export function createJarvisTerminalRegisteredActionDispatcher(
   return async (input) => {
     const actionId = input.registration.id;
     if (
-      !['terminal.create', 'terminal.run'].includes(actionId) ||
+      !['terminal.create', 'terminal.run', 'terminal.start_cli'].includes(actionId) ||
       input.registration.version !== 1 ||
       input.registration.executor.kind !== 'builtin' ||
       input.registration.executor.registryActionId !== actionId
@@ -64,10 +69,11 @@ export function createJarvisTerminalRegisteredActionDispatcher(
       }
     } else {
       const keys = Reflect.ownKeys(input.params);
+      const commandKey = actionId === 'terminal.start_cli' ? 'cli' : 'command';
       if (
         keys.some(
           (key) =>
-            typeof key !== 'string' || !['command', 'label', 'cwd', 'timeoutMs'].includes(key),
+            typeof key !== 'string' || ![commandKey, 'label', 'cwd', 'timeoutMs'].includes(key),
         )
       ) {
         return {
@@ -75,7 +81,7 @@ export function createJarvisTerminalRegisteredActionDispatcher(
           result: fail('Canonical terminal execution binding was rejected.'),
         };
       }
-      command = typeof input.params.command === 'string' ? input.params.command.trim() : '';
+      command = typeof input.params[commandKey] === 'string' ? input.params[commandKey].trim() : '';
       label =
         typeof input.params.label === 'string' ? input.params.label.trim() || undefined : undefined;
       cwd = typeof input.params.cwd === 'string' ? input.params.cwd : undefined;
@@ -95,6 +101,16 @@ export function createJarvisTerminalRegisteredActionDispatcher(
         };
       }
     }
+    const protectedScope =
+      actionId === 'terminal.start_cli'
+        ? await (dependencies.resolveProtectedScope ?? resolveProtectedTerminalScope)(input.context)
+        : null;
+    if (actionId === 'terminal.start_cli' && (!protectedScope || !protectedScope.isCurrent())) {
+      return {
+        kind: 'executor_returned',
+        result: fail('Canonical terminal scope was revoked before handoff.'),
+      };
+    }
     const executionId = dependencies.newExecutionId();
     const cancellationToken = dependencies.newCancellationToken();
     if (
@@ -111,6 +127,12 @@ export function createJarvisTerminalRegisteredActionDispatcher(
         executionId,
         acceptor: dependencies.createAcceptor({
           accountId: input.context.accountId,
+          ...(protectedScope
+            ? {
+                workspaceId: protectedScope.workspaceId,
+                projectId: protectedScope.projectId,
+              }
+            : {}),
           runId: input.context.runId,
           executionId,
           cancellationToken,
@@ -373,9 +395,21 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
 
 type ExactTerminalRef = Readonly<{ sessionId?: string; paneId?: string }>;
 
-function parseExactTerminalRef(raw: string): ExactTerminalRef | null {
+function parseExactTerminalRef(raw: string, strict = false): ExactTerminalRef | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
+    if (
+      strict &&
+      (!parsed ||
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed) ||
+        Reflect.ownKeys(parsed).length !== 1 ||
+        !Reflect.ownKeys(parsed).every(
+          (key) => typeof key === 'string' && ['sessionId', 'paneId'].includes(key),
+        ))
+    ) {
+      return null;
+    }
     const candidate = Array.isArray(parsed) ? (parsed.length === 1 ? parsed[0] : null) : parsed;
     if (typeof candidate === 'string') {
       const sessionId = candidate.trim();
@@ -395,21 +429,123 @@ function parseExactTerminalRef(raw: string): ExactTerminalRef | null {
   }
 }
 
-function hasExactlyOneTerminalSelector(params: Record<string, unknown>): boolean {
-  return ['sessionId', 'paneId', 'agentSlug'].filter((key) => text(params, key)).length === 1;
+function hasExactlyOneTerminalSelector(
+  params: Record<string, unknown>,
+  allowAgentSlug = true,
+): boolean {
+  if (!allowAgentSlug && text(params, 'agentSlug')) return false;
+  const selectors = allowAgentSlug ? ['sessionId', 'paneId', 'agentSlug'] : ['sessionId', 'paneId'];
+  return selectors.filter((key) => text(params, key)).length === 1;
 }
 
-async function terminalSessions(params: Record<string, unknown>) {
-  const { useTerminalTranscriptStore } = await import('@/features/terminals/transcriptStore');
+type ProtectedTerminalScope = Readonly<{
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  isCurrent(): boolean;
+}>;
+
+async function resolveProtectedTerminalScope(
+  ctx: ActionRunContext,
+): Promise<ProtectedTerminalScope | null> {
+  if (ctx.source !== 'ai' || !ctx.accountId?.trim() || !ctx.chatId?.trim()) return null;
+  const [{ getActiveAccountIdentity }, { useAuthStore }, { chatRepo }] = await Promise.all([
+    import('@/lib/accountIdentity'),
+    import('@/stores/auth'),
+    import('@/lib/db/repositories'),
+  ]);
+  const identityBefore = getActiveAccountIdentity();
+  const authBefore = useAuthStore.getState();
+  const workspaceId = authBefore.workspaceId?.trim() ?? '';
+  const projectId = authBefore.projectId?.trim() ?? '';
+  const isCurrent = () => {
+    const identity = getActiveAccountIdentity();
+    const auth = useAuthStore.getState();
+    return (
+      identity?.accountId === ctx.accountId &&
+      String(auth.workspaceId ?? '') === workspaceId &&
+      String(auth.projectId ?? '') === projectId
+    );
+  };
+  if (identityBefore?.accountId !== ctx.accountId || !workspaceId || !projectId) {
+    return null;
+  }
+  const chat = await chatRepo.getById(ctx.chatId as never);
+  const identityAfter = getActiveAccountIdentity();
+  const authAfter = useAuthStore.getState();
+  if (
+    identityAfter?.accountId !== ctx.accountId ||
+    authAfter.workspaceId !== authBefore.workspaceId ||
+    authAfter.projectId !== authBefore.projectId ||
+    !chat ||
+    String(chat.workspace_id) !== workspaceId ||
+    String(chat.project_id ?? '') !== projectId
+  ) {
+    return null;
+  }
+  return { accountId: ctx.accountId, workspaceId, projectId, isCurrent };
+}
+
+async function terminalSessions(params: Record<string, unknown>, ctx: ActionRunContext) {
+  const [{ useTerminalTranscriptStore }, terminalIntelligence, executionModule] = await Promise.all(
+    [
+      import('@/features/terminals/transcriptStore'),
+      ctx.source === 'ai' ? import('@/lib/jarvis/terminalIntelligence') : Promise.resolve(null),
+      ctx.source === 'ai'
+        ? import('@/features/terminals/terminalExecutionStore')
+        : Promise.resolve(null),
+    ],
+  );
+  const protectedScope = ctx.source === 'ai' ? await resolveProtectedTerminalScope(ctx) : undefined;
+  if (ctx.source === 'ai' && !protectedScope) return { sessions: [] };
+  const liveProtectedPanes = protectedScope
+    ? terminalIntelligence!
+        .readJarvisTerminalOperatingSnapshot({
+          projectId: protectedScope.projectId,
+          observedAt: Date.now(),
+        })
+        .panes.filter(
+          (pane) => !pane.stale && ['sent', 'running', 'verifying'].includes(pane.state),
+        )
+    : [];
   const all = Object.values(useTerminalTranscriptStore.getState().sessions);
   const sessionId = text(params, 'sessionId');
   const paneId = text(params, 'paneId');
   const agentSlug = text(params, 'agentSlug');
-  return all
+  const sessions = all
     .filter((session) => !sessionId || session.sessionId === sessionId)
     .filter((session) => !paneId || session.paneId === paneId)
     .filter((session) => !agentSlug || session.agentSlug === agentSlug)
+    .filter(
+      (session) =>
+        !protectedScope ||
+        (session.projectId === protectedScope.projectId &&
+          liveProtectedPanes.some(
+            (pane) => pane.sessionId === session.sessionId && pane.paneId === session.paneId,
+          ) &&
+          Object.values(executionModule!.useTerminalExecutionStore.getState().executions).filter(
+            (execution) =>
+              execution.status === 'running' &&
+              execution.sessionId === session.sessionId &&
+              execution.processIdentity?.accountId === protectedScope.accountId &&
+              execution.processIdentity.projectId === protectedScope.projectId &&
+              execution.processIdentity.paneId === session.paneId &&
+              execution.processIdentity.sessionId === session.sessionId,
+          ).length === 1 &&
+          Object.values(executionModule!.useTerminalExecutionStore.getState().executions).some(
+            (execution) =>
+              execution.status === 'running' &&
+              execution.sessionId === session.sessionId &&
+              execution.accountId === protectedScope.accountId &&
+              execution.processIdentity?.accountId === protectedScope.accountId &&
+              execution.processIdentity.projectId === protectedScope.projectId &&
+              execution.processIdentity.paneId === session.paneId &&
+              execution.processIdentity.sessionId === session.sessionId,
+          )),
+    )
     .sort((a, b) => b.lastWriteAt - a.lastWriteAt);
+  if (protectedScope && !protectedScope.isCurrent()) return { sessions: [] };
+  return { sessions, ...(protectedScope ? { protectedScope } : {}) };
 }
 
 export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDef[] {
@@ -563,9 +699,15 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         { key: 'label', label: 'Pane label', type: 'string' },
         { key: 'timeoutMs', label: 'Timeout milliseconds', type: 'number' },
       ],
-      run: (params, ctx) => {
+      run: async (params, ctx) => {
         const cli = text(params, 'cli');
-        if (!cli) return Promise.resolve(fail('CLI command is required.'));
+        if (!cli) return fail('CLI command is required.');
+        if (ctx.source === 'ai' && (!ctx.accountId?.trim() || !ctx.runId?.trim())) {
+          return fail('Canonical terminal owner identity is required.');
+        }
+        if (ctx.source === 'ai') {
+          return fail('Canonical terminal dispatcher is required.');
+        }
         return runRequired(
           resolveLegacy,
           'terminal.run',
@@ -593,13 +735,20 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         const command = text(params, 'command');
         if (!command) return Promise.resolve(fail('Terminal input is required.'));
         const refsJson = text(params, 'refsJson');
-        const ref = parseExactTerminalRef(refsJson);
-        if (!ref) {
+        const ref = parseExactTerminalRef(refsJson, ctx.source === 'ai');
+        if (
+          !ref ||
+          (ctx.source === 'ai' &&
+            !hasExactlyOneTerminalSelector(ref as Record<string, unknown>, false))
+        ) {
           return Promise.resolve(fail('Exactly one explicit terminal ref is required.'));
         }
-        return terminalSessions(ref).then((sessions) => {
+        return terminalSessions(ref, ctx).then(({ sessions, protectedScope }) => {
           if (sessions.length !== 1) {
             return fail('The explicit terminal ref did not resolve to exactly one live terminal.');
+          }
+          if (protectedScope && !protectedScope.isCurrent()) {
+            return fail('The protected terminal scope is no longer current.');
           }
           return runRequired(
             resolveLegacy,
@@ -624,8 +773,8 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         { key: 'afterBytes', label: 'Minimum byte count', type: 'number' },
         { key: 'timeoutMs', label: 'Timeout milliseconds', type: 'number' },
       ],
-      run: async (params) => {
-        if (!hasExactlyOneTerminalSelector(params)) {
+      run: async (params, ctx) => {
+        if (!hasExactlyOneTerminalSelector(params, ctx.source === 'user')) {
           return fail('Exactly one explicit terminal selector is required.');
         }
         const timeoutMs = numberInRange(params, 'timeoutMs', 30_000, 250, 60_000);
@@ -633,7 +782,7 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         const contains = text(params, 'contains').toLowerCase();
         const deadline = Date.now() + timeoutMs;
         do {
-          const sessions = await terminalSessions(params);
+          const { sessions, protectedScope } = await terminalSessions(params, ctx);
           if (sessions.length > 1) {
             return fail('The terminal selector resolved to more than one live terminal.');
           }
@@ -642,13 +791,17 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
               session.bytesSeen > afterBytes &&
               (!contains || session.text.toLowerCase().includes(contains)),
           );
-          if (match)
+          if (match) {
+            if (protectedScope && !protectedScope.isCurrent()) {
+              return fail('The protected terminal scope is no longer current.');
+            }
             return ok('Terminal output condition met.', {
               sessionId: match.sessionId,
               paneId: match.paneId,
               bytesSeen: match.bytesSeen,
               tail: match.text.slice(-2_000),
             });
+          }
           await new Promise((resolve) => setTimeout(resolve, 200));
         } while (Date.now() < deadline);
         return fail(`Terminal output did not meet the condition within ${timeoutMs}ms.`);
@@ -666,16 +819,19 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         { key: 'agentSlug', label: 'Agent slug', type: 'string' },
         { key: 'maxChars', label: 'Maximum characters', type: 'number' },
       ],
-      run: async (params) => {
-        if (!hasExactlyOneTerminalSelector(params)) {
+      run: async (params, ctx) => {
+        if (!hasExactlyOneTerminalSelector(params, ctx.source === 'user')) {
           return fail('Exactly one explicit terminal selector is required.');
         }
-        const sessions = await terminalSessions(params);
+        const { sessions, protectedScope } = await terminalSessions(params, ctx);
         if (!sessions.length) return fail('No matching terminal transcript is available.');
         if (sessions.length > 1) {
           return fail('The terminal selector resolved to more than one live terminal.');
         }
         const maxChars = numberInRange(params, 'maxChars', 8_000, 200, 16_000);
+        if (protectedScope && !protectedScope.isCurrent()) {
+          return fail('The protected terminal scope is no longer current.');
+        }
         return ok(
           `Collected output from ${sessions.length} terminal${sessions.length === 1 ? '' : 's'}.`,
           {

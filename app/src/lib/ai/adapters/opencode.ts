@@ -13,6 +13,7 @@ import {
   type ProviderRecordNormalization,
 } from './cliBridge';
 import type { ProviderEvent } from './types';
+import { formatOpenCodeModelRef } from '../openCodeOpenAiCatalog';
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -24,7 +25,13 @@ export function buildOpenCodeInvocation(request: CliInvocationRequest): CliInvoc
   assertCliPrompt(request.prompt);
   const modelId = requireModelId(request.modelId, 'OpenCode');
   return {
-    args: ['run', '--format', 'json', '--model', modelId],
+    args: [
+      'run',
+      '--format',
+      'json',
+      '--model',
+      formatOpenCodeModelRef(modelId, request.reasoningEffort),
+    ],
     stdin: request.prompt,
     ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
   };
@@ -121,7 +128,7 @@ export const OPENCODE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   executableName: 'opencode',
   versionArgs: Object.freeze(['--version']),
   authProbeArgs: Object.freeze(['auth', 'list']),
-  modelListArgs: Object.freeze(['models']),
+  modelListArgs: Object.freeze(['models', 'openai', '--refresh']),
   buildInvocation: buildOpenCodeInvocation,
   normalizeRecord: normalizeOpenCodeRecord,
 });

@@ -16,12 +16,34 @@ describe('Context Map focused user-testing repairs', () => {
   it('keeps every source picker in Context and places nightly maintenance after creation', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
 
-    expect(source).toContain("chooseProjectFiles(false");
+    expect(source).toContain('chooseProjectFiles(false');
     expect(source).toContain("setWorkspaceSection('sources')");
     expect(source).not.toContain('<ContextRecoveryNotice');
     expect(source.indexOf('<ContextSourceCards')).toBeLessThan(
       source.indexOf('<NightlySecondBrainPanel'),
     );
     expect(source).toContain('Create map');
+  });
+
+  it('populates the physical search index before presenting a new local map as ready', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+    const saveIndex = source.indexOf('const persisted = await savePersistedContextTree(generated)');
+    const populateIndex = source.indexOf(
+      'await contextSearchIndexPopulation.populateCreatedMap(',
+      saveIndex,
+    );
+    const applyIndex = source.indexOf('if (!applyPersistenceState(persisted)) return', saveIndex);
+    const readyIndex = source.indexOf("toast.success('Context map ready'", saveIndex);
+
+    expect(source).toContain(
+      "import { createContextSearchIndexPopulationPort } from './contextSearchIndexing';",
+    );
+    expect(saveIndex).toBeGreaterThan(-1);
+    expect(populateIndex).toBeGreaterThan(saveIndex);
+    expect(applyIndex).toBeGreaterThan(populateIndex);
+    expect(readyIndex).toBeGreaterThan(applyIndex);
+    expect(source).toContain(
+      'await deletePersistedContextMap(projectId, persistedMap.id).catch(() => undefined)',
+    );
   });
 });

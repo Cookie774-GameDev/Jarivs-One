@@ -12,6 +12,7 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
   google: 'Gemini',
   groq: 'Groq',
   deepseek: 'DeepSeek',
+  zai: 'Z.AI / GLM',
   ollama: 'Local Models',
   local: 'Local Models',
   openrouter: 'OpenRouter',
@@ -77,6 +78,13 @@ const BASE_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   {
     id: 'deepseek',
     displayName: 'DeepSeek',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'zai',
+    displayName: 'Z.AI / GLM',
     requiresApiKey: true,
     supportsDynamicListing: true,
     hiveEligible: true,

@@ -23,6 +23,7 @@ describe('reasoning controls', () => {
     [selection('google', 'gemini-3.5-flash'), ['minimal', 'low', 'medium', 'high'], 'high'],
     [selection('groq', 'openai/gpt-oss-20b'), ['low', 'medium', 'high'], 'high'],
     [selection('xai', 'grok-4.20-multi-agent'), ['low', 'medium', 'high', 'ultra'], 'xhigh'],
+    [selection('deepseek', 'deepseek-v4-pro'), ['low', 'medium', 'high', 'ultra'], 'max'],
   ] as const)(
     'exposes only verified effort levels for %o',
     (selected, expectedEfforts, expectedUltraWire) => {
@@ -43,6 +44,8 @@ describe('reasoning controls', () => {
     selection('ollama', 'qwen3.5:4b'),
     selection('ollama', 'gpt-oss:20b'),
     selection('deepseek', 'deepseek-chat'),
+    // legacy DeepSeek IDs stay without fabricated effort
+    selection('openai', 'gpt-5.3-codex-spark', 'openai-codex'),
   ])('does not fabricate adjustable effort for %o', (selected) => {
     expect(getReasoningCapabilities(selected).supportedEfforts).toEqual([]);
     expect(

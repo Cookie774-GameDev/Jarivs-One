@@ -786,6 +786,35 @@ describe('ollama provider utilities', () => {
     expect(finalBoss.options.num_ctx).toBe(32_768);
   });
 
+  it('sizes the context window from approved file history instead of output budget alone', () => {
+    const body = buildOllamaRequestBody({
+      agent: {
+        id: 'agent_jarvis' as any,
+        slug: 'jarvis',
+        name: 'Jarvis',
+        description: '',
+        system_prompt: '',
+        model: { provider: 'ollama', model: 'llama3.2:latest' },
+        tools_allowed: [],
+        memory_scope: 'workspace',
+        capabilities: [],
+        created_at: 1,
+        updated_at: 1,
+      },
+      messages: [
+        {
+          role: 'assistant',
+          content: `[BEGIN APPROVED FILE CONTENT]\n${'const shard = paragraph;\\n'.repeat(300)}[END APPROVED FILE CONTENT]`,
+        },
+        { role: 'user', content: 'Identify the bug in the approved code.' },
+      ],
+      max_output_tokens: 512,
+    });
+
+    expect(body.options.num_predict).toBe(512);
+    expect(body.options.num_ctx).toBe(8_192);
+  });
+
   it('sends the exact protected system prompt and observes body bytes before text', async () => {
     const controller = new AbortController();
     const order: string[] = [];

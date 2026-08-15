@@ -36,6 +36,7 @@ describe('providerRegistry', () => {
       'qwen',
       'mistral',
       'together',
+      'zai',
     ]) {
       expect(registry.find((entry) => entry.id === providerId)?.supportsDynamicListing).toBe(true);
     }

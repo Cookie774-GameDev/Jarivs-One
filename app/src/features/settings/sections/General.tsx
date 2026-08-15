@@ -6,6 +6,7 @@ import { taskbarUsageStore } from '@/features/taskbar-usage/taskbarUsageStore';
 import { chatActivityPreferences } from '@/features/chat/activity/chatActivityPreferences';
 import { TokenOptimizationGlobalSettings } from '@/features/token-optimizer';
 import { BrowserAgentSettings } from './BrowserAgentSettings';
+import { RecycleBinSettings } from '@/features/recycle-bin/RecycleBinSettings';
 
 export function General() {
   const state = useSyncExternalStore(
@@ -39,6 +40,7 @@ export function General() {
 
       <TokenOptimizationGlobalSettings />
       <BrowserAgentSettings />
+      <RecycleBinSettings />
 
       <section
         className="rounded-lg border border-border bg-panel p-4"

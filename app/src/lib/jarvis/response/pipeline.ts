@@ -6,7 +6,12 @@ import type {
 import { validateJarvisResponseEnvelope } from '@/lib/jarvis/contracts';
 import type { Part } from '@/types';
 import { parseActionBlocks } from '@/lib/actions';
-import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
+import {
+  extractCreatorStartRequest,
+  inferFallbackActionProposals,
+  shouldReplaceModelActionsWithFileCreateFallback,
+  shouldReplaceModelActionsWithFileReadFallback,
+} from '@/lib/actions/fallbackActions';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisQuestionBlocks } from '@/features/jarvis-interaction/questionParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
@@ -328,6 +333,47 @@ function validatedParts(
       });
       return { converted: parsed.hasActionBlocks, parts: converted };
     });
+    const fallbackProposals = inferFallbackActionProposals(request.userText, displayText);
+    const parsedActionIds = parts
+      .filter((part): part is Extract<Part, { kind: 'action_proposal' }> => part.kind === 'action_proposal')
+      .map((part) => part.action_id);
+    const exactFileCreateFallback =
+      fallbackProposals.length >= 2 &&
+      fallbackProposals.length <= 10 &&
+      fallbackProposals.every((proposal) => proposal.action_id === 'files.create') &&
+      shouldReplaceModelActionsWithFileCreateFallback(parsedActionIds, fallbackProposals);
+    const exactFileReadFallback =
+      fallbackProposals.length >= 1 &&
+      fallbackProposals.length <= 10 &&
+      fallbackProposals.every((proposal) => proposal.action_id === 'files.read') &&
+      shouldReplaceModelActionsWithFileReadFallback(parsedActionIds, fallbackProposals);
+    if (exactFileCreateFallback || exactFileReadFallback || (
+      fallbackProposals.length >= 2 &&
+      fallbackProposals.length <= 10 &&
+      fallbackProposals.every((proposal) => proposal.action_id === 'files.create') &&
+      parsedActionIds.length === 0
+    )) {
+      const actionLabel = fallbackProposals
+        .map(({ action_id, rationale }) => rationale?.trim() || action_id)
+        .join(' ');
+      return [
+        {
+          kind: 'text',
+          text: formatJarvisVerifiedNarration({
+            kind: 'approval_required',
+            actionLabel,
+          }).text,
+        },
+        ...fallbackProposals.map<Part>((proposal) => ({
+          kind: 'action_proposal',
+          call_id: proposal.call_id,
+          action_id: proposal.action_id,
+          params: proposal.params,
+          rationale: proposal.rationale,
+          status: 'pending',
+        })),
+      ];
+    }
     // The canonical kernel intentionally executes at most one approval-bound
     // action per response. Small local models sometimes emit a create action
     // followed by a read/verify action; passing both would reject the entire
@@ -336,12 +382,23 @@ function validatedParts(
     let keptAction = false;
     parts = parts.filter((part) => {
       if (part.kind !== 'action_proposal') return true;
+      if (
+        part.action_id === 'creator.start' &&
+        extractCreatorStartRequest(request.userText) === null
+      ) {
+        return false;
+      }
       if (keptAction) return false;
       keptAction = true;
       return true;
     });
     if (parts.every((part) => part.kind === 'text')) {
-      const fallbackProposals = inferFallbackActionProposals(request.userText, displayText);
+      // The kernel accepts a single approval-bound action per response. Apply
+      // that invariant to inferred actions as well as parsed action blocks.
+      const fallbackProposals = inferFallbackActionProposals(
+        request.userText,
+        displayText,
+      ).slice(0, 1);
       if (fallbackProposals.length > 0) {
         const actionLabel = fallbackProposals
           .map(({ action_id, rationale }) => rationale?.trim() || action_id)

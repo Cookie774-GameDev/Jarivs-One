@@ -302,14 +302,29 @@ function ollamaChatTemperature(req: LLMRequest): number {
   return req.temperature ?? req.agent.temperature ?? OLLAMA_CHAT_DEFAULT_TEMPERATURE;
 }
 
-function ollamaChatOptions(req: LLMRequest, mode: LocalAgentMode): Record<string, number> {
+function ollamaChatOptions(
+  req: LLMRequest,
+  mode: LocalAgentMode,
+  inputChars: number,
+): Record<string, number> {
   const policy = localOllamaRequestPolicy(mode);
   const numPredict =
     req.max_output_tokens === undefined
       ? policy.numPredict
       : Math.min(req.max_output_tokens, OLLAMA_CHAT_MAX_NUM_PREDICT);
-  const numCtx =
+  // Code and structured action history are often denser than prose. Reserve
+  // conservatively so an approved file sample is not silently truncated just
+  // because the user selected a small output budget.
+  const requiredContext = Math.ceil(inputChars / 2) + numPredict + 512;
+  const outputContext =
     numPredict <= 512 ? OLLAMA_CHAT_NUM_CTX : numPredict <= 2_048 ? 8_192 : OLLAMA_CHAT_MAX_NUM_CTX;
+  const inputContext =
+    requiredContext <= OLLAMA_CHAT_NUM_CTX
+      ? OLLAMA_CHAT_NUM_CTX
+      : requiredContext <= 8_192
+        ? 8_192
+        : OLLAMA_CHAT_MAX_NUM_CTX;
+  const numCtx = Math.max(outputContext, inputContext);
   return {
     temperature: ollamaChatTemperature(req),
     num_ctx: numCtx,
@@ -457,6 +472,9 @@ export function buildOllamaRequestBody(
       ? `${baseSystemPrompt}\n\n${localAgentSystemInstruction(mode)}`
       : baseSystemPrompt;
   const history = compactOllamaMessages(req.messages);
+  const inputChars =
+    systemPrompt.length +
+    history.reduce((total, message) => total + llmContentToText(message.content).length, 0);
   return {
     model,
     messages: [
@@ -471,7 +489,7 @@ export function buildOllamaRequestBody(
     stream: true,
     think: policy.think,
     keep_alive: OLLAMA_CHAT_KEEP_ALIVE,
-    options: ollamaChatOptions(req, mode),
+    options: ollamaChatOptions(req, mode, inputChars),
   };
 }
 

@@ -1,4 +1,6 @@
 import { CONNECTION_MODEL_OPTIONS } from './adapters/catalog';
+import { isOpenAiSubscriptionModelAllowed } from './openCodeOpenAiCatalog';
+import { ensureExternalConnectionAutoDetection } from './adapters/autoDetectConnections';
 import { claudeCliAdapter } from './adapters/claude';
 import { codexCliAdapter } from './adapters/codex';
 import { copilotCliAdapter } from './adapters/copilot';
@@ -104,7 +106,9 @@ export async function runSubscriptionCliBridge(
   if (
     exactModels &&
     request.modelId &&
-    !exactModels.some((model) => model.id === request.modelId)
+    !(connection.id === 'openai-codex'
+      ? isOpenAiSubscriptionModelAllowed(request.modelId, exactModels)
+      : exactModels.some((model) => model.id === request.modelId))
   ) {
     throw new Error(`${request.modelId} is unavailable for ${connection.displayName}`);
   }
@@ -122,6 +126,9 @@ export async function runSubscriptionCliBridge(
     throw new Error(`${connection.displayName} requires an exact tool scope`);
   }
   if (!adapter.send) throw new Error(`${connection.displayName} cannot send requests`);
+  if (request.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+
+  await ensureExternalConnectionAutoDetection();
   if (request.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
 
   const needsAuthority = enabledTools.length === 1;

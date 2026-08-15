@@ -15,6 +15,7 @@ import {
   normalizeStoredOllamaEndpoint,
   type OllamaEnsureStatus,
 } from './providers/ollama';
+import { refreshOpenCodeLocalModelRuntime } from '@/lib/harness/localModelRuntimeRefresh';
 
 export interface OllamaBootstrapResult {
   ready: boolean;
@@ -160,8 +161,15 @@ async function runBootstrap(options: OllamaBootstrapOptions = {}): Promise<Ollam
   }
 
   const names = models.map((model) => model.name);
+  const previousNames = getDiscoveredOllamaModels();
+  const modelSetChanged =
+    names.length !== previousNames.length ||
+    names.some((name, index) => name !== previousNames[index]);
   syncDiscoveredOllamaModels(names);
   reconcileDefaultLocalModel(names);
+  if (names.length > 0 && modelSetChanged) {
+    await refreshOpenCodeLocalModelRuntime();
+  }
 
   if (names.length > 0) {
     lastReadyAt = Date.now();

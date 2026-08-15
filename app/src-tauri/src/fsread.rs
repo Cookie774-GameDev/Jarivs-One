@@ -44,7 +44,7 @@ use std::sync::Mutex;
 const MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_WRITE_BYTES: usize = 1024 * 1024;
 const MAX_DIR_ENTRIES: usize = 500;
-const MAX_SAMPLE_BYTES: u64 = 512 * 1024;
+const MAX_SAMPLE_BYTES: u64 = 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TEXT_MUTATION_BYTES: usize = 256 * 1024;
 const MAX_COPY_BYTES: u64 = 16 * 1024 * 1024;
@@ -1345,6 +1345,26 @@ mod tests {
             ),
             Err("too_large".to_string())
         );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn strict_sample_reads_a_complete_bounded_context_shard() {
+        let root = test_root("sample-context-shard");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("shard.txt");
+        let content = vec![b'x'; 700 * 1024];
+        std::fs::write(&file, &content).unwrap();
+
+        let result = fs_read_text_sample(
+            file.to_string_lossy().to_string(),
+            Some(1024 * 1024),
+            Some(root.to_string_lossy().to_string()),
+            Some(true),
+        )
+        .unwrap();
+        assert_eq!(result.as_bytes(), content);
 
         std::fs::remove_dir_all(root).unwrap();
     }

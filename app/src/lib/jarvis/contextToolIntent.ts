@@ -472,6 +472,8 @@ function exactBulletAddressTuples(userText: string): readonly DirectAddressTuple
 export function requestsReadOnlyContextTool(userText: string): boolean {
   if (EXPLICIT_CONTEXT_TOOL.test(userText)) return true;
   if (MUTATING_REQUEST.test(userText)) return false;
+  // Registered disk reads must stay on files.read, not Context-map search.
+  if (/\bfiles\.read\b/i.test(userText) && /[A-Za-z]:[\\/]/.test(userText)) return false;
   return READ_OR_EVIDENCE_REQUEST.test(userText) && FILE_LIKE_SOURCE.test(userText);
 }
 

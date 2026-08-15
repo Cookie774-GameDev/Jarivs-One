@@ -5,7 +5,9 @@ import {
   buildConfirmedAgentMention,
   buildSlashReferenceCommand,
   canvasSnapshotToImageAttachment,
+  connectionSupportsFileAttachments,
   extractAbsoluteFilePaths,
+  resolveSendFilePaths,
   getAppearanceCommandHelp,
   getQueuedMessageNotice,
   getThemeCommandHelp,
@@ -50,6 +52,47 @@ describe('composer file path detection', () => {
   it('deduplicates repeated file paths', () => {
     const path = 'C:\\project\\AnimalOutputGenerator.cs';
     expect(extractAbsoluteFilePaths(`${path} summarize ${path}`)).toEqual([path]);
+  });
+
+  it('keeps typed Windows paths as text on connections that cannot attach files', () => {
+    const sendText =
+      'Read these with files.read\nC:\\Users\\viper\\Downloads\\VibeSpace-Test03-Ten-Files-20260814-Grok4\\01_readme.txt';
+    expect(
+      resolveSendFilePaths({
+        attachedFiles: [],
+        sendText,
+        supportsFiles: false,
+      }),
+    ).toEqual([]);
+    expect(
+      resolveSendFilePaths({
+        attachedFiles: [],
+        sendText,
+        supportsFiles: true,
+      }),
+    ).toEqual([
+      'C:\\Users\\viper\\Downloads\\VibeSpace-Test03-Ten-Files-20260814-Grok4\\01_readme.txt',
+    ]);
+  });
+
+  it('still sends an explicit /attach path even when the connection cannot attach files', () => {
+    expect(
+      resolveSendFilePaths({
+        attachedFiles: ['C:\\Users\\viper\\notes.txt'],
+        sendText: 'Please review the attached notes.',
+        supportsFiles: false,
+      }),
+    ).toEqual(['C:\\Users\\viper\\notes.txt']);
+  });
+
+  it('treats openai-codex as a no-file-attachment connection', () => {
+    expect(
+      connectionSupportsFileAttachments({
+        mode: 'single',
+        connectionId: 'openai-codex',
+        capabilities: { files: false },
+      }),
+    ).toBe(false);
   });
 });
 

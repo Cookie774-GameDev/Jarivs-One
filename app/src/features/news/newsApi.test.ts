@@ -42,6 +42,22 @@ describe('AI News API client', () => {
     expect(parsed.items[0]?.id).toBe('42');
   });
 
+  it('strips retained feed markup before rendering a summary', () => {
+    const parsed = parseNewsResponse({
+      ...validPayload,
+      items: [
+        {
+          ...validPayload.items[0],
+          summary:
+            '<img src="https://example.com/tracker.png"><h2>Release</h2><p>Model <strong>details</strong> &amp; availability.</p>',
+        },
+      ],
+    });
+
+    expect(parsed.items[0]?.summary).toBe('Release Model details & availability.');
+    expect(parsed.items[0]?.summary).not.toMatch(/<[^>]+>/u);
+  });
+
   it('preserves the worker freshness warning and failed refresh state', () => {
     const parsed = parseNewsResponse({
       ...validPayload,

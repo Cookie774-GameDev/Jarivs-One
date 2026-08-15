@@ -80,13 +80,25 @@ export function getReasoningCapabilities(selection: ReasoningSelection): Reasoni
   const model = selection.modelId.toLowerCase();
   const connection = selection.connectionId?.toLowerCase() ?? '';
 
-  if (provider === 'openai' && /^gpt-5(?:\.|$)/.test(model)) {
-    const codexSurface = connection.includes('codex') || model.includes('-sol');
+  if (provider === 'deepseek' && /v4/.test(model)) {
     return {
-      supportedEfforts: codexSurface
-        ? ['low', 'medium', 'high', 'ultra']
-        : ['minimal', 'low', 'medium', 'high', 'ultra'],
+      supportedEfforts: ['low', 'medium', 'high', 'ultra'],
       providerOptionKey: 'reasoning_effort',
+      wireEffort: (effort) => (effort === 'ultra' ? 'max' : effort === 'minimal' ? 'low' : effort),
+    };
+  }
+
+  if (provider === 'openai' && /^gpt-5(?:\.|$)/.test(model)) {
+    const openCodeSurface = connection.includes('opencode') || connection.includes('codex');
+    const codexSurface = connection.includes('codex') || model.includes('-sol');
+    const sparkSurface = model.includes('spark');
+    return {
+      supportedEfforts: sparkSurface
+        ? []
+        : codexSurface || openCodeSurface
+          ? ['low', 'medium', 'high', 'ultra']
+          : ['minimal', 'low', 'medium', 'high', 'ultra'],
+      providerOptionKey: sparkSurface ? null : 'reasoning_effort',
       wireEffort: (effort) => (effort === 'ultra' ? 'xhigh' : effort),
     };
   }
