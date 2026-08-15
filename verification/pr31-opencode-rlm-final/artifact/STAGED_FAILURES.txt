@@ -1,0 +1,18 @@
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot does not continue delayed valid sync startup after authority becomes malformed
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot does not duplicate startup when the same authority is reported while retry is pending
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot fails closed to the free tier while a new or signed-out authority has no verified profile
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot ignores a delayed subscription tier from a former cloud account
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot keeps a remount behind the previous cloud loop quiescence barrier
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot lets only the latest authority start while an older loop is quiescing
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot releases verified queue authority on unverified local auth divergence
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot replaces queue authority before auth-store subscribers observe the new account
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot restarts cloud sync after a later valid sign-in without duplicate concurrent loops
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot stops the active cloud sync loop once for a live malformed session
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot stops the active cloud sync loop once for a live signed-out session
+app/src/App.accountIdentity.test.tsx :: App canonical account identity boot waits for the previous loop to quiesce before starting the next cloud authority
+app/src/features/benchmarks/BenchmarkIntelligencePage.test.tsx :: BenchmarkIntelligencePage renders Artificial Analysis and excludes the removed comparison/valuation UI
+app/src/features/benchmarks/BenchmarkIntelligencePage.test.tsx :: BenchmarkIntelligencePage sorts by exact-row input price and output speed
+app/src/features/news/NewsPanel.live.test.tsx :: NewsPanel live cards keeps the last-good live card after a later manual refresh fails
+app/src/features/news/NewsPanel.live.test.tsx :: NewsPanel live cards renders a live image, full timestamp, and local Today count
+app/src/features/news/NewsPanel.live.test.tsx :: NewsPanel live cards renders a video play treatment for official video metadata
+app/src/features/news/NewsPanel.live.test.tsx :: NewsPanel live cards switches to the explicit fallback when a remote image fails
