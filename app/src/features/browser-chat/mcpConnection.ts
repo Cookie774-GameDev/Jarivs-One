@@ -1,4 +1,5 @@
 export const CHATGPT_APPS_URL = 'https://chatgpt.com/';
+export const CHATGPT_PLUGINS_URL = 'https://chatgpt.com/plugins';
 
 const DEFAULT_PREFLIGHT_TIMEOUT_MS = 5_000;
 

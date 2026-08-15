@@ -697,7 +697,7 @@ async function listProviderModels(
   definition: CliProviderDefinition,
 ): Promise<readonly Readonly<{ id: string; label: string }>[]> {
   if (!definition.modelListArgs || !definition.parseModelList) return Object.freeze([]);
-  const executable = await findExecutable(definition.executableName);
+  const executable = await findCliExecutable(definition.executableName);
   if (!executable) return Object.freeze([]);
   const probe = await probeCliBridge({
     executableId: executable.executableId,
