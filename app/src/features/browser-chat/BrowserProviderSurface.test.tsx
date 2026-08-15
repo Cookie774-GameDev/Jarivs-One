@@ -1,7 +1,10 @@
 import * as React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
+import { browserChatStore } from './browserChatStore';
 import { browserChatProvider } from './providerRegistry';
 import { BrowserProviderSurface } from './BrowserProviderSurface';
 
@@ -36,10 +39,20 @@ describe('BrowserProviderSurface', () => {
   });
 
   beforeEach(() => {
+    useUIStore.setState({ route: 'chat', activeChatId: null });
+    browserChatStore.setState({ engine: 'browser', chatPreferences: {} });
+    useAuthStore.setState({
+      localUserId: 'local-a',
+      cloudSession: {
+        user_id: 'account-a',
+        email: 'owner@example.test',
+        expires_at: 9_999_999_999,
+      },
+    });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(visibleRect);
   });
 
-  it('opens the selected managed provider and hides all surfaces on unmount', async () => {
+  it('opens the selected managed provider with an account-scoped profile and hides on unmount', async () => {
     let hostGeometryListener: (() => void) | undefined;
     const unsubscribeHostGeometry = vi.fn();
     const runtime = {
@@ -55,12 +68,16 @@ describe('BrowserProviderSurface', () => {
         return unsubscribeHostGeometry;
       }),
     };
-    const rendered = render(
-      <BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />,
-    );
+    const provider = browserChatProvider('chatgpt');
+    const rendered = render(<BrowserProviderSurface provider={provider} runtime={runtime} />);
 
     expect(screen.getByLabelText('ChatGPT provider surface')).toBeTruthy();
     await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+    expect(runtime.openManaged).toHaveBeenLastCalledWith(
+      provider,
+      { x: 20, y: 30, width: 900, height: 640 },
+      'vibespace-account:account-a',
+    );
     await waitFor(() => expect(runtime.subscribeHostGeometry).toHaveBeenCalledOnce());
 
     hostGeometryListener?.();
@@ -89,6 +106,59 @@ describe('BrowserProviderSurface', () => {
     expect(runtime.openManaged).not.toHaveBeenCalled();
   });
 
+  it('hides on the immediate route change without waiting for React route teardown', async () => {
+    const runtime = {
+      openManaged: vi.fn(async () => ({
+        kind: 'managed' as const,
+        providerId: 'chatgpt' as const,
+      })),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+    };
+
+    render(<BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />);
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+
+    act(() => useUIStore.setState({ route: 'files' }));
+    await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledOnce());
+    expect(runtime.openManaged).toHaveBeenCalledOnce();
+  });
+
+  it('hides the old profile and reopens with the new VibeSpace account profile', async () => {
+    const runtime = {
+      openManaged: vi.fn(async () => ({
+        kind: 'managed' as const,
+        providerId: 'chatgpt' as const,
+      })),
+      hideAll: vi.fn(async () => undefined),
+      openSystemBrowser: vi.fn(async () => undefined),
+      openChatGptPlugins: vi.fn(async () => undefined),
+    };
+    const provider = browserChatProvider('chatgpt');
+
+    render(<BrowserProviderSurface provider={provider} runtime={runtime} />);
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
+
+    act(() =>
+      useAuthStore.setState({
+        cloudSession: {
+          user_id: 'account-b',
+          email: 'other@example.test',
+          expires_at: 9_999_999_999,
+        },
+      }),
+    );
+
+    await waitFor(() => expect(runtime.hideAll).toHaveBeenCalled());
+    await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledTimes(2));
+    expect(runtime.openManaged).toHaveBeenLastCalledWith(
+      provider,
+      { x: 20, y: 30, width: 900, height: 640 },
+      'vibespace-account:account-b',
+    );
+  });
+
   it('re-hides a stale native open that resolves after route teardown', async () => {
     let releaseOpen: (() => void) | undefined;
     const pendingOpen = new Promise<void>((resolve) => {
@@ -104,12 +174,10 @@ describe('BrowserProviderSurface', () => {
       openChatGptPlugins: vi.fn(async () => undefined),
     };
 
-    const rendered = render(
-      <BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />,
-    );
+    render(<BrowserProviderSurface provider={browserChatProvider('chatgpt')} runtime={runtime} />);
     await waitFor(() => expect(runtime.openManaged).toHaveBeenCalledOnce());
 
-    rendered.unmount();
+    act(() => useUIStore.setState({ route: 'terminal' }));
     await waitFor(() => expect(runtime.hideAll).toHaveBeenCalledOnce());
     releaseOpen?.();
 

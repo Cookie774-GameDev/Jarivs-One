@@ -2,6 +2,8 @@ import * as React from 'react';
 import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
 import { useBrowserChatStore } from './browserChatStore';
 import type { BrowserChatProviderDefinition } from './providerRegistry';
 import {
@@ -21,9 +23,24 @@ export function BrowserProviderSurface({
 }: BrowserProviderSurfaceProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const route = useUIStore((state) => state.route);
+  const activeChatId = useUIStore((state) => state.activeChatId);
+  const engine = useBrowserChatStore(
+    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
+  );
+  const providerProfileKey = useAuthStore((state) => {
+    const accountId = state.cloudSession?.user_id ?? state.localUserId ?? 'local-unassigned';
+    return `vibespace-account:${accountId}`;
+  });
+  const surfaceVisible = route === 'chat' && engine === 'browser';
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
+    if (!surfaceVisible) {
+      void runtime.hideAll().catch(() => undefined);
+      return;
+    }
+
     const host = hostRef.current;
     if (!host) return;
     let disposed = false;
@@ -41,7 +58,7 @@ export function BrowserProviderSurface({
       lastResizeBounds = null;
       if (hiddenApplied) return;
       hiddenApplied = true;
-      void runtime.hideAll();
+      void runtime.hideAll().catch(() => undefined);
     };
 
     const openLatestBounds = async (initialBounds: ProviderSurfaceBounds) => {
@@ -52,13 +69,13 @@ export function BrowserProviderSurface({
       updateInFlight = true;
       let nextBounds: ProviderSurfaceBounds | null = initialBounds;
       try {
-        while (nextBounds && !disposed && hostVisible) {
+        while (nextBounds && !disposed && hostVisible && surfaceVisible) {
           const bounds = nextBounds;
           queuedBounds = null;
           try {
-            const result = await runtime.openManaged(provider, bounds);
-            if (disposed || !hostVisible) {
-              await runtime.hideAll();
+            const result = await runtime.openManaged(provider, bounds, providerProfileKey);
+            if (disposed || !hostVisible || !surfaceVisible) {
+              await runtime.hideAll().catch(() => undefined);
               break;
             }
             setError(null);
@@ -67,7 +84,7 @@ export function BrowserProviderSurface({
               toolBridgeStatus: provider.toolBridgeStatus,
             });
           } catch (cause) {
-            if (!disposed && hostVisible) {
+            if (!disposed && hostVisible && surfaceVisible) {
               const message =
                 cause instanceof Error ? cause.message : 'Managed provider surface failed.';
               setError(message);
@@ -88,7 +105,10 @@ export function BrowserProviderSurface({
     const synchronize = (force = false) => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        if (disposed) return;
+        if (disposed || !surfaceVisible) {
+          hideManagedSurface();
+          return;
+        }
         const rect = host.getBoundingClientRect();
         const rendered =
           document.visibilityState !== 'hidden' &&
@@ -154,9 +174,9 @@ export function BrowserProviderSurface({
       window.removeEventListener('resize', handleWindowResize);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribeHostGeometry?.();
-      void runtime.hideAll();
+      void runtime.hideAll().catch(() => undefined);
     };
-  }, [provider, runtime, setProviderRuntime]);
+  }, [provider, providerProfileKey, runtime, setProviderRuntime, surfaceVisible]);
 
   return (
     <div

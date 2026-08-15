@@ -1,33 +1,37 @@
 //! Browser Chat provider surfaces embedded as child WebViews of the main VibeSpace window.
 //!
 //! The remote provider origin never receives VibeSpace capability authority: every command
-//! verifies that the invoking webview is the local `main` view, and provider URLs come from a
-//! fixed registry rather than renderer input.
+//! verifies that the invoking webview is the local `main` view, provider URLs come from a fixed
+//! registry, navigation is allowlisted, and provider profile directories are hashed per
+//! VibeSpace account/provider instead of being shared globally.
 
-use std::sync::Mutex;
+use std::{fmt::Write as _, sync::Mutex};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::{
     webview::{Webview, WebviewBuilder},
     AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
 };
 
-const PROVIDER_LABELS: [&str; 3] = [
-    "browser-chat-chatgpt",
-    "browser-chat-claude",
-    "browser-chat-gemini",
-];
+#[derive(Debug, Clone)]
+struct SurfaceRecord {
+    provider_id: &'static str,
+    label: String,
+}
 
 // Native surface operations are serialized so React geometry updates cannot create duplicate
-// child WebViews or race against route-leave hide commands. The visible label lets provider
-// switches focus once without stealing focus during geometry-only updates.
+// child WebViews or race against route-leave hide commands. The visible label lets provider or
+// account switches focus once without stealing focus during geometry-only updates.
 #[derive(Debug)]
 struct SurfaceState {
-    visible_label: Option<&'static str>,
+    visible_label: Option<String>,
+    surfaces: Vec<SurfaceRecord>,
 }
 
 static SURFACE_STATE: Mutex<SurfaceState> = Mutex::new(SurfaceState {
     visible_label: None,
+    surfaces: Vec::new(),
 });
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,25 +52,19 @@ pub struct BrowserChatSurfaceStatus {
 
 struct ProviderConfig {
     id: &'static str,
-    label: &'static str,
     url: url::Url,
 }
 
 fn provider_config(provider_id: &str) -> Result<ProviderConfig, String> {
-    let (id, label, url) = match provider_id {
-        "chatgpt" => ("chatgpt", "browser-chat-chatgpt", "https://chatgpt.com/"),
-        "claude" => ("claude", "browser-chat-claude", "https://claude.ai/new"),
-        "gemini" => (
-            "gemini",
-            "browser-chat-gemini",
-            "https://gemini.google.com/",
-        ),
+    let (id, url) = match provider_id {
+        "chatgpt" => ("chatgpt", "https://chatgpt.com/"),
+        "claude" => ("claude", "https://claude.ai/new"),
+        "gemini" => ("gemini", "https://gemini.google.com/"),
         _ => return Err("browser_chat_provider_not_allowed".to_string()),
     };
 
     Ok(ProviderConfig {
         id,
-        label,
         url: url
             .parse()
             .map_err(|_| "browser_chat_provider_url_invalid".to_string())?,
@@ -95,6 +93,39 @@ fn validate_bounds(bounds: &BrowserChatBounds) -> Result<(), String> {
     }
 }
 
+fn validate_profile_key(profile_key: &str) -> Result<(), String> {
+    if profile_key.is_empty()
+        || profile_key.len() > 256
+        || profile_key.trim() != profile_key
+        || profile_key.chars().any(char::is_control)
+    {
+        Err("browser_chat_profile_key_invalid".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn profile_digest(profile_key: &str) -> Result<String, String> {
+    validate_profile_key(profile_key)?;
+    let digest = Sha256::digest(profile_key.as_bytes());
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}")
+            .map_err(|_| "browser_chat_profile_digest_failed".to_string())?;
+    }
+    Ok(encoded)
+}
+
+fn surface_label(provider_id: &str, digest: &str) -> Result<String, String> {
+    if digest.len() < 16 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("browser_chat_profile_digest_invalid".to_string());
+    }
+    Ok(format!(
+        "browser-chat-{provider_id}-{}",
+        &digest[..16]
+    ))
+}
+
 fn relative_bounds(
     bounds: &BrowserChatBounds,
 ) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
@@ -115,7 +146,7 @@ fn apply_bounds(provider: &Webview, bounds: &BrowserChatBounds) -> Result<(), St
         .map_err(|error| format!("browser_chat_size_failed:{error}"))
 }
 
-fn hide_provider(app: &AppHandle, label: &str) -> Result<(), String> {
+fn hide_surface(app: &AppHandle, label: &str) -> Result<(), String> {
     if let Some(webview) = app.get_webview(label) {
         webview
             .hide()
@@ -124,21 +155,79 @@ fn hide_provider(app: &AppHandle, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn hide_other_providers(app: &AppHandle, selected: Option<&str>) -> Result<(), String> {
-    for label in PROVIDER_LABELS {
-        if Some(label) != selected {
-            hide_provider(app, label)?;
+fn hide_surfaces_except(
+    app: &AppHandle,
+    state: &SurfaceState,
+    selected: Option<&str>,
+) -> Result<(), String> {
+    for surface in &state.surfaces {
+        if Some(surface.label.as_str()) != selected {
+            hide_surface(app, &surface.label)?;
         }
     }
     Ok(())
 }
 
-fn profile_directory(app: &AppHandle, provider_id: &str) -> Result<std::path::PathBuf, String> {
+fn host_matches(host: &str, suffix: &str) -> bool {
+    host == suffix || host.ends_with(&format!(".{suffix}"))
+}
+
+fn provider_navigation_allowed(provider_id: &str, target: &url::Url) -> bool {
+    if target.as_str() == "about:blank" {
+        return true;
+    }
+    if target.scheme() != "https" || target.username() != "" || target.password().is_some() {
+        return false;
+    }
+    let Some(host) = target.host_str().map(str::to_ascii_lowercase) else {
+        return false;
+    };
+
+    let shared_identity_hosts = [
+        "accounts.google.com",
+        "google.com",
+        "login.microsoftonline.com",
+        "live.com",
+        "apple.com",
+        "auth0.com",
+        "okta.com",
+        "cloudflare.com",
+    ];
+    let provider_hosts: &[&str] = match provider_id {
+        "chatgpt" => &[
+            "chatgpt.com",
+            "openai.com",
+            "oaistatic.com",
+            "oaiusercontent.com",
+        ],
+        "claude" => &["claude.ai", "anthropic.com", "claudeusercontent.com"],
+        "gemini" => &[
+            "gemini.google.com",
+            "google.com",
+            "googleapis.com",
+            "googleusercontent.com",
+            "gstatic.com",
+        ],
+        _ => return false,
+    };
+
+    provider_hosts
+        .iter()
+        .chain(shared_identity_hosts.iter())
+        .any(|suffix| host_matches(&host, suffix))
+}
+
+fn profile_directory(
+    app: &AppHandle,
+    provider_id: &str,
+    digest: &str,
+) -> Result<std::path::PathBuf, String> {
     let profile_dir = app
         .path()
         .app_data_dir()
         .map_err(|error| format!("browser_chat_profile_failed:{error}"))?
         .join("browser-chat")
+        .join(digest)
         .join(provider_id);
     std::fs::create_dir_all(&profile_dir)
         .map_err(|error| format!("browser_chat_profile_failed:{error}"))?;
@@ -148,15 +237,18 @@ fn profile_directory(app: &AppHandle, provider_id: &str) -> Result<std::path::Pa
 fn open_provider(
     app: AppHandle,
     provider: ProviderConfig,
+    profile_key: String,
     bounds: BrowserChatBounds,
 ) -> Result<bool, String> {
+    let digest = profile_digest(&profile_key)?;
+    let label = surface_label(provider.id, &digest)?;
     let mut state = SURFACE_STATE
         .lock()
         .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
 
-    hide_other_providers(&app, Some(provider.label))?;
+    hide_surfaces_except(&app, &state, Some(&label))?;
 
-    let (webview, created) = if let Some(existing) = app.get_webview(provider.label) {
+    let (webview, created) = if let Some(existing) = app.get_webview(&label) {
         apply_bounds(&existing, &bounds)?;
         (existing, false)
     } else {
@@ -164,16 +256,22 @@ fn open_provider(
             .get_window("main")
             .ok_or_else(|| "browser_chat_main_window_missing".to_string())?;
         let (position, size) = relative_bounds(&bounds)?;
-        let builder = WebviewBuilder::new(provider.label, WebviewUrl::External(provider.url))
-            .data_directory(profile_directory(&app, provider.id)?)
-            .focused(false);
+        let provider_id = provider.id;
+        let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(provider.url))
+            .data_directory(profile_directory(&app, provider.id, &digest)?)
+            .focused(false)
+            .on_navigation(move |target| provider_navigation_allowed(provider_id, target));
         let created = main
             .add_child(builder, position, size)
             .map_err(|error| format!("browser_chat_create_failed:{error}"))?;
+        state.surfaces.push(SurfaceRecord {
+            provider_id: provider.id,
+            label: label.clone(),
+        });
         (created, true)
     };
 
-    let should_focus = created || state.visible_label != Some(provider.label);
+    let should_focus = created || state.visible_label.as_deref() != Some(label.as_str());
     webview
         .show()
         .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
@@ -182,7 +280,7 @@ fn open_provider(
             .set_focus()
             .map_err(|error| format!("browser_chat_focus_failed:{error}"))?;
     }
-    state.visible_label = Some(provider.label);
+    state.visible_label = Some(label);
     Ok(created)
 }
 
@@ -191,16 +289,20 @@ pub async fn browser_chat_surface_open(
     app: AppHandle,
     caller: WebviewWindow,
     provider_id: String,
+    provider_profile_key: String,
     bounds: BrowserChatBounds,
 ) -> Result<BrowserChatSurfaceStatus, String> {
     ensure_main_caller(caller.label())?;
     validate_bounds(&bounds)?;
+    validate_profile_key(&provider_profile_key)?;
     let provider = provider_config(&provider_id)?;
     let status_provider_id = provider.id.to_string();
 
-    let created = tauri::async_runtime::spawn_blocking(move || open_provider(app, provider, bounds))
-        .await
-        .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
+    let created = tauri::async_runtime::spawn_blocking(move || {
+        open_provider(app, provider, provider_profile_key, bounds)
+    })
+    .await
+    .map_err(|error| format!("browser_chat_task_failed:{error}"))??;
 
     Ok(BrowserChatSurfaceStatus {
         provider_id: status_provider_id,
@@ -218,7 +320,7 @@ pub async fn browser_chat_surface_hide_all(
         let mut state = SURFACE_STATE
             .lock()
             .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
-        hide_other_providers(&app, None)?;
+        hide_surfaces_except(&app, &state, None)?;
         state.visible_label = None;
         Ok::<(), String>(())
     })
@@ -239,8 +341,20 @@ pub async fn browser_chat_surface_hide(
         let mut state = SURFACE_STATE
             .lock()
             .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
-        hide_provider(&app, provider.label)?;
-        if state.visible_label == Some(provider.label) {
+        let labels: Vec<String> = state
+            .surfaces
+            .iter()
+            .filter(|surface| surface.provider_id == provider.id)
+            .map(|surface| surface.label.clone())
+            .collect();
+        for label in &labels {
+            hide_surface(&app, label)?;
+        }
+        if state
+            .visible_label
+            .as_ref()
+            .is_some_and(|visible| labels.iter().any(|label| label == visible))
+        {
             state.visible_label = None;
         }
         Ok::<(), String>(())
@@ -257,14 +371,14 @@ mod tests {
     #[test]
     fn accepts_only_registry_owned_provider_ids() {
         let chatgpt = provider_config("chatgpt").expect("ChatGPT is registry-owned");
-        assert_eq!(chatgpt.label, "browser-chat-chatgpt");
+        assert_eq!(chatgpt.id, "chatgpt");
         assert_eq!(chatgpt.url.as_str(), "https://chatgpt.com/");
         assert!(provider_config("https://attacker.example").is_err());
         assert!(provider_config("../chatgpt").is_err());
     }
 
     #[test]
-    fn rejects_non_main_callers_and_invalid_bounds() {
+    fn rejects_non_main_callers_invalid_bounds_and_malformed_profile_keys() {
         assert!(ensure_main_caller("main").is_ok());
         assert!(ensure_main_caller("browser-chat-chatgpt").is_err());
         assert!(validate_bounds(&BrowserChatBounds {
@@ -281,6 +395,9 @@ mod tests {
             height: 600.0,
         })
         .is_err());
+        assert!(validate_profile_key("vibespace-account:account-a").is_ok());
+        assert!(validate_profile_key("").is_err());
+        assert!(validate_profile_key("bad\nprofile").is_err());
     }
 
     #[test]
@@ -300,11 +417,63 @@ mod tests {
     }
 
     #[test]
+    fn profile_labels_are_stable_but_isolated_between_accounts() {
+        let account_a = profile_digest("vibespace-account:account-a").expect("valid profile");
+        let account_a_again =
+            profile_digest("vibespace-account:account-a").expect("valid profile");
+        let account_b = profile_digest("vibespace-account:account-b").expect("valid profile");
+        assert_eq!(account_a, account_a_again);
+        assert_ne!(account_a, account_b);
+        assert_ne!(
+            surface_label("chatgpt", &account_a).expect("valid label"),
+            surface_label("chatgpt", &account_b).expect("valid label")
+        );
+    }
+
+    #[test]
+    fn navigation_allows_provider_and_identity_hosts_but_blocks_untrusted_origins() {
+        assert!(provider_navigation_allowed(
+            "chatgpt",
+            &"https://chatgpt.com/c/abc".parse().expect("valid url")
+        ));
+        assert!(provider_navigation_allowed(
+            "chatgpt",
+            &"https://auth.openai.com/authorize".parse().expect("valid url")
+        ));
+        assert!(provider_navigation_allowed(
+            "chatgpt",
+            &"https://accounts.google.com/o/oauth2/v2/auth"
+                .parse()
+                .expect("valid url")
+        ));
+        assert!(!provider_navigation_allowed(
+            "chatgpt",
+            &"https://attacker.example/phish".parse().expect("valid url")
+        ));
+        assert!(!provider_navigation_allowed(
+            "chatgpt",
+            &"http://chatgpt.com/".parse().expect("valid url")
+        ));
+    }
+
+    #[test]
     fn visible_provider_state_distinguishes_activation_from_geometry_updates() {
-        let mut state = SurfaceState { visible_label: None };
-        assert_ne!(state.visible_label, Some("browser-chat-chatgpt"));
-        state.visible_label = Some("browser-chat-chatgpt");
-        assert_eq!(state.visible_label, Some("browser-chat-chatgpt"));
-        assert_ne!(state.visible_label, Some("browser-chat-claude"));
+        let mut state = SurfaceState {
+            visible_label: None,
+            surfaces: Vec::new(),
+        };
+        assert_ne!(
+            state.visible_label.as_deref(),
+            Some("browser-chat-chatgpt-account-a")
+        );
+        state.visible_label = Some("browser-chat-chatgpt-account-a".to_string());
+        assert_eq!(
+            state.visible_label.as_deref(),
+            Some("browser-chat-chatgpt-account-a")
+        );
+        assert_ne!(
+            state.visible_label.as_deref(),
+            Some("browser-chat-claude-account-a")
+        );
     }
 }

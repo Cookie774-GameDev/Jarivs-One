@@ -27,10 +27,11 @@ export interface ManagedProviderSurface {
 
 export interface ProviderSurfacePlatform {
   readonly desktop: boolean;
-  getSurface(label: string): Promise<ManagedProviderSurface | null>;
+  getSurface(label: string, profileKey?: string): Promise<ManagedProviderSurface | null>;
   createSurface(
     label: string,
     options: WebviewOptions,
+    profileKey?: string,
   ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
   openExternal(url: string): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
@@ -40,6 +41,7 @@ export interface ProviderSurfaceController {
   openManaged(
     provider: BrowserChatProviderDefinition,
     bounds: ProviderSurfaceBounds,
+    profileKey?: string,
   ): Promise<
     | { kind: 'managed'; providerId: BrowserChatProviderId }
     | { kind: 'system_browser'; providerId: BrowserChatProviderId }
@@ -55,14 +57,26 @@ export type NativeBrowserChatInvoke = (
   args?: Record<string, unknown>,
 ) => Promise<unknown>;
 
+const DEFAULT_PROVIDER_PROFILE_KEY = 'vibespace-account:local-default';
+
+function normalizedProfileKey(profileKey: string | undefined): string {
+  const value = (profileKey ?? DEFAULT_PROVIDER_PROFILE_KEY).trim();
+  if (!value || value.length > 256 || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new Error('Browser Chat provider profile key is invalid.');
+  }
+  return value;
+}
+
 export function createNativeManagedProviderSurface(
   label: string,
   invoke: NativeBrowserChatInvoke,
+  profileKey: string = DEFAULT_PROVIDER_PROFILE_KEY,
 ): ManagedProviderSurface {
   const provider = BROWSER_CHAT_PROVIDERS.find((candidate) => candidate.windowLabel === label);
   if (!provider) {
     throw new Error('Unsupported Browser Chat provider window label.');
   }
+  const providerProfileKey = normalizedProfileKey(profileKey);
   let bounds: ProviderSurfaceBounds = {
     x: Number.NaN,
     y: Number.NaN,
@@ -76,6 +90,7 @@ export function createNativeManagedProviderSurface(
       assertBounds(bounds);
       await invoke('browser_chat_surface_open', {
         providerId: provider.id,
+        providerProfileKey,
         bounds,
       });
     },
@@ -114,6 +129,17 @@ export function createProviderSurfaceController(
   platform: ProviderSurfacePlatform,
 ): ProviderSurfaceController {
   const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
+  let operationTail: Promise<void> = Promise.resolve();
+
+  const serialized = <T,>(operation: () => Promise<T>): Promise<T> => {
+    const result = operationTail.then(operation, operation);
+    operationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+
   const hideExcept = async (selected?: BrowserChatProviderId) => {
     await Promise.all(
       BROWSER_CHAT_PROVIDERS.filter((provider) => provider.id !== selected).map(
@@ -126,53 +152,61 @@ export function createProviderSurfaceController(
   };
 
   return {
-    async openManaged(provider, bounds) {
-      assertBounds(bounds);
-      if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
-        throw new Error('Unsupported Browser Chat provider definition.');
-      }
-      if (!platform.desktop) {
-        await platform.openExternal(provider.homeUrl);
-        return { kind: 'system_browser', providerId: provider.id };
-      }
-
-      await hideExcept(provider.id);
-      const relative = {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      };
-      let surface = await platform.getSurface(provider.windowLabel);
-      if (!surface) {
-        let pending = pendingCreations.get(provider.windowLabel);
-        if (!pending) {
-          pending = Promise.resolve(
-            platform.createSurface(provider.windowLabel, {
-              url: provider.homeUrl,
-              dataDirectory: provider.profileKey,
-              x: relative.x,
-              y: relative.y,
-              width: relative.width,
-              height: relative.height,
-              focus: false,
-            }),
-          );
-          pendingCreations.set(provider.windowLabel, pending);
+    async openManaged(provider, bounds, requestedProfileKey) {
+      return serialized(async () => {
+        assertBounds(bounds);
+        if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
+          throw new Error('Unsupported Browser Chat provider definition.');
         }
-        try {
-          surface = await pending;
-        } finally {
-          if (pendingCreations.get(provider.windowLabel) === pending) {
-            pendingCreations.delete(provider.windowLabel);
+        const profileKey = normalizedProfileKey(requestedProfileKey ?? provider.profileKey);
+        if (!platform.desktop) {
+          await platform.openExternal(provider.homeUrl);
+          return { kind: 'system_browser' as const, providerId: provider.id };
+        }
+
+        await hideExcept(provider.id);
+        const relative = {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        };
+        const surfaceKey = `${provider.windowLabel}:${profileKey}`;
+        let surface = await platform.getSurface(provider.windowLabel, profileKey);
+        if (!surface) {
+          let pending = pendingCreations.get(surfaceKey);
+          if (!pending) {
+            pending = Promise.resolve(
+              platform.createSurface(
+                provider.windowLabel,
+                {
+                  url: provider.homeUrl,
+                  dataDirectory: provider.profileKey,
+                  x: relative.x,
+                  y: relative.y,
+                  width: relative.width,
+                  height: relative.height,
+                  focus: false,
+                },
+                profileKey,
+              ),
+            );
+            pendingCreations.set(surfaceKey, pending);
+          }
+          try {
+            surface = await pending;
+          } finally {
+            if (pendingCreations.get(surfaceKey) === pending) {
+              pendingCreations.delete(surfaceKey);
+            }
           }
         }
-      }
-      await surface.setPosition({ x: relative.x, y: relative.y });
-      await surface.setSize({ width: relative.width, height: relative.height });
-      await surface.show();
-      await surface.setFocus();
-      return { kind: 'managed', providerId: provider.id };
+        await surface.setPosition({ x: relative.x, y: relative.y });
+        await surface.setSize({ width: relative.width, height: relative.height });
+        await surface.show();
+        await surface.setFocus();
+        return { kind: 'managed' as const, providerId: provider.id };
+      });
     },
 
     async openSystemBrowser(provider) {
@@ -187,7 +221,7 @@ export function createProviderSurfaceController(
     },
 
     async hideAll() {
-      await hideExcept();
+      await serialized(() => hideExcept());
     },
 
     async subscribeHostGeometry(listener) {
@@ -215,11 +249,19 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
 
   return {
     desktop: true,
-    async getSurface(label) {
-      return createNativeManagedProviderSurface(label, nativeInvoke);
+    async getSurface(label, profileKey) {
+      return createNativeManagedProviderSurface(
+        label,
+        nativeInvoke,
+        normalizedProfileKey(profileKey),
+      );
     },
-    async createSurface(label, options) {
-      const surface = createNativeManagedProviderSurface(label, nativeInvoke);
+    async createSurface(label, options, profileKey) {
+      const surface = createNativeManagedProviderSurface(
+        label,
+        nativeInvoke,
+        normalizedProfileKey(profileKey),
+      );
       await surface.setPosition({ x: options.x, y: options.y });
       await surface.setSize({ width: options.width, height: options.height });
       return surface;
@@ -236,8 +278,8 @@ async function controller(): Promise<ProviderSurfaceController> {
 }
 
 export const browserChatSurface: ProviderSurfaceController = {
-  async openManaged(provider, bounds) {
-    return (await controller()).openManaged(provider, bounds);
+  async openManaged(provider, bounds, profileKey) {
+    return (await controller()).openManaged(provider, bounds, profileKey);
   },
   async openSystemBrowser(provider) {
     return (await controller()).openSystemBrowser(provider);
