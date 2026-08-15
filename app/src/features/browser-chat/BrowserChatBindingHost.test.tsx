@@ -7,7 +7,10 @@ import { useUIStore } from '@/stores/ui';
 import type { ChatId, ProjectId, WorkspaceId } from '@/types/common';
 import { browserChatStore } from './browserChatStore';
 import { BrowserChatBindingHost } from './BrowserChatBindingHost';
-import type { BrowserChatBindingRepository } from './browserChatBindings';
+import type {
+  BrowserChatBinding,
+  BrowserChatBindingRepository,
+} from './browserChatBindings';
 
 function fakeRepository(
   overrides: Partial<BrowserChatBindingRepository> = {},
@@ -39,6 +42,21 @@ const chat = {
   updated_at: 20,
 };
 
+const restoredBinding: BrowserChatBinding = {
+  id: 'chat-a',
+  accountId: 'account-a',
+  workspaceId: 'workspace-a',
+  projectId: 'project-a',
+  nativeChatId: 'chat-a',
+  provider: 'chatgpt',
+  providerProfileKey: 'vibespace-account:account-a',
+  title: 'PR31 Browser Chat',
+  pinned: true,
+  state: 'bound',
+  createdAt: 10,
+  updatedAt: 20,
+};
+
 describe('BrowserChatBindingHost', () => {
   beforeEach(() => {
     useAuthStore.setState({
@@ -68,22 +86,7 @@ describe('BrowserChatBindingHost', () => {
 
   it('restores durable account bindings into the existing Browser Chat preferences', async () => {
     const repository = fakeRepository({
-      list: vi.fn(async () => [
-        {
-          id: 'chat-a',
-          accountId: 'account-a',
-          workspaceId: 'workspace-a',
-          projectId: 'project-a',
-          nativeChatId: 'chat-a',
-          provider: 'chatgpt',
-          providerProfileKey: 'vibespace-account:account-a',
-          title: 'PR31 Browser Chat',
-          pinned: true,
-          state: 'bound',
-          createdAt: 10,
-          updatedAt: 20,
-        },
-      ]),
+      list: vi.fn(async () => [restoredBinding]),
     });
 
     render(
