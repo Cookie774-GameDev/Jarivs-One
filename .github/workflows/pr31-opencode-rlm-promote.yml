@@ -1,0 +1,168 @@
+name: PR31 OpenCode RLM guarded promotion
+
+on:
+  push:
+    branches:
+      - agent/pr31-opencode-rlm-verify-a6f1
+    paths:
+      - .github/workflows/pr31-opencode-rlm-promote.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: pr31-opencode-rlm-guarded-promotion
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BASE: 4209030eb041c661ee1a4b55e87367136638762b
+  TARGET_BRANCH: agent/pr30-fixes-and-updates
+  RESULT_BRANCH: agent/pr31-opencode-rlm-verified-a6f1
+  VERIFY_WORKFLOW: pr31-opencode-rlm-finalize.yml
+  PR_NUMBER: "31"
+
+jobs:
+  promote-after-green:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 130
+
+    steps:
+      - name: Checkout verification controller
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Wait for the exact verifier run
+        id: verifier
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/${VERIFY_WORKFLOW}/runs?branch=agent%2Fpr31-opencode-rlm-verify-a6f1&event=push&per_page=30"
+          verifier_run=""
+          conclusion=""
+
+          for attempt in $(seq 1 390); do
+            payload="$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$api")"
+            verifier_run="$(jq -r --arg sha "$GITHUB_SHA" \
+              '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.run_number) | last | .id // empty' \
+              <<<"$payload")"
+            if [ -n "$verifier_run" ]; then
+              status="$(jq -r --arg sha "$GITHUB_SHA" \
+                '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.run_number) | last | .status // empty' \
+                <<<"$payload")"
+              conclusion="$(jq -r --arg sha "$GITHUB_SHA" \
+                '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.run_number) | last | .conclusion // empty' \
+                <<<"$payload")"
+              echo "Verifier run ${verifier_run}: status=${status} conclusion=${conclusion:-pending}"
+              if [ "$status" = "completed" ]; then
+                break
+              fi
+            else
+              echo "Waiting for verifier run for ${GITHUB_SHA}"
+            fi
+            sleep 20
+          done
+
+          test -n "$verifier_run"
+          test "$conclusion" = "success"
+          echo "run_id=$verifier_run" >> "$GITHUB_OUTPUT"
+
+      - name: Fast-forward PR31 only after all gates pass
+        id: promote
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin \
+            "${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}" \
+            "${RESULT_BRANCH}:refs/remotes/origin/${RESULT_BRANCH}"
+
+          target_before="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          result_sha="$(git rev-parse "origin/${RESULT_BRANCH}")"
+          test "$target_before" = "$EXPECTED_BASE"
+          git merge-base --is-ancestor "$EXPECTED_BASE" "$result_sha"
+
+          # Normal fast-forward push only. No force option is used.
+          git push origin "${result_sha}:refs/heads/${TARGET_BRANCH}"
+          git fetch origin "${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          target_after="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          test "$target_after" = "$result_sha"
+
+          echo "target_before=$target_before" >> "$GITHUB_OUTPUT"
+          echo "final_sha=$result_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Prove PR31 state and exact remote head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIER_RUN_ID: ${{ steps.verifier.outputs.run_id }}
+          TARGET_BEFORE: ${{ steps.promote.outputs.target_before }}
+          FINAL_SHA: ${{ steps.promote.outputs.final_sha }}
+        run: |
+          set -euo pipefail
+          pr_json="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+
+          test "$(jq -r '.state' <<<"$pr_json")" = "open"
+          test "$(jq -r '.draft' <<<"$pr_json")" = "true"
+          test "$(jq -r '.merged' <<<"$pr_json")" = "false"
+          test "$(jq -r '.head.ref' <<<"$pr_json")" = "$TARGET_BRANCH"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$FINAL_SHA"
+
+          git fetch origin "${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          remote_sha="$(git rev-parse "origin/${TARGET_BRANCH}")"
+          test "$remote_sha" = "$FINAL_SHA"
+
+          git log --format='%H%x09%s' "${EXPECTED_BASE}..${FINAL_SHA}" > "$RUNNER_TEMP/integration-commits.tsv"
+          git log -15 --format='%H%x09%s' "origin/${TARGET_BRANCH}" > "$RUNNER_TEMP/remote-log-15.tsv"
+
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson pr "$PR_NUMBER" \
+            --arg verifierRunId "$VERIFIER_RUN_ID" \
+            --arg startingSha "$TARGET_BEFORE" \
+            --arg localFinalSha "$FINAL_SHA" \
+            --arg remotePr31Sha "$remote_sha" \
+            --arg targetBranch "$TARGET_BRANCH" \
+            --arg state "$(jq -r '.state' <<<"$pr_json")" \
+            --argjson draft "$(jq '.draft' <<<"$pr_json")" \
+            --argjson merged "$(jq '.merged' <<<"$pr_json")" \
+            '{
+              repository: $repository,
+              pr: $pr,
+              verifierRunId: $verifierRunId,
+              startingSha: $startingSha,
+              localFinalSha: $localFinalSha,
+              remotePr31Sha: $remotePr31Sha,
+              match: ($localFinalSha == $remotePr31Sha),
+              targetBranch: $targetBranch,
+              prState: $state,
+              draft: $draft,
+              merged: $merged,
+              normalFastForwardPush: true,
+              forcePush: false
+            }' > "$RUNNER_TEMP/promotion-status.json"
+
+          cat "$RUNNER_TEMP/promotion-status.json"
+          cat "$RUNNER_TEMP/integration-commits.tsv"
+
+      - name: Upload concrete remote proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr31-opencode-rlm-promotion-proof
+          path: |
+            ${{ runner.temp }}/promotion-status.json
+            ${{ runner.temp }}/integration-commits.tsv
+            ${{ runner.temp }}/remote-log-15.tsv
+          if-no-files-found: error
+          retention-days: 7
