@@ -34,6 +34,7 @@ export interface ProviderSurfacePlatform {
     profileKey?: string,
   ): ManagedProviderSurface | Promise<ManagedProviderSurface>;
   openExternal(url: string): Promise<void>;
+  hideAllSurfaces?(): Promise<void>;
   subscribeHostGeometry?(listener: () => void): Promise<() => void>;
 }
 
@@ -130,6 +131,7 @@ export function createProviderSurfaceController(
 ): ProviderSurfaceController {
   const pendingCreations = new Map<string, Promise<ManagedProviderSurface>>();
   let operationTail: Promise<void> = Promise.resolve();
+  let visibilityGeneration = 0;
 
   const serialized = <T,>(operation: () => Promise<T>): Promise<T> => {
     const result = operationTail.then(operation, operation);
@@ -153,6 +155,7 @@ export function createProviderSurfaceController(
 
   return {
     async openManaged(provider, bounds, requestedProfileKey) {
+      const requestedGeneration = visibilityGeneration;
       return serialized(async () => {
         assertBounds(bounds);
         if (!BROWSER_CHAT_PROVIDERS.includes(provider)) {
@@ -201,9 +204,23 @@ export function createProviderSurfaceController(
             }
           }
         }
+
         await surface.setPosition({ x: relative.x, y: relative.y });
         await surface.setSize({ width: relative.width, height: relative.height });
+
+        // A route-leave hide increments the generation immediately, even while
+        // native creation is still in flight. Never allow that stale open to
+        // become visible after the user has already left Browser Chat.
+        if (requestedGeneration !== visibilityGeneration) {
+          await surface.hide();
+          return { kind: 'managed' as const, providerId: provider.id };
+        }
+
         await surface.show();
+        if (requestedGeneration !== visibilityGeneration) {
+          await surface.hide();
+          return { kind: 'managed' as const, providerId: provider.id };
+        }
         await surface.setFocus();
         return { kind: 'managed' as const, providerId: provider.id };
       });
@@ -221,7 +238,14 @@ export function createProviderSurfaceController(
     },
 
     async hideAll() {
-      await serialized(() => hideExcept());
+      visibilityGeneration += 1;
+      await serialized(async () => {
+        if (platform.hideAllSurfaces) {
+          await platform.hideAllSurfaces();
+        } else {
+          await hideExcept();
+        }
+      });
     },
 
     async subscribeHostGeometry(listener) {
@@ -265,6 +289,9 @@ async function defaultPlatform(): Promise<ProviderSurfacePlatform> {
       await surface.setPosition({ x: options.x, y: options.y });
       await surface.setSize({ width: options.width, height: options.height });
       return surface;
+    },
+    async hideAllSurfaces() {
+      await nativeInvoke('browser_chat_surface_hide_all');
     },
     openExternal,
   };
