@@ -17,6 +17,7 @@ import { nanoid } from 'nanoid';
 import { db, openDb } from './db';
 import type { StoreName, SyncOp, SyncQueueRow, SyncStatus } from './db';
 import { getSupabaseClient, isCloudSyncConfigured } from './supabase';
+import { fetchMyEntitlements } from './supabase/entitlements';
 
 const SYNC_ID_PREFIX = 'syq';
 const newSyncId = (): string => `${SYNC_ID_PREFIX}_${nanoid(16)}`;
@@ -27,6 +28,36 @@ const PLUGIN_CONNECTIONS_SYNC_TABLE = 'plugin_connections';
 const PULL_CURSOR_KEY_PREFIX = 'cloud_sync:last_pull_at';
 let syncFlushInFlight = false;
 let syncPullInFlight = false;
+
+type SyncSessionClient = {
+  auth: {
+    getSession(): Promise<{
+      data: { session: { user: { id: string } } | null };
+      error?: unknown;
+    }>;
+  };
+};
+
+export function syncRowBelongsToUser(row: SyncQueueRow, userId: string): boolean {
+  return Boolean(userId) && row.owner_user_id === userId;
+}
+
+export async function isExpectedSyncUser(
+  client: SyncSessionClient,
+  expectedUserId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await client.auth.getSession();
+    return !error && data.session?.user?.id === expectedUserId;
+  } catch {
+    return false;
+  }
+}
+
+export async function canUseCloudSync(userId: string): Promise<boolean> {
+  const entitlements = await fetchMyEntitlements(userId);
+  return entitlements?.cloudSyncAllowed === true;
+}
 
 const PRIMARY_KEY_BY_TABLE: Partial<Record<StoreName, string>> = {
   settings: 'key',
@@ -82,6 +113,7 @@ export function buildCloudSyncRecord(
   userId: string,
   nowIso = new Date().toISOString(),
 ): CloudSyncRecord {
+  if (!syncRowBelongsToUser(row, userId)) throw new Error('sync_account_mismatch');
   return {
     user_id: userId,
     table_name: row.table,
@@ -177,8 +209,19 @@ export async function enqueueMutation(
 ): Promise<string> {
   await openDb();
   const id = newSyncId();
+  const client = getSupabaseClient();
+  let ownerUserId: string | undefined;
+  if (client) {
+    try {
+      const { data, error } = await client.auth.getSession();
+      if (!error) ownerUserId = data.session?.user?.id;
+    } catch {
+      ownerUserId = undefined;
+    }
+  }
   const row: SyncQueueRow = {
     id,
+    owner_user_id: ownerUserId,
     op,
     table,
     row_id,
@@ -231,27 +274,42 @@ export async function processSyncQueue(batchSize = 100): Promise<SyncFlushResult
     await openDb();
 
     const client = getSupabaseClient();
+    if (!client) {
+      const skipped = await db.sync_queue
+        .where('status')
+        .equals('pending' as SyncStatus)
+        .limit(batchSize)
+        .count();
+      return { processed: 0, errored: 0, skipped };
+    }
+
+    const { data, error: sessionError } = await client.auth.getSession();
+    const userId = data.session?.user?.id;
+    if (sessionError || !userId) return { processed: 0, errored: 0, skipped: 0 };
+
     const pending = await db.sync_queue
-      .where('status')
-      .equals('pending' as SyncStatus)
+      .where('[owner_user_id+status]')
+      .equals([userId, 'pending' as SyncStatus])
       .limit(batchSize)
       .toArray();
     pending.sort((a, b) => a.created_at - b.created_at);
 
-    if (!client) {
+    if (!(await canUseCloudSync(userId))) {
       return { processed: 0, errored: 0, skipped: pending.length };
     }
-
-    const { data } = await client.auth.getSession();
-    const userId = data.session?.user?.id;
-    if (!userId) {
+    if (!(await isExpectedSyncUser(client, userId))) {
       return { processed: 0, errored: 0, skipped: pending.length };
     }
 
     let processed = 0;
     let errored = 0;
+    let skipped = 0;
 
     for (const row of pending) {
+      if (!syncRowBelongsToUser(row, userId) || !(await isExpectedSyncUser(client, userId))) {
+        skipped += pending.length - processed - errored;
+        break;
+      }
       try {
         await db.sync_queue.update(row.id, {
           status: 'in_progress' as SyncStatus,
@@ -276,7 +334,7 @@ export async function processSyncQueue(batchSize = 100): Promise<SyncFlushResult
       }
     }
 
-    return { processed, errored, skipped: 0 };
+    return { processed, errored, skipped };
   } finally {
     syncFlushInFlight = false;
   }
@@ -288,9 +346,17 @@ export async function processSyncQueue(batchSize = 100): Promise<SyncFlushResult
  */
 export async function retrySyncErrors(): Promise<number> {
   await openDb();
+  const client = getSupabaseClient();
+  if (!client) return 0;
+  const { data, error } = await client.auth.getSession();
+  const userId = data.session?.user?.id;
+  if (error || !userId) return 0;
   const stuck = await db.sync_queue
-    .where('status')
-    .anyOf(['error', 'in_progress'] satisfies SyncStatus[])
+    .where('[owner_user_id+status]')
+    .anyOf([
+      [userId, 'error' as SyncStatus],
+      [userId, 'in_progress' as SyncStatus],
+    ])
     .toArray();
   for (const row of stuck) {
     await db.sync_queue.update(row.id, {
@@ -318,8 +384,13 @@ export async function pruneSyncQueue(
   return removed;
 }
 
-async function applyCustomToolCloudRecord(row: CloudSyncRecord): Promise<boolean> {
+async function applyCustomToolCloudRecord(
+  row: CloudSyncRecord,
+  expectedUserId: string,
+): Promise<boolean> {
   const { useToolStore } = await import('@/features/tools/toolStore');
+  const client = getSupabaseClient();
+  if (!client || !(await isExpectedSyncUser(client, expectedUserId))) return false;
   if (row.op === 'delete') {
     useToolStore.setState((state) => ({
       tools: state.tools.filter((tool) => tool.slug !== row.row_id),
@@ -370,8 +441,13 @@ function pluginConnectionFromCloudRecord(row: CloudSyncRecord) {
   };
 }
 
-async function applyPluginConnectionCloudRecord(row: CloudSyncRecord): Promise<boolean> {
+async function applyPluginConnectionCloudRecord(
+  row: CloudSyncRecord,
+  expectedUserId: string,
+): Promise<boolean> {
   const { usePluginStore } = await import('@/features/plugins/store');
+  const client = getSupabaseClient();
+  if (!client || !(await isExpectedSyncUser(client, expectedUserId))) return false;
   if (row.op === 'delete') {
     usePluginStore.setState((state) => {
       const connections = { ...state.connections };
@@ -388,12 +464,16 @@ async function applyPluginConnectionCloudRecord(row: CloudSyncRecord): Promise<b
   return true;
 }
 
-async function applyCloudSyncRecord(row: CloudSyncRecord): Promise<boolean> {
+async function applyCloudSyncRecord(
+  row: CloudSyncRecord,
+  expectedUserId: string,
+): Promise<boolean> {
+  if (row.user_id !== expectedUserId) return false;
   if (row.table_name === CUSTOM_TOOLS_SYNC_TABLE) {
-    return applyCustomToolCloudRecord(row);
+    return applyCustomToolCloudRecord(row, expectedUserId);
   }
   if (row.table_name === PLUGIN_CONNECTIONS_SYNC_TABLE) {
-    return applyPluginConnectionCloudRecord(row);
+    return applyPluginConnectionCloudRecord(row, expectedUserId);
   }
   return false;
 }
@@ -411,9 +491,13 @@ export async function processCloudPull(batchSize = 200): Promise<SyncPullResult>
     const client = getSupabaseClient();
     if (!client) return { applied: 0, skipped: 0, errored: 0 };
 
-    const { data } = await client.auth.getSession();
+    const { data, error: sessionError } = await client.auth.getSession();
     const userId = data.session?.user?.id;
-    if (!userId) return { applied: 0, skipped: 0, errored: 0 };
+    if (sessionError || !userId) return { applied: 0, skipped: 0, errored: 0 };
+    if (!(await canUseCloudSync(userId))) return { applied: 0, skipped: 0, errored: 0 };
+    if (!(await isExpectedSyncUser(client, userId))) {
+      return { applied: 0, skipped: 0, errored: 0 };
+    }
 
     const cursorKey = pullCursorKey(userId);
     const cursor = await db.settings.get(cursorKey);
@@ -428,6 +512,9 @@ export async function processCloudPull(batchSize = 200): Promise<SyncPullResult>
 
     const { data: rows, error } = await query;
     if (error) throw error;
+    if (!(await isExpectedSyncUser(client, userId))) {
+      return { applied: 0, skipped: 0, errored: 0 };
+    }
 
     let applied = 0;
     let skipped = 0;
@@ -436,7 +523,8 @@ export async function processCloudPull(batchSize = 200): Promise<SyncPullResult>
 
     for (const row of (rows ?? []) as CloudSyncRecord[]) {
       try {
-        const didApply = await applyCloudSyncRecord(row);
+        if (!(await isExpectedSyncUser(client, userId))) break;
+        const didApply = await applyCloudSyncRecord(row, userId);
         if (didApply) applied++;
         else skipped++;
         cursorValue = row.updated_at;
@@ -447,7 +535,8 @@ export async function processCloudPull(batchSize = 200): Promise<SyncPullResult>
       }
     }
 
-    if (cursorValue && cursorValue !== lastPulledAt) {
+    if (cursorValue && cursorValue !== lastPulledAt
+        && await isExpectedSyncUser(client, userId)) {
       await db.settings.put({ key: cursorKey, value: cursorValue, updated_at: Date.now() });
     }
 

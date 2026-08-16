@@ -21,7 +21,9 @@ export type PaidAccessStatus = (typeof PAID_ACCESS_STATUSES)[number];
 export const REVOKE_TO_FREE_STATUSES = [
   'canceled',
   'unpaid',
+  'incomplete',
   'incomplete_expired',
+  'paused',
 ] as const;
 
 export type RevokeToFreeStatus = (typeof REVOKE_TO_FREE_STATUSES)[number];

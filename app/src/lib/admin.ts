@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { isAdminIdentity } from '@/lib/entitlements';
-import { getSupabaseClient } from '@/lib/supabase';
+import { fetchMyEntitlements } from '@/lib/supabase/entitlements';
 
 let cloudAdminCache: { userId: string; value: boolean } | null = null;
 
@@ -10,12 +10,9 @@ export async function fetchCloudAdminStatus(userId: string | undefined): Promise
   if (!userId) return false;
   if (cloudAdminCache?.userId === userId) return cloudAdminCache.value;
 
-  const client = getSupabaseClient();
-  if (!client) return false;
-
   try {
-    const { data, error } = await client.rpc('is_app_admin', { p_user_id: userId });
-    const value = !error && Boolean(data);
+    const entitlements = await fetchMyEntitlements(userId);
+    const value = entitlements?.isAdmin === true;
     cloudAdminCache = { userId, value };
     return value;
   } catch {

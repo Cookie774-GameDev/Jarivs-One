@@ -26,6 +26,12 @@ export type BillingResult =
   | { ok: true; url: string }
   | { ok: false; error: string };
 
+function newCheckoutRequestId(): string {
+  const randomId = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 18)}`;
+  return `checkout-${randomId}`;
+}
+
 // ── callCheckoutSession ───────────────────────────────────────────────────────
 
 /**
@@ -48,6 +54,7 @@ export async function callCheckoutSession(tier: PlanId): Promise<BillingResult> 
   try {
     const { data, error } = await supa.functions.invoke('create-checkout-session', {
       body: { plan: tier },
+      headers: { 'x-idempotency-key': newCheckoutRequestId() },
     });
 
     if (error) {

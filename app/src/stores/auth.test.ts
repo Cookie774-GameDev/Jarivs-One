@@ -1,4 +1,4 @@
-import { useAuthStore } from './auth';
+import { signOutCloudAccount, useAuthStore } from './auth';
 import { secureDeleteApiKey, secureGetApiKey } from '@/lib/security/secureApiKeys';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 
@@ -184,5 +184,45 @@ describe('useAuthStore API key persistence', () => {
     );
 
     expect(useAuthStore.getState().stackCustomSteps).toHaveLength(5);
+  });
+});
+
+describe('account entitlement isolation', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({ plan: 'free', cloudSession: null });
+  });
+
+  it('never persists a server-managed paid plan to localStorage', () => {
+    useAuthStore.getState().setPlan('apex');
+
+    const persisted = JSON.parse(window.localStorage.getItem('jarvis-auth') ?? '{}') as {
+      state?: { plan?: string };
+    };
+    expect(persisted.state?.plan).toBeUndefined();
+  });
+
+  it('clears account-specific session and plan state atomically', () => {
+    useAuthStore.setState({
+      plan: 'ultra',
+      cloudSession: { user_id: 'user-a', email: 'a@example.com', expires_at: 123 },
+    });
+
+    useAuthStore.getState().clearAccountEntitlements();
+
+    expect(useAuthStore.getState().plan).toBe('free');
+    expect(useAuthStore.getState().cloudSession).toBeNull();
+  });
+
+  it('does not report logout success when the remote session remains active', async () => {
+    const failedClient = {
+      auth: { signOut: vi.fn().mockResolvedValue({ error: new Error('network') }) },
+    };
+    await expect(signOutCloudAccount(failedClient)).rejects.toThrow('sign_out_failed');
+
+    const successfulClient = {
+      auth: { signOut: vi.fn().mockResolvedValue({ error: null }) },
+    };
+    await expect(signOutCloudAccount(successfulClient)).resolves.toBeUndefined();
   });
 });

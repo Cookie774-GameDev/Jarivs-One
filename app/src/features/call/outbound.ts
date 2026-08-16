@@ -103,6 +103,8 @@ export async function sendOutboundMessage(
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${jwt}`,
+      'x-idempotency-key': `usage-${globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`,
     },
     body: JSON.stringify({ message }),
   });
@@ -197,11 +199,14 @@ export function startOutboundTrigger(opts?: OutboundOptions): () => void {
     }
 
     try {
+      const idempotencyKey = `usage-${globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
       const r = await fetch(`${cloudUrl}/outbound/call`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${jwt}`,
+          'x-idempotency-key': idempotencyKey,
         },
         body: JSON.stringify({
           reason: detail.reason,

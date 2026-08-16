@@ -59,9 +59,15 @@ export class CloudTtsProvider implements VoiceProvider {
 
     let res: Response;
     try {
+      const idempotencyKey = `usage-${globalThis.crypto?.randomUUID?.()
+        ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
       res = await fetch(url, {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          'x-idempotency-key': idempotencyKey,
+        },
         body: JSON.stringify({ text, provider: this.id, voicePreset: options.preset }),
         signal: timeout.signal,
       });

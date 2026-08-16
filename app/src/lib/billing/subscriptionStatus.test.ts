@@ -12,10 +12,12 @@ describe('subscriptionStatus', () => {
     expect(subscriptionKeepsPaidAccess('past_due')).toBe(true);
   });
 
-  it('revokes on canceled, unpaid, incomplete_expired', () => {
+  it('revokes on every non-paying terminal or paused status', () => {
     expect(subscriptionRevokesToFree('canceled')).toBe(true);
     expect(subscriptionRevokesToFree('unpaid')).toBe(true);
     expect(subscriptionRevokesToFree('incomplete_expired')).toBe(true);
+    expect(subscriptionRevokesToFree('incomplete')).toBe(true);
+    expect(subscriptionRevokesToFree('paused')).toBe(true);
     expect(subscriptionRevokesToFree('active')).toBe(false);
     expect(subscriptionRevokesToFree('past_due')).toBe(false);
   });

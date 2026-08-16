@@ -45,12 +45,15 @@ export async function runHostedStackStep(req: HostedStackRequest): Promise<Hoste
   }
 
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stack-complete`;
+  const idempotencyKey = `usage-${globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       Authorization: `Bearer ${jwt}`,
       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
+      'x-idempotency-key': idempotencyKey,
     },
     body: JSON.stringify({
       provider: req.provider,

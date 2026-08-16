@@ -28,9 +28,15 @@ async function speakViaCloudEdge(
 
   let res: Response;
   try {
+    const idempotencyKey = `usage-${globalThis.crypto?.randomUUID?.()
+      ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
     res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts-speak`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        'x-idempotency-key': idempotencyKey,
+      },
       body: JSON.stringify({ text, provider: 'deepgram_tts', voicePreset: options.preset }),
       signal: timeout.signal,
     });

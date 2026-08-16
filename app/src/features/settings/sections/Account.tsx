@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Mail, User2, Copy, Check, LogIn, LogOut, UserPlus, Cat } from 'lucide-react';
-import { useAuthStore } from '@/stores/auth';
+import { signOutCloudAccount, useAuthStore } from '@/stores/auth';
 import { getSupabaseClient } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/toast';
 import { SignInDialog } from '@/features/auth/SignInDialog';
 import { PetAccountPanel } from '@/features/pets/PetAccountPanel';
+import { clearCloudAdminCache } from '@/lib/admin';
+import { clearEntitlementsCache } from '@/lib/supabase/entitlements';
 
 /**
  * Account section — profile + optional Pet tab (Settings modal).
@@ -20,7 +22,7 @@ export function Account({ profileOnly = false }: { profileOnly?: boolean }) {
   const setDisplayName = useAuthStore((s) => s.setDisplayName);
   const localUserId = useAuthStore((s) => s.localUserId);
   const cloudSession = useAuthStore((s) => s.cloudSession);
-  const setCloudSession = useAuthStore((s) => s.setCloudSession);
+  const clearAccountEntitlements = useAuthStore((s) => s.clearAccountEntitlements);
 
   const [signInOpen, setSignInOpen] = useState(false);
   const [signInMode, setSignInMode] = useState<'signin' | 'signup'>('signin');
@@ -36,12 +38,14 @@ export function Account({ profileOnly = false }: { profileOnly?: boolean }) {
 
   async function handleSignOut() {
     try {
-      const client = getSupabaseClient();
-      await client?.auth.signOut();
+      await signOutCloudAccount(getSupabaseClient());
     } catch {
-      /* ignore */
+      toast.error('Could not sign out', 'Your cloud session is still active. Try again.');
+      return;
     }
-    setCloudSession(null);
+    clearEntitlementsCache();
+    clearCloudAdminCache();
+    clearAccountEntitlements();
     toast.success('Signed out', 'You have been signed out of your account.');
   }
 

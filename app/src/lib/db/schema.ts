@@ -98,6 +98,8 @@ export type SyncStatus = 'pending' | 'in_progress' | 'done' | 'error';
  */
 export type SyncQueueRow = {
   id: string;
+  /** Auth account that created the mutation. Missing legacy rows never upload. */
+  owner_user_id?: string;
   op: SyncOp;
   /** Logical table name in both Dexie and Supabase. */
   table: string;
@@ -114,8 +116,8 @@ export type SyncQueueRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 2 in V2 (additive new tables). */
-export const DB_VERSION = 2;
+/** Current schema version. */
+export const DB_VERSION = 3;
 
 /**
  * Dexie store schema strings.
@@ -181,7 +183,13 @@ export const STORES_V2 = {
   integrations: 'id, &kind',
 } as const;
 
+/** V3 partitions queued cloud mutations by their authenticated owner. */
+export const STORES_V3 = {
+  ...STORES_V2,
+  sync_queue: 'id, owner_user_id, status, [owner_user_id+status], created_at',
+} as const;
+
 /** Active store list — points to the latest version. */
-export const STORES = STORES_V2;
+export const STORES = STORES_V3;
 
 export type StoreName = keyof typeof STORES;

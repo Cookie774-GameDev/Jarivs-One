@@ -33,6 +33,7 @@ import {
   DB_VERSION,
   STORES_V1,
   STORES_V2,
+  STORES_V3,
   type Project,
   type SettingsRow,
   type SyncQueueRow,
@@ -73,9 +74,10 @@ class JarvisDexie extends Dexie {
 
   constructor() {
     super(DB_NAME);
-    // Replay history so existing V1 users auto-migrate to V2.
+    // Replay history so existing users receive additive schema upgrades.
     this.version(1).stores(STORES_V1);
-    this.version(DB_VERSION).stores(STORES_V2);
+    this.version(2).stores(STORES_V2);
+    this.version(DB_VERSION).stores(STORES_V3);
   }
 }
 

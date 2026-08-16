@@ -43,6 +43,9 @@ describe('callCheckoutSession', () => {
     expect(mockInvoke).toHaveBeenCalledOnce();
     expect(mockInvoke).toHaveBeenCalledWith('create-checkout-session', {
       body: { plan: 'pro' },
+      headers: {
+        'x-idempotency-key': expect.stringMatching(/^checkout-[A-Za-z0-9-]{16,}$/),
+      },
     });
     expect(result).toEqual({
       ok: true,

@@ -136,10 +136,18 @@ const CelebrationHost = React.lazy(() =>
 function applyCloudSession(session: SupabaseSessionLike): void {
   const userId = session?.user?.id;
   if (!userId) {
-    useAuthStore.getState().setCloudSession(null);
+    useAuthStore.getState().clearAccountEntitlements();
+    void import('@/lib/supabase/entitlements').then((m) => m.clearEntitlementsCache());
+    void import('@/lib/admin').then((m) => m.clearCloudAdminCache());
     return;
   }
-  useAuthStore.getState().setCloudSession({
+  const store = useAuthStore.getState();
+  if (store.cloudSession?.user_id !== userId) {
+    store.setPlan('free');
+    void import('@/lib/supabase/entitlements').then((m) => m.clearEntitlementsCache());
+    void import('@/lib/admin').then((m) => m.clearCloudAdminCache());
+  }
+  store.setCloudSession({
     user_id: userId,
     email: session.user?.email ?? '',
     expires_at: session.expires_at ?? 0,
@@ -148,29 +156,20 @@ function applyCloudSession(session: SupabaseSessionLike): void {
 }
 
 /**
- * Pull the server-managed subscription tier into the local auth store so the
- * Plans/Account UI reflects Stripe state after sign-in and app restarts.
- * Fire-and-forget: failures leave the locally persisted plan untouched.
+ * Pull server-owned entitlements for the authenticated caller. Failure keeps
+ * the client on Free so a prior account can never leak paid state.
  */
 async function syncPlanFromProfile(userId: string): Promise<void> {
   try {
-    const { getSupabaseClient } = await import('@/lib/supabase/client');
-    const supa = getSupabaseClient();
-    if (!supa) return;
-    const { data, error } = await supa
-      .from('profiles')
-      .select('tier')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error || !data?.tier) return;
-    const tier = data.tier === 'byok-only' ? 'free' : data.tier;
-    const SYNCED_TIERS = new Set(['free', 'starter', 'pro', 'ultra', 'apex']);
-    if (SYNCED_TIERS.has(tier)) {
-      const store = useAuthStore.getState();
-      if (store.plan !== tier) store.setPlan(tier as import('@/lib/entitlements').PlanId);
-    }
+    const { fetchMyEntitlements } = await import('@/lib/supabase/entitlements');
+    const entitlements = await fetchMyEntitlements(userId, { force: true });
+    const store = useAuthStore.getState();
+    if (store.cloudSession?.user_id !== userId) return;
+    store.setPlan(entitlements?.plan ?? 'free');
   } catch (err) {
-    console.warn('[billing] plan sync skipped:', err);
+    const store = useAuthStore.getState();
+    if (store.cloudSession?.user_id === userId) store.setPlan('free');
+    console.warn('[billing] entitlement sync failed closed:', err);
   }
 }
 

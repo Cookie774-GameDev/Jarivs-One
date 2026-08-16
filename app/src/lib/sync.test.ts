@@ -1,6 +1,34 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncQueueRow } from './db';
-import { buildCloudSyncRecord, customToolFromCloudRecord, primaryKeyForSyncTable } from './sync';
+
+const { fetchMyEntitlements } = vi.hoisted(() => ({ fetchMyEntitlements: vi.fn() }));
+
+vi.mock('@/lib/supabase/entitlements', () => ({ fetchMyEntitlements }));
+
+import {
+  buildCloudSyncRecord,
+  canUseCloudSync,
+  customToolFromCloudRecord,
+  isExpectedSyncUser,
+  primaryKeyForSyncTable,
+  syncRowBelongsToUser,
+} from './sync';
+
+describe('cloud sync server authority', () => {
+  beforeEach(() => fetchMyEntitlements.mockReset());
+
+  it('allows paid or admin accounts only when the server says so', async () => {
+    fetchMyEntitlements.mockResolvedValue({ cloudSyncAllowed: true });
+    await expect(canUseCloudSync('user-a')).resolves.toBe(true);
+  });
+
+  it('fails closed when entitlement lookup fails or denies access', async () => {
+    fetchMyEntitlements.mockResolvedValue(null);
+    await expect(canUseCloudSync('user-a')).resolves.toBe(false);
+    fetchMyEntitlements.mockResolvedValue({ cloudSyncAllowed: false });
+    await expect(canUseCloudSync('user-a')).resolves.toBe(false);
+  });
+});
 
 describe('sync table metadata', () => {
   it('uses id for normal app-sync tables', () => {
@@ -27,6 +55,7 @@ describe('cloud sync records', () => {
       created_at: 1,
       updated_at: 2,
     },
+    owner_user_id: 'auth_user_1',
     status: 'pending',
     created_at: Date.parse('2026-06-04T12:00:00.000Z'),
   };
@@ -59,6 +88,32 @@ describe('cloud sync records', () => {
       deleted_at: '2026-06-04T12:05:00.000Z',
       updated_at: '2026-06-04T12:00:00.000Z',
     });
+  });
+
+  it('never binds another account or a legacy unowned row to the active user', () => {
+    expect(syncRowBelongsToUser(baseRow, 'auth_user_1')).toBe(true);
+    expect(syncRowBelongsToUser(baseRow, 'auth_user_2')).toBe(false);
+    expect(syncRowBelongsToUser({ ...baseRow, owner_user_id: undefined }, 'auth_user_1'))
+      .toBe(false);
+    expect(() => buildCloudSyncRecord(baseRow, 'auth_user_2'))
+      .toThrow('sync_account_mismatch');
+  });
+
+  it('revalidates the authenticated account after asynchronous work', async () => {
+    const sessionClient = (userId: string | null) => ({
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: userId ? { user: { id: userId } } : null },
+          error: null,
+        }),
+      },
+    });
+    await expect(isExpectedSyncUser(sessionClient('auth_user_1'), 'auth_user_1'))
+      .resolves.toBe(true);
+    await expect(isExpectedSyncUser(sessionClient('auth_user_2'), 'auth_user_1'))
+      .resolves.toBe(false);
+    await expect(isExpectedSyncUser(sessionClient(null), 'auth_user_1'))
+      .resolves.toBe(false);
   });
 
   it('normalizes custom tool payloads from cloud records', () => {

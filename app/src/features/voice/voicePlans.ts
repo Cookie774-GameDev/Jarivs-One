@@ -27,10 +27,10 @@ function seconds(budget: number): number {
 
 export const VOICE_PLANS: Record<VoicePlanId, VoicePlanInfo> = {
   free: { id: 'free', label: 'Free', priceUsd: 0, callVoiceBudgetUsd: 0, cloudSecondsMax: 0 },
-  starter: { id: 'starter', label: 'Starter', priceUsd: 10, callVoiceBudgetUsd: 2.17, cloudSecondsMax: seconds(2.17) },
-  pro: { id: 'pro', label: 'Pro', priceUsd: 50, callVoiceBudgetUsd: 10.85, cloudSecondsMax: seconds(10.85) },
-  ultra: { id: 'ultra', label: 'Ultra', priceUsd: 100, callVoiceBudgetUsd: 21.7, cloudSecondsMax: seconds(21.7) },
-  apex: { id: 'apex', label: 'Supernova', priceUsd: 200, callVoiceBudgetUsd: 43.4, cloudSecondsMax: seconds(43.4) },
+  starter: { id: 'starter', label: 'Starter', priceUsd: 10, callVoiceBudgetUsd: 1.4025, cloudSecondsMax: seconds(1.4025) },
+  pro: { id: 'pro', label: 'Pro', priceUsd: 50, callVoiceBudgetUsd: 7.0125, cloudSecondsMax: seconds(7.0125) },
+  ultra: { id: 'ultra', label: 'Ultra', priceUsd: 100, callVoiceBudgetUsd: 14.025, cloudSecondsMax: seconds(14.025) },
+  apex: { id: 'apex', label: 'Supernova', priceUsd: 200, callVoiceBudgetUsd: 28.05, cloudSecondsMax: seconds(28.05) },
 };
 
 // ─── Voice providers (independent of chat providers) ─────────────────────────

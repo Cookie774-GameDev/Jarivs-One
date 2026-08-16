@@ -13,6 +13,7 @@ import type { PlanId } from '@/lib/entitlements';
 import {
   DEFAULT_CUSTOM_STEPS,
 } from '@/lib/ai/stacks/presets';
+
 import {
   sanitizeModelIdForInput,
   validateProviderModelSelection,
@@ -52,6 +53,22 @@ import {
   selectionFromOption,
   type ChatModelSelection,
 } from '@/lib/ai/modelSelection';
+
+type CloudSignOutClient = {
+  auth: {
+    signOut(): Promise<{ error: unknown }>;
+  };
+};
+
+export async function signOutCloudAccount(client: CloudSignOutClient | null): Promise<void> {
+  if (!client) throw new Error('sign_out_unavailable');
+  try {
+    const { error } = await client.auth.signOut();
+    if (error) throw error;
+  } catch {
+    throw new Error('sign_out_failed');
+  }
+}
 
 interface AuthState {
   /** Local-only profile (no cloud account) */
@@ -182,6 +199,8 @@ interface AuthState {
   setDefaultLocalModel: (m: string) => void;
   /** Set the active plan id. Will be called by the Stripe webhook handler when billing ships. */
   setPlan: (p: PlanId) => void;
+  /** Remove every server-managed entitlement when an account is left or replaced. */
+  clearAccountEntitlements: () => void;
   setStackPreset: (preset: StackPresetId) => void;
   setChatModelSelection: (selection: ChatModelSelection) => void;
   setStackCustomSteps: (steps: StackStepSpec[]) => void;
@@ -308,6 +327,7 @@ export const useAuthStore = create<AuthState>()(
       setOfflineMode: (v) => set({ offlineMode: v }),
       setDefaultLocalModel: (m) => set({ defaultLocalModel: m.trim() || 'llama3.2' }),
       setPlan: (p) => set({ plan: p }),
+      clearAccountEntitlements: () => set({ plan: 'free', cloudSession: null }),
       setStackPreset: (preset) =>
         set((s) => ({
           stackPreset: preset,
@@ -399,16 +419,18 @@ export const useAuthStore = create<AuthState>()(
         voiceAutoApproveActions: s.voiceAutoApproveActions,
         composerSttProvider: s.composerSttProvider,
         fasterWhisperModel: s.fasterWhisperModel,
-        plan: s.plan,
         stackPreset: s.stackPreset,
         stackCustomSteps: s.stackCustomSteps,
         chatModelSelection: s.chatModelSelection,
         telemetryOptIn: s.telemetryOptIn,
       }),
-      version: 11,
+      version: 12,
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<AuthState>;
+        // Subscription state is server-owned. Never hydrate another account's
+        // cached tier while the current cloud identity is still unknown.
+        delete state.plan;
         const keys = state.apiKeys ?? {};
         const legacySecrets = legacySecretApiKeys(keys);
         migrateLegacySecretsToVault(legacySecrets);
