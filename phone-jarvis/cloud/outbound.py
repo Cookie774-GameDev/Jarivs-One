@@ -1,53 +1,37 @@
-"""
-Outbound calling — Jarvis dials the user.
-
-Triggered by:
-- Manual: user says "Sage, call me at 3pm" via the Assistant (Mod+J)
-- Error-driven: a Jarvis runtime event posts to /outbound/event with
-  category="error" and the user has error_calls=true in their settings
-- Schedule: a daily cron evaluates phone_settings.scheduled_outbound
-
-POST /outbound/call body:
-  {
-    "user_id": "uuid",      # whose number to call
-    "reason": "build_failed",
-    "context": {            # passed to the LLM as system prompt prefix
-      "title": "Build failed",
-      "details": "TypeScript error in App.tsx line 42..."
-    }
-  }
-
-Returns: { call_sid: "CA...", status: "queued" }
-
-Twilio dials the user. When they answer, Twilio hits /twiml-outbound which
-returns TwiML connecting them to the same Media Stream / Pipecat flow as
-inbound, but with `outbound_context` injected into the persona prompt so
-Sage greets with the reason instead of "what's up?"
-"""
+"""Authenticated, metered, signed outbound Phone Jarvis calling."""
 
 from __future__ import annotations
 
-import json
-import logging
+import re
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Form, Header, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from twilio.rest import Client as TwilioClient
-from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 
 from .auth import get_jwt_verifier
+from .billing import (
+    MAX_CALL_SECONDS,
+    MIN_CALL_SECONDS,
+    estimate_call_cost_usd,
+    get_billing_service,
+    terminal_call_settlement,
+)
 from .config import get_settings
+from .security import canonical_request_url, sanitize_context, validate_twilio_signature
 from .supabase_client import get_supabase
+from .twilio_handler import build_media_stream_response
 
-log = logging.getLogger(__name__)
 router = APIRouter(prefix="/outbound", tags=["outbound"])
+SAFE_REQUEST_KEY = re.compile(r"^[A-Za-z0-9._:-]{16,200}$")
+ALLOWED_REASONS = {"manual", "error", "schedule", "todo_due", "build_failed"}
 
 
 class CallRequest(BaseModel):
-    reason: str  # e.g. "build_failed", "manual", "scheduled", "todo_due"
-    context: dict = {}
+    reason: str = "manual"
+    context: dict = Field(default_factory=dict)
 
 
 class CallResponse(BaseModel):
@@ -55,131 +39,135 @@ class CallResponse(BaseModel):
     status: str
 
 
-class MessageRequest(BaseModel):
-    reason: str = "manual"
-    message: str
-    context: dict = {}
-
-
-class MessageResponse(BaseModel):
-    message_sid: str
-    status: str
+async def _authenticated_user(authorization: str) -> str:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "unauthorized")
+    try:
+        claims = await get_jwt_verifier().verify(authorization[7:])
+    except PermissionError as exc:
+        raise HTTPException(401, "unauthorized") from exc
+    return str(claims["sub"])
 
 
 @router.post("/call", response_model=CallResponse)
 async def outbound_call(
     body: CallRequest,
-    request: Request,
     authorization: str = Header(...),
+    x_idempotency_key: str | None = Header(default=None),
 ):
-    """Mint a Twilio outbound call to the authenticated user's stored number."""
-    s = get_settings()
-    if not s.has_twilio:
-        raise HTTPException(503, "Twilio not configured")
+    settings = get_settings()
+    if not settings.has_twilio:
+        raise HTTPException(503, "calling_unavailable")
+    user_id = await _authenticated_user(authorization)
 
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "missing bearer token")
-    try:
-        claims = await get_jwt_verifier().verify(authorization[7:])
-    except PermissionError as e:
-        raise HTTPException(401, str(e))
-    user_id = claims.get("sub")
-    if not user_id:
-        raise HTTPException(401, "no sub claim")
+    phone_settings = await _phone_settings(user_id)
+    if not phone_settings:
+        raise HTTPException(404, "phone_settings_unavailable")
+    user_number = str(phone_settings.get("user_phone_number") or "")
+    if not re.fullmatch(r"\+[1-9]\d{6,14}", user_number):
+        raise HTTPException(400, "phone_number_unavailable")
 
-    # Look up user's stored phone number + outbound preferences
-    settings_row = await _phone_settings(user_id)
-    if not settings_row:
-        raise HTTPException(404, "phone_settings not configured for this user")
+    reason = body.reason if body.reason in ALLOWED_REASONS else "manual"
+    triggers = phone_settings.get("outbound_triggers", {}) or {}
+    if not triggers.get(reason, reason == "manual"):
+        raise HTTPException(403, "outbound_trigger_disabled")
 
-    user_number = settings_row.get("user_phone_number")
-    if not user_number:
-        raise HTTPException(400, "user has not stored a phone number")
-
-    # Per-category opt-in check (default OFF for everything except 'manual')
-    triggers = settings_row.get("outbound_triggers", {}) or {}
-    category = body.reason or "manual"
-    cat_enabled = triggers.get(category, category == "manual")
-    if not cat_enabled:
-        raise HTTPException(403, f"outbound trigger '{category}' is disabled in settings")
-
-    # Stash the outbound context in a short-lived row keyed by call_sid; the
-    # /twiml-outbound endpoint reads it back when Twilio's side connects.
-    sb = get_supabase()
-    twiml_url = f"{request.url.scheme}://{request.url.netloc}/outbound/twiml"
-
-    twilio = TwilioClient(s.TWILIO_ACCOUNT_SID, s.TWILIO_AUTH_TOKEN)
-    call = twilio.calls.create(
-        to=user_number,
-        from_=s.TWILIO_PHONE_NUMBER,
-        url=twiml_url,
-        method="POST",
-        # Ringer time
-        timeout=30,
+    request_key = x_idempotency_key if (
+        x_idempotency_key and SAFE_REQUEST_KEY.fullmatch(x_idempotency_key)
+    ) else f"phone-outbound:{user_id}:{reason}:{int(time.time() // 300)}"
+    billing = get_billing_service()
+    reservation = billing.reserve_bounded_call(
+        user_id,
+        idempotency_key=request_key,
+        max_seconds=MAX_CALL_SECONDS,
     )
-    call_sid = call.sid
+    if not reservation.ok or not reservation.reservation_id:
+        if reservation.reason == "rate_limited":
+            raise HTTPException(429, "rate_limited")
+        if reservation.reason == "usage_unavailable":
+            raise HTTPException(503, "usage_unavailable")
+        raise HTTPException(402, reservation.reason or "budget_exceeded")
+    if reservation.duplicate:
+        if reservation.provider_reference:
+            return CallResponse(call_sid=reservation.provider_reference, status="queued")
+        raise HTTPException(409, "request_in_progress")
 
-    # Stash outbound context for the TwiML callback to read
+    twilio = TwilioClient(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
     try:
-        sb.table("outbound_pending").insert({
+        call = twilio.calls.create(
+            to=user_number,
+            from_=settings.TWILIO_PHONE_NUMBER,
+            url=f"{settings.PHONE_JARVIS_PUBLIC_BASE_URL.rstrip('/')}/outbound/twiml",
+            method="POST",
+            status_callback=(
+                f"{settings.PHONE_JARVIS_PUBLIC_BASE_URL.rstrip('/')}/outbound/status"
+            ),
+            status_callback_method="POST",
+            status_callback_event=["initiated", "ringing", "answered", "completed"],
+            timeout=30,
+            time_limit=reservation.reserved_seconds,
+        )
+    except Exception as exc:
+        billing.settle_call(
+            user_id, reservation.reservation_id,
+            actual_usd=0, actual_seconds=0, status="released",
+        )
+        raise HTTPException(502, "call_provider_unavailable") from exc
+
+    call_sid = str(call.sid or "")
+    if not call_sid:
+        billing.settle_call(
+            user_id, reservation.reservation_id,
+            actual_usd=0, actual_seconds=0, status="released",
+        )
+        raise HTTPException(502, "call_provider_unavailable")
+
+    safe_context = sanitize_context(body.context)
+    try:
+        get_supabase().table("outbound_pending").insert({
             "call_sid": call_sid,
             "user_id": user_id,
-            "reason": body.reason,
-            "context": body.context,
+            "reason": reason,
+            "context": {
+                "payload": safe_context,
+                "billing_reservation_id": reservation.reservation_id,
+                "billing_max_seconds": reservation.reserved_seconds,
+            },
         }).execute()
-    except Exception as e:
-        log.warning("could not stash outbound context: %s", e)
+    except Exception as exc:
+        try:
+            twilio.calls(call_sid).update(status="canceled")
+        except Exception:
+            pass
+        billing.settle_call(
+            user_id, reservation.reservation_id,
+            actual_usd=0, actual_seconds=0, status="released",
+        )
+        raise HTTPException(503, "call_persistence_failed") from exc
 
+    if not billing.attach_provider_reference(user_id, reservation.reservation_id, call_sid):
+        try:
+            twilio.calls(call_sid).update(status="canceled")
+        except Exception:
+            pass
+        try:
+            get_supabase().table("outbound_pending").delete().eq(
+                "call_sid", call_sid
+            ).execute()
+        except Exception:
+            pass
+        billing.settle_call(
+            user_id, reservation.reservation_id,
+            actual_usd=0, actual_seconds=0, status="released",
+        )
+        raise HTTPException(503, "call_persistence_failed")
     return CallResponse(call_sid=call_sid, status="queued")
 
 
-@router.post("/message", response_model=MessageResponse)
-async def outbound_message(
-    body: MessageRequest,
-    authorization: str = Header(...),
-):
-    """Send an SMS to the authenticated user's stored phone number."""
-    s = get_settings()
-    if not s.has_twilio:
-        raise HTTPException(503, "Twilio not configured")
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "missing bearer token")
-    try:
-        claims = await get_jwt_verifier().verify(authorization[7:])
-    except PermissionError as e:
-        raise HTTPException(401, str(e))
-    user_id = claims.get("sub")
-    if not user_id:
-        raise HTTPException(401, "no sub claim")
-
-    settings_row = await _phone_settings(user_id)
-    if not settings_row:
-        raise HTTPException(404, "phone_settings not configured for this user")
-
-    user_number = settings_row.get("user_phone_number")
-    if not user_number:
-        raise HTTPException(400, "user has not stored a phone number")
-
-    triggers = settings_row.get("outbound_triggers", {}) or {}
-    category = body.reason or "manual"
-    cat_enabled = triggers.get(category, category == "manual")
-    if not cat_enabled:
-        raise HTTPException(403, f"outbound trigger '{category}' is disabled in settings")
-
-    text = body.message.strip()
-    if not text:
-        raise HTTPException(400, "message is empty")
-    if len(text) > 1200:
-        text = text[:1197] + "..."
-
-    twilio = TwilioClient(s.TWILIO_ACCOUNT_SID, s.TWILIO_AUTH_TOKEN)
-    msg = twilio.messages.create(
-        to=user_number,
-        from_=s.TWILIO_PHONE_NUMBER,
-        body=text,
-    )
-    return MessageResponse(message_sid=msg.sid, status=msg.status or "queued")
+@router.post("/message")
+async def outbound_message():
+    """Retired: sms-send is the sole metered outbound SMS implementation."""
+    raise HTTPException(410, "use_sms_send_edge_function")
 
 
 @router.post("/twiml")
@@ -189,61 +177,105 @@ async def outbound_twiml(
     From: str = Form(...),
     To: str = Form(...),
 ):
-    """
-    Twilio fires this when the user picks up. We return TwiML connecting them
-    to a Media Stream like the inbound path, but with `outbound_context`
-    injected as a custom parameter.
-    """
-    sb = get_supabase()
-    user_id = "unknown"
-    reason = "manual"
-    context: dict = {}
+    form = await request.form()
+    params = {str(key): str(value) for key, value in form.multi_items()}
+    if not validate_twilio_signature(
+        get_settings().TWILIO_AUTH_TOKEN,
+        request.headers.get("x-twilio-signature"),
+        canonical_request_url(request.url.path, request.url.query),
+        params,
+    ):
+        raise HTTPException(403, "forbidden")
 
     try:
-        resp = (
-            sb.table("outbound_pending")
-            .select("*")
+        response = (
+            get_supabase().table("outbound_pending")
+            .select("user_id, reason, context")
             .eq("call_sid", CallSid)
             .single()
             .execute()
         )
-        row = resp.data or {}
-        user_id = row.get("user_id", "unknown")
-        reason = row.get("reason", "manual")
-        context = row.get("context", {}) or {}
-    except Exception as e:
-        log.warning("[%s] outbound context lookup failed: %s", CallSid, e)
+        row = response.data or {}
+        user_id = str(row["user_id"])
+        stored_context = row.get("context") or {}
+        reservation_id = str(stored_context["billing_reservation_id"])
+    except Exception as exc:
+        raise HTTPException(503, "call_context_unavailable") from exc
 
-    host = request.headers.get("host", "")
-    ws_url = f"wss://{host}/twilio/{CallSid}"
+    return build_media_stream_response(
+        call_sid=CallSid,
+        user_id=user_id,
+        from_number=To,
+        reservation_id=reservation_id,
+        max_seconds=int(stored_context.get("billing_max_seconds") or MIN_CALL_SECONDS),
+        outbound_reason=str(row.get("reason") or "manual"),
+        outbound_context=stored_context.get("payload") or {},
+    )
 
-    vr = VoiceResponse()
-    connect = Connect()
-    stream = Stream(url=ws_url)
-    stream.parameter(name="user_id", value=user_id)
-    stream.parameter(name="from_number", value=To)  # the user's own number
-    stream.parameter(name="caller_preauth", value="true")
-    stream.parameter(name="outbound_reason", value=reason)
-    stream.parameter(name="outbound_context", value=json.dumps(context))
-    connect.append(stream)
-    vr.append(connect)
-    return Response(content=str(vr), media_type="application/xml")
+
+@router.post("/status", status_code=204)
+async def outbound_status(
+    request: Request,
+    CallSid: str = Form(...),
+    CallStatus: str = Form(...),
+    CallDuration: str | None = Form(default=None),
+):
+    """Settle signed terminal Twilio callbacks; non-terminal updates are no-ops."""
+    form = await request.form()
+    params = {str(key): str(value) for key, value in form.multi_items()}
+    if not validate_twilio_signature(
+        get_settings().TWILIO_AUTH_TOKEN,
+        request.headers.get("x-twilio-signature"),
+        canonical_request_url(request.url.path, request.url.query),
+        params,
+    ):
+        raise HTTPException(403, "forbidden")
+
+    settlement = terminal_call_settlement(CallStatus, CallDuration)
+    if settlement is None:
+        return Response(status_code=204)
+    try:
+        response = (
+            get_supabase().table("outbound_pending")
+            .select("user_id, context")
+            .eq("call_sid", CallSid)
+            .single()
+            .execute()
+        )
+        row = response.data or {}
+        stored_context = row.get("context") or {}
+        user_id = str(row["user_id"])
+        reservation_id = str(stored_context["billing_reservation_id"])
+        max_seconds = max(
+            MIN_CALL_SECONDS,
+            min(MAX_CALL_SECONDS, int(stored_context["billing_max_seconds"])),
+        )
+    except Exception:
+        # Unknown signed provider callbacks have no user ledger to mutate.
+        return Response(status_code=204)
+
+    status, provider_seconds = settlement
+    actual_seconds = min(max_seconds, provider_seconds)
+    if not get_billing_service().settle_call(
+        user_id,
+        reservation_id,
+        actual_usd=estimate_call_cost_usd(actual_seconds),
+        actual_seconds=actual_seconds,
+        status=status,
+    ):
+        raise HTTPException(503, "settlement_unavailable")
+    return Response(status_code=204)
 
 
 async def _phone_settings(user_id: str) -> Optional[dict]:
-    s = get_settings()
-    if not s.has_supabase:
-        return None
     try:
-        sb = get_supabase()
-        resp = (
-            sb.table("phone_settings")
-            .select("*")
+        response = (
+            get_supabase().table("phone_settings")
+            .select("user_phone_number, outbound_triggers")
             .eq("user_id", user_id)
             .single()
             .execute()
         )
-        return resp.data
-    except Exception as e:
-        log.warning("phone_settings lookup failed: %s", e)
+        return response.data
+    except Exception:
         return None

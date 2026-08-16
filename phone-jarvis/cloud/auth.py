@@ -23,6 +23,7 @@ import secrets
 import time
 from dataclasses import dataclass, field
 from typing import Optional
+from uuid import UUID
 
 import httpx
 from jose import jwt, JWTError
@@ -33,6 +34,17 @@ log = logging.getLogger(__name__)
 
 PIN_ITERATIONS = 100_000
 PIN_HASH_LEN = 32
+ALLOWED_JWT_ALGORITHMS = {"RS256", "ES256"}
+
+
+def remaining_jwt_lifetime(claims: dict, *, now: float | None = None) -> float:
+    """Return bounded seconds until expiry; malformed/missing expiry fails closed."""
+    try:
+        expires_at = float(claims.get("exp"))
+    except (TypeError, ValueError):
+        return 0.0
+    current = time.time() if now is None else now
+    return max(0.0, expires_at - current)
 
 
 # ============================================================================
@@ -153,14 +165,15 @@ class JwtVerifier:
     """Verifies Supabase Auth JWTs against the project JWKS."""
 
     jwks_url: str
+    issuer: str
     audience: str = "authenticated"
     _jwks_cache: Optional[dict] = field(default=None, init=False)
     _jwks_cache_ts: float = field(default=0.0, init=False)
     _jwks_ttl: float = field(default=3600.0, init=False)
 
-    async def _fetch_jwks(self) -> dict:
+    async def _fetch_jwks(self, *, force: bool = False) -> dict:
         now = time.time()
-        if self._jwks_cache and (now - self._jwks_cache_ts) < self._jwks_ttl:
+        if not force and self._jwks_cache and (now - self._jwks_cache_ts) < self._jwks_ttl:
             return self._jwks_cache
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(self.jwks_url)
@@ -175,14 +188,26 @@ class JwtVerifier:
         try:
             unverified_header = jwt.get_unverified_header(token)
         except JWTError as e:
-            raise PermissionError(f"malformed_token: {e}")
+            raise PermissionError("malformed_token") from e
 
         kid = unverified_header.get("kid")
-        key = None
-        for k in jwks.get("keys", []):
-            if k.get("kid") == kid:
-                key = k
-                break
+        algorithm = unverified_header.get("alg")
+        if algorithm not in ALLOWED_JWT_ALGORITHMS:
+            raise PermissionError("algorithm_not_allowed")
+        expected_key_type = "RSA" if algorithm == "RS256" else "EC"
+
+        def matching_key(key_set: dict):
+            for candidate in key_set.get("keys", []):
+                if candidate.get("kid") == kid and candidate.get("kty") == expected_key_type:
+                    return candidate
+            return None
+
+        key = matching_key(jwks)
+        if not key:
+            # Supabase may rotate asymmetric signing keys before the local TTL
+            # expires. Refresh once, then fail closed if the key is still absent.
+            jwks = await self._fetch_jwks(force=True)
+            key = matching_key(jwks)
         if not key:
             raise PermissionError("unknown_kid")
 
@@ -190,12 +215,28 @@ class JwtVerifier:
             claims = jwt.decode(
                 token,
                 key,
-                algorithms=[unverified_header.get("alg", "RS256")],
+                algorithms=[algorithm],
                 audience=self.audience,
-                options={"verify_aud": True, "verify_exp": True},
+                issuer=self.issuer,
+                options={
+                    "verify_aud": True,
+                    "verify_exp": True,
+                    "verify_iss": True,
+                    "verify_nbf": True,
+                },
             )
         except JWTError as e:
-            raise PermissionError(f"jwt_invalid: {e}")
+            raise PermissionError("jwt_invalid") from e
+
+        if remaining_jwt_lifetime(claims) <= 0:
+            raise PermissionError("jwt_expired")
+
+        try:
+            UUID(str(claims.get("sub")))
+        except (TypeError, ValueError) as e:
+            raise PermissionError("invalid_claims") from e
+        if claims.get("role") != "authenticated":
+            raise PermissionError("invalid_claims")
 
         return claims
 
@@ -214,7 +255,10 @@ def get_jwt_verifier() -> JwtVerifier:
         # legacy HS256 projects, this verifier doesn't apply -- use the
         # SERVICE_ROLE secret directly to verify HS256 tokens.
         jwks_url = f"{s.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
-        _jwt_verifier = JwtVerifier(jwks_url=jwks_url)
+        _jwt_verifier = JwtVerifier(
+            jwks_url=jwks_url,
+            issuer=f"{s.SUPABASE_URL}/auth/v1",
+        )
     return _jwt_verifier
 
 

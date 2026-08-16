@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Optional
 
@@ -29,6 +30,13 @@ from pydantic import BaseModel
 
 from .audit import get_audit_logger
 from .auth import get_jwt_verifier, mint_call_token
+from .billing import (
+    MAX_CALL_SECONDS,
+    bounded_elapsed_seconds,
+    estimate_call_cost_usd,
+    get_billing_service,
+    remaining_call_timeout,
+)
 from .bridge import get_bridge_registry
 from .config import get_settings
 from .pipeline import CallContext, ProviderKeys, build_pipeline_task
@@ -36,6 +44,7 @@ from .supabase_client import get_supabase
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/livekit", tags=["livekit"])
+SAFE_REQUEST_KEY = re.compile(r"^[A-Za-z0-9._:-]{16,200}$")
 
 
 class TokenRequest(BaseModel):
@@ -55,6 +64,7 @@ class TokenResponse(BaseModel):
 async def livekit_token(
     body: TokenRequest,
     authorization: str = Header(...),
+    x_idempotency_key: str | None = Header(default=None),
 ):
     """
     Mint a LiveKit join token for the user.
@@ -77,29 +87,69 @@ async def livekit_token(
     try:
         claims = await get_jwt_verifier().verify(jwt_str)
     except PermissionError as e:
-        raise HTTPException(401, str(e))
+        raise HTTPException(401, "unauthorized") from e
     user_id = claims.get("sub")
     if not user_id:
         raise HTTPException(401, "no sub claim")
+
+    request_key = x_idempotency_key if (
+        x_idempotency_key and SAFE_REQUEST_KEY.fullmatch(x_idempotency_key)
+    ) else f"livekit:{user_id}:{int(time.time() // 300)}"
+    reservation = get_billing_service().reserve_bounded_call(
+        user_id,
+        idempotency_key=request_key,
+        max_seconds=MAX_CALL_SECONDS,
+    )
+    if not reservation.ok or not reservation.reservation_id:
+        if reservation.reason == "rate_limited":
+            raise HTTPException(429, "rate_limited")
+        if reservation.reason == "usage_unavailable":
+            raise HTTPException(503, "usage_unavailable")
+        raise HTTPException(402, reservation.reason or "budget_exceeded")
+    if reservation.duplicate:
+        raise HTTPException(409, "duplicate_request")
 
     # Build LiveKit access token. Room name is per-user, so re-clicking
     # "Call Sage" while a previous call is still ringing reuses the same room.
     room_name = f"jarvis_{user_id[:16]}"
     call_id = mint_call_token()
 
-    at = AccessToken(s.LIVEKIT_API_KEY, s.LIVEKIT_API_SECRET)
-    at.with_identity(f"user_{user_id[:8]}_{int(time.time())}")
-    at.with_name("Jarvis user")
-    at.with_grants(
-        VideoGrants(
-            room_join=True,
-            room=room_name,
-            can_publish=True,
-            can_subscribe=True,
+    try:
+        at = AccessToken(s.LIVEKIT_API_KEY, s.LIVEKIT_API_SECRET)
+        at.with_identity(f"user_{user_id[:8]}_{int(time.time())}")
+        at.with_name("Jarvis user")
+        at.with_grants(
+            VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+            )
         )
-    )
-    at.with_ttl(3600)
-    user_token = at.to_jwt()
+        at.with_ttl(reservation.reserved_seconds + 120)
+        user_token = at.to_jwt()
+    except Exception as e:
+        get_billing_service().settle_call(
+            user_id,
+            reservation.reservation_id,
+            actual_usd=0,
+            actual_seconds=0,
+            status="released",
+        )
+        raise HTTPException(503, "livekit_unavailable") from e
+
+    provider_reference = f"livekit:{room_name}:{call_id}"
+    if not get_billing_service().attach_provider_reference(
+        user_id, reservation.reservation_id, provider_reference
+    ):
+        get_billing_service().settle_call(
+            user_id,
+            reservation.reservation_id,
+            actual_usd=0,
+            actual_seconds=0,
+            status="released",
+        )
+        raise HTTPException(503, "usage_unavailable")
 
     # Audit log: call_start (we mark transport=livekit; caller_number is None)
     persona = body.persona or "sage"
@@ -113,7 +163,15 @@ async def livekit_token(
 
     # Kick off the AI agent join as a background task. The Jarvis app will see
     # the agent appear in the room within ~1s of joining.
-    asyncio.create_task(_spawn_agent(room_name, user_id, call_id, persona))
+    asyncio.create_task(_spawn_agent(
+        room_name,
+        user_id,
+        call_id,
+        persona,
+        reservation.reservation_id,
+        reservation.reserved_seconds,
+        provider_reference,
+    ))
 
     return TokenResponse(
         url=s.LIVEKIT_URL,
@@ -123,7 +181,15 @@ async def livekit_token(
     )
 
 
-async def _spawn_agent(room_name: str, user_id: str, call_id: str, persona: str) -> None:
+async def _spawn_agent(
+    room_name: str,
+    user_id: str,
+    call_id: str,
+    persona: str,
+    reservation_id: str,
+    max_seconds: int,
+    provider_reference: str,
+) -> None:
     """Run the Pipecat pipeline as a LiveKit room participant.
 
     Pipecat 0.0.50+ ships a LiveKitTransport that wraps the livekit-rtc
@@ -133,6 +199,19 @@ async def _spawn_agent(room_name: str, user_id: str, call_id: str, persona: str)
     s = get_settings()
     bridge = get_bridge_registry()
     audit = get_audit_logger()
+    started_at = time.monotonic()
+    end_reason = "user_hangup"
+
+    if not get_billing_service().claim_call(
+        user_id, reservation_id, provider_reference
+    ):
+        log.error("[%s] LiveKit reservation claim failed", call_id)
+        await audit.log_call_end(
+            call_id,
+            end_reason="reservation_unavailable",
+            cost_estimate_usd=0,
+        )
+        return
 
     # Per-user provider keys (BYOK) override operator defaults
     keys = await _resolve_keys_for_user(user_id)
@@ -169,7 +248,7 @@ async def _spawn_agent(room_name: str, user_id: str, call_id: str, persona: str)
                     can_subscribe=True,
                 )
             )
-            .with_ttl(3600)
+            .with_ttl(max_seconds + 120)
             .to_jwt()
         )
 
@@ -190,13 +269,32 @@ async def _spawn_agent(room_name: str, user_id: str, call_id: str, persona: str)
         from pipecat.pipeline.runner import PipelineRunner
 
         runner = PipelineRunner()
-        await runner.run(task)
+        remaining_seconds = remaining_call_timeout(started_at, max_seconds)
+        if remaining_seconds <= 0:
+            raise asyncio.TimeoutError
+        await asyncio.wait_for(runner.run(task), timeout=remaining_seconds)
+    except asyncio.TimeoutError:
+        end_reason = "budget_limit"
 
     except Exception as e:
         log.exception("[%s] agent run failed: %s", call_id, e)
-        await audit.log_call_end(call_id, end_reason="error", cost_estimate_usd=0.0)
-    else:
-        await audit.log_call_end(call_id, end_reason="user_hangup", cost_estimate_usd=0.0)
+        end_reason = "error"
+    finally:
+        elapsed_seconds = bounded_elapsed_seconds(started_at, max_seconds)
+        settled = get_billing_service().settle_call(
+            user_id,
+            reservation_id,
+            actual_usd=estimate_call_cost_usd(elapsed_seconds),
+            actual_seconds=elapsed_seconds,
+            status="settled",
+        )
+        if not settled:
+            log.error("[%s] LiveKit call settlement failed", call_id)
+        await audit.log_call_end(
+            call_id,
+            end_reason=end_reason,
+            cost_estimate_usd=estimate_call_cost_usd(elapsed_seconds),
+        )
 
 
 async def _resolve_keys_for_user(user_id: str) -> ProviderKeys:

@@ -1,6 +1,9 @@
 # phone-jarvis cloud backend
 
 The Pipecat-based voice loop. Runs on Fly.io free tier (or any Docker host).
+The service is disabled by default. `/health` remains available, while every
+call, bridge, and token route stays closed until the operator explicitly sets
+`PHONE_JARVIS_ENABLED=true` with a complete validated configuration.
 Owns:
 - Twilio Programmable Voice webhook (Path A — real phone number, inbound)
 - Twilio outbound calling (Path A — Jarvis calls user)
@@ -21,7 +24,7 @@ cloud/
 ├── twilio_handler.py      # /twiml endpoint + /twilio/<call_sid> WS
 ├── livekit_handler.py     # /livekit/token endpoint + room provisioning
 ├── outbound.py            # Twilio outbound dial logic
-├── bridge.py              # /bridge/<token> WS — desktop daemon tool dispatch
+├── bridge.py              # /bridge WS — desktop daemon tool dispatch
 ├── auth.py                # PIN, caller-ID allowlist, per-call session tokens
 ├── audit.py               # JSONL audit logger
 ├── tools.py               # Tool catalog forwarded to LLM (proxies to bridge)
@@ -37,6 +40,9 @@ Set as Fly.io secrets via `fly secrets set KEY=value`:
 
 | Secret | Source | Required for |
 |---|---|---|
+| `PHONE_JARVIS_ENABLED` | operator (`false` by default) | explicit production kill switch |
+| `PHONE_JARVIS_PUBLIC_BASE_URL` | final public HTTPS origin | exact Twilio signature validation and callbacks |
+| `PHONE_JARVIS_TOKEN_SECRET` | random 32+ byte secret | short-lived one-time media tokens |
 | `SUPABASE_URL` | your Supabase project | per-user auth + settings lookup |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → API | server-side queries |
 | `TWILIO_ACCOUNT_SID` | console.twilio.com | Path A |
@@ -49,16 +55,46 @@ Set as Fly.io secrets via `fly secrets set KEY=value`:
 | `ANTHROPIC_API_KEY` | console.anthropic.com | Path A premium LLM |
 | `CARTESIA_API_KEY` | play.cartesia.ai | Path A premium TTS |
 | `GROQ_API_KEY` | console.groq.com (free) | Path C default LLM/STT |
-| `BRIDGE_TOKEN_PEPPER` | random 64-char hex (you generate) | bridge auth |
+| `BRIDGE_TOKEN_PEPPER` | legacy random secret | fallback only when `PHONE_JARVIS_TOKEN_SECRET` is unset |
 
-Per-user keys (Groq, Anthropic, etc.) are stored encrypted in Supabase
-`phone_settings.byok_provider_keys` and looked up at call start.
+Per-user provider keys may be read from `phone_settings.byok_provider_keys` at
+call start. This service does not add application-level encryption for that
+column. Do not populate it until a separate, reviewed Vault/envelope-encryption
+design is deployed; use operator-side host secrets in the meantime.
+
+Never put `SUPABASE_SERVICE_ROLE_KEY`, provider keys, Twilio credentials, or
+token secrets in a client build, repository, log, callback URL, or request
+payload. Desktop bridge identity is a verified Supabase JWT; the service
+accepts only supported asymmetric signing algorithms and validates issuer,
+audience, expiry, subject UUID, and authenticated role.
+
+## Security and billing invariants
+
+- Twilio HTTP and WebSocket handshakes must carry a valid signature for the
+  exact configured public URL. Reverse-proxy URL rewriting must preserve it.
+- Inbound callers must match the server-side allowlist or complete the bounded
+  PIN challenge. Media tokens are short-lived and scoped; the exact user,
+  reservation, and Twilio call SID must also win one database-backed claim.
+- Outbound and in-app calls authenticate the user before looking up settings.
+- Every call, including an admin call, passes the atomic rate and concurrency
+  limits and obtains an idempotent server-side reservation before a provider
+  starts. The reserved seconds are also the Twilio, LiveKit, and WebSocket hard
+  timeout.
+- Admin calls retain the established unlimited entitlement, but still create a
+  bounded audit reservation and never mutate paid-plan usage counters.
+- Reservation release and settlement are idempotent. Callback retries cannot
+  charge the same reservation twice.
+- Outbound Twilio calls register an exact-URL signed status callback. Terminal
+  failures release the reservation, completed calls reconcile provider duration,
+  and abandoned reservations expire through service-only recovery RPCs.
+- Do not enable this service until migrations `0031`, `0032`, and `0033` have
+  passed the rollback-only SQL tests in `supabase/tests/` in the target schema.
 
 ## Phased deploy
 
 1. **Phase 0** — `fly launch`, `/twiml` returns hardcoded TwiML, dial number → robot voice. Done in 1h.
 2. **Phase 1** — Pipecat pipeline + Deepgram + Claude + Cartesia. Real conversation, no tools. ~3 days.
-3. **Phase 2** — `/bridge/<token>` WS endpoint, dispatch tool calls to desktop. ~2 days.
+3. **Phase 2** — `/bridge` WS endpoint, dispatch tool calls to desktop. ~2 days.
 4. **Phase 3** — LiveKit WebRTC room provisioning, in-app calling. ~2 days.
 5. **Phase 4** — outbound calling, audit log, PIN, allowlist. ~2 days.
 
@@ -80,12 +116,21 @@ Twilio webhook for local dev: use `ngrok http 8080` and set Twilio number's voic
 
 ```bash
 fly launch --name phone-jarvis-cloud --region <closest-to-you>
-fly secrets set TWILIO_ACCOUNT_SID=AC... TWILIO_AUTH_TOKEN=...
+fly secrets set PHONE_JARVIS_ENABLED=false \
+  PHONE_JARVIS_PUBLIC_BASE_URL=https://<your-app>.fly.dev \
+  PHONE_JARVIS_TOKEN_SECRET=<random-32-plus-byte-secret> \
+  TWILIO_ACCOUNT_SID=AC... TWILIO_AUTH_TOKEN=...
 # ... all other secrets ...
 fly deploy
 ```
 
 Set Twilio number's voice webhook to `https://<your-app>.fly.dev/twiml`.
+Outbound call creation configures `https://<your-app>.fly.dev/outbound/status`
+as its signed status callback; do not rewrite either URL at the proxy.
+After migrations, secrets, TLS, webhook signatures, reservations, and rollback
+tests are verified, enable the service in a separate reviewed operation with
+`fly secrets set PHONE_JARVIS_ENABLED=true`. Deployment and enablement are not
+performed by the billing-hardening change itself.
 
 Then:
 - Inbound: dial the number → AI picks up

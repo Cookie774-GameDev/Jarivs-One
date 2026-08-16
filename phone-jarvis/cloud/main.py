@@ -23,7 +23,7 @@ import asyncio
 import logging
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .audit import get_audit_logger
@@ -31,6 +31,7 @@ from .bridge_endpoint import router as bridge_router
 from .config import get_settings
 from .livekit_handler import router as livekit_router
 from .outbound import router as outbound_router
+from .security import KillSwitchMiddleware
 from .twilio_handler import router as twilio_router
 
 logging.basicConfig(
@@ -60,6 +61,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(KillSwitchMiddleware)
 
 app.include_router(twilio_router)
 app.include_router(livekit_router)
@@ -69,33 +71,29 @@ app.include_router(bridge_router)
 
 @app.get("/health")
 async def health():
-    s = get_settings()
     return {
         "ok": True,
         "version": "0.1.0",
-        "transports": {
-            "twilio": s.has_twilio,
-            "livekit": s.has_livekit,
-            "supabase": s.has_supabase,
-        },
     }
 
 
 @app.get("/admin/metrics")
 async def admin_metrics():
-    """Stub. In production, wire to Prometheus / OpenTelemetry."""
-    return {"todo": "implement after first calls land"}
+    """Never expose operational metrics without an authenticated admin path."""
+    raise HTTPException(status_code=404, detail="not_found")
 
 
 @app.on_event("startup")
 async def startup():
     s = get_settings()
+    s.validate_enabled_configuration()
     log.info(
         "phone-jarvis cloud starting | twilio=%s livekit=%s supabase=%s",
         s.has_twilio, s.has_livekit, s.has_supabase,
     )
     # Daily prune of audit logs older than retention window
-    asyncio.create_task(_audit_prune_loop())
+    if s.PHONE_JARVIS_ENABLED:
+        asyncio.create_task(_audit_prune_loop())
 
 
 async def _audit_prune_loop():
