@@ -98,3 +98,64 @@ test('does not replace scrubbing with observer, scroll snap, or image-transform 
   assert.doesNotMatch(config, /IntersectionObserver|style\.transform|backgroundImage/);
   assert.doesNotMatch(css, /scroll-snap-type/);
 });
+
+test('ships the new six-scene cinematic as both a reusable route and the main-page media chain', async () => {
+  const index = await read('index.html');
+  const html = await read('origami-cinematic.html');
+  const indexConfig = await read('js/origami-scroll-world.js');
+  const js = await read('js/origami-cinematic.js');
+  const css = await read('css/origami-cinematic.css');
+
+  assert.doesNotMatch(index, /href="\.\/origami-cinematic\.html"/);
+  assert.match(html, /class="world-stage"/);
+  assert.match(html, /id="chapter-track"/);
+  const mainClips = [...indexConfig.matchAll(/clip:\s*'([^']+\.mp4)'/g)].map((match) => match[1]);
+  assert.equal(mainClips.filter((clip) => clip.includes('/dives/')).length, 6);
+  assert.equal(mainClips.filter((clip) => clip.includes('/connectors/')).length, 5);
+  assert.equal((js.match(/\bid: "/g) || []).length, 6);
+  assert.equal((js.match(/video: "images\/origami-scroll\/work\/higgsfield-test/g) || []).length, 6);
+  assert.equal((js.match(/connector: "images\/origami-scroll\/work\/higgsfield-test\/connectors/g) || []).length, 5);
+  assert.equal((js.match(/poster: "images\/origami-scroll\/source/g) || []).length, 6);
+  assert.match(js, /ensureBlob\(media\.key, media\.video\)/);
+  assert.match(js, /URL\.createObjectURL\(blob\)/);
+  assert.match(js, /if \(!video\.seeking/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /\.seam-veil/);
+});
+
+test('all new cinematic media references exist and contain substantial video data', async () => {
+  const js = await read('js/origami-cinematic.js');
+  const videos = [...js.matchAll(/video: "([^"]+)"/g)].map((match) => match[1]);
+  const connectors = [...js.matchAll(/connector: "([^"]+)"/g)].map((match) => match[1]);
+  const posters = [...js.matchAll(/poster: "([^"]+)"/g)].map((match) => match[1]);
+
+  assert.equal(videos.length, 6);
+  assert.equal(connectors.length, 5);
+  assert.equal(posters.length, 6);
+
+  for (const relative of [...videos, ...connectors]) {
+    const bytes = await readFile(path.join(site, relative));
+    assert.ok(bytes.byteLength > 5_000_000, relative);
+  }
+
+  for (const relative of posters) {
+    const bytes = await readFile(path.join(site, relative));
+    assert.ok(bytes.byteLength > 100_000, relative);
+  }
+});
+
+test('records the exact first-attempt Higgsfield connector chain and preserves a credit reserve', async () => {
+  const manifest = JSON.parse(await read('images/origami-scroll/cinematic-manifest.json'));
+
+  assert.equal(manifest.ready, true);
+  assert.equal(manifest.settings.model, 'kling3_0');
+  assert.equal(manifest.settings.mode, 'pro');
+  assert.equal(manifest.settings.deliveredResolution, '1916x1080');
+  assert.equal(manifest.dives.length, 6);
+  assert.equal(manifest.connectors.length, 5);
+  assert.equal(manifest.credits.connectorSpend, 43.75);
+  assert.equal(manifest.credits.balanceAfterConnectors, 13.75);
+  assert.ok(manifest.connectors.every((item) => item.attempts === 1));
+  assert.ok(manifest.connectors.every((item) => item.startFrameSsim > 0.93));
+  assert.ok(manifest.connectors.every((item) => item.endFrameSsim > 0.93));
+});

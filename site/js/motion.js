@@ -82,14 +82,20 @@
     setTimeout(function () { if (meta) meta.classList.add("in"); }, t3);
   }
 
-  // ---- Simulator tab switcher (mobile) ----
+  // ---- Living OS device switcher ----
   document.querySelectorAll(".sim-tab").forEach(function (tab) {
     tab.addEventListener("click", function () {
-      document.querySelectorAll(".sim-tab").forEach(function (t) { t.classList.remove("active"); });
+      document.querySelectorAll(".sim-tab").forEach(function (t) {
+        var active = t === tab;
+        t.classList.toggle("active", active);
+        t.setAttribute("aria-selected", active ? "true" : "false");
+      });
       tab.classList.add("active");
       var sim = tab.dataset.sim;
       document.querySelectorAll(".sim-panel").forEach(function (p) {
-        p.classList.toggle("active", p.id === "sim" + sim.charAt(0).toUpperCase() + sim.slice(1));
+        var active = p.id === "sim" + sim.charAt(0).toUpperCase() + sim.slice(1);
+        p.classList.toggle("active", active);
+        p.setAttribute("aria-hidden", active ? "false" : "true");
       });
     });
   });

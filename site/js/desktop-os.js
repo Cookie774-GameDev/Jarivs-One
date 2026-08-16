@@ -20,6 +20,7 @@
     dock = frame.querySelector(".desktop-dock");
     menubar = frame.querySelector(".desktop-menubar");
     clock = frame.querySelector(".mb-clock");
+    initShellSwitch();
 
     var boot = frame.querySelector(".desktop-boot");
     if (boot) {
@@ -224,6 +225,37 @@
     return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   }
 
+  function initShellSwitch() {
+    var options = frame.querySelectorAll(".desktop-shell-option[data-shell]");
+    if (!options.length) return;
+
+    function selectShell(shell) {
+      var selected = shell === "windows" ? "windows" : "mac";
+      frame.dataset.shell = selected;
+      sessionStorage.setItem("vs-desktop-shell", selected);
+      options.forEach(function (option) {
+        var active = option.dataset.shell === selected;
+        option.classList.toggle("active", active);
+        option.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+    }
+
+    var savedShell = sessionStorage.getItem("vs-desktop-shell") || "mac";
+    selectShell(savedShell);
+    options.forEach(function (option) {
+      option.addEventListener("click", function (event) {
+        event.stopPropagation();
+        selectShell(option.dataset.shell);
+      });
+    });
+  }
+
+  function focusInput(input) {
+    if (!input) return;
+    try { input.focus({ preventScroll: true }); }
+    catch (e) { input.focus(); }
+  }
+
   function showToast(msg) {
     var toast = frame.querySelector(".desktop-toast");
     if (!toast) return;
@@ -257,8 +289,8 @@
     printTermLine(body, tabId, '<span class="to-mu">Agent coordination: Scout / Builder / Reviewer -- OpenCode ready</span>');
 
     var input = body.querySelector(".term-input");
-    input.focus();
-    body.addEventListener("click", function () { input.focus(); });
+    focusInput(input);
+    body.addEventListener("click", function () { focusInput(input); });
 
     input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") {
@@ -285,7 +317,7 @@
       body.querySelector(".dw-terminal").insertBefore(newOutput, body.querySelector(".term-input-row"));
       printTermLine(body, newId, '<span class="to-mu">New tab -- type <span class="to-cu">help</span></span>');
       switchTermTab(body, newId);
-      input.focus();
+      focusInput(input);
     });
 
     body.querySelector(".term-tabbar").addEventListener("click", function (e) {
@@ -324,7 +356,7 @@
     output.appendChild(div);
     output.scrollTop = output.scrollHeight;
     var input = body.querySelector(".term-input");
-    if (input) input.focus();
+    focusInput(input);
   }
 
   function handleTermCommand(body, tabId, cmd) {
@@ -414,7 +446,7 @@
       printTermLine(body, tabId, '<span class="to-mu">  Type help for available commands</span>');
     }
     var input = body.querySelector(".term-input");
-    if (input) input.focus();
+    focusInput(input);
   }
 
   // ============ CHAT ============
