@@ -32,6 +32,7 @@ import { isCallConfigured, loadCallService } from '@/features/call';
 import { toast } from '@/components/ui/toast';
 import { useWhatsNew } from '@/features/whats-new';
 import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
+import { AppearanceQuickSwitch } from './AppearanceQuickSwitch';
 
 /**
  * TopBar - 40px chrome at the very top of the app.
@@ -369,6 +370,8 @@ export function TopBar() {
         />
       ) : (
         <div className="no-drag flex items-center gap-1">
+          <AppearanceQuickSwitch />
+
           <Hint label="Quick launcher" hotkey={HOTKEYS.LAUNCHER}>
             <Button
               variant="ghost"
@@ -596,6 +599,8 @@ function CompactRightCluster(props: CompactRightClusterProps) {
 
   return (
     <div className="no-drag flex items-center gap-0.5">
+      <AppearanceQuickSwitch compact />
+
       <Hint
         label={chatFullscreen ? 'Exit fullscreen' : 'Fullscreen workspace'}
         hotkey={HOTKEYS.TOGGLE_FULLSCREEN}

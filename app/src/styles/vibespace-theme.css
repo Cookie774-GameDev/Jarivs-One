@@ -1,6 +1,17 @@
 /* VibeSpace: a pastel origami workspace skin. Kept separate from globals.css
  * so the established Dark, Light, and Jarvis Core skins remain unchanged. */
 html[data-theme='vibespace'] {
+  --vs-parchment: #E9D4B7;
+  --vs-raised-ivory: #F8E9D1;
+  --vs-paper-edge: #FFF7E8;
+  --vs-warm-ink: #3B2A20;
+  --vs-coral: #DF846F;
+  --vs-lavender: #947DB7;
+  --vs-sage: #879A7C;
+  --vs-dusty-blue: #7F98AA;
+  --vs-ochre: #C98C42;
+  --vs-deep-indigo: #302E4D;
+
   --background: 36 65% 95%;
   --background-warm: 29 72% 92%;
   --panel: 28 66% 91%;
@@ -77,6 +88,187 @@ html[data-theme='vibespace'] {
 html[data-theme='vibespace'] body {
   background-color: hsl(var(--background));
   background-image: var(--bloom-image);
+}
+
+/* Structural paper system. Every selector is VibeSpace-scoped so Default,
+ * Light, and Jarvis Core retain their existing geometry and chrome. */
+html[data-theme='vibespace'] .vibespace-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--vs-parchment);
+  background-image:
+    repeating-linear-gradient(104deg, transparent 0 19px, rgb(59 42 32 / 0.018) 20px, transparent 21px 43px),
+    linear-gradient(145deg, rgb(255 247 232 / 0.64), rgb(233 212 183 / 0.76));
+}
+
+html[data-theme='vibespace'] .vibespace-shell > *:not(.vibespace-shell__spine) {
+  position: relative;
+  z-index: 2;
+}
+
+html[data-theme='vibespace'] .vibespace-shell__spine {
+  position: absolute;
+  z-index: 30;
+  inset: 0 auto 0 0;
+  width: 13px;
+  pointer-events: none;
+  background:
+    repeating-conic-gradient(
+      from 45deg at 50% 11px,
+      var(--vs-coral) 0deg 42deg,
+      var(--vs-lavender) 42deg 84deg,
+      var(--vs-sage) 84deg 126deg,
+      var(--vs-dusty-blue) 126deg 168deg,
+      var(--vs-ochre) 168deg 210deg,
+      var(--vs-deep-indigo) 210deg 252deg,
+      var(--vs-coral) 252deg 294deg,
+      var(--vs-raised-ivory) 294deg 336deg,
+      var(--vs-lavender) 336deg 360deg
+    );
+  background-size: 100% 46px;
+  border-right: 1px solid rgb(59 42 32 / 0.2);
+  box-shadow: 4px 0 12px rgb(48 46 77 / 0.18), 1px 0 0 var(--vs-paper-edge);
+  clip-path: polygon(0 0, 100% 0, 76% 4%, 100% 8%, 72% 12%, 100% 16%, 76% 20%, 100% 24%, 100% 100%, 0 100%);
+}
+
+html[data-theme='vibespace'] .vibespace-shell__spine::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px 0 auto;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgb(255 247 232 / 0.72) 12%, rgb(59 42 32 / 0.16) 88%, transparent);
+}
+
+html[data-theme='vibespace'] .vibespace-shell__sheet-stack {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  margin: 7px 10px 10px 9px;
+  min-width: 0;
+}
+
+html[data-theme='vibespace'] .vibespace-shell__sheet-stack::before,
+html[data-theme='vibespace'] .vibespace-shell__sheet-stack::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid rgb(59 42 32 / 0.12);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+
+html[data-theme='vibespace'] .vibespace-shell__sheet-stack::before {
+  z-index: -2;
+  inset: 2px -3px -3px 7px;
+  background:
+    repeating-linear-gradient(117deg, transparent 0 16px, rgb(59 42 32 / 0.03) 17px, transparent 18px 36px),
+    var(--vs-parchment);
+  box-shadow: 8px 11px 26px rgb(59 42 32 / 0.16);
+  transform: rotate(0.14deg);
+}
+
+html[data-theme='vibespace'] .vibespace-shell__sheet-stack::after {
+  z-index: -1;
+  inset: 0 1px -1px 3px;
+  background:
+    linear-gradient(132deg, transparent 0 72%, rgb(148 125 183 / 0.1) 72.2% 72.5%, transparent 72.7%),
+    var(--vs-raised-ivory);
+  box-shadow: 4px 7px 18px rgb(48 46 77 / 0.11);
+  transform: rotate(-0.08deg);
+}
+
+html[data-theme='vibespace'] .vibespace-shell__sheet-stack > * {
+  position: relative;
+  z-index: 1;
+}
+
+html[data-theme='vibespace'] .vibespace-shell__workspace {
+  position: relative;
+  z-index: 2;
+  color: var(--vs-warm-ink);
+  border: 1px solid rgb(59 42 32 / 0.14);
+  background-color: var(--vs-paper-edge);
+  background-image:
+    linear-gradient(135deg, transparent 0 47.8%, rgb(59 42 32 / 0.035) 48%, transparent 48.2%),
+    repeating-linear-gradient(8deg, transparent 0 24px, rgb(127 152 170 / 0.025) 25px, transparent 26px 51px);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 13px 100%, 0 calc(100% - 13px));
+  box-shadow: inset 0 1px var(--vs-paper-edge), 0 13px 32px rgb(59 42 32 / 0.1);
+}
+
+html[data-theme='vibespace'] .vibespace-shell > header[aria-label='Application header'] {
+  border-bottom-color: rgb(59 42 32 / 0.18);
+  background:
+    linear-gradient(135deg, var(--vs-coral) 0 9px, transparent 9px) right 58px top / 22px 100% no-repeat,
+    linear-gradient(45deg, var(--vs-lavender) 0 7px, transparent 7px) right 37px bottom / 20px 72% no-repeat,
+    linear-gradient(135deg, var(--vs-sage) 0 7px, transparent 7px) right 18px top / 20px 64% no-repeat,
+    linear-gradient(180deg, var(--vs-paper-edge), var(--vs-raised-ivory));
+  box-shadow: 0 5px 16px rgb(59 42 32 / 0.12), inset 0 -1px rgb(201 140 66 / 0.24);
+}
+
+html[data-theme='vibespace'] .vibespace-shell > header[aria-label='Application header']::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  inset: auto 0 -1px 13px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--vs-coral), var(--vs-lavender) 28%, var(--vs-sage) 52%, var(--vs-dusty-blue) 74%, var(--vs-ochre));
+  opacity: 0.62;
+}
+
+html[data-theme='vibespace'] .appearance-quick-switch {
+  border-color: rgb(59 42 32 / 0.2);
+  border-radius: 9px 4px 9px 5px;
+  background: var(--vs-raised-ivory);
+  box-shadow: 3px 3px 0 rgb(148 125 183 / 0.16), 0 5px 12px rgb(59 42 32 / 0.12);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 5px 100%, 0 calc(100% - 5px));
+}
+
+html[data-theme='vibespace'] .appearance-quick-switch__choice {
+  color: rgb(59 42 32 / 0.68);
+}
+
+html[data-theme='vibespace'] .appearance-quick-switch__choice:hover {
+  color: var(--vs-warm-ink);
+  background: rgb(233 212 183 / 0.64);
+}
+
+html[data-theme='vibespace'] .appearance-quick-switch__choice[aria-pressed='true'] {
+  color: var(--vs-paper-edge);
+  background: linear-gradient(145deg, var(--vs-coral), #c96f62);
+  box-shadow: inset -2px -2px rgb(48 46 77 / 0.12), 0 3px 7px rgb(59 42 32 / 0.14);
+}
+
+@media (max-width: 720px) {
+  html[data-theme='vibespace'] .vibespace-shell__spine {
+    width: 7px;
+    background-size: 100% 32px;
+    box-shadow: 2px 0 8px rgb(48 46 77 / 0.16);
+  }
+
+  html[data-theme='vibespace'] .vibespace-shell__sheet-stack {
+    margin: 3px 4px 5px 5px;
+  }
+
+  html[data-theme='vibespace'] .vibespace-shell__sheet-stack::before {
+    inset: 1px -1px -2px 4px;
+  }
+
+  html[data-theme='vibespace'] .vibespace-shell__sheet-stack::after {
+    inset: 0 0 -1px 2px;
+  }
+
+  html[data-theme='vibespace'] .vibespace-shell__workspace {
+    clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme='vibespace'] .vibespace-shell,
+  html[data-theme='vibespace'] .vibespace-shell *,
+  html[data-theme='vibespace'] .appearance-quick-switch__choice {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
 /* Softer Light: lower glare and gentler separators while preserving the

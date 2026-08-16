@@ -9,6 +9,17 @@
   <meta name="author" content="VibeSpace" />
   <link rel="icon" type="image/png" href="images/vibespace-logo.png" />
 
+  <script data-site-appearance-bootstrap>
+    (function () {
+      var allowed = { default: true, vibespace: true };
+      var appearance = new URLSearchParams(location.search).get('appearance');
+      if (!allowed[appearance]) {
+        try { appearance = localStorage.getItem('vibespace-site-appearance'); } catch (error) { appearance = null; }
+      }
+      document.documentElement.dataset.siteAppearance = allowed[appearance] ? appearance : 'default';
+    })();
+  </script>
+
   <meta property="og:title" content="VibeSpace — Vibe Coding AI Workspace" />
   <meta property="og:description" content="Every model, agent, voice, and task under one roof. Multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills, memory, and Inspector. Local-first, BYOK, Apache 2.0." />
   <meta property="og:type" content="website" />
@@ -27,6 +38,7 @@
   <link rel="stylesheet" href="css/phone-os.css" />
   <link rel="stylesheet" href="css/desktop-os.css" />
   <link rel="stylesheet" href="css/origami-scroll-world.css" />
+  <link rel="stylesheet" href="css/site-appearance.css" />
 
   <script type="application/ld+json">
   {
@@ -64,6 +76,10 @@
         <a href="#pricing">Pricing</a>
         <a href="#download">Download</a>
         <a href="#faq">FAQ</a>
+        <div class="site-appearance-switch" role="group" aria-label="Website appearance">
+          <button type="button" data-site-appearance-choice="default" aria-pressed="false">Default</button>
+          <button type="button" data-site-appearance-choice="vibespace" aria-pressed="false">VibeSpace</button>
+        </div>
         <a class="nav-cta btn" href="#download">Install</a>
       </nav>
       <button class="nav-burger" id="navBurger" aria-label="Toggle nav" aria-expanded="false">&#9776;</button>
@@ -1069,6 +1085,7 @@
   <script src="js/phone-os.js" defer></script>
   <script src="js/desktop-os.js" defer></script>
   <script src="js/scroll-world-engine.js" defer></script>
+  <script src="js/site-appearance.js" defer></script>
   <script src="js/origami-scroll-world.js" defer></script>
   <script src="js/motion.js" defer></script>
   <script>

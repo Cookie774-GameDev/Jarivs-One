@@ -50,11 +50,15 @@ export function AppShell({ children }: AppShellProps) {
       >
         <TooltipProvider delayDuration={400}>
           <div
-            className="flex h-full w-full flex-col bg-background text-foreground"
+            className="vibespace-shell flex h-full w-full flex-col bg-background text-foreground"
             data-workbench-fullscreen="true"
             data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
           >
-            <main aria-label="Workbench window" className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="vibespace-shell__spine" aria-hidden="true" />
+            <main
+              aria-label="Workbench window"
+              className="vibespace-shell__sheet-stack vibespace-shell__workspace min-h-0 min-w-0 flex-1 overflow-hidden"
+            >
               {children}
             </main>
           </div>
@@ -69,17 +73,18 @@ export function AppShell({ children }: AppShellProps) {
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
     >
       <TooltipProvider delayDuration={400}>
-        <div className="flex h-full w-full flex-col bg-background text-foreground">
+        <div className="vibespace-shell flex h-full w-full flex-col bg-background text-foreground">
+          <div className="vibespace-shell__spine" aria-hidden="true" />
           <TopBar />
 
           <div className="flex min-h-0 flex-1">
             <NavPane />
 
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="vibespace-shell__sheet-stack flex min-w-0 flex-1 flex-col">
               <TabStrip />
               <main
                 aria-label="Workspace"
-                className="min-h-0 min-w-0 flex-1 overflow-auto"
+                className="vibespace-shell__workspace min-h-0 min-w-0 flex-1 overflow-auto"
               >
                 {children}
               </main>
