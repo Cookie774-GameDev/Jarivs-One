@@ -1664,4 +1664,3 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | implementation approved 2026-07-13; isolated worktree active at `.worktrees/subscription-cli-bridge`; implementation locks claimed |
 | **Files touched** | Coordination and worktree-safety metadata only before isolated-worktree creation; product scopes will be locked in the feature worktree before edits |
 | **Constraints** | No Stripe, Supabase, billing, subscription, schema, website, phone, entitlement, deployment, merge, release, credential, or production changes. No provider auth prompts or billable probes. |
-
