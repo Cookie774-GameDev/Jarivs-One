@@ -33,7 +33,7 @@ export class JarvisPromptCompilationError extends Error {
   }
 }
 
-const MAX_CAPABILITY_LAYER_CHARS = 16_000;
+const MAX_CAPABILITY_LAYER_CHARS = 32_000;
 const MAX_PREFERENCE_LAYER_CHARS = 12_000;
 const MAX_PROFILE_DATA_CHARS = 8_000;
 const MAX_ALL_ABOUT_ME_DATA_CHARS = 3_000;

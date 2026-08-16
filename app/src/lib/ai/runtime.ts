@@ -1429,11 +1429,22 @@ const KERNEL_RUNTIME_ERROR_CODE_RE = /^kernel_[a-z0-9_]{1,120}$/;
 function safeKernelRuntimeErrorCode(error: unknown): string {
   const record =
     typeof error === 'object' && error !== null
-      ? (error as Readonly<{ code?: unknown; message?: unknown }>)
+      ? (error as Readonly<{ code?: unknown; message?: unknown; name?: unknown }>)
       : undefined;
   for (const candidate of [record?.code, record?.message]) {
     if (typeof candidate === 'string' && KERNEL_RUNTIME_ERROR_CODE_RE.test(candidate)) {
       return candidate;
+    }
+  }
+  if (isKernelSmokeBindingActive()) {
+    for (const candidate of [record?.code, record?.message, record?.name]) {
+      if (typeof candidate !== 'string') continue;
+      const safeDiagnostic = candidate
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 90);
+      if (safeDiagnostic.length > 0) return `kernel_debug_${safeDiagnostic}`;
     }
   }
   return 'kernel_runtime_failure';

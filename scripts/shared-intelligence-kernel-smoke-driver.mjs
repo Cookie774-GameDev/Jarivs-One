@@ -620,6 +620,37 @@ async function readOptionalRuntimeFailureCode(page) {
   return /^kernel_[a-z0-9_]{1,120}$/.test(candidate ?? '') ? candidate : 'kernel_runtime_failure';
 }
 
+async function waitForCanonicalApprovalDispatch(page) {
+  const approval = evidenceLocator(page, 'approval.card');
+  const run = await requireUniqueEvidence(page, 'run.status');
+  const terminalStatuses = ['partial', 'completed', 'failed', 'cancelled', 'timed_out'];
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const approvalCount = await approval.count();
+    if (approvalCount > 1) fail('kernel_smoke_evidence_ambiguous');
+
+    const runStatus = await run.getAttribute('data-run-status');
+    if (runStatus === 'running') return 'running';
+    if (terminalStatuses.includes(runStatus)) {
+      fail('kernel_smoke_approval_dispatch_terminal_before_running');
+    }
+
+    if (approvalCount === 1) {
+      const card = approval.first();
+      const approvalKind = await card.getAttribute('data-approval-kind');
+      const approvalStatus = await card.getAttribute('data-status');
+      if (approvalKind !== 'canonical') {
+        fail('kernel_smoke_approval_dispatch_kind_invalid');
+      }
+      if (approvalStatus === 'queued') return 'queued';
+    }
+
+    if (page.isClosed()) fail('kernel_smoke_page_closed');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail('kernel_smoke_approval_dispatch_timeout');
+}
+
 async function waitForRunStatus(page, accepted) {
   const locator = await requireUniqueEvidence(page, 'run.status');
   const terminalStatuses = ['partial', 'completed', 'failed', 'cancelled', 'timed_out'];
@@ -1018,15 +1049,7 @@ async function runScenario(page, scenario, restartCheckpoint, evidenceDirectory)
       await waitForRunStatus(page, ['awaiting_approval']);
       await captureVisualEvidence(page, evidenceDirectory, scenario, 'waiting-approval');
       await clickApprovalEvidence(page, 'approval.confirm');
-      {
-        const approval = await requireUniqueEvidenceState(
-          page,
-          'approval.card',
-          'data-status',
-          'queued',
-        );
-        await waitForAttribute(approval, 'data-approval-kind', ['canonical']);
-      }
+      await waitForCanonicalApprovalDispatch(page);
       await waitForRunStatus(page, ['running']);
       return 'PASS';
     case 'approval_dangerous':
@@ -1556,6 +1579,21 @@ async function main() {
         await writeFile(failurePath, `${JSON.stringify(failureEvidence, null, 2)}\n`, {
           encoding: 'utf8',
           flag: 'wx',
+        });
+        await page.keyboard.press('F12');
+        await page.waitForTimeout(500);
+        const diagnosticFilter = page.getByPlaceholder('Filter (matches message + JSON detail)');
+        if ((await diagnosticFilter.count()) === 1) {
+          await diagnosticFilter.fill('AI error');
+          const diagnosticRow = page.locator('button').filter({ hasText: 'AI error' }).first();
+          if ((await diagnosticRow.count()) === 1) await diagnosticRow.click();
+        }
+        await page.screenshot({
+          path: containedOutputPath(
+            options.evidenceDirectory,
+            `${options.scenario}.diagnostic.png`,
+          ),
+          fullPage: true,
         });
       } catch {
         // Preserve the original closed failure code even if diagnostics cannot be written.
