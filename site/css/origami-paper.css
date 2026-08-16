@@ -169,6 +169,30 @@ a.btn.ghost {
   box-shadow: 0 14px 32px -12px color-mix(in srgb, var(--vs-wood) 18%, transparent);
 }
 
+/* Hero product demo — mount the interactive simulator on a cream paper card
+   (visual frame only; does not touch the simulator's markup or behavior). */
+.hero .sim-panel {
+  padding: 10px;
+  background: color-mix(in srgb, var(--vs-paper-0) 94%, var(--vs-paper-peach));
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 32%, var(--vs-paper-1));
+  border-radius: 22px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 55%, transparent),
+    0 22px 54px -20px color-mix(in srgb, var(--vs-wood) 45%, transparent);
+}
+.hero .sim-panel .desktop-frame,
+.hero .sim-panel .phone-frame {
+  border-radius: 14px;
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--vs-wood-deep) 40%, transparent);
+}
+.hero .sim-tab {
+  border-radius: 10px 10px 0 0;
+}
+.hero .sim-tab.active {
+  background: linear-gradient(180deg, var(--vs-peach), var(--vs-coral));
+  color: var(--vs-paper-0);
+}
+
 /* Continuous paper ribbon (decorative, non-interactive, no scroll-jack) */
 .vs-site-ribbon {
   position: fixed;
