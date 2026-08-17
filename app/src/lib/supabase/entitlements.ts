@@ -57,7 +57,12 @@ export async function fetchMyEntitlements(
   const client = getSupabaseClient();
   if (!client) return null;
   try {
-    const { data, error } = await client.rpc('get_my_entitlements');
+    // 0045 adds this RPC; generated Database types only list a subset.
+    const { data, error } = await (
+      client.rpc as unknown as (
+        fn: 'get_my_entitlements',
+      ) => Promise<{ data: unknown; error: unknown }>
+    )('get_my_entitlements');
     if (error) return null;
     const row = (Array.isArray(data) ? data[0] : data) as EntitlementRow | undefined;
     const value = parseRow(row, userId);

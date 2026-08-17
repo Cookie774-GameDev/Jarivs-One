@@ -1,4 +1,4 @@
-import { estimateMessageCostUsd } from './budget.ts';
+import { estimateMessageCostUsd } from './budget';
 
 export function buildMessageReservationEstimate(
   promptChars: number,
