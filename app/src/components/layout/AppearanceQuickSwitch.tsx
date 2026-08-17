@@ -36,15 +36,17 @@ export function AppearanceQuickSwitch({ compact = false }: AppearanceQuickSwitch
             data-appearance-choice={appearance.id}
             onClick={() => setTheme(appearance.id as SelectableTheme)}
             className={cn(
-              'appearance-quick-switch__choice inline-flex h-full items-center justify-center font-semibold tracking-tight transition-colors',
+              'appearance-quick-switch__choice inline-flex items-center justify-center font-semibold tracking-tight transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-              compact
-                ? 'min-w-5 rounded-[5px] px-1 text-[9px]'
-                : 'min-w-[54px] rounded-[7px] px-2 text-[10px]',
+              compact ? 'rounded-[5px] px-1 text-[9px]' : 'rounded-[7px] px-2 text-[10px]',
               selected
                 ? 'bg-foreground text-background shadow-sm'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              // Keep the TopBar 24×24 tokens last so tailwind-merge cannot drop them
+              // for the non-compact 54px floor (applied as an inline minWidth below).
+              'min-h-6 min-w-6 shrink-0',
             )}
+            style={compact ? undefined : { minWidth: 54 }}
           >
             <span aria-hidden="true">
               {compact ? appearance.label.slice(0, 1) : appearance.label}

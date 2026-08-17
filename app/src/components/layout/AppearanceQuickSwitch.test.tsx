@@ -23,4 +23,20 @@ describe('AppearanceQuickSwitch', () => {
     expect(useUIStore.getState().theme).toBe('warm');
     expect(screen.getByRole('button', { name: 'Warm' }).getAttribute('aria-pressed')).toBe('true');
   });
+
+  it('keeps every appearance choice at the shared 24px header pointer target', () => {
+    const { rerender } = render(<AppearanceQuickSwitch />);
+    for (const theme of RELEASE_THEME_DEFINITIONS) {
+      const button = screen.getByRole('button', { name: theme.label });
+      expect(button.className, theme.label).toContain('min-h-6');
+      expect(button.className, theme.label).toContain('min-w-6');
+    }
+
+    rerender(<AppearanceQuickSwitch compact />);
+    for (const theme of RELEASE_THEME_DEFINITIONS) {
+      const button = screen.getByRole('button', { name: theme.label });
+      expect(button.className, theme.label).toContain('min-h-6');
+      expect(button.className, theme.label).toContain('min-w-6');
+    }
+  });
 });
