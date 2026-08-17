@@ -55,6 +55,12 @@ This ledger records semantic decisions made while reconciling current PR31 with 
 - **Documentation history:** many prior PR31 task ledgers explicitly treated the installer deletion/state as unrelated protected work and excluded it from feature commits.
 - **Decision:** do **not** resurrect the older main-only installer into the PR31 reconciliation. The staged accidental add was removed. `main` is not modified by this task. Any future installer restoration or destructive deployment remains a separate owner/release decision with its own signing and AV qualification.
 
+## Billing entitlements + usage reservations
+
+- **Canonical source:** current PR31 Stripe webhook, app-access checkout, and `subscriptionStatus` / `PLAN_BUDGET_USD.apex = 40`.
+- **Imported capability:** own-user `get_my_entitlements`, cloud-sync eligibility RPC, usage reservation ledger (0044/0045), Edge billingSecurity/metering helpers, Phone Jarvis `security.py`/`billing.py`.
+- **Decision:** Do not rewrite HEAD `budget.ts` PlanId or revoke-to-free statuses. Source `paused`/`incomplete` immediate-free and 28.05 Apex call-budget fallback remain superseded by newer PR31 semantics.
+
 ## Terminal Fleet on PR31 execution store
 
 - **Canonical source:** current PR31 terminal execution store, command queue, and pane tree.
