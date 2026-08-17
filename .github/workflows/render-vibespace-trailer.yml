@@ -1,0 +1,99 @@
+name: Render VibeSpace Remotion Trailer
+
+on:
+  push:
+    branches:
+      - remotion-vibespace-trailer-20260817
+    paths:
+      - 'remotion-video/**'
+      - '.github/workflows/render-vibespace-trailer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: remotion-video
+
+    steps:
+      - name: Check out trailer branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install exact Remotion dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate JavaScript and JSX syntax
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const ts = require('typescript');
+          const files = [];
+          const walk = (dir) => {
+            for (const name of fs.readdirSync(dir)) {
+              const file = path.join(dir, name);
+              if (fs.statSync(file).isDirectory()) walk(file);
+              else if (/\.(js|jsx)$/.test(name)) files.push(file);
+            }
+          };
+          walk('src');
+          walk('scripts');
+          let errors = 0;
+          for (const file of files) {
+            const result = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+              fileName: file,
+              reportDiagnostics: true,
+              compilerOptions: {
+                jsx: ts.JsxEmit.ReactJSX,
+                target: ts.ScriptTarget.ES2022,
+                module: ts.ModuleKind.ESNext,
+                allowJs: true,
+              },
+            });
+            for (const diagnostic of result.diagnostics || []) {
+              if (diagnostic.category === ts.DiagnosticCategory.Error) {
+                errors += 1;
+                console.error(file, ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+              }
+            }
+          }
+          if (errors) process.exit(1);
+          console.log(`Validated ${files.length} JavaScript/JSX files.`);
+          NODE
+
+      - name: Generate original soundtrack
+        run: npm run score
+
+      - name: Render MP4 trailer
+        run: npm run render
+
+      - name: Render poster frame
+        run: npm run poster
+
+      - name: Verify output media
+        run: |
+          test -s out/vibespace-remotion-trailer.mp4
+          test -s out/vibespace-remotion-poster.png
+          ffprobe -v error -show_entries stream=codec_name,width,height -show_entries format=duration -of json out/vibespace-remotion-trailer.mp4
+          file out/vibespace-remotion-poster.png
+          ls -lh out/
+
+      - name: Upload trailer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibespace-remotion-trailer
+          path: |
+            remotion-video/out/vibespace-remotion-trailer.mp4
+            remotion-video/out/vibespace-remotion-poster.png
+          if-no-files-found: error
+          retention-days: 30
