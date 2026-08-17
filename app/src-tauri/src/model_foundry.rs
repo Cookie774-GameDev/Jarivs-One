@@ -1577,7 +1577,9 @@ mod tests {
 
     #[test]
     fn inline_dataset_rejects_too_many_records() {
-        let dataset = vec!["{\"prompt\":\"p\",\"completion\":\"c\"}"; MAX_INLINE_DATASET_EXAMPLES + 1].join("\n");
+        let dataset =
+            vec!["{\"prompt\":\"p\",\"completion\":\"c\"}"; MAX_INLINE_DATASET_EXAMPLES + 1]
+                .join("\n");
         let error = canonicalize_inline_dataset(&dataset, None).unwrap_err();
         assert!(error.contains("20000"));
     }
@@ -1598,11 +1600,19 @@ mod tests {
 
     #[test]
     fn inline_dataset_rejects_malformed_or_incomplete_records() {
-        assert!(canonicalize_inline_dataset("not-json", None).unwrap_err().contains("valid JSON"));
-        assert!(canonicalize_inline_dataset("[1,2]", None).unwrap_err().contains("JSON objects"));
+        assert!(canonicalize_inline_dataset("not-json", None)
+            .unwrap_err()
+            .contains("valid JSON"));
+        assert!(canonicalize_inline_dataset("[1,2]", None)
+            .unwrap_err()
+            .contains("JSON objects"));
         assert!(canonicalize_dataset_missing_prompt());
-        assert!(canonicalize_inline_dataset("{\"prompt\":\" \",\"completion\":\"c\"}", None).is_err());
-        assert!(canonicalize_inline_dataset("{\"prompt\":\"p\",\"completion\":\" \"}", None).is_err());
+        assert!(
+            canonicalize_inline_dataset("{\"prompt\":\" \",\"completion\":\"c\"}", None).is_err()
+        );
+        assert!(
+            canonicalize_inline_dataset("{\"prompt\":\"p\",\"completion\":\" \"}", None).is_err()
+        );
         assert!(canonicalize_inline_dataset("{\"prompt\":\"p\"}", None).is_err());
     }
 
