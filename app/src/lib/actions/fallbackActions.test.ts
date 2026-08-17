@@ -808,11 +808,15 @@ ${LIVE_TEST03_FILES.map(({ name, content }) => `${name}\n${content}`).join('\n')
 
   it('preserves a quoted schedule name and resolves tomorrow at a stated time', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-12T07:07:00-05:00'));
+    vi.setSystemTime(new Date('2026-08-12T12:07:00.000Z'));
     const proposals = inferFallbackActionProposals(
       'Create a one-time VibeSpace schedule named "RLM UAT Schedule — Owner Verify". Make it a harmless local reminder tomorrow at 9:00 AM.',
       'I can create that schedule.',
     );
+    const expectedStart = new Date();
+    expectedStart.setDate(expectedStart.getDate() + 1);
+    expectedStart.setHours(9, 0, 0, 0);
+    const expectedStartAtMs = expectedStart.getTime();
     vi.useRealTimers();
 
     expect(proposals[0]).toMatchObject({
@@ -820,7 +824,7 @@ ${LIVE_TEST03_FILES.map(({ name, content }) => `${name}\n${content}`).join('\n')
       params: {
         title: 'RLM UAT Schedule — Owner Verify',
         recurrence: 'once',
-        startAtMs: new Date('2026-08-13T09:00:00-05:00').getTime(),
+        startAtMs: expectedStartAtMs,
       },
     });
   });
