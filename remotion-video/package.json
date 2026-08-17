@@ -1,0 +1,21 @@
+{
+  "name": "vibespace-remotion-trailer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cinematic Remotion trailer for VibeSpace",
+  "scripts": {
+    "score": "node scripts/generate-score.mjs",
+    "studio": "npm run score && remotion studio src/index.jsx",
+    "render": "npm run score && remotion render src/index.jsx VibeSpaceTrailer out/vibespace-remotion-trailer.mp4 --codec=h264 --crf=16 --pixel-format=yuv420p --audio-codec=aac --concurrency=2 --overwrite",
+    "poster": "npm run score && remotion still src/index.jsx VibeSpaceTrailer out/vibespace-remotion-poster.png --frame=1020 --overwrite"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.504",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.504"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2"
+  }
+}
