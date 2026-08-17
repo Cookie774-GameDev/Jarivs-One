@@ -473,6 +473,18 @@ verify_jwt = true
 [functions.github-context]
 verify_jwt = true
 
+[functions.jarvis-proxy]
+verify_jwt = true
+
+[functions.wallpaper-catalog]
+verify_jwt = true
+
+[functions.wallpaper-download-url]
+verify_jwt = true
+
+[functions.wallpaper-redeem-orbit]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
