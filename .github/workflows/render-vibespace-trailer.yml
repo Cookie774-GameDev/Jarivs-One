@@ -80,15 +80,21 @@ jobs:
       - name: Render poster frame
         run: npm run poster
 
+      - name: Install media inspection tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
       - name: Verify output media
         run: |
           test -s out/vibespace-remotion-trailer.mp4
           test -s out/vibespace-remotion-poster.png
-          ffprobe -v error -show_entries stream=codec_name,width,height -show_entries format=duration -of json out/vibespace-remotion-trailer.mp4
+          ffprobe -v error -show_entries stream=codec_name,width,height,sample_rate,channels -show_entries format=duration,size -of json out/vibespace-remotion-trailer.mp4
           file out/vibespace-remotion-poster.png
           ls -lh out/
 
       - name: Upload trailer artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vibespace-remotion-trailer
