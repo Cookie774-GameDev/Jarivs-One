@@ -13,10 +13,12 @@ use windows::Win32::{
     System::LibraryLoader::GetModuleHandleW,
     UI::Shell::SetCurrentProcessExplicitAppUserModelID,
     UI::WindowsAndMessaging::{
-        LoadImageW, SendMessageW, ICON_BIG, ICON_SMALL, IMAGE_FLAGS, IMAGE_ICON, LR_DEFAULTSIZE,
-        LR_SHARED, WM_SETICON,
+        LoadImageW, SendMessageTimeoutW, ICON_BIG, ICON_SMALL, IMAGE_FLAGS, IMAGE_ICON,
+        LR_DEFAULTSIZE, LR_SHARED, SMTO_ABORTIFHUNG, SMTO_BLOCK, WM_SETICON,
     },
 };
+
+const ICON_MESSAGE_TIMEOUT_MS: u32 = 100;
 
 /// `icons/icon.ico` embedded by tauri-build / winres (`set_icon_with_id(..., "32512")`).
 const EXE_ICON_RESOURCE_ID: u16 = 32512;
@@ -64,11 +66,15 @@ fn set_hwnd_icon(hwnd: HWND, icon_type: usize, width: i32, height: i32) {
         return;
     };
     unsafe {
-        let _ = SendMessageW(
+        // Bounded delivery: a hung explorer/taskbar must not freeze the UI thread.
+        let _ = SendMessageTimeoutW(
             hwnd,
             WM_SETICON,
-            Some(WPARAM(icon_type)),
-            Some(LPARAM(handle.0 as isize)),
+            WPARAM(icon_type),
+            LPARAM(handle.0 as isize),
+            SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            ICON_MESSAGE_TIMEOUT_MS,
+            None,
         );
     }
 }
@@ -90,6 +96,14 @@ pub fn apply_hwnd_icons(window: &Window) {
 mod tests {
     use super::resource_icon_flags;
     use windows::Win32::UI::WindowsAndMessaging::{LR_DEFAULTSIZE, LR_SHARED};
+
+    #[test]
+    fn icon_refresh_uses_bounded_message_delivery() {
+        let source = include_str!("branding_windows.rs");
+        let blocking_api = ["SendMessage", "W("].concat();
+        assert!(source.contains("SendMessageTimeoutW("));
+        assert!(!source.contains(&blocking_api));
+    }
 
     #[test]
     fn resource_icons_are_shared_for_every_refresh() {

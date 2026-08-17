@@ -45,6 +45,8 @@ import {
   useTerminalCommandQueue,
   type TerminalCommand,
 } from './terminalCommandQueue';
+import { processTerminalFleetRequest } from './terminalFleetRuntime';
+import { useTerminalFleetStore } from './terminalFleetStore';
 import {
   claimTerminalExecution,
   hasCanonicalTerminalExecution,
@@ -201,6 +203,7 @@ export function applyTerminalCommandBatch(
       }
       if (closeCount >= leaves.length) replaceRootNext = true;
     }
+    // Fleet requests are executed asynchronously with live backend evidence.
   }
   return next;
 }
@@ -367,9 +370,20 @@ export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean 
               readCurrentTerminalClaimScope(treeProjectId),
             );
           });
-          if (items.length > 0) {
-            projectedTree = applyTerminalCommandBatch(projectedTree, items);
+          const ordinary = items.filter((item) => item.kind !== 'fleet');
+          const fleet = items.filter((item) => item.kind === 'fleet');
+          if (ordinary.length > 0) {
+            projectedTree = applyTerminalCommandBatch(projectedTree, ordinary);
             setTree(projectedTree);
+          }
+          for (const request of fleet) {
+            await processTerminalFleetRequest(request, {
+              getTree: () => projectedTree,
+              commitTree: (nextTree) => {
+                projectedTree = nextTree;
+                setTree(nextTree);
+              },
+            });
           }
         } while (rerun);
       } finally {
@@ -573,6 +587,7 @@ export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean 
 
   const count = countLeaves(tree);
   const atCap = count >= MAX_PANES;
+  const latestFleetRecord = useTerminalFleetStore((state) => state.records.at(-1));
 
   return (
     <div
@@ -596,6 +611,12 @@ export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean 
           <span>
             {count} / {MAX_PANES} pane{count === 1 ? '' : 's'}
           </span>
+          {latestFleetRecord ? (
+            <span className="text-foreground">
+              · Fleet {latestFleetRecord.status} · reused {latestFleetRecord.reusedCount} · created{' '}
+              {latestFleetRecord.createdCount}
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-1">
           <Button

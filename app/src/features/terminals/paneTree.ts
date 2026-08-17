@@ -103,6 +103,38 @@ export type PaneTreeChange = PaneNode | null | ((current: PaneNode) => PaneNode 
 
 export const MAX_PANES = 10;
 
+export type TerminalLeafBackendState = 'idle' | 'active' | 'unknown';
+
+export interface TerminalLeafRuntimeEvidence {
+  backendState: TerminalLeafBackendState;
+  transcript?: string;
+}
+
+function hasMeaningfulValue(value: string | null | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+/**
+ * Fleet work may reuse a pane only with affirmative idle evidence.
+ * Missing/unknown backend state is occupied so a live or restoring PTY
+ * is never overwritten because frontend metadata is delayed.
+ */
+export function isReusableTerminalLeaf(
+  leaf: Extract<PaneNode, { kind: 'leaf' }>,
+  runtime: TerminalLeafRuntimeEvidence | undefined,
+): boolean {
+  if (!runtime || runtime.backendState !== 'idle') return false;
+  if (hasMeaningfulValue(runtime.transcript)) return false;
+  if (hasMeaningfulValue(leaf.sessionId)) return false;
+  if (hasMeaningfulValue(leaf.startupCommand)) return false;
+  if (hasMeaningfulValue(leaf.pendingCommand)) return false;
+  if (leaf.pendingCommandId != null) return false;
+  if (hasMeaningfulValue(leaf.executionId)) return false;
+  if (hasMeaningfulValue(leaf.agentSlug)) return false;
+  if (leaf.agentMode != null) return false;
+  return true;
+}
+
 export function resizeAdjacentTracks(
   sizes: number[],
   index: number,

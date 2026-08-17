@@ -55,6 +55,31 @@ This ledger records semantic decisions made while reconciling current PR31 with 
 - **Documentation history:** many prior PR31 task ledgers explicitly treated the installer deletion/state as unrelated protected work and excluded it from feature commits.
 - **Decision:** do **not** resurrect the older main-only installer into the PR31 reconciliation. The staged accidental add was removed. `main` is not modified by this task. Any future installer restoration or destructive deployment remains a separate owner/release decision with its own signing and AV qualification.
 
+## Terminal Fleet on PR31 execution store
+
+- **Canonical source:** current PR31 terminal execution store, command queue, and pane tree.
+- **Imported capability:** target-total Fleet planner, progress store, CLI presets, refit coordinator, and fail-closed idle-reuse evidence.
+- **Decision:** Fleet is a new `kind: 'fleet'` queue item beside canonical shell/swarm/close. Spawn still goes through existing leaf `startupCommand` + execution IDs. Reuse requires an affirmative idle backend snapshot. Do not import the older TerminalsPage/TerminalView rewrites.
+
+## Appearance Quick Switch
+
+- **Canonical source:** current `SelectableTheme` / `RELEASE_THEME_DEFINITIONS`.
+- **Imported capability:** compact top-bar appearance switcher.
+- **Decision:** Switcher lists release themes including Warm. Source two-theme default/vibespace list is obsolete and would hide Warm.
+
+## Windows icon refresh
+
+- **Canonical source:** current `branding_windows.rs` IMAGE_FLAGS / shared-icon path.
+- **Imported capability:** `SendMessageTimeoutW` with 100ms abort-if-hung.
+- **Decision:** Keep HEAD icon loading; replace only the blocking `SendMessageW` delivery.
+
+## Model Foundry Studio + local adapter dispatch
+
+- **Canonical source:** current PR31 Foundry engine (`model_foundry.rs` / attested `worker.py` / training catalog) plus persistent OpenCode for ordinary chat.
+- **Imported capability:** Dataset Studio, adapter/model registries, pinned snapshot downloads, metadata-only sync schema (repo migrations 0042/0043), and local promoted-adapter chat.
+- **Decision:** Foundry Studio mounts inside `BuildYourOwnAIPage`. Inline datasets are bounded and written only into the private job directory. Ordinary cloud/CLI turns still use OpenCode. Promoted Foundry adapters (`provider === 'foundry'`) run through native job/artifact commands and fail closed without Tauri or a current passing evaluation. This is a local product path, not a second general router.
+- **Excluded:** older source `App.tsx` / slash-command rewrite, obsolete stdin worker protocol tests, and source `Cargo.toml` (would regress native/voice/search).
+
 ## Recovery/workspace scaffolding
 
 The final product tree must not include `.agent-coordination.lock/`, `agents/AGENT_4_LOG.md`, `artifacts/pr31-live/tauri-dev.pid`, UnifiedChungus encoded recovery payloads, the temporary recovery/apply workflow, generated `app/package-lock.json`, or equivalent test/runtime scratch output. Their history remains recoverable from Git/backups; they are not product runtime content.
