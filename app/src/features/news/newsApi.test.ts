@@ -97,6 +97,23 @@ describe('live AI news API adapter', () => {
     });
   });
 
+  it('accepts numeric D1 identifiers from the production Worker', () => {
+    const parsed = parseNewsResponse(responsePayload({ ...baseItem, id: 42 }));
+    expect(parsed.items[0]?.id).toBe('42');
+  });
+
+  it('strips retained feed markup before rendering a summary', () => {
+    const parsed = parseNewsResponse(
+      responsePayload({
+        ...baseItem,
+        summary:
+          '<img src="https://example.com/tracker.png"><h2>Release</h2><p>Model <strong>details</strong> &amp; availability.</p>',
+      }),
+    );
+    expect(parsed.items[0]?.summary).toBe('Release Model details & availability.');
+    expect(parsed.items[0]?.summary).not.toMatch(/<[^>]+>/u);
+  });
+
   it('uses the configured origin and bounded request path', async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL) =>
       new Response(JSON.stringify(responsePayload()), {

@@ -12,6 +12,7 @@ import {
   type ProviderRecordNormalization,
 } from './cliBridge';
 import type { ProviderEvent } from './types';
+import { formatOpenCodeModelRef } from '../openCodeOpenAiCatalog';
 
 const MAX_MODEL_LIST_CHARS = 65_536;
 const MAX_DISCOVERED_MODELS = 2_000;
@@ -33,7 +34,13 @@ export function buildOpenCodeInvocation(request: CliInvocationRequest): CliInvoc
   assertCliPrompt(request.prompt);
   const modelId = requireOpenCodeModelId(request.modelId);
   return {
-    args: ['run', '--format', 'json', '--model', modelId],
+    args: [
+      'run',
+      '--format',
+      'json',
+      '--model',
+      formatOpenCodeModelRef(modelId, request.reasoningEffort),
+    ],
     stdin: request.prompt,
     ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
   };
@@ -196,7 +203,7 @@ export const OPENCODE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   executableName: 'opencode',
   versionArgs: Object.freeze(['--version']),
   authProbeArgs: Object.freeze(['auth', 'list']),
-  modelListArgs: Object.freeze(['models']),
+  modelListArgs: Object.freeze(['models', 'openai', '--refresh']),
   parseModelList: (output: string) =>
     parseOpenCodeModelList(output).map((model) => Object.freeze({ id: model.id, label: model.id })),
   buildInvocation: buildOpenCodeInvocation,

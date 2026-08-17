@@ -13,14 +13,17 @@
 //!
 //! Only loopback endpoints are allowed (defense-in-depth, mirrors local_ai.rs).
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 const OLLAMA_BASE: &str = "http://127.0.0.1:11434";
+const MAX_MODEL_DETAILS_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_TOOL_PROBE_BYTES: u64 = 1024 * 1024;
 
 fn resolve_base(base_url: Option<String>) -> String {
     let trimmed = base_url
@@ -93,6 +96,7 @@ fn valid_model_name(name: &str) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct OllamaModel {
     name: String,
+    digest: Option<String>,
     size: Option<u64>,
     modified_at: Option<String>,
 }
@@ -121,6 +125,10 @@ pub fn ollama_list_models(base_url: Option<String>) -> Result<Vec<OllamaModel>, 
             if let Some(name) = m.get("name").and_then(|n| n.as_str()) {
                 out.push(OllamaModel {
                     name: name.to_string(),
+                    digest: m
+                        .get("digest")
+                        .and_then(|digest| digest.as_str())
+                        .map(str::to_string),
                     size: m.get("size").and_then(|s| s.as_u64()),
                     modified_at: m
                         .get("modified_at")
@@ -131,6 +139,172 @@ pub fn ollama_list_models(base_url: Option<String>) -> Result<Vec<OllamaModel>, 
         }
     }
     Ok(out)
+}
+
+fn read_bounded_response(
+    response: reqwest::blocking::Response,
+    maximum_bytes: u64,
+) -> Result<Vec<u8>, String> {
+    let mut bounded = response.take(maximum_bytes + 1);
+    let mut body = Vec::new();
+    bounded.read_to_end(&mut body).map_err(|e| e.to_string())?;
+    if body.len() as u64 > maximum_bytes {
+        return Err("response_too_large".to_string());
+    }
+    Ok(body)
+}
+
+fn context_window_tokens(value: &serde_json::Value) -> Option<u64> {
+    value
+        .get("model_info")
+        .and_then(|info| info.as_object())
+        .and_then(|info| {
+            info.iter()
+                .filter(|(key, _)| key.ends_with(".context_length"))
+                .filter_map(|(_, value)| value.as_u64())
+                .max()
+        })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaModelDetails {
+    digest: String,
+    capabilities: Vec<String>,
+    context_window_tokens: Option<u64>,
+}
+
+fn show_model_blocking(
+    model: String,
+    base_url: Option<String>,
+) -> Result<OllamaModelDetails, String> {
+    if !valid_model_name(&model) {
+        return Err("invalid_model".to_string());
+    }
+    let base = resolve_base(base_url);
+    if !is_allowed_local_endpoint(&base) {
+        return Err("invalid_base_url".to_string());
+    }
+    let response = build_client(15)?
+        .post(format!("{base}/api/show"))
+        .json(&serde_json::json!({ "model": model, "verbose": false }))
+        .send()
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("status_{}", response.status().as_u16()));
+    }
+    let body = read_bounded_response(response, MAX_MODEL_DETAILS_BYTES)?;
+    let value: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let capabilities = value
+        .get("capabilities")
+        .and_then(|capabilities| capabilities.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|capability| capability.as_str())
+        .take(32)
+        .map(|capability| capability.chars().take(64).collect())
+        .collect();
+    let digest = format!("sha256:{:x}", Sha256::digest(&body));
+    Ok(OllamaModelDetails {
+        digest,
+        capabilities,
+        context_window_tokens: context_window_tokens(&value),
+    })
+}
+
+/// Read bounded model metadata used by the local-agent compatibility layer.
+#[tauri::command]
+pub async fn ollama_show_model(
+    model: String,
+    base_url: Option<String>,
+) -> Result<OllamaModelDetails, String> {
+    tauri::async_runtime::spawn_blocking(move || show_model_blocking(model, base_url))
+        .await
+        .map_err(|_| "model_details_worker_failed".to_string())?
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OllamaToolProbe {
+    supported: bool,
+    reason: Option<&'static str>,
+}
+
+fn probe_tools_blocking(
+    model: String,
+    base_url: Option<String>,
+) -> Result<OllamaToolProbe, String> {
+    if !valid_model_name(&model) {
+        return Err("invalid_model".to_string());
+    }
+    let base = resolve_base(base_url);
+    if !is_allowed_local_endpoint(&base) {
+        return Err("invalid_base_url".to_string());
+    }
+    let response = build_client(30)?
+        .post(format!("{base}/api/chat"))
+        .json(&serde_json::json!({
+            "model": model,
+            "stream": false,
+            "messages": [{
+                "role": "user",
+                "content": "Call compatibility_check exactly once with ok set to true."
+            }],
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "compatibility_check",
+                    "description": "Side-effect-free local compatibility check.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": { "ok": { "type": "boolean" } },
+                        "required": ["ok"]
+                    }
+                }
+            }],
+            "options": { "temperature": 0, "num_predict": 32 }
+        }))
+        .send()
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Ok(OllamaToolProbe {
+            supported: false,
+            reason: Some("Ollama rejected the safe tool probe."),
+        });
+    }
+    let body = read_bounded_response(response, MAX_TOOL_PROBE_BYTES)?;
+    let value: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let supported = value
+        .pointer("/message/tool_calls")
+        .and_then(|calls| calls.as_array())
+        .map(|calls| !calls.is_empty())
+        .unwrap_or(false);
+    Ok(OllamaToolProbe {
+        supported,
+        reason: (!supported).then_some("No tool call was returned."),
+    })
+}
+
+/// Run one tiny, side-effect-free tool-schema roundtrip. The advertised tool
+/// has no executor and cannot read or write files.
+#[tauri::command]
+pub async fn ollama_probe_tools(
+    model: String,
+    base_url: Option<String>,
+) -> Result<OllamaToolProbe, String> {
+    tauri::async_runtime::spawn_blocking(move || probe_tools_blocking(model, base_url))
+        .await
+        .map_err(|_| "tool_probe_worker_failed".to_string())?
+}
+
+/// Best-effort model discovery for the private OpenCode server. This is
+/// deliberately fixed to the default loopback daemon and never starts Ollama.
+pub(crate) fn harness_model_names() -> Vec<String> {
+    ollama_list_models(Some(OLLAMA_BASE.to_string()))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|model| model.name)
+        .collect()
 }
 
 #[derive(Serialize, Clone)]

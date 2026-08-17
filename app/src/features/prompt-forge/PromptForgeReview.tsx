@@ -118,7 +118,7 @@ export function PromptForgeReview({
           type="button"
           size="sm"
           variant="ghost"
-          aria-label="Redo prompt upgrade"
+          aria-label="Retry prompt upgrade"
           className={cn('h-7 px-2.5', compact && 'h-6 px-1.5 text-[10px]')}
           onClick={() => {
             onRegenerate();
@@ -126,7 +126,7 @@ export function PromptForgeReview({
           }}
         >
           <RefreshCw />
-          Redo
+          Retry
         </Button>
         <Button
           type="button"

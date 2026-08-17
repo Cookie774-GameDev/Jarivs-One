@@ -61,6 +61,7 @@ import {
 } from './terminalProjectMove';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { projectRepo } from '@/lib/db';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { captureLiveTree, getLiveTree } from './terminalLiveCache';
@@ -109,6 +110,16 @@ export function forgetTerminalLeafSessions(
   }
 }
 
+function terminalRefMatchesLeaf(
+  ref: TerminalRef,
+  leaf: Extract<PaneNode, { kind: 'leaf' }>,
+): boolean {
+  const hasIdentity = Boolean(ref.paneId || ref.sessionId);
+  const paneMatches = !ref.paneId || ref.paneId === leaf.id;
+  const sessionMatches = !ref.sessionId || ref.sessionId === leaf.sessionId;
+  return hasIdentity && paneMatches && sessionMatches;
+}
+
 type InvokeCommand = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 export async function deleteTerminalProjectSnapshots(
@@ -127,6 +138,13 @@ export function applyTerminalCommandBatch(
   let replaceRootNext = false;
   for (const item of items) {
     if (item.kind === 'shell') {
+      if (item.target === 'refs') {
+        const refs = item.refs ?? [];
+        const hasMatch = flattenLeaves(next).some((leaf) =>
+          refs.some((ref) => terminalRefMatchesLeaf(ref, leaf)),
+        );
+        if (!hasMatch) continue;
+      }
       markExecution(item.id, 'starting');
       if (item.target === 'all') {
         const pendingCommandId = Date.now();
@@ -140,16 +158,10 @@ export function applyTerminalCommandBatch(
       } else if (item.target === 'refs' && item.refs && item.refs.length > 0) {
         const refs = item.refs;
         const pendingCommandId = Date.now();
-        let matched = false;
         next = fromLeaves(
           flattenLeaves(next).map((leaf, index) => {
-            const hit = refs.some(
-              (ref) =>
-                (ref.paneId && ref.paneId === leaf.id) ||
-                (ref.sessionId && ref.sessionId === leaf.sessionId),
-            );
+            const hit = refs.some((ref) => terminalRefMatchesLeaf(ref, leaf));
             if (!hit) return leaf;
-            matched = true;
             return {
               ...leaf,
               pendingCommand: item.command,
@@ -157,14 +169,6 @@ export function applyTerminalCommandBatch(
             };
           }),
         );
-        if (!matched) {
-          const first = refs[0];
-          next = appendLeaf(next, {
-            command: defaultShell(),
-            startupCommand: item.command || undefined,
-            agentSlug: first?.agentSlug ?? item.label,
-          });
-        }
       } else {
         const seed = {
           command: defaultShell(),
@@ -211,7 +215,33 @@ export function canClaimCanonicalTerminalCommand(
   return countLeaves(projected) < MAX_PANES;
 }
 
-export function TerminalsPage() {
+type TerminalClaimScope = Readonly<{
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+}>;
+
+function readCurrentTerminalClaimScope(treeProjectId: string | null): TerminalClaimScope | null {
+  const auth = useAuthStore.getState();
+  const accountId = getActiveAccountIdentity()?.accountId.trim() ?? '';
+  const workspaceId = String(auth.workspaceId ?? '').trim();
+  const projectId = String(auth.projectId ?? '').trim();
+  if (!accountId || !workspaceId || !projectId || projectId !== treeProjectId) return null;
+  return Object.freeze({ accountId, workspaceId, projectId });
+}
+
+export async function claimCanonicalTerminalCommandForScope(
+  current: PaneNode,
+  priorClaimedItems: readonly TerminalCommand[],
+  item: Extract<TerminalCommand, { kind: 'shell' }> & { canonical: object },
+  scope: TerminalClaimScope | null,
+  claim: typeof claimTerminalExecution = claimTerminalExecution,
+): Promise<boolean> {
+  if (!scope || !canClaimCanonicalTerminalCommand(current, priorClaimedItems, item)) return false;
+  return claim(item.canonical.executionId, scope);
+}
+
+export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean }) {
   const projectId = useAuthStore((s) => s.projectId);
   const currentProjectId = projectId ?? null;
   const setProjectId = useAuthStore((s) => s.setProjectId);
@@ -330,10 +360,12 @@ export function TerminalsPage() {
         do {
           rerun = false;
           const items = await claimTerminalCommands(async (item, priorClaimedItems) => {
-            if (!canClaimCanonicalTerminalCommand(projectedTree, priorClaimedItems, item)) {
-              return false;
-            }
-            return claimTerminalExecution(item.canonical.executionId);
+            return claimCanonicalTerminalCommandForScope(
+              projectedTree,
+              priorClaimedItems,
+              item,
+              readCurrentTerminalClaimScope(treeProjectId),
+            );
           });
           if (items.length > 0) {
             projectedTree = applyTerminalCommandBatch(projectedTree, items);
@@ -350,7 +382,7 @@ export function TerminalsPage() {
       if (state.queue.length > 0) void drainAndProcess();
     });
     return unsub;
-  }, [tree]);
+  }, [tree, treeProjectId]);
 
   const handleChange = React.useCallback(
     (next: PaneTreeChange) => {
@@ -605,17 +637,19 @@ export function TerminalsPage() {
         data-sakura-surface="terminal-grid"
         className="flex-1 min-h-0 p-2 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:p-1"
       >
-        <TileGrid
-          tree={tree}
-          onChange={handleChange}
-          defaultCommand={defaultShell()}
-          defaultCommandForAgent={commandForAgent}
-          fullscreenPaneId={fullscreenPaneId}
-          projectId={treeProjectId}
-          projectName={projectName}
-          onFullscreenToggle={handleFullscreenToggle}
-          onMoveTerminal={handleMoveTerminal}
-        />
+        {routeVisible ? (
+          <TileGrid
+            tree={tree}
+            onChange={handleChange}
+            defaultCommand={defaultShell()}
+            defaultCommandForAgent={commandForAgent}
+            fullscreenPaneId={fullscreenPaneId}
+            projectId={treeProjectId}
+            projectName={projectName}
+            onFullscreenToggle={handleFullscreenToggle}
+            onMoveTerminal={handleMoveTerminal}
+          />
+        ) : null}
       </div>
     </div>
   );

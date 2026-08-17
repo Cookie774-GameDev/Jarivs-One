@@ -39,6 +39,18 @@ import {
 } from '@/lib/harness/OpenCodeTextAccumulator';
 import { OpenCodeTurnGate } from '@/lib/harness/OpenCodeTurnGate';
 import { assertObservedModelMatches } from '@/lib/harness/OpenCodeRequestControls';
+import { normalizeOpenCodeEvent } from '@/lib/harness/eventNormalizer';
+import {
+  bindToolGatewaySessionAuthority,
+  captureToolGatewayAuthorityClaim,
+  releaseToolGatewaySessionAuthority,
+  type ToolGatewayAuthorityClaim,
+} from '@/lib/harness/toolGatewayAuthority';
+import type { HarnessApprovalResponse, VibeSpaceApproval } from '@/lib/harness/types';
+import {
+  MUTATING_TOOL_GATEWAY_TOOLS,
+  TOOL_GATEWAY_CATALOG,
+} from '@/lib/harness/toolGatewayProtocol';
 import type { ChatRuntimeSettings } from '@/features/chat/runtime/chatRuntimeCommandController';
 import type {
   LiveModelRuntimeMetadata,
@@ -257,6 +269,16 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       this.handle.baseUrl,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}/prompt_async`,
+      { method: 'POST', body: JSON.stringify(input.body) },
+      30_000,
+    ),
+    replyPermission: async (input: {
+      path: { id: string; permissionId: string };
+      body: { response: HarnessApprovalResponse['response'] };
+    }): Promise<unknown> => requestJson(
+      this.handle.baseUrl,
+      this.handle.scope,
+      `/session/${encodeURIComponent(input.path.id)}/permissions/${encodeURIComponent(input.path.permissionId)}`,
       { method: 'POST', body: JSON.stringify(input.body) },
       30_000,
     ),
@@ -521,6 +543,36 @@ const sessions = new OpenCodeSessionPool(
 const coordinator = new OpenCodeTurnCoordinator(sessions);
 const turnGate = new OpenCodeTurnGate();
 const activeRequests = new Map<string, { scope: HarnessScope; chatId: string }>();
+type ActivePersistentApprovalSession = {
+  readonly requestId: string;
+  readonly http: OpenCodeHttpSdk;
+  readonly approvalIds: Set<string>;
+  readonly gatewayAuthority?: ToolGatewayAuthorityClaim;
+};
+const activeApprovalSessions = new Map<string, ActivePersistentApprovalSession>();
+const TOOL_GATEWAY_NAMES = new Set<string>(TOOL_GATEWAY_CATALOG);
+
+export async function respondToPersistentOpenCodeApproval(
+  input: Readonly<HarnessApprovalResponse>,
+): Promise<void> {
+  const sessionId = cleanIdentifier(input.sessionId, 512);
+  const approvalId = cleanIdentifier(input.approvalId, 512);
+  if (!sessionId || !approvalId) {
+    throw new Error('OpenCode approval binding is invalid.');
+  }
+  const active = activeApprovalSessions.get(sessionId);
+  if (!active || !active.approvalIds.has(approvalId)) {
+    throw new Error('OpenCode approval session is no longer active.');
+  }
+  const result = await active.http.session.replyPermission({
+    path: { id: sessionId, permissionId: approvalId },
+    body: { response: input.response },
+  });
+  if (unwrapData(result) === false) {
+    throw new Error('OpenCode rejected the approval response.');
+  }
+  active.approvalIds.delete(approvalId);
+}
 
 function upstreamProviderId(modelId: string): string {
   const separator = modelId.indexOf('/');
@@ -746,13 +798,45 @@ async function cachedAuthProbe(connection: ProviderRequest['connection']): Promi
 }
 
 function requestScope(request: ProviderRequest): HarnessScope {
+  const accountId = cleanIdentifier(request.accountId, 512);
+  const workspaceId = cleanIdentifier(request.workspaceId, 512);
+  if (!accountId || !workspaceId) {
+    throw new Error('OpenCode requires an exact account and workspace scope.');
+  }
   return {
-    accountId: request.accountId?.trim() || 'local-desktop-account',
-    ...(request.workspaceId?.trim() ? { workspaceId: request.workspaceId.trim() } : {}),
-    ...(request.projectId?.trim() ? { projectId: request.projectId.trim() } : {}),
-    ...(request.worktreeId?.trim() ? { worktreeId: request.worktreeId.trim() } : {}),
+    accountId,
+    workspaceId,
+    ...(cleanIdentifier(request.projectId, 512) ? { projectId: request.projectId!.trim() } : {}),
+    ...(cleanIdentifier(request.worktreeId, 512) ? { worktreeId: request.worktreeId!.trim() } : {}),
     ...(request.workingDirectory?.trim() ? { workingDirectory: request.workingDirectory.trim() } : {}),
   };
+}
+
+function enabledGatewayTools(request: Readonly<ProviderRequest>): readonly string[] {
+  return Object.entries(request.tools ?? {})
+    .filter(([name, enabled]) => enabled === true && TOOL_GATEWAY_NAMES.has(name))
+    .map(([name]) => name);
+}
+
+function captureRequestGatewayAuthority(
+  request: Readonly<ProviderRequest>,
+): ToolGatewayAuthorityClaim | undefined {
+  if (enabledGatewayTools(request).length === 0) return undefined;
+  const claim = captureToolGatewayAuthorityClaim();
+  const accountId = cleanIdentifier(request.accountId, 512);
+  const workspaceId = cleanIdentifier(request.workspaceId, 512);
+  const projectId = cleanIdentifier(request.projectId, 512) ?? null;
+  if (
+    !claim ||
+    !accountId ||
+    !workspaceId ||
+    claim.scope.accountId !== accountId ||
+    claim.scope.workspaceId !== workspaceId ||
+    claim.scope.projectId !== projectId
+  ) {
+    throw new Error('Tool Gateway authority does not match the active account/workspace scope.');
+  }
+  return claim;
 }
 
 function defaultRuntimeSettings(request: ProviderRequest): ChatRuntimeSettings {
@@ -802,11 +886,12 @@ function toolsForPolicy(input: {
   mode: InteractionMode;
   access: AccessLevel;
   rlmEnabled: boolean;
+  requested?: Readonly<Record<string, boolean>>;
 }): Readonly<Record<string, boolean>> {
   const canWrite = input.access !== 'read-only';
   const canTerminal = input.access === 'full';
   const canSubagents = input.mode === 'agent';
-  return Object.freeze({
+  const baseline: Record<string, boolean> = {
     read: true,
     glob: true,
     grep: true,
@@ -820,17 +905,36 @@ function toolsForPolicy(input: {
     shell: canTerminal,
     task: canSubagents,
     'vibespace_context.query': input.rlmEnabled,
-  });
+  };
+  if (!input.requested) return Object.freeze(baseline);
+
+  const bounded: Record<string, boolean> = { ...baseline };
+  for (const [name, enabled] of Object.entries(input.requested).slice(0, 512)) {
+    if (!TOOL_GATEWAY_NAMES.has(name)) continue;
+    const mutating = MUTATING_TOOL_GATEWAY_TOOLS.has(name as never);
+    const terminalLike = name.startsWith('terminal.') || name === 'command.run';
+    const subagentLike = name.startsWith('agent.') || name.startsWith('task.');
+    bounded[name] =
+      enabled === true &&
+      (!mutating || canWrite) &&
+      (!terminalLike || canTerminal) &&
+      (!subagentLike || canSubagents);
+  }
+  bounded['vibespace_context.query'] =
+    input.rlmEnabled && input.requested.vibespace_context === true;
+  return Object.freeze(bounded);
 }
 
 async function* sendPersistent(request: ProviderRequest): AsyncGenerator<ProviderEvent> {
   const modelId = request.modelId?.trim();
   if (!modelId) throw new Error('OpenCode requires an exact model selection.');
   const scope = requestScope(request);
+  const gatewayAuthority = captureRequestGatewayAuthority(request);
   const chatId = request.chatId?.trim() || request.sessionId?.trim() || request.requestId;
   const turn = turnGate.begin(chatId, request.requestId);
   activeRequests.set(request.requestId, { scope, chatId });
   const abortEvents = new AbortController();
+  let boundSessionId: string | undefined;
   const abort = () => {
     turnGate.cancel(chatId);
     abortEvents.abort();
@@ -868,10 +972,27 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         projectRoot: scope.workingDirectory ?? request.workingDirectory ?? '.',
       },
       system: systemPrompt,
-      tools: toolsForPolicy({ mode, access, rlmEnabled: settings.rlmEnabled }),
+      tools: toolsForPolicy({
+        mode,
+        access,
+        rlmEnabled: settings.rlmEnabled,
+        requested: request.tools,
+      }),
     });
     if (dispatch.kind === 'command') throw new Error('VibeSpace slash commands must be consumed before provider dispatch.');
     if (dispatch.kind === 'rejected') throw new Error(dispatch.message);
+    boundSessionId = dispatch.sessionId;
+    if (gatewayAuthority && !bindToolGatewaySessionAuthority(dispatch.sessionId, gatewayAuthority)) {
+      await client.abort(dispatch.sessionId).catch(() => undefined);
+      throw new Error('Tool Gateway session authority changed before dispatch.');
+    }
+    activeApprovalSessions.set(dispatch.sessionId, {
+      requestId: request.requestId,
+      http: client.http,
+      approvalIds: new Set<string>(),
+      ...(gatewayAuthority ? { gatewayAuthority } : {}),
+    });
+    await request.onSessionBound?.({ sessionId: dispatch.sessionId });
     yield { type: 'session', sessionId: dispatch.sessionId };
 
     const accumulator = new OpenCodeTextAccumulator();
@@ -915,6 +1036,26 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       pendingEvent = eventIterator.next();
       const eventScope = eventSessionId(event);
       if (eventScope && eventScope !== dispatch.sessionId) continue;
+
+      for (const normalized of normalizeOpenCodeEvent(event, dispatch.sessionId)) {
+        if (normalized.type !== 'approval.requested') continue;
+        const active = activeApprovalSessions.get(dispatch.sessionId);
+        if (!active || active.requestId !== request.requestId) {
+          await client.abort(dispatch.sessionId).catch(() => undefined);
+          throw new Error('OpenCode approval arrived outside the active request binding.');
+        }
+        if (active.approvalIds.has(normalized.approval.id)) continue;
+        active.approvalIds.add(normalized.approval.id);
+        if (!request.onApprovalRequested) {
+          await respondToPersistentOpenCodeApproval({
+            sessionId: dispatch.sessionId,
+            approvalId: normalized.approval.id,
+            response: 'reject',
+          }).catch(() => undefined);
+          throw new Error('OpenCode requested approval without an active approval handler.');
+        }
+        await request.onApprovalRequested(normalized.approval);
+      }
 
       const identity = observedIdentity(event);
       if (identity.modelId) {
@@ -962,7 +1103,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         }
       }
       const tool = normalizeToolEvent(event);
-      if (tool) yield tool;
+      if (tool) {
+        if (tool.type === 'tool' && tool.status === 'started') {
+          request.onActionDispatch?.({ observedAt: Date.now() });
+        }
+        yield tool;
+      }
       const usage = normalizeUsage(event);
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {
@@ -992,6 +1138,13 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
   } finally {
     request.signal?.removeEventListener('abort', abort);
     abortEvents.abort();
+    if (boundSessionId) {
+      const active = activeApprovalSessions.get(boundSessionId);
+      if (active?.requestId === request.requestId) {
+        activeApprovalSessions.delete(boundSessionId);
+      }
+      releaseToolGatewaySessionAuthority(boundSessionId);
+    }
     turnGate.finish(turn);
     activeRequests.delete(request.requestId);
   }
@@ -1051,6 +1204,10 @@ export function invalidateOpenCodePersistentModelCache(): void {
 
 export async function disposeOpenCodePersistentRuntimes(): Promise<void> {
   activeRequests.clear();
+  for (const sessionId of activeApprovalSessions.keys()) {
+    releaseToolGatewaySessionAuthority(sessionId);
+  }
+  activeApprovalSessions.clear();
   turnGate.clear();
   await sessions.disposeAll();
 }

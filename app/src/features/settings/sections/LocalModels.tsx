@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '@/stores/auth';
 import {
   assertAllowedOllamaEndpoint,
+  classifyOllamaModel,
   listOllamaModelInfo,
   LOCAL_MODEL_CATALOG,
   catalogDisplayName,
@@ -28,6 +29,7 @@ import {
   type OllamaEnsureStatus,
   type OllamaModelInfo,
   type OllamaPullProgress,
+  type LocalAgentCompatibilityResult,
 } from '@/lib/ai';
 import { bootstrapOllamaConnection, invalidateOllamaBootstrap } from '@/lib/ai/ollamaBootstrap';
 import {
@@ -154,9 +156,7 @@ function userFacingDownloadError(err: unknown): string {
   return `Download failed: ${msg.slice(0, 200)}`;
 }
 
-async function hasEnoughDiskSpace(
-  requiredBytes = 2_000_000_000,
-): Promise<{
+async function hasEnoughDiskSpace(requiredBytes = 2_000_000_000): Promise<{
   ok: boolean;
   availableBytes: number | null;
   authoritative: boolean;
@@ -255,6 +255,10 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
   const [scanning, setScanning] = useState(false);
   const [pullState, setPullState] = useState<PullState | null>(null);
   const [runtimePreferences, setRuntimePreferences] = useState(readLocalAgentPreferences);
+  const [compatibility, setCompatibility] = useState<
+    ReadonlyMap<string, LocalAgentCompatibilityResult>
+  >(new Map());
+  const [checkingCompatibility, setCheckingCompatibility] = useState<string | null>(null);
   const autoStartAttemptedRef = useRef(false);
 
   const downloadMap = useSyncExternalStore(subscribeToDownloads, getDownloadSnapshot);
@@ -286,8 +290,13 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
         syncDiscoveredOllamaModels(models.map((m) => m.name));
 
         const currentDefault = useAuthStore.getState().defaultLocalModel;
-        if (models.length > 0 && !isModelInstalled(models, currentDefault)) {
+        if (models.length > 0 && !currentDefault.trim()) {
           setDefaultLocalModel(models[0].name);
+        } else if (currentDefault && !isModelInstalled(models, currentDefault)) {
+          toast.warning(
+            'Selected local model is unavailable',
+            `${currentDefault} was removed or is not currently exposed by Ollama. VibeSpace will not silently select a different model.`,
+          );
         }
       } finally {
         setScanning(false);
@@ -323,6 +332,20 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
       'Fully Local fallback updated',
       `${name} will be used when Fully Local Chat is enabled. Every installed model remains available in Chat.`,
     );
+  }
+
+  async function checkModelCompatibility(model: string) {
+    setCheckingCompatibility(model);
+    try {
+      const result = await classifyOllamaModel(model);
+      setCompatibility((current) => {
+        const next = new Map(current);
+        next.set(model, result);
+        return next;
+      });
+    } finally {
+      setCheckingCompatibility((current) => (current === model ? null : current));
+    }
   }
 
   function handleToggleOffline(enabled: boolean) {
@@ -862,6 +885,7 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
           <div role="list" aria-label="Installed local models" className="grid max-w-xl gap-2">
             {installed.map((model) => {
               const selected = sameModel(defaultLocalModel, model.name);
+              const compatibilityResult = compatibility.get(model.name);
               return (
                 <div
                   key={model.name}
@@ -879,8 +903,37 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
                         {formatBytes(model.size)}
                       </span>
                     ) : null}
+                    {compatibilityResult ? (
+                      <span className="block text-metadata text-muted-foreground">
+                        {compatibilityResult.reason}
+                      </span>
+                    ) : null}
                   </span>
                   <Badge variant="success">Available in Chat</Badge>
+                  {compatibilityResult ? (
+                    <Badge
+                      variant={
+                        compatibilityResult.status === 'agent_ready'
+                          ? 'success'
+                          : compatibilityResult.status === 'unsupported'
+                            ? 'warning'
+                            : 'outline'
+                      }
+                    >
+                      {compatibilityLabel(compatibilityResult.status)}
+                    </Badge>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      aria-label="Check agent compatibility"
+                      disabled={checkingCompatibility === model.name}
+                      onClick={() => void checkModelCompatibility(model.name)}
+                    >
+                      {checkingCompatibility === model.name ? 'Checking…' : 'Check agent support'}
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"
@@ -1149,6 +1202,19 @@ function normalizeModelName(name: string): string {
 
 function sameModel(left: string, right: string): boolean {
   return normalizeModelName(left) === normalizeModelName(right);
+}
+
+function compatibilityLabel(status: LocalAgentCompatibilityResult['status']): string {
+  switch (status) {
+    case 'agent_ready':
+      return 'Agent ready';
+    case 'chat_only':
+      return 'Chat only';
+    case 'unsupported':
+      return 'Unsupported';
+    case 'unknown':
+      return 'Unknown';
+  }
 }
 
 function isModelInstalled(models: readonly OllamaModelInfo[], name: string): boolean {

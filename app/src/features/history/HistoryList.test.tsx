@@ -10,19 +10,30 @@ const mocks = vi.hoisted(() => ({
   activeWorkspaceId: 'workspace-a',
   liveQueryCall: 0,
   chats: [] as Chat[],
+  bindings: [] as Array<{ chatId: string; provider: string; localTitle: string }>,
+  snapshots: [] as Array<{
+    id: string;
+    title: string;
+    messageCount: number;
+    updatedAt: number;
+    messages: Array<{ text: string }>;
+  }>,
   getById: vi.fn(),
   remove: vi.fn(),
+  removeSnapshot: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
 
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: () => {
-    const slot = mocks.liveQueryCall++ % 4;
+    const slot = mocks.liveQueryCall++ % 6;
     if (slot === 0) return mocks.chats;
     if (slot === 1) return [];
     if (slot === 2) return {};
-    return null;
+    if (slot === 3) return null;
+    if (slot === 4) return mocks.bindings;
+    return mocks.snapshots;
   },
 }));
 
@@ -34,10 +45,18 @@ vi.mock('@/lib/db', () => ({
   db: {
     chats: {},
     messages: {},
+    browser_chat_bindings: {},
+    browser_chat_snapshots: {},
   },
   projectRepo: {
     listByWorkspace: vi.fn(),
   },
+}));
+
+vi.mock('@/features/browser-chat/chatGptExport', () => ({
+  createChatGptSnapshotRepository: () => ({
+    remove: mocks.removeSnapshot,
+  }),
 }));
 
 vi.mock('@/stores/auth', () => {
@@ -101,6 +120,8 @@ beforeEach(() => {
   mocks.activeWorkspaceId = 'workspace-a';
   mocks.liveQueryCall = 0;
   mocks.chats = [chat('chat-a', 'Alpha chat'), chat('chat-b', 'Beta chat')];
+  mocks.bindings = [];
+  mocks.snapshots = [];
   mocks.getById.mockReset();
   mocks.getById.mockImplementation(async (id: string) => ({
     id,
@@ -108,6 +129,8 @@ beforeEach(() => {
   }));
   mocks.remove.mockReset();
   mocks.remove.mockResolvedValue(undefined);
+  mocks.removeSnapshot.mockReset();
+  mocks.removeSnapshot.mockResolvedValue(undefined);
   mocks.toastError.mockReset();
   mocks.toastSuccess.mockReset();
 });
@@ -118,6 +141,70 @@ afterEach(() => {
 });
 
 describe('HistoryList destructive confirmation', () => {
+  it('labels and opens a durable Browser Chat binding without replaying provider content', () => {
+    const onSelectChat = vi.fn();
+    const onOpenBrowserChat = vi.fn();
+    mocks.bindings = [{ chatId: 'chat-a', provider: 'chatgpt', localTitle: 'Bound browser chat' }];
+    render(
+      <HistoryList
+        selectedChatId={null}
+        onSelectChat={onSelectChat}
+        onOpenBrowserChat={onOpenBrowserChat}
+      />,
+    );
+
+    expect(screen.getByText('Browser Chat · ChatGPT')).toBeTruthy();
+    fireEvent.click(screen.getByText('Alpha chat').closest('button')!);
+
+    expect(onOpenBrowserChat).toHaveBeenCalledWith('chat-a');
+    expect(onSelectChat).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(/provider message|provider reply/i);
+  });
+
+  it('opens and explicitly deletes only a local imported ChatGPT snapshot', async () => {
+    const onSelectChat = vi.fn();
+    const onSelectSnapshot = vi.fn();
+    mocks.snapshots = [
+      {
+        id: 'snapshot-a',
+        title: 'Imported Alpha',
+        messageCount: 2,
+        updatedAt: 10,
+        messages: [{ text: 'provider snapshot text' }],
+      },
+    ];
+    render(
+      <HistoryList
+        selectedChatId={null}
+        selectedSnapshotId={null}
+        onSelectChat={onSelectChat}
+        onSelectSnapshot={onSelectSnapshot}
+      />,
+    );
+
+    expect(screen.getByText('Imported snapshot · ChatGPT')).toBeTruthy();
+    fireEvent.click(screen.getByText('Imported Alpha').closest('button')!);
+    expect(onSelectSnapshot).toHaveBeenCalledWith('snapshot-a');
+    expect(onSelectChat).toHaveBeenCalledWith(null);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete imported snapshot Imported Alpha' }),
+    );
+    const dialog = screen.getByRole('alertdialog', {
+      name: 'Delete local snapshot Imported Alpha?',
+    });
+    expect(dialog.textContent).toMatch(/original ChatGPT conversation.*not changed/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete local snapshot' }));
+
+    await waitFor(() =>
+      expect(mocks.removeSnapshot).toHaveBeenCalledWith(
+        { accountId: 'account-a', workspaceId: 'workspace-a' },
+        'snapshot-a',
+      ),
+    );
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
   it('opens an alert dialog for one chat and keeps Cancel focused without deleting', async () => {
     renderHistory();
 

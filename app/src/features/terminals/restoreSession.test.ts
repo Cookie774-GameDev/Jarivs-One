@@ -32,6 +32,10 @@ function backend(sessionId: string, projectId: string | null): BackendTerminalIn
     cols: 100,
     startedAt: 1,
     projectId,
+    processInstanceId: `process-${sessionId}`,
+    pid: 4242,
+    processStartedAt: 1_723_456_789_000,
+    runtimeGeneration: 'runtime-generation-1',
   };
 }
 
@@ -68,6 +72,7 @@ describe('resolveTerminalRestoreSession', () => {
     expect(decision.kind).toBe('attach');
     if (decision.kind === 'attach') {
       expect(decision.sessionId).toBe('session-a');
+      expect(decision.backendInfo).toEqual(backend('session-a', 'project-a'));
       expect(decision.source).toBe('historical-pane');
       expect(decision.restoredText).toBe('PS C:\\repo> echo MARK\r\nMARK\r\nPS C:\\repo> ');
     }
@@ -87,8 +92,30 @@ describe('resolveTerminalRestoreSession', () => {
     expect(decision.kind).toBe('attach');
     if (decision.kind === 'attach') {
       expect(decision.sessionId).toBe('session-a');
+      expect(decision.backendInfo).toEqual(backend('session-a', 'project-a'));
       expect(decision.restoredText).toBe('');
     }
+  });
+
+  it('ignores forged persisted identity and returns only the fresh terminal-list binding', () => {
+    const fresh = backend('session-a', 'project-a');
+    const decision = resolveTerminalRestoreSession({
+      existingSessionId: 'session-a',
+      paneId: 'pane-a',
+      projectId: 'project-a',
+      activeSessions: [fresh],
+      transcripts: {
+        'session-a': {
+          ...transcript('session-a', 'pane-a', 'project-a'),
+          processInstanceId: 'forged-persisted-process',
+          pid: 9999,
+          processStartedAt: 1,
+          runtimeGeneration: 'forged-generation',
+        } as SessionTranscript,
+      },
+    });
+
+    expect(decision).toMatchObject({ kind: 'attach', backendInfo: fresh });
   });
 
   it('does not cross-attach a terminal from another project', () => {

@@ -120,6 +120,7 @@ import {
 import { terminalRestartDecision } from './terminalRestartPolicy';
 import {
   attachTerminalExecution,
+  authorizeCanonicalTerminalSpawn,
   ensureTerminalExecutionExitListener,
   failTerminalExecutionBeforeNativeExit,
   hasCanonicalTerminalExecution,
@@ -130,6 +131,7 @@ import {
   terminalExecutionCancellationToken,
   type NativeTerminalExitPayload,
   useTerminalExecutionStore,
+  type TerminalProcessAttachment,
 } from './terminalExecutionStore';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
@@ -340,6 +342,10 @@ export async function finalizeTerminalRendererTeardown({
 
 interface SpawnResult {
   sessionId: string;
+  processInstanceId: string;
+  pid: number;
+  processStartedAt: number;
+  runtimeGeneration: string;
   /** Resolved working directory reported by the backend. */
   cwd?: string;
   /** True when the backend launched the shell with the startup command. */
@@ -413,14 +419,24 @@ export function createTerminalExitLatch(
   onExactExit: (payload: NativeTerminalExitPayload) => void,
 ): {
   observe(payload: NativeTerminalExitPayload): void;
-  bind(sessionId: string): boolean;
+  bind(attachment: TerminalProcessAttachment): boolean;
 } {
-  const pending = new Map<string, NativeTerminalExitPayload>();
-  let boundSessionId: string | undefined;
+  const pending: NativeTerminalExitPayload[] = [];
+  let boundAttachment: TerminalProcessAttachment | undefined;
   let delivered = false;
 
+  const matches = (
+    payload: NativeTerminalExitPayload,
+    attachment: TerminalProcessAttachment,
+  ): boolean =>
+    payload.sessionId === attachment.sessionId &&
+    payload.processInstanceId === attachment.processInstanceId &&
+    payload.pid === attachment.pid &&
+    payload.processStartedAt === attachment.processStartedAt &&
+    payload.runtimeGeneration === attachment.runtimeGeneration;
+
   const deliver = (payload: NativeTerminalExitPayload): boolean => {
-    if (delivered || payload.sessionId !== boundSessionId) return false;
+    if (!boundAttachment || delivered || !matches(payload, boundAttachment)) return false;
     delivered = true;
     onExactExit(payload);
     return true;
@@ -428,17 +444,30 @@ export function createTerminalExitLatch(
 
   return {
     observe(payload) {
-      if (boundSessionId === undefined) {
-        if (!pending.has(payload.sessionId)) pending.set(payload.sessionId, payload);
+      if (boundAttachment === undefined) {
+        if (pending.length >= MAX_EARLY_TERMINAL_OUTPUT_CHUNKS) pending.shift();
+        pending.push(payload);
         return;
       }
       deliver(payload);
     },
-    bind(sessionId) {
-      if (boundSessionId !== undefined && boundSessionId !== sessionId) return false;
-      boundSessionId = sessionId;
-      const early = pending.get(sessionId);
-      pending.clear();
+    bind(attachment) {
+      if (
+        boundAttachment !== undefined &&
+        !matches(
+          {
+            ...attachment,
+            code: null,
+            reason: 'natural_exit',
+          },
+          boundAttachment,
+        )
+      ) {
+        return false;
+      }
+      boundAttachment = Object.freeze({ ...attachment });
+      const early = pending.find((payload) => matches(payload, attachment));
+      pending.length = 0;
       return early ? deliver(early) : false;
     },
   };
@@ -446,16 +475,14 @@ export function createTerminalExitLatch(
 
 export async function attachTerminalViewExecution(
   executionId: string | undefined,
-  sessionId: string,
+  attachment: TerminalProcessAttachment,
   dependencies: {
     isCanonical?: typeof hasCanonicalTerminalExecution;
     attach?: typeof attachTerminalExecution;
   } = {},
 ): Promise<boolean> {
   if (!executionId) return true;
-  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
-  if (!isCanonical(executionId)) return true;
-  return (dependencies.attach ?? attachTerminalExecution)(executionId, sessionId);
+  return (dependencies.attach ?? attachTerminalExecution)(executionId, attachment);
 }
 
 export function canonicalTerminalSpawnToken(
@@ -610,9 +637,10 @@ export function TerminalView({
   projectId,
   projectName,
 }: TerminalViewProps): JSX.Element {
-  const terminalAccountId = useAuthStore(
-    (state) => state.cloudSession?.user_id.trim() || state.localUserId?.trim() || '',
+  const terminalAccountId = useAuthStore((state) =>
+    state.cloudSession ? state.cloudSession.user_id.trim() : state.localUserId?.trim() || '',
   );
+  const terminalWorkspaceId = useAuthStore((state) => state.workspaceId?.trim() ?? '');
   const terminalAccountIdRef = useRef(terminalAccountId);
   terminalAccountIdRef.current = terminalAccountId;
   const resolvedAgentMode = agentMode ?? (agentSlug ? 'default' : undefined);
@@ -716,8 +744,17 @@ export function TerminalView({
     onBlurRef.current = onBlur;
   }, [onBlur]);
 
+  const flushCurrentInput = () => {
+    const sid = sessionRef.current;
+    if (!sid) return;
+    useTerminalTranscriptStore.getState().setCurrentInput(sid, currentInputRef.current);
+  };
+
   useEffect(() => {
-    const openPalette = () => setTerminalPaletteOpen(true);
+    const openPalette = () => {
+      flushCurrentInput();
+      setTerminalPaletteOpen(true);
+    };
     const onPaletteRequest = (event: Event) => {
       if (!terminalPaletteRequestTargetsPane(event, paneId)) return;
       openPalette();
@@ -763,12 +800,6 @@ export function TerminalView({
     setPowerUpTitle(title);
     if (powerUpTimerRef.current) clearTimeout(powerUpTimerRef.current);
     powerUpTimerRef.current = setTimeout(() => setPowerUpTitle(null), 1500);
-  };
-
-  const flushCurrentInput = () => {
-    const sid = sessionRef.current;
-    if (!sid) return;
-    useTerminalTranscriptStore.getState().setCurrentInput(sid, currentInputRef.current);
   };
 
   const scheduleCurrentInputFlush = () => {
@@ -1404,6 +1435,7 @@ export function TerminalView({
         });
         publishPromptEvidence(slashIntegration.snapshot());
         if (capture.openPalette) {
+          flushCurrentInput();
           setTerminalPaletteOpen(true);
           return;
         }
@@ -1500,6 +1532,7 @@ export function TerminalView({
       let nativeStartupCommandConsumed = false;
       let restoredInput = '';
       let sessionCwd: string | null = cwd ?? null;
+      let processAttachment: TerminalProcessAttachment | null = null;
       let briefingDelivered = false;
       const slugAtSpawn = agentSlugRef.current;
       const modeAtSpawn = agentModeRef.current;
@@ -1607,6 +1640,18 @@ export function TerminalView({
               : {}),
             ...(paneId ? { VIBESPACE_PANE_ID: paneId } : {}),
           };
+          let spawnCancellationToken = canonicalTerminalSpawnToken(executionId);
+          if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            const authorizedCancellationToken = authorizeCanonicalTerminalSpawn(executionId, {
+              accountId: terminalAccountId,
+              workspaceId: terminalWorkspaceId,
+              projectId: projectId ?? null,
+            });
+            if (!authorizedCancellationToken) {
+              throw new TypeError('canonical_terminal_scope_revoked_before_spawn');
+            }
+            spawnCancellationToken = authorizedCancellationToken;
+          }
           const result = await invoke<SpawnResult>('terminal_spawn', {
             command: spawnCommand,
             startupCommand: nativeStartupCommand,
@@ -1615,19 +1660,29 @@ export function TerminalView({
             cols: term.cols,
             projectId: projectId,
             projectName: projectName,
-            cancellationToken: canonicalTerminalSpawnToken(executionId),
+            cancellationToken: spawnCancellationToken,
             preserveExisting: preserveExisting || undefined,
             // Make the assignment discoverable by any process in the pane,
             // not just AGENTS.md readers (env is inherited by child CLIs).
             env: Object.keys(spawnEnv).length > 0 ? spawnEnv : undefined,
           });
           sid = result.sessionId;
+          processAttachment = {
+            accountId: terminalAccountId,
+            projectId: projectId ?? null,
+            paneId: paneId ?? '',
+            sessionId: result.sessionId,
+            processInstanceId: result.processInstanceId,
+            pid: result.pid,
+            processStartedAt: result.processStartedAt,
+            runtimeGeneration: result.runtimeGeneration,
+          };
           nativeStartupCommandConsumed = result.startupCommandConsumed;
           nativeSessionStarted = true;
+          setInitializationPhase('kernel_terminal_phase_execution_attach');
+          const attached = await attachTerminalViewExecution(executionId, processAttachment);
+          if (!attached) throw new TypeError('terminal_native_attach_failed');
           if (executionId && hasCanonicalTerminalExecution(executionId)) {
-            setInitializationPhase('kernel_terminal_phase_execution_attach');
-            const attached = await attachTerminalExecution(executionId, sid);
-            if (!attached) throw new TypeError('canonical_terminal_native_attach_failed');
             executionAttached = true;
           }
           sessionRef.current = sid;
@@ -1647,7 +1702,7 @@ export function TerminalView({
           }
           outputLatch.bind(sid);
           outputSubscription?.bind(sid);
-          if (exitLatch.bind(sid)) return;
+          if (exitLatch.bind(processAttachment)) return;
           sessionCwd = result.cwd || cwd || null;
           console.log(`[Jarvis] Spawned new PTY session: ${sid}`);
 
@@ -1686,7 +1741,38 @@ export function TerminalView({
           });
         } else {
           sid = restoreDecision.sessionId;
-          const backendInfo = activeSessions.find((s) => s.sessionId === sid);
+          const backendInfo = restoreDecision.backendInfo;
+          processAttachment = {
+            accountId: terminalAccountId,
+            projectId: projectId ?? null,
+            paneId: paneId ?? '',
+            sessionId: backendInfo.sessionId,
+            processInstanceId: backendInfo.processInstanceId,
+            pid: backendInfo.pid,
+            processStartedAt: backendInfo.processStartedAt,
+            runtimeGeneration: backendInfo.runtimeGeneration,
+          };
+          setInitializationPhase('kernel_terminal_phase_execution_attach');
+          const attached = await attachTerminalViewExecution(executionId, processAttachment);
+          if (!attached) throw new TypeError('terminal_native_attach_failed');
+          if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            executionAttached = true;
+          }
+          sessionRef.current = sid;
+          if (terminalAccountId && paneId) {
+            screenSnapshotLease = claimTerminalScreenSnapshotLease({
+              accountId: terminalAccountId,
+              projectId: projectId ?? null,
+              paneId,
+              sessionId: sid,
+            });
+          }
+          viewSessionBound = true;
+          if (!cancelled) setActiveSessionId(sid);
+          setInitializationPhase('kernel_terminal_phase_session_bound');
+          outputLatch.bind(sid);
+          outputSubscription?.bind(sid);
+          if (exitLatch.bind(processAttachment)) return;
           sessionCwd = backendInfo?.cwd || cwd || null;
           console.log(
             `[Jarvis] Re-attaching to existing active session: ${sid} (${restoreDecision.source})`,
@@ -1733,27 +1819,14 @@ export function TerminalView({
       }
 
       if (!cancelled && !viewSessionBound) {
-        setInitializationPhase('kernel_terminal_phase_view_attach');
-        const attached = await attachTerminalViewExecution(executionId, sid);
-        if (!attached) {
-          setError('Canonical terminal ownership handoff failed.');
-          return;
-        }
-        sessionRef.current = sid;
-        if (terminalAccountId && paneId) {
-          screenSnapshotLease = claimTerminalScreenSnapshotLease({
-            accountId: terminalAccountId,
-            projectId: projectId ?? null,
-            paneId,
-            sessionId: sid,
-          });
-        }
-        viewSessionBound = true;
-        if (!cancelled) setActiveSessionId(sid);
-        setInitializationPhase('kernel_terminal_phase_session_bound');
-        outputLatch.bind(sid);
-        outputSubscription?.bind(sid);
-        if (exitLatch.bind(sid)) return;
+        await settleTerminalInitializationFailure({
+          executionId,
+          sessionId: sid,
+          nativeSessionStarted,
+          executionAttached,
+        });
+        setError('Terminal process ownership binding was unavailable.');
+        return;
       }
 
       // Race fix: if the effect was torn down between awaiting the

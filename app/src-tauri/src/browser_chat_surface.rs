@@ -11,14 +11,17 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Mutex,
     },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{
     webview::{Webview, WebviewBuilder},
-    AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
 };
+
+const NAVIGATION_EVENT: &str = "browser-chat://navigation";
 
 #[derive(Debug, Clone)]
 struct SurfaceRecord {
@@ -66,21 +69,52 @@ pub struct BrowserChatSurfaceStatus {
     pub created: bool,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct BrowserChatNavigation {
+    provider_id: String,
+    surface_id: String,
+    account_profile_key: String,
+    url: String,
+    timestamp: u64,
+    kind: String,
+}
+
+#[derive(Clone)]
 struct ProviderConfig {
     id: &'static str,
+    label: &'static str,
+    hostname: &'static str,
     url: url::Url,
 }
 
 fn provider_config(provider_id: &str) -> Result<ProviderConfig, String> {
-    let (id, url) = match provider_id {
-        "chatgpt" => ("chatgpt", "https://chatgpt.com/"),
-        "claude" => ("claude", "https://claude.ai/new"),
-        "gemini" => ("gemini", "https://gemini.google.com/"),
+    let (id, label, hostname, url) = match provider_id {
+        "chatgpt" => (
+            "chatgpt",
+            "browser-chat-chatgpt",
+            "chatgpt.com",
+            "https://chatgpt.com/",
+        ),
+        "claude" => (
+            "claude",
+            "browser-chat-claude",
+            "claude.ai",
+            "https://claude.ai/new",
+        ),
+        "gemini" => (
+            "gemini",
+            "browser-chat-gemini",
+            "gemini.google.com",
+            "https://gemini.google.com/",
+        ),
         _ => return Err("browser_chat_provider_not_allowed".to_string()),
     };
 
     Ok(ProviderConfig {
         id,
+        label,
+        hostname,
         url: url
             .parse()
             .map_err(|_| "browser_chat_provider_url_invalid".to_string())?,
@@ -110,14 +144,17 @@ fn validate_bounds(bounds: &BrowserChatBounds) -> Result<(), String> {
 }
 
 fn validate_profile_key(profile_key: &str) -> Result<(), String> {
-    if profile_key.is_empty()
-        || profile_key.len() > 256
-        || profile_key.trim() != profile_key
-        || profile_key.chars().any(char::is_control)
+    let digest = profile_key
+        .strip_prefix("profile_")
+        .ok_or_else(|| "browser_chat_profile_key_invalid".to_string())?;
+    if digest.len() == 64
+        && digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
-        Err("browser_chat_profile_key_invalid".to_string())
-    } else {
         Ok(())
+    } else {
+        Err("browser_chat_profile_key_invalid".to_string())
     }
 }
 
@@ -136,10 +173,7 @@ fn surface_label(provider_id: &str, digest: &str) -> Result<String, String> {
     if digest.len() < 16 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("browser_chat_profile_digest_invalid".to_string());
     }
-    Ok(format!(
-        "browser-chat-{provider_id}-{}",
-        &digest[..16]
-    ))
+    Ok(format!("browser-chat-{provider_id}-{}", &digest[..16]))
 }
 
 fn relative_bounds(
@@ -162,15 +196,24 @@ fn apply_bounds(provider: &Webview, bounds: &BrowserChatBounds) -> Result<(), St
         .map_err(|error| format!("browser_chat_size_failed:{error}"))
 }
 
+fn is_browser_chat_label(label: &str) -> bool {
+    label == "browser-chat-chatgpt"
+        || label == "browser-chat-claude"
+        || label == "browser-chat-gemini"
+        || label.starts_with("browser-chat-chatgpt-")
+        || label.starts_with("browser-chat-claude-")
+        || label.starts_with("browser-chat-gemini-")
+}
+
 fn deactivate_surface(app: &AppHandle, label: &str) -> Result<(), String> {
     if let Some(webview) = app.get_webview(label) {
-        // On Windows/WebView2 a hidden child can briefly retain its last compositor surface.
-        // Move and shrink first so a delayed compositor frame cannot cover another VibeSpace route.
+        // On Windows/WebView2 a hidden child can retain its last compositor surface
+        // and stay painted over the default VibeSpace page. Park it off-screen, hide
+        // it, then close it so only an explicit Browser Chat open can recreate it.
         let _ = webview.set_position(LogicalPosition::new(-32_000.0, -32_000.0));
         let _ = webview.set_size(LogicalSize::new(1.0, 1.0));
-        webview
-            .hide()
-            .map_err(|error| format!("browser_chat_hide_failed:{error}"))?;
+        let _ = webview.hide();
+        let _ = webview.close();
     }
     Ok(())
 }
@@ -192,6 +235,16 @@ fn hide_surfaces_except(
         if Some(label) != selected {
             deactivate_surface(app, label)?;
         }
+    }
+
+    let leftover: Vec<String> = app
+        .webviews()
+        .into_iter()
+        .map(|(label, _)| label)
+        .filter(|label| is_browser_chat_label(label) && Some(label.as_str()) != selected)
+        .collect();
+    for label in leftover {
+        deactivate_surface(app, &label)?;
     }
     Ok(())
 }
@@ -249,6 +302,88 @@ fn provider_navigation_allowed(provider_id: &str, target: &url::Url) -> bool {
         .any(|suffix| host_matches(&host, suffix))
 }
 
+fn safe_navigation_key(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+fn navigation_kind(provider_id: &str, path: &str) -> Option<&'static str> {
+    let segments: Vec<_> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    match provider_id {
+        "chatgpt" => match segments.as_slice() {
+            [] => Some("home"),
+            ["c", conversation] if safe_navigation_key(conversation) => Some("conversation"),
+            ["g", project, "project"] if safe_navigation_key(project) => Some("project"),
+            ["g", project, "c", conversation]
+                if safe_navigation_key(project) && safe_navigation_key(conversation) =>
+            {
+                Some("conversation")
+            }
+            _ => None,
+        },
+        "claude" => match segments.as_slice() {
+            [] | ["new"] => Some("home"),
+            ["chat", conversation] if safe_navigation_key(conversation) => Some("conversation"),
+            ["project", project] if safe_navigation_key(project) => Some("project"),
+            _ => None,
+        },
+        "gemini" => match segments.as_slice() {
+            [] => Some("home"),
+            ["app", conversation] if safe_navigation_key(conversation) => Some("conversation"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn normalized_navigation(
+    provider: &ProviderConfig,
+    account_profile_key: &str,
+    candidate: &url::Url,
+    timestamp: u64,
+) -> Option<BrowserChatNavigation> {
+    if candidate.scheme() != "https"
+        || candidate.host_str() != Some(provider.hostname)
+        || candidate.port().is_some()
+        || !candidate.username().is_empty()
+        || candidate.password().is_some()
+    {
+        return None;
+    }
+    let kind = navigation_kind(provider.id, candidate.path())?;
+    Some(BrowserChatNavigation {
+        provider_id: provider.id.to_string(),
+        surface_id: provider.label.to_string(),
+        account_profile_key: account_profile_key.to_string(),
+        url: format!("https://{}{}", provider.hostname, candidate.path()),
+        timestamp,
+        kind: kind.to_string(),
+    })
+}
+
+fn normalized_provider_url(provider: &ProviderConfig, raw_url: &str) -> Option<url::Url> {
+    let candidate = raw_url.parse().ok()?;
+    let placeholder_profile =
+        "profile_0000000000000000000000000000000000000000000000000000000000000000";
+    let navigation = normalized_navigation(provider, placeholder_profile, &candidate, 0)?;
+    navigation.url.parse().ok()
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
 fn profile_directory(
     app: &AppHandle,
     provider_id: &str,
@@ -270,6 +405,7 @@ fn open_provider(
     app: AppHandle,
     provider: ProviderConfig,
     profile_key: String,
+    navigation_url: Option<url::Url>,
     bounds: BrowserChatBounds,
     requested_generation: u64,
 ) -> Result<bool, String> {
@@ -283,28 +419,46 @@ fn open_provider(
 
     let (webview, created) = if let Some(existing) = app.get_webview(&label) {
         apply_bounds(&existing, &bounds)?;
+        if let Some(target) = navigation_url.as_ref() {
+            existing
+                .navigate(target.clone())
+                .map_err(|error| format!("browser_chat_navigate_failed:{error}"))?;
+        }
         (existing, false)
     } else {
         let main = app
             .get_window("main")
             .ok_or_else(|| "browser_chat_main_window_missing".to_string())?;
         let (position, size) = relative_bounds(&bounds)?;
+        let target = navigation_url.unwrap_or_else(|| provider.url.clone());
         let provider_id = provider.id;
-        let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(provider.url))
+        let navigation_app = app.clone();
+        let navigation_provider = provider.clone();
+        let navigation_profile_key = profile_key.clone();
+        let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(target))
             .data_directory(profile_directory(&app, provider.id, &digest)?)
             .focused(false)
-            .on_navigation(move |target| provider_navigation_allowed(provider_id, target));
+            .on_navigation(move |candidate| {
+                let allowed = provider_navigation_allowed(provider_id, candidate);
+                if allowed {
+                    if let Some(navigation) = normalized_navigation(
+                        &navigation_provider,
+                        &navigation_profile_key,
+                        candidate,
+                        now_millis(),
+                    ) {
+                        let _ = navigation_app.emit_to("main", NAVIGATION_EVENT, navigation);
+                    }
+                }
+                allowed
+            });
         let created = main
             .add_child(builder, position, size)
             .map_err(|error| format!("browser_chat_create_failed:{error}"))?;
         (created, true)
     };
 
-    if !state
-        .surfaces
-        .iter()
-        .any(|surface| surface.label == label)
-    {
+    if !state.surfaces.iter().any(|surface| surface.label == label) {
         state.surfaces.push(SurfaceRecord {
             provider_id: provider.id,
             label: label.clone(),
@@ -345,12 +499,20 @@ pub async fn browser_chat_surface_open(
     caller: WebviewWindow,
     provider_id: String,
     provider_profile_key: String,
+    navigation_url: Option<String>,
     bounds: BrowserChatBounds,
 ) -> Result<BrowserChatSurfaceStatus, String> {
     ensure_main_caller(caller.label())?;
     validate_bounds(&bounds)?;
     validate_profile_key(&provider_profile_key)?;
     let provider = provider_config(&provider_id)?;
+    let navigation_url = navigation_url
+        .as_deref()
+        .map(|raw_url| {
+            normalized_provider_url(&provider, raw_url)
+                .ok_or_else(|| "browser_chat_navigation_not_allowed".to_string())
+        })
+        .transpose()?;
     let status_provider_id = provider.id.to_string();
     let requested_generation = SURFACE_VISIBILITY_GENERATION.load(Ordering::Acquire);
 
@@ -359,6 +521,7 @@ pub async fn browser_chat_surface_open(
             app,
             provider,
             provider_profile_key,
+            navigation_url,
             bounds,
             requested_generation,
         )
@@ -385,6 +548,7 @@ pub async fn browser_chat_surface_hide_all(
             .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
         hide_surfaces_except(&app, &state, None)?;
         state.visible_label = None;
+        state.surfaces.clear();
         Ok::<(), String>(())
     })
     .await
@@ -435,6 +599,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn treats_legacy_and_profile_scoped_labels_as_browser_chat_surfaces() {
+        assert!(is_browser_chat_label("browser-chat-chatgpt"));
+        assert!(is_browser_chat_label(
+            "browser-chat-chatgpt-0123456789abcdef"
+        ));
+        assert!(!is_browser_chat_label("browser-chat-attacker"));
+        assert!(!is_browser_chat_label("main"));
+        assert!(!is_browser_chat_label("workbench"));
+    }
+
+    #[test]
     fn accepts_only_registry_owned_provider_ids() {
         let chatgpt = provider_config("chatgpt").expect("ChatGPT is registry-owned");
         assert_eq!(chatgpt.id, "chatgpt");
@@ -461,9 +636,16 @@ mod tests {
             height: 600.0,
         })
         .is_err());
-        assert!(validate_profile_key("vibespace-account:account-a").is_ok());
+        assert!(validate_profile_key(
+            "profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
+        .is_ok());
         assert!(validate_profile_key("").is_err());
         assert!(validate_profile_key("bad\nprofile").is_err());
+        assert!(validate_profile_key(
+            "profile_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        )
+        .is_err());
     }
 
     #[test]
@@ -484,10 +666,18 @@ mod tests {
 
     #[test]
     fn profile_labels_are_stable_but_isolated_between_accounts() {
-        let account_a = profile_digest("vibespace-account:account-a").expect("valid profile");
-        let account_a_again =
-            profile_digest("vibespace-account:account-a").expect("valid profile");
-        let account_b = profile_digest("vibespace-account:account-b").expect("valid profile");
+        let account_a = profile_digest(
+            "profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .expect("valid profile");
+        let account_a_again = profile_digest(
+            "profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .expect("valid profile");
+        let account_b = profile_digest(
+            "profile_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+        .expect("valid profile");
         assert_eq!(account_a, account_a_again);
         assert_ne!(account_a, account_b);
         assert_ne!(
@@ -512,7 +702,9 @@ mod tests {
         ));
         assert!(provider_navigation_allowed(
             "chatgpt",
-            &"https://auth.openai.com/authorize".parse().expect("valid url")
+            &"https://auth.openai.com/authorize"
+                .parse()
+                .expect("valid url")
         ));
         assert!(provider_navigation_allowed(
             "chatgpt",
@@ -528,6 +720,47 @@ mod tests {
             "chatgpt",
             &"http://chatgpt.com/".parse().expect("valid url")
         ));
+    }
+
+    #[test]
+    fn emits_only_normalized_account_scoped_provider_navigation() {
+        let provider = provider_config("chatgpt").expect("known provider");
+        let account_profile_key =
+            "profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let navigation = normalized_navigation(
+            &provider,
+            account_profile_key,
+            &"https://chatgpt.com/c/conversation-123?utm_source=test#fragment"
+                .parse()
+                .expect("valid url"),
+            42,
+        )
+        .expect("supported provider navigation");
+
+        assert_eq!(navigation.provider_id, "chatgpt");
+        assert_eq!(navigation.surface_id, "browser-chat-chatgpt");
+        assert_eq!(navigation.account_profile_key, account_profile_key);
+        assert_eq!(navigation.url, "https://chatgpt.com/c/conversation-123");
+        assert_eq!(navigation.timestamp, 42);
+        assert_eq!(navigation.kind, "conversation");
+        assert!(normalized_navigation(
+            &provider,
+            account_profile_key,
+            &"https://auth.openai.com/authorize"
+                .parse()
+                .expect("valid identity url"),
+            42,
+        )
+        .is_none());
+        assert!(normalized_navigation(
+            &provider,
+            account_profile_key,
+            &"https://chatgpt.com/unsupported/path"
+                .parse()
+                .expect("valid provider url"),
+            42,
+        )
+        .is_none());
     }
 
     #[test]

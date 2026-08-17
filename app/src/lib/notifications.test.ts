@@ -76,6 +76,7 @@ describe('notifications', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     resetDoneNotificationDedupeForTests();
   });
 
@@ -146,6 +147,91 @@ describe('notifications', () => {
     await notifyDone('jarvis', 'Jarvis done', 'Finished');
     await notifyDone('jarvis', 'Jarvis done', 'Finished');
     expect(mocks.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['terminal-first', ['terminal', 'tasks']],
+    ['task-first', ['tasks', 'terminal']],
+  ] as const)(
+    'dedupes one canonical run across terminal and task categories in %s order',
+    async (_name, order) => {
+      mocks.getState.mockReturnValue(
+        enabledNotificationState({
+          doneNotifications: {
+            jarvis: false,
+            terminal: true,
+            tasks: true,
+            contextMaps: false,
+            skills: false,
+            connectors: false,
+            reminders: false,
+          },
+        }),
+      );
+      for (const kind of order) {
+        await notifyDone(kind, `${kind} title`, `${kind} body`, {
+          completionIdentity: 'jarvis-run:jrun-shared',
+        });
+      }
+      expect(mocks.notify).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('isolates shared completion identities and preserves category behavior without one', async () => {
+    mocks.getState.mockReturnValue(
+      enabledNotificationState({
+        doneNotifications: {
+          jarvis: false,
+          terminal: true,
+          tasks: true,
+          contextMaps: false,
+          skills: false,
+          connectors: false,
+          reminders: false,
+        },
+      }),
+    );
+    await notifyDone('terminal', 'Terminal one', 'Finished', {
+      completionIdentity: 'jarvis-run:jrun-one',
+    });
+    await notifyDone('tasks', 'Task two', 'Finished', {
+      completionIdentity: 'jarvis-run:jrun-two',
+    });
+    await notifyDone('terminal', 'Ordinary terminal', 'Finished');
+    await notifyDone('tasks', 'Ordinary task', 'Finished');
+    expect(mocks.notify).toHaveBeenCalledTimes(4);
+  });
+
+  it('retains shared completion identity longer than ordinary presentation dedupe', async () => {
+    let now = 1_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    await notifyDone('jarvis', 'First title', 'First body', {
+      completionIdentity: 'jarvis-run:jrun-delayed',
+    });
+    now += 5_000;
+    await notifyDone('jarvis', 'Later title', 'Later body', {
+      completionIdentity: 'jarvis-run:jrun-delayed',
+    });
+    await notifyDone('jarvis', 'Ordinary title', 'Ordinary body');
+    expect(mocks.notify).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the shared completion dedupe hard bounded and test-resettable', async () => {
+    for (let index = 0; index < 65; index += 1) {
+      await notifyDone('jarvis', `Run ${index}`, 'Finished', {
+        completionIdentity: `jarvis-run:jrun-${index}`,
+      });
+    }
+    await notifyDone('jarvis', 'Run zero replay', 'Finished', {
+      completionIdentity: 'jarvis-run:jrun-0',
+    });
+    expect(mocks.notify).toHaveBeenCalledTimes(66);
+
+    resetDoneNotificationDedupeForTests();
+    await notifyDone('jarvis', 'Run latest replay', 'Finished', {
+      completionIdentity: 'jarvis-run:jrun-64',
+    });
+    expect(mocks.notify).toHaveBeenCalledTimes(67);
   });
 
   it('honors silent mode when notification sound is off', async () => {

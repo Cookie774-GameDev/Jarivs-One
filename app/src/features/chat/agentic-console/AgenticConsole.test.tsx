@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ChatActivityEvent } from '../activity/types';
 import type { Message } from '@/types';
@@ -26,6 +26,10 @@ function message(
 }
 
 describe('AgenticConsole', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     saveConsolePreferences(DEFAULT_CONSOLE_PREFERENCES);
   });
@@ -185,6 +189,7 @@ describe('AgenticConsole', () => {
   });
 
   it('switches motion on a rapid structured activity transition and becomes still at completion', () => {
+    vi.useFakeTimers();
     const baseActivity: ChatActivityEvent = {
       id: 'phase',
       chatId: 'chat-console',
@@ -252,6 +257,14 @@ describe('AgenticConsole', () => {
         />
       </TooltipProvider>,
     );
+    expect(
+      rendered.container
+        .querySelector('[data-agent-motion="glyph-current"]')
+        ?.getAttribute('data-agent-motion-presence'),
+    ).toBe('exiting');
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
     expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
   });
 

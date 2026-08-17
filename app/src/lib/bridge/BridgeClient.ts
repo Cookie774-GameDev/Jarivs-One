@@ -22,6 +22,18 @@ import { toolRegistry, type ToolDef } from '@/lib/mcp/registry';
 import { listDirectory, readTextFileSample, type FsListResult, type FsReadResult } from '@/lib/fs';
 import { isPathInsideRoot, normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
+import {
+  deserializePermissionProfile,
+  permissionModeFor,
+  serializePermissionProfile,
+  type BrowserChatPermissionProfile,
+} from '@/features/browser-chat/permissionRegistry';
+import {
+  beginBrowserChatToolCall,
+  clearBrowserChatToolActivity,
+  finishBrowserChatToolCall,
+  publishBrowserChatToolCatalog,
+} from '@/features/browser-chat/browserChatToolActivity';
 
 const BRIDGE_PROTOCOL_VERSION = 2;
 const SAFE_READ_TOOLS = new Set(['fs.list', 'fs.read']);
@@ -47,10 +59,15 @@ interface BridgeRegistrationOptions {
 export interface BridgeWorkspaceGrantMetadata {
   id: string;
   displayName: string;
+  accountId?: string;
+  workspaceId?: string;
+  projectId?: string;
+  permissionProfile?: BrowserChatPermissionProfile;
 }
 
 export interface BridgeWorkspaceGrant extends BridgeWorkspaceGrantMetadata {
   accountId: string;
+  workspaceId: string;
   projectId: string;
   root: string;
 }
@@ -107,6 +124,7 @@ export interface BridgeClientOptions {
   workspaceGrant?: BridgeWorkspaceGrant;
   /** Exact signed-in account and active project allowed to use the grant. */
   accountId?: string;
+  workspaceId?: string | null;
   projectId?: string | null;
   /** Phone/Voice is the compatibility default; Browser Chat is isolated. */
   mode?: 'phone_voice' | 'browser_chat';
@@ -116,6 +134,10 @@ export interface BridgeClientOptions {
   platform?: string;
   /** Heartbeat interval ms (default 15s). */
   heartbeatMs?: number;
+  /** Registration acknowledgement timeout ms (default 10s). */
+  registrationTimeoutMs?: number;
+  /** Maximum age of the last heartbeat acknowledgement (default 45s). */
+  heartbeatTimeoutMs?: number;
   /** Max reconnect backoff ms (default 5000). */
   maxBackoffMs?: number;
   /** Called on every status change. */
@@ -154,15 +176,18 @@ function safeWorkspaceRoot(root: string | undefined): string | null {
 function safeWorkspaceGrant(
   grant: BridgeWorkspaceGrant | undefined,
 ): BridgeWorkspaceGrant | undefined {
+  if (!grant) return undefined;
   const root = safeWorkspaceRoot(grant?.root);
   const id = grant?.id.trim() ?? '';
   const accountId = grant?.accountId.trim() ?? '';
+  const workspaceId = grant?.workspaceId.trim() ?? '';
   const projectId = grant?.projectId.trim() ?? '';
   const displayName = grant?.displayName.trim() ?? '';
   if (
     !root ||
     !SAFE_IDENTIFIER.test(id) ||
     !SAFE_SCOPE_IDENTIFIER.test(accountId) ||
+    !SAFE_SCOPE_IDENTIFIER.test(workspaceId) ||
     !SAFE_SCOPE_IDENTIFIER.test(projectId) ||
     !displayName ||
     displayName.length > 120 ||
@@ -170,19 +195,58 @@ function safeWorkspaceGrant(
   ) {
     return undefined;
   }
-  return { id, accountId, projectId, root, displayName };
+  const permissionProfile = safePermissionProfile(grant.permissionProfile, accountId, workspaceId);
+  if (grant.permissionProfile && !permissionProfile) return undefined;
+  return {
+    id,
+    accountId,
+    workspaceId,
+    projectId,
+    root,
+    displayName,
+    ...(permissionProfile ? { permissionProfile } : {}),
+  };
+}
+
+function safePermissionProfile(
+  profile: BrowserChatPermissionProfile | undefined,
+  accountId: string | undefined,
+  workspaceId: string | undefined,
+): BrowserChatPermissionProfile | undefined {
+  if (!profile) return undefined;
+  try {
+    const validated = deserializePermissionProfile(serializePermissionProfile(profile));
+    return validated.accountId === accountId && validated.workspaceId === workspaceId
+      ? validated
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readToolAllowed(
+  toolName: string,
+  profile: BrowserChatPermissionProfile | undefined,
+): boolean {
+  if (!profile) return SAFE_READ_TOOLS.has(toolName);
+  const capability =
+    toolName === 'fs.list' ? 'files.list' : toolName === 'fs.read' ? 'files.read' : undefined;
+  return capability ? permissionModeFor(profile, capability) !== 'deny' : false;
 }
 
 function grantMatchesScope(
   grant: BridgeWorkspaceGrant | undefined,
   accountId: string | undefined,
+  workspaceId: string | null | undefined,
   projectId: string | null | undefined,
 ): grant is BridgeWorkspaceGrant {
   return Boolean(
     grant &&
     accountId &&
+    workspaceId &&
     projectId &&
     grant.accountId === accountId &&
+    grant.workspaceId === workspaceId &&
     grant.projectId === projectId,
   );
 }
@@ -263,6 +327,13 @@ function makeNonce(): string {
 
 export function buildBridgeRegistrationFrame(options: BridgeRegistrationOptions) {
   const workspaceRoot = safeWorkspaceRoot(options.workspaceRoot);
+  const permissionProfile = safePermissionProfile(
+    options.workspaceGrant?.permissionProfile,
+    options.workspaceGrant?.accountId,
+    options.workspaceGrant?.workspaceId,
+  );
+  const permissionProfileInvalid =
+    Boolean(options.workspaceGrant?.permissionProfile) && !permissionProfile;
   const workspaceGrant =
     workspaceRoot &&
     options.workspaceGrant &&
@@ -276,9 +347,9 @@ export function buildBridgeRegistrationFrame(options: BridgeRegistrationOptions)
         }
       : undefined;
   const safeTools =
-    workspaceRoot && workspaceGrant
+    workspaceRoot && workspaceGrant && !permissionProfileInvalid
       ? options.tools
-          .filter((tool) => SAFE_READ_TOOLS.has(tool.name))
+          .filter((tool) => readToolAllowed(tool.name, permissionProfile))
           .sort((left, right) => left.name.localeCompare(right.name))
       : [];
   return {
@@ -403,6 +474,7 @@ export class BridgeClient {
   private status: BridgeStatus = 'idle';
   private opts: BridgeClientOptions;
   private heartbeatTimer: number | null = null;
+  private registrationTimer: number | null = null;
   private reconnectTimer: number | null = null;
   private reconnectAttempt = 0;
   private wantsConnected = false;
@@ -413,6 +485,8 @@ export class BridgeClient {
   private advertisedTools = new Set<string>();
   private lastSequence = 0;
   private seenCallIds = new Set<string>();
+  private connectionEpoch = 0;
+  private lastHeartbeatAckAt = 0;
 
   constructor(opts: BridgeClientOptions) {
     this.opts = opts;
@@ -428,26 +502,34 @@ export class BridgeClient {
   /** Close the bridge cleanly. No reconnect after this. */
   async stop(): Promise<void> {
     this.wantsConnected = false;
+    this.connectionEpoch += 1;
     this.clearHeartbeat();
+    this.clearRegistrationTimeout();
     this.clearReconnect();
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    const ws = this.ws;
+    this.ws = null;
+    if (ws && ws.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify({ kind: 'deregister', reason: 'shutdown' }));
+        ws.send(JSON.stringify({ kind: 'deregister', reason: 'shutdown' }));
       } catch {
         // ignore
       }
       try {
-        this.ws.close(1000, 'shutdown');
+        ws.close(1000, 'shutdown');
       } catch {
         // ignore
       }
     }
-    this.ws = null;
+    this.rejectPendingRegistration(new Error('Bridge stopped.'));
+    if (this.opts.mode === 'browser_chat' && this.opts.accountId) {
+      clearBrowserChatToolActivity(this.opts.accountId);
+    }
     this.setStatus('closed');
   }
 
   /** Update the JWT (e.g. after Supabase auth refresh) and reconnect. */
   setJwt(jwt: string): void {
+    if (this.opts.jwt === jwt) return;
     this.opts.jwt = jwt;
     if (this.wantsConnected) {
       this.reconnect();
@@ -457,13 +539,23 @@ export class BridgeClient {
   /** Apply or revoke the current explicit session-only read grant. */
   setWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): void {
     const normalized = safeWorkspaceGrant(workspaceGrant);
-    const scoped = grantMatchesScope(normalized, this.opts.accountId, this.opts.projectId)
+    const scoped = grantMatchesScope(
+      normalized,
+      this.opts.accountId,
+      this.opts.workspaceId,
+      this.opts.projectId,
+    )
       ? normalized
       : undefined;
     if (
       this.opts.workspaceGrant?.id === scoped?.id &&
+      this.opts.workspaceGrant?.accountId === scoped?.accountId &&
+      this.opts.workspaceGrant?.workspaceId === scoped?.workspaceId &&
+      this.opts.workspaceGrant?.projectId === scoped?.projectId &&
       this.opts.workspaceGrant?.root === scoped?.root &&
-      this.opts.workspaceGrant?.displayName === scoped?.displayName
+      this.opts.workspaceGrant?.displayName === scoped?.displayName &&
+      JSON.stringify(this.opts.workspaceGrant?.permissionProfile) ===
+        JSON.stringify(scoped?.permissionProfile)
     ) {
       return;
     }
@@ -483,6 +575,11 @@ export class BridgeClient {
     return this.status === 'connected';
   }
 
+  /** Ask the singleton to establish a fresh, generation-owned connection. */
+  requestReconnect(): void {
+    if (this.wantsConnected) this.reconnect();
+  }
+
   // -- private --
 
   private setStatus(s: BridgeStatus): void {
@@ -496,11 +593,13 @@ export class BridgeClient {
 
     this.clearReconnect();
     this.setStatus(this.reconnectAttempt > 0 ? 'reconnecting' : 'connecting');
+    const epoch = ++this.connectionEpoch;
 
     try {
       const resolvedUrl = this.opts.resolveUrl
         ? await this.opts.resolveUrl(this.opts.jwt)
         : this.opts.url;
+      if (!this.wantsConnected || this.connectionEpoch !== epoch) return;
       if (!/^wss?:\/\//u.test(resolvedUrl)) {
         throw new Error('The bridge URL is invalid.');
       }
@@ -510,8 +609,19 @@ export class BridgeClient {
       const registerPromise = new Promise<void>((resolve, reject) => {
         this.registerPending = { resolve, reject };
       });
+      this.clearRegistrationTimeout();
+      this.registrationTimer = window.setTimeout(() => {
+        if (!this.isCurrentConnection(ws, epoch) || !this.registerPending) return;
+        this.rejectPendingRegistration(new Error('Bridge registration timed out.'));
+        try {
+          ws.close(4008, 'registration timeout');
+        } catch {
+          // The reconnect scheduler below remains authoritative.
+        }
+      }, this.opts.registrationTimeoutMs ?? 10_000);
 
       ws.onopen = () => {
+        if (!this.isCurrentConnection(ws, epoch)) return;
         const tools = toolRegistry.list();
         const registerFrame =
           this.opts.mode === 'browser_chat'
@@ -543,24 +653,32 @@ export class BridgeClient {
         try {
           ws.send(JSON.stringify(registerFrame));
         } catch (e) {
-          this.registerPending?.reject(new Error(`register send failed: ${e}`));
-          this.registerPending = null;
+          this.rejectPendingRegistration(new Error(`register send failed: ${e}`));
+          try {
+            ws.close(1011, 'register send failed');
+          } catch {
+            // onclose or the catch below schedules the next attempt.
+          }
         }
       };
 
-      ws.onmessage = (ev) => this.handleMessage(ev.data as string);
+      ws.onmessage = (ev) => {
+        if (this.isCurrentConnection(ws, epoch)) this.handleMessage(ev.data as string, ws);
+      };
       ws.onerror = () => {
         // onerror fires before onclose; let onclose handle the reconnect.
       };
       ws.onclose = (ev) => {
+        if (!this.isCurrentConnection(ws, epoch)) return;
         const wasConnected = this.status === 'connected';
         this.ws = null;
-        this.clearHeartbeat();
-
-        if (this.registerPending) {
-          this.registerPending.reject(new Error(`bridge closed before register: code=${ev.code}`));
-          this.registerPending = null;
+        if (this.opts.mode === 'browser_chat' && this.opts.accountId) {
+          clearBrowserChatToolActivity(this.opts.accountId);
         }
+        this.clearHeartbeat();
+        this.clearRegistrationTimeout();
+
+        this.rejectPendingRegistration(new Error(`bridge closed before register: code=${ev.code}`));
 
         if (this.wantsConnected) {
           this.scheduleReconnect(wasConnected);
@@ -571,6 +689,7 @@ export class BridgeClient {
 
       await registerPromise;
     } catch (e) {
+      if (this.connectionEpoch !== epoch) return;
       console.error('[BridgeClient] connect failed:', e);
       this.setStatus('error');
       if (this.wantsConnected) {
@@ -579,7 +698,7 @@ export class BridgeClient {
     }
   }
 
-  private handleMessage(data: string): void {
+  private handleMessage(data: string, ws: WebSocket): void {
     let frame: BridgeFrame;
     try {
       frame = JSON.parse(data) as BridgeFrame;
@@ -591,9 +710,8 @@ export class BridgeClient {
     switch (frame.kind) {
       case 'registered':
         if (typeof frame.session_id !== 'string' || !SAFE_IDENTIFIER.test(frame.session_id)) {
-          this.registerPending?.reject(new Error('Bridge registration response was invalid.'));
-          this.registerPending = null;
-          this.ws?.close(4002, 'invalid registration response');
+          this.rejectPendingRegistration(new Error('Bridge registration response was invalid.'));
+          ws.close(4002, 'invalid registration response');
           return;
         }
         if (
@@ -602,17 +720,32 @@ export class BridgeClient {
             typeof frame.server_nonce !== 'string' ||
             !SAFE_IDENTIFIER.test(frame.server_nonce))
         ) {
-          this.registerPending?.reject(new Error('Bridge registration response was invalid.'));
-          this.registerPending = null;
-          this.ws?.close(4002, 'invalid registration response');
+          this.rejectPendingRegistration(new Error('Bridge registration response was invalid.'));
+          ws.close(4002, 'invalid registration response');
           return;
         }
         this.sessionId = frame.session_id;
         this.lastSequence = 0;
         this.seenCallIds.clear();
         this.connectedAt = Date.now();
-        this.reconnectAttempt = 0;
+        this.lastHeartbeatAckAt = this.connectedAt;
+        this.clearRegistrationTimeout();
         this.setStatus('connected');
+        if (
+          this.opts.mode === 'browser_chat' &&
+          this.opts.accountId &&
+          SAFE_SCOPE_IDENTIFIER.test(this.opts.accountId)
+        ) {
+          try {
+            publishBrowserChatToolCatalog({
+              accountId: this.opts.accountId,
+              toolNames: [...this.advertisedTools],
+              now: this.connectedAt,
+            });
+          } catch {
+            clearBrowserChatToolActivity(this.opts.accountId);
+          }
+        }
         this.startHeartbeat();
         this.registerPending?.resolve();
         this.registerPending = null;
@@ -624,6 +757,10 @@ export class BridgeClient {
 
       case 'heartbeat':
         // server-initiated heartbeat; we'll respond on our own interval
+        break;
+
+      case 'heartbeat_ack':
+        this.lastHeartbeatAckAt = Date.now();
         break;
 
       default:
@@ -650,6 +787,8 @@ export class BridgeClient {
         ? frame.call_id
         : 'invalid_call';
     let sequence = Number.isSafeInteger(frame.sequence) ? Number(frame.sequence) : 0;
+    let activityStarted = false;
+    let toolName = '';
 
     try {
       if (!this.sessionId || !this.opts.workspaceGrant) {
@@ -664,12 +803,26 @@ export class BridgeClient {
         seenCallIds: this.seenCallIds,
       });
       callId = call.callId;
+      toolName = call.name;
       sequence = call.sequence;
       this.lastSequence = call.sequence;
       this.seenCallIds.add(call.callId);
       if (this.seenCallIds.size > MAX_SEEN_CALLS) {
         const oldest = this.seenCallIds.values().next().value;
         if (oldest) this.seenCallIds.delete(oldest);
+      }
+      if (this.opts.accountId) {
+        try {
+          beginBrowserChatToolCall({
+            accountId: this.opts.accountId,
+            callId,
+            toolName,
+            now: Date.now(),
+          });
+          activityStarted = true;
+        } catch {
+          // Tool activity is observational and must not become execution authority.
+        }
       }
       result = await invokeBridgeReadTool(call, this.opts.workspaceGrant.root);
     } catch {
@@ -681,6 +834,20 @@ export class BridgeClient {
     }
 
     const elapsedMs = Math.round(performance.now() - start);
+    if (activityStarted && this.opts.accountId) {
+      try {
+        finishBrowserChatToolCall({
+          accountId: this.opts.accountId,
+          callId,
+          ok,
+          ...(error ? { errorCode: error.code } : {}),
+          elapsedMs,
+          now: Date.now(),
+        });
+      } catch {
+        // A malformed telemetry transition cannot change the tool result.
+      }
+    }
     const reply = ok
       ? {
           kind: 'tool_result',
@@ -753,6 +920,11 @@ export class BridgeClient {
     const interval = this.opts.heartbeatMs ?? 15000;
     this.heartbeatTimer = window.setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const timeout = this.opts.heartbeatTimeoutMs ?? Math.max(interval * 3, 45_000);
+        if (Date.now() - this.lastHeartbeatAckAt > timeout) {
+          this.reconnect();
+          return;
+        }
         try {
           this.ws.send(JSON.stringify({ kind: 'heartbeat', ts: Date.now() }));
         } catch {
@@ -769,7 +941,25 @@ export class BridgeClient {
     }
   }
 
-  private scheduleReconnect(wasConnected: boolean): void {
+  private clearRegistrationTimeout(): void {
+    if (this.registrationTimer !== null) {
+      window.clearTimeout(this.registrationTimer);
+      this.registrationTimer = null;
+    }
+  }
+
+  private rejectPendingRegistration(error: Error): void {
+    if (!this.registerPending) return;
+    const pending = this.registerPending;
+    this.registerPending = null;
+    pending.reject(error);
+  }
+
+  private isCurrentConnection(ws: WebSocket, epoch: number): boolean {
+    return this.ws === ws && this.connectionEpoch === epoch;
+  }
+
+  private scheduleReconnect(wasConnected: boolean, forcedDelay?: number): void {
     if (!this.wantsConnected) return;
     this.clearReconnect();
 
@@ -779,7 +969,7 @@ export class BridgeClient {
     }
 
     const max = this.opts.maxBackoffMs ?? 5000;
-    const delay = Math.min(max, 250 * Math.pow(2, this.reconnectAttempt));
+    const delay = forcedDelay ?? Math.min(max, 250 * Math.pow(2, this.reconnectAttempt));
     this.reconnectAttempt++;
 
     this.reconnectTimer = window.setTimeout(() => {
@@ -795,14 +985,20 @@ export class BridgeClient {
   }
 
   private reconnect(): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    const ws = this.ws;
+    this.connectionEpoch += 1;
+    this.ws = null;
+    this.clearHeartbeat();
+    this.clearRegistrationTimeout();
+    this.rejectPendingRegistration(new Error('Bridge connection replaced.'));
+    if (ws && ws.readyState <= WebSocket.OPEN) {
       try {
-        this.ws.close(1000, 'reconnect');
+        ws.close(1000, 'reconnect');
       } catch {
         // ignore
       }
     }
-    void this.connect();
+    this.scheduleReconnect(this.status === 'connected', 0);
   }
 }
 
@@ -841,7 +1037,12 @@ export function getBrowserChatBridgeClient(opts?: BridgeClientOptions): BridgeCl
     browserChatSingleton = new BridgeClient({
       ...opts,
       mode: 'browser_chat',
-      workspaceGrant: grantMatchesScope(requestedGrant, opts.accountId, opts.projectId)
+      workspaceGrant: grantMatchesScope(
+        requestedGrant,
+        opts.accountId,
+        opts.workspaceId,
+        opts.projectId,
+      )
         ? requestedGrant
         : undefined,
     });
@@ -854,6 +1055,10 @@ export function resetBrowserChatBridgeClient(): void {
   browserChatSingleton = null;
 }
 
+export function requestBrowserChatBridgeReconnect(): void {
+  browserChatSingleton?.requestReconnect();
+}
+
 export function setBridgeWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): void {
   pendingWorkspaceGrant = safeWorkspaceGrant(workspaceGrant);
   browserChatSingleton?.setWorkspaceGrant(pendingWorkspaceGrant);
@@ -861,11 +1066,13 @@ export function setBridgeWorkspaceGrant(workspaceGrant?: BridgeWorkspaceGrant): 
 
 export function getBridgeWorkspaceGrant(
   accountId?: string,
+  workspaceId?: string | null,
   projectId?: string | null,
 ): BridgeWorkspaceGrant | undefined {
   if (
     pendingWorkspaceGrant &&
-    (accountId === undefined || grantMatchesScope(pendingWorkspaceGrant, accountId, projectId))
+    (accountId === undefined ||
+      grantMatchesScope(pendingWorkspaceGrant, accountId, workspaceId, projectId))
   ) {
     return { ...pendingWorkspaceGrant };
   }

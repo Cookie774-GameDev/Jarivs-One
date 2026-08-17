@@ -52,6 +52,7 @@ import { createAccessViewModel } from '@/features/access/accessViewModel';
 import { AppShell } from '@/components/layout';
 import { JarvisContextMenu } from '@/components/layout/JarvisContextMenu';
 import { PageRouter } from '@/components/layout/PageRouter';
+import { NavigationHistoryBoundary } from '@/features/navigation/NavigationHistoryBoundary';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { startNotificationLoop } from '@/features/tasks';
 import { startClockEngine } from '@/features/clock/clockEngine';
@@ -64,6 +65,7 @@ import {
 } from '@/features/settings/ApiKeySaveBurst';
 import { CallModal, startOutboundTrigger } from '@/features/call';
 import { useBridgeLifecycle } from '@/lib/bridge/useBridgeLifecycle';
+import { VibeSpaceMcpRuntimeHost } from '@/lib/bridge/VibeSpaceMcpRuntimeHost';
 import { useIdleDetection, AmbientAudioHost } from '@/features/ambient';
 import { useLinkHotkeys } from '@/features/launcher';
 import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnalytics';
@@ -143,7 +145,9 @@ import { useBoundHotkey } from '@/lib/hotkeys';
 import { FullscreenHost } from '@/features/fullscreen';
 import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
+import { revokeTerminalExecutionsForAccount } from '@/features/terminals/terminalExecutionStore';
 import { TerminalCliRuntimeHost } from '@/features/terminals';
+import { ToolGatewayHost } from '@/lib/harness/ToolGatewayHost';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
 import { BenchmarkRefreshHost } from '@/features/benchmarks/BenchmarkRefreshHost';
@@ -721,6 +725,7 @@ function useBoot() {
   const registerMany = useAgentStore((s) => s.registerMany);
   const [commandCenterBinding, setCommandCenterBinding] =
     React.useState<JarvisCommandCenterBinding>();
+  const [runtimeListenerReady, setRuntimeListenerReady] = React.useState(!plan.agentRuntimeEnabled);
 
   React.useEffect(() => {
     let stopRuntime: (() => void) | undefined;
@@ -758,11 +763,20 @@ function useBoot() {
     let accountScopeGeneration = 0;
     let cloudAuthGeneration = 0;
     let accountRecoveryController: AbortController | undefined;
+    let terminalAccountRevocationBlocked: string | null = null;
     let accountTransition = accountScopeTeardownBarrier;
     let cancelled = false;
     const errors: string[] = [];
+    const publishRuntimeListenerReady = (ready: boolean): void => {
+      if (ready) {
+        document.documentElement.dataset.jarvisRuntimeListenerReady = 'true';
+      } else {
+        delete document.documentElement.dataset.jarvisRuntimeListenerReady;
+      }
+    };
 
     quarantineAccountScopedState();
+    publishRuntimeListenerReady(!plan.agentRuntimeEnabled);
 
     function addError(label: string, err: unknown): void {
       const msg = err instanceof Error ? err.message : String(err);
@@ -848,12 +862,15 @@ function useBoot() {
       useJarvisTaskRunStore.getState().setAccountScope('');
     }
 
-    async function stopAccountScopedListeners(): Promise<void> {
+    async function stopAccountScopedListeners(
+      options: { revokeTerminalExecutions?: boolean } = {},
+    ): Promise<void> {
       accountScopeGeneration += 1;
       accountRecoveryController?.abort();
       accountRecoveryController = undefined;
       const oldAccountId = activeAccountIdentity?.accountId;
       const oldLiveEvidenceSession = liveEvidenceAccountSession;
+      let terminalAccountRevocationIncomplete = false;
       setCommandCenterBinding(undefined);
       liveEvidenceAccountSession = undefined;
       if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
@@ -865,6 +882,10 @@ function useBoot() {
       stopTaskRunLifecycle = undefined;
       activeAccountIdentity = null;
       activePersistenceGeneration = null;
+      // Quarantine every account-scoped in-memory surface synchronously before
+      // awaiting native terminal revocation or listener flushes. A malformed
+      // live cloud session must not leave the previous account readable for
+      // even one React/store turn while asynchronous teardown is in flight.
       const pendingStops = stops.map((stop) => {
         try {
           return Promise.resolve(stop());
@@ -874,9 +895,26 @@ function useBoot() {
       });
       oldLiveEvidenceSession?.dispose();
       quarantineAccountScopedState();
-      const results = await Promise.allSettled(pendingStops);
+      const terminalRevocation =
+        oldAccountId && options.revokeTerminalExecutions
+          ? revokeTerminalExecutionsForAccount(oldAccountId)
+              .then((outcome) => {
+                terminalAccountRevocationIncomplete = outcome.rejected > 0;
+              })
+              .catch(() => {
+                terminalAccountRevocationIncomplete = true;
+              })
+          : Promise.resolve();
+      const results = await Promise.allSettled([...pendingStops, terminalRevocation]);
       for (const result of results) {
         if (result.status === 'rejected') addError('account scope teardown', result.reason);
+      }
+      if (terminalAccountRevocationIncomplete) {
+        terminalAccountRevocationBlocked = oldAccountId ?? terminalAccountRevocationBlocked;
+        throw new Error('terminal_account_revocation_incomplete');
+      }
+      if (oldAccountId === terminalAccountRevocationBlocked) {
+        terminalAccountRevocationBlocked = null;
       }
     }
 
@@ -891,7 +929,17 @@ function useBoot() {
       ) {
         return;
       }
-      await stopAccountScopedListeners();
+      if (terminalAccountRevocationBlocked) {
+        const blockedAccountId = terminalAccountRevocationBlocked;
+        const retry = await revokeTerminalExecutionsForAccount(blockedAccountId);
+        if (retry.rejected > 0) throw new Error('terminal_account_revocation_incomplete');
+        if (terminalAccountRevocationBlocked === blockedAccountId) {
+          terminalAccountRevocationBlocked = null;
+        }
+      }
+      await stopAccountScopedListeners({
+        revokeTerminalExecutions: !sameAccountIdentity(nextIdentity, activeAccountIdentity),
+      });
       if (
         cancelled ||
         !accountListenersBootReady ||
@@ -1007,7 +1055,9 @@ function useBoot() {
           return;
         }
         const precedingTransition = accountTransition;
-        const immediateTeardown = stopAccountScopedListeners();
+        const immediateTeardown = stopAccountScopedListeners({
+          revokeTerminalExecutions: true,
+        });
         accountTransition = Promise.allSettled([precedingTransition, immediateTeardown]).then(
           () => undefined,
         );
@@ -1096,7 +1146,11 @@ function useBoot() {
             'hydrateKeys',
           );
         } catch {
-          /* fallback to localStorage */
+          useAuthStore.setState({
+            credentialVaultState: 'degraded',
+            credentialVaultFailedProviders: [],
+          });
+          console.warn('[credentials] credential-hydration-timeout');
         }
       }
 
@@ -1329,6 +1383,8 @@ function useBoot() {
             await messageRepo.update(id, patch);
           },
         });
+        publishRuntimeListenerReady(true);
+        setRuntimeListenerReady(true);
       }
 
       // Phase 5: background loops
@@ -1374,6 +1430,7 @@ function useBoot() {
 
     return () => {
       cancelled = true;
+      publishRuntimeListenerReady(false);
       releaseEnqueueCloudAuthority();
       accountListenersBootReady = false;
       accountTransitionRequest += 1;
@@ -1401,7 +1458,7 @@ function useBoot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return commandCenterBinding;
+  return { commandCenterBinding, runtimeListenerReady };
 }
 
 function KernelBridgeBootstrap() {
@@ -1422,15 +1479,18 @@ function KernelBridgeBootstrap() {
     let disposeBoundary: (() => void | Promise<void>) | undefined;
     let accountInvalidator: ((accountId: string) => void) | undefined;
     let disposeKernelRuntimeHost: (() => void) | undefined;
+    let disposePluginReadPort: (() => void) | undefined;
     let securityRuntime:
       | {
           bindKernelActions: import('@/lib/jarvis/approvalEngine').JarvisApprovalActionBinder;
           pluginManagement: PluginManagementCapability;
+          runReadOnlyPlugin: import('@/lib/jarvis/jarvisSecurityRuntime').JarvisSecurityRuntime['runReadOnlyPlugin'];
           invalidateAccount(accountId: string): void;
           invalidateAll(): void;
         }
       | undefined;
     const invalidateSecurityRuntime = () => {
+      disposePluginReadPort?.();
       disposeKernelRuntimeHost?.();
       securityRuntime?.invalidateAll();
     };
@@ -1464,6 +1524,7 @@ function KernelBridgeBootstrap() {
               { createJarvisActionCatalog, DEFAULT_JARVIS_ACTION_REGISTRATIONS },
               { getBuiltinAction },
               { resolveLocalDevelopmentEntitlementSnapshot },
+              { installToolGatewayPluginReadPort },
             ] = await Promise.all([
               import('@/lib/jarvis/jarvisSecurityRuntime'),
               import('@/features/plugins/credentialAuthorization'),
@@ -1478,6 +1539,7 @@ function KernelBridgeBootstrap() {
               import('@/lib/jarvis/actions/catalog'),
               import('@/lib/actions/registry'),
               import('@/lib/entitlements'),
+              import('@/lib/harness/toolGatewayProduction'),
             ]);
             await openDb();
             if (disposed) return createUnavailableKernelHostRuntime();
@@ -1625,6 +1687,9 @@ function KernelBridgeBootstrap() {
               randomUUID,
               now,
             });
+            disposePluginReadPort = installToolGatewayPluginReadPort({
+              run: (request) => securityRuntime!.runReadOnlyPlugin(request),
+            });
             if (!kernelPluginArtifacts) {
               throw new Error('jarvis_plugin_artifact_authority_unavailable');
             }
@@ -1640,6 +1705,7 @@ function KernelBridgeBootstrap() {
               now,
             });
             if (disposed) {
+              disposePluginReadPort();
               disposeKernelRuntimeHost();
               securityRuntime.invalidateAll();
               return createUnavailableKernelHostRuntime();
@@ -1659,6 +1725,7 @@ function KernelBridgeBootstrap() {
               dispose() {
                 window.removeEventListener('pagehide', invalidateSecurityRuntime);
                 localDevelopmentEntitlementCache = undefined;
+                disposePluginReadPort?.();
                 disposeKernelRuntimeHost?.();
                 securityRuntime?.invalidateAll();
               },
@@ -1693,6 +1760,7 @@ function KernelBridgeBootstrap() {
     return () => {
       disposed = true;
       window.removeEventListener('pagehide', invalidateSecurityRuntime);
+      disposePluginReadPort?.();
       disposeKernelRuntimeHost?.();
       securityRuntime?.invalidateAll();
       if (accountInvalidator && invalidateActiveKernelAccount === accountInvalidator) {
@@ -1706,7 +1774,7 @@ function KernelBridgeBootstrap() {
     <RuntimeProfileAuthBoundary plan={plan}>
       <PluginManagementCapabilityProvider value={pluginManagement}>
         {ready ? (
-          <InstalledAccessAppHost>
+          <InstalledAccessAppHost authenticatedBoundary={WorkspaceRuntimeBoundary}>
             <WorkspaceRoot />
           </InstalledAccessAppHost>
         ) : null}
@@ -2085,11 +2153,25 @@ function WorkspaceLifecycleHosts() {
   return null;
 }
 
+function WorkspaceRuntimeBoundary({ children }: React.PropsWithChildren) {
+  const { commandCenterBinding, runtimeListenerReady } = useBoot();
+  const plan = resolveRuntimePlan();
+
+  return (
+    <JarvisCommandCenterProvider value={commandCenterBinding}>
+      {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? (
+        <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
+      ) : null}
+      {plan.lifecycleEnabled ? <VibeSpaceMcpRuntimeHost /> : null}
+      {runtimeListenerReady ? children : null}
+    </JarvisCommandCenterProvider>
+  );
+}
+
 /**
  * Inner shell - rendered after AuthGate has confirmed local user + seeding.
  */
 function WorkspaceRoot() {
-  const commandCenterBinding = useBoot();
   const plan = resolveRuntimePlan();
 
   React.useEffect(() => {
@@ -2160,14 +2242,12 @@ function WorkspaceRoot() {
   }, []);
 
   return (
-    <JarvisCommandCenterProvider value={commandCenterBinding}>
+    <>
       {plan.lifecycleEnabled ? <WorkspaceLifecycleHosts /> : null}
-      {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? (
-        <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
-      ) : null}
       {plan.globalHotkeyEnabled ? <GlobalHotkeysHost /> : null}
       {plan.isOrdinary ? <FullscreenHost /> : null}
       {plan.idleEnabled ? <IdleDetectionHost /> : null}
+      <NavigationHistoryBoundary />
       <AppShell>
         <ActiveCanvas />
       </AppShell>
@@ -2243,7 +2323,7 @@ function WorkspaceRoot() {
       {/* Toast outlet */}
       {plan.backgroundServicesEnabled ? <JarvisContextMenu /> : null}
       <Toaster />
-    </JarvisCommandCenterProvider>
+    </>
   );
 }
 
@@ -2294,6 +2374,12 @@ function sharedRuntimeProfileHandshake(
   if (!promise) {
     promise = verifyRuntimeProfileHandshake(query, plan, expectation, timeoutMs);
     promises.set(key, promise);
+    const currentPromise = promise;
+    void currentPromise.catch(() => {
+      if (promises?.get(key) === currentPromise) {
+        promises.delete(key);
+      }
+    });
   }
   return promise;
 }
@@ -2399,7 +2485,15 @@ export function RuntimeProfileHandshakeGate({
     <RuntimeProfileHandshakeProofContext.Provider value={proof}>
       {children}
     </RuntimeProfileHandshakeProofContext.Provider>
-  ) : null;
+  ) : (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-0 flex items-center justify-center bg-background p-6 text-sm text-muted-foreground"
+    >
+      Verifying VibeSpace runtime security…
+    </div>
+  );
 }
 
 const FIXTURE_READY_TIMEOUT_MS = 5_000;
@@ -3145,6 +3239,7 @@ function AppContent({ plan }: { plan: RuntimePlan }) {
       <ThemeHost />
       {plan.kernelEnabled && KERNEL_SMOKE_ENABLED ? <KernelSmokeBindingHost /> : null}
       <KernelBridgeBootstrap />
+      <ToolGatewayHost />
       {plan.terminalCliEnabled ? <TerminalCliRuntimeHost /> : null}
       {plan.devConsoleEnabled ? <DevConsoleHost /> : null}
     </ErrorBoundary>

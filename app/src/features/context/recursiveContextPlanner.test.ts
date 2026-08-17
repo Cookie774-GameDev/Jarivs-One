@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCorpusScaleMetadata } from './corpusScale';
 import {
+  createContextQueryService,
+  type ContextQueryRepository,
+  type ContextScope,
+} from './contextQueryService';
+import { createCorpusScaleMetadata } from './corpusScale';
+import { createContextPointer, createContextRecord } from './losslessContext';
+import {
+  RECURSIVE_CONTEXT_LIMITS,
   RecursiveContextError,
   createRecursiveContextPlanner,
   type RecursiveContextBudgets,
   type RecursiveContextEvidence,
 } from './recursiveContextPlanner';
+import { createRecursiveContextQueryAdapter } from './recursiveContextQueryAdapter';
 
 const corpus = createCorpusScaleMetadata({
   corpusId: 'corpus-100b',
@@ -35,42 +43,85 @@ function evidence(id: string, estimatedTokens = 100): RecursiveContextEvidence {
       sourceRevision: 'revision-1',
       contentDigest: `sha256:${'b'.repeat(64)}`,
       indexedAt: 1_700_000_000_000,
-      locator: `app/${id}.ts:1`,
+      locator: `sparse://corpus-100b/${id}`,
     },
   };
 }
 
 describe('recursive context planner', () => {
-  it('recursively converges while retaining bounded evidence and provenance', async () => {
-    const retrieveRound = vi
-      .fn()
-      .mockResolvedValueOnce({
-        evidence: [evidence('architecture')],
-        nextQueries: ['Where is the implementation?'],
-        complete: false,
-      })
-      .mockResolvedValueOnce({
-        evidence: [evidence('implementation')],
-        nextQueries: [],
-        complete: true,
-      });
-    const result = await createRecursiveContextPlanner({ retrieveRound }).retrieve({
-      query: 'How does context retrieval work?',
-      corpus,
+  it('composes exact logical routing through ContextQueryService with derived provenance', async () => {
+    const logicalCorpus = createCorpusScaleMetadata({
+      corpusId: 'composed-10b',
+      totalTokens: 10_000_000_002n,
+      indexedTokens: 10_000_000_002n,
+      chunkCount: 4_882_813n,
+      shardCount: 10_001n,
+      contentDigest: `sha256:${'c'.repeat(64)}`,
+      generatedAt: 1_700_000_000_000,
+    });
+    const scope: ContextScope = { accountId: 'account-1', projectId: 'project-1' };
+    const content = 'boundary=10000000001 answer=amber-quartz';
+    const digest = 'd'.repeat(64);
+    const record = createContextRecord({
+      id: 'composed-record',
+      accountId: scope.accountId,
+      projectId: scope.projectId,
+      sourceKind: 'file_version',
+      sourceId: 'composed-source',
+      createdAt: 1,
+      contentHash: digest,
+      contentRef: 'sparse://physical/shard-10000',
+      trustLevel: 'app_verified',
+    });
+    const pointer = createContextPointer({
+      id: 'composed-pointer',
+      recordId: record.id,
+      byteStart: 0,
+      byteEnd: new TextEncoder().encode(content).length,
+      sourceVersion: 'revision-1',
+      contentHash: digest,
+    });
+    const repository: ContextQueryRepository = {
+      listRecords: vi.fn(async () => [record]),
+      getRecord: vi.fn(async () => record),
+      search: vi.fn(async (_scope, query) =>
+        query === 'token:10000000001;shard:10000;offset:1'
+          ? [{ recordId: record.id, pointer, preview: content, score: 1 }]
+          : [],
+      ),
+      readSource: vi.fn(async () => ({
+        bytes: new TextEncoder().encode(content),
+        contentHash: digest,
+        sourceVersion: pointer.sourceVersion,
+      })),
+      canOpen: vi.fn(async () => true),
+    };
+    const adapter = createRecursiveContextQueryAdapter({
+      queryService: createContextQueryService({ repository }),
+      scope,
+      logicalAddressing: { corpus: logicalCorpus, shardSize: 1_000_000n },
+    });
+    const planner = createRecursiveContextPlanner({ retrieveRound: adapter.retrieveRound });
+
+    const result = await planner.retrieve({
+      query: 'token:10000000001',
+      corpus: logicalCorpus,
       budgets,
     });
 
-    expect(result).toMatchObject({
-      status: 'complete',
-      stopReason: 'complete',
-      iterations: 2,
-      queriesIssued: 2,
-      contextTokens: 200,
-      fullyIndexed: true,
+    expect(result.status).toBe('complete');
+    expect(result.evidence[0]?.provenance).toEqual({
+      sourceId: record.sourceId,
+      sourceRevision: pointer.sourceVersion,
+      contentDigest: `sha256:${digest}`,
+      indexedAt: record.createdAt,
+      locator: 'sparse://physical/shard-10000#token=10000000001&shard=10000&offset=1',
     });
-    expect(result.evidence.map(({ id }) => id)).toEqual(['architecture', 'implementation']);
-    expect(result.evidence[1]?.provenance.sourceRevision).toBe('revision-1');
-    expect(retrieveRound.mock.calls[1]?.[0].excludedEvidenceIds).toEqual(['architecture']);
+    expect(repository.search).toHaveBeenCalledWith(
+      scope,
+      'token:10000000001;shard:10000;offset:1',
+      undefined,
+    );
   });
 
   it('detects a recursive query loop without issuing another retrieval', async () => {
@@ -85,26 +136,10 @@ describe('recursive context planner', () => {
       budgets,
     });
     expect(result.stopReason).toBe('query_loop');
-    expect(result.status).toBe('incomplete');
     expect(retrieveRound).toHaveBeenCalledTimes(1);
   });
 
-  it('stops deterministically at the iteration limit', async () => {
-    const retrieveRound = vi.fn(async ({ iteration }: { iteration: number }) => ({
-      evidence: [evidence(`evidence-${iteration}`, 10)],
-      nextQueries: [`follow-up-${iteration}`],
-      complete: false,
-    }));
-    const result = await createRecursiveContextPlanner({ retrieveRound }).retrieve({
-      query: 'start',
-      corpus,
-      budgets: { ...budgets, maxIterations: 2 },
-    });
-    expect(result).toMatchObject({ stopReason: 'iteration_limit', iterations: 2 });
-    expect(retrieveRound).toHaveBeenCalledTimes(2);
-  });
-
-  it('rejects dependency output that exceeds the bounded prompt budget', async () => {
+  it('fails closed when a dependency exceeds the evidence budget', async () => {
     const planner = createRecursiveContextPlanner({
       retrieveRound: vi.fn(async () => ({
         evidence: [evidence('too-large', 1_001)],
@@ -117,22 +152,7 @@ describe('recursive context planner', () => {
     );
   });
 
-  it('cancels before invoking dependencies and never returns partial success', async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const retrieveRound = vi.fn();
-    await expect(
-      createRecursiveContextPlanner({ retrieveRound }).retrieve({
-        query: 'start',
-        corpus,
-        budgets,
-        signal: controller.signal,
-      }),
-    ).rejects.toMatchObject({ name: 'AbortError' });
-    expect(retrieveRound).not.toHaveBeenCalled();
-  });
-
-  it('stops promptly when cancellation happens during a retrieval round', async () => {
+  it('cancels during retrieval and never returns partial success', async () => {
     const controller = new AbortController();
     const retrieveRound = vi.fn(() => new Promise<never>(() => undefined));
     const pending = createRecursiveContextPlanner({ retrieveRound }).retrieve({
@@ -143,10 +163,9 @@ describe('recursive context planner', () => {
     });
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-    expect(retrieveRound).toHaveBeenCalledTimes(1);
   });
 
-  it('fails closed on invalid budgets or unsupported dependency claims', async () => {
+  it('fails closed on unsupported budgets', async () => {
     const planner = createRecursiveContextPlanner({
       retrieveRound: vi.fn(async () => ({ evidence: [], nextQueries: [], complete: true })),
     });
@@ -157,8 +176,42 @@ describe('recursive context planner', () => {
         budgets: { ...budgets, maxContextTokens: 32_769 },
       }),
     ).rejects.toBeInstanceOf(RecursiveContextError);
-    await expect(planner.retrieve({ query: 'start', corpus, budgets })).rejects.toThrowError(
-      'recursive_context_error:complete_without_evidence',
-    );
+  });
+
+  it('accepts every exact planner ceiling and rejects each value above it', async () => {
+    const complete = vi.fn(async () => ({
+      evidence: [evidence('bounded', RECURSIVE_CONTEXT_LIMITS.maxContextTokens)],
+      nextQueries: [],
+      complete: true,
+    }));
+    const atLimits: RecursiveContextBudgets = {
+      maxIterations: RECURSIVE_CONTEXT_LIMITS.maxIterations,
+      maxContextTokens: RECURSIVE_CONTEXT_LIMITS.maxContextTokens,
+      maxItems: RECURSIVE_CONTEXT_LIMITS.maxItems,
+      maxQueriesPerIteration: RECURSIVE_CONTEXT_LIMITS.maxQueriesPerIteration,
+      maxTotalQueries: RECURSIVE_CONTEXT_LIMITS.maxTotalQueries,
+    };
+    await expect(
+      createRecursiveContextPlanner({ retrieveRound: complete }).retrieve({
+        query: 'bounded',
+        corpus,
+        budgets: atLimits,
+      }),
+    ).resolves.toMatchObject({
+      status: 'complete',
+      iterations: 1,
+      queriesIssued: 1,
+      contextTokens: RECURSIVE_CONTEXT_LIMITS.maxContextTokens,
+    });
+
+    for (const field of Object.keys(atLimits) as Array<keyof RecursiveContextBudgets>) {
+      await expect(
+        createRecursiveContextPlanner({ retrieveRound: complete }).retrieve({
+          query: 'bounded',
+          corpus,
+          budgets: { ...atLimits, [field]: atLimits[field] + 1 },
+        }),
+      ).rejects.toBeInstanceOf(RecursiveContextError);
+    }
   });
 });

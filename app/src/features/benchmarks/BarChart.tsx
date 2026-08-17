@@ -111,7 +111,7 @@ export function BarChart({ rows, height, className }: BarChartProps) {
         preserveAspectRatio="xMinYMin meet"
         style={{ height: height ?? 'auto', minWidth: 800, display: 'block' }}
         role="img"
-        aria-label={`Bar chart of top ${rows.length} models by arena score`}
+        aria-label={`Bar chart of top ${rows.length} models by Arena rating`}
       >
         {/* Vertical gridlines at quarter intervals for visual reference */}
         <g aria-hidden="true">

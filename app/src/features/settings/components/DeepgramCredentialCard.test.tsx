@@ -7,6 +7,12 @@ const mocks = vi.hoisted(() => ({
   save: vi.fn(),
   test: vi.fn(),
   remove: vi.fn(),
+  toast: {
+    success: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
 }));
 
 vi.mock('@/lib/deepgram', async (importOriginal) => {
@@ -20,12 +26,17 @@ vi.mock('@/lib/deepgram', async (importOriginal) => {
   };
 });
 
+vi.mock('@/components/ui/toast', () => ({
+  toast: mocks.toast,
+}));
+
 describe('DeepgramCredentialCard', () => {
   beforeEach(() => {
     mocks.load.mockReset().mockResolvedValue({ configured: false, health: 'missing' });
     mocks.save.mockReset();
     mocks.test.mockReset().mockResolvedValue({ configured: true, health: 'connected' });
     mocks.remove.mockReset();
+    Object.values(mocks.toast).forEach((method) => method.mockReset());
   });
 
   it('does not render a credential value when an existing key is connected', async () => {
@@ -92,5 +103,29 @@ describe('DeepgramCredentialCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Deepgram key' }));
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('button', { name: 'Connect Deepgram' })).toBeTruthy();
+  });
+
+  it('reports a securely saved key when provider validation is temporarily unavailable', async () => {
+    mocks.save.mockResolvedValue({
+      configured: true,
+      health: 'unreachable',
+      source: 'saved',
+      checkedAt: '2026-08-09T20:00:00Z',
+      errorCode: 'network',
+    });
+    render(<DeepgramCredentialCard />);
+
+    const input = await screen.findByLabelText('Deepgram API key');
+    fireEvent.change(input, { target: { value: 'dg-private-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Deepgram' }));
+
+    await waitFor(() =>
+      expect(mocks.toast.warning).toHaveBeenCalledWith(
+        'Deepgram saved',
+        'Saved securely. Deepgram could not be reached, so use Test when the connection recovers.',
+      ),
+    );
+    expect(await screen.findByRole('button', { name: 'Test Deepgram' })).toBeTruthy();
+    expect(screen.queryByDisplayValue('dg-private-key')).toBeNull();
   });
 });

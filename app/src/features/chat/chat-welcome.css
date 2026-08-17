@@ -61,17 +61,17 @@ html:not([data-theme='warm']) .warm-chat-welcome__art {
 
 html:not([data-theme='warm']) [data-chat-welcome-theme='default'] .warm-chat-welcome__art {
   opacity: 0.78;
-  filter: saturate(0.76) contrast(0.92) brightness(0.9);
+  filter: none;
 }
 
 html:not([data-theme='warm']) [data-chat-welcome-theme='jarvis'] .warm-chat-welcome__art {
   opacity: 0.82;
-  filter: saturate(0.82) contrast(0.94) brightness(0.88);
+  filter: none;
 }
 
 html:not([data-theme='warm']) [data-chat-welcome-theme='monochrome'] .warm-chat-welcome__art {
   opacity: 0.72;
-  filter: grayscale(1) contrast(0.9) brightness(0.92);
+  filter: none;
 }
 
 html:not([data-theme='warm']) .warm-chat-welcome h1 {

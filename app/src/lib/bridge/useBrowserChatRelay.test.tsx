@@ -37,6 +37,7 @@ const relayMocks = vi.hoisted(() => {
       resolveUrl?: (jwt: string) => Promise<string>;
       onStatus?: (status: 'connecting' | 'connected' | 'error') => void;
       accountId?: string;
+      workspaceId?: string | null;
       projectId?: string | null;
     };
     resolvedUrls: string[];
@@ -47,6 +48,7 @@ const relayMocks = vi.hoisted(() => {
       resolveUrl?: (jwt: string) => Promise<string>;
       onStatus?: (status: 'connecting' | 'connected' | 'error') => void;
       accountId?: string;
+      workspaceId?: string | null;
       projectId?: string | null;
     }) => {
       const resolvedUrls: string[] = [];
@@ -254,7 +256,11 @@ describe('Browser Chat relay lifecycle', () => {
     );
 
     const { result } = renderHook(() =>
-      useBrowserChatRelay(true, { accountId: 'account-a', projectId: 'project-a' }),
+      useBrowserChatRelay(true, {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+      }),
     );
     await waitFor(() => expect(result.current).toBe('connected'));
     const bridge = relayMocks.clients.at(-1);
@@ -316,7 +322,11 @@ describe('Browser Chat relay lifecycle', () => {
   it('clears the grant and refuses a stale account before creating its ticketed client', async () => {
     relayMocks.getSession.mockResolvedValueOnce({ data: { session: null } });
     const { result } = renderHook(() =>
-      useBrowserChatRelay(true, { accountId: 'account-a', projectId: 'project-a' }),
+      useBrowserChatRelay(true, {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+      }),
     );
     await waitFor(() => expect(relayMocks.onAuthStateChange).toHaveBeenCalledOnce());
 
@@ -342,7 +352,11 @@ describe('Browser Chat relay lifecycle', () => {
       ),
     );
     const { result } = renderHook(() =>
-      useBrowserChatRelay(true, { accountId: 'account-a', projectId: 'project-a' }),
+      useBrowserChatRelay(true, {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+      }),
     );
     await waitFor(() => expect(result.current).toBe('connected'));
     relayMocks.setBridgeWorkspaceGrant.mockClear();
@@ -358,8 +372,37 @@ describe('Browser Chat relay lifecycle', () => {
     await waitFor(() => expect(relayMocks.clients).toHaveLength(2));
     expect(relayMocks.clients[1]?.options).toMatchObject({
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
       projectId: 'project-a',
     });
+  });
+
+  it('revokes the session grant before reconnecting after a workspace transition', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          url: 'wss://vibespace-mcp.combatonline02.workers.dev/browser-chat/bridge?ticket=opaque',
+        }),
+      ),
+    );
+    const { rerender } = renderHook(
+      ({ workspaceId }: { workspaceId: string }) =>
+        useBrowserChatRelay(true, {
+          accountId: 'account-a',
+          workspaceId,
+          projectId: 'project-a',
+        }),
+      { initialProps: { workspaceId: 'workspace-a' } },
+    );
+    await waitFor(() => expect(relayMocks.clients).toHaveLength(1));
+    relayMocks.setBridgeWorkspaceGrant.mockClear();
+
+    rerender({ workspaceId: 'workspace-b' });
+
+    await waitFor(() => expect(relayMocks.setBridgeWorkspaceGrant).toHaveBeenCalledWith());
+    await waitFor(() => expect(relayMocks.clients).toHaveLength(2));
+    expect(relayMocks.clients[1]?.options.workspaceId).toBe('workspace-b');
   });
 
   it('aborts a reconnect ticket and ignores its late socket status after sign-out', async () => {

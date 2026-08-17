@@ -1,6 +1,7 @@
 export type ConnectionMode = 'external-cli' | 'native-api' | 'local';
 
 export type JarvisPromptTransportStrategy = 'native-system' | 'prefixed-preamble' | 'unsupported';
+export type ProviderToolName = 'vibespace_context';
 
 export interface ProviderCapabilities {
   text: boolean;
@@ -28,6 +29,7 @@ export interface ProviderConnection {
   authSource: string;
   modelId?: string;
   capabilities: ProviderCapabilities;
+  toolAllowlist?: readonly ProviderToolName[];
   promptTransport: JarvisPromptTransportStrategy;
   enabled: boolean;
 }
@@ -111,6 +113,16 @@ export interface ProviderRequest {
   interactionMode?: import('@/lib/permissions/OpenCodePermissionProfile').InteractionMode;
   accessLevel?: import('@/lib/permissions/OpenCodePermissionProfile').AccessLevel;
   approveAllForRun?: boolean;
+  /** Approval events remain user-visible even when the persistent adapter enforces policy. */
+  onApprovalRequested?: (
+    approval: import('@/lib/harness/types').VibeSpaceApproval,
+  ) => void | Promise<void>;
+  onSessionBound?: (binding: {
+    sessionId: string;
+    parentSessionId?: string;
+  }) => void | Promise<void>;
+  /** Explicit connection-qualified tool availability for the turn. */
+  tools?: Readonly<Record<string, boolean>>;
   signal?: AbortSignal;
   onResponseObservation?: (
     observation:

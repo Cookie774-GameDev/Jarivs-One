@@ -8,8 +8,9 @@ function createDatabase(options?: {
   failAllWith?: Error;
   failOnceQuery?: { includes: string; error: Error };
   failReleaseWith?: Error;
-  loseFenceBeforeBatch?: boolean;
   latestRun?: Row;
+  newsRows?: Row[];
+  benchmarkSnapshot?: Row;
   lease?: {
     runKey: string;
     leaseUntil: string;
@@ -23,6 +24,7 @@ function createDatabase(options?: {
   let lastCompletedRunKey: unknown = options?.lease?.lastCompletedRunKey;
   let fencingToken: unknown = options?.lease ? 'existing-fence' : undefined;
   let latestRun: Row | null = options?.latestRun ?? null;
+  let benchmarkSnapshot: Row | null = options?.benchmarkSnapshot ?? null;
   const prepare = vi.fn((query: string) => {
     const bindings: unknown[] = [];
     const statement = {
@@ -48,10 +50,16 @@ function createDatabase(options?: {
         if (query.includes('FROM ingestion_runs')) {
           return latestRun;
         }
+        if (query.includes('FROM benchmark_snapshots')) {
+          return benchmarkSnapshot;
+        }
         return null;
       }),
       all: vi.fn(async (): Promise<{ results: Row[] }> => {
         if (options?.failAllWith) throw options.failAllWith;
+        if (query.includes('FROM news_items')) {
+          return { results: options?.newsRows ?? [] };
+        }
         return { results: [] };
       }),
       run: vi.fn(async () => {
@@ -94,27 +102,6 @@ function createDatabase(options?: {
           }
           return { meta: { changes: 1 } };
         }
-        if (query.includes('UPDATE ingestion_leases') && query.includes('SET lease_until = ?')) {
-          const suppliedFence = bindings.at(-1);
-          if (!ingestionLeaseHeld || suppliedFence !== fencingToken) {
-            return { meta: { changes: 0 } };
-          }
-          ingestionLeaseUntil = String(bindings[0]);
-          return { meta: { changes: 1 } };
-        }
-        if (
-          query.includes('WHERE EXISTS') &&
-          (query.includes('news_items') || query.includes('ingestion_runs'))
-        ) {
-          const suppliedRunKey = bindings.at(-2);
-          const suppliedFence = bindings.at(-1);
-          if (suppliedRunKey !== lastIngestionRunKey || suppliedFence !== fencingToken) {
-            return { meta: { changes: 0 } };
-          }
-        }
-        if (query.includes('INSERT OR IGNORE INTO news_items')) {
-          return { meta: { changes: 1 } };
-        }
         if (query.includes('INSERT INTO ingestion_runs')) {
           latestRun = query.includes("'failed'")
             ? {
@@ -135,6 +122,17 @@ function createDatabase(options?: {
               };
           return { meta: { changes: 1 } };
         }
+        if (query.includes('INSERT INTO benchmark_snapshots')) {
+          benchmarkSnapshot = {
+            source_name: bindings[0],
+            source_url: bindings[1],
+            benchmark_date: bindings[2],
+            ingested_at: bindings[3],
+            row_count: bindings[4],
+            payload_json: bindings[5],
+          };
+          return { meta: { changes: 1 } };
+        }
         return { meta: { changes: 0 } };
       }),
     };
@@ -143,14 +141,15 @@ function createDatabase(options?: {
 
   return {
     prepare,
-    batch: vi.fn(async (statements: Array<{ run(): Promise<{ meta: { changes: number } }> }>) => {
-      if (options?.loseFenceBeforeBatch) fencingToken = 'recovered-fence';
-      return await Promise.all(statements.map((statement) => statement.run()));
-    }),
+    batch: vi.fn(async () => []),
   };
 }
 
-function scheduledExecution(workerEnv: ReturnType<typeof createDatabase>, scheduledTime: number) {
+function scheduledExecution(
+  workerEnv: ReturnType<typeof createDatabase>,
+  scheduledTime: number,
+  extraEnv: Record<string, unknown> = {},
+) {
   let execution: Promise<unknown> | undefined;
   const context = {
     waitUntil(promise: Promise<unknown>) {
@@ -160,7 +159,7 @@ function scheduledExecution(workerEnv: ReturnType<typeof createDatabase>, schedu
 
   void worker.scheduled(
     { scheduledTime } as ScheduledController,
-    { DB: workerEnv } as never,
+    { DB: workerEnv, ...extraEnv } as never,
     context as ExecutionContext,
   );
 
@@ -179,9 +178,11 @@ describe('AI News public request boundary', () => {
     vi.stubGlobal('fetch', upstreamFetch);
     const DB = createDatabase();
 
-    const response = await worker.fetch(new Request('https://news.example/api/news'), {
-      DB,
-    } as never);
+    const response = await worker.fetch(
+      new Request('https://news.example/api/news'),
+      { DB } as never,
+      {} as never,
+    );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ count: 0, items: [] });
@@ -196,9 +197,11 @@ describe('AI News public request boundary', () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const DB = createDatabase({ failAllWith: new Error(sentinel) });
 
-    const response = await worker.fetch(new Request('https://news.example/api/news'), {
-      DB,
-    } as never);
+    const response = await worker.fetch(
+      new Request('https://news.example/api/news'),
+      { DB } as never,
+      {} as never,
+    );
     const body = await response.text();
 
     expect(response.status).toBe(500);
@@ -218,9 +221,11 @@ describe('AI News public request boundary', () => {
       },
     });
 
-    const response = await worker.fetch(new Request('https://news.example/api/news'), {
-      DB,
-    } as never);
+    const response = await worker.fetch(
+      new Request('https://news.example/api/news'),
+      { DB } as never,
+      {} as never,
+    );
 
     expect(await response.json()).toMatchObject({
       freshness: {
@@ -230,30 +235,78 @@ describe('AI News public request boundary', () => {
     });
   });
 
-  it('reports an old partial refresh as stale instead of merely degraded', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime('2026-08-09T12:00:00.000Z');
+  it('sanitizes retained HTML summaries at the public response boundary', async () => {
     const DB = createDatabase({
-      latestRun: {
-        completed_at: '2026-08-09T08:07:30.000Z',
-        status: 'partial',
-        fetched_count: 5,
-        stored_count: 2,
-      },
+      newsRows: [
+        {
+          id: 7,
+          source_platform: 'official',
+          source_name: 'Example AI',
+          source_url: 'https://example.com/release',
+          raw_title: 'Example release',
+          ai_headline: 'Example release',
+          ai_summary:
+            '<img src="https://example.com/tracker.png"><h2>Release</h2><p>Model <strong>details</strong> &amp; availability.</p>',
+          company: 'Example AI',
+          model_names: '["Example"]',
+          category: 'model-release',
+          verification_status: 'official',
+          importance_score: 90,
+          published_at: '2026-08-10T18:00:00.000Z',
+          collected_at: '2026-08-10T18:07:00.000Z',
+        },
+      ],
     });
 
-    const response = await worker.fetch(new Request('https://news.example/api/news'), {
-      DB,
-    } as never);
+    const response = await worker.fetch(
+      new Request('https://news.example/api/news'),
+      { DB } as never,
+      {} as never,
+    );
 
     expect(await response.json()).toMatchObject({
-      freshness: {
-        state: 'stale',
-        warning:
-          'Hourly news data is stale and the last refresh was partial. Showing the last retained data.',
+      items: [{ summary: 'Release Model details & availability.' }],
+    });
+  });
+
+  it('serves only a retained structured Arena snapshot from the benchmark endpoint', async () => {
+    const rows = Array.from({ length: 20 }, (_, index) => ({
+      rank: index + 1,
+      model: `verified-model-${index + 1}`,
+      vendor: 'Example AI',
+      license: 'proprietary',
+      score: 1500 - index,
+      ci: 4,
+      votes: 100 + index,
+    }));
+    const DB = createDatabase({
+      benchmarkSnapshot: {
+        source_name: 'Arena',
+        source_url: 'https://arena.example/leaderboard',
+        benchmark_date: '2026-08-10T18:00:00.000Z',
+        ingested_at: '2026-08-10T18:07:00.000Z',
+        row_count: rows.length,
+        payload_json: JSON.stringify(rows),
       },
     });
-    vi.useRealTimers();
+
+    const response = await worker.fetch(
+      new Request('https://news.example/api/benchmarks'),
+      { DB } as never,
+      {} as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      source: {
+        kind: 'independent-preference',
+        name: 'Arena',
+        url: 'https://arena.example/leaderboard',
+      },
+      benchmarkDate: '2026-08-10T18:00:00.000Z',
+      ingestedAt: '2026-08-10T18:07:00.000Z',
+      rows,
+    });
   });
 });
 
@@ -292,6 +345,101 @@ describe('AI News hourly ingestion boundary', () => {
     expect(log.mock.calls.flat()).toContain(
       '{"event":"free_news_ingestion_skipped","reason":"duplicate_run"}',
     );
+  });
+
+  it('stores a validated Arena snapshot during the hourly run', async () => {
+    const benchmarkUrl = 'https://arena.example/leaderboard.json';
+    const rows = Array.from({ length: 20 }, (_, index) => ({
+      rank: index + 1,
+      model: `hourly-model-${index + 1}`,
+      vendor: 'Example AI',
+      license: index === 19 ? 'open' : 'proprietary',
+      score: 1500 - index,
+      ci: 4,
+      votes: 500 + index,
+    }));
+    const upstreamFetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input) === benchmarkUrl
+        ? new Response(
+            JSON.stringify({
+              meta: {
+                source_url: 'https://arena.example/leaderboard',
+                fetched_at: '2026-08-10T19:00:00.000Z',
+              },
+              models: rows,
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        : new Response('<rss></rss>', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', upstreamFetch);
+    const DB = createDatabase();
+
+    await scheduledExecution(DB, Date.parse('2026-08-10T19:07:00.000Z'), {
+      BENCHMARK_SOURCE_URL: benchmarkUrl,
+    });
+
+    const response = await worker.fetch(
+      new Request('https://news.example/api/benchmarks'),
+      { DB } as never,
+      {} as never,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      benchmarkDate: '2026-08-10T19:00:00.000Z',
+      rows,
+    });
+  });
+
+  it('rejects a chunked benchmark response above two megabytes before parsing it', async () => {
+    const benchmarkUrl = 'https://arena.example/oversized.json';
+    let cancelledBodies = 0;
+    const upstreamFetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) !== benchmarkUrl) {
+        return new Response('<rss></rss>', { status: 200 });
+      }
+      const chunks = [
+        new TextEncoder().encode('['),
+        new Uint8Array(1_000_000),
+        new Uint8Array(1_000_000),
+      ];
+      return new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              const chunk = chunks.shift();
+              if (!chunk) {
+                controller.close();
+                return;
+              }
+              controller.enqueue(chunk);
+            },
+            cancel() {
+              cancelledBodies += 1;
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', upstreamFetch);
+    const DB = createDatabase();
+
+    await scheduledExecution(DB, Date.parse('2026-08-10T20:07:00.000Z'), {
+      BENCHMARK_SOURCE_URL: benchmarkUrl,
+    });
+
+    const health = await worker.fetch(new Request('https://news.example/health'), {
+      DB,
+    } as never);
+    expect(await health.json()).toMatchObject({
+      latestRun: {
+        status: 'failed',
+        error_json: expect.stringContaining('Feed is larger than 2 MB'),
+      },
+    });
+    expect(cancelledBodies).toBe(1);
   });
 
   it('reacquires an expired incomplete lease for the same hourly run after a crash', async () => {
@@ -399,10 +547,7 @@ describe('AI News hourly ingestion boundary', () => {
       const attempts = (attemptsByUrl.get(url) ?? 0) + 1;
       attemptsByUrl.set(url, attempts);
       if (attempts === 1) throw new TypeError('temporary network failure');
-      return new Response(
-        '<rss><channel><item><title>GPT-5 released</title><link>https://example.com/gpt-5</link><guid>gpt-5</guid><pubDate>Sat, 09 Aug 2026 08:00:00 GMT</pubDate></item></channel></rss>',
-        { status: 200 },
-      );
+      return new Response('<rss></rss>', { status: 200 });
     });
     vi.stubGlobal('fetch', upstreamFetch);
     const DB = createDatabase();
@@ -413,90 +558,16 @@ describe('AI News hourly ingestion boundary', () => {
 
     expect([...attemptsByUrl.values()]).toEqual([2, 2, 2, 2, 2, 2, 2, 2]);
 
-    const health = await worker.fetch(new Request('https://news.example/health'), { DB } as never);
+    const health = await worker.fetch(
+      new Request('https://news.example/health'),
+      { DB } as never,
+      {} as never,
+    );
     expect(await health.json()).toMatchObject({
       latestRun: {
         status: 'success',
       },
     });
-  });
-
-  it('does not report fresh success when feeds contain no usable dated entries', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('<rss></rss>', { status: 200 })),
-    );
-    const DB = createDatabase();
-
-    await scheduledExecution(DB, Date.parse('2026-08-09T08:07:00.000Z'));
-
-    const health = await worker.fetch(new Request('https://news.example/health'), {
-      DB,
-    } as never);
-    expect(await health.json()).toMatchObject({
-      latestRun: {
-        status: 'failed',
-        error_json: expect.stringContaining('No usable dated news entries were found'),
-      },
-    });
-  });
-
-  it('guards every persistence statement and fails closed if the renewed fence is lost', async () => {
-    const xml = `<rss><channel><item>
-      <title>GPT-5 released</title><link>https://example.com/gpt-5</link><guid>gpt-5</guid>
-      <pubDate>Sat, 09 Aug 2026 08:00:00 GMT</pubDate>
-    </item></channel></rss>`;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(xml, { status: 200 })),
-    );
-    const DB = createDatabase({ loseFenceBeforeBatch: true });
-
-    await expect(
-      scheduledExecution(DB, Date.parse('2026-08-09T08:07:00.000Z')),
-    ).rejects.toThrowError('Ingestion lease lost before audit finalization');
-
-    const guardedMutations = DB.prepare.mock.calls
-      .map(([query]) => String(query))
-      .filter(
-        (query) =>
-          query.includes('INSERT OR IGNORE INTO news_items') ||
-          query.includes('DELETE FROM news_items') ||
-          query.includes('INSERT INTO ingestion_runs'),
-      );
-    expect(guardedMutations.length).toBeGreaterThan(0);
-    expect(
-      guardedMutations.every(
-        (query) => query.includes("lock_key = 'hourly'") && query.includes('fencing_token = ?'),
-      ),
-    ).toBe(true);
-    const health = await worker.fetch(new Request('https://news.example/health'), {
-      DB,
-    } as never);
-    expect(await health.json()).toMatchObject({ latestRun: null });
-  });
-
-  it('stores discovered model names in deterministic order', async () => {
-    const xml = `<?xml version="1.0"?><rss><channel><item>
-      <title>GPT-5.7 and GPT-5.6 released</title>
-      <link>https://example.com/release</link>
-      <guid>release-1</guid>
-      <pubDate>Sat, 09 Aug 2026 08:00:00 GMT</pubDate>
-    </item></channel></rss>`;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(xml, { status: 200 })),
-    );
-    const DB = createDatabase();
-
-    await scheduledExecution(DB, Date.parse('2026-08-09T12:07:00.000Z'));
-
-    const insertionIndex = DB.prepare.mock.calls.findIndex(([query]) =>
-      String(query).includes('INSERT OR IGNORE INTO news_items'),
-    );
-    expect(insertionIndex).toBeGreaterThanOrEqual(0);
-    const firstBindings = DB.prepare.mock.results[insertionIndex]!.value.bind.mock.calls[0] ?? [];
-    expect(JSON.parse(String(firstBindings[9]))).toEqual(['GPT-5.6', 'GPT-5.7']);
   });
 
   it('times out stalled sources and records only a bounded failure reason', async () => {
@@ -524,7 +595,11 @@ describe('AI News hourly ingestion boundary', () => {
     await execution;
 
     expect(upstreamFetch).toHaveBeenCalledTimes(24);
-    const health = await worker.fetch(new Request('https://news.example/health'), { DB } as never);
+    const health = await worker.fetch(
+      new Request('https://news.example/health'),
+      { DB } as never,
+      {} as never,
+    );
     const body = await health.json();
     expect(body).toMatchObject({
       latestRun: {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import { readSkillsStore, resetSkillsStoreForTests } from './skillsStore';
 
@@ -98,5 +98,41 @@ describe('skills account isolation', () => {
     expect(current.presetOverrides.safe?.tools).toHaveLength(100);
     expect(current.customSkills[0].name).toHaveLength(200);
     expect(current.customSkills[0].tools).toEqual(['read']);
+  });
+
+  it('restores an exact custom skill once without changing its identity or content', () => {
+    useAuthStore.setState({ cloudSession: null, localUserId: 'account-restore' });
+    const id = readSkillsStore().addCustomSkill({ name: 'Recoverable skill' });
+    readSkillsStore().updateCustomSkill(id, {
+      description: 'Preserve this description',
+      tools: ['read', 'write'],
+      systemPromptAddendum: 'Preserve this addendum.',
+      body: '# Preserve this body',
+      color_hue: 217,
+      emoji: '🛟',
+      enabled: false,
+    });
+    const original = readSkillsStore().getCustomSkill(id);
+    expect(original).toBeDefined();
+
+    readSkillsStore().removeCustomSkill(id);
+    readSkillsStore().restoreCustomSkill(original!);
+
+    expect(readSkillsStore().getCustomSkill(id)).toEqual(original);
+    expect(() => readSkillsStore().restoreCustomSkill(original!)).toThrow(
+      'A skill with this identity already exists.',
+    );
+  });
+
+  it('does not publish a custom skill removal when durable persistence fails', () => {
+    useAuthStore.setState({ cloudSession: null, localUserId: 'account-storage-failure' });
+    const id = readSkillsStore().addCustomSkill({ name: 'Must remain active' });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('storage unavailable');
+    });
+
+    expect(() => readSkillsStore().removeCustomSkill(id)).toThrow();
+    expect(readSkillsStore().getCustomSkill(id)?.name).toBe('Must remain active');
+    setItem.mockRestore();
   });
 });

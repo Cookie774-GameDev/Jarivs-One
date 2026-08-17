@@ -26,7 +26,6 @@ export {
   isSupportedProvider,
   normalizeWulong,
   vendorToProvider,
-  SNAPSHOT_ROWS,
   type BenchmarkRow,
   type FetchResult,
 } from './benchmarkData';

@@ -273,7 +273,7 @@ export function PageRouter() {
             aria-hidden={visibleRoute !== 'terminal'}
             className={visibleRoute === 'terminal' ? 'h-full w-full' : 'hidden'}
           >
-            <TerminalsPage />
+            <TerminalsPage routeVisible={visibleRoute === 'terminal'} />
           </div>
         ) : null}
         {shouldRenderCanvas ? (
@@ -300,7 +300,7 @@ export function PageRouter() {
             aria-hidden={visibleRoute !== 'browser'}
             className={visibleRoute === 'browser' ? 'h-full w-full' : 'hidden'}
           >
-            <BrowserPage />
+            <BrowserPage routeVisible={visibleRoute === 'browser'} />
           </div>
         ) : null}
         {!isCachedSurface ? <Page key={visibleRoute} /> : null}

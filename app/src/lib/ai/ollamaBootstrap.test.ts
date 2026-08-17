@@ -7,6 +7,10 @@ import {
   sanitizeOllamaEndpointFromStore,
 } from './ollamaBootstrap';
 
+vi.mock('@/lib/harness/localModelRuntimeRefresh', () => ({
+  refreshOpenCodeLocalModelRuntime: vi.fn(),
+}));
+
 vi.mock('./providers/ollama', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./providers/ollama')>();
   return {
@@ -23,6 +27,7 @@ import {
   listOllamaModelInfo,
   normalizeStoredOllamaEndpoint,
 } from './providers/ollama';
+import { refreshOpenCodeLocalModelRuntime } from '@/lib/harness/localModelRuntimeRefresh';
 
 describe('normalizeStoredOllamaEndpoint', () => {
   it('rejects API keys masquerading as URLs', () => {
@@ -46,6 +51,8 @@ describe('bootstrapOllamaConnection', () => {
     vi.mocked(isOllamaReachable).mockReset();
     vi.mocked(ensureOllamaReadySilent).mockReset();
     vi.mocked(listOllamaModelInfo).mockReset();
+    vi.mocked(refreshOpenCodeLocalModelRuntime).mockReset();
+    vi.mocked(refreshOpenCodeLocalModelRuntime).mockResolvedValue(undefined);
   });
 
   it('syncs discovered models when already reachable', async () => {
@@ -59,6 +66,19 @@ describe('bootstrapOllamaConnection', () => {
     expect(result.ready).toBe(true);
     expect(result.modelCount).toBe(1);
     expect(useAuthStore.getState().defaultLocalModel).toBe('llama3.2:1b');
+    expect(refreshOpenCodeLocalModelRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not rotate OpenCode when the discovered local model set is unchanged', async () => {
+    syncDiscoveredOllamaModels(['llama3.2:1b']);
+    vi.mocked(isOllamaReachable).mockResolvedValue(true);
+    vi.mocked(listOllamaModelInfo).mockResolvedValue([
+      { name: 'llama3.2:1b', size: 1, modifiedAt: 'now' },
+    ]);
+
+    await bootstrapOllamaConnection({ force: true });
+
+    expect(refreshOpenCodeLocalModelRuntime).not.toHaveBeenCalled();
   });
 
   it('auto-starts via ensure when daemon is down', async () => {

@@ -36,6 +36,7 @@ import { startTaskbarUsageController } from './features/taskbar-usage/taskbarUsa
 import { startRendererHeartbeat } from './rendererHeartbeat';
 import { ColdStartIntroView } from './features/cold-start-intro';
 import { startResourcePressureMonitor } from './stability/resourcePressure';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const devSurface = import.meta.env.DEV ? resolveDevelopmentSurface(window.location.search) : null;
 const viewParam = new URLSearchParams(window.location.search).get('view');
@@ -51,11 +52,13 @@ if (devSurface === 'monochrome') {
   document.documentElement.dataset.theme = 'monochrome';
 } else if (devSurface === 'sakura') {
   document.documentElement.dataset.theme = 'sakura';
-} else if (!coldStartIntroView) {
-  startThemeSync((theme) => {
-    applyThemeSyncToApplication(theme, document, useUIStore);
-  });
 }
+const stopThemeSync =
+  devSurface !== 'monochrome' && devSurface !== 'sakura' && !coldStartIntroView
+    ? startThemeSync((theme) => {
+        applyThemeSyncToApplication(theme, document, useUIStore);
+      })
+    : () => undefined;
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -73,18 +76,32 @@ ReactDOM.createRoot(rootEl).render(
         <DevelopmentEntry surface={devSurface} />
       </React.Suspense>
     ) : (
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     )}
   </React.StrictMode>,
 );
 
 const stopRendererHeartbeat = startRendererHeartbeat();
-if (import.meta.hot) {
-  import.meta.hot.dispose(stopRendererHeartbeat);
-}
+const regularWindow = !taskbarUsageView && !coldStartIntroView;
+const stopResourcePressureMonitor = regularWindow
+  ? startResourcePressureMonitor()
+  : () => undefined;
+const stopTaskbarUsageController = regularWindow ? startTaskbarUsageController() : () => undefined;
+let rendererLifecycleStopped = false;
+const stopRendererLifecycle = () => {
+  if (rendererLifecycleStopped) return;
+  rendererLifecycleStopped = true;
+  stopThemeSync();
+  stopResourcePressureMonitor();
+  stopTaskbarUsageController();
+};
+window.addEventListener('pagehide', stopRendererLifecycle, { once: true });
 
-if (!taskbarUsageView && !coldStartIntroView) {
-  const stopResourcePressureMonitor = startResourcePressureMonitor();
-  window.addEventListener('pagehide', stopResourcePressureMonitor, { once: true });
-  startTaskbarUsageController();
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    stopRendererLifecycle();
+    stopRendererHeartbeat();
+  });
 }

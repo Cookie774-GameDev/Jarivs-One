@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatUserDateTime } from '@/lib/timeFormat';
@@ -41,6 +41,19 @@ import {
 } from './connectorStatus';
 import type { ProviderId } from '@/types/common';
 import { McpConnections } from './McpConnections';
+import { createOpenCodeHttpClient } from '@/lib/harness/openCodeClient';
+import { harnessRuntimeManager } from '@/lib/harness/runtimeManager';
+import {
+  ANTHROPIC_SUBSCRIPTION_POLICY,
+  beginOpenCodeSubscription,
+  completeOpenCodeSubscription,
+  discoverOpenCodeSubscriptions,
+  type OpenCodeSubscriptionClient,
+  type OpenCodeSubscriptionResult,
+  type OpenCodeSubscriptionRoute,
+  type OpenCodeSubscriptionSnapshot,
+} from '@/lib/harness/subscriptionBridge';
+import { redactHarnessText } from '@/lib/harness/errors';
 
 export type { ConnectionMetadata, ConnectionMetadataRecord } from '@/lib/ai/connectionState';
 export type ConnectionAction =
@@ -63,6 +76,8 @@ export interface SubscriptionCliBridgeProps {
   ) => void | Promise<void>;
   /** When false, skip automatic session scan (tests). Default true. */
   autoDetect?: boolean;
+  subscriptionClient?: OpenCodeSubscriptionClient;
+  openAuthorizationUrl?: (url: string) => Promise<void>;
 }
 
 const ADAPTERS: Readonly<Record<string, ProviderAdapter>> = Object.freeze(
@@ -77,26 +92,6 @@ const ADAPTERS: Readonly<Record<string, ProviderAdapter>> = Object.freeze(
     ].map((adapter) => [adapter.id, adapter]),
   ),
 );
-
-/** Official docs for user-driven CLI login (never scrape tokens). */
-const CLI_SIGN_IN_DOCS: Readonly<Partial<Record<string, string>>> = Object.freeze({
-  'openai-codex': 'https://github.com/openai/codex#authenticating-with-chatgpt',
-  'anthropic-claude-code': 'https://docs.anthropic.com/en/docs/claude-code/setup',
-  'google-gemini-cli': 'https://github.com/google-gemini/gemini-cli',
-  'github-copilot-cli': 'https://docs.github.com/en/copilot/github-copilot-in-the-cli',
-  'qwen-code': 'https://github.com/QwenLM/qwen-code',
-  'opencode-cli': 'https://opencode.ai/docs',
-});
-
-const CLI_SIGN_IN_HINT: Readonly<Partial<Record<string, string>>> = Object.freeze({
-  'openai-codex': 'Run `codex login` in a terminal, then Refresh here.',
-  'anthropic-claude-code':
-    'Run `claude auth login` (or your Claude Code login flow), then Refresh.',
-  'google-gemini-cli': 'Complete Gemini CLI login in a terminal, then Refresh.',
-  'github-copilot-cli': 'Run `copilot login` / `gh auth login`, then Refresh.',
-  'qwen-code': 'Complete Qwen Code CLI login in a terminal, then Refresh.',
-  'opencode-cli': 'Configure OpenCode auth providers, then Refresh.',
-});
 
 function persistMetadata(metadata: ConnectionMetadata): void {
   writeConnectionMetadata(metadata);
@@ -167,6 +162,281 @@ function productTitle(connection: Readonly<ProviderConnection>): string {
     .trim();
 }
 
+function routeInputKey(route: OpenCodeSubscriptionRoute, key: string): string {
+  return `${route.providerId}:${route.methodIndex}:${key}`;
+}
+
+function promptIsVisible(
+  route: OpenCodeSubscriptionRoute,
+  prompt: NonNullable<OpenCodeSubscriptionRoute['prompts']>[number],
+  inputs: Readonly<Record<string, string>>,
+): boolean {
+  if (!prompt.when) return true;
+  const current = inputs[routeInputKey(route, prompt.when.key)] ?? '';
+  return prompt.when.op === 'eq' ? current === prompt.when.value : current !== prompt.when.value;
+}
+
+function OpenCodeSubscriptionCenter({
+  client,
+  openAuthorizationUrl,
+  onApiKey,
+}: {
+  client?: OpenCodeSubscriptionClient;
+  openAuthorizationUrl: (url: string) => Promise<void>;
+  onApiKey: (providerId: string) => void;
+}) {
+  const [snapshot, setSnapshot] = useState<OpenCodeSubscriptionSnapshot>();
+  const [busyRoute, setBusyRoute] = useState<string>();
+  const [pending, setPending] =
+    useState<Extract<OpenCodeSubscriptionResult, { kind: 'code_required' }>>();
+  const [code, setCode] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [error, setError] = useState('');
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [confirmedSubscriptions, setConfirmedSubscriptions] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const load = useCallback(async () => {
+    if (!client) {
+      setSnapshot(undefined);
+      return;
+    }
+    try {
+      setError('');
+      setSnapshot(await discoverOpenCodeSubscriptions(client));
+    } catch (loadError) {
+      setError(
+        redactHarnessText(
+          loadError instanceof Error ? loadError.message : 'OpenCode auth status is unavailable.',
+        ).slice(0, 512),
+      );
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const start = async (route: OpenCodeSubscriptionRoute) => {
+    if (!client) return;
+    const routeKey = `${route.providerId}:${route.methodIndex}`;
+    const promptInputs = Object.fromEntries(
+      (route.prompts ?? [])
+        .filter((prompt) => promptIsVisible(route, prompt, inputs))
+        .map((prompt) => [prompt.key, inputs[routeInputKey(route, prompt.key)] ?? '']),
+    );
+    setBusyRoute(routeKey);
+    setError('');
+    setPending(undefined);
+    setCode('');
+    try {
+      const result = await beginOpenCodeSubscription(
+        client,
+        route,
+        openAuthorizationUrl,
+        Object.keys(promptInputs).length ? promptInputs : undefined,
+      );
+      setInstructions(result.instructions);
+      if (result.kind === 'code_required') setPending(result);
+      else {
+        setConfirmedSubscriptions((current) => new Set(current).add(route.providerId));
+        await load();
+      }
+    } catch (startError) {
+      setError(
+        redactHarnessText(
+          startError instanceof Error ? startError.message : 'OpenCode sign-in failed.',
+        ).slice(0, 512),
+      );
+    } finally {
+      setBusyRoute(undefined);
+    }
+  };
+
+  const finish = async () => {
+    if (!client || !pending) return;
+    setBusyRoute(`${pending.providerId}:${pending.methodIndex}`);
+    setError('');
+    try {
+      await completeOpenCodeSubscription(client, pending, code);
+      setConfirmedSubscriptions((current) => new Set(current).add(pending.providerId));
+      setPending(undefined);
+      setCode('');
+      await load();
+    } catch (finishError) {
+      setError(
+        redactHarnessText(
+          finishError instanceof Error ? finishError.message : 'OpenCode sign-in failed.',
+        ).slice(0, 512),
+      );
+    } finally {
+      setBusyRoute(undefined);
+    }
+  };
+
+  return (
+    <section
+      className="rounded-xl border border-border bg-panel/70 p-4"
+      aria-labelledby="opencode-subscriptions-title"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id="opencode-subscriptions-title" className="text-base font-bold text-foreground">
+            OpenCode subscriptions
+          </h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            OpenCode runs official provider authorization and owns its OAuth material. VibeSpace
+            never reads browser cookies or tokens.
+          </p>
+        </div>
+        {client ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+            Refresh subscriptions
+          </Button>
+        ) : null}
+      </div>
+
+      {!client ? (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Start the OpenCode harness to discover official subscription routes.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mt-3 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {(snapshot?.routes ?? []).map((route) => {
+          const routeKey = `${route.providerId}:${route.methodIndex}`;
+          return (
+            <article key={routeKey} className="rounded-lg border border-border/80 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">{route.displayName}</h4>
+                  <p className="text-xs text-muted-foreground">{route.label}</p>
+                </div>
+                <Badge
+                  variant={confirmedSubscriptions.has(route.providerId) ? 'success' : 'outline'}
+                >
+                  {confirmedSubscriptions.has(route.providerId)
+                    ? 'Subscription connected this session'
+                    : route.providerAvailable
+                      ? 'Provider available in OpenCode'
+                      : 'Not connected'}
+                </Badge>
+              </div>
+
+              {(route.prompts ?? []).map((prompt) => {
+                const key = routeInputKey(route, prompt.key);
+                if (!promptIsVisible(route, prompt, inputs)) return null;
+                return (
+                  <label key={prompt.key} className="mt-2 block text-xs text-muted-foreground">
+                    {prompt.message}
+                    {prompt.type === 'select' ? (
+                      <select
+                        className="mt-1 min-h-9 w-full rounded-md border border-border bg-background px-2 text-foreground"
+                        value={inputs[key] ?? ''}
+                        onChange={(event) =>
+                          setInputs((current) => ({ ...current, [key]: event.target.value }))
+                        }
+                      >
+                        <option value="">Select…</option>
+                        {prompt.options.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="mt-1 min-h-9 w-full rounded-md border border-border bg-background px-2 text-foreground"
+                        value={inputs[key] ?? ''}
+                        placeholder={prompt.placeholder}
+                        onChange={(event) =>
+                          setInputs((current) => ({ ...current, [key]: event.target.value }))
+                        }
+                      />
+                    )}
+                  </label>
+                );
+              })}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busyRoute === routeKey}
+                  onClick={() => void start(route)}
+                  aria-label={`Connect ${route.displayName} with ${route.label}`}
+                >
+                  {route.providerAvailable ? 'Connect / refresh' : 'Connect'}
+                </Button>
+                {(route.providerId === 'openai' || route.providerId === 'xai') && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onApiKey(route.providerId)}
+                  >
+                    Use API key
+                  </Button>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {instructions ? <p className="mt-3 text-xs text-foreground">{instructions}</p> : null}
+      {pending ? (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="min-w-56 flex-1 text-xs text-muted-foreground">
+            {snapshot?.routes.find(
+              (route) =>
+                route.providerId === pending.providerId &&
+                route.methodIndex === pending.methodIndex,
+            )?.displayName ?? pending.providerId}{' '}
+            authorization code
+            <input
+              className="mt-1 min-h-9 w-full rounded-md border border-border bg-background px-2 text-foreground"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+            />
+          </label>
+          <Button type="button" size="sm" onClick={() => void finish()}>
+            Complete{' '}
+            {snapshot?.routes.find(
+              (route) =>
+                route.providerId === pending.providerId &&
+                route.methodIndex === pending.methodIndex,
+            )?.displayName ?? pending.providerId}{' '}
+            sign-in
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="mt-3 rounded-lg border border-border/70 p-3">
+        <p className="text-sm font-semibold text-foreground">Anthropic</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {snapshot?.anthropicPolicy ?? ANTHROPIC_SUBSCRIPTION_POLICY}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="mt-2"
+          onClick={() => onApiKey('anthropic')}
+        >
+          Use Anthropic API key
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 export function SubscriptionCliBridge({
   records,
   onScan,
@@ -174,19 +444,32 @@ export function SubscriptionCliBridge({
   onSignIn,
   onAction,
   autoDetect = true,
+  subscriptionClient,
+  openAuthorizationUrl = openExternal,
 }: SubscriptionCliBridgeProps) {
   const [busy, setBusy] = useState(false);
   const [checkingIds, setCheckingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
-  const [selectedRouteByFamily, setSelectedRouteByFamily] = useState<
-    Partial<Record<string, string>>
-  >({});
   const [metadata, setMetadata] = useState<ConnectionMetadata>(
     () => records ?? readConnectionMetadata(),
   );
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
+  const selectedRouteByFamily = useAuthStore((s) => s.preferredConnectionIdByProviderFamily);
+  const setPreferredConnectionId = useAuthStore((s) => s.setPreferredConnectionId);
+  const harnessState = useSyncExternalStore(
+    harnessRuntimeManager.subscribe,
+    harnessRuntimeManager.getSnapshot,
+  );
+  const ownedConnection =
+    harnessState.kind === 'ready' ? harnessRuntimeManager.getConnection() : undefined;
+  const activeSubscriptionClient = useMemo(
+    () =>
+      subscriptionClient ??
+      (ownedConnection ? createOpenCodeHttpClient(ownedConnection) : undefined),
+    [ownedConnection, subscriptionClient],
+  );
 
   useEffect(() => {
     if (records) return undefined;
@@ -361,21 +644,10 @@ export function SubscriptionCliBridge({
         return;
       }
       if (connection.mode === 'external-cli') {
-        const docs = CLI_SIGN_IN_DOCS[connection.id];
-        const hint =
-          CLI_SIGN_IN_HINT[connection.id] ?? 'Sign in with the provider CLI, then Refresh.';
-        toast.info('Sign in outside VibeSpace', hint);
-        if (docs) {
-          try {
-            await openExternal(docs);
-          } catch {
-            /* toast already shown */
-          }
-        }
-        // Re-probe after a short delay so an already-signed-in session is picked up.
-        window.setTimeout(() => {
-          void inspect(connection);
-        }, 2_500);
+        toast.info(
+          'Legacy CLI status only',
+          'VibeSpace Chat authentication now uses the OpenCode subscription routes above.',
+        );
         return;
       }
       if (connection.mode === 'native-api') {
@@ -491,9 +763,9 @@ export function SubscriptionCliBridge({
             AI Connectors
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Identify each product at a glance, detect signed-in CLI subscriptions automatically, and
-            manage them separately from API keys. Scans never send a model prompt or read secret
-            files.
+            Authenticate supported subscriptions through OpenCode, manage API keys separately, and
+            retain read-only legacy CLI status for migration. Scans never send a model prompt or
+            read secret files.
           </p>
         </div>
         <Button
@@ -506,6 +778,12 @@ export function SubscriptionCliBridge({
           {busy ? 'Scanning…' : 'Scan now'}
         </Button>
       </div>
+
+      <OpenCodeSubscriptionCenter
+        client={activeSubscriptionClient}
+        openAuthorizationUrl={openAuthorizationUrl}
+        onApiKey={(providerId) => openSettingsTab('providers', providerId)}
+      />
 
       <div className="grid gap-3 lg:grid-cols-2">
         {Object.values(PROVIDER_CATALOG).map((family) => {
@@ -549,7 +827,11 @@ export function SubscriptionCliBridge({
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         <span className="font-medium text-foreground/80">{routeTitle}</span>
                         <span className="mx-1.5 text-border">·</span>
-                        <span>{connectorModeLabel(connection.mode)}</span>
+                        <span>
+                          {connection.mode === 'external-cli'
+                            ? 'Legacy CLI status'
+                            : connectorModeLabel(connection.mode)}
+                        </span>
                       </p>
                       <p className="mt-0.5 text-[11px] text-muted-foreground/90">
                         {connection.displayName}
@@ -562,7 +844,9 @@ export function SubscriptionCliBridge({
                         tone === 'info' && 'border-accent-copper/40 text-accent-copper',
                       )}
                     >
-                      {connectorStatusLabel(status)}
+                      {connection.mode === 'external-cli' && status === 'signed-in'
+                        ? 'Legacy session detected'
+                        : connectorStatusLabel(status)}
                     </Badge>
                   </div>
                 </div>
@@ -588,14 +872,11 @@ export function SubscriptionCliBridge({
                           ? 'border-accent-copper/60 bg-accent-copper/10 text-foreground'
                           : 'border-border text-muted-foreground hover:text-foreground',
                       )}
-                      onClick={() =>
-                        setSelectedRouteByFamily((current) => ({
-                          ...current,
-                          [family.id]: routeConnection.id,
-                        }))
-                      }
+                      onClick={() => setPreferredConnectionId(family.id, routeConnection.id)}
                     >
-                      {connectorModeLabel(routeConnection.mode)}
+                      {routeConnection.mode === 'external-cli'
+                        ? 'Legacy CLI status'
+                        : connectorModeLabel(routeConnection.mode)}
                     </button>
                   );
                 })}
@@ -617,7 +898,7 @@ export function SubscriptionCliBridge({
                 <dt className="text-muted-foreground">Auth source</dt>
                 <dd className="text-foreground/90">
                   {connection.mode === 'external-cli'
-                    ? 'CLI session (read-only status)'
+                    ? 'Legacy CLI session (migration status only)'
                     : connection.mode === 'local'
                       ? 'Local runtime'
                       : 'API key (Providers)'}
@@ -636,8 +917,8 @@ export function SubscriptionCliBridge({
 
               {status === 'signed-in' ? (
                 <p className="mt-2 text-xs text-success">
-                  Subscription session detected. Selecting this exact route in Chat sends requests
-                  through it instead of an API key.
+                  Legacy CLI session detected for migration status only. VibeSpace Chat
+                  authentication uses OpenCode provider routes above.
                 </p>
               ) : null}
 
@@ -652,7 +933,7 @@ export function SubscriptionCliBridge({
                 >
                   Refresh
                 </Button>
-                {connection.mode === 'external-cli' ? (
+                {connection.mode === 'external-cli' && onSignIn ? (
                   <Button
                     type="button"
                     size="sm"

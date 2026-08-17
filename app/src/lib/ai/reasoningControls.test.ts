@@ -21,16 +21,17 @@ describe('reasoning controls', () => {
     [selection('openai', 'gpt-5.5'), ['minimal', 'low', 'medium', 'high', 'ultra'], 'xhigh'],
     [selection('anthropic', 'claude-opus-4-8'), ['low', 'medium', 'high', 'ultra'], 'max'],
     [selection('google', 'gemini-3.5-flash'), ['minimal', 'low', 'medium', 'high'], 'high'],
-    [selection('groq', 'openai/gpt-oss-20b'), ['low', 'medium', 'high'], 'high'],
     [selection('xai', 'grok-4.20-multi-agent'), ['low', 'medium', 'high', 'ultra'], 'xhigh'],
+    [selection('deepseek', 'deepseek-v4-pro'), ['low', 'medium', 'high', 'ultra'], 'max'],
   ] as const)(
     'exposes only verified effort levels for %o',
     (selected, expectedEfforts, expectedUltraWire) => {
       const capabilities = getReasoningCapabilities(selected);
       expect(capabilities.supportedEfforts).toEqual(expectedEfforts);
+      const highest = expectedEfforts[expectedEfforts.length - 1]!;
       const resolved = resolveReasoningPolicy({
         selection: selected,
-        preference: { mode: 'normal', effortOverride: 'ultra' },
+        preference: { mode: 'normal', effortOverride: highest },
       });
       expect(Object.values(resolved.providerOptions)).toContain(expectedUltraWire);
     },
@@ -43,6 +44,8 @@ describe('reasoning controls', () => {
     selection('ollama', 'qwen3.5:4b'),
     selection('ollama', 'gpt-oss:20b'),
     selection('deepseek', 'deepseek-chat'),
+    // legacy DeepSeek IDs stay without fabricated effort
+    selection('openai', 'gpt-5.3-codex-spark', 'openai-codex'),
   ])('does not fabricate adjustable effort for %o', (selected) => {
     expect(getReasoningCapabilities(selected).supportedEfforts).toEqual([]);
     expect(
@@ -53,22 +56,43 @@ describe('reasoning controls', () => {
     ).toMatchObject({ resolvedEffort: null, providerOptions: {} });
   });
 
-  it('snaps unsupported values to the nearest supported level without changing the model', () => {
+  it('blocks unsupported effort instead of snapping it to a nearby level', () => {
     const selected = selection('google', 'gemini-2.5-pro');
-    expect(
+    expect(getReasoningCapabilities(selected).supportedEfforts).toEqual(['low', 'medium', 'high']);
+    expect(() =>
       resolveReasoningPolicy({
         selection: selected,
         preference: { mode: 'normal', effortOverride: 'minimal' },
       }),
-    ).toEqual({
-      mode: 'normal',
-      selection: selected,
-      requestedEffort: 'minimal',
-      resolvedEffort: 'low',
-      providerOptions: { thinking_level: 'low' },
-      maxOutputTokens: undefined,
-      executionInstructions: expect.stringContaining('Normal'),
-    });
+    ).toThrowError(/unsupported/);
+    expect(() =>
+      resolveReasoningPolicy({
+        selection: selection('groq', 'openai/gpt-oss-20b'),
+        preference: { mode: 'normal', effortOverride: 'ultra' },
+      }),
+    ).toThrowError(/unsupported/);
+  });
+
+  it('uses live OpenCode variants as the only supported efforts when provided', () => {
+    const selected = selection('openai', 'gpt-5.6-sol', 'openai-codex');
+    expect(getReasoningCapabilities(selected, ['low', 'medium']).supportedEfforts).toEqual([
+      'low',
+      'medium',
+    ]);
+    expect(() =>
+      resolveReasoningPolicy({
+        selection: selected,
+        preference: { mode: 'normal', effortOverride: 'high' },
+        liveVariants: ['low', 'medium'],
+      }),
+    ).toThrowError(/unsupported/);
+    expect(
+      resolveReasoningPolicy({
+        selection: selected,
+        preference: { mode: 'normal', effortOverride: 'medium' },
+        liveVariants: ['low', 'medium'],
+      }).providerOptions,
+    ).toEqual({ reasoning_effort: 'medium' });
   });
 
   it('maps modes to lowest, provider-default, and highest effort while preserving the model', () => {

@@ -58,6 +58,7 @@ const KIND_FILTERS: ReadonlyArray<{ id: KindFilter; label: string }> = [
 ];
 
 const SECTIONS: readonly NewsSectionId[] = ['today', 'last_week', 'more'];
+const NEWS_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 function KindIcon({ kind, className }: { kind: NewsKind; className?: string }) {
   if (kind === 'youtube') return <Play className={className} />;
@@ -104,7 +105,10 @@ function NewsCard({
               onError={() => setImgFailed(true)}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-paper-soft to-muted [html[data-theme=monochrome]_&]:bg-none">
+            <div
+              className="flex h-full w-full items-center justify-center bg-gradient-to-br from-paper-soft to-muted [html[data-theme=monochrome]_&]:bg-none"
+              data-news-media-fallback="true"
+            >
               <Newspaper className="h-8 w-8 text-muted-foreground/50 [html[data-theme=monochrome]_&]:text-muted-foreground" />
             </div>
           )}
@@ -118,8 +122,12 @@ function NewsCard({
             <KindIcon kind={item.kind} className="h-3 w-3 text-accent-copper" />
             {NEWS_KIND_META[item.kind].label}
           </span>
-          {item.kind === 'youtube' && (
-            <span aria-hidden className="absolute inset-0 flex items-center justify-center">
+          {(item.kind === 'youtube' || ('mediaType' in item && item.mediaType === 'video')) && (
+            <span
+              aria-hidden
+              className="absolute inset-0 flex items-center justify-center"
+              data-news-video-badge="true"
+            >
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white shadow-lg backdrop-blur-sm [html[data-theme=monochrome]_&]:backdrop-blur-none">
                 <Play className="h-5 w-5 fill-current" />
               </span>
@@ -210,6 +218,8 @@ export function NewsPanel({
   React.useEffect(() => {
     if (!open || !endpoint || !runtimeEffectsEnabled) return;
     void refresh();
+    const timer = window.setInterval(() => void refresh(), NEWS_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
   }, [endpoint, open, refresh, runtimeEffectsEnabled]);
 
   // Escape closes the panel.
@@ -333,6 +343,7 @@ export function NewsPanel({
                   type="button"
                   role="tab"
                   aria-selected={active}
+                  aria-label={`${meta.label} ${counts[id]}`}
                   onClick={() => setSection(id)}
                   className={cn(
                     'flex-1 rounded-md px-2 py-1.5 text-metadata font-medium transition-colors',
@@ -385,7 +396,12 @@ export function NewsPanel({
           {liveError ? (
             <div className="mb-2 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-2 text-metadata text-foreground">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
-              <span>{liveError} Showing the last available feed.</span>
+              <span>
+                {liveError}{' '}
+                {live
+                  ? 'Keeping the last live results.'
+                  : 'Showing the credited offline feed.'}
+              </span>
             </div>
           ) : null}
           <p className="mb-2 px-1 text-metadata text-muted-foreground">

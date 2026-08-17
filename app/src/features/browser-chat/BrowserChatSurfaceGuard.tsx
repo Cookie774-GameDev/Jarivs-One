@@ -1,7 +1,11 @@
 import * as React from 'react';
 
 import { useUIStore, type Route } from '@/stores/ui';
-import { useBrowserChatStore, type VibeSpaceChatEngine } from './browserChatStore';
+import {
+  resolveChatEngine,
+  useBrowserChatStore,
+  type VibeSpaceChatEngine,
+} from './browserChatStore';
 import { browserChatSurface, type ProviderSurfaceController } from './providerSurface';
 
 type BrowserChatSurfaceRuntime = Pick<ProviderSurfaceController, 'hideAll'>;
@@ -13,8 +17,14 @@ interface BrowserChatSurfaceGuardProps {
 export function shouldShowBrowserChatSurface(input: {
   readonly route: Route;
   readonly engine: VibeSpaceChatEngine;
+  readonly chatId?: string | null;
 }): boolean {
-  return input.route === 'chat' && input.engine === 'browser';
+  return (
+    input.route === 'chat' &&
+    input.engine === 'browser' &&
+    typeof input.chatId === 'string' &&
+    input.chatId.length > 0
+  );
 }
 
 /**
@@ -32,10 +42,8 @@ export function BrowserChatSurfaceGuard({
 }: BrowserChatSurfaceGuardProps) {
   const route = useUIStore((state) => state.route);
   const activeChatId = useUIStore((state) => state.activeChatId);
-  const engine = useBrowserChatStore(
-    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
-  );
-  const visible = shouldShowBrowserChatSurface({ route, engine });
+  const engine = useBrowserChatStore((state) => resolveChatEngine(state, activeChatId));
+  const visible = shouldShowBrowserChatSurface({ route, engine, chatId: activeChatId });
 
   React.useLayoutEffect(() => {
     if (!visible) {

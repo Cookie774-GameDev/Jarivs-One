@@ -13,7 +13,7 @@ import {
   CONNECTION_MODEL_OPTIONS,
   OPENCODE_CLI_CONNECTION,
 } from './adapters/catalog';
-import { OPENAI_API_CONNECTION } from './adapters/nativeCatalog';
+import { OPENAI_API_CONNECTION, QWEN_API_CONNECTION } from './adapters/nativeCatalog';
 import {
   AI_CONNECTION_STATE_EVENT,
   markConnectionSessionChecked,
@@ -212,7 +212,7 @@ describe('useAccessibleChatModels', () => {
       options
         .filter((option) => option.connectionId === 'openai-codex')
         .map((option) => option.modelId),
-    ).toEqual(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
+    ).toEqual((CONNECTION_MODEL_OPTIONS['openai-codex'] ?? []).map((option) => option.id));
     expect(
       options
         .filter((option) => option.connectionId === 'openai-api')
@@ -278,14 +278,45 @@ describe('useAccessibleChatModels', () => {
         },
       });
     });
-    expect(
-      result.current.flatOptions
-        .filter((option) => option.connectionId === 'openai-codex')
-        .map((option) => ({ modelId: option.modelId, available: option.available })),
-    ).toEqual([
-      { modelId: 'gpt-5.6-sol', available: true },
-      { modelId: 'gpt-5.6-terra', available: true },
-      { modelId: 'gpt-5.6-luna', available: true },
-    ]);
+    const codexOptions = result.current.flatOptions.filter(
+      (option) => option.connectionId === 'openai-codex',
+    );
+    expect(codexOptions.every((option) => option.available === true)).toBe(true);
+    expect(codexOptions.map((option) => option.modelId).sort()).toEqual(
+      (CONNECTION_MODEL_OPTIONS['openai-codex'] ?? [])
+        .map((option) => option.id)
+        .sort(),
+    );
+  });
+
+  it('never marks a native API connection ready without a saved credential', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [QWEN_API_CONNECTION],
+      modelsByProvider: { qwen: [{ id: 'qwen3.7-plus', label: 'Qwen 3.7 Plus' }] },
+      stateByConnection: {
+        'qwen-api': { available: true, auth: 'authenticated' },
+      },
+      credentialSavedByProvider: { qwen: false },
+    });
+
+    expect(groups[0]?.options[0]).toMatchObject({
+      available: false,
+      authLabel: 'Sign in required',
+    });
+  });
+
+  it('surfaces an exact discovered OpenCode OpenAI model on the subscription connection', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [CODEX_CLI_CONNECTION],
+      modelsByProvider: { openai: [{ id: 'gpt-4o', label: 'GPT-4o' }] },
+      modelsByConnection: {
+        'openai-codex': [{ id: 'gpt-5.3-codex-spark', label: 'GPT 5.3 Codex Spark' }],
+      },
+      stateByConnection: {
+        'openai-codex': { available: true, auth: 'authenticated' },
+      },
+    });
+
+    expect(groups[0]?.options.map((option) => option.modelId)).toEqual(['gpt-5.3-codex-spark']);
   });
 });

@@ -193,7 +193,7 @@ const LMARENA_ENDPOINTS = [
   'https://lmarena.ai/leaderboard',
 ] as const;
 const CACHE_KEY = 'jarvis-benchmark-cache-v5';
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — live rows only
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour ΓÇö live rows only
 const REQUIRED_MODEL_COUNT = 50;
 /** Reject cached rows whose Arena snapshot is older than this. */
 const MAX_ROW_AGE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -208,7 +208,7 @@ interface LiveDataset {
 let liveRefreshInFlight: Promise<LiveDataset & { ingestedAt: number }> | null = null;
 
 /**
- * Snapshot timestamp — curated Top 50 UNIQUE models (AA Intelligence, 2026-07-11).
+ * Snapshot timestamp ΓÇö curated Top 50 UNIQUE models (AA Intelligence, 2026-07-11).
  * The live fetch path is authoritative on Refresh; this labels curated rows.
  */
 export const SNAPSHOT_TS = LEADERBOARD_SNAPSHOT_TS;
@@ -274,7 +274,7 @@ function writeCache(entry: CacheEntry): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
   } catch {
-    /* quota exceeded — silently ignore, the page still works without cache */
+    /* quota exceeded ΓÇö silently ignore, the page still works without cache */
   }
 }
 
@@ -284,8 +284,10 @@ export interface FetchResult {
   reason?: string;
   cached?: boolean;
   stale?: boolean;
+  /** True only when no verified structured benchmark rows are available. */
+  unavailable?: boolean;
   dataset: {
-    metricLabel: 'Arena score' | 'Artificial Analysis Intelligence Index';
+    metricLabel: 'Arena score' | 'Arena rating' | 'Artificial Analysis Intelligence Index';
     sourceName: string;
     sourceUrl: string;
     benchmarkDate: number;

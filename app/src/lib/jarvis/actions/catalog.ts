@@ -18,6 +18,7 @@ export interface JsonSchema {
   properties?: Record<string, JsonSchema & { enum?: string[]; default?: unknown }>;
   required?: string[];
   additionalProperties?: boolean;
+  oneOf?: JsonSchema[];
 }
 
 export type JarvisCanonicalActionTarget =
@@ -140,7 +141,7 @@ function cloneSchema(value: Readonly<JsonSchema>, label: string): JsonSchema {
   const record = plainRecord(value, label);
   assertExactKeys(
     record,
-    ['type', 'description', 'properties', 'required', 'additionalProperties'],
+    ['type', 'description', 'properties', 'required', 'additionalProperties', 'oneOf'],
     label,
   );
   if (!['object', 'string', 'number', 'boolean', 'array'].includes(String(record.type))) {
@@ -163,6 +164,14 @@ function cloneSchema(value: Readonly<JsonSchema>, label: string): JsonSchema {
     }
     clone.required = [...record.required] as string[];
   }
+  if (record.oneOf !== undefined) {
+    if (!Array.isArray(record.oneOf) || record.oneOf.length < 1 || record.oneOf.length > 8) {
+      catalogError(`${label}.oneOf is invalid`);
+    }
+    clone.oneOf = record.oneOf.map((schema, index) =>
+      cloneSchema(schema as JsonSchema, `${label}.oneOf.${index}`),
+    );
+  }
   if (record.properties !== undefined) {
     const properties = plainRecord(record.properties, `${label}.properties`);
     clone.properties = {};
@@ -176,6 +185,7 @@ function cloneSchema(value: Readonly<JsonSchema>, label: string): JsonSchema {
           'properties',
           'required',
           'additionalProperties',
+          'oneOf',
           'enum',
           'default',
         ],
@@ -205,6 +215,10 @@ function schemaHasForbiddenField(
 ): string | undefined {
   for (const [key, child] of Object.entries(schema.properties ?? {})) {
     if (SECRET_FIELD_RE.test(key) || forbidden.has(key)) return key;
+    const nested = schemaHasForbiddenField(child, forbidden);
+    if (nested) return nested;
+  }
+  for (const child of schema.oneOf ?? []) {
     const nested = schemaHasForbiddenField(child, forbidden);
     if (nested) return nested;
   }
@@ -407,7 +421,7 @@ export function createJarvisActionCatalog(
         catalogError(`required input ${key} has no schema`);
       }
     }
-    if ((inputSchema.required?.length ?? 0) === 0) {
+    if ((inputSchema.required?.length ?? 0) === 0 && !inputSchema.oneOf?.length) {
       deriveTarget({
         accountId: 'catalog-validation-account',
         params: validateParameters({}),
@@ -1767,6 +1781,223 @@ function validateProjectFileParameters(
   return validated;
 }
 
+const TERMINAL_UNSAFE_TEXT =
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u;
+const TERMINAL_SELECTOR_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
+
+function safeTrimmedTerminalText(value: unknown, label: string, maximum: number): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    return catalogError(`${label} must be nonblank`);
+  }
+  if (TERMINAL_UNSAFE_TEXT.test(value)) {
+    return catalogError(`${label} contains unsafe control characters`);
+  }
+  if (value.length > maximum) catalogError(`${label} is too long`);
+  return value.trim();
+}
+
+function safeTerminalSelectorId(value: unknown, label: string): string {
+  const identifier = safeTrimmedTerminalText(value, label, 240);
+  if (!TERMINAL_SELECTOR_ID.test(identifier)) {
+    return catalogError(`${label} is not a stable terminal identifier`);
+  }
+  return identifier;
+}
+
+function parseExactTerminalRefJson(value: unknown): Readonly<{
+  refsJson: string;
+  field: 'sessionId' | 'paneId';
+  identifier: string;
+}> {
+  if (typeof value !== 'string' || value.length > 512 || TERMINAL_UNSAFE_TEXT.test(value)) {
+    return catalogError('terminal.send_input parameters.refsJson is invalid');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return catalogError('terminal.send_input parameters.refsJson is invalid');
+  }
+  const record = plainRecord(parsed, 'terminal.send_input parameters.refsJson');
+  assertExactKeys(record, ['sessionId', 'paneId'], 'terminal.send_input parameters.refsJson');
+  const fields = (['sessionId', 'paneId'] as const).filter((field) => record[field] !== undefined);
+  if (fields.length !== 1) {
+    return catalogError('terminal.send_input parameters.refsJson requires exactly one selector');
+  }
+  const field = fields[0];
+  const identifier = safeTerminalSelectorId(
+    record[field],
+    `terminal.send_input parameters.refsJson.${field}`,
+  );
+  return {
+    refsJson: JSON.stringify({ [field]: identifier }),
+    field,
+    identifier,
+  };
+}
+
+function validateExactTerminalSelector(
+  record: Readonly<Record<string, unknown>>,
+  label: string,
+): Readonly<{ field: 'sessionId' | 'paneId'; identifier: string }> {
+  const fields = (['sessionId', 'paneId'] as const).filter((field) => record[field] !== undefined);
+  if (fields.length !== 1) return catalogError(`${label} requires exactly one selector`);
+  const field = fields[0];
+  return {
+    field,
+    identifier: safeTerminalSelectorId(record[field], `${label}.${field}`),
+  };
+}
+
+function validateTerminalStartCliParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const label = 'terminal.start_cli parameters';
+  const record = plainRecord(input, label);
+  assertExactKeys(record, ['cli', 'cwd', 'label', 'timeoutMs'], label);
+  const cli = safeTrimmedTerminalText(record.cli, `${label}.cli`, 32_768);
+  const validated: Record<string, unknown> = { cli };
+  if (record.cwd !== undefined) {
+    validated.cwd = safeTrimmedTerminalText(record.cwd, `${label}.cwd`, 32_768);
+  }
+  if (record.label !== undefined) {
+    validated.label = safeTrimmedTerminalText(record.label, `${label}.label`, 240);
+  }
+  if (record.timeoutMs !== undefined) {
+    if (
+      !Number.isSafeInteger(record.timeoutMs) ||
+      (record.timeoutMs as number) < 1_000 ||
+      (record.timeoutMs as number) > 1_800_000
+    ) {
+      catalogError(`${label}.timeoutMs is invalid`);
+    }
+    validated.timeoutMs = record.timeoutMs;
+  }
+  return validated;
+}
+
+function validateTerminalSendInputParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const label = 'terminal.send_input parameters';
+  const record = plainRecord(input, label);
+  assertExactKeys(record, ['command', 'refsJson'], label);
+  const command = safeTrimmedTerminalText(record.command, `${label}.command`, 10_000);
+  const ref = parseExactTerminalRefJson(record.refsJson);
+  return { command, refsJson: ref.refsJson };
+}
+
+function validateTerminalWaitForOutputParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const label = 'terminal.wait_for_output parameters';
+  const record = plainRecord(input, label);
+  assertExactKeys(record, ['sessionId', 'paneId', 'contains', 'afterBytes', 'timeoutMs'], label);
+  const selector = validateExactTerminalSelector(record, label);
+  const validated: Record<string, unknown> = { [selector.field]: selector.identifier };
+  if (record.contains !== undefined) {
+    validated.contains = safeTrimmedTerminalText(record.contains, `${label}.contains`, 2_000);
+  }
+  if (
+    record.afterBytes !== undefined &&
+    (!Number.isSafeInteger(record.afterBytes) || (record.afterBytes as number) < 0)
+  ) {
+    catalogError(`${label}.afterBytes is invalid`);
+  }
+  if (record.afterBytes !== undefined) validated.afterBytes = record.afterBytes;
+  if (
+    record.timeoutMs !== undefined &&
+    (!Number.isSafeInteger(record.timeoutMs) ||
+      (record.timeoutMs as number) < 250 ||
+      (record.timeoutMs as number) > 60_000)
+  ) {
+    catalogError(`${label}.timeoutMs is invalid`);
+  }
+  if (record.timeoutMs !== undefined) validated.timeoutMs = record.timeoutMs;
+  return validated;
+}
+
+function validateTerminalCollectOutputParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const label = 'terminal.collect_output parameters';
+  const record = plainRecord(input, label);
+  assertExactKeys(record, ['sessionId', 'paneId', 'maxChars'], label);
+  const selector = validateExactTerminalSelector(record, label);
+  const validated: Record<string, unknown> = { [selector.field]: selector.identifier };
+  if (
+    record.maxChars !== undefined &&
+    (!Number.isSafeInteger(record.maxChars) ||
+      (record.maxChars as number) < 200 ||
+      (record.maxChars as number) > 16_000)
+  ) {
+    catalogError(`${label}.maxChars is invalid`);
+  }
+  if (record.maxChars !== undefined) validated.maxChars = record.maxChars;
+  return validated;
+}
+
+function terminalSelectorTarget(
+  params: Readonly<Record<string, unknown>>,
+  validator: (input: Readonly<Record<string, unknown>>) => Readonly<Record<string, unknown>>,
+): JarvisCanonicalActionTarget {
+  const validated = validator(params);
+  const field = validated.sessionId !== undefined ? 'sessionId' : 'paneId';
+  return {
+    kind: 'external_resource',
+    service: 'terminal',
+    resourceId: `${field === 'sessionId' ? 'session' : 'pane'}:${String(validated[field])}`,
+  };
+}
+
+function validateScheduleCreateParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const record = plainRecord(input, 'schedule.create parameters');
+  assertExactKeys(
+    record,
+    ['title', 'prompt', 'startAtMs', 'recurrence', 'agentId'],
+    'schedule.create parameters',
+  );
+  const title = nonblank(record.title, 'schedule.create parameters.title');
+  const prompt = nonblank(record.prompt, 'schedule.create parameters.prompt');
+  if (title.length > 240) catalogError('schedule.create parameters.title is too long');
+  if (prompt.length > 50_000) catalogError('schedule.create parameters.prompt is too long');
+  if (!Number.isSafeInteger(record.startAtMs) || (record.startAtMs as number) <= 0) {
+    catalogError('schedule.create parameters.startAtMs is invalid');
+  }
+  const recurrence = record.recurrence ?? 'once';
+  if (!['once', 'daily', 'weekly', 'monthly', 'weekdays'].includes(String(recurrence))) {
+    catalogError('schedule.create parameters.recurrence is invalid');
+  }
+  const validated: Record<string, unknown> = {
+    title,
+    prompt,
+    startAtMs: record.startAtMs,
+    recurrence,
+  };
+  if (record.agentId !== undefined) {
+    validated.agentId = nonblank(record.agentId, 'schedule.create parameters.agentId');
+  }
+  return validated;
+}
+
+function validateAgentRunParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const record = plainRecord(input, 'agent.run parameters');
+  assertExactKeys(record, ['task', 'agentId'], 'agent.run parameters');
+  const task = nonblank(record.task, 'agent.run parameters.task');
+  if (task.length > 50_000) catalogError('agent.run parameters.task is too long');
+  const validated: Record<string, unknown> = { task };
+  if (record.agentId !== undefined) {
+    const agentId = nonblank(record.agentId, 'agent.run parameters.agentId');
+    if (agentId.length > 256) catalogError('agent.run parameters.agentId is too long');
+    validated.agentId = agentId;
+  }
+  return validated;
+}
+
 export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
   readonly JarvisRegisteredActionDefinition[]
 >([
@@ -2493,6 +2724,73 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
     }),
   },
   {
+    id: 'schedule.create',
+    version: 1,
+    title: 'Create Jarvis schedule',
+    description: 'Create one local Jarvis scheduled task with explicit owner approval.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        prompt: { type: 'string' },
+        startAtMs: { type: 'number' },
+        recurrence: {
+          type: 'string',
+          enum: ['once', 'daily', 'weekly', 'monthly', 'weekdays'],
+        },
+        agentId: { type: 'string' },
+      },
+      required: ['title', 'prompt', 'startAtMs'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['schedule.write'],
+    requiredEntitlements: [],
+    risk: 'safe-write',
+    approval: 'always',
+    expectedEffect: 'Creates one user-approved local Jarvis schedule.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'schedule.create' },
+    credentialBindings: [],
+    validateParameters: validateScheduleCreateParameters,
+    deriveTarget: ({ params }) => ({
+      kind: 'app_resource',
+      namespace: 'schedule',
+      resourceId: String(params.title),
+    }),
+  },
+  {
+    id: 'agent.run',
+    version: 1,
+    title: 'Run one child agent',
+    description:
+      'Launch one persistent VibeSpace child-chat agent with a bounded task and optional exact saved agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string' },
+        agentId: { type: 'string' },
+      },
+      required: ['task'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['agent.execute'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect: 'Launches one user-approved persistent child chat.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'agent.run' },
+    credentialBindings: [],
+    validateParameters: validateAgentRunParameters,
+    deriveTarget: ({ params }) => ({
+      kind: 'app_resource',
+      namespace: 'agent',
+      resourceId: String(params.agentId ?? 'default'),
+    }),
+  },
+  {
     id: 'terminal.create',
     version: 1,
     title: 'Create terminal',
@@ -2541,6 +2839,143 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
       service: 'terminal',
       resourceId: 'new-command',
     }),
+  },
+  {
+    id: 'terminal.start_cli',
+    version: 1,
+    title: 'Start terminal CLI',
+    description: 'Start one named CLI command in a new terminal pane.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cli: { type: 'string' },
+        cwd: { type: 'string' },
+        label: { type: 'string' },
+        timeoutMs: { type: 'number' },
+      },
+      required: ['cli'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['terminal.experimental.disabled'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect: 'Starts one approved CLI command in one new terminal pane.',
+    exposeToAI: false,
+    executor: { kind: 'builtin', registryActionId: 'terminal.start_cli' },
+    credentialBindings: [],
+    validateParameters: validateTerminalStartCliParameters,
+    deriveTarget: ({ params }) => {
+      const validated = validateTerminalStartCliParameters(params);
+      const cli = String(validated.cli);
+      const paneLabel = String(validated.label ?? cli.trim().split(/\s+/, 1)[0]);
+      return {
+        kind: 'external_resource',
+        service: 'terminal',
+        resourceId: `new-cli:${paneLabel}`,
+      };
+    },
+  },
+  {
+    id: 'terminal.send_input',
+    version: 1,
+    title: 'Send terminal input',
+    description: 'Send one approved command to exactly one referenced live terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string' },
+        refsJson: { type: 'string' },
+      },
+      required: ['command', 'refsJson'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['terminal.experimental.disabled'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect: 'Sends one approved command to exactly one selected terminal.',
+    exposeToAI: false,
+    executor: { kind: 'builtin', registryActionId: 'terminal.send_input' },
+    credentialBindings: [],
+    validateParameters: validateTerminalSendInputParameters,
+    deriveTarget: ({ params }) => {
+      const validated = validateTerminalSendInputParameters(params);
+      const ref = parseExactTerminalRefJson(validated.refsJson);
+      return {
+        kind: 'external_resource',
+        service: 'terminal',
+        resourceId: `${ref.field === 'sessionId' ? 'session' : 'pane'}:${ref.identifier}`,
+      };
+    },
+  },
+  {
+    id: 'terminal.wait_for_output',
+    version: 1,
+    title: 'Wait for terminal output',
+    description: 'Wait for bounded output from exactly one selected live terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        paneId: { type: 'string' },
+        contains: { type: 'string' },
+        afterBytes: { type: 'number' },
+        timeoutMs: { type: 'number' },
+      },
+      required: [],
+      additionalProperties: false,
+      oneOf: [
+        { type: 'object', required: ['sessionId'] },
+        { type: 'object', required: ['paneId'] },
+      ],
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['terminal.experimental.disabled'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect: 'Waits for bounded output from exactly one selected terminal.',
+    exposeToAI: false,
+    executor: { kind: 'builtin', registryActionId: 'terminal.wait_for_output' },
+    credentialBindings: [],
+    validateParameters: validateTerminalWaitForOutputParameters,
+    deriveTarget: ({ params }) =>
+      terminalSelectorTarget(params, validateTerminalWaitForOutputParameters),
+  },
+  {
+    id: 'terminal.collect_output',
+    version: 1,
+    title: 'Collect terminal output',
+    description: 'Collect a bounded transcript tail from exactly one selected terminal.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        paneId: { type: 'string' },
+        maxChars: { type: 'number' },
+      },
+      required: [],
+      additionalProperties: false,
+      oneOf: [
+        { type: 'object', required: ['sessionId'] },
+        { type: 'object', required: ['paneId'] },
+      ],
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['terminal.experimental.disabled'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect: 'Reads a bounded transcript tail from exactly one selected terminal.',
+    exposeToAI: false,
+    executor: { kind: 'builtin', registryActionId: 'terminal.collect_output' },
+    credentialBindings: [],
+    validateParameters: validateTerminalCollectOutputParameters,
+    deriveTarget: ({ params }) =>
+      terminalSelectorTarget(params, validateTerminalCollectOutputParameters),
   },
   {
     id: 'task.cancel',

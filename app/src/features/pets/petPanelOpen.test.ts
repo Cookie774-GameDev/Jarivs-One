@@ -67,6 +67,21 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     });
   });
 
+  it('opens as a normal window by default while preserving explicit topmost', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pet_is_panel_visible') return true;
+      return undefined;
+    });
+
+    const { openPetPanelSafely } = await import('./petTauriBridge');
+    await openPetPanelSafely(10, 20);
+    await openPetPanelSafely(30, 40, 'always-on-top');
+
+    const openCalls = invokeMock.mock.calls.filter((call) => call[0] === 'pet_open_or_focus_panel');
+    expect(openCalls[0]?.[1]).toMatchObject({ panelMode: 'normal' });
+    expect(openCalls.at(-1)?.[1]).toMatchObject({ panelMode: 'always-on-top' });
+  });
+
   it('offers a bounded native topmost recovery command for lifecycle health checks', async () => {
     invokeMock.mockResolvedValue(undefined);
 

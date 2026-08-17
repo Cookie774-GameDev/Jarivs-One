@@ -11,15 +11,23 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
   nativeStatus: vi.fn(),
   installOllama: vi.fn(),
+  classify: vi.fn(),
+  setDefaultLocalModel: vi.fn(),
+  authDefault: '',
+  offlineMode: false,
 }));
 
 vi.mock('@/stores/auth', () => {
   const state = {
-    offlineMode: false,
+    get offlineMode() {
+      return mocks.offlineMode;
+    },
     setOfflineMode: vi.fn(),
-    defaultLocalModel: '',
-    setDefaultLocalModel: vi.fn((model: string) => {
-      state.defaultLocalModel = model;
+    get defaultLocalModel() {
+      return mocks.authDefault;
+    },
+    setDefaultLocalModel: mocks.setDefaultLocalModel.mockImplementation((model: string) => {
+      mocks.authDefault = model;
     }),
     apiKeys: {},
     setApiKey: vi.fn(),
@@ -76,6 +84,7 @@ vi.mock('@/lib/ai', () => ({
   syncDiscoveredOllamaModels: vi.fn(),
   validateModelName: vi.fn(),
   verifyOllamaModelChat: mocks.verify,
+  classifyOllamaModel: mocks.classify,
 }));
 
 vi.mock('@/components/ui/toast', () => ({
@@ -104,6 +113,17 @@ describe('LocalModels local agent runtime settings', () => {
     mocks.pull.mockReset().mockResolvedValue(undefined);
     mocks.remove.mockReset().mockResolvedValue(undefined);
     mocks.verify.mockReset().mockResolvedValue({ ok: true, response: 'READY' });
+    mocks.classify.mockReset().mockResolvedValue({
+      model: 'qwen3.5:4b',
+      digest: 'sha256:qwen',
+      status: 'agent_ready',
+      reason: 'Tool calling passed for the safe structured roundtrip.',
+      contextWindowTokens: 65_536,
+      cached: false,
+    });
+    mocks.authDefault = '';
+    mocks.offlineMode = false;
+    mocks.setDefaultLocalModel.mockClear();
     mocks.nativeStatus.mockReset().mockResolvedValue({ installed: true, running: true });
     mocks.installOllama.mockReset().mockResolvedValue({
       ready: true,
@@ -185,6 +205,30 @@ describe('LocalModels local agent runtime settings', () => {
     expect(screen.getByText('llama3.2:3b')).toBeTruthy();
     expect(screen.getAllByText('Available in Chat')).toHaveLength(2);
     expect(screen.queryByRole('radiogroup', { name: 'Installed local models' })).toBeNull();
+  });
+
+  it('runs an explicit safe compatibility check and shows the reason', async () => {
+    mocks.list.mockResolvedValue([{ name: 'qwen3.5:4b', digest: 'sha256:qwen' }]);
+    render(<LocalModels />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check agent compatibility' }));
+
+    await waitFor(() => expect(mocks.classify).toHaveBeenCalledWith('qwen3.5:4b'));
+    expect(await screen.findByText('Agent ready')).toBeTruthy();
+    expect(screen.getByText(/safe structured roundtrip/i)).toBeTruthy();
+  });
+
+  it('keeps a removed selected model explicit and preserves offline mode without fallback', async () => {
+    mocks.authDefault = 'removed:model';
+    mocks.offlineMode = true;
+    mocks.list.mockResolvedValue([{ name: 'qwen3.5:4b', digest: 'sha256:qwen' }]);
+    render(<LocalModels />);
+
+    expect(await screen.findByText('qwen3.5:4b')).toBeTruthy();
+    expect(mocks.setDefaultLocalModel).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('switch', { name: 'Toggle fully local chat' }).getAttribute('aria-checked'),
+    ).toBe('true');
   });
 
   it('requires explicit consent before installing missing Ollama', async () => {

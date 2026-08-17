@@ -15,11 +15,16 @@ describe('ChatView Browser Goal activation', () => {
   });
 
   it('preserves native chat and mounts the dedicated Browser Chat hub only for the browser engine', () => {
-    expect(source).toContain("engine === 'browser'");
+    expect(source).toContain("engine === 'browser' && activeChatId");
+    expect(source).toContain('resolveChatEngine(state, activeChatId)');
     expect(source).toContain('<BrowserChatHub');
     expect(source).toContain('<ChatThread');
     expect(source).toContain('<Composer');
     expect(source).not.toMatch(/setSelectedModel|setDefaultProvider/);
     expect(source).toContain('TokenBossCinematic');
+  });
+
+  it('remounts the composer per chat so a running chat cannot queue a different chat', () => {
+    expect(source).toContain('<Composer key={String(activeChatId)} chatId={activeChatId} />');
   });
 });

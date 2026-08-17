@@ -113,6 +113,7 @@ export type ProviderId =
   | 'openrouter'
   | 'groq'
   | 'deepseek'
+  | 'zai'
   | 'mistral'
   | 'together'
   | 'qwen'

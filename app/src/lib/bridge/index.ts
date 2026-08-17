@@ -16,12 +16,20 @@ export {
   resetBridgeClient,
   resetBrowserChatBridgeClient,
   setBridgeWorkspaceGrant,
+  requestBrowserChatBridgeReconnect,
   type BridgeStatus,
   type BridgeFrame,
   type BridgeClientOptions,
   type BridgeWorkspaceGrant,
   type BridgeWorkspaceGrantMetadata,
 } from './BridgeClient';
+export {
+  browserChatRelayStatusStore,
+  publishBrowserChatRelayStatus,
+  resetBrowserChatRelayStatus,
+  type BrowserChatRelayStatus,
+} from './browserChatRelayStatus';
+export { VibeSpaceMcpRuntimeHost } from './VibeSpaceMcpRuntimeHost';
 
 export { useBridgeLifecycle } from './useBridgeLifecycle';
 export {

@@ -3,7 +3,7 @@ import { detectInteractiveAgentCli } from './agentPromptDelivery';
 import { sanitizePersistedDraft } from './terminalContentSanitizer';
 import type { TerminalSnapshotPayload } from './terminalSnapshot';
 
-export interface BackendTerminalInfo {
+export type BackendTerminalInfo = Readonly<{
   sessionId: string;
   command: string;
   cwd: string;
@@ -11,12 +11,17 @@ export interface BackendTerminalInfo {
   cols: number;
   startedAt: number;
   projectId?: string | null;
-}
+  processInstanceId: string;
+  pid: number;
+  processStartedAt: number;
+  runtimeGeneration: string;
+}>;
 
 export type TerminalRestoreDecision =
   | {
       kind: 'attach';
       sessionId: string;
+      backendInfo: BackendTerminalInfo;
       restoredText: string;
       source: 'existing-session' | 'historical-pane';
     }
@@ -114,6 +119,7 @@ export function resolveTerminalRestoreSession({
       return {
         kind: 'attach',
         sessionId: existingSessionId,
+        backendInfo: Object.freeze({ ...activeExisting }),
         restoredText: restoredTextForAttachedSession(
           transcripts[existingSessionId],
           activeExisting,
@@ -149,6 +155,7 @@ export function resolveTerminalRestoreSession({
         return {
           kind: 'attach',
           sessionId: historicalSession.sessionId,
+          backendInfo: Object.freeze({ ...activeHistorical }),
           restoredText: restoredTextForAttachedSession(
             historicalSession,
             activeHistorical,

@@ -21,7 +21,7 @@ const fixtures = vi.hoisted(() => {
     context_window: 128_000,
     supports_image: true,
     supports_video: false,
-    source: 'snapshot' as const,
+    source: 'lmsys' as const,
     fetched_at: fetchedAt,
   }));
 
@@ -31,14 +31,14 @@ const fixtures = vi.hoisted(() => {
 vi.mock('./benchmarkData', () => ({
   fetchBenchmarks: vi.fn(async () => ({
     rows: fixtures.rows,
-    fromSnapshot: true,
+    fromSnapshot: false,
     dataset: {
-      sourceName: 'Artificial Analysis',
-      sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
-      metricLabel: 'Artificial Analysis Intelligence Index',
+      sourceName: 'Arena',
+      sourceUrl: 'https://arena.ai/leaderboard/text',
+      metricLabel: 'Arena rating',
       benchmarkDate: fixtures.fetchedAt,
       ingestedAt: fixtures.fetchedAt,
-      confidence: 'high',
+      confidence: 'medium',
     },
   })),
   isSupportedProvider: () => false,
@@ -59,11 +59,13 @@ import { fetchBenchmarks } from './benchmarkData';
 
 describe('BenchmarksPage Warm Schema B', () => {
   beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(fixtures.fetchedAt + 6 * 24 * 60 * 60 * 1000);
     useUIStore.setState({ theme: 'warm' });
     document.documentElement.setAttribute('data-theme', 'warm');
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     cleanup();
     useUIStore.setState({ theme: 'default' });
     document.documentElement.setAttribute('data-theme', 'dark');
@@ -71,7 +73,7 @@ describe('BenchmarksPage Warm Schema B', () => {
 
   it('uses the reference-composed Warm surface while keeping the complete table available', async () => {
     const { container } = render(<BenchmarksPage />);
-    await screen.findByText('from snapshot');
+    await screen.findAllByText('Schema Model 1');
 
     const route = container.querySelector<HTMLElement>('[data-warm-page="benchmarks"]');
     expect(route).not.toBeNull();
@@ -108,7 +110,7 @@ describe('BenchmarksPage Warm Schema B', () => {
     }
 
     const chart = within(route!).getByRole('img');
-    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 12 models by arena score');
+    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 12 models by Arena rating');
     expect(within(chart).getByText('Schema Model 12')).toBeTruthy();
 
     const table = route!.querySelector('[data-monochrome-surface="benchmarks-table"]');
@@ -116,9 +118,20 @@ describe('BenchmarksPage Warm Schema B', () => {
     expect(table?.textContent).toContain('Schema Model 12');
   });
 
+  it('shows the truthful stale warning immediately beyond the seven-day boundary', async () => {
+    vi.mocked(Date.now).mockReturnValue(fixtures.fetchedAt + 7 * 24 * 60 * 60 * 1000 + 1);
+
+    const { container } = render(<BenchmarksPage />);
+    await screen.findAllByText('Schema Model 1');
+
+    expect(
+      container.querySelector('[data-warm-surface="benchmarks-warning"]')?.textContent,
+    ).toContain('Benchmark data is stale');
+  });
+
   it('keeps provider and open-source filters functional in the reference layout', async () => {
     const { container } = render(<BenchmarksPage />);
-    await screen.findByText('from snapshot');
+    await screen.findAllByText('Schema Model 1');
 
     fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'Provider B' } });
     expect(screen.getByText('4 of 12 models')).toBeTruthy();
@@ -128,7 +141,7 @@ describe('BenchmarksPage Warm Schema B', () => {
 
     const chart = container.querySelector('[data-warm-surface="benchmarks-chart"]');
     expect(chart?.querySelector('svg')?.getAttribute('aria-label')).toBe(
-      'Bar chart of top 3 models by arena score',
+      'Bar chart of top 3 models by Arena rating',
     );
   });
 
@@ -140,14 +153,14 @@ describe('BenchmarksPage Warm Schema B', () => {
     }));
     vi.mocked(fetchBenchmarks).mockResolvedValueOnce({
       rows: fiftyRows,
-      fromSnapshot: true,
+      fromSnapshot: false,
       dataset: {
-        sourceName: 'Artificial Analysis',
-        sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
-        metricLabel: 'Artificial Analysis Intelligence Index',
+        sourceName: 'Arena',
+        sourceUrl: 'https://arena.ai/leaderboard/text',
+        metricLabel: 'Arena rating',
         benchmarkDate: fixtures.fetchedAt,
         ingestedAt: fixtures.fetchedAt,
-        confidence: 'high',
+        confidence: 'medium',
         normalizationNote: 'Deterministic test fixture.',
       },
     });
@@ -164,13 +177,13 @@ describe('BenchmarksPage Warm Schema B', () => {
     expect(tableSurface?.querySelectorAll('tbody tr')).toHaveLength(50);
 
     const chart = within(container).getByRole('img');
-    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 25 models by arena score');
+    expect(chart.getAttribute('aria-label')).toBe('Bar chart of top 25 models by Arena rating');
     expect(chart.querySelectorAll(':scope > g:not([aria-hidden])')).toHaveLength(25);
   });
 
   it('keeps Refresh real, disabled while loading, and recoverable after completion', async () => {
     render(<BenchmarksPage />);
-    await screen.findByText('from snapshot');
+    await screen.findAllByText('Schema Model 1');
 
     let resolveRefresh: ((value: Awaited<ReturnType<typeof fetchBenchmarks>>) => void) | undefined;
     const pendingRefresh = new Promise<Awaited<ReturnType<typeof fetchBenchmarks>>>((resolve) => {
@@ -184,14 +197,14 @@ describe('BenchmarksPage Warm Schema B', () => {
 
     resolveRefresh?.({
       rows: fixtures.rows,
-      fromSnapshot: true,
+      fromSnapshot: false,
       dataset: {
-        sourceName: 'Artificial Analysis',
-        sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
-        metricLabel: 'Artificial Analysis Intelligence Index',
+        sourceName: 'Arena',
+        sourceUrl: 'https://arena.ai/leaderboard/text',
+        metricLabel: 'Arena rating',
         benchmarkDate: fixtures.fetchedAt,
         ingestedAt: fixtures.fetchedAt,
-        confidence: 'high',
+        confidence: 'medium',
         normalizationNote: 'Deterministic test fixture.',
       },
     });

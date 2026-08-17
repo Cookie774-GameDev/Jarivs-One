@@ -222,7 +222,7 @@ describe('benchmarkData live sources', () => {
     expect(result.rows[9]?.model).toBe('Gemini 2.5 Pro');
     expect(result.rows[9]?.arena_score).toBe(49.6);
     expect(result.rows[49]?.model).toBe('GPT-OSS 20B');
-    // One unique model per row — no reasoning-variant duplicates.
+    // One unique model per row ΓÇö no reasoning-variant duplicates.
     const names = result.rows.map((r) => r.model);
     expect(new Set(names).size).toBe(50);
     expect(mockedFetch).toHaveBeenCalled();

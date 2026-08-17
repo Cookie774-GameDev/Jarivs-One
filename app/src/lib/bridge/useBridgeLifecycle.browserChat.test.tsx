@@ -6,6 +6,7 @@ import { useBridgeLifecycle } from './useBridgeLifecycle';
 const lifecycleMocks = vi.hoisted(() => ({
   authState: {
     cloudSession: { user_id: 'account-a' },
+    workspaceId: 'workspace-a',
     projectId: 'project-a',
   },
   useBrowserChatRelay: vi.fn(() => 'connected'),
@@ -34,6 +35,7 @@ describe('global bridge lifecycle host', () => {
   afterEach(() => {
     lifecycleMocks.useBrowserChatRelay.mockClear();
     lifecycleMocks.resetBridgeClient.mockClear();
+    lifecycleMocks.authState.workspaceId = 'workspace-a';
     vi.unstubAllEnvs();
   });
 
@@ -43,6 +45,21 @@ describe('global bridge lifecycle host', () => {
 
     expect(lifecycleMocks.useBrowserChatRelay).toHaveBeenCalledWith(true, {
       accountId: 'account-a',
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+    });
+
+    rendered.unmount();
+  });
+
+  it('fails closed when a signed-in cloud account has no authoritative workspace', () => {
+    vi.stubEnv('VITE_PHONE_JARVIS_CLOUD_URL', '');
+    lifecycleMocks.authState.workspaceId = '';
+    const rendered = renderHook(() => useBridgeLifecycle());
+
+    expect(lifecycleMocks.useBrowserChatRelay).toHaveBeenCalledWith(false, {
+      accountId: 'account-a',
+      workspaceId: null,
       projectId: 'project-a',
     });
 

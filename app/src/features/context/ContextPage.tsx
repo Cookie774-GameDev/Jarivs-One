@@ -83,6 +83,7 @@ import {
 import type { ContextRecoverySummary } from './contextRecovery';
 import { NightlySecondBrainPanel } from './NightlySecondBrainPanel';
 import { searchContextNodes } from './contextSearch';
+import { createContextSearchIndexPopulationPort } from './contextSearchIndexing';
 import {
   CONTEXT_CENTER_MODES,
   CONTEXT_INSPECTOR_TABS,
@@ -128,6 +129,7 @@ const WARM_CONTEXT_SOURCE_ART: Record<ContextSourceCard['kind'], string> = {
   local_file: '/assets/themes/warm/context/context-file-v1.webp',
   github_repository: '/assets/themes/warm/context/context-repository-v1.webp',
 };
+const contextSearchIndexPopulation = createContextSearchIndexPopulationPort();
 
 type ProviderKeys = Partial<Record<ProviderId, string>>;
 
@@ -516,7 +518,9 @@ export function ContextPage() {
     const containingFolder = parentDirectory(picked);
     setRootDraft(containingFolder);
     setStoredProjectRoot(projectId, containingFolder);
-    setStatus(`Selected ${basename(picked)}. Create Map will securely index its containing folder.`);
+    setStatus(
+      `Selected ${basename(picked)}. Create Map will securely index its containing folder.`,
+    );
     toast.success('Context file selected', basename(picked));
   };
 
@@ -541,7 +545,8 @@ export function ContextPage() {
         installationId,
         page: 1,
       });
-      if (result.operation !== 'list_repositories') throw new Error('github_context_response_invalid');
+      if (result.operation !== 'list_repositories')
+        throw new Error('github_context_response_invalid');
       setGithubRepositories(result.repositories);
       setStatus(
         result.repositories.length
@@ -620,14 +625,7 @@ export function ContextPage() {
         setGithubBusy(false);
       }
     },
-    [
-      accountId,
-      activeMapCount,
-      applyPersistenceState,
-      githubBusy,
-      githubInstallationId,
-      projectId,
-    ],
+    [accountId, activeMapCount, applyPersistenceState, githubBusy, githubInstallationId, projectId],
   );
 
   const rememberRoot = () => {
@@ -702,6 +700,31 @@ export function ContextPage() {
         return;
       }
       const persisted = await savePersistedContextTree(generated);
+      const persistedMap = persisted.maps.find(
+        (map) => map.id === persisted.selectedMapId && map.status === 'active',
+      );
+      if (!persistedMap) throw new Error('context_search_index_snapshot_invalid');
+      setStatus(`Indexing ${generated.fileCount} Context files...`);
+      try {
+        await contextSearchIndexPopulation.populateCreatedMap(
+          persisted.accountId,
+          persistedMap,
+          controller.signal,
+        );
+      } catch (indexError) {
+        await deletePersistedContextMap(projectId, persistedMap.id).catch(() => undefined);
+        throw indexError;
+      }
+      const indexedAuth = useAuthStore.getState();
+      if (
+        controller.signal.aborted ||
+        generationAbortRef.current !== controller ||
+        resolveAccountIdentity(indexedAuth)?.accountId !== accountId ||
+        (indexedAuth.projectId ?? null) !== (projectId ?? null)
+      ) {
+        setStructuralPreview(null);
+        return;
+      }
       if (!applyPersistenceState(persisted)) return;
       setStructuralPreview(null);
       setSelectedId(PROJECT_ROOT_NODE_ID);
@@ -1138,12 +1161,10 @@ function GitHubRepositoryPicker({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-secondary font-semibold text-foreground">
-            Read-only GitHub Context
-          </h3>
+          <h3 className="text-secondary font-semibold text-foreground">Read-only GitHub Context</h3>
           <p className="mt-0.5 text-metadata text-muted-foreground">
-            VibeSpace reads repository metadata and files through its GitHub App. It never asks
-            for a personal access token.
+            VibeSpace reads repository metadata and files through its GitHub App. It never asks for
+            a personal access token.
           </p>
         </div>
         <Button size="sm" variant="ghost" onClick={onClose} disabled={busy}>

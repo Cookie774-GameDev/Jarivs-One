@@ -32,6 +32,10 @@ describe('VibeSpace MCP connection preflight', () => {
           issuer: 'https://auth.example/auth/v1',
           authorization_endpoint: 'https://auth.example/auth/v1/authorize',
           token_endpoint: 'https://auth.example/auth/v1/token',
+          registration_endpoint: 'https://auth.example/auth/v1/register',
+          scopes_supported: ['openid', 'offline_access'],
+          grant_types_supported: ['authorization_code', 'refresh_token'],
+          code_challenge_methods_supported: ['S256'],
         }),
       );
 
@@ -95,6 +99,37 @@ describe('VibeSpace MCP connection preflight', () => {
           issuer: 'https://attacker.example/auth/v1',
           authorization_endpoint: 'https://attacker.example/authorize',
           token_endpoint: 'https://attacker.example/token',
+          registration_endpoint: 'https://attacker.example/register',
+          scopes_supported: ['offline_access'],
+          grant_types_supported: ['authorization_code', 'refresh_token'],
+          code_challenge_methods_supported: ['S256'],
+        }),
+      );
+
+    await expect(
+      preflightVibeSpaceMcp('https://vibespace.example/mcp', { fetcher }),
+    ).rejects.toThrow(/authorization metadata is invalid/i);
+  });
+
+  it('fails closed when OAuth cannot issue refreshable PKCE sessions', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          resource: 'https://vibespace.example/mcp',
+          authorization_servers: ['https://auth.example/auth/v1'],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          issuer: 'https://auth.example/auth/v1',
+          authorization_endpoint: 'https://auth.example/auth/v1/authorize',
+          token_endpoint: 'https://auth.example/auth/v1/token',
+          registration_endpoint: 'https://auth.example/auth/v1/register',
+          scopes_supported: ['openid'],
+          grant_types_supported: ['authorization_code'],
+          code_challenge_methods_supported: ['plain'],
         }),
       );
 

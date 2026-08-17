@@ -101,7 +101,7 @@ describe('OpenCode model discovery and invocation', () => {
     expect(invoke).toHaveBeenNthCalledWith(2, 'cli_bridge_probe', {
       request: expect.objectContaining({
         executableId: 'opencode-verified',
-        args: ['models'],
+        args: ['models', 'openai', '--refresh'],
       }),
     });
   });
@@ -127,7 +127,7 @@ describe('OpenCode model discovery and invocation', () => {
         expect(payload).toEqual({
           request: {
             executableId: 'opencode-verified',
-            args: ['models'],
+            args: ['models', 'openai', '--refresh'],
             timeoutMs: 3_000,
             outputLimitBytes: 16_384,
           },

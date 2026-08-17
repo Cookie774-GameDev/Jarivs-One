@@ -4,12 +4,13 @@ import { usePetSettingsStore } from './petSettingsStore';
 describe('Pet settings store desktop controls', () => {
   beforeEach(() => {
     localStorage.clear();
+    usePetSettingsStore.setState({ panelMode: 'normal' });
   });
 
   it('validates the panel mode and persists movement, animation, sound, and reaction controls', () => {
     const state = usePetSettingsStore.getState();
 
-    expect(state.panelMode).toBe('always-on-top');
+    expect(state.panelMode).toBe('normal');
     expect(state.positionLocked).toBe(false);
     expect(state.edgeSnapping).toBe(true);
     expect(state.animationLevel).toBe('calm');
@@ -34,5 +35,21 @@ describe('Pet settings store desktop controls', () => {
       notificationReactions: false,
       pointerTracking: false,
     });
+  });
+
+  it('rehydrates an explicit topmost choice while invalid persisted modes use normal', async () => {
+    localStorage.setItem(
+      'vibespace-pet-settings',
+      JSON.stringify({ state: { panelMode: 'always-on-top' }, version: 0 }),
+    );
+    await usePetSettingsStore.persist.rehydrate();
+    expect(usePetSettingsStore.getState().panelMode).toBe('always-on-top');
+
+    localStorage.setItem(
+      'vibespace-pet-settings',
+      JSON.stringify({ state: { panelMode: 'unexpected' }, version: 0 }),
+    );
+    await usePetSettingsStore.persist.rehydrate();
+    expect(usePetSettingsStore.getState().panelMode).toBe('normal');
   });
 });

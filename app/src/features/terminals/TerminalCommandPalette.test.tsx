@@ -1,6 +1,23 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalCommandPalette } from './TerminalCommandPalette';
+import { useTerminalTranscriptStore } from './transcriptStore';
+import { runTerminalPromptUpgrade } from './terminalPromptUpgrade';
+
+vi.mock('./terminalPromptUpgrade', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./terminalPromptUpgrade')>();
+  return {
+    ...actual,
+    runTerminalPromptUpgrade: vi.fn(async () => ({
+      ok: true,
+      upgradedPrompt: 'Build a polished HTML game with keyboard controls.',
+      originalDraft: 'hi there, please make me a HTML game',
+      job: { id: 'upgrade-job-1' },
+      usedPublicResearch: false,
+      modelLabel: 'GPT-5.3 Codex Spark',
+    })),
+  };
+});
 
 const evidence = {
   promptProtocol: 'osc133',
@@ -13,6 +30,10 @@ const evidence = {
 } as const;
 
 describe('TerminalCommandPalette', () => {
+  beforeEach(() => {
+    vi.mocked(runTerminalPromptUpgrade).mockClear();
+  });
+
   it('preserves ordinary overlay depth while flattening MonoChrome shadow and blur', () => {
     render(
       <TerminalCommandPalette
@@ -209,11 +230,50 @@ describe('TerminalCommandPalette', () => {
 
     fireEvent.click(screen.getByRole('option', { name: /Upgrade prompt/i }));
     expect(screen.getByText(/Upgrade prompt/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Draft for this terminal agent/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Draft from this terminal/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Insert at prompt' })).toBeTruthy();
     // Upgrade not started — insert handler must not have been called
     expect(onInsert).not.toHaveBeenCalled();
+  });
+
+  it('prefills Upgrade prompt from the live terminal draft without asking the user to retype', async () => {
+    useTerminalTranscriptStore.setState({
+      sessions: {
+        'pty-1': {
+          sessionId: 'pty-1',
+          agentSlug: null,
+          command: null,
+          text: '',
+          lastWriteAt: 1,
+          bytesSeen: 0,
+          currentInput: 'hi there, please make me a HTML game',
+        },
+      },
+    });
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('option', { name: /Upgrade prompt/i }));
+    expect(screen.getByLabelText(/Draft from this terminal/i)).toHaveProperty(
+      'value',
+      'hi there, please make me a HTML game',
+    );
+    await waitFor(() => {
+      expect(runTerminalPromptUpgrade).toHaveBeenCalled();
+    });
+    expect(await screen.findByRole('button', { name: 'Accept upgraded prompt' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry prompt upgrade' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add context to prompt upgrade' })).toBeTruthy();
   });
 
   it('fails closed without rendering native setup error details', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { syntheticCredentialFixture } from '@/test/syntheticCredentialFixture';
 import type { LLMResponse } from '@/lib/ai/types';
 import type { RunAgentRequest } from '@/lib/ai/router';
+import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
 import type { PromptForgeJob } from './contracts';
 import type { ResolvedPromptForgeModel } from './modelSelection';
@@ -152,6 +153,8 @@ describe('Prompt Forge model execution', () => {
       /make the result an executable instruction that tells the downstream agent to perform the original task/i,
     );
     expect(received?.onChunk).toEqual(expect.any(Function));
+    expect(Object.keys(received?.tools ?? {})).toEqual(TOOL_GATEWAY_CATALOG);
+    expect(Object.values(received?.tools ?? {})).toEqual(TOOL_GATEWAY_CATALOG.map(() => false));
   });
 
   it('returns a failed preservation verdict instead of claiming verification', async () => {

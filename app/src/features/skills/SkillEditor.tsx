@@ -23,6 +23,8 @@ import {
   type JarvisCreatorSkillDraft,
 } from '@/features/jarvis-creator/contracts';
 import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
+import { RecycleBinConfirmDialog } from '@/features/recycle-bin/RecycleBinConfirmDialog';
+import { recycleBinService } from '@/features/recycle-bin/recycleBinService';
 
 export interface SkillEditorProps {
   manifest: SkillManifest;
@@ -48,6 +50,7 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
   const [hue, setHue] = React.useState(manifest.colorHue ?? 35);
   const [tab, setTab] = React.useState<'edit' | 'preview'>('edit');
   const [saving, setSaving] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   React.useEffect(() => {
     setEmoji(manifest.emoji ?? '✨');
@@ -111,21 +114,6 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
     } finally {
       setSaving(false);
     }
-  };
-
-  const onDelete = () => {
-    const label = manifest.isPreset ? `preset "${title}"` : `custom skill "${title}"`;
-    if (!window.confirm(`Delete ${label}? You can restore presets from the library header.`))
-      return;
-    const store = readSkillsStore();
-    if (manifest.isPreset) {
-      store.deletePreset(id);
-    } else {
-      store.removeCustomSkill(id);
-    }
-    skillRegistry.refresh();
-    toast.success('Deleted', title);
-    onDeleted?.();
   };
 
   const onRestoreDefault = () => {
@@ -292,10 +280,12 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
               Restore default
             </Button>
           ) : null}
-          <Button variant="ghost" size="sm" onClick={onDelete}>
-            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            Delete
-          </Button>
+          {!manifest.isPreset ? (
+            <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+              Delete
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
@@ -317,6 +307,18 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
           </Button>
         </div>
       </footer>
+      <RecycleBinConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Move ${manifest.title || 'skill'} to Recycle Bin?`}
+        description="This removes the custom skill from active use. You can restore it from Settings → General for 90 days."
+        confirmLabel="Move to Recycle Bin"
+        onConfirm={async () => {
+          await recycleBinService.moveSkillToRecycleBin(id);
+          toast.success('Moved to Recycle Bin', `${manifest.title} can be restored for 90 days.`);
+          onDeleted?.();
+        }}
+      />
     </div>
   );
 }

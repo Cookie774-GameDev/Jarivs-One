@@ -9,6 +9,13 @@ import {
   type ProviderSurfacePlatform,
 } from './providerSurface';
 
+const ACCOUNT_PROFILE_A =
+  'profile_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const;
+
+function surfaceKey(label: string, profileKey?: string): string {
+  return `${label}:${profileKey ?? ''}`;
+}
+
 function fakeWindow(label: string): ManagedProviderSurface {
   return {
     label,
@@ -26,12 +33,12 @@ function platform(desktop = true) {
   const opened: string[] = [];
   const implementation: ProviderSurfacePlatform = {
     desktop,
-    async getSurface(label) {
-      return windows.get(label) ?? null;
+    async getSurface(label, profileKey) {
+      return windows.get(surfaceKey(label, profileKey)) ?? null;
     },
     createSurface(label, options, profileKey) {
       const window = fakeWindow(label);
-      windows.set(label, window);
+      windows.set(surfaceKey(label, profileKey), window);
       created.push({ label, options, profileKey });
       return window;
     },
@@ -48,7 +55,7 @@ describe('Browser Chat managed provider surface', () => {
     const surface = createNativeManagedProviderSurface(
       'browser-chat-chatgpt',
       invoke,
-      'vibespace-account:account-a',
+      ACCOUNT_PROFILE_A,
     );
 
     await surface.setPosition({ x: 120, y: 90 });
@@ -57,7 +64,7 @@ describe('Browser Chat managed provider surface', () => {
 
     expect(invoke).toHaveBeenCalledWith('browser_chat_surface_open', {
       providerId: 'chatgpt',
-      providerProfileKey: 'vibespace-account:account-a',
+      providerProfileKey: ACCOUNT_PROFILE_A,
       bounds: { x: 120, y: 90, width: 880, height: 620 },
     });
     await surface.hide();
@@ -78,17 +85,18 @@ describe('Browser Chat managed provider surface', () => {
         width: 900,
         height: 640,
       },
-      'vibespace-account:account-a',
+      undefined,
+      ACCOUNT_PROFILE_A,
     );
 
     expect(result.kind).toBe('managed');
     expect(fake.created).toHaveLength(1);
     expect(fake.created[0]).toMatchObject({
       label: 'browser-chat-chatgpt',
-      profileKey: 'vibespace-account:account-a',
+      profileKey: ACCOUNT_PROFILE_A,
       options: {
         url: 'https://chatgpt.com/',
-        dataDirectory: 'browser-chat/chatgpt',
+        dataDirectory: ACCOUNT_PROFILE_A,
         x: 100,
         y: 80,
         width: 900,
@@ -103,28 +111,34 @@ describe('Browser Chat managed provider surface', () => {
     expect(fake.created[0]?.options).not.toHaveProperty('initializationScript');
   });
 
-  it('hides other provider surfaces before showing the selected provider', async () => {
+  it('hides another account-scoped provider surface before showing the selected provider', async () => {
     const fake = platform();
-    const chatgpt = fakeWindow('browser-chat-chatgpt');
-    const claude = fakeWindow('browser-chat-claude');
-    fake.windows.set(chatgpt.label, chatgpt);
-    fake.windows.set(claude.label, claude);
     const controller = createProviderSurfaceController(fake.implementation);
+    const bounds = { x: 0, y: 0, width: 600, height: 400 };
+
+    await controller.openManaged(
+      browserChatProvider('chatgpt'),
+      bounds,
+      undefined,
+      ACCOUNT_PROFILE_A,
+    );
+    const chatgpt = fake.windows.get(
+      surfaceKey('browser-chat-chatgpt', ACCOUNT_PROFILE_A),
+    );
 
     await controller.openManaged(
       browserChatProvider('claude'),
-      {
-        x: 0,
-        y: 0,
-        width: 600,
-        height: 400,
-      },
-      'vibespace-account:account-a',
+      bounds,
+      undefined,
+      ACCOUNT_PROFILE_A,
+    );
+    const claude = fake.windows.get(
+      surfaceKey('browser-chat-claude', ACCOUNT_PROFILE_A),
     );
 
-    expect(chatgpt.hide).toHaveBeenCalledOnce();
-    expect(claude.show).toHaveBeenCalledOnce();
-    expect(claude.setFocus).toHaveBeenCalledOnce();
+    expect(chatgpt?.hide).toHaveBeenCalledOnce();
+    expect(claude?.show).toHaveBeenCalledOnce();
+    expect(claude?.setFocus).toHaveBeenCalledOnce();
   });
 
   it('serializes concurrent opens so only one child surface is created per provider profile', async () => {
@@ -141,12 +155,14 @@ describe('Browser Chat managed provider surface', () => {
       controller.openManaged(
         browserChatProvider('chatgpt'),
         bounds,
-        'vibespace-account:account-a',
+        undefined,
+      ACCOUNT_PROFILE_A,
       ),
       controller.openManaged(
         browserChatProvider('chatgpt'),
         bounds,
-        'vibespace-account:account-a',
+        undefined,
+      ACCOUNT_PROFILE_A,
       ),
     ]);
 
@@ -171,7 +187,8 @@ describe('Browser Chat managed provider surface', () => {
     const opening = controller.openManaged(
       browserChatProvider('chatgpt'),
       { x: 20, y: 30, width: 800, height: 600 },
-      'vibespace-account:account-a',
+      undefined,
+      ACCOUNT_PROFILE_A,
     );
     const hiding = controller.hideAll();
 
@@ -182,7 +199,9 @@ describe('Browser Chat managed provider surface', () => {
     await hiding;
 
     expect(fake.created).toHaveLength(1);
-    expect(fake.windows.get('browser-chat-chatgpt')?.hide).toHaveBeenCalled();
+    expect(
+      fake.windows.get(surfaceKey('browser-chat-chatgpt', ACCOUNT_PROFILE_A))?.hide,
+    ).toHaveBeenCalled();
   });
 
   it('uses a truthful system-browser fallback outside the desktop shell', async () => {
@@ -197,7 +216,8 @@ describe('Browser Chat managed provider surface', () => {
         width: 600,
         height: 400,
       },
-      'vibespace-account:account-a',
+      undefined,
+      ACCOUNT_PROFILE_A,
     );
 
     expect(result).toEqual({ kind: 'system_browser', providerId: 'gemini' });
@@ -236,14 +256,16 @@ describe('Browser Chat managed provider surface', () => {
           width: 0,
           height: 400,
         },
-        'vibespace-account:account-a',
+        undefined,
+      ACCOUNT_PROFILE_A,
       ),
     ).rejects.toThrow(/browser chat bounds/i);
     await expect(
       controller.openManaged(
         browserChatProvider('chatgpt'),
         { x: 0, y: 0, width: 600, height: 400 },
-        'bad\nprofile',
+        undefined,
+        'bad\nprofile' as never,
       ),
     ).rejects.toThrow(/profile key/i);
     expect(fake.created).toHaveLength(0);

@@ -72,7 +72,13 @@ export async function prepareFoundryAgentRequest(input: {
       limit: 4,
     },
   );
-  if (prepared.artifactId !== artifactId) {
+  if (
+    !prepared ||
+    typeof prepared !== 'object' ||
+    typeof prepared.artifactId !== 'string' ||
+    prepared.artifactId !== artifactId ||
+    (prepared.kind !== 'weight' && prepared.kind !== 'knowledge')
+  ) {
     throw new Error('Model Foundry returned mismatched or incomplete artifact metadata.');
   }
   if (prepared.kind === 'weight') {
@@ -143,6 +149,8 @@ export async function runFoundryWeightArtifact(input: {
     maxOutputTokens: Math.max(1, Math.min(4_096, input.maxOutputTokens ?? 1_024)),
   });
   if (
+    !response ||
+    typeof response !== 'object' ||
     response.artifactId !== input.artifact.artifactId ||
     response.modelName !== input.artifact.modelName ||
     response.version !== input.artifact.version ||

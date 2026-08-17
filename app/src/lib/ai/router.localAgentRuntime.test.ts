@@ -4,10 +4,26 @@ import { useAuthStore } from '@/stores/auth';
 import { selectionFromOption } from './modelSelection';
 import { LocalCloudEscalationRequiredError, writeLocalAgentPreferences } from './localAgentRuntime';
 
-const { googleRun, ollamaRun } = vi.hoisted(() => ({
+const { googleRun, persistentSend, detect, probeAuth, ollamaRun } = vi.hoisted(() => ({
   googleRun: vi.fn(),
+  persistentSend: vi.fn(),
+  detect: vi.fn(),
+  probeAuth: vi.fn(),
   ollamaRun: vi.fn(),
 }));
+
+vi.mock('./adapters/opencodePersistent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./adapters/opencodePersistent')>();
+  return {
+    ...actual,
+    openCodePersistentAdapter: Object.freeze({
+      ...actual.openCodePersistentAdapter,
+      detect,
+      probeAuth,
+      send: persistentSend,
+    }),
+  };
+});
 
 vi.mock('./providers/google', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./providers/google')>();
@@ -53,6 +69,16 @@ describe('local runtime cloud escalation boundary', () => {
   beforeEach(() => {
     window.localStorage.clear();
     googleRun.mockReset();
+    detect.mockReset();
+    detect.mockResolvedValue({ status: 'available', version: 'test' });
+    probeAuth.mockReset();
+    probeAuth.mockResolvedValue({ status: 'authenticated' });
+    persistentSend.mockReset();
+    persistentSend.mockImplementation(() =>
+      (async function* () {
+        throw new Error('local inference failed');
+      })(),
+    );
     ollamaRun.mockReset();
     ollamaRun.mockRejectedValue(new Error('local inference failed'));
     useAuthStore.setState({
@@ -82,6 +108,13 @@ describe('local runtime cloud escalation boundary', () => {
         data: { messageChars: 15, contextChars: 0, categories: ['prompt'] },
       },
     } satisfies Partial<LocalCloudEscalationRequiredError>);
+    expect(persistentSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: 'ollama/qwen3.5:4b',
+        connection: expect.objectContaining({ adapterId: 'opencode-cli' }),
+      }),
+    );
+    expect(ollamaRun).not.toHaveBeenCalled();
     expect(googleRun).not.toHaveBeenCalled();
   });
 

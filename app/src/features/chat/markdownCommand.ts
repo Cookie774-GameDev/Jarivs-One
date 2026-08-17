@@ -107,3 +107,12 @@ export function buildMarkdownCreationInstruction(input: {
 export function isMarkdownDocumentKind(value: string): value is MarkdownDocumentKind {
   return MARKDOWN_DOCUMENT_OPTIONS.some((option) => option.id === value);
 }
+
+export function parseMarkdownSlashArgument(
+  value: string,
+): { kind: MarkdownDocumentKind; brief: string } | undefined {
+  const [kindRaw = '', ...briefParts] = value.trim().split(/\s+/u);
+  const kind = kindRaw.toLowerCase();
+  if (!isMarkdownDocumentKind(kind)) return undefined;
+  return { kind, brief: briefParts.join(' ').trim() };
+}

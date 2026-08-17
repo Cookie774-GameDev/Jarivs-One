@@ -78,14 +78,14 @@ describe('AgentManager Jarvis creator integration', () => {
     render(<AgentManager />);
     fireEvent.click(screen.getByRole('button', { name: /New agent/i }));
 
-    await waitFor(() =>
-      expect(Object.values(useAgentStore.getState().agents)).toHaveLength(2),
-    );
+    await waitFor(() => {
+      expect(Object.values(useAgentStore.getState().agents)).toHaveLength(2);
+      expect(screen.getByLabelText('Name')).toHaveProperty('value', 'New Agent');
+    });
     const created = Object.values(useAgentStore.getState().agents).find(
       (agent) => agent.id !== baseAgent.id,
     );
     expect(created?.name).toBe('New Agent');
-    expect(screen.getByLabelText('Name')).toHaveProperty('value', 'New Agent');
   });
 
   it('opens the Inspector Jarvis creator from the agent editor', () => {
@@ -118,9 +118,17 @@ describe('AgentManager Jarvis creator integration', () => {
       window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: draft }));
     });
 
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Launch Planner'));
-    expect(screen.getByLabelText('Description')).toHaveProperty('value', 'Plans launches in tight phases.');
-    expect(screen.getByLabelText('System prompt')).toHaveProperty('value', 'You are a sharp launch planning specialist.');
+    await waitFor(() =>
+      expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Launch Planner'),
+    );
+    expect(screen.getByLabelText('Description')).toHaveProperty(
+      'value',
+      'Plans launches in tight phases.',
+    );
+    expect(screen.getByLabelText('System prompt')).toHaveProperty(
+      'value',
+      'You are a sharp launch planning specialist.',
+    );
     expect(screen.getByLabelText(/Temperature/i)).toHaveProperty('value', '1.15');
     expect(screen.getByRole('button', { name: /Save/i })).toHaveProperty('disabled', false);
   });

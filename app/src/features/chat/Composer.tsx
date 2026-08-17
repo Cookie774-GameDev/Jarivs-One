@@ -38,6 +38,7 @@ import {
 } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import { requestsReadOnlyContextTool } from '@/lib/jarvis/contextToolIntent';
 import { parseJarvisModelSwitchIntent } from '@/lib/jarvis/modelSwitchDecision';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -58,13 +59,14 @@ import { createDeepgramDictationSession } from '@/features/global-dictation/deep
 import { MicWaveform } from './MicWaveform';
 import { formatComposerVoiceFailure } from './composerVoiceFailures';
 import { formatComposerSendFailure } from './composerSendFailures';
+import { HarnessReadinessGate, useHarnessRuntimeState } from './HarnessReadinessGate';
 
 export function getThemeCommandHelp(): string {
   return `Chat console themes: ${CONSOLE_PROFILES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`;
 }
 
 export function getAppearanceCommandHelp(): string {
-  return `Available appearances: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /themes or /appearance to choose.`;
+  return `Available appearances: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /appearance to choose.`;
 }
 import {
   cleanupAudioRecorder,
@@ -174,8 +176,18 @@ import { InputToken, TokenList } from './InputToken';
 import {
   extractInlineUtilitySlashCommands,
   getInlineSlashContext,
+  isSafeAbsoluteAttachmentPath,
   listProjectFileOptions,
 } from './slashProjectFiles';
+import { buildVibeSpaceReferenceRequest, classifySlashCommand } from './slashCommandRouting';
+import {
+  formatRlmStatus,
+  markRlmIndexRefreshed,
+  parseRlmSlashArgument,
+  resolveRlmEnabled,
+  RLM_SLASH_OPTIONS,
+  setChatRlmEnabled,
+} from '@/features/context/rlmPreferenceStore';
 import {
   clearRedoStack,
   NOTHING_TO_REDO_TEXT,
@@ -207,6 +219,7 @@ import {
   MARKDOWN_DOCUMENT_OPTIONS,
   buildMarkdownCreationInstruction,
   isMarkdownDocumentKind,
+  parseMarkdownSlashArgument,
 } from './markdownCommand';
 import {
   cleanupExpiredOversizedMessageAttachments,
@@ -263,12 +276,17 @@ import {
 } from '@/lib/ai/modelSelection';
 import type { ReasoningMode, ReasoningSelection } from '@/lib/ai/reasoningControls';
 import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
-import {
-  cycleInteractionMode,
-  parsePermissionModeArg,
-  PERMISSION_MODE_OPTIONS,
-} from '@/features/jarvis-interaction/modes';
+import { cycleInteractionMode, PERMISSION_MODE_OPTIONS } from '@/features/jarvis-interaction/modes';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
+import {
+  formatPermissionPolicy,
+  parsePermissionSlashArg,
+  PERMISSION_ACCESS_OPTIONS,
+  PERMISSION_APPROVE_OPTIONS,
+  readPermissionAccess,
+  setApproveAllForRun,
+  setPermissionAccess,
+} from '@/features/jarvis-interaction/permissionAccessStore';
 import type { JarvisInteractionMode } from '@/features/jarvis-interaction/types';
 import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
 import { shouldCancelForLiveModeRestriction } from './modeTransitionSafety';
@@ -480,6 +498,7 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   mistral: 'Mistral',
   together: 'Together',
   qwen: 'Qwen / Alibaba Cloud',
+  zai: 'Z.AI / GLM',
   ollama: 'Ollama (local)',
   cohere: 'Cohere',
   perplexity: 'Perplexity',
@@ -613,6 +632,38 @@ const WINDOWS_FILE_PATH_RE =
 
 export function extractAbsoluteFilePaths(text: string): string[] {
   return Array.from(new Set(text.match(WINDOWS_FILE_PATH_RE) ?? [])).slice(0, 8);
+}
+
+export function connectionSupportsFileAttachments(selection: {
+  mode?: string;
+  connectionId?: string;
+  capabilities?: { files?: boolean };
+}): boolean {
+  if (selection.mode === 'single' && selection.connectionId) {
+    try {
+      const connection = getProviderConnectionDescriptor(selection.connectionId);
+      if (connection.capabilities?.files === true) return true;
+      if (connection.capabilities?.files === false) return false;
+    } catch {
+      // Fall through to the selection's own capability snapshot.
+    }
+  }
+  return selection.capabilities?.files === true;
+}
+
+export function resolveSendFilePaths(input: {
+  attachedFiles: readonly string[];
+  sendText: string;
+  oversizedPath?: string;
+  supportsFiles: boolean;
+}): string[] {
+  return Array.from(
+    new Set([
+      ...(input.oversizedPath ? [input.oversizedPath] : []),
+      ...input.attachedFiles,
+      ...(input.supportsFiles ? extractAbsoluteFilePaths(input.sendText) : []),
+    ]),
+  ).slice(0, 8);
 }
 
 export function getQueuedMessageNotice(
@@ -758,6 +809,7 @@ export function Composer({
   const [selectedSlashCmd, setSelectedSlashCmd] = useState<string>('');
   const [optionPickerCtx, setOptionPickerCtx] = useState<OptionPickerContext | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string>('');
+  const [permissionPickerStep, setPermissionPickerStep] = useState<'mode' | 'access'>('mode');
   const interactionMode = useJarvisInteractionStore((s) => s.modeForChat(chatId));
   const setInteractionMode = useJarvisInteractionStore((s) => s.setChatMode);
   const [reasoningPreference, setReasoningPreference] = useState(() =>
@@ -769,6 +821,8 @@ export function Composer({
   const [confirmedCommands, setConfirmedCommands] = useState<ConfirmedCommand[]>([]);
   const [confirmedAgentMentions, setConfirmedAgentMentions] = useState<ConfirmedAgentMention[]>([]);
   const [sending, setSending] = useState(false);
+  const harnessRuntimeState = useHarnessRuntimeState();
+  const harnessBlocked = harnessRuntimeState.kind !== 'ready';
   const [jarvisRunning, setJarvisRunning] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
   const escapeCancelRef = useRef<EscapeCancelState>(createEscapeCancelState());
@@ -1223,6 +1277,22 @@ export function Composer({
       return projectFileOptions;
     }
 
+    if (cmd === 'rlm') {
+      const resolved = resolveRlmEnabled({
+        chatId: String(chatId),
+        workspaceId: workspaceId ?? undefined,
+      });
+      return RLM_SLASH_OPTIONS.map((option) => ({
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        metadata:
+          (option.id === 'on' && resolved.enabled) || (option.id === 'off' && !resolved.enabled)
+            ? 'active'
+            : undefined,
+      }));
+    }
+
     if ((cmd === 'effort' || cmd === 'mode') && reasoningPickerState) {
       return reasoningPickerState.options.map((option) => ({
         ...option,
@@ -1231,12 +1301,48 @@ export function Composer({
     }
 
     if (normalizeSlashCmd(cmd) === 'permissions') {
-      return PERMISSION_MODE_OPTIONS.map((option) => ({
-        id: option.id,
-        label: option.title,
-        description: option.description,
-        metadata: option.id === interactionMode ? 'active' : undefined,
-      }));
+      const accessState = readPermissionAccess(String(chatId));
+      if (permissionPickerStep === 'mode') {
+        return PERMISSION_MODE_OPTIONS.map((option) => ({
+          id: option.id,
+          label: option.title,
+          description: option.description,
+          metadata: option.id === interactionMode ? 'active' : undefined,
+        }));
+      }
+      return [
+        ...PERMISSION_ACCESS_OPTIONS.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description,
+          metadata: option.id === accessState.access ? 'active' : undefined,
+        })),
+        ...PERMISSION_APPROVE_OPTIONS.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description,
+          metadata:
+            option.id === 'approve-all' && accessState.approveAll
+              ? 'active'
+              : option.id === 'approve-all-off' && !accessState.approveAll
+                ? 'active'
+                : undefined,
+        })),
+        {
+          id: 'status',
+          label: 'Effective policy',
+          description: formatPermissionPolicy({
+            mode: interactionMode,
+            access: accessState.access,
+            approveAll: accessState.approveAll,
+          }),
+        },
+        {
+          id: 'done',
+          label: 'Done',
+          description: 'Close the permissions control',
+        },
+      ];
     }
 
     return [];
@@ -1249,6 +1355,9 @@ export function Composer({
     projectFileOptions,
     interactionMode,
     reasoningPickerState,
+    chatId,
+    workspaceId,
+    permissionPickerStep,
   ]);
 
   // Load project files when /file picker opens
@@ -1549,6 +1658,8 @@ export function Composer({
         canonicalCmd === 'chat' ||
         cmd.cmd === 'effort' ||
         cmd.cmd === 'mode' ||
+        cmd.cmd === 'rlm' ||
+        cmd.cmd === 'permissions' ||
         canonicalCmd === 'md' ||
         cmd.cmd === 'theme' ||
         isGlobalThemePickerCommand(cmd.cmd))
@@ -1562,13 +1673,20 @@ export function Composer({
             ? loadConsolePreferences().profile
             : canonicalCmd === 'chat'
               ? storedChatEngine(String(chatId))
-              : cmd.cmd === 'effort' || cmd.cmd === 'mode'
-                ? (buildReasoningSlashPickerState({
-                    command: cmd.cmd,
-                    selection: reasoningSelectionFromChatModel(chatModelSelection),
-                    preference: reasoningPreference,
-                  }).selectedId ?? '')
-                : '',
+              : cmd.cmd === 'rlm'
+                ? resolveRlmEnabled({
+                    chatId: String(chatId),
+                    workspaceId: workspaceId ?? undefined,
+                  }).enabled
+                  ? 'on'
+                  : 'off'
+                : cmd.cmd === 'effort' || cmd.cmd === 'mode'
+                  ? (buildReasoningSlashPickerState({
+                      command: cmd.cmd,
+                      selection: reasoningSelectionFromChatModel(chatModelSelection),
+                      preference: reasoningPreference,
+                    }).selectedId ?? '')
+                  : '',
       );
       setOptionPickerCtx({ cmd, query: '' });
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -1632,6 +1750,7 @@ export function Composer({
         if (result.status === 'failed') {
           toast.error('Could not switch chat mode', 'The current chat was left unchanged.');
         } else {
+          useUIStore.getState().setActiveChat(result.chatId);
           useUIStore.getState().setRoute('chat');
         }
       });
@@ -1687,6 +1806,61 @@ export function Composer({
       return;
     }
 
+    if (canonical === 'rlm') {
+      const action = parseRlmSlashArgument(option.id);
+      if (action === 'on' || action === 'off') {
+        const resolved = setChatRlmEnabled(String(chatId), action === 'on');
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [{ kind: 'text', text: formatRlmStatus(resolved, { projectId, workspaceId }) }],
+        });
+      } else if (action === 'status') {
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [
+            {
+              kind: 'text',
+              text: formatRlmStatus(
+                resolveRlmEnabled({
+                  chatId: String(chatId),
+                  workspaceId: workspaceId ?? undefined,
+                }),
+                { projectId, workspaceId },
+              ),
+            },
+          ],
+        });
+      } else if (action === 'refresh') {
+        markRlmIndexRefreshed();
+        window.dispatchEvent(new CustomEvent('jarvis:context-tree-updated'));
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [
+            {
+              kind: 'text',
+              text: formatRlmStatus(
+                resolveRlmEnabled({
+                  chatId: String(chatId),
+                  workspaceId: workspaceId ?? undefined,
+                }),
+                { projectId, workspaceId },
+              ),
+            },
+          ],
+        });
+      } else if (action === 'trace') {
+        useUIStore.getState().setRoute('context');
+      }
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      setText('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
     if (canonical === 'md' && isMarkdownDocumentKind(option.id)) {
       setConfirmedCommands((current) => [
         ...current.filter((command) => command.cmd !== 'md'),
@@ -1700,15 +1874,47 @@ export function Composer({
 
     // /permissions picker: set Agent / Plan / Ask mode only — never attach a chip.
     if (canonical === 'permissions') {
-      const nextMode = parsePermissionModeArg(option.id) ?? (option.id as 'ask' | 'plan' | 'agent');
-      if (nextMode === 'ask' || nextMode === 'plan' || nextMode === 'agent') {
-        applyInteractionMode(nextMode);
-        // Drop any stale permissions chip from older builds.
-        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
-        // Quiet: mode chip already shows the active mode — no toast spam.
+      const parsed = parsePermissionSlashArg(option.id);
+      if (parsed?.kind === 'mode') {
+        applyInteractionMode(parsed.value);
+        setPermissionPickerStep('access');
+        setSelectedOptionId(readPermissionAccess(String(chatId)).access);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
       }
+      if (parsed?.kind === 'access') {
+        setPermissionAccess(String(chatId), parsed.value);
+        setSelectedOptionId(parsed.value);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      if (parsed?.kind === 'approve-all') {
+        setApproveAllForRun(String(chatId), parsed.value);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      if (parsed?.kind === 'status') {
+        const accessState = readPermissionAccess(String(chatId));
+        void messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'system',
+          parts: [
+            {
+              kind: 'text',
+              text: formatPermissionPolicy({
+                mode: interactionMode,
+                access: accessState.access,
+                approveAll: accessState.approveAll,
+              }),
+            },
+          ],
+        });
+      }
+      setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+      setPermissionPickerStep('mode');
       setOptionPickerCtx(null);
       setSelectedOptionId('');
+      setText('');
       requestAnimationFrame(() => textareaRef.current?.focus());
       return;
     }
@@ -1812,7 +2018,8 @@ export function Composer({
   const handleSlashCommand = async (trimmed: string): Promise<boolean | string> => {
     if (!trimmed.startsWith('/')) return false;
     const [cmdRaw, ...restParts] = trimmed.slice(1).split(/\s+/);
-    const cmd = normalizeSlashCmd(cmdRaw ?? '');
+    const classification = classifySlashCommand(cmdRaw ?? '');
+    const cmd = classification?.command ?? normalizeSlashCmd(cmdRaw ?? '');
     const rest = restParts.join(' ').trim();
     const addSystem = async (msg: string) => {
       await messageRepo.create({
@@ -1822,6 +2029,10 @@ export function Composer({
       });
       setText('');
     };
+    if (!classification) {
+      await addSystem(`Unknown slash command: /${cmd}. Try /help.`);
+      return true;
+    }
     const openAttachPicker = (canonicalCmd: string) => {
       const def = findSlashCommandDef(canonicalCmd);
       if (!def) return false;
@@ -1855,12 +2066,21 @@ export function Composer({
         return true;
       }
       const result = applyChatRuntimeCommand(runtimePolicy.settings, parsed);
-      const next = writeChatRuntimePolicyState(String(chatId), { ...runtimePolicy, settings: result.settings });
+      const next = writeChatRuntimePolicyState(String(chatId), {
+        ...runtimePolicy,
+        settings: result.settings,
+      });
       setRuntimePolicy(next);
       if (result.kind === 'action') {
-        await addSystem(result.action === 'refresh-rlm' ? 'RLM refresh requested for the next turn.' : 'RLM trace is available in the Context diagnostics surface.');
+        await addSystem(
+          result.action === 'refresh-rlm'
+            ? 'RLM refresh requested for the next turn.'
+            : 'RLM trace is available in the Context diagnostics surface.',
+        );
       } else if (result.kind === 'picker') {
-        await addSystem(`Use /${cmd} ${cmd === 'fast' ? 'on | off | status' : cmd === 'performance' ? 'responsive | balanced | quality | status' : 'on | off | status | refresh | trace'}.`);
+        await addSystem(
+          `Use /${cmd} ${cmd === 'fast' ? 'on | off | status' : cmd === 'performance' ? 'responsive | balanced | quality | status' : 'on | off | status | refresh | trace'}.`,
+        );
       } else {
         await addSystem(result.message);
       }
@@ -1872,13 +2092,14 @@ export function Composer({
         await addSystem(`Access: ${runtimePolicy.access}`);
         return true;
       }
-      const access = value === 'read' || value === 'readonly' || value === 'read-only'
-        ? 'read-only'
-        : value === 'write' || value === 'write-access'
-          ? 'write'
-          : value === 'full' || value === 'full-access'
-            ? 'full'
-            : null;
+      const access =
+        value === 'read' || value === 'readonly' || value === 'read-only'
+          ? 'read-only'
+          : value === 'write' || value === 'write-access'
+            ? 'write'
+            : value === 'full' || value === 'full-access'
+              ? 'full'
+              : null;
       if (!access) {
         await addSystem('Use /access read-only | write | full | status.');
         return true;
@@ -1891,7 +2112,9 @@ export function Composer({
     if (cmd === 'approveall' || cmd === 'approve-all') {
       const value = rest.toLowerCase();
       if (!value || value === 'status') {
-        await addSystem(`Approve All for next run: ${runtimePolicy.approveAllForRun ? 'on' : 'off'}`);
+        await addSystem(
+          `Approve All for next run: ${runtimePolicy.approveAllForRun ? 'on' : 'off'}`,
+        );
         return true;
       }
       if (value !== 'on' && value !== 'off') {
@@ -1903,16 +2126,21 @@ export function Composer({
         approveAllForRun: value === 'on',
       });
       setRuntimePolicy(next);
-      await addSystem(value === 'on'
-        ? 'Approve All enabled for the next scoped run only; hard denies remain enforced.'
-        : 'Approve All disabled.');
+      await addSystem(
+        value === 'on'
+          ? 'Approve All enabled for the next scoped run only; hard denies remain enforced.'
+          : 'Approve All disabled.',
+      );
       return true;
     }
     if (cmd === 'effort' && rest) {
       const parsed = parseChatRuntimeCommand(`/effort ${rest}`);
       if (parsed) {
         const result = applyChatRuntimeCommand(runtimePolicy.settings, parsed);
-        const next = writeChatRuntimePolicyState(String(chatId), { ...runtimePolicy, settings: result.settings });
+        const next = writeChatRuntimePolicyState(String(chatId), {
+          ...runtimePolicy,
+          settings: result.settings,
+        });
         setRuntimePolicy(next);
         if (result.kind === 'updated' || result.kind === 'status') await addSystem(result.message);
         if (result.kind === 'updated') {
@@ -1957,15 +2185,44 @@ export function Composer({
       return true;
     }
     if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms') {
-      const parsed = rest ? parsePermissionModeArg(rest) : null;
-      if (parsed) {
-        applyInteractionMode(parsed);
+      const parsed = rest ? parsePermissionSlashArg(rest) : undefined;
+      if (parsed?.kind === 'mode') {
+        applyInteractionMode(parsed.value);
         // Mode change only — do not attach /permissions as a confirmed chip.
         setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
         setText('');
         return true;
       }
-      // Open the permissions option picker (still not an attachment).
+      if (parsed?.kind === 'access') {
+        setPermissionAccess(String(chatId), parsed.value);
+        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+        setText('');
+        return true;
+      }
+      if (parsed?.kind === 'approve-all') {
+        setApproveAllForRun(String(chatId), parsed.value);
+        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+        setText('');
+        return true;
+      }
+      if (parsed?.kind === 'status') {
+        const accessState = readPermissionAccess(String(chatId));
+        await addSystem(
+          formatPermissionPolicy({
+            mode: interactionMode,
+            access: accessState.access,
+            approveAll: accessState.approveAll,
+          }),
+        );
+        return true;
+      }
+      if (rest && !parsed) {
+        await addSystem(
+          'Usage: /permissions agent | plan | ask | read | write | full | approve-all | status',
+        );
+        return true;
+      }
+      setPermissionPickerStep('mode');
       openAttachPicker('permissions');
       return true;
     }
@@ -1982,7 +2239,7 @@ export function Composer({
       return true;
     }
     if (cmd === 'schedule' && rest) {
-      return `/${cmd} ${rest}`;
+      return buildVibeSpaceReferenceRequest('schedule', rest);
     }
     // /agent — live subagent selector (does not spawn; use /multitask or /subagents).
     if (cmd === 'agent') {
@@ -2072,7 +2329,7 @@ export function Composer({
       setText('');
       return true;
     }
-    if (cmd === 'themes' || cmd === 'appearance') {
+    if (cmd === 'appearance') {
       if (!rest) return openAttachPicker(cmd);
       const nextTheme = parseThemeCommandArgument(rest);
       if (!nextTheme) {
@@ -2139,6 +2396,23 @@ export function Composer({
       await addSystem('Switched chat model to Hive — the 5-model balanced ensemble.');
       return true;
     }
+    if (cmd === 'md') {
+      if (!rest) return openAttachPicker('md');
+      const parsed = parseMarkdownSlashArgument(rest);
+      if (!parsed) {
+        await addSystem(
+          `Markdown document types: ${MARKDOWN_DOCUMENT_OPTIONS.map(({ id }) => id).join(', ')}. Use /md <type> <brief>.`,
+        );
+        return true;
+      }
+      const option = MARKDOWN_DOCUMENT_OPTIONS.find(({ id }) => id === parsed.kind);
+      setConfirmedCommands((current) => [
+        ...current.filter((command) => command.cmd !== 'md'),
+        { cmd: 'md', value: parsed.kind, label: `/md: ${option?.label ?? parsed.kind}` },
+      ]);
+      setText('');
+      return parsed.brief || true;
+    }
     const routes: Record<string, string> = {
       kanban: 'kanban',
       canvas: 'canvas',
@@ -2201,7 +2475,32 @@ export function Composer({
       );
       return true;
     }
+    if (cmd === 'plug') {
+      openAttachPicker('plug');
+      return true;
+    }
     if (cmd === 'skills') {
+      if (rest) {
+        const target = rest.toLowerCase();
+        const matched = getAllCatalogSkills().find(
+          (skill) =>
+            skill.id.toLowerCase() === target ||
+            skill.name.toLowerCase() === target ||
+            skill.name.toLowerCase().includes(target),
+        );
+        if (!matched) {
+          await addSystem(`No skill matching '${rest}'. Use /skills to inspect the catalog.`);
+          return true;
+        }
+        setConfirmedCommands((current) => [
+          ...current.filter(
+            (command) => !(command.cmd === 'skills' && command.value === matched.id),
+          ),
+          { cmd: 'skills', value: matched.id, label: `/skills: ${matched.name}` },
+        ]);
+        setText('');
+        return true;
+      }
       const available = getAllCatalogSkills()
         .map((skill) => `- ${skill.name} (${skill.id}) - ${skill.description}`)
         .join('\n');
@@ -2230,7 +2529,11 @@ export function Composer({
       if (openAttachPicker('allaboutme')) return true;
       return true;
     }
-    if (cmd === 'attach' && rest) {
+    if (cmd === 'attach') {
+      if (!rest || !isSafeAbsoluteAttachmentPath(rest)) {
+        await addSystem('Use /attach <absolute path>. Relative paths and traversal are rejected.');
+        return true;
+      }
       setAttachedFiles((cur) => (cur.includes(rest) ? cur : [...cur, rest]).slice(0, 8));
       setText('');
       return true;
@@ -2319,7 +2622,7 @@ export function Composer({
           '/context, /plug, /skills, /file open pickers. /file lists files in your open project. ' +
           '/attach <path>, /clearfiles (or /clearfile) clears attachments. ' +
           '/undo removes the last full turn; /redo restores it. ' +
-          '/usage, /model, /theme, /appearance, /commands, /multitask, /ask, /plan.',
+          '/usage, /model, /rlm, /permissions, /theme, /appearance, /commands, /multitask, /ask, /plan.',
       );
       return true;
     }
@@ -2368,7 +2671,7 @@ export function Composer({
       openAttachPicker('file');
       return true;
     }
-    await addSystem(`Unknown slash command: /${cmd}. Try /help.`);
+    await addSystem(`Command /${cmd} is registered but has no executable VibeSpace route.`);
     return true;
   };
 
@@ -2380,6 +2683,7 @@ export function Composer({
       promptForgeApproved?: boolean;
     } = {},
   ): Promise<boolean> => {
+    if (harnessBlocked) return false;
     const draftText = overrideText ?? text;
     const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
@@ -2435,6 +2739,7 @@ export function Composer({
       !overrideText &&
       !options.promptForgeApproved &&
       !promptForge.isDraftApproved(rawSendText) &&
+      !requestsReadOnlyContextTool(rawSendText) &&
       rawSendText.trim().length > 0 &&
       promptForgeUpgradeForSendRef.current
     ) {
@@ -2750,13 +3055,12 @@ export function Composer({
         0,
         8,
       );
-      const messageFilePaths = Array.from(
-        new Set([
-          ...(oversizedAttachment ? [oversizedAttachment.path] : []),
-          ...nextAttachedFiles,
-          ...extractAbsoluteFilePaths(sendText),
-        ]),
-      ).slice(0, 8);
+      const messageFilePaths = resolveSendFilePaths({
+        attachedFiles: nextAttachedFiles,
+        sendText,
+        ...(oversizedAttachment ? { oversizedPath: oversizedAttachment.path } : {}),
+        supportsFiles: connectionSupportsFileAttachments(auth.chatModelSelection),
+      });
       activeCancellationKeyRef.current = String(userMessage.id);
       const tokenOptimizationPreferences = browserTokenOptimizationPreferences.getSnapshot();
       const tokenOptimizationMode = browserTokenOptimizationPreferences.resolveMode(String(chatId));
@@ -3055,6 +3359,14 @@ export function Composer({
           return;
         }
       }
+    }
+
+    // Match the advertised Mod+Enter shortcut without changing the bare
+    // Enter queue contract. Running turns keep their existing queue controls.
+    if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey) && !jarvisRunning) {
+      e.preventDefault();
+      void handleSend(undefined, { flushMode: 'after-run' });
+      return;
     }
 
     // Bare Tab while running: queue until the full reply finishes.
@@ -3540,7 +3852,8 @@ export function Composer({
       attachedContexts.length > 0 ||
       confirmedCommands.length > 0 ||
       confirmedAgentMentions.length > 0) &&
-    !sending;
+    !sending &&
+    !harnessBlocked;
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
   const kernelSmokeHivePrepared =
     kernelSmokeHiveBound &&
@@ -4402,6 +4715,7 @@ export function Composer({
         />
       )}
       <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
+        <HarnessReadinessGate />
         {promptForge.recoverableJob ? (
           <PromptForgeRecovery
             job={promptForge.recoverableJob}
@@ -4506,6 +4820,7 @@ export function Composer({
               <textarea
                 ref={textareaRef}
                 value={text}
+                disabled={harnessBlocked}
                 rows={1}
                 onChange={(e) => {
                   const nextDraft = e.target.value;
@@ -4731,6 +5046,7 @@ export function Composer({
                   ) : null}
                   <ModeIndicator
                     mode={interactionMode}
+                    chatId={String(chatId)}
                     compact={compact}
                     onSelectMode={(nextMode) => {
                       applyInteractionMode(nextMode);
@@ -4868,7 +5184,7 @@ export function Composer({
             {themePickerActive && optionPickerCtx !== null ? (
               <ThemeSlashPicker
                 ref={themePickerRef}
-                commandLabel={optionPickerCtx.cmd.cmd as 'themes' | 'appearance'}
+                commandLabel={optionPickerCtx.cmd.cmd as 'appearance'}
                 initialTheme={useUIStore.getState().theme}
                 onCommit={(theme) => {
                   useUIStore.getState().setTheme(theme);

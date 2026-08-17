@@ -2,19 +2,23 @@ import * as React from 'react';
 import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
-import { useBrowserChatStore } from './browserChatStore';
+import { resolveChatEngine, useBrowserChatStore } from './browserChatStore';
 import type { BrowserChatProviderDefinition } from './providerRegistry';
 import {
   browserChatSurface,
   type ProviderSurfaceController,
   type ProviderSurfaceBounds,
+  type ProviderSurfaceNavigation,
 } from './providerSurface';
+import type { BrowserChatAccountProfileKey } from './providerProfileScope';
 
 interface BrowserProviderSurfaceProps {
   readonly provider: BrowserChatProviderDefinition;
+  readonly accountProfileKey: BrowserChatAccountProfileKey;
+  readonly navigationUrl?: string;
   readonly runtime?: ProviderSurfaceController;
+  readonly onNavigation?: (navigation: ProviderSurfaceNavigation) => void;
 }
 
 const GEOMETRY_EPSILON = 0.5;
@@ -45,22 +49,21 @@ function geometryAncestors(host: HTMLElement): Element[] {
 
 export function BrowserProviderSurface({
   provider,
+  accountProfileKey,
+  navigationUrl,
   runtime = browserChatSurface,
+  onNavigation,
 }: BrowserProviderSurfaceProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const hiddenRef = React.useRef(false);
   const [error, setError] = React.useState<string | null>(null);
   const route = useUIStore((state) => state.route);
   const activeChatId = useUIStore((state) => state.activeChatId);
-  const engine = useBrowserChatStore(
-    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
-  );
-  const providerProfileKey = useAuthStore((state) => {
-    const accountId = state.cloudSession?.user_id ?? state.localUserId ?? 'local-unassigned';
-    return `vibespace-account:${accountId}`;
-  });
-  const surfaceVisible = route === 'chat' && engine === 'browser';
+  const engine = useBrowserChatStore((state) => resolveChatEngine(state, activeChatId));
+  const surfaceVisible = Boolean(activeChatId) && route === 'chat' && engine === 'browser';
   const setProviderRuntime = useBrowserChatStore((state) => state.setProviderRuntime);
+  const onNavigationRef = React.useRef(onNavigation);
+  onNavigationRef.current = onNavigation;
 
   const requestHide = React.useCallback(
     async (force = false) => {
@@ -70,6 +73,35 @@ export function BrowserProviderSurface({
     },
     [runtime],
   );
+
+  React.useEffect(() => {
+    if (!runtime.subscribeNavigation) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void runtime
+      .subscribeNavigation((navigation) => {
+        if (
+          disposed ||
+          navigation.providerId !== provider.id ||
+          navigation.accountProfileKey !== accountProfileKey
+        ) {
+          return;
+        }
+        setProviderRuntime(provider.id, {
+          pageStatus: 'ready',
+          toolBridgeStatus: provider.toolBridgeStatus,
+        });
+        onNavigationRef.current?.(navigation);
+      })
+      .then((nextUnsubscribe) => {
+        if (disposed) nextUnsubscribe();
+        else unsubscribe = nextUnsubscribe;
+      });
+    return () => {
+      disposed = true;
+      unsubscribe?.();
+    };
+  }, [accountProfileKey, provider.id, provider.toolBridgeStatus, runtime, setProviderRuntime]);
 
   React.useLayoutEffect(() => {
     if (!surfaceVisible) {
@@ -114,7 +146,12 @@ export function BrowserProviderSurface({
           const bounds = nextBounds;
           queuedBounds = null;
           try {
-            const result = await runtime.openManaged(provider, bounds, providerProfileKey);
+            const result = await runtime.openManaged(
+              provider,
+              bounds,
+              navigationUrl,
+              accountProfileKey,
+            );
             if (disposed || !hostVisible) {
               await requestHide(true);
               break;
@@ -269,7 +306,15 @@ export function BrowserProviderSurface({
       unsubscribeHostGeometry?.();
       void requestHide();
     };
-  }, [provider, providerProfileKey, requestHide, runtime, setProviderRuntime, surfaceVisible]);
+  }, [
+    accountProfileKey,
+    navigationUrl,
+    provider,
+    requestHide,
+    runtime,
+    setProviderRuntime,
+    surfaceVisible,
+  ]);
 
   return (
     <div

@@ -55,6 +55,7 @@ mod credentials;
 mod dictation;
 mod faster_whisper;
 mod fsread;
+mod harness;
 mod jarvis_voice;
 mod kernel_host;
 mod launcher;
@@ -374,6 +375,10 @@ fn run_ordinary(
                 })
                 .build(),
         )
+        .manage(harness::runtime::OpenCodeRuntimeState::default())
+        .manage(harness::download::OpenCodeDownloadState::default())
+        .manage(harness::server::OpenCodeServerState::default())
+        .manage(harness::tool_gateway::ToolGatewayState::default())
         .manage(cli_bridge::CliBridgeState::default())
         .manage(kernel_host::KernelHostState::default())
         .manage(terminal::TerminalState::default())
@@ -390,6 +395,12 @@ fn run_ordinary(
                 &app.state::<terminal_cli::TerminalCliState>(),
             ) {
                 eprintln!("[terminal-cli] startup failed: {err}");
+            }
+            if let Err(err) = harness::tool_gateway::start_tool_gateway_server(
+                &app.handle(),
+                &app.state::<harness::tool_gateway::ToolGatewayState>(),
+            ) {
+                eprintln!("[tool-gateway] startup failed: {err}");
             }
             // Restore pet window geometry from disk.
             {
@@ -482,9 +493,15 @@ fn run_ordinary(
         })
         .on_window_event(|window, event| {
             match event {
-                tauri::WindowEvent::Focused(true)
+                tauri::WindowEvent::Moved(_)
                 | tauri::WindowEvent::Resized(_)
                 | tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                    if window.label() == "main" {
+                        branding::apply_app_branding(&window.app_handle());
+                        pets::schedule_visible_overlay_reconstrain(window.app_handle().clone());
+                    }
+                }
+                tauri::WindowEvent::Focused(true) => {
                     if window.label() == "main" {
                         branding::apply_app_branding(&window.app_handle());
                     }
@@ -530,9 +547,17 @@ fn run_ordinary(
             kernel_host::kernel_host_respond,
             kernel_host::release_kernel_host,
             cli_bridge::cli_bridge_scan,
+            cli_bridge::cli_bridge_codex_account_snapshot,
             cli_bridge::cli_bridge_probe,
             cli_bridge::cli_bridge_start,
             cli_bridge::cli_bridge_cancel,
+            harness::runtime::opencode_runtime_detect,
+            harness::download::opencode_runtime_install,
+            harness::download::opencode_runtime_install_cancel,
+            harness::server::opencode_server_ensure,
+            harness::server::opencode_server_status,
+            harness::server::opencode_server_stop,
+            harness::tool_gateway::tool_gateway_respond,
             command_center_tool::command_center_tool,
             context_search::context_search_replace_documents,
             context_search::context_search_delete_documents,
@@ -540,6 +565,10 @@ fn run_ordinary(
             context_search::context_search_status,
             context_search::context_search_acknowledge_rebuild,
             fsread::fs_create_dir_all,
+            fsread::fs_create_dir_all_strict,
+            fsread::fs_stat_path,
+            fsread::fs_copy_file,
+            fsread::fs_move_file_with_receipt,
             pets::pet_show_overlay,
             pets::pet_hide_overlay,
             pets::pet_is_overlay_visible,
@@ -556,6 +585,7 @@ fn run_ordinary(
             pets::pet_validate_action,
             fsread::fs_create_text_file,
             fsread::fs_create_text_with_content,
+            fsread::fs_compare_and_swap_text,
             fsread::fs_list_dir,
             fsread::fs_rename_file,
             fsread::fs_delete_file,
@@ -648,6 +678,8 @@ fn run_ordinary(
             jarvis_voice::jarvis_voice_stop,
             ollama_http::ollama_ping,
             ollama_http::ollama_list_models,
+            ollama_http::ollama_show_model,
+            ollama_http::ollama_probe_tools,
             ollama_http::ollama_pull_model,
             ollama_http::ollama_chat,
             ollama_http::ollama_chat_stream,
@@ -679,6 +711,7 @@ fn run_ordinary(
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                harness::server::shutdown_owned_server(app_handle);
                 kernel_host::release_on_process_exit(app_handle);
                 return;
             }
@@ -751,9 +784,17 @@ kernel_host::kernel_client_request
 kernel_host::kernel_host_respond
 kernel_host::release_kernel_host
 cli_bridge::cli_bridge_scan
+cli_bridge::cli_bridge_codex_account_snapshot
 cli_bridge::cli_bridge_probe
 cli_bridge::cli_bridge_start
 cli_bridge::cli_bridge_cancel
+harness::runtime::opencode_runtime_detect
+harness::download::opencode_runtime_install
+harness::download::opencode_runtime_install_cancel
+harness::server::opencode_server_ensure
+harness::server::opencode_server_status
+harness::server::opencode_server_stop
+harness::tool_gateway::tool_gateway_respond
 command_center_tool::command_center_tool
 context_search::context_search_replace_documents
 context_search::context_search_delete_documents
@@ -761,6 +802,10 @@ context_search::context_search_query
 context_search::context_search_status
 context_search::context_search_acknowledge_rebuild
 fsread::fs_create_dir_all
+fsread::fs_create_dir_all_strict
+fsread::fs_stat_path
+fsread::fs_copy_file
+fsread::fs_move_file_with_receipt
 pets::pet_show_overlay
 pets::pet_hide_overlay
 pets::pet_is_overlay_visible
@@ -777,6 +822,7 @@ pets::pet_save_panel_geometry
 pets::pet_validate_action
 fsread::fs_create_text_file
 fsread::fs_create_text_with_content
+fsread::fs_compare_and_swap_text
 fsread::fs_list_dir
 fsread::fs_rename_file
 fsread::fs_delete_file
@@ -867,6 +913,8 @@ jarvis_voice::jarvis_voice_speak
 jarvis_voice::jarvis_voice_stop
 ollama_http::ollama_ping
 ollama_http::ollama_list_models
+ollama_http::ollama_show_model
+ollama_http::ollama_probe_tools
 ollama_http::ollama_pull_model
 ollama_http::ollama_chat
 ollama_http::ollama_chat_stream
@@ -893,9 +941,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "f0b7c9d64d090afb8859f0b9f112e4f4c79c0a14548845508cf8ab8a237be917";
+        "10262965f3127339d3a0e65227a8da11d9be7a251166a80866ae58a28722bcb9";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "029a2bfe14ff50d95f71daeccb66dcf65dfc4ff4a92940359e0b287fe4c9102b";
+        "8fbc903772558bd28c5aeefac05fc46ee84415c60fb561a7a3be184e60224f20";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1020,6 +1068,35 @@ wallpaper_master::wallpaper_full_cache_path";
                 initializes_denied_effect_registry: true,
             }
         );
+    }
+
+    #[test]
+    fn opencode_runtime_commands_are_registered_only_on_the_ordinary_builder() {
+        let source = include_str!("lib.rs");
+        let visual_test =
+            function_source(source, "fn run_monochrome_visual_test(", "fn run_ordinary(");
+        let ordinary = function_source(source, "fn run_ordinary(", "#[cfg(test)]");
+
+        assert!(!visual_test.contains("OpenCodeRuntimeState"));
+        assert!(!visual_test.contains("OpenCodeDownloadState"));
+        assert!(!visual_test.contains("OpenCodeServerState"));
+        assert!(!visual_test.contains("ToolGatewayState"));
+        assert!(!visual_test.contains("opencode_runtime_detect"));
+        assert!(!visual_test.contains("opencode_runtime_install"));
+        assert!(!visual_test.contains("opencode_server_ensure"));
+        assert!(ordinary.contains(".manage(harness::runtime::OpenCodeRuntimeState::default())"));
+        assert!(ordinary.contains(".manage(harness::download::OpenCodeDownloadState::default())"));
+        assert!(ordinary.contains(".manage(harness::server::OpenCodeServerState::default())"));
+        assert!(ordinary.contains(".manage(harness::tool_gateway::ToolGatewayState::default())"));
+        assert!(ordinary.contains("harness::runtime::opencode_runtime_detect,"));
+        assert!(ordinary.contains("harness::download::opencode_runtime_install,"));
+        assert!(ordinary.contains("harness::download::opencode_runtime_install_cancel,"));
+        assert!(ordinary.contains("harness::server::opencode_server_ensure,"));
+        assert!(ordinary.contains("harness::server::opencode_server_status,"));
+        assert!(ordinary.contains("harness::server::opencode_server_stop,"));
+        assert!(ordinary.contains("harness::tool_gateway::tool_gateway_respond,"));
+        assert!(ordinary.contains("harness::tool_gateway::start_tool_gateway_server("));
+        assert!(ordinary.contains("harness::server::shutdown_owned_server(app_handle);"));
     }
 
     #[test]

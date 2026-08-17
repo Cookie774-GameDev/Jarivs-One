@@ -1,7 +1,6 @@
 import {
   getReasoningCapabilities,
   normalizeReasoningPreference,
-  resolveReasoningPolicy,
   type ReasoningEffort,
   type ReasoningMode,
   type ReasoningPreference,
@@ -201,7 +200,24 @@ export function buildReasoningSlashPickerState({
       error: 'The selected model does not expose an adjustable reasoning effort.',
     };
   }
-  const resolved = resolveReasoningPolicy({ selection, preference });
+  const effortOrder: readonly ReasoningEffort[] = [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'ultra',
+  ];
+  const selectedEffort = preference.effortOverride
+    ? capabilities.supportedEfforts.includes(preference.effortOverride)
+      ? preference.effortOverride
+      : [...capabilities.supportedEfforts].sort(
+          (left, right) =>
+            Math.abs(effortOrder.indexOf(left) - effortOrder.indexOf(preference.effortOverride!)) -
+              Math.abs(
+                effortOrder.indexOf(right) - effortOrder.indexOf(preference.effortOverride!),
+              ) || effortOrder.indexOf(left) - effortOrder.indexOf(right),
+        )[0]
+    : null;
   return {
     options: [
       {
@@ -215,6 +231,6 @@ export function buildReasoningSlashPickerState({
         description: `${effort[0]!.toUpperCase() + effort.slice(1)} reasoning effort.`,
       })),
     ],
-    selectedId: preference.effortOverride === null ? 'auto' : (resolved.resolvedEffort ?? 'auto'),
+    selectedId: preference.effortOverride === null ? 'auto' : (selectedEffort ?? 'auto'),
   };
 }

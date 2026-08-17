@@ -14,6 +14,17 @@ describe('Composer queue keyboard contract', () => {
     expect(source).toContain("void handleSend(undefined, { flushMode: 'after-run' })");
   });
 
+  it('wires the advertised Ctrl/Meta+Enter shortcut to one idle send', () => {
+    expect(source).toContain(
+      "e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey) && !jarvisRunning",
+    );
+    expect(source).toContain("void handleSend(undefined, { flushMode: 'after-run' })");
+  });
+
+  it('leaves Shift+Enter available for a newline', () => {
+    expect(source).not.toMatch(/e\.key === 'Enter' && e\.shiftKey[\s\S]{0,120}handleSend/u);
+  });
+
   it('wires bare Tab to after-run enqueue while Jarvis is running', () => {
     expect(source).toContain("e.key === 'Tab' &&");
     expect(source).toContain("enqueueCurrentMessage(text, 'after-run')");

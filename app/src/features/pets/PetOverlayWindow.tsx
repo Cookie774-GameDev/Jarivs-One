@@ -25,7 +25,7 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
   const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
-  const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'always-on-top';
+  const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
   const theme = useUIStore((s) => s.theme);
 
   React.useEffect(() => {

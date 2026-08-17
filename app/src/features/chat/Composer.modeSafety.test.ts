@@ -13,7 +13,7 @@ describe('Composer live mode restriction integration', () => {
     expect(source.match(/applyInteractionMode\(nextMode\)/gu)?.length ?? 0).toBeGreaterThanOrEqual(
       3,
     );
-    expect(source).toContain('applyInteractionMode(parsed)');
+    expect(source).toContain('applyInteractionMode(parsed.value)');
     expect(source).toContain("applyInteractionMode('ask')");
     expect(source).toContain("applyInteractionMode('plan')");
     expect(source).toContain("applyInteractionMode('agent')");

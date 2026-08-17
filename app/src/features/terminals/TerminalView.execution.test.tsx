@@ -222,7 +222,7 @@ describe('TerminalView canonical execution truth', () => {
       binding.indexOf("setInitializationPhase('kernel_terminal_phase_session_bound')"),
     );
     expect(binding.indexOf('setActiveSessionId(sid);')).toBeLessThan(
-      binding.indexOf('exitLatch.bind(sid)'),
+      binding.indexOf('exitLatch.bind(processAttachment)'),
     );
   });
 
@@ -311,8 +311,18 @@ describe('TerminalView canonical execution truth', () => {
 
   it('attaches the exact canonical session before releasing an early native exit', async () => {
     const order: string[] = [];
-    const payload = {
+    const attachment = {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
       sessionId: 'pty_early',
+      processInstanceId: 'process-instance-1',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-generation-1',
+    } as const;
+    const payload = {
+      ...attachment,
       code: 0,
       reason: 'natural_exit' as const,
     };
@@ -326,29 +336,97 @@ describe('TerminalView canonical execution truth', () => {
 
     latch.observe(payload);
     await expect(
-      attachTerminalViewExecution('jterm_1', payload.sessionId, {
-        isCanonical: () => true,
+      attachTerminalViewExecution('jterm_1', attachment, {
         attach,
       }),
     ).resolves.toBe(true);
-    expect(latch.bind(payload.sessionId)).toBe(true);
+    expect(latch.bind(attachment)).toBe(true);
 
-    expect(attach).toHaveBeenCalledWith('jterm_1', 'pty_early');
+    expect(attach).toHaveBeenCalledWith('jterm_1', {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
+      sessionId: 'pty_early',
+      processInstanceId: 'process-instance-1',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-generation-1',
+    });
     expect(order).toEqual(['attach', 'exit:pty_early']);
+  });
+
+  it('passes a legacy execution through the real native attachment call site', async () => {
+    const attachment = {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
+      sessionId: 'pty-legacy',
+      processInstanceId: 'process-legacy',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-generation-1',
+    } as const;
+    const attach = vi.fn(async () => true);
+
+    await expect(
+      attachTerminalViewExecution('legacy-execution', attachment, {
+        attach,
+      }),
+    ).resolves.toBe(true);
+
+    expect(attach).toHaveBeenCalledExactlyOnceWith('legacy-execution', attachment);
+  });
+
+  it('attaches the full spawn or fresh-list process binding before publishing readiness', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('processInstanceId: string;');
+    expect(source).toContain('runtimeGeneration: string;');
+    expect(source).toContain('const backendInfo = restoreDecision.backendInfo;');
+    const ready = source.indexOf('onReadyRef.current?.(sid)');
+    const spawnAttach = source.indexOf(
+      'const attached = await attachTerminalViewExecution(executionId, processAttachment);',
+    );
+    const restoreAttach = source.indexOf(
+      'const attached = await attachTerminalViewExecution(executionId, processAttachment);',
+      spawnAttach + 1,
+    );
+    expect(spawnAttach).toBeGreaterThan(0);
+    expect(restoreAttach).toBeGreaterThan(spawnAttach);
+    expect(spawnAttach).toBeLessThan(ready);
+    expect(restoreAttach).toBeLessThan(ready);
   });
 
   it('delivers only the first exact native exit after binding a session', () => {
     const delivered = vi.fn();
     const latch = createTerminalExitLatch(delivered);
+    const attachment = {
+      accountId: 'account-a',
+      projectId: 'project-a',
+      paneId: 'pane-a',
+      sessionId: 'pty_exact',
+      processInstanceId: 'process-exact',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-exact',
+    } as const;
 
-    latch.observe({ sessionId: 'pty_other', code: 1, reason: 'natural_exit' });
-    expect(latch.bind('pty_exact')).toBe(false);
-    latch.observe({ sessionId: 'pty_exact', code: 0, reason: 'natural_exit' });
-    latch.observe({ sessionId: 'pty_exact', code: 1, reason: 'natural_exit' });
+    latch.observe({
+      ...attachment,
+      processInstanceId: 'process-stale',
+      code: 1,
+      reason: 'natural_exit',
+    });
+    expect(latch.bind(attachment)).toBe(false);
+    latch.observe({ ...attachment, code: 0, reason: 'natural_exit' });
+    latch.observe({ ...attachment, code: 1, reason: 'natural_exit' });
 
     expect(delivered).toHaveBeenCalledOnce();
     expect(delivered).toHaveBeenCalledWith({
-      sessionId: 'pty_exact',
+      ...attachment,
       code: 0,
       reason: 'natural_exit',
     });
@@ -397,6 +475,22 @@ describe('TerminalView canonical execution truth', () => {
     expect(backend).toContain('builder.env("VIBESPACE_PROJECT_ID", project_id);');
     expect(sessionCreation).toBeGreaterThan(0);
     expect(childSpawn).toBeGreaterThan(sessionCreation);
+  });
+
+  it('revalidates canonical ownership synchronously before native spawn', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+    const authorize = source.indexOf('authorizeCanonicalTerminalSpawn(executionId');
+    const spawnStatement = source.indexOf('const result = await', authorize);
+    const spawn = source.indexOf("invoke<SpawnResult>('terminal_spawn'", spawnStatement);
+    expect(authorize).toBeGreaterThan(0);
+    expect(spawn).toBeGreaterThan(authorize);
+    expect(source.slice(authorize, spawnStatement)).not.toContain('await ');
+    expect(source.slice(authorize, spawn)).toContain(
+      "throw new TypeError('canonical_terminal_scope_revoked_before_spawn')",
+    );
   });
 
   it('restores an exact live screen once without spawning, writing to the PTY, or appending replay', () => {

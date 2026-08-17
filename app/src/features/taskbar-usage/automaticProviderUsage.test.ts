@@ -58,6 +58,16 @@ describe('automatic provider usage discovery', () => {
           lastUsed: 100,
         },
       },
+      connectionUsage: {
+        'codex-cli': {
+          inputTokens: 6,
+          outputTokens: 3,
+          cachedTokens: 1,
+          costUsd: 0,
+          calls: 1,
+          lastUsed: 150,
+        },
+      },
       activity: { total: 2, byProvider: { 'codex-cli': 1, openai: 1 } },
       now: 200,
     });
@@ -77,6 +87,8 @@ describe('automatic provider usage discovery', () => {
       routeType: 'cli_bridge',
       source: 'terminal-session',
       activeRequests: 1,
+      usageValue: 10,
+      localUsageValue: 10,
       usagePercent: null,
     });
     expect(JSON.stringify(snapshots)).not.toContain('api-key');

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui';
-import { useBrowserChatStore } from './browserChatStore';
+import { resolveChatEngine, useBrowserChatStore } from './browserChatStore';
 import {
   CHAT_ENGINE_OPTIONS,
   transitionChatEngine,
@@ -27,9 +27,7 @@ export function ChatEngineMenu({
   transitionEngine = transitionChatEngine,
 }: ChatEngineMenuProps) {
   const activeChatId = useUIStore((state) => state.activeChatId);
-  const engine = useBrowserChatStore(
-    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
-  );
+  const engine = useBrowserChatStore((state) => resolveChatEngine(state, activeChatId));
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
@@ -73,6 +71,9 @@ export function ChatEngineMenu({
                     targetEngine: option.id,
                   }).then((result) => {
                     if (result.status !== 'failed') {
+                      if (result.chatId !== activeChatId) {
+                        useUIStore.getState().setActiveChat(result.chatId);
+                      }
                       onNavigateChat?.();
                       setOpen(false);
                     }

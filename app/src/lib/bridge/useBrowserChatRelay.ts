@@ -18,6 +18,7 @@ interface RelayTicketRequestOptions {
 
 export interface BrowserChatRelayScope {
   readonly accountId: string;
+  readonly workspaceId: string | null;
   readonly projectId: string | null;
 }
 
@@ -55,6 +56,7 @@ function relaySubscriptionKey(subscription: RelaySubscription): string {
   return JSON.stringify({
     enabled: subscription.enabled,
     accountId: subscription.scope?.accountId ?? '',
+    workspaceId: subscription.scope?.workspaceId ?? null,
     projectId: subscription.scope?.projectId ?? null,
   });
 }
@@ -141,6 +143,7 @@ function startBrowserChatRelayLifecycle(
         url,
         jwt,
         accountId,
+        workspaceId: scope?.workspaceId,
         projectId: scope?.projectId,
         ...(usesTicketGateway
           ? {
@@ -343,7 +346,7 @@ export function useBrowserChatRelay(
       relaySubscriptions.delete(subscriptionId);
       scheduleRelayReconcile();
     };
-  }, [enabled, scope?.accountId, scope?.projectId]);
+  }, [enabled, scope?.accountId, scope?.workspaceId, scope?.projectId]);
 
   const sharedStatus = useSyncExternalStore<BrowserChatRelayStatus>(
     subscribeRelayStatus,

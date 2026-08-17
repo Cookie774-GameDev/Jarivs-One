@@ -21,6 +21,12 @@ export {
   recordChatDiffActivity,
 } from './activityStore';
 export { mergeChatActivityEvents, useUnifiedChatActivity } from './unifiedActivity';
+export {
+  bindLiveAgentActivityRun,
+  setLiveAgentActivityPhase,
+  setLiveAgentActivityRunPhase,
+  type LiveAgentActivityPhase,
+} from './liveAgentActivity';
 export type {
   ChatActivityCategory,
   ChatActivityEvent,

@@ -10,9 +10,8 @@ import {
 } from './models';
 import type { ProviderConnection } from './adapters/types';
 import {
-  CODEX_CLI_CONNECTION,
-  CONNECTION_MODEL_OPTIONS,
   OPENCODE_CLI_CONNECTION,
+  CONNECTION_MODEL_OPTIONS,
   PROVIDER_CATALOG,
   PROVIDER_CONNECTIONS,
 } from './adapters/catalog';
@@ -23,11 +22,15 @@ import {
 } from './adapters/opencodePersistent';
 import {
   AI_CONNECTION_STATE_EVENT,
+  deriveAiConnectionHealth,
   isConnectionSessionChecked,
+  readConnectionMetadata,
   readConnectionPickerStates,
   readConnectionSessionPickerStates,
+  writeConnectionPickerStates,
   type ConnectionPickerState,
 } from './connectionState';
+import { probeQwenApiCredential, reconcileNativeProbeState } from './nativeConnectionProbe';
 import {
   kernelSmokeProvider,
   KERNEL_SMOKE_BINDING_EVENT,
@@ -41,6 +44,16 @@ import {
   type SimpleModelCatalogRecord,
   type ModelCatalogSource,
 } from './catalog/canonicalModelCatalog';
+import {
+  getDiscoveredOpenAiSubscriptionModels,
+  resolveOpenAiSubscriptionModels,
+  setDiscoveredOpenAiSubscriptionModels,
+  subscribeDiscoveredOpenAiSubscriptionModels,
+} from './openCodeOpenAiCatalog';
+import {
+  getDiscoveredConnectionModels,
+  subscribeDiscoveredConnectionModels,
+} from './connectionCatalog';
 
 /** @deprecated Use getProviderDisplayName from providerRegistry */
 export const MODEL_PROVIDER_LABELS: Partial<Record<ProviderId, string>> = new Proxy(
@@ -93,14 +106,17 @@ export const CONNECTION_MODE_LABELS = Object.freeze({
 });
 
 /** Explicit model-catalog invalidation used after auth, key, plan, region, or runtime changes. */
-export const OPEN_CODE_MODEL_CATALOG_REFRESH_EVENT =
-  'vibespace:open-code-model-catalog-refresh';
+export const OPEN_CODE_MODEL_CATALOG_REFRESH_EVENT = 'vibespace:open-code-model-catalog-refresh';
 
 const OPEN_CODE_MODEL_CACHE_TTL_MS = 60_000;
 const OPEN_CODE_MODEL_FAILURE_RETRY_MS = 15_000;
 let openCodeCatalogGeneration = 0;
 let openCodeModelCache:
-  | { readonly generation: number; readonly loadedAt: number; readonly models: readonly PickerCatalogModel[] }
+  | {
+      readonly generation: number;
+      readonly loadedAt: number;
+      readonly models: readonly PickerCatalogModel[];
+    }
   | undefined;
 let openCodeModelLoad:
   | { readonly generation: number; readonly promise: Promise<readonly PickerCatalogModel[]> }
@@ -157,10 +173,10 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
   const now = Date.now();
   const generation = openCodeCatalogGeneration;
   if (
-    !force
-    && openCodeModelCache
-    && openCodeModelCache.generation === generation
-    && now - openCodeModelCache.loadedAt < OPEN_CODE_MODEL_CACHE_TTL_MS
+    !force &&
+    openCodeModelCache &&
+    openCodeModelCache.generation === generation &&
+    now - openCodeModelCache.loadedAt < OPEN_CODE_MODEL_CACHE_TTL_MS
   ) {
     return openCodeModelCache.models;
   }
@@ -211,6 +227,7 @@ export function buildConnectionPickerGroups(args: {
   modelsByProvider: Partial<Record<string, readonly PickerCatalogModel[]>>;
   modelsByConnection?: Partial<Record<string, readonly PickerCatalogModel[]>>;
   stateByConnection?: Partial<Record<string, ConnectionPickerState>>;
+  credentialSavedByProvider?: Partial<Record<string, boolean>>;
 }): ModelPickerGroup[] {
   const familyByProvider = new Map(
     Object.values(PROVIDER_CATALOG).map((family) => [family.id as string, family]),
@@ -232,12 +249,19 @@ export function buildConnectionPickerGroups(args: {
         getProviderDisplayName(connection.providerId as ProviderId),
       options: [],
     };
-    const state = args.stateByConnection?.[connection.id] ?? {
+    let state = args.stateByConnection?.[connection.id] ?? {
       available: connection.mode !== 'external-cli',
       auth: connection.mode === 'local' ? ('authenticated' as const) : ('unknown' as const),
     };
+    if (
+      connection.mode === 'native-api' &&
+      connection.authSource === 'api-key' &&
+      args.credentialSavedByProvider?.[connection.providerId] === false
+    ) {
+      state = { available: false, auth: 'unauthenticated' };
+    }
     const authAllowsUse =
-      connection.id === CODEX_CLI_CONNECTION.id || connection.id === OPENCODE_CLI_CONNECTION.id
+      connection.mode === 'external-cli'
         ? state.auth === 'authenticated'
         : state.auth !== 'unauthenticated';
 
@@ -335,6 +359,9 @@ export function useAccessibleChatModels() {
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
+  const preferredConnections = useAuthStore(
+    (s) => s.preferredConnectionIdByProviderFamily ?? {},
+  );
   const ollamaOptions = useOllamaModelOptions();
   const [connectionRevision, setConnectionRevision] = useState(0);
   const [catalogRevision, setCatalogRevision] = useState(0);
@@ -369,15 +396,11 @@ export function useAccessibleChatModels() {
       }
       setConnectionRevision((value) => value + 1);
     };
-    const refreshCatalog = () => {
-      setCatalogRevision((value) => value + 1);
-    };
+    const refreshCatalog = () => setCatalogRevision((value) => value + 1);
     window.addEventListener(AI_CONNECTION_STATE_EVENT, updateConnection);
     window.addEventListener(KERNEL_SMOKE_BINDING_EVENT, updateConnection);
     window.addEventListener(OPEN_CODE_MODEL_CATALOG_REFRESH_EVENT, refreshCatalog);
-    if (!offlineMode) {
-      void ensureExternalConnectionAutoDetection().catch(() => undefined);
-    }
+    if (!offlineMode) void ensureExternalConnectionAutoDetection().catch(() => undefined);
     return () => {
       window.removeEventListener(AI_CONNECTION_STATE_EVENT, updateConnection);
       window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, updateConnection);
@@ -385,16 +408,105 @@ export function useAccessibleChatModels() {
     };
   }, [offlineMode]);
 
+  useEffect(
+    () =>
+      subscribeDiscoveredOpenAiSubscriptionModels(() => {
+        setConnectionRevision((value) => value + 1);
+      }),
+    [],
+  );
+
+  useEffect(
+    () =>
+      subscribeDiscoveredConnectionModels(() => {
+        setConnectionRevision((value) => value + 1);
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (offlineMode) return;
+    let cancelled = false;
+    void import('@/lib/harness/openCodeHarness')
+      .then(async ({ openCodeHarness }) => {
+        const openai = await openCodeHarness.listModels('openai');
+        if (!cancelled && openai.length > 0) {
+          setDiscoveredOpenAiSubscriptionModels(
+            openai.map((model) => ({ id: model.id, label: model.name || model.id })),
+          );
+        }
+        const zai = await openCodeHarness.listModels('zai');
+        if (cancelled || zai.length === 0) return;
+        const { setDiscoveredConnectionModels } = await import('./connectionCatalog');
+        setDiscoveredConnectionModels(
+          'zai-coding-plan',
+          zai.map((model) => ({
+            id: model.id,
+            label: model.name || model.id,
+            source: 'opencode_refresh' as const,
+            lastVerifiedAt: Date.now(),
+          })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [offlineMode]);
+
+  useEffect(() => {
+    if (offlineMode) return;
+    let cancelled = false;
+    void import('./providerModelCatalog').then(async ({ loadProviderModels }) => {
+      const ctx = { apiKeys, offlineMode, plan, defaultLocalModel };
+      for (const provider of [
+        'openai',
+        'anthropic',
+        'google',
+        'groq',
+        'deepseek',
+        'zai',
+        'qwen',
+        'mistral',
+        'together',
+        'xai',
+        'openrouter',
+      ] as const) {
+        if (cancelled || !apiKeys[provider]?.trim()) continue;
+        await loadProviderModels(provider, ctx).catch(() => undefined);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKeys, offlineMode, plan, defaultLocalModel]);
+
+  useEffect(() => {
+    if (offlineMode) return;
+    const qwenKey = apiKeys.qwen?.trim();
+    if (!qwenKey) return;
+    let cancelled = false;
+    void probeQwenApiCredential(qwenKey).then((state) => {
+      if (cancelled) return;
+      const current = readConnectionPickerStates();
+      writeConnectionPickerStates({
+        ...current,
+        'qwen-api': reconcileNativeProbeState(current['qwen-api'], state),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKeys.qwen, offlineMode]);
+
   useEffect(() => {
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     if (!openCodeReady || !openCodePersistentAdapter.listModels) {
-      // Preserve the last verified rows as disabled/stale while signed out.
       return () => {
         cancelled = true;
       };
     }
-
     const expectedGeneration = openCodeCatalogGeneration;
     void loadOpenCodeModels()
       .then((models) => {
@@ -409,8 +521,6 @@ export function useAccessibleChatModels() {
         }, delay);
       })
       .catch(() => {
-        // Preserve any previously verified in-component list on transient failure,
-        // and retry with bounded backoff rather than high-frequency polling.
         refreshTimer = setTimeout(() => {
           if (cancelled) return;
           invalidateOpenCodeModelCatalog();
@@ -464,9 +574,9 @@ export function useAccessibleChatModels() {
       );
     }
 
-    const accessible = new Set(legacy.map((group) => group.provider));
     const scanned = readConnectionPickerStates();
     const sessionScanned = readConnectionSessionPickerStates();
+    const metadata = readConnectionMetadata();
     const stateByConnection = Object.fromEntries(
       pickerConnections.map((connection) => {
         let state: ConnectionPickerState;
@@ -478,15 +588,30 @@ export function useAccessibleChatModels() {
         ) {
           state = { available: false, auth: 'unknown' };
         } else if (connection.mode === 'external-cli') {
-          state = sessionScanned[connection.id] ?? { available: false, auth: 'unknown' };
+          const current = sessionScanned[connection.id] ?? { available: false, auth: 'unknown' };
+          const health = deriveAiConnectionHealth({
+            connection,
+            metadata: metadata[connection.id] ?? {
+              installation: current.available ? 'installed' : 'not-installed',
+              auth: current.auth,
+            },
+          });
+          state = { available: health.usable, auth: current.auth };
         } else {
-          state = scanned[connection.id] ?? {
-            available: accessible.has(connection.providerId as ProviderId),
-            auth:
-              accessible.has(connection.providerId as ProviderId) || connection.mode === 'local'
-                ? 'authenticated'
-                : 'unauthenticated',
-          };
+          const health = deriveAiConnectionHealth({
+            connection,
+            metadata: metadata[connection.id],
+            credentialSaved: Boolean(apiKeys[connection.providerId as ProviderId]),
+          });
+          state =
+            scanned[connection.id] ??
+            ({
+              available: health.usable,
+              auth:
+                health.auth === 'authenticated' || health.auth === 'not_required'
+                  ? 'authenticated'
+                  : health.auth,
+            } satisfies ConnectionPickerState);
         }
         return [connection.id, state];
       }),
@@ -498,8 +623,37 @@ export function useAccessibleChatModels() {
         asCatalogModels(models ?? [], 'connection-static'),
       ]),
     );
+
+    const openAiSubscriptionModels = resolveOpenAiSubscriptionModels(
+      CONNECTION_MODEL_OPTIONS['openai-codex'],
+    );
+    modelsByConnection['openai-codex'] = asCatalogModels(
+      openAiSubscriptionModels,
+      getDiscoveredOpenAiSubscriptionModels().length > 0 ? 'opencode-live' : 'connection-static',
+      getDiscoveredOpenAiSubscriptionModels().length > 0 ? Date.now() : undefined,
+    );
+
+    for (const connection of pickerConnections) {
+      const discovered = getDiscoveredConnectionModels(connection.id);
+      if (discovered.length === 0) continue;
+      modelsByConnection[connection.id] = dedupeModelMetadataInOrder([
+        ...(modelsByConnection[connection.id] ?? []),
+        ...discovered.map((model) => ({
+          id: model.id,
+          label: model.label,
+          source:
+            model.source === 'opencode_refresh'
+              ? ('opencode-live' as const)
+              : model.source === 'stale_fallback'
+                ? ('offline-cache' as const)
+                : ('provider-live' as const),
+          lastVerifiedAt: model.lastVerifiedAt,
+          available: model.unverified !== true,
+        })),
+      ]);
+    }
+
     if (openCodeModels.length > 0) {
-      // Authenticated live discovery is authoritative for the OpenCode connection.
       modelsByConnection[OPENCODE_CLI_CONNECTION.id] = openCodeModels;
     }
 
@@ -508,12 +662,28 @@ export function useAccessibleChatModels() {
       modelsByProvider,
       modelsByConnection,
       stateByConnection,
-    }).sort(
-      (a, b) =>
-        Number(b.options.some((option) => option.available)) -
-          Number(a.options.some((option) => option.available)) ||
-        a.label.localeCompare(b.label),
-    );
+      credentialSavedByProvider: Object.fromEntries(
+        pickerConnections.map((connection) => [
+          connection.providerId,
+          Boolean(apiKeys[connection.providerId as ProviderId]),
+        ]),
+      ),
+    })
+      .map((group) => ({
+        ...group,
+        options: [...group.options].sort(
+          (left, right) =>
+            Number(right.connectionId === preferredConnections?.[group.provider]) -
+              Number(left.connectionId === preferredConnections?.[group.provider]) ||
+            Number(right.available !== false) - Number(left.available !== false) ||
+            left.label.localeCompare(right.label),
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          Number(b.options.some((option) => option.available)) -
+            Number(a.options.some((option) => option.available)) || a.label.localeCompare(b.label),
+      );
   }, [
     apiKeys,
     offlineMode,
@@ -523,6 +693,7 @@ export function useAccessibleChatModels() {
     connectionRevision,
     openCodeModels,
     openCodeReady,
+    preferredConnections,
   ]);
 
   const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);

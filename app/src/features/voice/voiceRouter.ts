@@ -44,8 +44,9 @@ export function getActiveVoiceSessionId(): number {
   return activeVoiceSessionId;
 }
 
-/** True only while the voice panel is open and its session has not been cancelled. */
+/** True while the voice panel is open, or Settings "speak replies" is enabled for chat. */
 export function canVoiceModuleSpeak(): boolean {
+  if (useAuthStore.getState().speakReplies === true) return true;
   return voiceModuleMarkedOpen && activeVoiceSessionId > 0 && useUIStore.getState().voiceModalOpen;
 }
 
@@ -58,6 +59,8 @@ export function syncVoiceModuleOpenState(isOpen: boolean): void {
     if (!voiceModuleMarkedOpen) {
       voiceModuleMarkedOpen = true;
       activeVoiceSessionId += 1;
+      TtsService.setProvider('jarvis_local');
+      void ensureJarvisReadyForSpeech();
     }
     return;
   }
@@ -438,7 +441,9 @@ export async function speakWithSettings(
   if (!options.allowBackground && !canVoiceModuleSpeak()) return;
 
   const state = useAuthStore.getState();
-  const engine = options.voiceEngine ?? state.voiceEngine ?? 'jarvis';
+  const engine = canVoiceModuleSpeak()
+    ? 'jarvis'
+    : (options.voiceEngine ?? state.voiceEngine ?? 'jarvis');
   const voicePreset = options.voicePreset ?? state.voicePreset ?? 'jarvis-prime';
   const ttsPreset = voicePresetToTtsPreset(voicePreset);
 

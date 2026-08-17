@@ -59,6 +59,7 @@ import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appea
 import { ThoughtBloomTitle } from '@/features/rename-motion/ThoughtBloomTitle';
 import { basename } from '@/features/files/projectFiles';
 import { useFileWorkspace } from '@/features/files/fileWorkspaceStore';
+import { closeExclusiveBrowserChatSurface } from '@/features/browser-chat/closeExclusiveBrowserChat';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -248,6 +249,8 @@ export function TabStrip() {
       // current tab feels responsive (no transient empty state).
       const idx = tabs.findIndex((t) => t.id === id);
       const fallback = tabs[idx + 1]?.id ?? tabs[idx - 1]?.id ?? null;
+      const browserClose = await closeExclusiveBrowserChatSurface({ chatId: id });
+      if (browserClose === 'cancelled') return;
       try {
         await chatRepo.delete(id);
       } catch (err) {

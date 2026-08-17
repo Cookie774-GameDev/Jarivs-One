@@ -738,12 +738,12 @@ describe('Warm theme presentation contract', () => {
       '1356231d64d39b2933979dcf7a2c71332667de510ac77959166c73e8d08a3c8e',
     );
     expect(settingsModal).toContain('data-warm-surface="settings-canvas"');
-    expect(settingsModal).toContain('data-warm-decoration="settings-scene-left"');
-    expect(settingsModal).toContain('data-warm-decoration="settings-scene-right"');
+    expect(settingsModal).toContain('data-warm-decoration="settings-scene"');
+    expect(settingsModal).not.toContain('data-warm-decoration="settings-scene-left"');
+    expect(settingsModal).not.toContain('data-warm-decoration="settings-scene-right"');
     expect(settingsModal).toContain('data-warm-decoration="settings-wash"');
-    expect(settingsModal).toContain(
-      '/assets/themes/warm/settings/settings-landscape-v4-selected.webp',
-    );
+    const settingsSceneAsset = '/assets/themes/warm/settings/settings-landscape-v4-selected.webp';
+    expect(settingsModal.split(settingsSceneAsset)).toHaveLength(2);
     expect(settingsModal).toContain('data-warm-settings-tab={tab}');
     expect(settingsModal).toContain('onOpenAutoFocus={(event) =>');
     expect(settingsModal).toContain('document.getElementById(`settings-tab-${tab}`)?.focus()');
@@ -751,7 +751,7 @@ describe('Warm theme presentation contract', () => {
       /:has\(\.mc7f-settings-modal\)\s+\[data-pet-overlay='true'\]\s*\{[\s\S]*?display:\s*none\s*!important/u,
     );
     expect(css).toMatch(
-      /\[data-warm-decoration='settings-scene-left'\]\s*>\s*img,\s*[\s\S]*?\[data-warm-decoration='settings-scene-right'\]\s*>\s*img\s*\{[\s\S]*?width:\s*1152px[\s\S]*?height:\s*auto/u,
+      /\[data-warm-decoration='settings-scene'\]\s*\{[\s\S]*?inset:\s*0[\s\S]*?overflow:\s*hidden/u,
     );
     expect(css).toMatch(
       /\[data-warm-surface='settings-canvas'\]\s*\{[\s\S]*?grid-template-columns:\s*255px\s+minmax\(0,\s*1fr\)[\s\S]*?background:[\s\S]*?#f9edd9/u,
@@ -759,12 +759,12 @@ describe('Warm theme presentation contract', () => {
     expect(css).toMatch(
       /\[data-warm-decoration='settings-wash'\]\s*\{[\s\S]*?radial-gradient[\s\S]*?linear-gradient/u,
     );
-    expect(css).toMatch(
-      /\[data-warm-decoration='settings-scene-right'\]\s*\{[\s\S]*?width:\s*calc\(100%\s*-\s*255px\)[\s\S]*?height:\s*100%/u,
-    );
-    expect(css).toMatch(
-      /\[data-warm-decoration='settings-scene-right'\]\s*>\s*img\s*\{[\s\S]*?height:\s*100%[\s\S]*?object-fit:\s*cover[\s\S]*?filter:\s*saturate\(1\.12\)\s+contrast\(1\.12\)[\s\S]*?opacity:\s*1/u,
-    );
+    const settingsSceneImageRule = css.match(
+      /\[data-warm-decoration='settings-scene'\]\s*>\s*img\s*\{([\s\S]*?)\}/u,
+    )?.[1];
+    expect(settingsSceneImageRule).toMatch(/width:\s*1152px[\s\S]*?height:\s*auto/u);
+    expect(settingsSceneImageRule).toContain('filter: none');
+    expect(settingsSceneImageRule).not.toMatch(/saturate|contrast/u);
     expect(css).toMatch(
       /\.mc7f-settings-modal\s+\[data-sakura-surface='settings-navigation'\]\s+nav\s+button\s*\{[\s\S]*?color:\s*var\(--warm-text-muted\)\s*!important/u,
     );

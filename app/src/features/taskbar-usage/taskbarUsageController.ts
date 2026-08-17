@@ -14,6 +14,8 @@ import {
 } from './taskbarUsageNativeWindow';
 import type { ProviderUsageSnapshot } from './providerUsageTypes';
 import { createUsageRefreshCoordinator } from './usageRefreshCoordinator';
+import { aggregateConnectionUsage } from '@/lib/ai/connectionUsageLedger';
+import { readCodexAccountUsage } from '@/lib/ai/adapters/codexAccountUsage';
 import {
   BACKGROUND_PROVIDER_REFRESH_MS,
   DISPLAY_REFRESH_MS,
@@ -28,6 +30,26 @@ export {
 
 let stopController: (() => void) | undefined;
 
+export function createAsyncUnlistenerRegistry() {
+  let stopped = false;
+  const unlisteners = new Set<() => void>();
+  return {
+    add(unlisten: () => void): void {
+      if (stopped) {
+        unlisten();
+        return;
+      }
+      unlisteners.add(unlisten);
+    },
+    stop(): void {
+      if (stopped) return;
+      stopped = true;
+      for (const unlisten of unlisteners) unlisten();
+      unlisteners.clear();
+    },
+  };
+}
+
 export function startTaskbarUsageController(): () => void {
   if (stopController) return stopController;
 
@@ -36,7 +58,7 @@ export function startTaskbarUsageController(): () => void {
   let displayTimer: number | undefined;
   let mainVisible = true;
   let lastPreferencesKey = '';
-  const nativeUnlisteners: Array<() => void> = [];
+  const nativeUnlisteners = createAsyncUnlistenerRegistry();
   const refreshCoordinator = createUsageRefreshCoordinator();
   refreshCoordinator.setOnline(globalThis.navigator?.onLine !== false);
 
@@ -78,14 +100,71 @@ export function startTaskbarUsageController(): () => void {
             () => ({}),
           );
           if (stopped) return;
-          const refreshedSnapshots = buildAutomaticProviderSnapshots({
+          let refreshedSnapshots = buildAutomaticProviderSnapshots({
             connections: PROVIDER_CONNECTIONS,
             connectedProviderIds,
             connectionMetadata: readConnectionMetadata(),
             localUsage,
+            connectionUsage: Object.fromEntries(
+              PROVIDER_CONNECTIONS.map((connection) => {
+                const usage = aggregateConnectionUsage(
+                  connection.id,
+                  Date.now() - 30 * 24 * 60 * 60 * 1_000,
+                );
+                return [
+                  connection.id,
+                  {
+                    inputTokens: usage.inputTokens,
+                    outputTokens: usage.outputTokens,
+                    cachedTokens: usage.cachedInputTokens,
+                    costUsd: usage.costUsd,
+                    calls: usage.requests,
+                    lastUsed: usage.lastRequestAt,
+                  },
+                ];
+              }),
+            ),
             activity: providerActivityTracker.snapshot(),
             now: Date.now(),
           });
+          if (refreshedSnapshots.some((snapshot) => snapshot.providerId === 'openai-codex')) {
+            try {
+              const codexUsage = await readCodexAccountUsage();
+              const primary = codexUsage.windows[0];
+              refreshedSnapshots = refreshedSnapshots.map((snapshot) =>
+                snapshot.providerId === 'openai-codex'
+                  ? {
+                      ...snapshot,
+                      ...(primary
+                        ? {
+                            usageValue: primary.usedPercent,
+                            usageLimit: 100,
+                            usageUnit: 'percent' as const,
+                            usagePercent: primary.usedPercent,
+                            resetAt: primary.resetsAt,
+                          }
+                        : {}),
+                      planScope: [
+                        codexUsage.planType,
+                        codexUsage.windows
+                          .map((window) => `${window.label} ${window.usedPercent}%`)
+                          .join(' · '),
+                        codexUsage.creditsRemaining === null
+                          ? null
+                          : `${codexUsage.creditsRemaining} credits`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · '),
+                      source: 'provider-api' as const,
+                      updatedAt: codexUsage.updatedAt,
+                      freshness: 'fresh' as const,
+                    }
+                  : snapshot,
+              );
+            } catch {
+              // Exact-route local usage remains available with honest terminal provenance.
+            }
+          }
           snapshots = providerId
             ? [
                 ...snapshots.filter(
@@ -196,26 +275,39 @@ export function startTaskbarUsageController(): () => void {
   document.addEventListener('visibilitychange', handleVisibility);
 
   if ('__TAURI_INTERNALS__' in window) {
-    void import('@tauri-apps/api/event').then(async ({ listen }) => {
-      nativeUnlisteners.push(
-        await listen('jarvis:before-hide', () => {
-          mainVisible = false;
-          lastPreferencesKey = '';
-          syncLifecycle();
-        }),
-        await listen('jarvis:reopen', () => {
-          mainVisible = true;
-          lastPreferencesKey = '';
-          syncLifecycle();
-        }),
-        await listen<{ providerId?: string }>('taskbar-usage://open-connections', (event) => {
-          void showMainWindowConnections(event.payload?.providerId);
-        }),
-        await listen<{ providerId?: string }>('taskbar-usage://refresh', (event) => {
-          void refresh(true, event.payload?.providerId);
-        }),
-      );
-    });
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => {
+        const retain = (registration: Promise<() => void>) => {
+          void registration
+            .then((unlisten) => nativeUnlisteners.add(unlisten))
+            .catch(() => undefined);
+        };
+        retain(
+          listen('jarvis:before-hide', () => {
+            mainVisible = false;
+            lastPreferencesKey = '';
+            syncLifecycle();
+          }),
+        );
+        retain(
+          listen('jarvis:reopen', () => {
+            mainVisible = true;
+            lastPreferencesKey = '';
+            syncLifecycle();
+          }),
+        );
+        retain(
+          listen<{ providerId?: string }>('taskbar-usage://open-connections', (event) => {
+            void showMainWindowConnections(event.payload?.providerId);
+          }),
+        );
+        retain(
+          listen<{ providerId?: string }>('taskbar-usage://refresh', (event) => {
+            void refresh(true, event.payload?.providerId);
+          }),
+        );
+      })
+      .catch(() => undefined);
   }
 
   syncLifecycle();
@@ -230,7 +322,7 @@ export function startTaskbarUsageController(): () => void {
     unsubscribeStore();
     unsubscribeAuth();
     unsubscribeActivity();
-    for (const unlisten of nativeUnlisteners) unlisten();
+    nativeUnlisteners.stop();
     stopController = undefined;
   };
   return stopController;

@@ -725,6 +725,10 @@ export function assertNativeTerminalHostReceipt(
   validateHostReceipt(receipt, bounds);
 }
 
+export function assertNativeGitIntent(intent: NativeGitIntent): void {
+  validateGitIntent(intent);
+}
+
 export async function hashNativeGitIntent(
   intent: NativeGitIntent,
   bounds: NativeCommandBounds,

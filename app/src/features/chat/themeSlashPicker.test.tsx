@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyThemeToDocument } from '@/stores/ui';
 import {
   ConsoleThemeSlashPicker,
+  isGlobalThemePickerCommand,
   ThemeSlashPicker,
   type ThemeSlashPickerRef,
 } from './themeSlashPicker';
@@ -14,10 +15,15 @@ describe('ThemeSlashPicker', () => {
     localStorage.clear();
   });
 
+  it('recognizes only /appearance as the global appearance picker command', () => {
+    expect(isGlobalThemePickerCommand('appearance')).toBe(true);
+    expect(isGlobalThemePickerCommand('themes')).toBe(false);
+  });
+
   it('renders the four release appearances with Codex-style diff previews', () => {
     render(
       <ThemeSlashPicker
-        commandLabel="themes"
+        commandLabel="appearance"
         initialTheme="default"
         onCommit={vi.fn()}
         onCancel={vi.fn()}
@@ -69,7 +75,7 @@ describe('ThemeSlashPicker', () => {
     render(
       <ThemeSlashPicker
         ref={ref}
-        commandLabel="themes"
+        commandLabel="appearance"
         initialTheme="jarvis"
         onCommit={vi.fn()}
         onCancel={onCancel}
@@ -111,11 +117,7 @@ describe('ThemeSlashPicker', () => {
 describe('ConsoleThemeSlashPicker', () => {
   it('shows existing chat syntax themes with the selected code-output colors', () => {
     render(
-      <ConsoleThemeSlashPicker
-        initialProfile="graphite"
-        onCommit={vi.fn()}
-        onCancel={vi.fn()}
-      />,
+      <ConsoleThemeSlashPicker initialProfile="graphite" onCommit={vi.fn()} onCancel={vi.fn()} />,
     );
 
     expect(screen.getByText('Paper White')).toBeTruthy();

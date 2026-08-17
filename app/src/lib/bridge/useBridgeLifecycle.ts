@@ -25,13 +25,17 @@ export function useBridgeLifecycle(): { status: BridgeStatus | 'disabled' } {
   const statusRef = useRef<BridgeStatus | 'disabled'>('disabled');
   const startedRef = useRef(false);
   const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? '');
+  const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
 
   // Browser Chat relay ownership belongs to the global app lifecycle. The
   // BrowserChatHub may observe the same supervisor, but it cannot create a
   // duplicate connection or stop it merely by unmounting on a route change.
-  useBrowserChatRelay(Boolean(cloudAccountId), {
+  // A signed-in account without an authoritative workspace is not enough to
+  // start the relay: workspace scope is a fail-closed security boundary.
+  useBrowserChatRelay(Boolean(cloudAccountId && workspaceId), {
     accountId: cloudAccountId,
+    workspaceId: workspaceId ? String(workspaceId) : null,
     projectId: projectId ? String(projectId) : null,
   });
 

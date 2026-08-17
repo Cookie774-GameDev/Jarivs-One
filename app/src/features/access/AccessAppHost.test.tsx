@@ -12,10 +12,12 @@ import {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function viewModel(overrides: Partial<AccessViewModel> = {}): AccessViewModel {
@@ -242,54 +244,110 @@ describe('AccessAppHost', () => {
     expect(hostRuntime.openExternalUrl).toHaveBeenCalledWith('https://billing.example.test/portal');
   });
 
-  it.each([
-    ['checkout', /subscribe to vibespace access/i, 'createCheckoutUrl'],
-    ['portal', /manage billing/i, 'createPortalUrl'],
-  ] as const)(
-    'aborts a pending %s action and clears account-owned state when identity changes',
-    async (_name, buttonName, createMethod) => {
-      const pendingUrl = deferred<string>();
-      let actionSignal: AbortSignal | undefined;
-      const accountA = runtime({
-        loadViewModel: vi.fn(async () =>
-          viewModel({
-            state: 'locked',
-            displayState: 'locked',
-            usable: false,
-            locked: true,
-            checkoutNeeded: true,
-          }),
-        ),
-        [createMethod]: vi.fn((signal?: AbortSignal) => {
-          actionSignal = signal;
-          return pendingUrl.promise;
+  it('does not open a delayed former-account checkout URL after keyed replacement', async () => {
+    const pending = deferred<string>();
+    const accountA = runtime({
+      loadViewModel: vi.fn(async () =>
+        viewModel({
+          state: 'locked',
+          displayState: 'locked',
+          usable: false,
+          locked: true,
+          checkoutNeeded: true,
         }),
-      });
-      const accountBAccess = deferred<AccessViewModel>();
-      const accountB = runtime({ loadViewModel: vi.fn(() => accountBAccess.promise) });
-      const view = renderHost(accountA, { accountIdentity: 'account-a' });
-      await screen.findByText(/access is locked/i);
+      ),
+      createCheckoutUrl: vi.fn(() => pending.promise),
+    });
+    const accountB = runtime();
+    const view = render(
+      <AccessAppHost key="account-a" enabled runtime={accountA}>
+        <p>Account A workspace</p>
+      </AccessAppHost>,
+    );
+    await screen.findByText(/access is locked/i);
 
-      fireEvent.click(screen.getAllByRole('button', { name: buttonName })[0]!);
-      expect(actionSignal?.aborted).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /subscribe to vibespace access/i }));
+    const signal = vi.mocked(accountA.createCheckoutUrl).mock.calls[0]?.[0];
+    view.rerender(
+      <AccessAppHost key="account-b" enabled runtime={accountB}>
+        <p>Account B workspace</p>
+      </AccessAppHost>,
+    );
 
-      view.rerender(
-        <AccessAppHost enabled runtime={accountB} accountIdentity="account-b">
-          <p>Protected workspace</p>
-        </AccessAppHost>,
-      );
-      expect(actionSignal?.aborted).toBe(true);
-      expect(screen.queryByText(/backup file was created/i)).toBeNull();
+    expect(signal?.aborted).toBe(true);
+    await act(async () => pending.resolve('https://billing.example.test/former-checkout'));
+    expect(accountA.openExternalUrl).not.toHaveBeenCalled();
+    expect(accountB.openExternalUrl).not.toHaveBeenCalled();
+  });
 
-      await act(async () => pendingUrl.resolve('https://billing.example.test/stale-account'));
-      expect(accountA.openExternalUrl).not.toHaveBeenCalled();
-      expect(accountB.openExternalUrl).not.toHaveBeenCalled();
+  it('does not open a delayed former-account portal URL after keyed replacement', async () => {
+    const pending = deferred<string>();
+    const accountA = runtime({
+      loadViewModel: vi.fn(async () =>
+        viewModel({
+          state: 'locked',
+          displayState: 'locked',
+          usable: false,
+          locked: true,
+        }),
+      ),
+      createPortalUrl: vi.fn(() => pending.promise),
+    });
+    const accountB = runtime();
+    const view = render(
+      <AccessAppHost key="account-a" enabled runtime={accountA}>
+        <p>Account A workspace</p>
+      </AccessAppHost>,
+    );
+    await screen.findByText(/access is locked/i);
 
-      await act(async () => accountBAccess.resolve(viewModel()));
-      expect(await screen.findByText('Protected workspace')).toBeTruthy();
-      expect(accountB.loadViewModel).toHaveBeenCalledTimes(1);
-    },
-  );
+    fireEvent.click(screen.getByRole('button', { name: /manage billing/i }));
+    const signal = vi.mocked(accountA.createPortalUrl).mock.calls[0]?.[0];
+    view.rerender(
+      <AccessAppHost key="account-b" enabled runtime={accountB}>
+        <p>Account B workspace</p>
+      </AccessAppHost>,
+    );
+
+    expect(signal?.aborted).toBe(true);
+    await act(async () => pending.resolve('https://billing.example.test/former-portal'));
+    expect(accountA.openExternalUrl).not.toHaveBeenCalled();
+    expect(accountB.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a delayed former-account billing error after keyed replacement', async () => {
+    const pending = deferred<string>();
+    const accountA = runtime({
+      loadViewModel: vi.fn(async () =>
+        viewModel({
+          state: 'locked',
+          displayState: 'locked',
+          usable: false,
+          locked: true,
+          checkoutNeeded: true,
+        }),
+      ),
+      createCheckoutUrl: vi.fn(() => pending.promise),
+    });
+    const accountB = runtime();
+    const view = render(
+      <AccessAppHost key="account-a" enabled runtime={accountA}>
+        <p>Account A workspace</p>
+      </AccessAppHost>,
+    );
+    await screen.findByText(/access is locked/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /subscribe to vibespace access/i }));
+    view.rerender(
+      <AccessAppHost key="account-b" enabled runtime={accountB}>
+        <p>Account B workspace</p>
+      </AccessAppHost>,
+    );
+    await act(async () => pending.reject(new Error('former-account-secret-detail')));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/former-account-secret-detail/i)).toBeNull();
+  });
 
   it('restores access only after a fresh authoritative check', async () => {
     const hostRuntime = runtime();

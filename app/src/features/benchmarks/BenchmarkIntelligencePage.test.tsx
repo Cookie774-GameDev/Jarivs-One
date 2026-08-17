@@ -70,7 +70,7 @@ describe('BenchmarkIntelligencePage', () => {
 
   it('renders Artificial Analysis and excludes the removed comparison/valuation UI', async () => {
     render(<BenchmarkIntelligencePage />);
-    expect(await screen.findByText('Claude Opus 5 (Max Effort)')).toBeTruthy();
+    expect((await screen.findAllByText('Claude Opus 5 (Max Effort)')).length).toBe(2);
     expect(screen.getAllByText('Artificial Analysis').length).toBeGreaterThan(0);
     expect(screen.queryByText(/New model comparison/i)).toBeNull();
     expect(screen.queryByText(/Official provider valuations/i)).toBeNull();
@@ -78,7 +78,7 @@ describe('BenchmarkIntelligencePage', () => {
 
   it('sorts by exact-row input price and output speed', async () => {
     render(<BenchmarkIntelligencePage />);
-    await screen.findByText('Claude Opus 5 (Max Effort)');
+    await screen.findAllByText('Claude Opus 5 (Max Effort)');
     const sort = screen.getByLabelText('Sort');
     fireEvent.change(sort, { target: { value: 'inputPrice' } });
     const modelCells = screen.getAllByRole('cell').filter((cell) =>

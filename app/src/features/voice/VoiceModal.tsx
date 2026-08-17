@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { AnimatePresence, motion, useMotionValue } from 'motion/react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Shield } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
@@ -68,7 +68,10 @@ import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import { createVoiceSignalController, type VoiceSignalController } from './voiceSignal';
+import { VoiceModelSelector } from './VoiceModelSelector';
 import './voice.sakura.css';
+import './voice-module.css';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -122,6 +125,26 @@ function smokeSttBlocker(error: unknown): SmokeSttBlocker {
   return 'engine_failed';
 }
 
+class VoiceSurfaceGuard extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(): void {
+    // Isolate voice-module render faults so they cannot blank the host app.
+  }
+
+  render(): React.ReactNode {
+    if (this.state.failed) return null;
+    return this.props.children;
+  }
+}
+
 const STATE_LABEL: Record<VoiceState, string> = {
   idle: 'Ready',
   listening: 'Listening',
@@ -162,6 +185,14 @@ const LEGACY_COMMAND_CENTER_TRANSITION = Object.freeze({
 } as const);
 
 export function VoiceModal() {
+  return (
+    <VoiceSurfaceGuard>
+      <VoiceModalPanel />
+    </VoiceSurfaceGuard>
+  );
+}
+
+function VoiceModalPanel() {
   const open = useUIStore((state) => state.voiceModalOpen);
   const theme = useUIStore((state) => state.theme);
   const setOpen = useUIStore((state) => state.setVoiceModalOpen);
@@ -201,6 +232,10 @@ export function VoiceModal() {
   const panelLayout = useThemeMotionLayout('size');
   const commandCenterTransition = useThemeLayoutTransition(LEGACY_COMMAND_CENTER_TRANSITION);
   const levelRef = React.useRef(0);
+  const signalControllerRef = React.useRef<VoiceSignalController | null>(null);
+  if (!signalControllerRef.current) {
+    signalControllerRef.current = createVoiceSignalController(levelRef);
+  }
   const pendingUtteranceRef = React.useRef('');
   const utteranceTimerRef = React.useRef<number | null>(null);
   const restartTimerRef = React.useRef<number | null>(null);
@@ -227,6 +262,19 @@ export function VoiceModal() {
       ),
     [chatModelSelection],
   );
+  React.useEffect(() => {
+    const signal = signalControllerRef.current;
+    if (!signal || !open) {
+      signal?.stop();
+      return;
+    }
+    if (state === 'listening') void signal.startListening();
+    else if (state === 'speaking') signal.startSpeaking();
+    else if (state !== 'thinking') signal.stop();
+    return () => {
+      if (!useUIStore.getState().voiceModalOpen) signal.stop();
+    };
+  }, [open, state]);
   const commandCenterHandlers = React.useMemo<JarvisCommandCenterHandlers>(() => {
     const hostPort = commandCenterBinding?.hostPort;
     if (!hostPort) return {};
@@ -438,9 +486,17 @@ export function VoiceModal() {
     useUIStore.getState().setVoiceListening(started);
     if (started) {
       useVoiceStore.getState().setState('listening');
-    } else {
-      listeningArmedRef.current = false;
+      return true;
     }
+    window.setTimeout(() => {
+      if (!listeningArmedRef.current || VoiceService.isListening() || VoiceService.wantsListening()) {
+        return;
+      }
+      const retried = VoiceService.startListening();
+      useUIStore.getState().setVoiceListening(retried);
+      if (retried) useVoiceStore.getState().setState('listening');
+      else listeningArmedRef.current = false;
+    }, 60);
     return started;
   }, []);
 
@@ -466,6 +522,7 @@ export function VoiceModal() {
       return;
     }
     if (state === 'listening' || useUIStore.getState().voiceListening) {
+      if (voiceAutoListenOnOpen) return;
       stopListening('idle');
       return;
     }
@@ -580,7 +637,7 @@ export function VoiceModal() {
           return;
         if (VoiceService.isListening() || VoiceService.wantsListening()) return;
         startListening();
-      }, 180);
+      }, 50);
     };
 
     const scheduleRestartAfterReply = () => {
@@ -702,7 +759,6 @@ export function VoiceModal() {
 
     const schedulePartial = (text: string) => {
       pendingPartial = text;
-      levelRef.current = Math.min(1, 0.25 + text.length / 48);
       if (partialTimer !== null) return;
       partialTimer = window.setTimeout(() => {
         partialTimer = null;
@@ -854,7 +910,7 @@ export function VoiceModal() {
       window.removeEventListener(STREAMING_VOICE_END_EVENT, onStreamingEnd);
       window.removeEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechStart);
       window.removeEventListener(SPEECH_SYNTHESIS_END_EVENT, onSpeechEnd);
-      handleVoiceModuleClosed();
+      if (!useUIStore.getState().voiceModalOpen) handleVoiceModuleClosed();
     };
   }, [open, startListening, voiceAutoListenOnOpen, stopListening]);
 
@@ -919,16 +975,10 @@ export function VoiceModal() {
         transition={panelTransition}
         style={{ x: dragX, y: dragY }}
         className={cn(
-          'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[0.5625rem] border border-border bg-elevated/95 text-foreground backdrop-blur-sm',
-          '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:backdrop-blur-none',
-          '[[data-theme=monochrome]_&]:before:!hidden [[data-theme=monochrome]_&]:after:!hidden',
-          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-drag-row::after]:!hidden',
-          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!shadow-none',
-          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!shadow-none',
-          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![background-image:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![filter:none] [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:!shadow-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button_*]:![transform:none]',
-          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-shell::before]:!hidden',
-          showCommandCenter ? 'w-[26.25rem]' : 'w-[17.875rem]',
+          'jarvis-voice-panel jarvis-glass-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden border border-border bg-elevated/95 text-foreground backdrop-blur-sm',
+          showCommandCenter && 'is-expanded',
         )}
+        id="jarvis-panel"
         aria-label="Jarvis voice session"
         data-monochrome-surface="voice"
         data-vibespace-owned-chrome="voice"
@@ -994,29 +1044,35 @@ export function VoiceModal() {
         ) : null}
 
         {/* Command Center disclosure */}
-        <button
-          ref={commandCenterDisclosureRef}
-          type="button"
-          onClick={() => setShowCommandCenter((visible) => !visible)}
-          aria-expanded={showCommandCenter}
-          aria-controls={commandCenterRegionId}
-          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted"
+        <div
+          className="jarvis-command-disclosure relative z-[1] flex min-h-8 items-center justify-between gap-2 border-t border-border/70 px-2 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted"
         >
-          <span className="shrink-0 font-medium text-foreground">Command Center</span>
-          {showCommandCenter ? (
-            <span
-              className="ml-auto min-w-0 break-words text-right text-xs leading-tight"
-              title={modelLabel}
-            >
-              {modelLabel}
-            </span>
-          ) : null}
-          {showCommandCenter ? (
-            <ChevronUp className="h-2.5 w-2.5 shrink-0" />
-          ) : (
-            <ChevronDown className="ml-auto h-2.5 w-2.5 shrink-0" />
-          )}
-        </button>
+          <button
+            ref={commandCenterDisclosureRef}
+            type="button"
+            onClick={() => setShowCommandCenter((visible) => !visible)}
+            aria-expanded={showCommandCenter}
+            aria-controls={commandCenterRegionId}
+            aria-label={showCommandCenter ? 'Collapse Command Center' : 'Expand Command Center'}
+            className="flex min-h-10 min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="shrink-0 font-semibold text-foreground">Command Center</span>
+            {showCommandCenter ? (
+              <span
+                className="sr-only min-w-0 break-words text-right text-xs leading-tight"
+                title={modelLabel}
+              >
+                {modelLabel}
+              </span>
+            ) : null}
+            {showCommandCenter ? (
+              <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+            )}
+          </button>
+          {showCommandCenter ? <VoiceModelSelector selection={chatModelSelection} /> : null}
+        </div>
 
         <AnimatePresence>
           {showCommandCenter && (
@@ -1074,7 +1130,8 @@ export function VoiceModal() {
                   embedded
                 />
               ) : (
-                <p className="border-t border-border/70 px-2 py-3 text-center text-xs text-muted-foreground">
+                <p className="flex items-center gap-2 border-t border-border/70 px-2 py-2 text-xs text-muted-foreground">
+                  <Shield className="h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden="true" />
                   Command Center is unavailable for this voice session.
                 </p>
               )}

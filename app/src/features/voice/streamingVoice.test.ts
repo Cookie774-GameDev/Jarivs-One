@@ -140,6 +140,15 @@ describe('StreamingVoiceSession lifecycle', () => {
     expect(mocks.speakWithSettings).not.toHaveBeenCalled();
   });
 
+  it('keeps speak-replies live when the voice panel session id is unset', async () => {
+    mocks.sessionId = 0;
+    mocks.canSpeak = true;
+    const session = new StreamingVoiceSession();
+    session.onDelta('Hello there.');
+    await session.onComplete('Hello there.');
+    expect(mocks.speakWithSettings).toHaveBeenCalled();
+  });
+
   it('uses the Jarvis streaming player instead of serial speak calls', async () => {
     mocks.authState.voiceEngine = 'jarvis';
     const events: string[] = [];

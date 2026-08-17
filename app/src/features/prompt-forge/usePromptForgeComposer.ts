@@ -240,7 +240,7 @@ function modelDisabledReason(
       return 'Choose a single chat model or select a separate Prompt Forge model.';
     }
     if (error.code === 'model_unavailable' && selection.mode === 'prefer_local') {
-      return 'Connect or start an available local model.';
+      return 'Please assign a prompt-upgrade model in Settings. Connect a local model, or use Spark/Flash.';
     }
     if (error.code === 'connection_ambiguous') {
       return 'Choose an exact provider connection for this Prompt Forge model.';
@@ -271,7 +271,9 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [upgradedDraft, setUpgradedDraft] = useState('');
   const [excludedSourceIds, setExcludedSourceIds] = useState<readonly string[]>([]);
-  const [privacyMode, setPrivacyModeState] = useState<PromptForgePrivacyMode>('local_only');
+  const [privacyMode, setPrivacyModeState] = useState<PromptForgePrivacyMode>(() =>
+    options.offlineMode ? 'local_only' : 'provider_allowed',
+  );
   const [allowPublicResearch, setAllowPublicResearchState] = useState(false);
   const [undoValue, setUndoValue] = useState<PromptForgeUndoState | null>(null);
   const [approvedDraft, setApprovedDraft] = useState<PromptForgeApprovedDraft | null>(null);
@@ -382,6 +384,10 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
     setPrivacyModeState(next);
     if (next === 'local_only') setAllowPublicResearchState(false);
   }, []);
+
+  useEffect(() => {
+    if (options.offlineMode) setPrivacyMode('local_only');
+  }, [options.offlineMode, setPrivacyMode]);
 
   const createRunService = useCallback(
     (activeRun: ActiveComposerRun, excludedForRun: readonly string[]) => {

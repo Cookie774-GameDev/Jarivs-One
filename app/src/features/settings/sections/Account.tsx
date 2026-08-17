@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Mail,
   User2,
@@ -104,7 +104,6 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   const setDisplayName = useAuthStore((s) => s.setDisplayName);
   const localUserId = useAuthStore((s) => s.localUserId);
   const cloudSession = useAuthStore((s) => s.cloudSession);
-  const setCloudSession = useAuthStore((s) => s.setCloudSession);
 
   const [draftName, setDraftName] = useState(displayName);
   const [saveState, setSaveState] = useState<ProfileSaveState>('idle');
@@ -113,9 +112,20 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   const [signInMode, setSignInMode] = useState<'signin' | 'signup'>('signin');
   const [copied, setCopied] = useState(false);
   const [cloudHydrating, setCloudHydrating] = useState(false);
+  const [signOutPending, setSignOutPending] = useState(false);
+  const signOutOperation = useRef<symbol | null>(null);
+  const mounted = useRef(true);
 
   const cloudEmail = cloudSession?.email;
   const cloudUserId = cloudSession?.user_id?.trim() || null;
+
+  useEffect(
+    () => () => {
+      mounted.current = false;
+      signOutOperation.current = null;
+    },
+    [],
+  );
 
   // Keep draft aligned with the store. Do not clear a successful/failed save
   // status here — that is owned by the explicit save path.
@@ -173,14 +183,42 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   }
 
   async function handleSignOut() {
+    if (signOutOperation.current) return;
+    const initiatingUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+    if (!initiatingUserId) return;
+
+    const operation = Symbol('account-sign-out');
+    signOutOperation.current = operation;
+    setSignOutPending(true);
+
     try {
       const client = getSupabaseClient();
-      await client?.auth.signOut();
+      if (!client) throw new Error('Cloud sign out is unavailable.');
+      const { error } = await client.auth.signOut();
+      if (error) throw new Error('Cloud sign out failed.');
+
+      if (!mounted.current || signOutOperation.current !== operation) return;
+      const currentUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+      if (currentUserId && currentUserId !== initiatingUserId) return;
+      if (currentUserId === initiatingUserId) {
+        useAuthStore.setState({ cloudSession: null, plan: 'free' });
+      }
+      toast.success('Signed out', 'You have been signed out of your account.');
     } catch {
-      /* ignore */
+      if (!mounted.current || signOutOperation.current !== operation) return;
+      const currentUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+      if (currentUserId === initiatingUserId) {
+        toast.error(
+          'Sign out failed',
+          'Your session is still active. Check your connection and try again.',
+        );
+      }
+    } finally {
+      if (mounted.current && signOutOperation.current === operation) {
+        signOutOperation.current = null;
+        setSignOutPending(false);
+      }
     }
-    setCloudSession(null);
-    toast.success('Signed out', 'You have been signed out of your account.');
   }
 
   function copyId() {
@@ -366,9 +404,19 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
 
         <div className="flex flex-wrap gap-2">
           {cloudSession ? (
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
-              <LogOut className="h-3.5 w-3.5 mr-1.5" />
-              Sign out
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSignOut}
+              disabled={signOutPending}
+              aria-busy={signOutPending}
+            >
+              {signOutPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <LogOut className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {signOutPending ? 'Signing out…' : 'Sign out'}
             </Button>
           ) : (
             <>

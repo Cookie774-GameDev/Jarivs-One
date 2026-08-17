@@ -19,19 +19,27 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/toast';
 import { cn, formatRelative } from '@/lib/utils';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
-import type { Project } from '@/lib/db/schema';
+import type { BrowserChatBindingRow, BrowserChatSnapshotRow, Project } from '@/lib/db/schema';
 import type { Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
 import { deleteHistoryChats, historyDeletionFeedback } from './historyDeletion';
+import { browserChatProvider } from '@/features/browser-chat/providerRegistry';
+import { createChatGptSnapshotRepository } from '@/features/browser-chat/chatGptExport';
+
+const snapshotRepository = createChatGptSnapshotRepository(db);
 
 export interface HistoryListProps {
   selectedChatId: ChatId | null;
+  selectedSnapshotId?: string | null;
   onSelectChat: (id: ChatId | null) => void;
+  onSelectSnapshot?: (id: string | null) => void;
+  onOpenBrowserChat?: (id: ChatId) => void;
 }
 
 type ProjectFilter = 'all' | 'active';
 
 interface PendingHistoryDeletion {
-  chatIds: ChatId[];
+  chatIds?: ChatId[];
+  snapshotId?: string;
   expectedAccountId: string;
   expectedWorkspaceId: string;
   title: string;
@@ -54,7 +62,13 @@ const MAX_ROWS = 200;
  * the user's active project. Switching projects elsewhere in the app
  * automatically updates the chip.
  */
-export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) {
+export function HistoryList({
+  selectedChatId,
+  selectedSnapshotId = null,
+  onSelectChat,
+  onSelectSnapshot,
+  onOpenBrowserChat,
+}: HistoryListProps) {
   const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const activeProjectId = useAuthStore((s) => s.projectId) as ProjectId | null;
@@ -66,10 +80,14 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
   const [pendingDeletion, setPendingDeletion] = React.useState<PendingHistoryDeletion | null>(null);
   const cancelDeletionRef = React.useRef<HTMLButtonElement>(null);
   const selectedChatIdRef = React.useRef(selectedChatId);
+  const selectedSnapshotIdRef = React.useRef(selectedSnapshotId);
 
   React.useLayoutEffect(() => {
     selectedChatIdRef.current = selectedChatId;
   }, [selectedChatId]);
+  React.useLayoutEffect(() => {
+    selectedSnapshotIdRef.current = selectedSnapshotId;
+  }, [selectedSnapshotId]);
 
   React.useEffect(() => {
     if (
@@ -147,6 +165,35 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
     null as Set<string> | null,
   );
 
+  const browserBindings = useLiveQuery(
+    async () => {
+      if (!accountId || !workspaceId) return [] as BrowserChatBindingRow[];
+      return db.browser_chat_bindings
+        .where('[accountId+workspaceId]')
+        .equals([accountId, String(workspaceId)])
+        .toArray();
+    },
+    [accountId, workspaceId],
+    [] as BrowserChatBindingRow[],
+  );
+  const browserBindingByChatId = React.useMemo(
+    () => new Map(browserBindings.map((binding) => [binding.chatId, binding] as const)),
+    [browserBindings],
+  );
+
+  const importedSnapshots = useLiveQuery(
+    async () => {
+      if (!accountId || !workspaceId) return [] as BrowserChatSnapshotRow[];
+      const rows = await db.browser_chat_snapshots
+        .where('[accountId+workspaceId]')
+        .equals([accountId, String(workspaceId)])
+        .toArray();
+      return rows.sort((left, right) => right.updatedAt - left.updatedAt);
+    },
+    [accountId, workspaceId],
+    [] as BrowserChatSnapshotRow[],
+  );
+
   const filtered = React.useMemo(() => {
     let rows = chats ?? [];
     if (projectFilter === 'active' && activeProjectId) {
@@ -163,11 +210,23 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
     return rows;
   }, [chats, query, projectFilter, activeProjectId, messageMatches]);
 
+  const filteredSnapshots = React.useMemo(() => {
+    if (projectFilter === 'active') return [] as BrowserChatSnapshotRow[];
+    const q = query.trim().toLocaleLowerCase();
+    if (!q) return importedSnapshots;
+    return importedSnapshots.filter(
+      (snapshot) =>
+        snapshot.title.toLocaleLowerCase().includes(q) ||
+        snapshot.messages.some((message) => message.text.toLocaleLowerCase().includes(q)),
+    );
+  }, [importedSnapshots, projectFilter, query]);
+
   const removeChats = async (request: PendingHistoryDeletion) => {
-    if (deleting || request.chatIds.length === 0) return;
+    const chatIds = request.chatIds ?? [];
+    if (deleting || chatIds.length === 0) return;
     setDeleting(true);
     try {
-      const result = await deleteHistoryChats(request.chatIds.map(String), {
+      const result = await deleteHistoryChats(chatIds.map(String), {
         expectedAccountId: request.expectedAccountId,
         expectedWorkspaceId: request.expectedWorkspaceId,
         getActiveAccountId: () =>
@@ -198,6 +257,38 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
     } catch (error) {
       toast.error(
         'Could not delete history',
+        error instanceof Error ? error.message : 'The operation failed safely.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const removeSnapshot = async (request: PendingHistoryDeletion) => {
+    if (deleting || !request.snapshotId) return;
+    setDeleting(true);
+    try {
+      if (
+        resolveAccountIdentity(useAuthStore.getState())?.accountId !== request.expectedAccountId ||
+        String(useAuthStore.getState().workspaceId ?? '') !== request.expectedWorkspaceId
+      ) {
+        throw new Error('history_scope_changed');
+      }
+      await snapshotRepository.remove(
+        {
+          accountId: request.expectedAccountId,
+          workspaceId: request.expectedWorkspaceId,
+        },
+        request.snapshotId,
+      );
+      if (selectedSnapshotIdRef.current === request.snapshotId) onSelectSnapshot?.(null);
+      toast.success(
+        'Local snapshot deleted',
+        'The imported copy was removed. The original ChatGPT conversation was not changed.',
+      );
+    } catch (error) {
+      toast.error(
+        'Could not delete snapshot',
         error instanceof Error ? error.message : 'The operation failed safely.',
       );
     } finally {
@@ -270,11 +361,82 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-hidden">
-        {(chats ?? []).length === 0 ? (
+        {filteredSnapshots.length > 0 ? (
+          <section aria-labelledby="imported-chatgpt-snapshots-heading" className="py-1">
+            <h3
+              id="imported-chatgpt-snapshots-heading"
+              className="px-4 py-1 text-metadata font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              Imported ChatGPT snapshots
+            </h3>
+            <ul className="flex flex-col">
+              {filteredSnapshots.map((snapshot) => {
+                const selected = selectedSnapshotId === snapshot.id;
+                return (
+                  <li key={snapshot.id} className="group flex items-start gap-1 px-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectChat(null);
+                        onSelectSnapshot?.(snapshot.id);
+                      }}
+                      aria-current={selected ? 'true' : undefined}
+                      className={cn(
+                        'flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
+                        'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                        selected && 'bg-paper ring-1 ring-accent-copper/40',
+                      )}
+                    >
+                      <Avatar seed={`chatgpt:${snapshot.id}`} size={24} className="mt-0.5" />
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="min-w-0 flex-1 truncate text-ui-strong text-foreground">
+                            {snapshot.title}
+                          </span>
+                          <span className="shrink-0 text-metadata text-muted-foreground">
+                            {formatRelative(snapshot.updatedAt)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <RowChip label="Imported snapshot · ChatGPT" />
+                          <RowChip
+                            icon={<MessageSquare className="h-3 w-3" />}
+                            label={`${snapshot.messageCount} msg${snapshot.messageCount === 1 ? '' : 's'}`}
+                          />
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deleting}
+                      aria-label={`Delete imported snapshot ${snapshot.title}`}
+                      onClick={() => {
+                        if (!accountId || !workspaceId) return;
+                        setPendingDeletion({
+                          snapshotId: snapshot.id,
+                          expectedAccountId: accountId,
+                          expectedWorkspaceId: String(workspaceId),
+                          title: `Delete local snapshot ${snapshot.title}?`,
+                          description:
+                            'Only this imported local snapshot will be deleted. The original ChatGPT conversation and export file are not changed.',
+                          confirmLabel: 'Delete local snapshot',
+                        });
+                      }}
+                      className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-muted hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-30"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+        {(chats ?? []).length === 0 && filteredSnapshots.length === 0 ? (
           <EmptyState message="No past chats yet." />
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && filteredSnapshots.length === 0 ? (
           <EmptyState message="No chats match this search." />
-        ) : (
+        ) : filtered.length > 0 ? (
           <ul className="flex flex-col py-1">
             {filtered.map((chat) => {
               const firstAgentId = chat.active_agent_ids?.[0];
@@ -284,6 +446,7 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                 ? projectById[chat.project_id as unknown as string]
                 : undefined;
               const count = messageCounts?.[chat.id as unknown as string] ?? 0;
+              const browserBinding = browserBindingByChatId.get(String(chat.id));
               const selected =
                 (selectedChatId as unknown as string) === (chat.id as unknown as string);
               return (
@@ -293,7 +456,11 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                 >
                   <button
                     type="button"
-                    onClick={() => onSelectChat(chat.id)}
+                    onClick={() =>
+                      browserBinding && onOpenBrowserChat
+                        ? onOpenBrowserChat(chat.id)
+                        : onSelectChat(chat.id)
+                    }
                     aria-current={selected ? 'true' : undefined}
                     className={cn(
                       'flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-3 py-2 text-left transition-colors',
@@ -318,6 +485,11 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                           icon={<MessageSquare className="h-3 w-3" />}
                           label={`${count} msg${count === 1 ? '' : 's'}`}
                         />
+                        {browserBinding ? (
+                          <RowChip
+                            label={`Browser Chat · ${browserChatProvider(browserBinding.provider).label}`}
+                          />
+                        ) : null}
                       </div>
                     </div>
                   </button>
@@ -345,7 +517,7 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
               );
             })}
           </ul>
-        )}
+        ) : null}
       </div>
       <Dialog
         open={pendingDeletion !== null}
@@ -383,7 +555,8 @@ export function HistoryList({ selectedChatId, onSelectChat }: HistoryListProps) 
                 const request = pendingDeletion;
                 if (!request) return;
                 setPendingDeletion(null);
-                void removeChats(request);
+                if (request.snapshotId) void removeSnapshot(request);
+                else void removeChats(request);
               }}
             >
               {pendingDeletion?.confirmLabel ?? 'Delete'}

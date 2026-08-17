@@ -22,13 +22,14 @@ import {
   systemPromptForRequest,
 } from '../types';
 import { useAuthStore } from '@/stores/auth';
+import { nativeFetch } from '@/lib/nativeFetch';
 import { parseSSE } from './sse';
 import { sanitizeReasoningProviderOptions } from '../reasoningControls';
 
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 
 /** Default OpenAI model used when promoting a mock-default agent. */
-export const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5.1';
 
 function toOpenAiContent(content: string | LLMContentPart[]) {
   if (typeof content === 'string') return content;
@@ -84,7 +85,7 @@ export const openaiProvider: LLMProvider = {
     const model = req.agent.model.model || OPENAI_DEFAULT_MODEL;
     const body = buildOpenAIRequestBody(req);
 
-    const res = await fetch(API_URL, {
+    const res = await nativeFetch(API_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

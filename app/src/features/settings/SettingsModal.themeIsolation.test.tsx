@@ -20,9 +20,13 @@ describe('SettingsModal theme isolation', () => {
 
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
     const decorations = document.querySelectorAll<HTMLElement>('[data-warm-decoration]');
-    expect(decorations).toHaveLength(3);
+    expect(Array.from(decorations, (decoration) => decoration.dataset.warmDecoration)).toEqual([
+      'settings-scene',
+      'settings-wash',
+    ]);
     for (const decoration of decorations) {
       expect(decoration.className).toContain('hidden');
+      expect(decoration.getAttribute('aria-hidden')).toBe('true');
     }
   });
 });

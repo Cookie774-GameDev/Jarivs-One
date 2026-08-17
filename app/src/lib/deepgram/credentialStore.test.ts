@@ -125,6 +125,31 @@ describe('central Deepgram credential service', () => {
     expect(JSON.stringify(snapshot)).not.toContain('stored-secret');
   });
 
+  it('saves a new key in the vault when validation is temporarily unreachable', async () => {
+    const { adapter, values } = memoryAdapter();
+    const publish = vi.fn();
+    const service = createDeepgramCredentialService({
+      adapter,
+      fetcher: vi.fn(async () => {
+        throw new TypeError('offline');
+      }),
+      publish,
+      now: () => new Date('2026-08-09T20:00:00Z'),
+    });
+
+    const snapshot = await service.save('new-private-key');
+
+    expect(values.get('deepgram')).toBe('new-private-key');
+    expect(snapshot).toEqual({
+      configured: true,
+      health: 'unreachable',
+      source: 'saved',
+      checkedAt: '2026-08-09T20:00:00.000Z',
+      errorCode: 'network',
+    });
+    expect(JSON.stringify(publish.mock.calls)).not.toContain('new-private-key');
+  });
+
   it('removes canonical and every known legacy vault entry', async () => {
     const { adapter, values } = memoryAdapter({
       deepgram: 'one',

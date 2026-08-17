@@ -14,6 +14,8 @@ export type NormalizedPluginConnectionState =
 export type PluginConnectionPath =
   | 'native_oauth_pkce'
   | 'hosted_oauth'
+  | 'device_authorization'
+  | 'app_installation'
   | 'official_connector'
   | 'manual_credential'
   | 'unsupported';
@@ -35,19 +37,27 @@ function adapterFor(pluginId: string): PluginConnectionAdapter {
   const compatibility = PLUGIN_COMPATIBILITY_BY_ID[pluginId];
   if (!plugin || !compatibility) throw new Error(`Unknown plugin '${pluginId}'.`);
   const path: PluginConnectionPath =
-    compatibility.connectionClass === 'official_one_click'
-      ? 'native_oauth_pkce'
-      : compatibility.connectionClass === 'official_backend'
-        ? 'hosted_oauth'
-        : compatibility.connectionClass === 'official_connector'
-          ? 'official_connector'
-          : compatibility.connectionClass === 'manual_credential'
-            ? 'manual_credential'
-            : 'unsupported';
+    plugin.connectionStrategy === 'device_authorization'
+      ? 'device_authorization'
+      : plugin.connectionStrategy === 'app_installation'
+        ? 'app_installation'
+        : plugin.connectionStrategy === 'hosted_oauth'
+          ? 'hosted_oauth'
+          : plugin.connectionStrategy === 'native_oauth_pkce'
+            ? 'native_oauth_pkce'
+            : compatibility.connectionClass === 'official_one_click'
+              ? 'native_oauth_pkce'
+              : compatibility.connectionClass === 'official_backend'
+                ? 'hosted_oauth'
+                : compatibility.connectionClass === 'official_connector'
+                  ? 'official_connector'
+                  : compatibility.connectionClass === 'manual_credential'
+                    ? 'manual_credential'
+                    : 'unsupported';
   return Object.freeze({
     pluginId,
     path,
-    authorizationUrl: plugin.credentialUrl,
+    authorizationUrl: plugin.authorizationUrl,
     documentationUrl: compatibility.officialDocumentation,
     scopes: compatibility.requiredScopes,
     canConnect:

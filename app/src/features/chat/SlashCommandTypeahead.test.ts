@@ -9,6 +9,7 @@ import {
   slashCmdMatchScore,
   type SlashCommandDef,
 } from './SlashCommandTypeahead';
+import { SECTION_20_COMMANDS } from './slashCommandRouting';
 
 describe('orderSlashCommandsForDisplay', () => {
   it('matches the grouped visual order used by the slash dropdown', () => {
@@ -49,6 +50,11 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(SLASH_COMMANDS.some((cmd) => cmd.cmd === 'skillspage')).toBe(false);
   });
 
+  it('registers every canonical Section 20 command exactly once', () => {
+    expect(SLASH_COMMANDS.map(({ cmd }) => cmd)).toEqual(SECTION_20_COMMANDS);
+    expect(new Set(SLASH_COMMANDS.map(({ cmd }) => cmd)).size).toBe(SECTION_20_COMMANDS.length);
+  });
+
   it('normalizes legacy slash spellings', () => {
     expect(normalizeSlashCmd('mode')).toBe('mode');
     expect(normalizeSlashCmd('terminal')).toBe('terminals');
@@ -60,13 +66,14 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(normalizeSlashCmd('multitaksk')).toBe('multitask');
     expect(normalizeSlashCmd('clearfile')).toBe('clearfiles');
     expect(normalizeSlashCmd('cearfile')).toBe('clearfiles');
+    expect(normalizeSlashCmd('themes')).toBe('theme');
   });
 
   it('keeps Agent, Plan, and Ask under the explicit /permissions picker', () => {
     expect(findSlashCommandDef('permissions')).toMatchObject({
       cmd: 'permissions',
       hasOptions: true,
-      argPlaceholder: 'agent | plan | ask',
+      argPlaceholder: 'agent | plan | ask | read | write | full | approve-all',
     });
   });
 
@@ -145,19 +152,23 @@ describe('orderSlashCommandsForDisplay', () => {
       argPlaceholder: 'paper white | sakura mist | graphite | oled void',
     });
     expect(findSlashCommandDef('theme')?.hasOptions).toBe(true);
-    expect(findSlashCommandDef('themes')).toMatchObject({
-      cmd: 'themes',
-      category: 'utility',
-      takesArg: true,
-      hasOptions: true,
-      description: 'Choose the global VibeSpace appearance',
-    });
+    expect(findSlashCommandDef('themes')).toMatchObject({ cmd: 'theme' });
     expect(findSlashCommandDef('appearance')).toMatchObject({
       cmd: 'appearance',
       category: 'utility',
       takesArg: true,
       hasOptions: true,
       description: 'Switch the global VibeSpace appearance',
+    });
+  });
+
+  it('offers /rlm as a default-on context control', () => {
+    expect(findSlashCommandDef('rlm')).toMatchObject({
+      cmd: 'rlm',
+      category: 'chat',
+      takesArg: true,
+      hasOptions: true,
+      argPlaceholder: 'on | off | status | refresh | trace',
     });
   });
 

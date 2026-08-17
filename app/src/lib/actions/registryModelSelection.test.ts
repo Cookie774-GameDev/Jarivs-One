@@ -145,7 +145,7 @@ describe('buildJarvisModelSwitchCandidates', () => {
     expect(candidates[0]).toMatchObject({ connected: false, available: false });
   });
 
-  it('uses only current-session authority and exact Codex subscription models by default', () => {
+  it('never projects an external provider CLI as a Chat model-switch candidate', () => {
     writeConnectionPickerStates({
       'openai-codex': { available: true, auth: 'authenticated' },
     });
@@ -153,12 +153,7 @@ describe('buildJarvisModelSwitchCandidates', () => {
     const stale = buildJarvisModelSwitchCandidates(state(), {
       connections: [CODEX_CLI_CONNECTION],
     }).filter((candidate) => candidate.selection.connectionId === 'openai-codex');
-    expect(stale.map((candidate) => candidate.selection.modelId)).toEqual([
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-    ]);
-    expect(stale.every((candidate) => !candidate.connected && !candidate.available)).toBe(true);
+    expect(stale).toEqual([]);
 
     writeConnectionMetadata({
       'openai-codex': {
@@ -170,12 +165,7 @@ describe('buildJarvisModelSwitchCandidates', () => {
     const current = buildJarvisModelSwitchCandidates(state(), {
       connections: [CODEX_CLI_CONNECTION],
     }).filter((candidate) => candidate.selection.connectionId === 'openai-codex');
-    expect(current.map((candidate) => candidate.selection.modelId)).toEqual([
-      'gpt-5.6-sol',
-      'gpt-5.6-terra',
-      'gpt-5.6-luna',
-    ]);
-    expect(current.every((candidate) => candidate.connected && candidate.available)).toBe(true);
+    expect(current).toEqual([]);
   });
 
   it('projects exact embedded metadata only onto an active catalog model', () => {

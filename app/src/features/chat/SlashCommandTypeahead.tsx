@@ -7,6 +7,7 @@ import { isHiveProductEnabled } from '@/lib/features/hiveProductGate';
 import { scrollPickerItemIntoView } from './pickerScroll';
 import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMotion';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import { SLASH_COMMAND_ALIASES, normalizeSlashCommand } from './slashCommandRouting';
 import {
   BarChart3,
   Bot,
@@ -53,31 +54,10 @@ export interface SlashCommandDef {
   hasOptions?: boolean;
 }
 
-export const SLASH_CMD_ALIASES: Record<string, string> = {
-  terminal: 'terminals',
-  contextmap: 'context',
-  contexts: 'context',
-  // /agent opens the live subagent selector — not multitask spawn.
-  multitaksk: 'multitask',
-  multiatask: 'multitask',
-  mulititask: 'multitask',
-  multitaks: 'multitask',
-  subagent: 'subagents',
-  suabagent: 'subagents',
-  subagnts: 'subagents',
-  subagens: 'subagents',
-  clearfile: 'clearfiles',
-  'clear-files': 'clearfiles',
-  cearfile: 'clearfiles',
-  cearfiles: 'clearfiles',
-  permission: 'permissions',
-  perms: 'permissions',
-  access: 'permissions',
-};
+export const SLASH_CMD_ALIASES: Readonly<Record<string, string>> = SLASH_COMMAND_ALIASES;
 
 export function normalizeSlashCmd(raw: string): string {
-  const cmd = raw.toLowerCase();
-  return SLASH_CMD_ALIASES[cmd] ?? cmd;
+  return normalizeSlashCommand(raw);
 }
 
 export const CHAT_ATTACH_SLASH_CMDS = new Set([
@@ -129,11 +109,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
     cmd: 'permissions',
     aliases: ['permission', 'perms'],
-    description: 'Set chat mode: Agent, Plan, or Ask',
+    description: 'Set mode, access, and Approve All for this run',
     icon: Shield,
     category: 'chat',
     takesArg: true,
-    argPlaceholder: 'agent | plan | ask',
+    argPlaceholder: 'agent | plan | ask | read | write | full | approve-all',
     hasOptions: true,
   },
   {
@@ -278,6 +258,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     category: 'chat',
     takesArg: true,
     argPlaceholder: 'on | off | status | refresh | trace',
+    hasOptions: true,
   },
   {
     cmd: 'access',
@@ -371,15 +352,6 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     category: 'utility',
     takesArg: true,
     argPlaceholder: 'paper white | sakura mist | graphite | oled void',
-    hasOptions: true,
-  },
-  {
-    cmd: 'themes',
-    description: 'Choose the global VibeSpace appearance',
-    icon: Palette,
-    category: 'utility',
-    takesArg: true,
-    argPlaceholder: 'jarvis one | default | monochrome | warm',
     hasOptions: true,
   },
   {

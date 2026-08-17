@@ -18,7 +18,7 @@ import { TokenBossCinematic } from './token-boss/TokenBossCinematic';
 import { WarmChatWelcome } from './WarmChatWelcome';
 import { ChatOutputPanel } from './ChatOutputPanel';
 import { BrowserGoalStatus } from '@/features/browser/BrowserGoalStatus';
-import { BrowserChatHub, useBrowserChatStore } from '@/features/browser-chat';
+import { BrowserChatHub, resolveChatEngine, useBrowserChatStore } from '@/features/browser-chat';
 import './sakura-chat.css';
 import './chat-welcome.css';
 
@@ -34,9 +34,7 @@ export function ChatView() {
       ? MONOCHROME_CHAT_FIXTURE
       : undefined;
   const activeChatId = visualChatFixture?.activeConversationId ?? storedActiveChatId;
-  const engine = useBrowserChatStore(
-    (state) => state.chatPreferences[activeChatId ?? '']?.engine ?? state.engine,
-  );
+  const engine = useBrowserChatStore((state) => resolveChatEngine(state, activeChatId));
   const canShowChatWelcome = Boolean(activeChatId);
   const [dropKind, setDropKind] = useState<ChatDropKind | null>(null);
   const [ensuringChat, setEnsuringChat] = useState(false);
@@ -74,7 +72,7 @@ export function ChatView() {
     };
   }, [activeChatId, engine, isVisualEmptyChat]);
 
-  if (engine === 'browser') {
+  if (engine === 'browser' && activeChatId) {
     return (
       <TooltipProvider delayDuration={400}>
         <BrowserChatHub chatId={activeChatId} />
@@ -163,7 +161,7 @@ export function ChatView() {
           <>
             <ChatThread chatId={activeChatId} fixtureMessages={visualChatFixture?.messages} />
             <BrowserGoalStatus chatId={String(activeChatId)} />
-            <Composer chatId={activeChatId} />
+            <Composer key={String(activeChatId)} chatId={activeChatId} />
             <TokenBossCinematic chatId={String(activeChatId)} />
             <ChatOutputPanel
               chatId={String(activeChatId)}

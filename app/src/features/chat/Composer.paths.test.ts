@@ -5,7 +5,9 @@ import {
   buildConfirmedAgentMention,
   buildSlashReferenceCommand,
   canvasSnapshotToImageAttachment,
+  connectionSupportsFileAttachments,
   extractAbsoluteFilePaths,
+  resolveSendFilePaths,
   getAppearanceCommandHelp,
   getQueuedMessageNotice,
   getThemeCommandHelp,
@@ -14,6 +16,7 @@ import {
   resolveMentionedAgentIdsForSend,
 } from './Composer';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
+import { buildVibeSpaceReferenceRequest } from './slashCommandRouting';
 import { compileCanvasAiContext } from '@/features/canvas/aiContext';
 import {
   clearActiveCanvasAiContextForTests,
@@ -50,6 +53,47 @@ describe('composer file path detection', () => {
     const path = 'C:\\project\\AnimalOutputGenerator.cs';
     expect(extractAbsoluteFilePaths(`${path} summarize ${path}`)).toEqual([path]);
   });
+
+  it('keeps typed Windows paths as text on connections that cannot attach files', () => {
+    const sendText =
+      'Read these with files.read\nC:\\Users\\viper\\Downloads\\VibeSpace-Test03-Ten-Files-20260814-Grok4\\01_readme.txt';
+    expect(
+      resolveSendFilePaths({
+        attachedFiles: [],
+        sendText,
+        supportsFiles: false,
+      }),
+    ).toEqual([]);
+    expect(
+      resolveSendFilePaths({
+        attachedFiles: [],
+        sendText,
+        supportsFiles: true,
+      }),
+    ).toEqual([
+      'C:\\Users\\viper\\Downloads\\VibeSpace-Test03-Ten-Files-20260814-Grok4\\01_readme.txt',
+    ]);
+  });
+
+  it('still sends an explicit /attach path even when the connection cannot attach files', () => {
+    expect(
+      resolveSendFilePaths({
+        attachedFiles: ['C:\\Users\\viper\\notes.txt'],
+        sendText: 'Please review the attached notes.',
+        supportsFiles: false,
+      }),
+    ).toEqual(['C:\\Users\\viper\\notes.txt']);
+  });
+
+  it('treats openai-codex as a no-file-attachment connection', () => {
+    expect(
+      connectionSupportsFileAttachments({
+        mode: 'single',
+        connectionId: 'openai-codex',
+        capabilities: { files: false },
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('composer queued-run notice', () => {
@@ -70,12 +114,20 @@ describe('composer queued-run notice', () => {
 });
 
 describe('composer mention and slash confirmation helpers', () => {
+  it('turns a schedule request into bounded VibeSpace context instead of raw slash syntax', () => {
+    const request = buildVibeSpaceReferenceRequest('schedule', 'run npm test tomorrow');
+    expect(request).toBe(
+      'Context references: /schedule references Schedule. User request: run npm test tomorrow',
+    );
+    expect(request).not.toMatch(/^\/schedule\b/u);
+  });
+
   it('separates console profiles from the release-only global appearance picker', () => {
     expect(getThemeCommandHelp()).toBe(
       'Chat console themes: Paper White, Solar Sand, Sakura Mist, Icebound, VibeSpace Amber, Graphite, Midnight Blue, Monokai Ember, Matrix Moss, OLED Void. Use /theme <name>.',
     );
     expect(getAppearanceCommandHelp()).toBe(
-      'Available appearances: Jarvis One, Default, MonoChrome, Warm. Use /themes or /appearance to choose.',
+      'Available appearances: Jarvis One, Default, MonoChrome, Warm. Use /appearance to choose.',
     );
   });
 

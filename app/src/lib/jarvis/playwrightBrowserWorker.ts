@@ -243,6 +243,10 @@ export async function hashPlaywrightBrowserAction(
   return sha256(action);
 }
 
+export function assertPlaywrightBrowserAction(action: PlaywrightBrowserAction): void {
+  validateAction(action);
+}
+
 function originOf(url: string): string {
   let parsed: URL;
   try {
@@ -275,6 +279,15 @@ function assertTarget(target: PlaywrightSemanticTarget): void {
 }
 
 function validateAction(action: PlaywrightBrowserAction): void {
+  if (
+    typeof action !== 'object' ||
+    action === null ||
+    !('name' in action) ||
+    typeof action.name !== 'string' ||
+    !ACTIONS.has(action.name as PlaywrightBrowserActionName)
+  ) {
+    throw new Error('Unsupported browser action.');
+  }
   if (action.name === 'navigate') {
     originOf(action.url);
   } else if (action.name === 'open_tab' && action.url !== null) {

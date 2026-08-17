@@ -125,6 +125,7 @@ export {
   MAX_ADDRESSABLE_CORPUS_TOKENS,
   CorpusScaleError,
   createCorpusScaleMetadata,
+  locateCorpusTokenPosition,
   parseCorpusTokenCount,
   parseSerializedCorpusScaleMetadata,
   serializeCorpusScaleMetadata,
@@ -569,3 +570,73 @@ export {
 } from './repositoryRetrievalRuntime';
 export { NightlySecondBrainPanel } from './NightlySecondBrainPanel';
 export { NightlySecondBrainHost } from './NightlySecondBrainHost';
+export {
+  CONTEXT_SOURCE_KINDS,
+  ContextContractError,
+  createContextPointer,
+  createContextRecord,
+  pointerBounds,
+  type ContextPointer,
+  type ContextPointerBounds,
+  type ContextRecord,
+  type ContextSourceKind,
+} from './losslessContext';
+export {
+  ContextQueryError,
+  createContextQueryService,
+  type ContextOpenResult,
+  type ContextQueryErrorCode,
+  type ContextQueryLimits,
+  type ContextQueryRepository,
+  type ContextQueryService,
+  type ContextScope,
+  type ContextSearchHit,
+  type ContextSearchItem,
+  type ContextSourceRead,
+} from './contextQueryService';
+export {
+  decideContextMode,
+  type ContextExecutionMode,
+  type ContextModeDecision,
+  type ContextModeSignals,
+} from './adaptiveContextRouter';
+export {
+  formatRlmStatus,
+  parseRlmSlashArgument,
+  resolveRlmEnabled,
+  setChatRlmEnabled,
+  type ResolvedRlmPreference,
+  type RlmSlashAction,
+} from './rlmPreferenceStore';
+export {
+  RLM_CHILD_MODEL,
+  RLM_CHILD_PROVIDER,
+  RlmRuntimeError,
+  createRlmRuntime,
+  type RlmBudget,
+  type RlmChildAnalysis,
+  type RlmChildRequest,
+  type RlmRuntime,
+  type RlmRuntimeErrorCode,
+  type RlmRuntimeResult,
+  type RlmSynthesis,
+  type RlmSynthesisRequest,
+  type RlmTraceEvent,
+  type RlmTraceEventType,
+} from './rlmRuntime';
+export {
+  RLM_CONTEXT_OPERATIONS,
+  RLM_OPENCODE_TOOL_NAME,
+  RlmOpenCodeToolError,
+  createRlmOpenCodeTool,
+  type RlmContextLease,
+  type RlmContextOperation,
+  type RlmOpenCodeToolErrorCode,
+} from './rlmOpenCodeTool';
+export {
+  createContextMapRlmRepository,
+  createOllamaRlmChildRunner,
+  createProductionRlmContextTool,
+  productionRlmContextTool,
+} from './contextRlmProduction';
+export { createRecursiveContextQueryAdapter } from './recursiveContextQueryAdapter';

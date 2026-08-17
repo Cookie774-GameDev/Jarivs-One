@@ -2,9 +2,9 @@
  * BenchmarksPage — live AI model benchmark page for Jarvis.
  *
  * Shows a sortable, filterable table + horizontal bar chart of public
- * leaderboard scores. Data comes from `benchmarkData.fetchBenchmarks()`,
- * which falls back to a curated Top-50 unique-model snapshot (AA Intelligence
- * + OpenRouter list prices) when live fetch fails. The header chip makes that state explicit.
+ * leaderboard scores. Data comes from `benchmarkData.fetchBenchmarks()`.
+ * Only structured Arena rows are ranked; provider-published evaluations are
+ * displayed separately with their exact benchmark and setup.
  *
  * The page is fully self-contained: no parent route wiring, no provider,
  * no shared state beyond reading `useAuthStore` to allow the detail
@@ -34,6 +34,7 @@ import { cn, formatCost, formatRelative, formatTokenCount } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { fetchBenchmarks, isSupportedProvider, type BenchmarkRow } from './benchmarkData';
+import { OFFICIAL_BENCHMARK_EVIDENCE } from './officialBenchmarkData';
 import {
   BENCHMARK_REFRESH_COMPLETE_EVENT,
   type BenchmarkRefreshCompleteEvent,
@@ -49,7 +50,6 @@ const WARM_BENCHMARK_SCENE_ASSET =
   '/assets/themes/warm/benchmarks/continuation-v2/benchmark-scroll-composite-v2.webp';
 /** Show at least this many rows before collapsing the rest behind a button. */
 const MIN_VISIBLE_ROWS = 50;
-const SNAPSHOT_SOURCE_URL = 'https://artificialanalysis.ai/leaderboards/models';
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/models';
 
 /** One-line capability summary used for the row hover tooltip. */
@@ -73,8 +73,8 @@ function rowTooltip(r: BenchmarkRow): string {
   const ciHalf = (r.ci_high - r.ci_low) / 2;
   parts.push(
     ciHalf > 0
-      ? `Intelligence ${r.arena_score} (±${Math.round(ciHalf)})`
-      : `Intelligence ${r.arena_score}`,
+      ? `Arena rating ${r.arena_score} (±${Math.round(ciHalf)})`
+      : `Arena rating ${r.arena_score}`,
   );
   return parts.join('\n');
 }
@@ -102,12 +102,11 @@ function licenseSeverity(row: BenchmarkRow): 'low' | 'med' | 'high' | 'info' {
 export function BenchmarksPage() {
   const warmActive = useUIStore((state) => state.theme === 'warm');
   const [rows, setRows] = React.useState<BenchmarkRow[]>([]);
-  const [fromSnapshot, setFromSnapshot] = React.useState(false);
   const [refreshStale, setRefreshStale] = React.useState(false);
+  const [unavailable, setUnavailable] = React.useState(false);
   const [fetchedAt, setFetchedAt] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
-  const [errorReason, setErrorReason] = React.useState<string | null>(null);
   const [dataset, setDataset] = React.useState<
     Awaited<ReturnType<typeof fetchBenchmarks>>['dataset'] | null
   >(null);
@@ -125,9 +124,8 @@ export function BenchmarksPage() {
   // the four code paths can't drift apart.
   const applyResult = React.useCallback((result: Awaited<ReturnType<typeof fetchBenchmarks>>) => {
     setRows(result.rows);
-    setFromSnapshot(result.fromSnapshot);
     setRefreshStale(result.stale === true);
-    setErrorReason(result.fromSnapshot || result.stale ? (result.reason ?? null) : null);
+    setUnavailable(result.unavailable === true);
     setFetchedAt(result.dataset?.benchmarkDate ?? Date.now());
     setDataset(result.dataset ?? null);
   }, []);
@@ -190,12 +188,12 @@ export function BenchmarksPage() {
     try {
       const result = await fetchBenchmarks({ force: true });
       applyResult(result);
-      if (result.fromSnapshot || result.stale) {
+      if (result.stale || result.unavailable) {
         toast.warning(
-          result.stale ? 'Using last-known-good data' : 'Using snapshot data',
+          result.unavailable ? 'Verified benchmark data unavailable' : 'Using last-known-good data',
           result.reason
             ? `Live fetch failed: ${result.reason}`
-            : 'Live fetch failed; showing frozen leaderboard.',
+            : 'The last verified structured leaderboard remains available.',
         );
       } else {
         toast.success('Benchmarks refreshed', `${result.rows.length} models loaded`);
@@ -211,8 +209,7 @@ export function BenchmarksPage() {
   }, [applyResult]);
 
   const stale =
-    refreshStale ||
-    (fetchedAt != null && Date.now() - fetchedAt > (fromSnapshot ? 30 : 7) * 24 * 60 * 60 * 1000);
+    refreshStale || (fetchedAt != null && Date.now() - fetchedAt > 7 * 24 * 60 * 60 * 1000);
 
   // Distinct providers, sorted alphabetically.
   const providers = React.useMemo(() => {
@@ -258,15 +255,7 @@ export function BenchmarksPage() {
       .sort((a, b) => b.arena_score - a.arena_score)
       .slice(0, TOP_N_FOR_CHART);
   }, [filtered]);
-  const chartRows = React.useMemo(
-    () =>
-      warmActive
-        ? fromSnapshot && providerFilter === PROVIDER_FILTER_ALL && !openOnly
-          ? filtered.slice(0, TOP_N_FOR_CHART)
-          : topForChart
-        : topForChart,
-    [filtered, fromSnapshot, openOnly, providerFilter, topForChart, warmActive],
-  );
+  const chartRows = topForChart;
 
   const visibleRows = React.useMemo(
     () => (showAll ? sorted : sorted.slice(0, MIN_VISIBLE_ROWS)),
@@ -329,28 +318,21 @@ export function BenchmarksPage() {
               <span
                 className={cn(
                   'inline-block h-1.5 w-1.5 rounded-full',
-                  fromSnapshot ? 'bg-warning' : 'bg-success',
+                  unavailable || stale ? 'bg-warning' : 'bg-success',
                 )}
               />
               <span>
-                {loading ? 'Loading' : fromSnapshot ? 'Snapshot' : 'Live'}
+                {loading ? 'Loading' : unavailable ? 'Unavailable' : stale ? 'Stale' : 'Live'}
                 {fetchedAt && ' · last fetched '}
                 {fetchedAt && formatRelative(fetchedAt)}
               </span>
-              {fromSnapshot && (
-                <span
-                  className="sev-pill med ml-2 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:bg-border-mid"
-                  title={errorReason ?? 'Live endpoint unavailable; using frozen data.'}
-                >
-                  from snapshot
-                </span>
-              )}
             </div>
             <h1 className="font-display text-foreground text-4xl font-semibold leading-tight">
               Benchmarks
             </h1>
             <p className="text-secondary text-muted-foreground max-w-xl">
-              Free public leaderboards. BYOK to run any of them.
+              Hourly structured Arena rankings with source-linked official evaluations kept
+              separate.
             </p>
             {dataset && (
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-metadata text-muted-foreground">
@@ -437,7 +419,7 @@ export function BenchmarksPage() {
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors',
               )}
             >
-              <option value="arena_score">Intelligence score</option>
+              <option value="arena_score">Arena rating</option>
               <option value="cost">Cost</option>
               <option value="context">Context window</option>
             </select>
@@ -472,7 +454,7 @@ export function BenchmarksPage() {
         >
           <div className="flex items-baseline justify-between mb-4">
             <h2 className="text-page-title text-foreground">
-              Top {Math.min(TOP_N_FOR_CHART, topForChart.length)} by Intelligence
+              Top {Math.min(TOP_N_FOR_CHART, topForChart.length)} by Arena rating
             </h2>
             <div className="flex items-center gap-3 text-metadata text-muted-foreground">
               <span className="flex items-center gap-1.5">
@@ -514,7 +496,7 @@ export function BenchmarksPage() {
                   <th className="text-left font-semibold px-4 py-3">Provider</th>
                   <th className="text-left font-semibold px-4 py-3">Type</th>
                   <SortableTh
-                    label="Intel"
+                    label="Arena"
                     active={sortKey === 'arena_score'}
                     dir={sortDir}
                     onClick={() => toggleSort('arena_score')}
@@ -639,7 +621,9 @@ export function BenchmarksPage() {
                       colSpan={7}
                       className="px-4 py-10 text-center text-secondary text-muted-foreground"
                     >
-                      No models match the current filters.
+                      {unavailable
+                        ? 'Verified Arena data is unavailable. No fallback scores were invented.'
+                        : 'No models match the current filters.'}
                     </td>
                   </tr>
                 )}
@@ -662,9 +646,55 @@ export function BenchmarksPage() {
             </div>
           )}
         </section>
+
+        <section
+          aria-labelledby="official-evaluations-title"
+          className="cozy-card !p-5 flex flex-col gap-4"
+        >
+          <div className="flex flex-col gap-1">
+            <h2 id="official-evaluations-title" className="text-page-title text-foreground">
+              Official provider evaluations
+            </h2>
+            <p className="text-secondary text-muted-foreground max-w-3xl">
+              Source-linked results reported by model providers. Scores are shown with their exact
+              benchmark and setup and are never merged into the Arena ranking.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {OFFICIAL_BENCHMARK_EVIDENCE.map((entry) => (
+              <article
+                key={`${entry.provider}:${entry.model}:${entry.benchmark}:${entry.evaluationSetup}`}
+                className="rounded-lg border border-border p-4 flex flex-col gap-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-foreground font-medium">{entry.model}</div>
+                    <div className="text-metadata text-muted-foreground">{entry.provider}</div>
+                  </div>
+                  <div className="font-mono text-foreground">
+                    {entry.value}
+                    {entry.unit}
+                  </div>
+                </div>
+                <div className="text-secondary text-foreground">{entry.benchmark}</div>
+                <div className="text-metadata text-muted-foreground">
+                  {entry.metric} · {entry.evaluationSetup}
+                </div>
+                <a
+                  href={entry.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="mt-auto inline-flex items-center gap-1 text-metadata text-accent-copper hover:underline"
+                >
+                  Source: {entry.reportedBy} <ExternalLink className="h-3 w-3" />
+                </a>
+              </article>
+            ))}
+          </div>
+        </section>
       </div>
 
-      <DetailDrawer row={selectedRow} onClose={() => setSelectedModel(null)} />
+      <DetailDrawer row={selectedRow} dataset={dataset} onClose={() => setSelectedModel(null)} />
     </div>
   );
 }
@@ -702,10 +732,11 @@ function SortableTh({ label, active, dir, onClick, align = 'left' }: SortableThP
 
 interface DetailDrawerProps {
   row: BenchmarkRow | null;
+  dataset: Awaited<ReturnType<typeof fetchBenchmarks>>['dataset'] | null;
   onClose: () => void;
 }
 
-function DetailDrawer({ row, onClose }: DetailDrawerProps) {
+function DetailDrawer({ row, dataset, onClose }: DetailDrawerProps) {
   const setDefaultProvider = useAuthStore((s) => s.setDefaultProvider);
   const open = !!row;
 
@@ -763,7 +794,7 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                 {/* Score block */}
                 <div>
                   <div className="text-metadata text-muted-foreground uppercase tracking-wider mb-1">
-                    Intelligence score
+                    Arena rating
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-hero font-mono text-foreground">{row.arena_score}</span>
@@ -857,15 +888,17 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                     Source
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <a
-                      href={SNAPSHOT_SOURCE_URL}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="inline-flex items-center gap-1.5 text-secondary text-accent-copper hover:underline"
-                    >
-                      Artificial Analysis leaderboard
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                    {dataset && (
+                      <a
+                        href={dataset.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1.5 text-secondary text-accent-copper hover:underline"
+                      >
+                        {dataset.sourceName}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
                     <a
                       href={OPENROUTER_MODELS_URL}
                       target="_blank"
@@ -877,10 +910,7 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                     </a>
                   </div>
                   <div className="text-metadata text-muted-foreground mt-2">
-                    Data source:{' '}
-                    <span className="font-mono">
-                      {row.source === 'snapshot' ? 'AA unique-model snapshot' : 'Arena live'}
-                    </span>
+                    Data source: <span className="font-mono">Structured Arena feed</span>
                     {' · '}
                     fetched {formatRelative(row.fetched_at)}
                   </div>

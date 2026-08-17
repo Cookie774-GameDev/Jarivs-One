@@ -35,8 +35,6 @@ export interface AccessAppHostProps {
   children: React.ReactNode;
   enabled: boolean;
   runtime: AccessAppRuntime;
-  /** Stable account identity used to cancel and reset account-owned state. */
-  accountIdentity?: string;
   privacyUrl?: string;
   termsUrl?: string;
 }
@@ -64,11 +62,20 @@ function safeHttpsUrl(value: string | undefined): string | undefined {
 
 const noop = () => undefined;
 
+async function openAuthorizedExternalUrl(
+  signal: AbortSignal,
+  createUrl: () => Promise<string>,
+  openUrl: (url: string) => Promise<void>,
+) {
+  const url = await createUrl();
+  if (signal.aborted) return;
+  await openUrl(url);
+}
+
 export function AccessAppHost({
   children,
   enabled,
   runtime,
-  accountIdentity = '',
   privacyUrl,
   termsUrl,
 }: AccessAppHostProps) {
@@ -78,7 +85,6 @@ export function AccessAppHost({
   const [actionNotice, setActionNotice] = React.useState<string | null>(null);
   const actionGeneration = React.useRef(0);
   const actionController = React.useRef<AbortController | null>(null);
-  const accountIdentityRef = React.useRef(accountIdentity);
 
   React.useEffect(
     () => () => {
@@ -88,18 +94,6 @@ export function AccessAppHost({
     [],
   );
 
-  React.useEffect(() => {
-    if (accountIdentityRef.current === accountIdentity) return;
-    accountIdentityRef.current = accountIdentity;
-    actionGeneration.current += 1;
-    actionController.current?.abort();
-    actionController.current = null;
-    setViewModel(null);
-    setPendingAction(null);
-    setActionError(null);
-    setActionNotice(null);
-  }, [accountIdentity]);
-
   const loadAccess = React.useCallback(
     async (signal: AbortSignal) => {
       const next = await runtime.loadViewModel(signal);
@@ -108,18 +102,6 @@ export function AccessAppHost({
         setActionError(null);
       }
       return next.host;
-    },
-    [accountIdentity, runtime],
-  );
-
-  const openRuntimeUrl = React.useCallback(
-    async (
-      signal: AbortSignal,
-      createUrl: (signal: AbortSignal) => Promise<string>,
-    ): Promise<void> => {
-      const url = await createUrl(signal);
-      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      await runtime.openExternalUrl(url);
     },
     [runtime],
   );
@@ -208,9 +190,12 @@ export function AccessAppHost({
         onManageBilling={() => {
           void runAction(
             'manage-billing',
-            async (signal) => {
-              await openRuntimeUrl(signal, runtime.createPortalUrl);
-            },
+            (signal) =>
+              openAuthorizedExternalUrl(
+                signal,
+                () => runtime.createPortalUrl(signal),
+                (url) => runtime.openExternalUrl(url),
+              ),
             'Billing could not be opened. Please try again.',
           );
         }}
@@ -252,9 +237,12 @@ export function AccessAppHost({
         const checkout = () =>
           runAction(
             'subscribe',
-            async (signal) => {
-              await openRuntimeUrl(signal, runtime.createCheckoutUrl);
-            },
+            (signal) =>
+              openAuthorizedExternalUrl(
+                signal,
+                () => runtime.createCheckoutUrl(signal),
+                (url) => runtime.openExternalUrl(url),
+              ),
             'Checkout could not be opened. Please try again.',
           );
         const paywall = (
@@ -273,9 +261,12 @@ export function AccessAppHost({
             onManageBilling={() => {
               void runAction(
                 'manage-billing',
-                async (signal) => {
-                  await openRuntimeUrl(signal, runtime.createPortalUrl);
-                },
+                (signal) =>
+                  openAuthorizedExternalUrl(
+                    signal,
+                    () => runtime.createPortalUrl(signal),
+                    (url) => runtime.openExternalUrl(url),
+                  ),
                 'Billing could not be opened. Please try again.',
               );
             }}
@@ -480,7 +471,6 @@ function createInstalledRuntime(
     async signOut() {
       const client = requireClient();
       const { error } = await client.auth.signOut();
-      useAuthStore.setState({ cloudSession: null, plan: 'free' });
       if (error) throw new Error('Sign out failed.');
     },
     async backupLocalData() {
@@ -507,9 +497,12 @@ export function isAccessGateEnabled(environment: AccessBuildEnvironment): boolea
 
 function publishInstalledCloudSession(session: Session | null): boolean {
   const userId = session?.user.id?.trim() ?? '';
-  const previousUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+  const authState = useAuthStore.getState();
+  const previousUserId = authState.cloudSession?.user_id.trim() ?? '';
   if (!userId) {
-    useAuthStore.setState({ cloudSession: null, plan: 'free' });
+    if (authState.cloudSession !== null || authState.plan !== 'free') {
+      useAuthStore.setState({ cloudSession: null, plan: 'free' });
+    }
     return false;
   }
   useAuthStore.setState({
@@ -532,13 +525,24 @@ function InstalledCloudAuthentication({
   onSignIn: () => void;
   onCreateAccount: () => void;
 }) {
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const focused = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    if (focused.current) return;
+    focused.current = true;
+    headingRef.current?.focus();
+  }, []);
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
       <section className="w-full max-w-md rounded-3xl border border-border/80 bg-elevated p-7 shadow-2xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent-copper">
           VibeSpace Access
         </p>
-        <h1 className="mt-3 text-2xl font-semibold text-foreground">Sign in to VibeSpace</h1>
+        <h1 ref={headingRef} tabIndex={-1} className="mt-3 text-2xl font-semibold text-foreground">
+          Sign in to VibeSpace
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Sign in or create an account before VibeSpace verifies your trial or subscription.
         </p>
@@ -564,7 +568,12 @@ function InstalledCloudAuthentication({
   );
 }
 
-export function InstalledAccessAppHost({ children }: { children: React.ReactNode }) {
+export function InstalledAccessAppHost({
+  children,
+  authenticatedBoundary: AuthenticatedBoundary,
+}: React.PropsWithChildren<{
+  authenticatedBoundary?: React.ComponentType<React.PropsWithChildren>;
+}>) {
   const featureTier = useAuthStore((state) => state.plan);
   const cloudUserId = useAuthStore((state) => state.cloudSession?.user_id.trim() ?? '');
   const environment = import.meta.env as AccessBuildEnvironment;
@@ -652,18 +661,28 @@ export function InstalledAccessAppHost({ children }: { children: React.ReactNode
     );
   }
 
+  const protectedWorkspace = accessGateEnabled ? (
+    <AccessAppHost
+      key={cloudUserId}
+      enabled
+      runtime={runtime}
+      privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
+      termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
+    >
+      {children}
+    </AccessAppHost>
+  ) : (
+    children
+  );
+
   return (
     <>
       <DesktopPresencePublisher appVersion={appVersion} />
-      <AccessAppHost
-        accountIdentity={cloudUserId}
-        enabled={accessGateEnabled}
-        runtime={runtime}
-        privacyUrl={safeHttpsUrl(environment.VITE_PRIVACY_URL)}
-        termsUrl={safeHttpsUrl(environment.VITE_TERMS_URL)}
-      >
-        {children}
-      </AccessAppHost>
+      {AuthenticatedBoundary ? (
+        <AuthenticatedBoundary>{protectedWorkspace}</AuthenticatedBoundary>
+      ) : (
+        protectedWorkspace
+      )}
     </>
   );
 }

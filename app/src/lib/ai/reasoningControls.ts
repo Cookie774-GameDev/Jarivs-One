@@ -75,18 +75,30 @@ export function normalizeReasoningPreference(value: unknown): ReasoningPreferenc
   return { mode, effortOverride };
 }
 
-export function getReasoningCapabilities(selection: ReasoningSelection): ReasoningCapabilities {
+function staticReasoningCapabilities(selection: ReasoningSelection): ReasoningCapabilities {
   const provider = selection.providerId.toLowerCase();
   const model = selection.modelId.toLowerCase();
   const connection = selection.connectionId?.toLowerCase() ?? '';
 
-  if (provider === 'openai' && /^gpt-5(?:\.|$)/.test(model)) {
-    const codexSurface = connection.includes('codex') || model.includes('-sol');
+  if (provider === 'deepseek' && /v4/.test(model)) {
     return {
-      supportedEfforts: codexSurface
-        ? ['low', 'medium', 'high', 'ultra']
-        : ['minimal', 'low', 'medium', 'high', 'ultra'],
+      supportedEfforts: ['low', 'medium', 'high', 'ultra'],
       providerOptionKey: 'reasoning_effort',
+      wireEffort: (effort) => (effort === 'ultra' ? 'max' : effort === 'minimal' ? 'low' : effort),
+    };
+  }
+
+  if (provider === 'openai' && /^gpt-5(?:\.|$)/.test(model)) {
+    const openCodeSurface = connection.includes('opencode') || connection.includes('codex');
+    const codexSurface = connection.includes('codex') || model.includes('-sol');
+    const sparkSurface = model.includes('spark');
+    return {
+      supportedEfforts: sparkSurface
+        ? []
+        : codexSurface || openCodeSurface
+          ? ['low', 'medium', 'high', 'ultra']
+          : ['minimal', 'low', 'medium', 'high', 'ultra'],
+      providerOptionKey: sparkSurface ? null : 'reasoning_effort',
       wireEffort: (effort) => (effort === 'ultra' ? 'xhigh' : effort),
     };
   }
@@ -128,6 +140,22 @@ export function getReasoningCapabilities(selection: ReasoningSelection): Reasoni
   return NO_REASONING;
 }
 
+export function getReasoningCapabilities(
+  selection: ReasoningSelection,
+  liveVariants?: readonly string[],
+): ReasoningCapabilities {
+  const base = staticReasoningCapabilities(selection);
+  if (!liveVariants || liveVariants.length === 0) return base;
+  const supported = EFFORTS.filter(
+    (effort) => liveVariants.includes(effort) || liveVariants.includes(base.wireEffort(effort)),
+  );
+  return {
+    ...base,
+    supportedEfforts: supported,
+    providerOptionKey: supported.length > 0 ? base.providerOptionKey : null,
+  };
+}
+
 export function sanitizeReasoningProviderOptions(
   selection: ReasoningSelection,
   rawOptions: Record<string, unknown> | undefined,
@@ -143,29 +171,23 @@ export function sanitizeReasoningProviderOptions(
   return allowed.has(value) ? { [key]: value } : {};
 }
 
-function nearestSupported(
-  requested: ReasoningEffort,
-  supported: readonly ReasoningEffort[],
-): ReasoningEffort | null {
-  if (supported.length === 0) return null;
-  if (supported.includes(requested)) return requested;
-  const requestedIndex = EFFORTS.indexOf(requested);
-  return [...supported].sort(
-    (left, right) =>
-      Math.abs(EFFORTS.indexOf(left) - requestedIndex) -
-      Math.abs(EFFORTS.indexOf(right) - requestedIndex),
-  )[0]!;
-}
-
 export function resolveReasoningPolicy({
   selection,
   preference: rawPreference,
+  liveVariants,
 }: {
   selection: ReasoningSelection;
   preference: ReasoningPreference;
+  liveVariants?: readonly string[];
 }): ResolvedReasoningPolicy {
   const preference = normalizeReasoningPreference(rawPreference);
-  const capabilities = getReasoningCapabilities(selection);
+  const capabilities = getReasoningCapabilities(selection, liveVariants);
+  if (
+    preference.effortOverride &&
+    !capabilities.supportedEfforts.includes(preference.effortOverride)
+  ) {
+    throw new Error(`OpenCode model variant "${preference.effortOverride}" is unsupported.`);
+  }
   const requestedEffort =
     preference.effortOverride ??
     (preference.mode === 'token-saver'
@@ -173,9 +195,7 @@ export function resolveReasoningPolicy({
       : preference.mode === 'token-final-boss'
         ? (capabilities.supportedEfforts.at(-1) ?? null)
         : null);
-  const resolvedEffort = requestedEffort
-    ? nearestSupported(requestedEffort, capabilities.supportedEfforts)
-    : null;
+  const resolvedEffort = requestedEffort;
   const providerOptions =
     resolvedEffort && capabilities.providerOptionKey
       ? { [capabilities.providerOptionKey]: capabilities.wireEffort(resolvedEffort) }

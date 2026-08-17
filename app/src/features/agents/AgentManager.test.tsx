@@ -9,6 +9,14 @@ import { resetProviderModelCache } from '@/lib/ai/providerModelCatalog';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import { AgentManager } from './AgentManager';
 
+const recycleBinMocks = vi.hoisted(() => ({
+  moveAgentToRecycleBin: vi.fn(),
+}));
+
+vi.mock('@/features/recycle-bin/recycleBinService', () => ({
+  recycleBinService: recycleBinMocks,
+}));
+
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db')>('@/lib/db');
   return {
@@ -192,6 +200,26 @@ describe('AgentManager save lifecycle', () => {
     );
     await waitFor(() =>
       expect(screen.getByRole('status').getAttribute('data-editor-status')).toBe('saved'),
+    );
+  });
+
+  it('requires confirmation before moving a custom agent to the Recycle Bin', async () => {
+    recycleBinMocks.moveAgentToRecycleBin.mockResolvedValueOnce(undefined);
+    render(<AgentManager />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(recycleBinMocks.moveAgentToRecycleBin).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('alertdialog', { name: 'Move Alpha Agent to Recycle Bin?' }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(recycleBinMocks.moveAgentToRecycleBin).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Recycle Bin' }));
+    await waitFor(() =>
+      expect(recycleBinMocks.moveAgentToRecycleBin).toHaveBeenCalledWith(baseAgent),
     );
   });
 
@@ -493,7 +521,7 @@ describe('AgentManager save lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', true);
   });
 
-  it('preserves ordinary Agent clone and delete behavior', async () => {
+  it('preserves ordinary Agent clone behavior and confirms recycle deletion', async () => {
     const agentRepo = await repoMocks();
     render(<AgentManager />);
 
@@ -508,7 +536,14 @@ describe('AgentManager save lifecycle', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     const clonedAgent = vi.mocked(agentRepo.create).mock.calls[0]?.[0];
-    await waitFor(() => expect(agentRepo.delete).toHaveBeenCalledWith(clonedAgent?.id));
+    expect(recycleBinMocks.moveAgentToRecycleBin).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Recycle Bin' }));
+    await waitFor(() =>
+      expect(recycleBinMocks.moveAgentToRecycleBin).toHaveBeenCalledWith(
+        expect.objectContaining({ id: clonedAgent?.id }),
+      ),
+    );
+    expect(agentRepo.delete).not.toHaveBeenCalled();
   });
 });
 

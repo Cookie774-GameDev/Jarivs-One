@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WarmChatWelcome } from './WarmChatWelcome';
 
@@ -129,7 +130,38 @@ describe('WarmChatWelcome', () => {
       /\.warm-chat-welcome__art\s*\{[\s\S]*?mask-image:\s*radial-gradient\([\s\S]*?transparent\s+88%\s*\)/u,
     );
     expect(welcomeCss).toMatch(
-      /\[data-chat-welcome-theme='monochrome'\]\s+\.warm-chat-welcome__art\s*\{[\s\S]*?grayscale\(1\)/u,
+      /\[data-chat-welcome-theme='monochrome'\]\s+\.warm-chat-welcome__art\s*\{[\s\S]*?filter:\s*none/u,
     );
+  });
+
+  it.each([
+    ['default', '#2a2018'],
+    ['monochrome', '#0a0b0f'],
+    ['jarvis', '#060911'],
+  ])('matches the %s artwork perimeter to its exact chat canvas', async (theme, hex) => {
+    const asset = resolve(__dirname, `../../../public/assets/themes/${theme}/chat-welcome.webp`);
+    const { data, info } = await sharp(asset)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const expected = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+    const samples = [
+      [0, 0],
+      [info.width - 1, 0],
+      [0, info.height - 1],
+      [info.width - 1, info.height - 1],
+      [Math.floor(info.width / 2), 0],
+      [Math.floor(info.width / 2), info.height - 1],
+    ];
+
+    expect(info.width).toBe(512);
+    expect(info.height).toBe(512);
+    for (const [x, y] of samples) {
+      const index = (y * info.width + x) * info.channels;
+      const actual = [data[index], data[index + 1], data[index + 2]];
+      actual.forEach((channel, channelIndex) => {
+        expect(Math.abs((channel ?? 0) - (expected[channelIndex] ?? 0))).toBeLessThanOrEqual(8);
+      });
+    }
   });
 });

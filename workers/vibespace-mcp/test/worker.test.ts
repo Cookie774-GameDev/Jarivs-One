@@ -284,6 +284,12 @@ describe('VibeSpace MCP Worker', () => {
     );
 
     expect(await registered).toMatchObject({ kind: 'registered', protocol_version: 2 });
+    const heartbeatAck = nextMessage(socket);
+    socket.send(JSON.stringify({ kind: 'heartbeat', ts: 1_725_000_000_000 }));
+    expect(await heartbeatAck).toEqual({
+      kind: 'heartbeat_ack',
+      ts: 1_725_000_000_000,
+    });
     const stub = (env as unknown as Env).USER_RELAY.getByName(subject);
     const relayStatus = await (await stub.fetch('https://relay.internal/internal/status')).json();
     expect(relayStatus).toEqual({

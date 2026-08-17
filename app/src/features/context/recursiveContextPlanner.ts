@@ -52,15 +52,15 @@ export interface RecursiveContextRoundResult {
   complete: boolean;
 }
 
-export interface RecursiveContextDependencies {
-  retrieveRound(request: RecursiveContextRoundRequest): Promise<RecursiveContextRoundResult>;
-}
-
 export interface RecursiveContextRequest {
   query: string;
   corpus: Readonly<CorpusScaleMetadata>;
   budgets: Readonly<RecursiveContextBudgets>;
   signal?: AbortSignal;
+}
+
+export interface RecursiveContextDependencies {
+  retrieveRound(request: RecursiveContextRoundRequest): Promise<RecursiveContextRoundResult>;
 }
 
 export type RecursiveContextStopReason =
@@ -181,9 +181,7 @@ function stop(
   });
 }
 
-export function createRecursiveContextPlanner(dependencies: RecursiveContextDependencies): {
-  retrieve(request: RecursiveContextRequest): Promise<Readonly<RecursiveContextResult>>;
-} {
+export function createRecursiveContextPlanner(dependencies: RecursiveContextDependencies) {
   return Object.freeze({
     async retrieve(request: RecursiveContextRequest): Promise<Readonly<RecursiveContextResult>> {
       if (!safeText(request.query, MAX_QUERY_CHARS)) throw new RecursiveContextError('query');
@@ -288,10 +286,7 @@ export function createRecursiveContextPlanner(dependencies: RecursiveContextDepe
           }
           evidenceIds.add(item.id);
           evidence.push(
-            Object.freeze({
-              ...item,
-              provenance: Object.freeze({ ...item.provenance }),
-            }),
+            Object.freeze({ ...item, provenance: Object.freeze({ ...item.provenance }) }),
           );
         }
         contextTokens += roundTokens;

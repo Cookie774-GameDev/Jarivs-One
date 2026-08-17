@@ -26,6 +26,11 @@ import type { ProjectId } from '@/types/common';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
 
+export function terminalDraftFromSession(sessionId: string | null | undefined): string {
+  if (!sessionId) return '';
+  return (useTerminalTranscriptStore.getState().sessions[sessionId]?.currentInput ?? '').trim();
+}
+
 const MAX_TRANSCRIPT_CHARS = 6_000;
 const MAX_SOURCE_BODY = 4_000;
 const MAX_RELATED_CHATS = 3;
@@ -401,6 +406,24 @@ export function buildTerminalPromptUpgradeSources(input: {
   }
 
   const sessionId = input.scope.sessionId;
+  const typedDraft = terminalDraftFromSession(sessionId);
+  if (typedDraft) {
+    sources.push({
+      id: `terminal-draft:${sessionId}`,
+      kind: 'terminal',
+      label: 'Current terminal draft',
+      reference: `terminal-draft://${sessionId}`,
+      content: clipForUpgradeSource(typedDraft),
+      verified: true,
+      explicit: true,
+      projectScoped: Boolean(input.scope.projectId),
+      trust: 'user',
+      lexicalScore: 1,
+      semanticScore: null,
+      observedAt: now,
+      whySelected: 'Text currently typed in this terminal box.',
+    });
+  }
   if (sessionId) {
     const transcript = useTerminalTranscriptStore.getState().sessions[sessionId]?.text ?? '';
     if (transcript.trim()) {
@@ -446,6 +469,7 @@ export type TerminalPromptUpgradeRequest = Readonly<{
   cwd?: string | null;
   workingDirectory?: string;
   signal?: AbortSignal;
+  regenerationInstructions?: string | null;
   /** Extra sources (context maps, files) collected by the host. */
   additionalSources?: readonly PromptForgeSourceCandidate[];
 }>;
@@ -486,6 +510,9 @@ export async function runTerminalPromptUpgrade(
     additionalSources,
     workingDirectory: request.workingDirectory ?? request.projectRoot ?? request.cwd ?? undefined,
     repository: createPromptForgeJobStore(db),
+    ...(request.regenerationInstructions
+      ? { regenerationInstructions: request.regenerationInstructions }
+      : {}),
     ...(request.signal ? { signal: request.signal } : {}),
   });
 }

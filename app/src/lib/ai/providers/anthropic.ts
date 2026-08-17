@@ -27,6 +27,7 @@ import {
   systemPromptForRequest,
 } from '../types';
 import { useAuthStore } from '@/stores/auth';
+import { nativeFetch } from '@/lib/nativeFetch';
 import { parseSSE } from './sse';
 import { sanitizeReasoningProviderOptions } from '../reasoningControls';
 
@@ -35,7 +36,7 @@ const API_VERSION = '2023-06-01';
 
 /** Default Anthropic model used when an agent is `mock-default`-flagged but the
  *  user has an Anthropic key. Centralised so the router and provider agree. */
-export const ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+export const ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-5';
 
 /**
  * Map our flat LLMMessage list to Anthropic's `system` + `messages` schema.
@@ -146,7 +147,7 @@ export const anthropicProvider: LLMProvider = {
     const model = req.agent.model.model || ANTHROPIC_DEFAULT_MODEL;
     const body = buildAnthropicRequestBody(req);
 
-    const res = await fetch(API_URL, {
+    const res = await nativeFetch(API_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

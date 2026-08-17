@@ -77,7 +77,11 @@ vi.mock('@/features/browser-chat/workspaceGrant', () => ({
   revokeBrowserChatWorkspace: vi.fn(),
 }));
 
-const scope = { accountId: 'account-a', projectId: 'project-a' } as const;
+const scope = {
+  accountId: 'account-a',
+  workspaceId: 'workspace-a',
+  projectId: 'project-a',
+} as const;
 
 function RouteObserver() {
   const status = useBrowserChatRelay(true, scope);

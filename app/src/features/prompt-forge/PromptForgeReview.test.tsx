@@ -81,12 +81,12 @@ describe('Prompt Forge inline review', () => {
     expect(screen.getByText('Upgraded prompt ready')).toBeTruthy();
     expect(screen.getByText(/Qwen 3 8B/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Accept upgraded prompt' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Redo prompt upgrade' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry prompt upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add context to prompt upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Restore original prompt' })).toBeTruthy();
   });
 
-  it('keeps accept, redo, contextual redo, and restore explicit', () => {
+  it('keeps accept, retry, contextual retry, and restore explicit', () => {
     const handlers = {
       onAccept: vi.fn(),
       onRegenerate: vi.fn(),
@@ -99,7 +99,7 @@ describe('Prompt Forge inline review', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Accept upgraded prompt' }));
     expect(handlers.onAccept).toHaveBeenCalledOnce();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Redo prompt upgrade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry prompt upgrade' }));
     expect(handlers.onRegenerate).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Add context to prompt upgrade' }));

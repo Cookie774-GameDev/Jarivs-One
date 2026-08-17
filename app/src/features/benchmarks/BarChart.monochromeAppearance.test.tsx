@@ -46,7 +46,7 @@ describe('BarChart MonoChrome appearance', () => {
     const { container } = render(<BarChart rows={ROWS} />);
     const svg = container.querySelector<SVGSVGElement>('svg[role="img"]');
     expect(svg).not.toBeNull();
-    expect(svg!.getAttribute('aria-label')).toBe('Bar chart of top 2 models by arena score');
+    expect(svg!.getAttribute('aria-label')).toBe('Bar chart of top 2 models by Arena rating');
     expect(container.textContent).toContain('Closed Fixture');
     expect(container.textContent).toContain('Open Fixture');
     expect(container.textContent).toContain('1500');

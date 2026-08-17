@@ -1,6 +1,6 @@
 import { isTauri } from '@/lib/utils';
 
-export const OVERSIZED_CHAT_TEXT_THRESHOLD = 32_000;
+export const OVERSIZED_CHAT_TEXT_THRESHOLD = 128_000;
 export const OVERSIZED_CHAT_ATTACHMENT_RETENTION_MS = 24 * 60 * 60 * 1_000;
 
 export interface OversizedMessageAttachment {
