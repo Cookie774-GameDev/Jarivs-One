@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/types';
+import { promotedAdapterForProject } from '@/features/model-foundry/adapterRegistry';
 import { nativeFetch } from '@/lib/nativeFetch';
 import {
   CHAT_MODEL_OPTIONS,
@@ -193,6 +194,20 @@ export function getModelLabelForProvider(
   modelId: string,
   ctx: ProviderConnectionContext,
 ): string {
+  if (providerId === 'foundry') {
+    const match = /^([A-Za-z0-9_-]{1,64})--([A-Za-z0-9_-]{1,64})$/.exec(modelId);
+    if (match && typeof window !== 'undefined') {
+      try {
+        const adapter = promotedAdapterForProject(window.localStorage, match[1]!);
+        if (adapter?.jobId === match[2] && adapter.projectName?.trim()) {
+          return adapter.projectName.trim();
+        }
+      } catch {
+        // Storage access is optional; fall back to the opaque adapter id.
+      }
+    }
+    return `VibeModel adapter · ${modelId}`;
+  }
   const options = getModelsForProvider(providerId, ctx, modelId);
   return options.find((option) => option.id === modelId)?.label ?? modelId;
 }

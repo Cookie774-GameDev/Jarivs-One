@@ -65,6 +65,12 @@ pub struct StartRequest {
     local_only: bool,
     #[serde(default)]
     version: Option<u32>,
+    #[serde(default)]
+    dataset_jsonl: Option<String>,
+    #[serde(default)]
+    dataset_manifest_hash: Option<String>,
+    #[serde(default)]
+    dataset_fingerprint: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -337,6 +343,76 @@ fn detect_hardware(_app: &tauri::AppHandle) -> Result<FoundryHardwareProfile, St
         os: std::env::consts::OS.into(),
         accelerators: Vec::new(),
     })
+}
+
+const MAX_INLINE_DATASET_BYTES: usize = 5 * 1024 * 1024;
+const MAX_INLINE_DATASET_EXAMPLES: usize = 20_000;
+const MAX_INLINE_RECORD_BYTES: usize = 64 * 1024;
+
+/// Validate a bounded inline Dataset Studio export and canonicalize every
+/// record to the training worker's `{"prompt","response"}` JSONL shape.
+/// Fail-closed: malformed, oversized, or unfingerprinted exports are rejected
+/// before anything is written to the private job directory.
+fn canonicalize_inline_dataset(
+    dataset: &str,
+    expected_fingerprint: Option<&str>,
+) -> Result<String, String> {
+    if dataset.len() > MAX_INLINE_DATASET_BYTES {
+        return Err("Inline dataset exceeds the 5 MB bounded export limit.".into());
+    }
+    if let Some(expected) = expected_fingerprint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let actual = format!("{:x}", Sha256::digest(dataset.as_bytes()));
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err("Inline dataset fingerprint does not match the reviewed manifest.".into());
+        }
+    }
+    let mut count = 0usize;
+    let mut canonical = Vec::new();
+    for line in dataset.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.len() > MAX_INLINE_RECORD_BYTES {
+            return Err("Inline dataset record exceeds the 64 KiB per-record bound.".into());
+        }
+        count += 1;
+        if count > MAX_INLINE_DATASET_EXAMPLES {
+            return Err("Inline dataset exceeds the 20000 example bound.".into());
+        }
+        let value: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|_| "Inline dataset rows must be valid JSON objects.".to_string())?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| "Inline dataset rows must be JSON objects.".to_string())?;
+        let prompt = object
+            .get("prompt")
+            .and_then(|entry| entry.as_str())
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .ok_or_else(|| {
+                "Inline dataset examples require a non-empty prompt field.".to_string()
+            })?;
+        let response = object
+            .get("response")
+            .or_else(|| object.get("completion"))
+            .and_then(|entry| entry.as_str())
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .ok_or_else(|| {
+                "Inline dataset examples require a non-empty response or completion field."
+                    .to_string()
+            })?;
+        let record = serde_json::json!({ "prompt": prompt, "response": response });
+        canonical.push(record.to_string());
+    }
+    if count == 0 {
+        return Err("Inline dataset must contain at least one example.".into());
+    }
+    Ok(canonical.join("\n"))
 }
 
 fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
@@ -633,8 +709,30 @@ pub fn model_foundry_start_training(
     if !allowed_model_for_method(&request.base_model_id, method) {
         return Err("The selected base model is not in the verified local catalog.".into());
     }
-    let sources = validated_sources(&request.source_paths)?;
+    let inline_dataset = request
+        .dataset_jsonl
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if inline_dataset.is_some() && !request.source_paths.is_empty() {
+        return Err(
+            "Provide picker-selected sources or an inline Dataset Studio export, not both.".into(),
+        );
+    }
+    let mut canonicalized: Option<String> = None;
+    let mut sources: Vec<PathBuf> = if let Some(dataset) = inline_dataset {
+        if method != FoundryMethod::Weight {
+            return Err("Inline Dataset Studio exports are only valid for weight training.".into());
+        }
+        let canonical_dataset =
+            canonicalize_inline_dataset(dataset, request.dataset_fingerprint.as_deref())?;
+        canonicalized = Some(canonical_dataset);
+        Vec::new()
+    } else {
+        validated_sources(&request.source_paths)?
+    };
     if method == FoundryMethod::Weight
+        && inline_dataset.is_none()
         && (sources.len() != 1
             || sources[0]
                 .extension()
@@ -647,6 +745,12 @@ pub fn model_foundry_start_training(
     let job_dir = foundry_root(&app)?.join("jobs").join(&id);
     fs::create_dir_all(&job_dir)
         .map_err(|error| format!("Could not create private job directory: {error}"))?;
+    if let Some(canonical_dataset) = canonicalized.as_deref() {
+        let dataset_path = job_dir.join("dataset.jsonl");
+        write_atomic(&dataset_path, canonical_dataset.as_bytes())
+            .map_err(|error| format!("Could not store the private inline dataset: {error}"))?;
+        sources = vec![dataset_path];
+    }
     let timestamp = now();
     let job = FoundryJob {
         id,
@@ -1447,5 +1551,72 @@ mod tests {
 
         assert!(prepare_chat_from_job_dir(&root, "job_123456", "Review release", Some(4)).is_err());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn inline_dataset_canonicalizes_completion_records_for_the_worker() {
+        let dataset = "{\"prompt\":\"Say hi\",\"completion\":\"Hello.\"}\n{\"prompt\":\"Count\",\"response\":\"One.\"}";
+        let canonical = canonicalize_inline_dataset(dataset, None).unwrap();
+        let rows: Vec<&str> = canonical.lines().collect();
+        assert_eq!(rows.len(), 2);
+        let first: serde_json::Value = serde_json::from_str(rows[0]).unwrap();
+        assert_eq!(first["prompt"], "Say hi");
+        assert_eq!(first["response"], "Hello.");
+        assert!(first.get("completion").is_none());
+        let second: serde_json::Value = serde_json::from_str(rows[1]).unwrap();
+        assert_eq!(second["response"], "One.");
+    }
+
+    #[test]
+    fn inline_dataset_rejects_oversized_total_bytes() {
+        let record = "{\"prompt\":\"p\",\"completion\":\"c\"}";
+        let dataset = vec![record; (MAX_INLINE_DATASET_BYTES / record.len()) + 1].join("\n");
+        let error = canonicalize_inline_dataset(&dataset, None).unwrap_err();
+        assert!(error.contains("5 MB"));
+    }
+
+    #[test]
+    fn inline_dataset_rejects_too_many_records() {
+        let dataset = vec!["{\"prompt\":\"p\",\"completion\":\"c\"}"; MAX_INLINE_DATASET_EXAMPLES + 1].join("\n");
+        let error = canonicalize_inline_dataset(&dataset, None).unwrap_err();
+        assert!(error.contains("20000"));
+    }
+
+    #[test]
+    fn inline_dataset_rejects_oversized_single_record() {
+        let long_completion = "x".repeat(MAX_INLINE_RECORD_BYTES + 1);
+        let dataset = format!("{{\"prompt\":\"p\",\"completion\":\"{long_completion}\"}}");
+        let error = canonicalize_inline_dataset(&dataset, None).unwrap_err();
+        assert!(error.contains("64 KiB"));
+    }
+
+    #[test]
+    fn inline_dataset_rejects_empty_and_blank_input() {
+        assert!(canonicalize_inline_dataset("", None).is_err());
+        assert!(canonicalize_inline_dataset("   \n  \n", None).is_err());
+    }
+
+    #[test]
+    fn inline_dataset_rejects_malformed_or_incomplete_records() {
+        assert!(canonicalize_inline_dataset("not-json", None).unwrap_err().contains("valid JSON"));
+        assert!(canonicalize_inline_dataset("[1,2]", None).unwrap_err().contains("JSON objects"));
+        assert!(canonicalize_dataset_missing_prompt());
+        assert!(canonicalize_inline_dataset("{\"prompt\":\" \",\"completion\":\"c\"}", None).is_err());
+        assert!(canonicalize_inline_dataset("{\"prompt\":\"p\",\"completion\":\" \"}", None).is_err());
+        assert!(canonicalize_inline_dataset("{\"prompt\":\"p\"}", None).is_err());
+    }
+
+    fn canonicalize_dataset_missing_prompt() -> bool {
+        canonicalize_inline_dataset("{\"completion\":\"c\"}", None).is_err()
+    }
+
+    #[test]
+    fn inline_dataset_fingerprint_must_match_the_reviewed_manifest() {
+        let dataset = "{\"prompt\":\"p\",\"completion\":\"c\"}";
+        let good = format!("{:x}", Sha256::digest(dataset.as_bytes()));
+        assert!(canonicalize_inline_dataset(dataset, Some(&good)).is_ok());
+        assert!(canonicalize_inline_dataset(dataset, Some(&good.to_uppercase())).is_ok());
+        let error = canonicalize_inline_dataset(dataset, Some("deadbeef")).unwrap_err();
+        assert!(error.contains("fingerprint"));
     }
 }

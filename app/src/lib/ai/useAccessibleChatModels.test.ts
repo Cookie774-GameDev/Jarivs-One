@@ -14,6 +14,7 @@ import {
   OPENCODE_CLI_CONNECTION,
 } from './adapters/catalog';
 import { OPENAI_API_CONNECTION, QWEN_API_CONNECTION } from './adapters/nativeCatalog';
+import { LocalAdapterRegistry } from '@/features/model-foundry/adapterRegistry';
 import {
   AI_CONNECTION_STATE_EVENT,
   markConnectionSessionChecked,
@@ -318,5 +319,66 @@ describe('useAccessibleChatModels', () => {
     });
 
     expect(groups[0]?.options.map((option) => option.modelId)).toEqual(['gpt-5.3-codex-spark']);
+  });
+});
+
+describe('useAccessibleChatModels foundry adapter injection', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetConnectionSessionChecksForTests();
+    isConnectionSessionChecked.mockReset();
+    isConnectionSessionChecked.mockReturnValue(false);
+    listOpenCodeModels.mockReset();
+    listOpenCodeModels.mockResolvedValue([]);
+  });
+
+  function seedAdapter(args: { promote: boolean; gate?: 'pass' | 'blocked' }): void {
+    // LocalAdapterRegistry writes through the same storage authority used by
+    // the Foundry Studio, so the picker sees exactly what the studio records.
+    const registry = new LocalAdapterRegistry(window.localStorage, () => '2026-08-16T00:00:00.000Z');
+    const artifact = {
+      projectId: 'project-alpha',
+      jobId: 'job_beta',
+      manifestSha256: 'a'.repeat(64),
+      adapterFiles: { 'adapter.safetensors': 'private' },
+      metrics: {},
+      trainingConfig: {},
+    };
+    registry.upsert('project-alpha', 'job_beta', artifact, 'Support classifier');
+    registry.recordEvaluation('project-alpha', 'job_beta', 'a'.repeat(64), {
+      suite: 'private-dataset-studio',
+      caseCount: 2,
+      baseScore: 0,
+      candidateScore: 1,
+      championScore: null,
+      delta: 1,
+      safetyFailures: [],
+      gate: args.gate ?? 'pass',
+      caseEvidence: [],
+    });
+    if (args.promote && (args.gate ?? 'pass') === 'pass') {
+      registry.promote('project-alpha', 'job_beta');
+    }
+  }
+
+  it('surfaces promoted foundry adapters as a bounded local picker group', async () => {
+    seedAdapter({ promote: true });
+    const { result } = renderHook(() => useAccessibleChatModels());
+    await waitFor(() => {
+      const foundry = result.current.groups.find((group) => group.provider === 'foundry');
+      expect(foundry).toBeTruthy();
+      expect(foundry?.options.map((option) => option.modelId)).toEqual(['project-alpha--job_beta']);
+      expect(foundry?.options[0]?.id).toBe('foundry:project-alpha--job_beta');
+      expect(foundry?.options[0]?.available).toBe(true);
+    });
+  });
+
+  it('fails closed when the adapter has not passed a current evaluation', async () => {
+    seedAdapter({ promote: false, gate: 'blocked' });
+    const { result } = renderHook(() => useAccessibleChatModels());
+    // Give the memo a beat to settle with the blocked registry state.
+    await act(async () => undefined);
+    const foundry = result.current.groups.find((group) => group.provider === 'foundry');
+    expect(foundry).toBeUndefined();
   });
 });

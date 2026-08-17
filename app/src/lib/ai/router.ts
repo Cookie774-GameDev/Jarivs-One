@@ -1,10 +1,11 @@
 /**
  * Canonical PR31 AI router.
  *
- * All ordinary production turns cross the persistent OpenCode boundary. The
- * only direct executor retained here is the explicitly gated Shared
- * Intelligence Kernel smoke provider, which exists solely for native smoke
- * qualification. Provider/model selection, VibeSpace scope, runtime controls,
+ * All ordinary production turns cross the persistent OpenCode boundary.
+ * Exactly two bounded direct executors exist: (1) the explicitly gated
+ * Shared Intelligence Kernel smoke provider (debug-only native smoke
+ * qualification), and (2) the Model Foundry local adapter executor, which is
+ * desktop-only, credential-free, and fails closed on unverified adapters. Provider/model selection, VibeSpace scope, runtime controls,
  * permissions, cancellation, and protected-attempt evidence are preserved as
  * data across the OpenCode boundary rather than reimplemented by per-provider
  * executors in this router.
@@ -40,6 +41,7 @@ import type {
 import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './adapters/catalog';
 import { openCodePersistentAdapter } from './adapters/opencodePersistent';
 import { kernelSmokeCliAdapter } from './adapters/cliBridge';
+import { foundryProvider } from './providers/foundry';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import {
   isKernelSmokeBindingActive,
@@ -751,9 +753,42 @@ async function runKernelSmokeDispatch(req: RunAgentRequest): Promise<LLMResponse
   return response;
 }
 
+/// Bounded direct executor for locally promoted Model Foundry adapters.
+/// Foundry inference never crosses a cloud boundary: the provider fails
+/// closed unless the desktop native runtime is present, the adapter id is a
+/// verified project/job pair, and the adapter has passed its current local
+/// evaluation. No credentials, connections, or OpenCode transport involved.
+async function runFoundryDispatch(req: RunAgentRequest): Promise<LLMResponse> {
+  if (!foundryProvider.isAvailable()) {
+    throw new Error('Model Foundry adapters are available only in the desktop app.');
+  }
+  if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+  const llmReq: LLMRequest = {
+    purpose: req.purpose ?? 'chat',
+    agent: req.agent,
+    messages: req.messages,
+    signal: req.signal,
+    onChunk: req.onChunk,
+    temperature: req.temperature,
+    max_output_tokens: req.max_output_tokens,
+    provider_options: req.provider_options,
+  };
+  const response = await foundryProvider.run(llmReq);
+  useAgentStore.getState().addTokens(
+    req.agent.id,
+    response.usage.input_tokens,
+    response.usage.output_tokens,
+    response.usage.cost_usd,
+  );
+  return response;
+}
+
 async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
   if (KERNEL_SMOKE_ENABLED && req.agent.model.provider === KERNEL_SMOKE_PROVIDER_ID) {
     return runKernelSmokeDispatch(req);
+  }
+  if (req.agent.model.provider === 'foundry') {
+    return runFoundryDispatch(req);
   }
   return dispatchThroughOpenCode(req);
 }

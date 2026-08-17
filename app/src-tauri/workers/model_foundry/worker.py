@@ -232,6 +232,26 @@ def _example_text(record: dict[str, Any]) -> str:
     return f"User: {str(record['prompt']).strip()}\nAssistant: {str(record['response']).strip()}"
 
 
+def _example_prompt_prefix(record: dict[str, Any]) -> str:
+    """Return the prompt-only prefix for completion-masked training labels.
+
+    Plain-text records have no prompt/response split, so no masking applies.
+    """
+    text = record.get("text")
+    if isinstance(text, str) and text.strip():
+        return ""
+    return f"User: {str(record['prompt']).strip()}\nAssistant: "
+
+
+def completion_only_labels(input_ids: list[int], prompt_token_count: int) -> list[int]:
+    """Mask prompt tokens (HF ignore index -100) so loss trains only on the
+    completion. Bounded: never masks more tokens than the record contains."""
+    if prompt_token_count <= 0:
+        return list(input_ids)
+    masked = min(int(prompt_token_count), len(input_ids))
+    return [-100] * masked + list(input_ids[masked:])
+
+
 def train(request_path: str) -> int:
     request, summary = _read_request(request_path)
 
@@ -328,12 +348,23 @@ def train(request_path: str) -> int:
         split="train",
     )
 
+    max_length = min(int(getattr(tokenizer, "model_max_length", 2048)), 4096)
+
     def tokenize(record: dict[str, Any]) -> dict[str, Any]:
-        return tokenizer(
+        encoded = tokenizer(
             _example_text(record),
             truncation=True,
-            max_length=min(int(getattr(tokenizer, "model_max_length", 2048)), 4096),
+            max_length=max_length,
         )
+        prompt_prefix = _example_prompt_prefix(record)
+        if prompt_prefix:
+            prompt_ids = tokenizer(
+                prompt_prefix,
+                truncation=True,
+                max_length=max_length,
+            )["input_ids"]
+            encoded["labels"] = completion_only_labels(encoded["input_ids"], len(prompt_ids))
+        return encoded
 
     tokenized = dataset.map(
         tokenize,

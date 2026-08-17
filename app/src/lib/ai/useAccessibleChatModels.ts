@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ProviderId } from '@/types';
 import { useAuthStore } from '@/stores/auth';
 import { getProviderDisplayName } from './providerRegistry';
+import { listPromotedAdapters } from '@/features/model-foundry/adapterRegistry';
 import {
   CHAT_MODEL_OPTIONS,
   getAccessibleModelOptions,
@@ -364,6 +365,7 @@ export function useAccessibleChatModels() {
   );
   const ollamaOptions = useOllamaModelOptions();
   const [connectionRevision, setConnectionRevision] = useState(0);
+  const [foundryRevision, setFoundryRevision] = useState(0);
   const [catalogRevision, setCatalogRevision] = useState(0);
   const [openCodeModels, setOpenCodeModels] = useState<readonly PickerCatalogModel[]>([]);
 
@@ -423,6 +425,12 @@ export function useAccessibleChatModels() {
       }),
     [],
   );
+  useEffect(() => {
+    const refreshFoundry = () => setFoundryRevision((value) => value + 1);
+    window.addEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
+    return () =>
+      window.removeEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
+  }, []);
 
   useEffect(() => {
     if (offlineMode) return;
@@ -657,7 +665,7 @@ export function useAccessibleChatModels() {
       modelsByConnection[OPENCODE_CLI_CONNECTION.id] = openCodeModels;
     }
 
-    return buildConnectionPickerGroups({
+    const connectionGroups = buildConnectionPickerGroups({
       connections: pickerConnections,
       modelsByProvider,
       modelsByConnection,
@@ -684,6 +692,28 @@ export function useAccessibleChatModels() {
           Number(b.options.some((option) => option.available)) -
             Number(a.options.some((option) => option.available)) || a.label.localeCompare(b.label),
       );
+    // Promoted Model Foundry adapters are local, credential-free options.
+    // They surface only while their evaluation gate stays passed (fail closed
+    // inside listPromotedAdapters), and never through a cloud connection.
+    void foundryRevision;
+    const foundryAdapters =
+      typeof window === 'undefined' ? [] : listPromotedAdapters(window.localStorage);
+    if (foundryAdapters.length === 0) return connectionGroups;
+    const foundryGroup: ModelPickerGroup = {
+      provider: 'foundry',
+      label: getProviderDisplayName('foundry'),
+      options: foundryAdapters.map((record) => ({
+        id: `foundry:${record.projectId}--${record.jobId}`,
+        provider: 'foundry' as ProviderId,
+        modelId: `${record.projectId}--${record.jobId}`,
+        label: record.projectName?.trim()
+          ? record.projectName.trim()
+          : `Local champion · ${record.jobId}`,
+        available: true,
+        catalogSource: 'provider-live' as const,
+      })),
+    };
+    return [...connectionGroups, foundryGroup];
   }, [
     apiKeys,
     offlineMode,
@@ -694,6 +724,7 @@ export function useAccessibleChatModels() {
     openCodeModels,
     openCodeReady,
     preferredConnections,
+    foundryRevision,
   ]);
 
   const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);

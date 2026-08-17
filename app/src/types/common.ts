@@ -130,7 +130,9 @@ export type ProviderId =
   | 'azure'
   | 'cerebras'
   | 'huggingface'
-  | 'bedrock';
+  | 'bedrock'
+  // V5 — local Model Foundry promoted adapters.
+  | 'foundry';
 
 /**
  * Branded type helpers - useful when we want compile-time distinction

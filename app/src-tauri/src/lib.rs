@@ -61,6 +61,7 @@ mod kernel_host;
 mod launcher;
 mod local_ai;
 mod model_foundry;
+mod model_foundry_download;
 mod model_foundry_training;
 mod monochrome_evidence;
 mod ollama_http;
@@ -664,6 +665,9 @@ fn run_ordinary(
             model_foundry_training::model_foundry_cancel_training_model_download,
             model_foundry_training::model_foundry_remove_training_model,
             model_foundry_training::model_foundry_install_training_worker,
+            model_foundry_download::model_foundry_download_model,
+            model_foundry_download::model_foundry_cancel_download,
+            model_foundry_download::model_foundry_cleanup_partial_download,
             jarvis_voice::jarvis_voice_model_path,
             jarvis_voice::jarvis_voice_check_installed,
             jarvis_voice::jarvis_voice_verify_checksums,
@@ -899,6 +903,9 @@ model_foundry_training::model_foundry_repair_training_model
 model_foundry_training::model_foundry_cancel_training_model_download
 model_foundry_training::model_foundry_remove_training_model
 model_foundry_training::model_foundry_install_training_worker
+model_foundry_download::model_foundry_download_model
+model_foundry_download::model_foundry_cancel_download
+model_foundry_download::model_foundry_cleanup_partial_download
 jarvis_voice::jarvis_voice_model_path
 jarvis_voice::jarvis_voice_check_installed
 jarvis_voice::jarvis_voice_verify_checksums
@@ -941,9 +948,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "10262965f3127339d3a0e65227a8da11d9be7a251166a80866ae58a28722bcb9";
+        "5488a7e5f7b91f5f4a43097cedea0b1a7314d5d0ae3a403b0c869264a22439b6";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "8fbc903772558bd28c5aeefac05fc46ee84415c60fb561a7a3be184e60224f20";
+        "0a3093942b091116933a95c19e016b0c94c321f831e951853502b64756094287";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {

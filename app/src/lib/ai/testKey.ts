@@ -421,6 +421,7 @@ export async function testProviderKey(
     case 'bedrock':
     case 'mock':
     case 'local':
+    case 'foundry':
       return { kind: 'unsupported', provider };
   }
 }

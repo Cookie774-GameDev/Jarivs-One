@@ -23,6 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { BuildYourOwnAIHub, detectHardware } from './BuildYourOwnAIHub';
+import { FoundryPage } from './FoundryPage';
 import {
   formatFoundryStorageBytes,
   loadJobs,
@@ -42,6 +43,7 @@ const SECTIONS = [
   { id: 'train', label: 'Train', icon: Play },
   { id: 'evaluate', label: 'Evaluate', icon: FlaskConical },
   { id: 'models', label: 'My Models', icon: Library },
+  { id: 'studio', label: 'Foundry Studio', icon: Sparkles },
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]['id'];
@@ -267,6 +269,9 @@ function SectionContent({
   jobs: readonly FoundryJob[];
   onCreate(): void;
 }) {
+  if (section === 'studio') {
+    return <FoundryPage />;
+  }
   if (section === 'create') {
     return (
       <div className="mx-auto max-w-3xl py-8 text-center">

@@ -4,6 +4,7 @@ import { getAccessibleProviders, localModelsAvailable } from './models';
 import { planIncludesHostedChat } from './agentProviderOptions';
 import { isKernelSmokeEnabled, type KernelSmokeConfigInput } from '@/lib/jarvis/smoke/config';
 import { kernelSmokeProvider, KERNEL_SMOKE_PROVIDER_ID } from './providers/kernelSmoke';
+import { isTauri } from '@/lib/utils';
 
 /** User-facing provider label. Internal IDs (e.g. `google`) stay in persisted config. */
 export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
@@ -15,6 +16,7 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
   zai: 'Z.AI / GLM',
   ollama: 'Local Models',
   local: 'Local Models',
+  foundry: 'Build Your Own AI',
   openrouter: 'OpenRouter',
   mistral: 'Mistral',
   together: 'Together AI',
@@ -139,6 +141,13 @@ const BASE_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     hiveEligible: false,
   },
   {
+    id: 'foundry',
+    displayName: 'Build Your Own AI',
+    requiresApiKey: false,
+    supportsDynamicListing: false,
+    hiveEligible: false,
+  },
+  {
     id: 'mock',
     displayName: 'Mock (demo)',
     requiresApiKey: true,
@@ -190,7 +199,7 @@ export function requiresApiKey(providerId: ProviderId): boolean {
 }
 
 export function isLocalProvider(providerId: ProviderId): boolean {
-  return providerId === 'ollama' || providerId === 'local';
+  return providerId === 'ollama' || providerId === 'local' || providerId === 'foundry';
 }
 
 export interface ProviderConnectionContext {
@@ -206,6 +215,10 @@ export function getProviderConnectionStatus(
 ): ProviderConnectionStatus {
   if (providerId === KERNEL_SMOKE_PROVIDER_ID) {
     return kernelSmokeProvider.isAvailable() ? 'local' : 'offline';
+  }
+  if (providerId === 'foundry') {
+    // Model Foundry adapters run through the desktop native boundary only.
+    return isTauri ? 'local' : 'offline';
   }
   if (ctx.offlineMode) {
     return isLocalProvider(providerId) && localModelsAvailable(ctx.defaultLocalModel ?? '')

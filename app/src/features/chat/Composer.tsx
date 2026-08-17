@@ -511,6 +511,7 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   cerebras: 'Cerebras',
   huggingface: 'Hugging Face',
   bedrock: 'AWS Bedrock',
+  foundry: 'Model Foundry (local)',
   mock: 'Mock',
   local: 'Local',
 };

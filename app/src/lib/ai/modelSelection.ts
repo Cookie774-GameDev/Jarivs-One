@@ -5,6 +5,7 @@ import type { StackPresetId } from '@/lib/ai/stacks/types';
 import type { ParsedStackSlashCommand } from '@/lib/ai/stacks/classifier';
 import { classifyStackTask, parseStackSlashCommand } from '@/lib/ai/stacks/classifier';
 import { isHiveProductEnabled } from '@/lib/features/hiveProductGate';
+import { canRoutePromotedAdapter } from '@/features/model-foundry/adapterRegistry';
 import { getProviderDisplayName } from './providerRegistry';
 import {
   getAccessibleModelOptions,
@@ -227,6 +228,19 @@ function findAccessibleModel(
   // Ollama tags often differ by `:latest` vs explicit tag — accept either side.
   if (providerId === 'ollama' || providerId === 'local') {
     return options.find((option) => localModelIdsMatch(option.id, modelId)) ?? null;
+  }
+  // Foundry model ids are project/job adapter pairs. They are accessible only
+  // while the adapter stays promoted in the local registry (fail closed).
+  if (providerId === 'foundry') {
+    const match = /^([A-Za-z0-9_-]{1,64})--([A-Za-z0-9_-]{1,64})$/.exec(modelId);
+    if (
+      match &&
+      typeof window !== 'undefined' &&
+      canRoutePromotedAdapter(window.localStorage, match[1]!, match[2]!)
+    ) {
+      return { provider: 'foundry', id: modelId, label: modelId };
+    }
+    return null;
   }
   return null;
 }
