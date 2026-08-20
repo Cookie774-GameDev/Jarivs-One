@@ -85,3 +85,34 @@ Application Control correctly rejected Cargo build scripts executed from D:.
 An obsolete generated target cache was moved to a recoverable archive, LLVM
 and the Visual Studio bundled CMake were used from trusted locations, and no
 user or product source was deleted.
+
+## Final SiYuan-enabled Windows bundle measurement
+
+The final PR31 Windows build was measured on 2026-08-20 from
+`integration/UnifiedChungus-final` at `fe40dfeb`. The production TypeScript,
+Vite, optimized Rust release, MSI, and NSIS stages completed. Both downloadable
+installer artifacts pass the exact 300,000,000-byte hard gate:
+
+| Artifact                        |                           Size | SHA-256                                                            | Hard gate |
+| ------------------------------- | -----------------------------: | ------------------------------------------------------------------ | --------- |
+| `VibeSpace_1.5.0_x64_en-US.msi` | 220,533,723 bytes (210.32 MiB) | `a5b22fe5728ee211b2ce630821d5a346e5969f6530114f221a6f11ed85bafc4d` | PASS      |
+| `VibeSpace_1.5.0_x64-setup.exe` | 171,604,566 bytes (163.65 MiB) | `779eceec9ed6f937ccfde5b74a633b6f42d7ebf7c2cbb309055f3201b44b05d8` | PASS      |
+| `jarvis.exe`                    |  102,761,984 bytes (98.00 MiB) | `4c934cef84c1abcbb8073cf3291d44734390726d29a4a9e7d4909733011d76ce` | N/A       |
+
+The generated WiX source references `resources\\siyuan-runtime`, its verified
+`VIBESPACE_SIYUAN_READY.json` marker, and the complete pinned runtime closure.
+Release staging contains `kernel/SiYuan-Kernel.exe` (106,248,136 bytes) and
+`kernel/elevator.exe` (3,971,016 bytes). This is direct payload-inclusion
+evidence rather than an inference from configuration.
+
+The `npm run tauri:build` process returned exit code 1 only after both bundles
+were emitted because the public updater key is configured while the protected
+`TAURI_SIGNING_PRIVATE_KEY` is unavailable in this local session. No key was
+requested, exposed, or fabricated. Updater signing remains a controlled release
+environment action; it does not invalidate the completed unsigned bundle or
+size measurements.
+
+The two installer files were copied without modification to the reserved D:
+acceptance-evidence directory and independently re-hashed there. Raw structured
+evidence is stored as `acceptance-evidence/packaging-fe40dfeb.json`; the copied
+installers are under `acceptance-evidence/bundles-fe40dfeb/`.
