@@ -2616,3 +2616,12 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Observed boundary** | The authenticated retry created the fixture notebook but a single approximately one-megabyte fenced-code block did not materialize as a stored `.sy` document. The missing explicit workspace directory also caused the pinned kernel to choose its isolated runtime-home fallback. No document was marked complete and cleanup stopped the process. |
 | **Correction** | Deterministic documents remain exactly 1,000,000 submitted Markdown bytes but now use bounded approximately 32 KB fenced blocks with a plain-text sentinel/header. The exact workspace directory is created before launch, post-create rereads poll boundedly for materialization, and only the first incomplete document receives resume recovery probing. |
 | **Verification / recovery** | Focused contracts PASS 6/6 with the new stable document digest, exact byte count, more than 30 bounded blocks, workspace creation, and reread polling; exact Prettier, diff, and per-file Gitleaks PASS. The controller will remove only the owned incomplete `fixture-workspace` and `fixture-progress.json` authorities, then deterministically regenerate them; verified runtime resources and prior runtime evidence remain untouched. |
+
+## 2026-08-20 - SiYuan-issued fixture document identity checkpoint
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:00 CT |
+| **Observed boundary** | With the explicit workspace and bounded Markdown blocks in effect, notebook creation remained successful but the caller-supplied document root ID still produced no `.sy` authority and no kernel parser/storage log error. The process exited cleanly and no document was accepted. |
+| **Correction** | SiYuan now owns operational document ID issuance. Immediately after each successful create response, the exact returned ID plus deterministic submitted byte count and digest is atomically recorded as `pending`; only an authoritative Kramdown reread promotes it to `completed`. Resume must validate and finish the pending identity before any later document. Source Markdown IDs remain deterministic labels, while runtime storage IDs remain honest upstream authority. |
+| **Verification / next action** | Focused contracts PASS 6/6; exact Prettier, diff, and per-file Gitleaks PASS. Remove only the new incomplete owned workspace/progress pair, checkpoint the correction, and rerun from an empty isolated authority. |

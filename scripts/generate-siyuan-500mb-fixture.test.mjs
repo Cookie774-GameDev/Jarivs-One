@@ -80,6 +80,8 @@ test('production generator source preserves loopback, exact-corpus, and secret-s
   assert.match(source, /\/api\/block\/getBlockKramdown/u);
   assert.match(source, /await mkdir\(workspace, \{ recursive: true \}\)/u);
   assert.match(source, /waitForStoredDocument/u);
+  assert.match(source, /progress\.pending = \{ index, id, submittedBytes, submittedSha256 \}/u);
+  assert.doesNotMatch(source, /markdown,\s*id,/u);
   assert.match(source, /\/api\/search\/fullTextSearchBlock/u);
   assert.match(source, /\/api\/system\/exit/u);
 });

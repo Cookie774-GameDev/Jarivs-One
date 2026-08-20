@@ -205,6 +205,7 @@ function freshProgress() {
     bytesPerDocument: DOCUMENT_BYTES,
     submittedMarkdownBytes: TOTAL_MARKDOWN_BYTES,
     notebookId: null,
+    pending: null,
     completed: {},
   };
 }
@@ -216,6 +217,7 @@ function validateProgress(progress) {
     progress.documentCount !== DOCUMENT_COUNT ||
     progress.bytesPerDocument !== DOCUMENT_BYTES ||
     progress.submittedMarkdownBytes !== TOTAL_MARKDOWN_BYTES ||
+    (progress.pending !== null && typeof progress.pending !== 'object') ||
     !progress.completed ||
     typeof progress.completed !== 'object' ||
     Array.isArray(progress.completed)
@@ -258,23 +260,37 @@ async function waitForStoredDocument(baseUrl, cookie, id, timeoutMs) {
 }
 
 async function createCorpus(baseUrl, cookie, notebookId, progress, progressPath) {
-  let recoveringFirstIncomplete = true;
   for (let index = 0; index < DOCUMENT_COUNT; index += 1) {
     const key = String(index);
     if (progress.completed[key]) continue;
-    const id = deterministicDocumentId(index);
     const markdown = deterministicDocument(index);
-    let stored = recoveringFirstIncomplete
-      ? await waitForStoredDocument(baseUrl, cookie, id, 5_000)
-      : await readStoredDocument(baseUrl, cookie, id);
-    if (stored === undefined) {
+    const submittedBytes = Buffer.byteLength(markdown);
+    const submittedSha256 = sha256Text(markdown);
+    let id;
+    let stored;
+    if (progress.pending !== null) {
+      if (
+        progress.pending.index !== index ||
+        typeof progress.pending.id !== 'string' ||
+        progress.pending.submittedBytes !== submittedBytes ||
+        progress.pending.submittedSha256 !== submittedSha256
+      ) {
+        throw new Error('SiYuan fixture pending document contract is invalid');
+      }
+      id = progress.pending.id;
+      stored = await waitForStoredDocument(baseUrl, cookie, id, 60_000);
+    } else {
       const created = await api(baseUrl, cookie, '/api/filetree/createDocWithMd', {
         notebook: notebookId,
         path: `/Fixture ${String(index).padStart(4, '0')}`,
         markdown,
-        id,
       });
-      if (created !== id) throw new Error('SiYuan fixture create-document identity drifted');
+      if (typeof created !== 'string' || !/^[0-9]{14}-[a-z0-9]{7}$/u.test(created)) {
+        throw new Error('SiYuan fixture create-document identity is invalid');
+      }
+      id = created;
+      progress.pending = { index, id, submittedBytes, submittedSha256 };
+      await atomicJson(progressPath, progress);
       stored = await waitForStoredDocument(baseUrl, cookie, id, 60_000);
     }
     if (
@@ -285,12 +301,12 @@ async function createCorpus(baseUrl, cookie, notebookId, progress, progressPath)
     }
     progress.completed[key] = {
       id,
-      submittedBytes: Buffer.byteLength(markdown),
-      submittedSha256: sha256Text(markdown),
+      submittedBytes,
+      submittedSha256,
       storedBytes: Buffer.byteLength(stored),
       storedSha256: sha256Text(stored),
     };
-    recoveringFirstIncomplete = false;
+    progress.pending = null;
     await atomicJson(progressPath, progress);
     if ((index + 1) % 10 === 0)
       console.log(`SiYuan fixture progress: ${index + 1}/${DOCUMENT_COUNT}`);
