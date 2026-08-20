@@ -41,18 +41,26 @@ export function deterministicDocument(index, targetBytes = DOCUMENT_BYTES) {
   const prefix = [
     `# VibeSpace SiYuan Fixture ${ordinal}`,
     '',
-    '```text',
     `VIBESPACE_SIYUAN_500MB_SENTINEL_${ordinal}`,
     `DOCUMENT_ID=${deterministicDocumentId(index)}`,
     `CROSS_SOURCE_CHAIN_${String(index % 5).padStart(2, '0')}=cobalt-${ordinal}-quartz`,
-    '',
   ].join('\n');
-  const suffix = '\n```\n';
   const seed = `fixture-${ordinal}-offline-local-first-lossless-context-evidence `;
-  const remaining = targetBytes - Buffer.byteLength(prefix) - Buffer.byteLength(suffix);
-  if (remaining < 0) throw new Error('SiYuan fixture document target is too small');
-  const filler = seed.repeat(Math.ceil(remaining / seed.length)).slice(0, remaining);
-  const document = `${prefix}${filler}${suffix}`;
+  const blockOpen = '\n\n```text\n';
+  const blockClose = '\n```';
+  const blockOverhead = Buffer.byteLength(blockOpen) + Buffer.byteLength(blockClose);
+  let remaining = targetBytes - Buffer.byteLength(prefix);
+  const blocks = [];
+  while (remaining > 0) {
+    if (remaining <= blockOverhead) throw new Error('SiYuan fixture document target is too small');
+    let payloadBytes = Math.min(32_000, remaining - blockOverhead);
+    const leftover = remaining - blockOverhead - payloadBytes;
+    if (leftover > 0 && leftover <= blockOverhead) payloadBytes += leftover;
+    const payload = seed.repeat(Math.ceil(payloadBytes / seed.length)).slice(0, payloadBytes);
+    blocks.push(`${blockOpen}${payload}${blockClose}`);
+    remaining -= blockOverhead + payloadBytes;
+  }
+  const document = `${prefix}${blocks.join('')}`;
   if (Buffer.byteLength(document) !== targetBytes) {
     throw new Error('SiYuan fixture document byte contract failed');
   }
@@ -239,13 +247,26 @@ async function readStoredDocument(baseUrl, cookie, id) {
   }
 }
 
+async function waitForStoredDocument(baseUrl, cookie, id, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stored = await readStoredDocument(baseUrl, cookie, id);
+    if (stored !== undefined) return stored;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return undefined;
+}
+
 async function createCorpus(baseUrl, cookie, notebookId, progress, progressPath) {
+  let recoveringFirstIncomplete = true;
   for (let index = 0; index < DOCUMENT_COUNT; index += 1) {
     const key = String(index);
     if (progress.completed[key]) continue;
     const id = deterministicDocumentId(index);
     const markdown = deterministicDocument(index);
-    let stored = await readStoredDocument(baseUrl, cookie, id);
+    let stored = recoveringFirstIncomplete
+      ? await waitForStoredDocument(baseUrl, cookie, id, 5_000)
+      : await readStoredDocument(baseUrl, cookie, id);
     if (stored === undefined) {
       const created = await api(baseUrl, cookie, '/api/filetree/createDocWithMd', {
         notebook: notebookId,
@@ -254,7 +275,7 @@ async function createCorpus(baseUrl, cookie, notebookId, progress, progressPath)
         id,
       });
       if (created !== id) throw new Error('SiYuan fixture create-document identity drifted');
-      stored = await readStoredDocument(baseUrl, cookie, id);
+      stored = await waitForStoredDocument(baseUrl, cookie, id, 60_000);
     }
     if (
       stored === undefined ||
@@ -269,6 +290,7 @@ async function createCorpus(baseUrl, cookie, notebookId, progress, progressPath)
       storedBytes: Buffer.byteLength(stored),
       storedSha256: sha256Text(stored),
     };
+    recoveringFirstIncomplete = false;
     await atomicJson(progressPath, progress);
     if ((index + 1) % 10 === 0)
       console.log(`SiYuan fixture progress: ${index + 1}/${DOCUMENT_COUNT}`);
@@ -345,6 +367,7 @@ export async function generateSiyuan500MbFixture(options = {}) {
   } else {
     validateProgress(progress);
   }
+  await mkdir(workspace, { recursive: true });
   await mkdir(path.join(runtimeHome, 'AppData', 'Roaming'), { recursive: true });
   await mkdir(path.join(runtimeHome, 'AppData', 'Local'), { recursive: true });
   const port = await reserveLoopbackPort();

@@ -2607,3 +2607,12 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Observed boundary** | The first real fixture attempt booted the owned runtime but stopped before notebook or document creation because its login body used the wrong field name and therefore established no session cookie. The generator's `finally` path stopped the owned kernel; only an empty resumable progress authority and isolated runtime-home files remain. |
 | **Correction** | Aligned the generator with the already proven native broker and pinned SiYuan API: `/api/system/loginAuth` now receives `{ authCode, captcha: '', rememberMe: false }`. The access code remains environment/login-only, never enters launch arguments, later requests use only the session cookie, and errors do not surface response messages. |
 | **Verification / next action** | Focused contracts PASS 6/6 including the exact login body and forbidden legacy field; exact Prettier, diff, and per-file Gitleaks PASS. Checkpoint this correction, then resume the unchanged isolated fixture authority. |
+
+## 2026-08-20 - Fixture parser/workspace boundary hardened
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:57 CT |
+| **Observed boundary** | The authenticated retry created the fixture notebook but a single approximately one-megabyte fenced-code block did not materialize as a stored `.sy` document. The missing explicit workspace directory also caused the pinned kernel to choose its isolated runtime-home fallback. No document was marked complete and cleanup stopped the process. |
+| **Correction** | Deterministic documents remain exactly 1,000,000 submitted Markdown bytes but now use bounded approximately 32 KB fenced blocks with a plain-text sentinel/header. The exact workspace directory is created before launch, post-create rereads poll boundedly for materialization, and only the first incomplete document receives resume recovery probing. |
+| **Verification / recovery** | Focused contracts PASS 6/6 with the new stable document digest, exact byte count, more than 30 bounded blocks, workspace creation, and reread polling; exact Prettier, diff, and per-file Gitleaks PASS. The controller will remove only the owned incomplete `fixture-workspace` and `fixture-progress.json` authorities, then deterministically regenerate them; verified runtime resources and prior runtime evidence remain untouched. |

@@ -29,7 +29,14 @@ test('each deterministic document is exactly one million submitted Markdown byte
   assert.match(document, /DOCUMENT_ID=20260820084600-00000dv/u);
   assert.equal(
     createHash('sha256').update(document).digest('hex'),
-    'f4b69c64c853bb8e096b8329ebe184c3857b689cd1695577fa0011bb20e5ce42',
+    'ffcd4d80a245a7a4139ed47d63406fafa087f216d7caaa98a48e8a637e2795b9',
+  );
+  assert.ok((document.match(/```text/gu) ?? []).length > 30);
+  assert.ok(
+    document
+      .split('```text\n')
+      .slice(1)
+      .every((block) => Buffer.byteLength(block.split('\n```', 1)[0]) <= 32_020),
   );
 });
 
@@ -71,6 +78,8 @@ test('production generator source preserves loopback, exact-corpus, and secret-s
   assert.doesNotMatch(source, /accessAuthCode/u);
   assert.doesNotMatch(source, /--access-auth-code/u);
   assert.match(source, /\/api\/block\/getBlockKramdown/u);
+  assert.match(source, /await mkdir\(workspace, \{ recursive: true \}\)/u);
+  assert.match(source, /waitForStoredDocument/u);
   assert.match(source, /\/api\/search\/fullTextSearchBlock/u);
   assert.match(source, /\/api\/system\/exit/u);
 });
