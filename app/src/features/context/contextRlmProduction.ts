@@ -47,6 +47,8 @@ import {
   createHistoryRlmRepository,
   loadProductionRlmHistory,
 } from './contextRlmHistory';
+import { createSiyuanRlmRepository } from './siyuanRlmRepository';
+import { createProductionSiyuanRlmPort } from './siyuanRlmProduction';
 
 const MAX_SOURCE_SHARD_BYTES = 1024 * 1024;
 const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
@@ -2101,11 +2103,19 @@ function synthesizeEvidencePack(request: RlmSynthesisRequest) {
 export function createProductionFederatedRlmRepository(
   contextMapRepository: ContextQueryRepository,
   historyRepository: ContextQueryRepository,
+  siyuanRepository?: ContextQueryRepository,
 ): ContextQueryRepository {
-  const federatedRepository = createFederatedRlmRepository([
+  const repositories = [
     contextMapRepository,
     historyRepository,
-  ]);
+    ...(siyuanRepository ? [siyuanRepository] : []),
+  ];
+  const federatedRepository = createFederatedRlmRepository(repositories);
+  const ownerForRecordId = (recordId: string): ContextQueryRepository | undefined => {
+    if (recordId.startsWith('siyuan:')) return siyuanRepository;
+    if (recordId.startsWith('rlm:history:')) return historyRepository;
+    return contextMapRepository;
+  };
   return {
     ...federatedRepository,
     search(scope, query, signal) {
@@ -2117,28 +2127,29 @@ export function createProductionFederatedRlmRepository(
         : federatedRepository.search(scope, query, signal);
     },
     async validatePointer(pointer, record, source, scope, signal) {
-      const mappedRecord = await contextMapRepository.getRecord(record.id, signal);
-      if (mappedRecord) {
-        if (
-          JSON.stringify(mappedRecord) !== JSON.stringify(record) ||
-          !contextMapRepository.validatePointer
-        ) {
-          return false;
-        }
-        return contextMapRepository.validatePointer(pointer, record, source, scope, signal);
-      }
-      const historyRecord = await historyRepository.getRecord(record.id, signal);
-      if (!historyRecord || JSON.stringify(historyRecord) !== JSON.stringify(record)) {
+      const owner = ownerForRecordId(record.id);
+      if (!owner) return false;
+      const authoritativeRecord = await owner.getRecord(record.id, signal);
+      if (!authoritativeRecord || JSON.stringify(authoritativeRecord) !== JSON.stringify(record)) {
         return false;
       }
-      return historyRepository.validatePointer
-        ? historyRepository.validatePointer(pointer, record, source, scope, signal)
+      return owner.validatePointer
+        ? owner.validatePointer(pointer, record, source, scope, signal)
         : true;
     },
     issuePointers(items, scope, signal) {
-      return contextMapRepository.issuePointers
-        ? contextMapRepository.issuePointers(items, scope, signal)
-        : true;
+      const itemsByOwner = new Map<ContextQueryRepository, ContextSearchItem[]>();
+      for (const item of items) {
+        const owner = ownerForRecordId(item.record.id);
+        if (!owner) return false;
+        const ownedItems = itemsByOwner.get(owner) ?? [];
+        ownedItems.push(item);
+        itemsByOwner.set(owner, ownedItems);
+      }
+      for (const [owner, ownedItems] of itemsByOwner) {
+        if (owner.issuePointers && !owner.issuePointers(ownedItems, scope, signal)) return false;
+      }
+      return true;
     },
   };
 }
@@ -2154,9 +2165,11 @@ export function createProductionRlmContextTool() {
     indexStatus: (accountId, mapId) => indexPort.status(accountId, mapId),
   });
   const historyRepository = createHistoryRlmRepository({ load: loadProductionRlmHistory });
+  const siyuanRepository = createSiyuanRlmRepository(createProductionSiyuanRlmPort());
   const repository = createProductionFederatedRlmRepository(
     contextMapRepository,
     historyRepository,
+    siyuanRepository,
   );
   const queryService = createContextQueryService({
     repository,

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { VibeSpaceHarness } from '@/lib/harness/types';
-import { createContextQueryService } from './contextQueryService';
-import { createContextPointer } from './losslessContext';
+import {
+  createContextQueryService,
+  type ContextQueryRepository,
+  type ContextSearchItem,
+} from './contextQueryService';
+import { createContextPointer, createContextRecord } from './losslessContext';
 import {
   createContextMapRlmRepository,
   createOllamaRlmChildRunner,
@@ -45,6 +49,167 @@ describe('requestsMappedFileAuthority', () => {
 
   it('keeps ordinary cross-history research federated', () => {
     expect(requestsMappedFileAuthority('Summarize what we decided about the release.')).toBe(false);
+  });
+});
+
+function fixedRepository(input: {
+  id: string;
+  sourceId: string;
+  sourceKind: 'file_version' | 'chat_message' | 'context_note';
+  text: string;
+  score: number;
+  issuePointers?: (items: readonly ContextSearchItem[]) => boolean;
+}): ContextQueryRepository {
+  const contentHash = input.id.endsWith('siyuan')
+    ? 'c'.repeat(64)
+    : input.id.includes('history')
+      ? 'b'.repeat(64)
+      : 'a'.repeat(64);
+  const bytes = new TextEncoder().encode(input.text);
+  const record = createContextRecord({
+    id: input.id,
+    accountId: 'account-1',
+    projectId: 'project-1',
+    sourceKind: input.sourceKind,
+    sourceId: input.sourceId,
+    createdAt: 1,
+    contentHash,
+    contentRef: `test://${input.sourceId}`,
+    title: input.sourceId,
+    trustLevel: 'app_verified',
+    sensitivity: 'project_private',
+  });
+  const pointer = createContextPointer({
+    id: `ptr:${record.id}:0:${bytes.length}`,
+    recordId: record.id,
+    byteStart: 0,
+    byteEnd: bytes.length,
+    sourceVersion: `sha256:${contentHash}`,
+    contentHash,
+  });
+  return {
+    async listRecords() {
+      return [record];
+    },
+    async getRecord(id) {
+      return id === record.id ? record : undefined;
+    },
+    async search() {
+      return [{ recordId: record.id, pointer, preview: input.text, score: input.score }];
+    },
+    async readSource(candidate) {
+      return candidate.id === record.id
+        ? { bytes, contentHash, sourceVersion: `sha256:${contentHash}` }
+        : undefined;
+    },
+    async canOpen(candidate, scope) {
+      return (
+        candidate.id === record.id &&
+        scope.accountId === record.accountId &&
+        scope.projectId === record.projectId
+      );
+    },
+    validatePointer(candidate, candidateRecord, source) {
+      return (
+        candidate.id === pointer.id &&
+        candidateRecord.id === record.id &&
+        source.contentHash === contentHash
+      );
+    },
+    ...(input.issuePointers
+      ? {
+          issuePointers(items: readonly ContextSearchItem[]) {
+            return input.issuePointers!(items);
+          },
+        }
+      : {}),
+  };
+}
+
+describe('production RLM federation authority routing', () => {
+  it('issues and validates mixed mapped-file, history, and SiYuan pointers through their owner', async () => {
+    const mappedIssue = vi.fn((_items: readonly ContextSearchItem[]) => true);
+    const siyuanIssue = vi.fn((_items: readonly ContextSearchItem[]) => true);
+    const mapped = fixedRepository({
+      id: `rlm:${'1'.repeat(64)}`,
+      sourceId: 'mapped',
+      sourceKind: 'file_version',
+      text: 'mapped evidence',
+      score: 3,
+      issuePointers: mappedIssue,
+    });
+    const history = fixedRepository({
+      id: 'rlm:history:chat_message:message-1:bbbbbbbbbbbbbbbb',
+      sourceId: 'history',
+      sourceKind: 'chat_message',
+      text: 'history evidence',
+      score: 2,
+    });
+    const siyuan = fixedRepository({
+      id: 'siyuan:cccccccccccccccccccccccc:block-siyuan',
+      sourceId: 'siyuan',
+      sourceKind: 'context_note',
+      text: 'siyuan evidence',
+      score: 1,
+      issuePointers: siyuanIssue,
+    });
+    const service = createContextQueryService({
+      repository: createProductionFederatedRlmRepository(mapped, history, siyuan),
+    });
+    const scope = { accountId: 'account-1', projectId: 'project-1' };
+
+    const result = await service.search({ scope, query: 'evidence' });
+
+    expect(result.items.map((item) => item.record.sourceId)).toEqual([
+      'mapped',
+      'history',
+      'siyuan',
+    ]);
+    expect(mappedIssue).toHaveBeenCalledTimes(1);
+    expect(mappedIssue.mock.calls[0]?.[0]).toHaveLength(1);
+    expect(siyuanIssue).toHaveBeenCalledTimes(1);
+    expect(siyuanIssue.mock.calls[0]?.[0]).toHaveLength(1);
+    await expect(
+      Promise.all(result.items.map((item) => service.open({ scope, pointer: item.pointer }))),
+    ).resolves.toHaveLength(3);
+  });
+
+  it('keeps explicit mapped-file questions out of history and SiYuan search', async () => {
+    const mapped = fixedRepository({
+      id: `rlm:${'1'.repeat(64)}`,
+      sourceId: 'mapped',
+      sourceKind: 'file_version',
+      text: 'mapped evidence',
+      score: 1,
+    });
+    const history = fixedRepository({
+      id: 'rlm:history:chat_message:message-1:bbbbbbbbbbbbbbbb',
+      sourceId: 'history',
+      sourceKind: 'chat_message',
+      text: 'history evidence',
+      score: 1,
+    });
+    const siyuan = fixedRepository({
+      id: 'siyuan:cccccccccccccccccccccccc:block-siyuan',
+      sourceId: 'siyuan',
+      sourceKind: 'context_note',
+      text: 'siyuan evidence',
+      score: 1,
+    });
+    const mappedSearch = vi.spyOn(mapped, 'search');
+    const historySearch = vi.spyOn(history, 'search');
+    const siyuanSearch = vi.spyOn(siyuan, 'search');
+    const repository = createProductionFederatedRlmRepository(mapped, history, siyuan);
+
+    const hits = await repository.search(
+      { accountId: 'account-1', projectId: 'project-1' },
+      'Show the exact source file.',
+    );
+
+    expect(hits).toHaveLength(1);
+    expect(mappedSearch).toHaveBeenCalledTimes(1);
+    expect(historySearch).not.toHaveBeenCalled();
+    expect(siyuanSearch).not.toHaveBeenCalled();
   });
 });
 
