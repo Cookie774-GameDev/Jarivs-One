@@ -2341,3 +2341,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Official provenance** | SiYuan stable tag `v3.8.1`, tag commit `afa823b6b4e4f183511e0bc0a3be93caa94c7c97`, AGPL-3.0. This is provenance only; no upstream binary has yet been committed, bundled, or executed. |
 | **Parallel audit state** | The two user-authorized read-only workers are auditing (1) SiYuan/Context/RLM/packaging and (2) OpenCode/models/usage. They own no files yet. Exact non-overlapping implementation paths will be recorded before product edits. |
 | **Status / next action** | `BASELINE_ACCEPTED`; reconcile both audits, claim exact lane manifests, then begin SiYuan Phase 0/1 implementation and commit the checkpoint. |
+
+## 2026-08-20 - SiYuan Phase 0/1 isolated lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:11 CT |
+| **Agent / task** | Worker `siyuan_rlm_audit` under controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `SIYUAN-PHASE0-1-ISOLATED`. |
+| **Branch / base HEAD** | `integration/UnifiedChungus-final` at `1105b59a`; upstream `origin/UnifiedChungus`; ahead 2. |
+| **Exact exclusive paths** | `app/src-tauri/src/siyuan/**`; `app/src/features/context/siyuan/**`; `app/src-tauri/resources/siyuan-runtime-manifest.json`; `docs/oss/siyuan-runtime-provenance.json`; `docs/oss/siyuan-feature-parity.json`; `docs/oss/siyuan-electron-tauri-parity.json`; `scripts/verify-siyuan-runtime-manifest.mjs`; `scripts/verify-siyuan-runtime-manifest.test.mjs`. |
+| **Intent** | Implement truthful pinned provenance and parity ledgers, strict manifest verification, isolated Rust manifest/lifecycle/security contracts with mocked typed API tests, and renderer-side native bridge contracts. Feature remains disabled; no runtime payload, shared registration, migration, full UI, or RLM federation claim is permitted in this slice. |
+| **Shared files excluded** | No ownership of `lib.rs`, `tauri.conf.json`, `Cargo.toml`, `package.json`, Context closed-set contracts/schema/page, or either production RLM entry. Those require a later controller checkpoint after isolated tests pass. |
+| **Verification** | Node manifest verifier/tests; focused frontend SiYuan tests; focused Rust `siyuan` tests; typecheck; PR31 integration verifier; exact-path formatting and diff checks. |
+| **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
