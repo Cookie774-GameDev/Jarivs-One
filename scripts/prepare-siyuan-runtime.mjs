@@ -56,11 +56,17 @@ export async function prepareSiyuanRuntime(options = {}) {
   const closurePath = path.resolve(options.closureManifestPath ?? DEFAULT_CLOSURE_MANIFEST);
   const runtimeManifestPath = path.resolve(options.runtimeManifestPath ?? DEFAULT_RUNTIME_MANIFEST);
   const sourceOfferPath = path.resolve(options.sourceOfferPath ?? DEFAULT_SOURCE_OFFER);
-  const closure = JSON.parse(await readFile(closurePath, 'utf8'));
-  const runtimeManifest = JSON.parse(await readFile(runtimeManifestPath, 'utf8'));
+  const metadata = Object.freeze({
+    'siyuan-runtime-manifest.json': await readFile(runtimeManifestPath, 'utf8'),
+    'siyuan-runtime-closure.json': await readFile(closurePath, 'utf8'),
+    'VIBESPACE_SIYUAN_SOURCE_OFFER.md': await readFile(sourceOfferPath, 'utf8'),
+  });
+  const closure = JSON.parse(metadata['siyuan-runtime-closure.json']);
+  const runtimeManifest = JSON.parse(metadata['siyuan-runtime-manifest.json']);
   const fingerprint = closureFingerprint(closure);
+  const ready = readyMetadata(runtimeManifest, closure, fingerprint);
 
-  if (await preparedOutputMatches(outputDir, fingerprint, closure)) {
+  if (await reusePreparedOutput(outputDir, closure, ready, metadata)) {
     return { outputDir, reused: true, fingerprint };
   }
   if (await exists(outputDir)) {
@@ -88,34 +94,13 @@ export async function prepareSiyuanRuntime(options = {}) {
           force: false,
         });
       }
-      await cp(sourceOfferPath, path.join(stage, 'VIBESPACE_SIYUAN_SOURCE_OFFER.md'), {
-        errorOnExist: true,
-        force: false,
+      for (const [name, content] of Object.entries(metadata)) {
+        await writeFile(path.join(stage, name), content, { encoding: 'utf8', flag: 'wx' });
+      }
+      await writeFile(path.join(stage, READY_FILE), serializeJson(ready), {
+        encoding: 'utf8',
+        flag: 'wx',
       });
-      await cp(runtimeManifestPath, path.join(stage, 'siyuan-runtime-manifest.json'), {
-        errorOnExist: true,
-        force: false,
-      });
-      await cp(closurePath, path.join(stage, 'siyuan-runtime-closure.json'), {
-        errorOnExist: true,
-        force: false,
-      });
-      await writeFile(
-        path.join(stage, READY_FILE),
-        `${JSON.stringify(
-          {
-            schemaVersion: 1,
-            tag: runtimeManifest.runtime.tag,
-            commitSha: runtimeManifest.runtime.commitSha,
-            fingerprint,
-            uncompressedBytes: closure.closure.uncompressedBytes,
-            fileCount: closure.closure.fileCount,
-          },
-          null,
-          2,
-        )}\n`,
-        { encoding: 'utf8', flag: 'wx' },
-      );
       await validatePackagedClosure(stage, closure);
       await rename(stage, outputDir);
     } catch (error) {
@@ -289,15 +274,63 @@ async function locateSevenZip(configured) {
   );
 }
 
-async function preparedOutputMatches(outputDir, fingerprint, closure) {
+async function reusePreparedOutput(outputDir, closure, ready, metadata) {
   if (!(await exists(outputDir))) return false;
   try {
-    const ready = JSON.parse(await readFile(path.join(outputDir, READY_FILE), 'utf8'));
-    if (ready.fingerprint !== fingerprint) return false;
+    const observedReady = JSON.parse(await readFile(path.join(outputDir, READY_FILE), 'utf8'));
+    if (
+      Object.keys(observedReady).sort().join('\0') !== Object.keys(ready).sort().join('\0') ||
+      Object.entries(ready).some(([key, value]) => observedReady[key] !== value)
+    ) {
+      return false;
+    }
     await validatePackagedClosure(outputDir, closure);
+    await refreshPreparedMetadata(outputDir, {
+      ...metadata,
+      [READY_FILE]: serializeJson(ready),
+    });
     return true;
   } catch {
     return false;
+  }
+}
+
+function readyMetadata(runtimeManifest, closure, fingerprint) {
+  return Object.freeze({
+    schemaVersion: 1,
+    tag: runtimeManifest.runtime.tag,
+    commitSha: runtimeManifest.runtime.commitSha,
+    fingerprint,
+    uncompressedBytes: closure.closure.uncompressedBytes,
+    fileCount: closure.closure.fileCount,
+  });
+}
+
+function serializeJson(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+async function refreshPreparedMetadata(outputDir, metadata) {
+  for (const [name, expected] of Object.entries(metadata)) {
+    const target = path.join(outputDir, name);
+    let observed;
+    try {
+      const info = await lstat(target);
+      if (info.isSymbolicLink() || !info.isFile()) {
+        throw new Error(`SiYuan prepared metadata is not a regular file: ${name}`);
+      }
+      observed = await readFile(target, 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    if (observed === expected) continue;
+    const temporary = path.join(outputDir, `.siyuan-metadata-${randomUUID()}`);
+    try {
+      await writeFile(temporary, expected, { encoding: 'utf8', flag: 'wx' });
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true });
+    }
   }
 }
 

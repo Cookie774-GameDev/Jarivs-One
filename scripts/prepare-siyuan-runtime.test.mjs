@@ -121,6 +121,74 @@ test('validates and atomically materializes only the measured closure', async ()
   });
 });
 
+test('refreshes copied metadata only after the prepared closure and ready authority verify', async () => {
+  await withFixture(async (fixture) => {
+    await prepareSiyuanRuntime({
+      sourceDir: fixture.extracted,
+      outputDir: fixture.outputDir,
+      allowedOutputParent: fixture.outputParent,
+      closureManifestPath: fixture.closurePath,
+      runtimeManifestPath: fixture.manifestPath,
+      sourceOfferPath: fixture.sourceOfferPath,
+    });
+    const updatedManifest = JSON.stringify({
+      runtime: { tag: 'v-fixture', commitSha: 'a'.repeat(40) },
+      packaging: { runtimeBundled: true },
+    });
+    await writeFile(fixture.manifestPath, updatedManifest);
+    await writeFile(fixture.sourceOfferPath, 'Updated fixture source offer');
+
+    const result = await prepareSiyuanRuntime({
+      sourceDir: path.join(fixture.root, 'must-not-be-read'),
+      outputDir: fixture.outputDir,
+      allowedOutputParent: fixture.outputParent,
+      closureManifestPath: fixture.closurePath,
+      runtimeManifestPath: fixture.manifestPath,
+      sourceOfferPath: fixture.sourceOfferPath,
+    });
+
+    assert.equal(result.reused, true);
+    assert.equal(
+      await readFile(path.join(fixture.outputDir, 'siyuan-runtime-manifest.json'), 'utf8'),
+      updatedManifest,
+    );
+    assert.equal(
+      await readFile(path.join(fixture.outputDir, 'VIBESPACE_SIYUAN_SOURCE_OFFER.md'), 'utf8'),
+      'Updated fixture source offer',
+    );
+    await validatePackagedClosure(fixture.outputDir, fixture.closure);
+  });
+});
+
+test('rejects ready-marker drift without refreshing or rebuilding the existing output', async () => {
+  await withFixture(async (fixture) => {
+    await prepareSiyuanRuntime({
+      sourceDir: fixture.extracted,
+      outputDir: fixture.outputDir,
+      allowedOutputParent: fixture.outputParent,
+      closureManifestPath: fixture.closurePath,
+      runtimeManifestPath: fixture.manifestPath,
+      sourceOfferPath: fixture.sourceOfferPath,
+    });
+    const readyPath = path.join(fixture.outputDir, 'VIBESPACE_SIYUAN_READY.json');
+    const ready = JSON.parse(await readFile(readyPath, 'utf8'));
+    await writeFile(readyPath, JSON.stringify({ ...ready, fingerprint: '0'.repeat(64) }));
+
+    await assert.rejects(
+      prepareSiyuanRuntime({
+        sourceDir: path.join(fixture.root, 'must-not-be-read'),
+        outputDir: fixture.outputDir,
+        allowedOutputParent: fixture.outputParent,
+        closureManifestPath: fixture.closurePath,
+        runtimeManifestPath: fixture.manifestPath,
+        sourceOfferPath: fixture.sourceOfferPath,
+      }),
+      /exists but is not the verified closure/u,
+    );
+    assert.equal(JSON.parse(await readFile(readyPath, 'utf8')).fingerprint, '0'.repeat(64));
+  });
+});
+
 test('rejects a mutated upstream component before materialization', async () => {
   await withFixture(async (fixture) => {
     await writeFile(path.join(fixture.extracted, 'resources', 'kernel', 'kernel.exe'), 'mutated');
