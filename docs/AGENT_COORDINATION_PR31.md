@@ -253,3 +253,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Exact test/ledger Prettier checks PASS and `git diff --check` PASS. `App.tsx` retains its pre-existing whole-file Prettier baseline debt: an in-memory Prettier check returns false for both HEAD and the working version, so no broad formatting rewrite was retained.
 - The live official Tauri development app reloaded `App.tsx`; its process remained alive with normal Vite full-page reload diagnostics and no startup/runtime crash.
 - Next: stage only the two owned product/test files plus this ledger, run staged diff and secret checks, commit, then release the exact scope.
+
+#### 2026-08-20 18:31 CDT — committed and scope released
+
+- Commit: `1af82245` (`fix(auth): gate detached initial account authority`), based on `c8ba74ab`.
+- Staged diff check PASS and staged Gitleaks PASS (`7.25 KB`, no leaks).
+- Released exact `App.tsx` plus account-identity test ownership. The focused inherited regression set is now fully green; scored native PR31 acceptance remains separately gated by official app control and current provider availability.
