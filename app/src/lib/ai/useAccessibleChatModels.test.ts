@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth';
 import { syncDiscoveredOllamaModels } from './models';
 import {
   buildConnectionPickerGroups,
+  buildLiveOpenCodePickerModels,
   buildModelPickerGroups,
   requestOpenCodeModelCatalogRefresh,
   useAccessibleChatModels,
@@ -15,6 +16,7 @@ import {
 } from './adapters/catalog';
 import { OPENAI_API_CONNECTION, QWEN_API_CONNECTION } from './adapters/nativeCatalog';
 import { LocalAdapterRegistry } from '@/features/model-foundry/adapterRegistry';
+import type { ProviderDiscoveredModel } from './adapters/types';
 import {
   AI_CONNECTION_STATE_EVENT,
   markConnectionSessionChecked,
@@ -27,8 +29,8 @@ const { ensureExternalConnectionAutoDetection, isConnectionSessionChecked } = vi
   ensureExternalConnectionAutoDetection: vi.fn(async () => ({})),
   isConnectionSessionChecked: vi.fn((_connectionId?: string) => false),
 }));
-const { listOpenCodeModels } = vi.hoisted(() => ({
-  listOpenCodeModels: vi.fn(async () => [] as readonly { id: string; label: string }[]),
+const { listPersistentOpenCodeModels } = vi.hoisted(() => ({
+  listPersistentOpenCodeModels: vi.fn(async (): Promise<readonly ProviderDiscoveredModel[]> => []),
 }));
 
 vi.mock('./adapters/autoDetectConnections', () => ({
@@ -40,16 +42,12 @@ vi.mock('./connectionState', async (importOriginal) => ({
   isConnectionSessionChecked,
 }));
 
-vi.mock('./adapters/opencodePersistent', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./adapters/opencodePersistent')>();
-  return {
-    ...actual,
-    openCodePersistentAdapter: Object.freeze({
-      ...actual.openCodePersistentAdapter,
-      listModels: listOpenCodeModels,
-    }),
-  };
-});
+vi.mock('./adapters/opencodePersistent', () => ({
+  invalidateOpenCodePersistentModelCache: vi.fn(),
+  openCodePersistentAdapter: {
+    listModels: listPersistentOpenCodeModels,
+  },
+}));
 
 describe('useAccessibleChatModels', () => {
   beforeEach(() => {
@@ -58,8 +56,8 @@ describe('useAccessibleChatModels', () => {
     ensureExternalConnectionAutoDetection.mockClear();
     isConnectionSessionChecked.mockReset();
     isConnectionSessionChecked.mockReturnValue(false);
-    listOpenCodeModels.mockReset();
-    listOpenCodeModels.mockResolvedValue([]);
+    listPersistentOpenCodeModels.mockReset();
+    listPersistentOpenCodeModels.mockResolvedValue([]);
     requestOpenCodeModelCatalogRefresh();
     syncDiscoveredOllamaModels([]);
     useAuthStore.setState({ defaultLocalModel: '', apiKeys: {}, offlineMode: false, plan: 'free' });
@@ -96,8 +94,12 @@ describe('useAccessibleChatModels', () => {
 
   it('adds safely discovered OpenCode models to the exact subscription connection', async () => {
     isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
-    listOpenCodeModels.mockResolvedValue([
-      { id: 'openrouter/Model v2 (beta)+preview', label: 'openrouter/Model v2 (beta)+preview' },
+    listPersistentOpenCodeModels.mockResolvedValue([
+      {
+        id: 'openrouter/Model v2 (beta)+preview',
+        label: 'Model v2 (beta)+preview',
+        pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      },
     ]);
     writeConnectionMetadata({
       'opencode-cli': {
@@ -124,7 +126,54 @@ describe('useAccessibleChatModels', () => {
       expect(openCode).toHaveLength(3);
       expect(
         openCode.find((option) => option.modelId === 'openrouter/Model v2 (beta)+preview'),
-      ).toMatchObject({ available: true });
+      ).toMatchObject({ available: true, pricingStatus: 'free', isFree: true });
+      expect(
+        openCode.filter((option) => option.catalogSource === 'connection-static'),
+      ).toEqual([
+        expect.objectContaining({ modelId: 'deepseek/deepseek-v4-flash', available: false }),
+        expect.objectContaining({ modelId: 'qwen/qwen3.8-max', available: false }),
+      ]);
+    });
+  });
+
+  it('builds exact live OpenCode targets and exposes only complete all-zero pricing as free', () => {
+    const models = buildLiveOpenCodePickerModels(
+      [
+        { id: 'openai/gpt-5.3-codex-spark', label: 'Spark' },
+        {
+          id: 'openai/gpt-5.6-luna',
+          label: 'Luna',
+          pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+        {
+          id: 'openai/gpt-5.6-sol',
+          label: 'Sol',
+          pricing: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+        },
+        { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+      ],
+      123,
+    );
+
+    expect(models.map(({ id }) => id)).toEqual([
+      'openai/gpt-5.3-codex-spark',
+      'openai/gpt-5.6-luna',
+      'openai/gpt-5.6-sol',
+      'deepseek/deepseek-v4-flash',
+    ]);
+    expect(models.find(({ id }) => id.endsWith('luna'))).toMatchObject({
+      pricingStatus: 'free',
+      isFree: true,
+      available: true,
+      source: 'opencode-live',
+    });
+    expect(models.find(({ id }) => id.endsWith('sol'))).toMatchObject({
+      pricingStatus: 'paid',
+      isFree: false,
+    });
+    expect(models.find(({ id }) => id.endsWith('spark'))).toMatchObject({
+      pricingStatus: 'unknown',
+      isFree: false,
     });
   });
 
@@ -134,12 +183,12 @@ describe('useAccessibleChatModels', () => {
     renderHook(() => useAccessibleChatModels());
 
     await act(async () => Promise.resolve());
-    expect(listOpenCodeModels).not.toHaveBeenCalled();
+    expect(listPersistentOpenCodeModels).not.toHaveBeenCalled();
   });
 
   it('does not repeat OpenCode discovery for unrelated connection events', async () => {
     isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
-    listOpenCodeModels.mockResolvedValue([{ id: 'openai/gpt-5', label: 'openai/gpt-5' }]);
+    listPersistentOpenCodeModels.mockResolvedValue([{ id: 'openai/gpt-5', label: 'GPT-5' }]);
     writeConnectionMetadata({
       'opencode-cli': {
         installation: 'installed',
@@ -149,11 +198,11 @@ describe('useAccessibleChatModels', () => {
     });
     markConnectionSessionChecked(['opencode-cli']);
     renderHook(() => useAccessibleChatModels());
-    await waitFor(() => expect(listOpenCodeModels).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1));
 
     act(() => window.dispatchEvent(new Event(AI_CONNECTION_STATE_EVENT)));
     await act(async () => Promise.resolve());
-    expect(listOpenCodeModels).toHaveBeenCalledTimes(1);
+    expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
   });
 
   it('removes every cloud and external connection from Fully Local Chat', () => {
@@ -229,7 +278,7 @@ describe('useAccessibleChatModels', () => {
     ).toEqual(['gpt-4o', 'gpt-5.6-sol']);
   });
 
-  it('lists DeepSeek V4 Flash and Qwen 3.8 Max on the shared OpenCode connection', () => {
+  it('keeps static OpenCode fallback hints visible but non-executable', () => {
     const groups = buildConnectionPickerGroups({
       connections: [OPENCODE_CLI_CONNECTION],
       modelsByProvider: {},
@@ -240,7 +289,8 @@ describe('useAccessibleChatModels', () => {
     });
     const ids = groups.flatMap((group) => group.options).map((option) => option.modelId);
     expect(ids).toEqual(['deepseek/deepseek-v4-flash', 'qwen/qwen3.8-max']);
-    expect(groups[0]?.options.every((option) => option.available === true)).toBe(true);
+    expect(groups[0]?.label).toBe('OpenCode Models');
+    expect(groups[0]?.options.every((option) => option.available === false)).toBe(true);
   });
 
   it('never enables unknown Codex subscription authentication', () => {
@@ -350,8 +400,8 @@ describe('useAccessibleChatModels foundry adapter injection', () => {
     resetConnectionSessionChecksForTests();
     isConnectionSessionChecked.mockReset();
     isConnectionSessionChecked.mockReturnValue(false);
-    listOpenCodeModels.mockReset();
-    listOpenCodeModels.mockResolvedValue([]);
+    listPersistentOpenCodeModels.mockReset();
+    listPersistentOpenCodeModels.mockResolvedValue([]);
   });
 
   function seedAdapter(args: { promote: boolean; gate?: 'pass' | 'blocked' }): void {

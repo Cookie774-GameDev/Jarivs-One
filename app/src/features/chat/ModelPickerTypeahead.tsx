@@ -271,6 +271,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                         }
                         onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
                         aria-disabled={option.available === false}
+                        data-model-price={option.pricingStatus ?? 'unknown'}
                         className={cn(
                           'mx-2 flex cursor-pointer items-center border',
                           compact
@@ -312,6 +313,11 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                         {isActive && (
                           <span className="shrink-0 text-[11px] font-medium text-accent-copper">
                             active
+                          </span>
+                        )}
+                        {option.isFree && (
+                          <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                            Free
                           </span>
                         )}
                         {isSelected && <span className="shrink-0 text-accent-copper">&gt;</span>}

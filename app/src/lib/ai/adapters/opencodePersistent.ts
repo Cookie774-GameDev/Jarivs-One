@@ -46,7 +46,12 @@ import {
   releaseToolGatewaySessionAuthority,
   type ToolGatewayAuthorityClaim,
 } from '@/lib/harness/toolGatewayAuthority';
-import type { HarnessApprovalResponse, VibeSpaceApproval } from '@/lib/harness/types';
+import type {
+  HarnessApprovalResponse,
+  HarnessModelPricing,
+  VibeSpaceApproval,
+} from '@/lib/harness/types';
+import { parseOpenCodeModelPricing } from '@/lib/harness/providerReconciliation';
 import {
   MUTATING_TOOL_GATEWAY_TOOLS,
   TOOL_GATEWAY_CATALOG,
@@ -87,6 +92,7 @@ export interface OpenCodeLiveModel {
   label: string;
   providerId: string;
   variants: readonly LiveModelVariant[];
+  pricing?: Readonly<HarnessModelPricing>;
   supportsIndependentReasoningEffort: boolean;
   serviceTiers: readonly string[];
   supportsOpenCodeFastMode: boolean;
@@ -641,11 +647,13 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
       if (!modelLocalId) continue;
       const id = modelLocalId.includes('/') ? modelLocalId : `${providerId}/${modelLocalId}`;
       const label = cleanIdentifier(model.name ?? model.label, 256) ?? id;
+      const pricing = parseOpenCodeModelPricing(model.cost);
       result.push({
         id,
         label,
         providerId,
         variants: variantsFrom(model),
+        ...(pricing ? { pricing } : {}),
         supportsIndependentReasoningEffort: false,
         serviceTiers: [],
         supportsOpenCodeFastMode: false,
@@ -654,6 +662,17 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
   }
   return [...new Map(result.map((model) => [model.id.toLocaleLowerCase('en-US'), model])).values()]
     .sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
+}
+
+export function toOpenCodeDiscoveredModels(
+  models: readonly Readonly<OpenCodeLiveModel>[],
+): readonly Readonly<ProviderDiscoveredModel>[] {
+  return models.map((model) => ({
+    id: model.id,
+    label: model.label,
+    variants: model.variants.map((variant) => variant.id),
+    ...(model.pricing ? { pricing: model.pricing } : {}),
+  }));
 }
 
 function modelMetadata(
@@ -1322,11 +1341,7 @@ export const openCodePersistentAdapter: ProviderAdapter = Object.freeze({
     try {
       const models = await liveModels(catalogScope);
       if (models.length > 0) {
-        return models.map((model) => ({
-          id: model.id,
-          label: model.label,
-          variants: model.variants.map((variant) => variant.id),
-        }));
+        return toOpenCodeDiscoveredModels(models);
       }
     } catch {
       // Model discovery is allowed to use the guarded one-shot diagnostic probe;

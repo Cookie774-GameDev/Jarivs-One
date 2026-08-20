@@ -91,6 +91,8 @@ export interface ProviderDiscoveredModel {
   label: string;
   /** Exact live upstream variant ids, when exposed by this connection. */
   variants?: readonly string[];
+  /** Exact live upstream pricing, only when every supported field was observed. */
+  pricing?: Readonly<import('@/lib/harness/types').HarnessModelPricing>;
 }
 
 export interface ProviderRequest {

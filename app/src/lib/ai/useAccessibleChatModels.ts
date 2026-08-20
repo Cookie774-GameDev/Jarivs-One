@@ -9,7 +9,7 @@ import {
   getAccessibleProviders,
   useOllamaModelOptions,
 } from './models';
-import type { ProviderConnection } from './adapters/types';
+import type { ProviderConnection, ProviderDiscoveredModel } from './adapters/types';
 import {
   OPENCODE_CLI_CONNECTION,
   CONNECTION_MODEL_OPTIONS,
@@ -21,6 +21,8 @@ import {
   invalidateOpenCodePersistentModelCache,
   openCodePersistentAdapter,
 } from './adapters/opencodePersistent';
+import { classifyHarnessModelPricing } from '@/lib/harness/freeModelSelection';
+import type { HarnessModelPricing } from '@/lib/harness/types';
 import {
   AI_CONNECTION_STATE_EVENT,
   deriveAiConnectionHealth,
@@ -80,6 +82,9 @@ export interface ModelPickerOption {
   catalogSource?: ModelCatalogSource;
   lastVerifiedAt?: number;
   variants?: readonly string[];
+  pricing?: Readonly<HarnessModelPricing>;
+  pricingStatus?: 'free' | 'paid' | 'unknown';
+  isFree?: boolean;
 }
 
 export interface ModelPickerGroup {
@@ -152,7 +157,15 @@ function dedupeModelMetadataInOrder(
 }
 
 function asCatalogModels(
-  models: readonly Readonly<{ id: string; label: string; variants?: readonly string[] }>[],
+  models: readonly Readonly<{
+    id: string;
+    label: string;
+    variants?: readonly string[];
+    available?: boolean;
+    pricing?: Readonly<HarnessModelPricing>;
+    pricingStatus?: 'free' | 'paid' | 'unknown';
+    isFree?: boolean;
+  }>[],
   source: ModelCatalogSource,
   lastVerifiedAt?: number,
 ): PickerCatalogModel[] {
@@ -162,6 +175,32 @@ function asCatalogModels(
       source,
       ...(lastVerifiedAt ? { lastVerifiedAt } : {}),
     })),
+  );
+}
+
+/**
+ * Build picker rows only from the persistent transport's exact live provider response. Pricing and
+ * identity therefore share one runtime, scope, cache generation, and authority boundary.
+ */
+export function buildLiveOpenCodePickerModels(
+  models: readonly Readonly<ProviderDiscoveredModel>[],
+  lastVerifiedAt: number,
+): PickerCatalogModel[] {
+  return dedupeModelMetadataInOrder(
+    models.map((model) => {
+      const pricingStatus = classifyHarnessModelPricing(model.pricing);
+      return {
+        id: model.id,
+        label: model.label || model.id,
+        source: 'opencode-live' as const,
+        lastVerifiedAt,
+        variants: model.variants,
+        available: true,
+        ...(pricingStatus === 'unknown' ? {} : { pricing: model.pricing }),
+        pricingStatus,
+        isFree: pricingStatus === 'free',
+      };
+    }),
   );
 }
 
@@ -184,13 +223,10 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
   if (!force && openCodeModelLoad?.generation === generation) {
     return openCodeModelLoad.promise;
   }
-  if (!openCodePersistentAdapter.listModels) return openCodeModelCache?.models ?? [];
-
-  const promise = openCodePersistentAdapter
-    .listModels()
+  const promise = (openCodePersistentAdapter.listModels?.() ?? Promise.resolve([]))
     .then((models) => {
       const loadedAt = Date.now();
-      const normalized = asCatalogModels(models, 'opencode-live', loadedAt);
+      const normalized = buildLiveOpenCodePickerModels(models, loadedAt);
       // An older auth/refresh request must never overwrite a newer catalog.
       if (generation === openCodeCatalogGeneration) {
         openCodeModelCache = { generation, loadedAt, models: normalized };
@@ -280,6 +316,9 @@ export function buildConnectionPickerGroups(args: {
         catalogSource: model.source,
         lastVerifiedAt: model.lastVerifiedAt,
         variants: model.variants,
+        pricing: model.pricing,
+        pricingStatus: model.pricingStatus,
+        isFree: model.isFree,
       });
     }
     groups.set(connection.providerId, group);
@@ -510,7 +549,7 @@ export function useAccessibleChatModels() {
   useEffect(() => {
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-    if (!openCodeReady || !openCodePersistentAdapter.listModels) {
+    if (!openCodeReady) {
       return () => {
         cancelled = true;
       };

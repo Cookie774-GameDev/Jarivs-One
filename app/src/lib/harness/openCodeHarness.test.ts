@@ -295,7 +295,7 @@ describe('OpenCodeHarness', () => {
     expect(eventRequests).toBe(2);
   });
 
-  it('does not wait for a hanging /config/providers scan before submitting the prompt', async () => {
+  it('fails closed without submitting when the live provider catalog hangs', async () => {
     let promptAt = 0;
     const started = Date.now();
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
@@ -329,11 +329,14 @@ describe('OpenCodeHarness', () => {
     });
 
     await expect(collect(harness.send(request()))).resolves.toEqual([
-      { type: 'assistant.delta', text: 'Hi' },
-      { type: 'done', finishReason: 'idle' },
+      {
+        type: 'error',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        message: 'Provider "anthropic" is not available through OpenCode.',
+      },
     ]);
-    expect(promptAt).toBeGreaterThan(0);
-    expect(promptAt).toBeLessThan(1_500);
+    expect(promptAt).toBe(0);
+    expect(Date.now() - started).toBeLessThan(1_500);
   });
 
   it('reuses a warm provider catalog on the next send', async () => {

@@ -356,24 +356,17 @@ describe('exact OpenCode selection mapping', () => {
     ).toThrowError(expect.objectContaining({ code: 'MODEL_NOT_AVAILABLE' }));
   });
 
-  it('builds a trusted one-model catalog so send can proceed without a full provider scan', () => {
+  it('never manufactures catalog authority from the requested selection', () => {
     const catalog = trustedCatalogForSelection({
       providerId: 'openai',
       modelId: 'gpt-5.3-codex-spark',
     });
-    expect(catalog).toEqual([
-      {
-        id: 'openai',
-        name: 'openai',
-        models: [{ id: 'gpt-5.3-codex-spark', name: 'gpt-5.3-codex-spark' }],
-        connected: true,
-      },
-    ]);
+    expect(catalog).toEqual([]);
     expect(
       catalogContainsSelection({ providerId: 'openai', modelId: 'gpt-5.3-codex-spark' }, catalog),
-    ).toBe(true);
-    expect(
+    ).toBe(false);
+    expect(() =>
       resolveOpenCodeSelection({ providerId: 'openai', modelId: 'gpt-5.3-codex-spark' }, catalog),
-    ).toEqual({ providerId: 'openai', modelId: 'gpt-5.3-codex-spark' });
+    ).toThrowError(expect.objectContaining({ code: 'PROVIDER_NOT_CONFIGURED' }));
   });
 });

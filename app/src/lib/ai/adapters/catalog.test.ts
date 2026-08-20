@@ -305,7 +305,7 @@ describe('provider capability catalog', () => {
     });
   });
 
-  it('publishes a frozen current model catalog for Codex plus always-on OpenCode models', () => {
+  it('publishes Codex models plus display-only OpenCode fallback hints', () => {
     expect(CONNECTION_MODEL_OPTIONS['openai-codex']?.map((option) => option.id)).toEqual([
       'gpt-5.3-codex-spark',
       'gpt-5.3-codex',
@@ -329,6 +329,10 @@ describe('provider capability catalog', () => {
       'deepseek/deepseek-v4-flash',
       'qwen/qwen3.8-max',
     ]);
+    expect(
+      CONNECTION_MODEL_OPTIONS['opencode-cli']?.every((option) => option.available === false),
+    ).toBe(true);
+    expect(PROVIDER_CATALOG.opencode.displayName).toBe('OpenCode Models');
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['openai-codex'])).toBe(true);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['opencode-cli'])).toBe(true);

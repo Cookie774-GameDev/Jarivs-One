@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { HarnessProvider } from './types';
-import { isCurrentFreeHarnessModel, selectCurrentFreeHarnessModel } from './freeModelSelection';
+import {
+  classifyHarnessModelPricing,
+  isCurrentFreeHarnessModel,
+  selectCurrentFreeHarnessModel,
+} from './freeModelSelection';
 
 const free = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 
@@ -14,6 +18,13 @@ function provider(
 }
 
 describe('dynamic free OpenCode model selection', () => {
+  it('classifies only complete exact live pricing without name or partial-price guesses', () => {
+    expect(classifyHarnessModelPricing(free)).toBe('free');
+    expect(classifyHarnessModelPricing({ ...free, output: 0.001 })).toBe('paid');
+    expect(classifyHarnessModelPricing({ input: 0, output: 0 })).toBe('unknown');
+    expect(classifyHarnessModelPricing({ ...free, promotional: 0 })).toBe('unknown');
+  });
+
   it('selects only complete zero-priced models with a stable provider/model tie break', () => {
     const providers: HarnessProvider[] = [
       provider('z-provider', [{ id: 'a-model', name: 'A', pricing: free }]),

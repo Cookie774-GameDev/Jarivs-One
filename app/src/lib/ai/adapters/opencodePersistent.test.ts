@@ -4,6 +4,7 @@ import {
   assertAuthoritativeOpenCodeRuntimeControls,
   parseOpenCodeLiveModels,
   requireAuthoritativeOpenCodeModel,
+  toOpenCodeDiscoveredModels,
 } from './opencodePersistent';
 
 const liveModels = parseOpenCodeLiveModels({
@@ -13,6 +14,7 @@ const liveModels = parseOpenCodeLiveModels({
       models: {
         'gpt-5.6-sol': {
           name: 'GPT-5.6 Sol',
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
           variants: {
             xhigh: {},
             max: {},
@@ -23,7 +25,10 @@ const liveModels = parseOpenCodeLiveModels({
     {
       id: 'other',
       models: {
-        'gpt-5.6-sol': { name: 'Different route, same local ID' },
+        'gpt-5.6-sol': {
+          name: 'Different route, same local ID',
+          cost: { input: 0, output: 0, cache: { read: 0 } },
+        },
       },
     },
   ],
@@ -45,6 +50,22 @@ describe('persistent OpenCode live authority', () => {
   it('preserves separate xhigh and max live variants', () => {
     const model = requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol');
     expect(model.variants.map(({ id }) => id)).toEqual(['xhigh', 'max']);
+  });
+
+  it('carries only complete pricing from the same persistent provider response', () => {
+    expect(requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol').pricing).toEqual({
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+    expect(requireAuthoritativeOpenCodeModel(liveModels, 'other/gpt-5.6-sol').pricing).toBeUndefined();
+    expect(
+      toOpenCodeDiscoveredModels(liveModels).find(({ id }) => id === 'openai/gpt-5.6-sol'),
+    ).toMatchObject({ pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
+    expect(
+      toOpenCodeDiscoveredModels(liveModels).find(({ id }) => id === 'other/gpt-5.6-sol'),
+    ).not.toHaveProperty('pricing');
   });
 
   it('rejects an unsupported live effort before the coordinator can downgrade it', () => {

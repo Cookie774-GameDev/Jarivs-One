@@ -36,6 +36,42 @@ function connection(id: string, mode: ProviderConnection['mode']): ProviderConne
 }
 
 describe('ModelPickerTypeahead smoke transports', () => {
+  it('shows truthful live free pricing without disabling selection', () => {
+    const openCode = connection('opencode-cli', 'external-cli');
+    const onSelect = vi.fn();
+    const { container } = render(
+      <ModelPickerTypeahead
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-free',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-free',
+                label: 'GPT Free',
+                connection: openCode,
+                available: true,
+                pricingStatus: 'free',
+                isFree: true,
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openai/gpt-free"
+        onSelect={onSelect}
+      />,
+    );
+
+    expect(screen.getByText('OpenCode Models')).not.toBeNull();
+    expect(screen.getByText('Free')).not.toBeNull();
+    const option = container.querySelector('[data-model-price="free"]');
+    expect(option).not.toBeNull();
+    fireEvent.click(option!);
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'openai/gpt-free', openCode);
+  });
+
   it('exposes and selects each exact real connection through its closed control', () => {
     const native = connection('vibespace-kernel-smoke-native', 'native-api');
     const cli = connection('vibespace-kernel-smoke-cli', 'external-cli');

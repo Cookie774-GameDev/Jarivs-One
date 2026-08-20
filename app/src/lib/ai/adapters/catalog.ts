@@ -119,6 +119,8 @@ export interface ConnectionModelOption {
   id: string;
   label: string;
   contextWindowTokens?: number;
+  /** Static catalog hints remain visible but cannot authorize execution. */
+  available?: boolean;
 }
 
 function frozenModelOption(
@@ -130,6 +132,17 @@ function frozenModelOption(
     id,
     label,
     ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
+  });
+}
+
+function displayOnlyModelOption(
+  id: string,
+  label: string,
+  contextWindowTokens?: number,
+): Readonly<ConnectionModelOption> {
+  return Object.freeze({
+    ...frozenModelOption(id, label, contextWindowTokens),
+    available: false,
   });
 }
 
@@ -149,8 +162,8 @@ export const CONNECTION_MODEL_OPTIONS: Readonly<
     frozenModelOption('gpt-5.6-sol', 'GPT-5.6 Sol', 1_000_000),
   ]),
   'opencode-cli': Object.freeze([
-    frozenModelOption('deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 128_000),
-    frozenModelOption('qwen/qwen3.8-max', 'Qwen 3.8 Max', 1_000_000),
+    displayOnlyModelOption('deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 128_000),
+    displayOnlyModelOption('qwen/qwen3.8-max', 'Qwen 3.8 Max', 1_000_000),
   ]),
 });
 
@@ -335,7 +348,12 @@ const BASE_PROVIDER_CATALOG: Readonly<
   mistral: family('mistral', 'Mistral', [MISTRAL_API_CONNECTION]),
   together: family('together', 'Together AI', [TOGETHER_API_CONNECTION]),
   ollama: family('ollama', 'Ollama', [OLLAMA_LOCAL_CONNECTION]),
-  opencode: family('opencode', 'OpenCode', [OPENCODE_CLI_CONNECTION], OPENCODE_CLI_SURFACE),
+  opencode: family(
+    'opencode',
+    'OpenCode Models',
+    [OPENCODE_CLI_CONNECTION],
+    OPENCODE_CLI_SURFACE,
+  ),
 });
 
 const BASE_PROVIDER_CONNECTIONS: readonly Readonly<ProviderConnection>[] = Object.freeze([

@@ -88,7 +88,9 @@ function liveModelVariants(model: UnknownRecord): readonly string[] | undefined 
   return variants.length > 0 ? Object.freeze(variants) : undefined;
 }
 
-function modelPricing(value: unknown): Readonly<HarnessModelPricing> | undefined {
+export function parseOpenCodeModelPricing(
+  value: unknown,
+): Readonly<HarnessModelPricing> | undefined {
   const cost = asRecord(value);
   if (!cost || !exactKeys(cost, ['input', 'output', 'cache'])) return undefined;
   const cache = asRecord(cost.cache);
@@ -134,7 +136,7 @@ export function parseOpenCodeProviderResponse(value: unknown): readonly HarnessP
       const modalities = asRecord(model.modalities);
       const inputModalities = Array.isArray(modalities?.input) ? modalities.input : undefined;
       const contextWindowTokens = positiveInteger(limit?.context);
-      const pricing = modelPricing(model.cost);
+      const pricing = parseOpenCodeModelPricing(model.cost);
       const supportsImages =
         typeof model.attachment === 'boolean'
           ? model.attachment
@@ -215,24 +217,13 @@ export function catalogContainsSelection(
 }
 
 /**
- * Trusted one-provider catalog for a user-selected model so a send is not
- * blocked on OpenCode's full /config/providers scan. The selected identity is
- * still sent unchanged; OpenCode rejects it if the runtime truly lacks it.
+ * Retained for compatibility with older callers. A requested selection is not
+ * catalog evidence, so this must never manufacture an executable provider/model.
  */
 export function trustedCatalogForSelection(
-  input: OpenCodeSelectionInput,
+  _input: OpenCodeSelectionInput,
 ): readonly HarnessProvider[] {
-  const modelId = boundedIdentity(input.modelId, MAX_MODEL_ID);
-  if (!modelId) return [];
-  const id = runtimeProviderId(input);
-  return Object.freeze([
-    {
-      id,
-      name: boundedName(input.providerId, id),
-      models: Object.freeze([{ id: modelId, name: boundedName(modelId, modelId) }]),
-      connected: true,
-    },
-  ]);
+  return Object.freeze([]);
 }
 
 export function reconcileHarnessProviderCatalog(

@@ -1,3 +1,9 @@
+import {
+  classifyHarnessModelPricing,
+  type HarnessPricingClassification,
+} from '@/lib/harness/freeModelSelection';
+import type { HarnessModelPricing } from '@/lib/harness/types';
+
 export type ModelCatalogSource =
   | 'opencode-live'
   | 'provider-live'
@@ -20,6 +26,9 @@ export interface SimpleModelCatalogRecord {
   lastVerifiedAt?: number;
   variants?: readonly string[];
   available?: boolean;
+  pricing?: Readonly<HarnessModelPricing>;
+  pricingStatus?: HarnessPricingClassification;
+  isFree?: boolean;
 }
 
 export interface ConnectionModelRecord {
@@ -35,6 +44,9 @@ export interface ConnectionModelRecord {
   capabilities?: Readonly<Record<string, boolean>>;
   serviceTiers?: readonly string[];
   legacyTransport?: boolean;
+  pricing?: Readonly<HarnessModelPricing>;
+  pricingStatus?: HarnessPricingClassification;
+  isFree?: boolean;
 }
 
 export interface PickerRoute {
@@ -47,6 +59,9 @@ export interface PickerRoute {
   capabilities: Readonly<Record<string, boolean>>;
   serviceTiers: readonly string[];
   legacyTransport: boolean;
+  pricing?: Readonly<HarnessModelPricing>;
+  pricingStatus: HarnessPricingClassification;
+  isFree: boolean;
 }
 
 export interface CanonicalModelPickerRow {
@@ -57,6 +72,8 @@ export interface CanonicalModelPickerRow {
   available: boolean;
   preferredConnectionId: string;
   routes: readonly PickerRoute[];
+  pricingStatus: HarnessPricingClassification;
+  isFree: boolean;
 }
 
 const SOURCE_PRIORITY: Readonly<Record<ModelCatalogSource, number>> = Object.freeze({
@@ -102,6 +119,19 @@ function simpleRecordScore(record: Readonly<SimpleModelCatalogRecord>): number {
   return available + source * 1_000_000 + freshness;
 }
 
+function normalizedPricing(value: unknown): {
+  pricing?: Readonly<HarnessModelPricing>;
+  pricingStatus: HarnessPricingClassification;
+  isFree: boolean;
+} {
+  const pricingStatus = classifyHarnessModelPricing(value);
+  return {
+    ...(pricingStatus === 'unknown' ? {} : { pricing: value as Readonly<HarnessModelPricing> }),
+    pricingStatus,
+    isFree: pricingStatus === 'free',
+  };
+}
+
 function mergeStringVariants(
   left: readonly string[] | undefined,
   right: readonly string[] | undefined,
@@ -123,7 +153,12 @@ export function dedupeModelMetadata(
   for (const raw of records) {
     const id = raw.id.trim();
     if (!id) continue;
-    const candidate: SimpleModelCatalogRecord = { ...raw, id, label: raw.label.trim() || id };
+    const candidate: SimpleModelCatalogRecord = {
+      ...raw,
+      id,
+      label: raw.label.trim() || id,
+      ...normalizedPricing(raw.pricing),
+    };
     const key = canonicalModelId(id);
     const current = byId.get(key);
     if (!current) {
@@ -136,6 +171,7 @@ export function dedupeModelMetadata(
       ...loser,
       ...winner,
       variants: mergeStringVariants(current.variants, candidate.variants),
+      ...normalizedPricing(winner.pricing),
     });
   }
   return [...byId.values()].sort(
@@ -234,6 +270,7 @@ function normalizedRecord(record: ConnectionModelRecord): ConnectionModelRecord 
     capabilities: normalizeCapabilities(record.capabilities),
     serviceTiers: normalizeServiceTiers(record.serviceTiers),
     legacyTransport: Boolean(record.legacyTransport),
+    ...normalizedPricing(record.pricing),
   };
 }
 
@@ -275,6 +312,7 @@ function mergeDuplicateRecords(a: ConnectionModelRecord, b: ConnectionModelRecor
       ...(fallback.serviceTiers ?? []),
     ]),
     lastVerifiedAt: Math.max(a.lastVerifiedAt, b.lastVerifiedAt),
+    ...normalizedPricing(preferred.pricing),
   };
 }
 
@@ -360,6 +398,7 @@ export function buildCanonicalModelRows(
         capabilities: normalizeCapabilities(record.capabilities),
         serviceTiers: normalizeServiceTiers(record.serviceTiers),
         legacyTransport: Boolean(record.legacyTransport),
+        ...normalizedPricing(record.pricing),
       }))
       .sort(compareRoutePriority);
 
@@ -373,6 +412,8 @@ export function buildCanonicalModelRows(
       available: routes.some((route) => route.available),
       preferredConnectionId: preferredRoute?.connectionId ?? preferred.connectionId,
       routes,
+      pricingStatus: preferredRoute?.pricingStatus ?? 'unknown',
+      isFree: preferredRoute?.isFree ?? false,
     });
   }
 

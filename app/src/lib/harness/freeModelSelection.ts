@@ -20,7 +20,9 @@ function safeIdentity(value: unknown, maximum: number): value is string {
   );
 }
 
-function isCompleteZeroPricing(value: unknown): value is HarnessModelPricing {
+export type HarnessPricingClassification = 'free' | 'paid' | 'unknown';
+
+function isCompletePricing(value: unknown): value is HarnessModelPricing {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const pricing = value as Record<string, unknown>;
   const keys = Object.keys(pricing);
@@ -30,16 +32,23 @@ function isCompleteZeroPricing(value: unknown): value is HarnessModelPricing {
   ) {
     return false;
   }
-  return (
-    pricing.input === 0 &&
-    pricing.output === 0 &&
-    pricing.cacheRead === 0 &&
-    pricing.cacheWrite === 0
-  );
+  return ['input', 'output', 'cacheRead', 'cacheWrite'].every((key) => {
+    const price = pricing[key];
+    return typeof price === 'number' && Number.isFinite(price) && price >= 0;
+  });
+}
+
+export function classifyHarnessModelPricing(value: unknown): HarnessPricingClassification {
+  if (!isCompletePricing(value)) return 'unknown';
+  return value.input === 0 && value.output === 0 && value.cacheRead === 0 && value.cacheWrite === 0
+    ? 'free'
+    : 'paid';
 }
 
 function isFreeModel(model: HarnessModel): boolean {
-  return safeIdentity(model.id, MAX_MODEL_ID) && isCompleteZeroPricing(model.pricing);
+  return (
+    safeIdentity(model.id, MAX_MODEL_ID) && classifyHarnessModelPricing(model.pricing) === 'free'
+  );
 }
 
 function isEarlier(
