@@ -2389,6 +2389,19 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Safety** | Upstream staging is read-only source evidence, outside the product worktree, and must not use real user workspaces or production state. No installer execution, credentials, service publication, or destructive cleanup is authorized. |
 | **Status / next action** | `STAGING`; create only the exact claimed parent/clone path, verify tag/commit/license, then inventory build/runtime assets. |
 
+## 2026-08-20 - SiYuan isolated contracts accepted and measured-closure lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:25 CT |
+| **Accepted commit** | `5c09d7f1` (`feat(context): add disabled SiYuan runtime contracts`), exact 15-file worker manifest. |
+| **Accepted verification** | Main-agent rerun: manifest verifier/tests PASS 8/8; renderer bridge/contracts PASS 2 files / 8 tests; direct isolated Rust contract binary PASS 14/14; staged diff check and Gitleaks PASS. Worker additionally reported full app typecheck, rustfmt, and exact Prettier PASS. |
+| **Truthful state** | Feature remains disabled; runtime payload absent; 22 user feature rows and 8 Electron-to-Tauri bridge rows remain BLOCKED; no shared native registration, UI, migration, or RLM federation is claimed. Worker scope is released. |
+| **Upstream extraction evidence** | Exact official installer hash matched. Non-executing 7-Zip extraction produced 1,246 files / 780,551,382 bytes total. The useful no-Electron runtime closure is 1,153 files / 445,983,251 bytes uncompressed; a deterministic analysis archive is 87,304,479 bytes and tests clean, showing strong size feasibility without claiming final installer size. Electron `SiYuan.exe` is 221,945,296 uncompressed bytes and excluded. |
+| **New exact controller paths** | `app/src-tauri/resources/siyuan-runtime-manifest.json`; `docs/oss/siyuan-runtime-provenance.json`; new `docs/oss/siyuan-runtime-closure.json`; `scripts/verify-siyuan-runtime-manifest.mjs`; `scripts/verify-siyuan-runtime-manifest.test.mjs`. |
+| **New intent** | Record exact measured component byte/file/tree-digest evidence and update strict verification while keeping `runtimeBundled=false`, `payloadIncluded=false`, `runtimeExecuted=false`, license review pending, and release readiness false. |
+| **Status / next action** | `IMPLEMENTING`; commit only the five-file measured-closure evidence slice after verifier tests pass. |
+
 ## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
 
 | Field | Coordination record |
