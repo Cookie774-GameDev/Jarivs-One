@@ -85,6 +85,53 @@ export function parseApiEnvelope(value, label) {
   return envelope.data;
 }
 
+export function validateFixtureEvidence(value) {
+  const expectedWorkspace = path.join(FIXTURE_PARENT, WORKSPACE_NAME, 'workspace');
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    value.schemaVersion !== 1 ||
+    Number.isNaN(Date.parse(value.generatedAt)) ||
+    value.runtimeTag !== RUNTIME_TAG ||
+    value.runtimeCommit !== RUNTIME_COMMIT ||
+    value.runtimeFingerprint !== RUNTIME_FINGERPRINT ||
+    path.resolve(value.fixtureRoot ?? '') !== FIXTURE_PARENT ||
+    path.resolve(value.workspace ?? '') !== expectedWorkspace ||
+    typeof value.notebookId !== 'string' ||
+    !/^[0-9]{14}-[a-z0-9]{7}$/u.test(value.notebookId) ||
+    value.documentCount !== DOCUMENT_COUNT ||
+    value.bytesPerDocument !== DOCUMENT_BYTES ||
+    value.submittedMarkdownBytes !== TOTAL_MARKDOWN_BYTES ||
+    !Number.isSafeInteger(value.storedKramdownBytes) ||
+    value.storedKramdownBytes < TOTAL_MARKDOWN_BYTES ||
+    typeof value.corpusDigest !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(value.corpusDigest) ||
+    value.indexedSentinel !== 'VIBESPACE_SIYUAN_500MB_SENTINEL_0499' ||
+    !Number.isSafeInteger(value.matchedBlockCount) ||
+    value.matchedBlockCount < 1 ||
+    !Number.isSafeInteger(value.workspaceBytes) ||
+    value.workspaceBytes < TOTAL_MARKDOWN_BYTES ||
+    !Number.isSafeInteger(value.workspaceFiles) ||
+    value.workspaceFiles < DOCUMENT_COUNT ||
+    value.loopbackHost !== '127.0.0.1' ||
+    !Number.isInteger(value.observedPort) ||
+    value.observedPort < 1 ||
+    value.observedPort > 65_535 ||
+    !Number.isInteger(value.observedPid) ||
+    value.observedPid < 1 ||
+    value.sessionCookieEstablished !== true ||
+    value.gracefulShutdown !== true ||
+    value.processExited !== true ||
+    value.secretLogged !== false ||
+    !Number.isSafeInteger(value.elapsedMs) ||
+    value.elapsedMs < 1
+  ) {
+    throw new Error('SiYuan fixture evidence contract is invalid');
+  }
+  return value;
+}
+
 function sha256Text(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -460,13 +507,7 @@ export async function generateSiyuan500MbFixture(options = {}) {
       secretLogged: false,
       elapsedMs: Date.now() - startedAt,
     };
-    if (
-      evidence.documentCount !== DOCUMENT_COUNT ||
-      evidence.submittedMarkdownBytes !== TOTAL_MARKDOWN_BYTES ||
-      !evidence.processExited
-    ) {
-      throw new Error('SiYuan fixture final evidence contract failed');
-    }
+    validateFixtureEvidence(evidence);
     await atomicJson(evidencePath, evidence);
     return evidence;
   } finally {

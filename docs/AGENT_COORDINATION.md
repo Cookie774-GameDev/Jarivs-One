@@ -2625,3 +2625,22 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Observed boundary** | With the explicit workspace and bounded Markdown blocks in effect, notebook creation remained successful but the caller-supplied document root ID still produced no `.sy` authority and no kernel parser/storage log error. The process exited cleanly and no document was accepted. |
 | **Correction** | SiYuan now owns operational document ID issuance. Immediately after each successful create response, the exact returned ID plus deterministic submitted byte count and digest is atomically recorded as `pending`; only an authoritative Kramdown reread promotes it to `completed`. Resume must validate and finish the pending identity before any later document. Source Markdown IDs remain deterministic labels, while runtime storage IDs remain honest upstream authority. |
 | **Verification / next action** | Focused contracts PASS 6/6; exact Prettier, diff, and per-file Gitleaks PASS. Remove only the new incomplete owned workspace/progress pair, checkpoint the correction, and rerun from an empty isolated authority. |
+
+## 2026-08-20 - Deterministic SiYuan 500 MB fixture acceptance evidence lane extended
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:09 CT |
+| **Extended exact scope** | Existing generator and test plus new `docs/oss/siyuan-500mb-fixture-evidence.json`; raw external progress/workspace/evidence remain under the reserved D: fixture authority. |
+| **Intent** | Add a reusable fail-closed evidence validator, record the sanitized measured result without bundling the 2.09 GB workspace, and test that checked-in acceptance evidence retains exact runtime, corpus, indexing, loopback, authentication, and shutdown authority. |
+| **Exclusions** | Do not change the disabled-first feature/parity ledger or claim release readiness, official UI parity, installer measurement, license approval, feature enablement, or scored final UAT from this fixture-only evidence. |
+
+## 2026-08-20 - Deterministic SiYuan 500 MB fixture accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:11 CT |
+| **Runtime result** | PASS after 397,049 ms against pinned v3.8.1: 500 documents, exactly 500,000,000 submitted Markdown bytes, 501,014,000 authoritative stored Kramdown bytes, corpus digest `14609ab85a2d6363a108ad11c97076405eb22b872ed9c8981790dcb636a0836d`, final sentinel indexed with one match, 2,093,253,766 measured workspace bytes across 625 files, loopback port 64177, authenticated session established, graceful shutdown, process exited, no surviving SiYuan process. |
+| **Independent audit** | Reconciled all 500 progress rows, submitted and stored byte sums, recomputed corpus digest, null pending state, sentinel fields, fresh workspace byte/file measurement, loopback/auth/shutdown/secret-safe fields; all twelve audit checks PASS. Raw workspace remains only under the reserved D: fixture authority and is not bundled. |
+| **Checked-in evidence** | New sanitized `docs/oss/siyuan-500mb-fixture-evidence.json`; generator now validates the full evidence contract before writing; focused contracts PASS 7/7 including checked-in evidence and three fail-closed mutations. Exact source/evidence Prettier, diff check, and per-file Gitleaks PASS. Coordination ledger retains its existing formatting baseline and was not bulk-rewritten. |
+| **Truthful boundary / next action** | This accepts native notebook/document creation, stored reread, and full-text indexing at the requested corpus size only. Feature enablement, official UI parity, write/migration/nightly flows, license review, final installer measurement, five scored tests, and two clean release passes remain pending. |

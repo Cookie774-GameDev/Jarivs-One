@@ -8,11 +8,15 @@ import {
   deterministicDocument,
   deterministicDocumentId,
   parseApiEnvelope,
+  validateFixtureEvidence,
   validateFixtureRoot,
 } from './generate-siyuan-500mb-fixture.mjs';
 
 const SCRIPT_PATH = fileURLToPath(new URL('./generate-siyuan-500mb-fixture.mjs', import.meta.url));
 const RESERVED_ROOT = 'D:\\VibeSpace-Testing\\SiYuan-Context-OpenCode-RLM-Feature-Testing';
+const CHECKED_IN_EVIDENCE_PATH = fileURLToPath(
+  new URL('../docs/oss/siyuan-500mb-fixture-evidence.json', import.meta.url),
+);
 
 test('deterministic document ids cover the exact 500-document range', () => {
   assert.equal(deterministicDocumentId(0), '20260820084600-0000000');
@@ -64,6 +68,23 @@ test('API envelope parsing returns successful data and rejects malformed authori
   assert.throws(
     () => parseApiEnvelope({ code: -1, msg: 'do-not-surface-this-secret', data: null }, 'test'),
     (error) => error.message === 'SiYuan test failed with code -1',
+  );
+});
+
+test('checked-in fixture evidence preserves the exact measured acceptance contract', async () => {
+  const evidence = JSON.parse(await readFile(CHECKED_IN_EVIDENCE_PATH, 'utf8'));
+  assert.equal(validateFixtureEvidence(evidence), evidence);
+  assert.throws(
+    () => validateFixtureEvidence({ ...evidence, submittedMarkdownBytes: 499_999_999 }),
+    /evidence contract is invalid/u,
+  );
+  assert.throws(
+    () => validateFixtureEvidence({ ...evidence, loopbackHost: '0.0.0.0' }),
+    /evidence contract is invalid/u,
+  );
+  assert.throws(
+    () => validateFixtureEvidence({ ...evidence, processExited: false }),
+    /evidence contract is invalid/u,
   );
 });
 
