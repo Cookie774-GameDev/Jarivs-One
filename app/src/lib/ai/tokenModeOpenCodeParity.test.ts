@@ -44,7 +44,7 @@ function harnessFixture() {
           {
             id: 'gpt-5.6-sol',
             name: 'gpt-5.6-sol',
-            variants: ['low', 'medium', 'high', 'xhigh'],
+            variants: ['low', 'medium', 'high', 'xhigh', 'max'],
           },
         ],
       },
@@ -79,7 +79,7 @@ describe('Token mode OpenCode parity', () => {
       normal: { label: 'Normal', variant: undefined, maxOutputTokens: undefined },
       'token-final-boss': {
         label: 'Token Final Boss',
-        variant: 'xhigh',
+        variant: 'max',
         maxOutputTokens: undefined,
       },
     } as const;

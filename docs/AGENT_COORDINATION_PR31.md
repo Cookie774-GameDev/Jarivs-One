@@ -136,6 +136,7 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 | **Workspace drift**         | A post-run audit found the mutable runtime workspace now measures 2,121,432,129 bytes / 627 files, +9,102 bytes / +2 files from the generation snapshot. The changed entries are a runtime-home startup profile, SiYuan temp queue lock, and SiYuan temp log; the submitted 500-document/progress-hash contract still reproduces. Both measurements are preserved, and no immutable-workspace claim is made. |
 | **Evidence**                | D: `acceptance-evidence/backend-search-performance-5e45252e.json`; 80 full-text queries and 40 exact-source reads verified. `nativeContextMapRlmUiPerformanceClaimed=false` and `releaseReadyClaimed=false`.                                                                                                                                                                                                 |
 | **Next action**             | Preserve this baseline. Product-level optimization must be evaluated through the real Context/RLM path once native UI control is available; do not substitute raw SiYuan endpoint latency for the scored app measurement.                                                                                                                                                                                    |
+
 ### 2026-08-20 18:50 CDT — OpenCode managed-runtime unification claim
 
 - Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-OPENCODE-RUNTIME-UNIFICATION`
@@ -188,3 +189,20 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `2de4cea0` (`test(release):remove-windows-helper-hang`), based on `2ed7ad0b`.
 - Staged diff check PASS and staged Gitleaks PASS (`3.60 KB`, no leaks).
 - Released exact two-script scope. The larger PR31 goal remains active and acceptance remains fail-closed until native preflight, scored Tests 1–5 in order, and the final two-pass proof can run.
+
+### 2026-08-20 17:36 CDT — Token Final Boss parity regression claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-TOKEN-MODE-MAX-PARITY`.
+- Branch/base: `integration/UnifiedChungus-final` at `592eb17f`; worktree otherwise contains only the untracked live coordination-lock directory; no merge, rebase, or cherry-pick state.
+- Exclusive file: `app/src/lib/ai/tokenModeOpenCodeParity.test.ts`.
+- Reproduction: the isolated parity test fails before send with `OpenCode model variant "max" is unsupported.` The test fixture advertises only through `xhigh` and still expects Final Boss `xhigh`, while the authoritative reasoning contract intentionally preserves explicit `ultra -> xhigh` and Final Boss `max -> max`.
+- Intent: update only the stale live Sol fixture and expectation. Production reasoning controls and exact fail-closed catalog/variant validation are excluded and must remain unchanged.
+- Independent read-only audit agreed on the same two-line repair; adjacent reasoning/transport/agent tests passed 52/52 before the claim.
+
+#### Implementation and verification boundary
+
+- Updated the Sol live fixture to advertise both `xhigh` and literal `max`, then updated Token Final Boss to expect literal `max`. Explicit Ultra remains covered as `xhigh`; no production code or fail-closed gate changed.
+- Focused/adjacent matrix PASS: 4 files / 53 tests, including Token mode parity, reasoning controls, OpenCode production transport, and the OpenCode run agent.
+- `npm --prefix app run typecheck` PASS; `npm run verify:pr31-opencode-rlm` PASS; exact-file Prettier PASS; `git diff --check` PASS.
+- Official Tauri development app launched successfully from this worktree and rendered the native `VibeSpace` window. Window-scoped manual interaction was then stopped by the user's physical Escape key, so no scored native UAT result is claimed from this launch.
+- Next: stage only the owned test and this ledger, run staged diff and secret checks, commit the reversible repair, then release this exact scope.
