@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   SIYUAN_CONTEXT_VAULT_ENABLED,
   SiyuanContractError,
+  assertSiyuanDocumentPath,
   assertSiyuanIdentifier,
+  assertSiyuanMarkdown,
   assertSiyuanQuery,
+  assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
+  parseSiyuanDocumentMutation,
+  parseSiyuanMutationResult,
   parseSiyuanSearchResults,
   parseSiyuanStatus,
 } from './siyuanContracts';
@@ -36,6 +41,20 @@ describe('SiYuan renderer contracts', () => {
     expect(() => assertSiyuanIdentifier('../data')).toThrow(/siyuan_identifier_invalid/u);
     expect(() => assertSiyuanQuery('hello\nworld')).toThrow(/siyuan_query_invalid/u);
     expect(assertSiyuanIdentifier('20260820-block_1')).toBe('20260820-block_1');
+  });
+
+  it('bounds managed write paths, UTF-8 content, memos, and response shapes', () => {
+    expect(assertSiyuanDocumentPath('/Nightly/Decision')).toBe('/Nightly/Decision');
+    expect(() => assertSiyuanDocumentPath('/Nightly/../escape')).toThrow(/siyuan_path_invalid/u);
+    expect(assertSiyuanMarkdown('# Local knowledge')).toBe('# Local knowledge');
+    expect(() => assertSiyuanMarkdown('🙂'.repeat(300_000))).toThrow(/siyuan_content_invalid/u);
+    expect(assertSiyuanSnapshotMemo('Before nightly run')).toBe('Before nightly run');
+    expect(() => assertSiyuanSnapshotMemo('line\nbreak')).toThrow(/siyuan_content_invalid/u);
+    expect(parseSiyuanDocumentMutation({ id: 'document-1' })).toEqual({ id: 'document-1' });
+    expect(parseSiyuanMutationResult({ applied: true })).toEqual({ applied: true });
+    expect(() => parseSiyuanMutationResult({ applied: true, token: 'forbidden' })).toThrow(
+      /siyuan_mutation_response_keys_invalid/u,
+    );
   });
 
   it('bounds result counts and rejects extra response fields', () => {

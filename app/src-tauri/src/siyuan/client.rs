@@ -15,6 +15,8 @@ pub const MAX_IDENTIFIER_BYTES: usize = 128;
 pub const MAX_QUERY_BYTES: usize = 512;
 pub const MAX_SEARCH_RESULTS: u16 = 100;
 pub const MAX_BLOCK_CONTENT_BYTES: usize = 1_048_576;
+pub const MAX_DOCUMENT_PATH_BYTES: usize = 4_096;
+pub const MAX_SNAPSHOT_MEMO_BYTES: usize = 256;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 1_100_000;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -63,8 +65,33 @@ pub struct Block {
 pub enum BrokerRequest<'a> {
     Status,
     ListNotebooks,
-    SearchBlocks { query: &'a str, limit: u16 },
-    GetBlock { id: &'a str },
+    SearchBlocks {
+        query: &'a str,
+        limit: u16,
+    },
+    GetBlock {
+        id: &'a str,
+    },
+    CreateDocument {
+        notebook_id: &'a str,
+        path: &'a str,
+        markdown: &'a str,
+    },
+    UpdateBlock {
+        id: &'a str,
+        expected_markdown: &'a str,
+        markdown: &'a str,
+    },
+    DeleteBlock {
+        id: &'a str,
+        expected_markdown: &'a str,
+    },
+    CreateDailyNote {
+        notebook_id: &'a str,
+    },
+    CreateSnapshot {
+        memo: &'a str,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -73,6 +100,8 @@ pub enum BrokerResponse {
     Notebooks(Vec<Notebook>),
     SearchResults(Vec<BlockSummary>),
     Block(Block),
+    Identifier(String),
+    MutationApplied,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,6 +110,9 @@ pub enum ClientError {
     InvalidIdentifier,
     InvalidQuery,
     InvalidLimit,
+    InvalidPath,
+    InvalidContent,
+    Conflict,
     ResponseTooLarge,
     ResponseTypeMismatch,
     TransportUnavailable,
@@ -93,6 +125,9 @@ impl std::fmt::Display for ClientError {
             Self::InvalidIdentifier => "siyuan_identifier_invalid",
             Self::InvalidQuery => "siyuan_query_invalid",
             Self::InvalidLimit => "siyuan_limit_invalid",
+            Self::InvalidPath => "siyuan_path_invalid",
+            Self::InvalidContent => "siyuan_content_invalid",
+            Self::Conflict => "siyuan_conflict",
             Self::ResponseTooLarge => "siyuan_response_too_large",
             Self::ResponseTypeMismatch => "siyuan_response_type_mismatch",
             Self::TransportUnavailable => "siyuan_transport_unavailable",
@@ -161,6 +196,11 @@ struct BlockInfoData {
 struct BlockKramdownData {
     id: String,
     kramdown: String,
+}
+
+#[derive(Deserialize)]
+struct DailyNoteData {
+    id: String,
 }
 
 #[derive(Deserialize)]
@@ -376,6 +416,59 @@ impl HttpSiyuanTransport {
             markdown: content.kramdown,
         })
     }
+
+    fn create_document(
+        &self,
+        notebook_id: &str,
+        document_path: &str,
+        markdown: &str,
+    ) -> Result<String, ClientError> {
+        self.post(
+            "/api/filetree/createDocWithMd",
+            json!({
+                "notebook": notebook_id,
+                "path": document_path,
+                "markdown": markdown,
+            }),
+        )
+    }
+
+    fn update_block(
+        &self,
+        id: &str,
+        expected_markdown: &str,
+        markdown: &str,
+    ) -> Result<(), ClientError> {
+        if self.block(id)?.markdown != expected_markdown {
+            return Err(ClientError::Conflict);
+        }
+        let _: Value = self.post(
+            "/api/block/updateBlock",
+            json!({ "id": id, "dataType": "markdown", "data": markdown }),
+        )?;
+        Ok(())
+    }
+
+    fn delete_block(&self, id: &str, expected_markdown: &str) -> Result<(), ClientError> {
+        if self.block(id)?.markdown != expected_markdown {
+            return Err(ClientError::Conflict);
+        }
+        let _: Value = self.post("/api/block/deleteBlock", json!({ "id": id }))?;
+        Ok(())
+    }
+
+    fn create_daily_note(&self, notebook_id: &str) -> Result<String, ClientError> {
+        let data: DailyNoteData = self.post(
+            "/api/filetree/createDailyNote",
+            json!({ "notebook": notebook_id }),
+        )?;
+        Ok(data.id)
+    }
+
+    fn create_snapshot(&self, memo: &str) -> Result<(), ClientError> {
+        let _: Value = self.post("/api/repo/createSnapshot", json!({ "memo": memo }))?;
+        Ok(())
+    }
 }
 
 impl SiyuanTransport for HttpSiyuanTransport {
@@ -393,6 +486,32 @@ impl SiyuanTransport for HttpSiyuanTransport {
                 self.search(query, limit).map(BrokerResponse::SearchResults)
             }
             BrokerRequest::GetBlock { id } => self.block(id).map(BrokerResponse::Block),
+            BrokerRequest::CreateDocument {
+                notebook_id,
+                path,
+                markdown,
+            } => self
+                .create_document(notebook_id, path, markdown)
+                .map(BrokerResponse::Identifier),
+            BrokerRequest::UpdateBlock {
+                id,
+                expected_markdown,
+                markdown,
+            } => self
+                .update_block(id, expected_markdown, markdown)
+                .map(|_| BrokerResponse::MutationApplied),
+            BrokerRequest::DeleteBlock {
+                id,
+                expected_markdown,
+            } => self
+                .delete_block(id, expected_markdown)
+                .map(|_| BrokerResponse::MutationApplied),
+            BrokerRequest::CreateDailyNote { notebook_id } => self
+                .create_daily_note(notebook_id)
+                .map(BrokerResponse::Identifier),
+            BrokerRequest::CreateSnapshot { memo } => self
+                .create_snapshot(memo)
+                .map(|_| BrokerResponse::MutationApplied),
         }
     }
 }
@@ -474,6 +593,89 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
             _ => Err(ClientError::ResponseTypeMismatch),
         }
     }
+
+    pub fn create_document(
+        &self,
+        notebook_id: &str,
+        document_path: &str,
+        markdown: &str,
+    ) -> Result<String, ClientError> {
+        self.require_enabled()?;
+        validate_identifier(notebook_id)?;
+        validate_document_path(document_path)?;
+        validate_markdown(markdown)?;
+        match self.transport.send(BrokerRequest::CreateDocument {
+            notebook_id,
+            path: document_path,
+            markdown,
+        })? {
+            BrokerResponse::Identifier(id) => {
+                validate_identifier(&id)?;
+                Ok(id)
+            }
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
+    pub fn update_block(
+        &self,
+        id: &str,
+        expected_markdown: &str,
+        markdown: &str,
+    ) -> Result<(), ClientError> {
+        self.require_enabled()?;
+        validate_identifier(id)?;
+        validate_markdown(expected_markdown)?;
+        validate_markdown(markdown)?;
+        match self.transport.send(BrokerRequest::UpdateBlock {
+            id,
+            expected_markdown,
+            markdown,
+        })? {
+            BrokerResponse::MutationApplied => Ok(()),
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
+    pub fn delete_block(&self, id: &str, expected_markdown: &str) -> Result<(), ClientError> {
+        self.require_enabled()?;
+        validate_identifier(id)?;
+        validate_markdown(expected_markdown)?;
+        match self.transport.send(BrokerRequest::DeleteBlock {
+            id,
+            expected_markdown,
+        })? {
+            BrokerResponse::MutationApplied => Ok(()),
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
+    pub fn create_daily_note(&self, notebook_id: &str) -> Result<String, ClientError> {
+        self.require_enabled()?;
+        validate_identifier(notebook_id)?;
+        match self
+            .transport
+            .send(BrokerRequest::CreateDailyNote { notebook_id })?
+        {
+            BrokerResponse::Identifier(id) => {
+                validate_identifier(&id)?;
+                Ok(id)
+            }
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
+    pub fn create_snapshot(&self, memo: &str) -> Result<(), ClientError> {
+        self.require_enabled()?;
+        validate_snapshot_memo(memo)?;
+        match self
+            .transport
+            .send(BrokerRequest::CreateSnapshot { memo })?
+        {
+            BrokerResponse::MutationApplied => Ok(()),
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
 }
 
 fn validate_identifier(value: &str) -> Result<(), ClientError> {
@@ -496,6 +698,39 @@ fn validate_query(value: &str) -> Result<(), ClientError> {
         || trimmed.chars().any(char::is_control)
     {
         Err(ClientError::InvalidQuery)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_document_path(value: &str) -> Result<(), ClientError> {
+    if !value.starts_with('/')
+        || value.len() > MAX_DOCUMENT_PATH_BYTES
+        || value.contains('\0')
+        || value
+            .split('/')
+            .any(|segment| matches!(segment, "." | ".."))
+    {
+        Err(ClientError::InvalidPath)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_markdown(value: &str) -> Result<(), ClientError> {
+    if value.is_empty() || value.len() > MAX_BLOCK_CONTENT_BYTES || value.contains('\0') {
+        Err(ClientError::InvalidContent)
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_snapshot_memo(value: &str) -> Result<(), ClientError> {
+    if value.trim().is_empty()
+        || value.len() > MAX_SNAPSHOT_MEMO_BYTES
+        || value.bytes().any(|byte| byte.is_ascii_control())
+    {
+        Err(ClientError::InvalidContent)
     } else {
         Ok(())
     }
@@ -531,6 +766,26 @@ mod tests {
                 BrokerRequest::ListNotebooks => "list_notebooks".to_owned(),
                 BrokerRequest::SearchBlocks { query, limit } => format!("search:{query}:{limit}"),
                 BrokerRequest::GetBlock { id } => format!("get:{id}"),
+                BrokerRequest::CreateDocument {
+                    notebook_id,
+                    path,
+                    markdown,
+                } => format!("create:{notebook_id}:{path}:{}", markdown.len()),
+                BrokerRequest::UpdateBlock {
+                    id,
+                    expected_markdown,
+                    markdown,
+                } => format!("update:{id}:{}:{}", expected_markdown.len(), markdown.len()),
+                BrokerRequest::DeleteBlock {
+                    id,
+                    expected_markdown,
+                } => format!("delete:{id}:{}", expected_markdown.len()),
+                BrokerRequest::CreateDailyNote { notebook_id } => {
+                    format!("daily_note:{notebook_id}")
+                }
+                BrokerRequest::CreateSnapshot { memo } => {
+                    format!("snapshot:{}", memo.len())
+                }
             };
             self.requests.borrow_mut().push(request);
             Ok(self.response.clone())
@@ -619,6 +874,86 @@ mod tests {
             Err(ClientError::InvalidLimit)
         );
         assert!(client.transport.requests.borrow().is_empty());
+    }
+
+    #[test]
+    fn typed_managed_write_requests_are_closed_and_content_redacted_from_audit_shape() {
+        let create = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifier("20260820-document".to_owned())),
+        );
+        assert_eq!(
+            create
+                .create_document("20260820-notebook", "/Decision", "# confidential")
+                .unwrap(),
+            "20260820-document"
+        );
+        assert_eq!(
+            create.transport.requests.borrow().as_slice(),
+            ["create:20260820-notebook:/Decision:14"]
+        );
+
+        let update = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
+        update
+            .update_block("20260820-document", "# before", "# after")
+            .unwrap();
+        assert_eq!(
+            update.transport.requests.borrow().as_slice(),
+            ["update:20260820-document:8:7"]
+        );
+
+        let delete = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
+        delete
+            .delete_block("20260820-document", "# expected")
+            .unwrap();
+        assert_eq!(
+            delete.transport.requests.borrow().as_slice(),
+            ["delete:20260820-document:10"]
+        );
+
+        let daily = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifier("20260820-daily".to_owned())),
+        );
+        assert_eq!(
+            daily.create_daily_note("20260820-notebook").unwrap(),
+            "20260820-daily"
+        );
+        assert_eq!(
+            daily.transport.requests.borrow().as_slice(),
+            ["daily_note:20260820-notebook"]
+        );
+
+        let snapshot = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
+        snapshot.create_snapshot("Nightly run 2026-08-20").unwrap();
+        assert_eq!(
+            snapshot.transport.requests.borrow().as_slice(),
+            ["snapshot:22"]
+        );
+    }
+
+    #[test]
+    fn managed_write_bounds_fail_before_transport() {
+        let create = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifier("unused".to_owned())),
+        );
+        assert_eq!(
+            create.create_document("20260820-notebook", "../escape", "# note"),
+            Err(ClientError::InvalidPath)
+        );
+        assert_eq!(
+            create.create_document("20260820-notebook", "/safe", ""),
+            Err(ClientError::InvalidContent)
+        );
+        assert!(create.transport.requests.borrow().is_empty());
+
+        let snapshot = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
+        assert_eq!(
+            snapshot.create_snapshot("line\nbreak"),
+            Err(ClientError::InvalidContent)
+        );
+        assert!(snapshot.transport.requests.borrow().is_empty());
     }
 
     #[test]
@@ -758,6 +1093,92 @@ mod tests {
                 .contains("cookie: siyuan=vibespace-native-session"));
             assert!(!request.contains(&token));
         }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_managed_writes_use_only_typed_cookie_scoped_official_endpoints() {
+        let token = "w".repeat(48);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":"20260820-document"}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"id":"20260820-daily"}}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-document","kramdown":"# Before"}}"##
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":[]}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-document","kramdown":"# After"}}"##
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":[]}"#.to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client
+                .create_document("20260820-notebook", "/Decision", "# Before")
+                .unwrap(),
+            "20260820-document"
+        );
+        assert_eq!(
+            client.create_daily_note("20260820-notebook").unwrap(),
+            "20260820-daily"
+        );
+        client.create_snapshot("Before managed update").unwrap();
+        client
+            .update_block("20260820-document", "# Before", "# After")
+            .unwrap();
+        client.delete_block("20260820-document", "# After").unwrap();
+
+        let captured: Vec<String> = (0..10).map(|_| requests.recv().unwrap()).collect();
+        assert!(captured[0].starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(captured[1].starts_with("POST /api/filetree/createDocWithMd HTTP/1.1"));
+        assert!(captured[2].starts_with("POST /api/filetree/createDailyNote HTTP/1.1"));
+        assert!(captured[3].starts_with("POST /api/repo/createSnapshot HTTP/1.1"));
+        assert!(captured[4].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[5].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(captured[6].starts_with("POST /api/block/updateBlock HTTP/1.1"));
+        assert!(captured[7].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[8].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(captured[9].starts_with("POST /api/block/deleteBlock HTTP/1.1"));
+        assert!(captured[1].contains("\"notebook\":\"20260820-notebook\""));
+        assert!(captured[6].contains("\"dataType\":\"markdown\""));
+        assert!(captured[3].contains("\"memo\":\"Before managed update\""));
+        for request in captured.iter().skip(1) {
+            assert!(request
+                .to_ascii_lowercase()
+                .contains("cookie: siyuan=vibespace-native-session"));
+            assert!(!request.contains(&token));
+            assert!(!request.to_ascii_lowercase().contains("authorization:"));
+            assert!(!request.contains("/api/query/sql"));
+        }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_update_conflict_never_emits_a_mutation_request() {
+        let token = "c".repeat(48);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-document","kramdown":"# User edit"}}"##
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(true, HttpSiyuanTransport::new(port, token).unwrap());
+        assert_eq!(
+            client.update_block("20260820-document", "# Expected", "# Replacement"),
+            Err(ClientError::Conflict)
+        );
+        let captured: Vec<String> = (0..3).map(|_| requests.recv().unwrap()).collect();
+        assert!(captured[2].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/updateBlock")));
         server.join().unwrap();
     }
 }

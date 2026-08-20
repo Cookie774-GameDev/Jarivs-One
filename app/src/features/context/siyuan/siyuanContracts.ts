@@ -8,12 +8,19 @@ export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   listNotebooks: 'siyuan_list_notebooks',
   searchBlocks: 'siyuan_search_blocks',
   getBlock: 'siyuan_get_block',
+  createDocument: 'siyuan_create_document',
+  updateBlock: 'siyuan_update_block',
+  deleteBlock: 'siyuan_delete_block',
+  createDailyNote: 'siyuan_create_daily_note',
+  createSnapshot: 'siyuan_create_snapshot',
 } as const);
 
 export const SIYUAN_MAX_IDENTIFIER_LENGTH = 128;
 export const SIYUAN_MAX_QUERY_LENGTH = 512;
 export const SIYUAN_MAX_SEARCH_RESULTS = 100;
 export const SIYUAN_MAX_BLOCK_CONTENT_LENGTH = 1_048_576;
+export const SIYUAN_MAX_DOCUMENT_PATH_LENGTH = 4_096;
+export const SIYUAN_MAX_SNAPSHOT_MEMO_LENGTH = 256;
 
 export type SiyuanRuntimeState =
   | 'disabled'
@@ -52,6 +59,14 @@ export interface SiyuanBlock {
   notebookId: string;
   path: string;
   markdown: string;
+}
+
+export interface SiyuanDocumentMutation {
+  id: string;
+}
+
+export interface SiyuanMutationResult {
+  applied: true;
 }
 
 export class SiyuanContractError extends Error {
@@ -125,6 +140,35 @@ export function assertSiyuanSearchLimit(value: unknown): number {
     fail('siyuan_limit_invalid');
   }
   return value as number;
+}
+
+export function assertSiyuanDocumentPath(value: unknown): string {
+  const documentPath = boundedString(value, SIYUAN_MAX_DOCUMENT_PATH_LENGTH, 'siyuan_path_invalid');
+  if (
+    !documentPath.startsWith('/') ||
+    documentPath.split('/').some((segment) => segment === '.' || segment === '..')
+  ) {
+    fail('siyuan_path_invalid');
+  }
+  return documentPath;
+}
+
+export function assertSiyuanMarkdown(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.includes('\u0000') ||
+    new TextEncoder().encode(value).byteLength > SIYUAN_MAX_BLOCK_CONTENT_LENGTH
+  ) {
+    fail('siyuan_content_invalid');
+  }
+  return value;
+}
+
+export function assertSiyuanSnapshotMemo(value: unknown): string {
+  const memo = boundedString(value, SIYUAN_MAX_SNAPSHOT_MEMO_LENGTH, 'siyuan_content_invalid');
+  if (!memo.trim()) fail('siyuan_content_invalid');
+  return memo;
 }
 
 export function parseSiyuanStatus(value: unknown): SiyuanStatus {
@@ -223,4 +267,17 @@ export function parseSiyuanBlock(value: unknown): SiyuanBlock {
       true,
     ),
   };
+}
+
+export function parseSiyuanDocumentMutation(value: unknown): SiyuanDocumentMutation {
+  const response = record(value, 'siyuan_document_response_invalid');
+  exactKeys(response, ['id'], 'siyuan_document_response_keys_invalid');
+  return { id: assertSiyuanIdentifier(response.id, 'siyuan_block_id_invalid') };
+}
+
+export function parseSiyuanMutationResult(value: unknown): SiyuanMutationResult {
+  const response = record(value, 'siyuan_mutation_response_invalid');
+  exactKeys(response, ['applied'], 'siyuan_mutation_response_keys_invalid');
+  if (response.applied !== true) fail('siyuan_mutation_response_invalid');
+  return { applied: true };
 }

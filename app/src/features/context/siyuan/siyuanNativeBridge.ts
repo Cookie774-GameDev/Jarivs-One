@@ -2,16 +2,23 @@ import {
   SIYUAN_CONTEXT_VAULT_ENABLED,
   SIYUAN_NATIVE_COMMANDS,
   SiyuanContractError,
+  assertSiyuanDocumentPath,
   assertSiyuanIdentifier,
+  assertSiyuanMarkdown,
   assertSiyuanQuery,
   assertSiyuanSearchLimit,
+  assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
+  parseSiyuanDocumentMutation,
+  parseSiyuanMutationResult,
   parseSiyuanNotebooks,
   parseSiyuanSearchResults,
   parseSiyuanStatus,
   parseSiyuanVersion,
   type SiyuanBlock,
   type SiyuanBlockSummary,
+  type SiyuanDocumentMutation,
+  type SiyuanMutationResult,
   type SiyuanNotebook,
   type SiyuanStatus,
   type SiyuanVersion,
@@ -30,6 +37,19 @@ export interface SiyuanNativeBridge {
   listNotebooks(): Promise<SiyuanNotebook[]>;
   searchBlocks(query: string, limit?: number): Promise<SiyuanBlockSummary[]>;
   getBlock(id: string): Promise<SiyuanBlock>;
+  createDocument(
+    notebookId: string,
+    path: string,
+    markdown: string,
+  ): Promise<SiyuanDocumentMutation>;
+  updateBlock(
+    id: string,
+    expectedMarkdown: string,
+    markdown: string,
+  ): Promise<SiyuanMutationResult>;
+  deleteBlock(id: string, expectedMarkdown: string): Promise<SiyuanMutationResult>;
+  createDailyNote(notebookId: string): Promise<SiyuanDocumentMutation>;
+  createSnapshot(memo: string): Promise<SiyuanMutationResult>;
 }
 
 interface SiyuanNativeBridgeOptions {
@@ -109,6 +129,61 @@ export function createSiyuanNativeBridge(
         await invokeNative(SIYUAN_NATIVE_COMMANDS.getBlock, {
           ...projectArguments(),
           id: validatedId,
+        }),
+      );
+    },
+
+    async createDocument(notebookId: string, documentPath: string, markdown: string) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanDocumentMutation(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.createDocument, {
+          ...projectArguments(),
+          notebookId: assertSiyuanIdentifier(notebookId, 'siyuan_notebook_id_invalid'),
+          path: assertSiyuanDocumentPath(documentPath),
+          markdown: assertSiyuanMarkdown(markdown),
+        }),
+      );
+    },
+
+    async updateBlock(id: string, expectedMarkdown: string, markdown: string) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanMutationResult(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.updateBlock, {
+          ...projectArguments(),
+          id: assertSiyuanIdentifier(id, 'siyuan_block_id_invalid'),
+          expectedMarkdown: assertSiyuanMarkdown(expectedMarkdown),
+          markdown: assertSiyuanMarkdown(markdown),
+        }),
+      );
+    },
+
+    async deleteBlock(id: string, expectedMarkdown: string) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanMutationResult(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.deleteBlock, {
+          ...projectArguments(),
+          id: assertSiyuanIdentifier(id, 'siyuan_block_id_invalid'),
+          expectedMarkdown: assertSiyuanMarkdown(expectedMarkdown),
+        }),
+      );
+    },
+
+    async createDailyNote(notebookId: string) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanDocumentMutation(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.createDailyNote, {
+          ...projectArguments(),
+          notebookId: assertSiyuanIdentifier(notebookId, 'siyuan_notebook_id_invalid'),
+        }),
+      );
+    },
+
+    async createSnapshot(memo: string) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanMutationResult(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.createSnapshot, {
+          ...projectArguments(),
+          memo: assertSiyuanSnapshotMemo(memo),
         }),
       );
     },

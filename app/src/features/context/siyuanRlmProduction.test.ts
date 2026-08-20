@@ -42,6 +42,11 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
         markdown: `body:${projectId}`,
       };
     }),
+    createDocument: vi.fn(async () => ({ id: `document-${projectId}` })),
+    updateBlock: vi.fn(async () => ({ applied: true as const })),
+    deleteBlock: vi.fn(async () => ({ applied: true as const })),
+    createDailyNote: vi.fn(async () => ({ id: `daily-${projectId}` })),
+    createSnapshot: vi.fn(async () => ({ applied: true as const })),
   };
 }
 

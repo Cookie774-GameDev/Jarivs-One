@@ -18,6 +18,19 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.listNotebooks()).rejects.toThrow(/siyuan_feature_disabled/u);
     await expect(bridge.searchBlocks('spec')).rejects.toThrow(/siyuan_feature_disabled/u);
     await expect(bridge.getBlock('block-1')).rejects.toThrow(/siyuan_feature_disabled/u);
+    await expect(bridge.createDocument('notebook-1', '/Note', '# Note')).rejects.toThrow(
+      /siyuan_feature_disabled/u,
+    );
+    await expect(bridge.updateBlock('block-1', '# Before', '# After')).rejects.toThrow(
+      /siyuan_feature_disabled/u,
+    );
+    await expect(bridge.deleteBlock('block-1', '# Expected')).rejects.toThrow(
+      /siyuan_feature_disabled/u,
+    );
+    await expect(bridge.createDailyNote('notebook-1')).rejects.toThrow(/siyuan_feature_disabled/u);
+    await expect(bridge.createSnapshot('Before managed update')).rejects.toThrow(
+      /siyuan_feature_disabled/u,
+    );
     expect(invokeNative).not.toHaveBeenCalled();
   });
 
@@ -57,7 +70,69 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.searchBlocks('', 25)).rejects.toThrow(/siyuan_query_invalid/u);
     await expect(bridge.searchBlocks('valid', 101)).rejects.toThrow(/siyuan_limit_invalid/u);
     await expect(bridge.getBlock('../secret')).rejects.toThrow(/siyuan_block_id_invalid/u);
+    await expect(bridge.createDocument('notebook-1', '../escape', '# Note')).rejects.toThrow(
+      /siyuan_path_invalid/u,
+    );
+    await expect(bridge.createDocument('notebook-1', '/Note', '')).rejects.toThrow(
+      /siyuan_content_invalid/u,
+    );
+    await expect(bridge.updateBlock('block-1', '# Before', '\u0000')).rejects.toThrow(
+      /siyuan_content_invalid/u,
+    );
+    await expect(bridge.createSnapshot('line\nbreak')).rejects.toThrow(/siyuan_content_invalid/u);
     expect(invokeNative).not.toHaveBeenCalled();
+  });
+
+  it('routes managed writes only through exact project-scoped typed commands', async () => {
+    const invokeNative = vi
+      .fn<SiyuanNativeInvoker>()
+      .mockResolvedValueOnce({ id: 'document-1' })
+      .mockResolvedValueOnce({ applied: true })
+      .mockResolvedValueOnce({ applied: true })
+      .mockResolvedValueOnce({ id: 'daily-1' })
+      .mockResolvedValueOnce({ applied: true });
+    const bridge = createSiyuanNativeBridge(invokeNative, {
+      featureEnabled: true,
+      projectId: 'project-1',
+    });
+
+    await expect(bridge.createDocument('notebook-1', '/Decision', '# Before')).resolves.toEqual({
+      id: 'document-1',
+    });
+    await expect(bridge.updateBlock('document-1', '# Before', '# After')).resolves.toEqual({
+      applied: true,
+    });
+    await expect(bridge.deleteBlock('document-1', '# After')).resolves.toEqual({ applied: true });
+    await expect(bridge.createDailyNote('notebook-1')).resolves.toEqual({ id: 'daily-1' });
+    await expect(bridge.createSnapshot('Before managed update')).resolves.toEqual({
+      applied: true,
+    });
+
+    expect(invokeNative).toHaveBeenNthCalledWith(1, SIYUAN_NATIVE_COMMANDS.createDocument, {
+      projectId: 'project-1',
+      notebookId: 'notebook-1',
+      path: '/Decision',
+      markdown: '# Before',
+    });
+    expect(invokeNative).toHaveBeenNthCalledWith(2, SIYUAN_NATIVE_COMMANDS.updateBlock, {
+      projectId: 'project-1',
+      id: 'document-1',
+      expectedMarkdown: '# Before',
+      markdown: '# After',
+    });
+    expect(invokeNative).toHaveBeenNthCalledWith(3, SIYUAN_NATIVE_COMMANDS.deleteBlock, {
+      projectId: 'project-1',
+      id: 'document-1',
+      expectedMarkdown: '# After',
+    });
+    expect(invokeNative).toHaveBeenNthCalledWith(4, SIYUAN_NATIVE_COMMANDS.createDailyNote, {
+      projectId: 'project-1',
+      notebookId: 'notebook-1',
+    });
+    expect(invokeNative).toHaveBeenNthCalledWith(5, SIYUAN_NATIVE_COMMANDS.createSnapshot, {
+      projectId: 'project-1',
+      memo: 'Before managed update',
+    });
   });
 
   it('requires a valid project authority before every operational command', async () => {

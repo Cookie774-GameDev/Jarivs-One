@@ -27,6 +27,18 @@ pub struct SiyuanBlockResponse {
     block: Block,
 }
 
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiyuanDocumentResponse {
+    id: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiyuanMutationResponse {
+    applied: bool,
+}
+
 fn public_error(error: SupervisorError) -> String {
     error.public_code().to_owned()
 }
@@ -109,6 +121,111 @@ pub fn siyuan_get_block(
         .get_block(&id)
         .map(|block| SiyuanBlockResponse { block })
         .map_err(client_error)
+}
+
+#[tauri::command]
+pub async fn siyuan_create_document(
+    project_id: String,
+    notebook_id: String,
+    path: String,
+    markdown: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanDocumentResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .create_document(&notebook_id, &path, &markdown)
+            .map(|id| SiyuanDocumentResponse { id })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
+pub async fn siyuan_update_block(
+    project_id: String,
+    id: String,
+    expected_markdown: String,
+    markdown: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanMutationResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .update_block(&id, &expected_markdown, &markdown)
+            .map(|_| SiyuanMutationResponse { applied: true })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
+pub async fn siyuan_delete_block(
+    project_id: String,
+    id: String,
+    expected_markdown: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanMutationResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .delete_block(&id, &expected_markdown)
+            .map(|_| SiyuanMutationResponse { applied: true })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
+pub async fn siyuan_create_daily_note(
+    project_id: String,
+    notebook_id: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanDocumentResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .create_daily_note(&notebook_id)
+            .map(|id| SiyuanDocumentResponse { id })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
+pub async fn siyuan_create_snapshot(
+    project_id: String,
+    memo: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanMutationResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .create_snapshot(&memo)
+            .map(|_| SiyuanMutationResponse { applied: true })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
 }
 
 #[cfg(test)]

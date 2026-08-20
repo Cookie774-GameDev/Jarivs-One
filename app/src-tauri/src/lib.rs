@@ -607,6 +607,11 @@ fn run_ordinary(
             siyuan::commands::siyuan_list_notebooks,
             siyuan::commands::siyuan_search_blocks,
             siyuan::commands::siyuan_get_block,
+            siyuan::commands::siyuan_create_document,
+            siyuan::commands::siyuan_update_block,
+            siyuan::commands::siyuan_delete_block,
+            siyuan::commands::siyuan_create_daily_note,
+            siyuan::commands::siyuan_create_snapshot,
             kernel_host::register_kernel_host,
             kernel_host::kernel_client_request,
             kernel_host::kernel_host_respond,
@@ -867,6 +872,11 @@ siyuan::commands::siyuan_version
 siyuan::commands::siyuan_list_notebooks
 siyuan::commands::siyuan_search_blocks
 siyuan::commands::siyuan_get_block
+siyuan::commands::siyuan_create_document
+siyuan::commands::siyuan_update_block
+siyuan::commands::siyuan_delete_block
+siyuan::commands::siyuan_create_daily_note
+siyuan::commands::siyuan_create_snapshot
 kernel_host::register_kernel_host
 kernel_host::kernel_client_request
 kernel_host::kernel_host_respond
@@ -1032,9 +1042,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "756e271cc48065e32937c7b30ff8aa20d224fc5faf9ae1bb0e04859cfaa8404d";
+        "a704d7c255dc6e2b83f55b07375b37ee5a51a26737bd3d0a10bef1b53586139d";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "f5ef0c708f252cb65ae4120f26b4fb4f66c88b8398ad177ad2728b04c10a85ab";
+        "bc93fd08d96b4d4e776dd12b7f46ab787c118671e6f8597d6eb6443cab01fef9";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1208,6 +1218,11 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("siyuan::commands::siyuan_list_notebooks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_search_blocks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_get_block,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_create_document,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_update_block,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_delete_block,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_create_daily_note,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_create_snapshot,"));
         assert!(ordinary.contains(".configure_workspace_base(workspace_base)"));
         assert!(ordinary.contains(".configure_resource_root(runtime_root)"));
         assert!(ordinary.contains("siyuan::shutdown_runtime(app_handle);"));

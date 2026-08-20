@@ -2644,3 +2644,31 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Independent audit** | Reconciled all 500 progress rows, submitted and stored byte sums, recomputed corpus digest, null pending state, sentinel fields, fresh workspace byte/file measurement, loopback/auth/shutdown/secret-safe fields; all twelve audit checks PASS. Raw workspace remains only under the reserved D: fixture authority and is not bundled. |
 | **Checked-in evidence** | New sanitized `docs/oss/siyuan-500mb-fixture-evidence.json`; generator now validates the full evidence contract before writing; focused contracts PASS 7/7 including checked-in evidence and three fail-closed mutations. Exact source/evidence Prettier, diff check, and per-file Gitleaks PASS. Coordination ledger retains its existing formatting baseline and was not bulk-rewritten. |
 | **Truthful boundary / next action** | This accepts native notebook/document creation, stored reread, and full-text indexing at the requested corpus size only. Feature enablement, official UI parity, write/migration/nightly flows, license review, final installer measurement, five scored tests, and two clean release passes remain pending. |
+
+## 2026-08-20 - SiYuan managed-knowledge mutation broker lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:18 CT |
+| **Exact native scope** | `app/src-tauri/src/siyuan/client.rs`; `app/src-tauri/src/siyuan/commands.rs`; `app/src-tauri/src/lib.rs`. |
+| **Exact renderer scope** | `app/src/features/context/siyuan/siyuanContracts.ts` and test; `app/src/features/context/siyuan/siyuanNativeBridge.ts` and test. |
+| **Intent** | Add only typed project-scoped create-document, conflict-checked update/delete, create-daily-note, and repository-snapshot commands backed by pinned official APIs. Enforce identifier/path/Markdown/memo bounds, session-cookie authentication, stable redacted errors, and no arbitrary endpoint or SQL capability. |
+| **Exclusions / verification** | No Nightly, migration, production RLM, Context UI, feature gate, packaging, parity ledger, or generated runtime edits yet. Add native mocked request/body/auth tests plus renderer parsing/invocation/fail-closed tests, then run frozen command authority, focused Rust/TS suites, typecheck, formatting/diff, and Gitleaks before integration. |
+
+## 2026-08-20 - Managed-write test-only scope extended
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:23 CT |
+| **Exact extension** | Test-only `app/src/features/context/siyuanRlmProduction.test.ts`. |
+| **Reason / boundary** | Full typecheck correctly requires its structurally typed `SiyuanNativeBridge` mock to provide the five newly registered methods. Add inert mock methods only; do not alter `siyuanRlmProduction.ts` behavior or widen the production lane. |
+
+## 2026-08-20 - SiYuan managed-knowledge mutation broker accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:26 CT |
+| **Result** | Added five closed project-scoped native/renderer operations: create document, conflict-checked whole-block update, conflict-checked delete, create daily note, and create repository snapshot. Requests enforce identifier/path/UTF-8 Markdown/memo bounds; native update/delete reread exact current Kramdown before mutation; only the pinned official endpoints receive the authenticated session cookie; no generic endpoint, raw SQL, token, or response message crosses the boundary. |
+| **Native verification** | Focused SiYuan suite PASS 35 with one real-runtime opt-in ignored; tests prove typed audit shapes omit content, bounds reject before transport, official endpoint bodies/cookie auth are exact, and stale expected content emits no update. Frozen ordinary command/lifecycle authority PASS with intentional hashes `a704d7c255dc6e2b83f55b07375b37ee5a51a26737bd3d0a10bef1b53586139d` and normalized `bc93fd08d96b4d4e776dd12b7f46ab787c118671e6f8597d6eb6443cab01fef9`; cargo check PASS with existing warnings; rustfmt PASS. |
+| **Renderer verification** | Focused matrix PASS 3 files / 15 tests; full app typecheck PASS; PR31 OpenCode/RLM production wiring verifier PASS; exact Prettier and diff checks PASS. Test-only production-port mock updated for structural compatibility without production behavior changes. |
+| **Status / next action** | Broker foundation `ACCEPTED`; stage exact nine-file product/test manifest plus this ledger and run staged Gitleaks before commit. Next integrate a serialized managed-knowledge production port into Nightly approve/auto/rollback flows while feature enablement remains false. |
