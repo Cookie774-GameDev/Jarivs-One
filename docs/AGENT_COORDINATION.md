@@ -2355,6 +2355,18 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Verification** | Node manifest verifier/tests; focused frontend SiYuan tests; focused Rust `siyuan` tests; typecheck; PR31 integration verifier; exact-path formatting and diff checks. |
 | **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
 
+## 2026-08-20 - Verified SiYuan Windows packaging lane accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:45 CT |
+| **Agent / task** | Controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `SIYUAN-V3.8.1-VERIFIED-WINDOWS-PACKAGING`. |
+| **Accepted commit** | `898db33c` (`build:materialize-verified-SiYuan-runtime`), exact eight-file packaging manifest. |
+| **Result** | Added fail-closed Node-only materialization from the pinned official installer or an explicitly supplied extracted source; every measured closure component is rehashed before an atomic stage rename, symlinks and path escapes are rejected, invalid existing output is preserved rather than overwritten, and a valid prepared output is reverified and reused. The generated 445,983,251-byte runtime directory is gitignored and included only by the Windows Tauri resource overlay. Shared macOS/Linux Tauri commands explicitly skip the Windows-only step; the Windows release job prepares it before the signed build. |
+| **License/source evidence** | The packaged closure receives the exact runtime/closure manifests, upstream AGPL license/notices already in the measured closure, and `VIBESPACE_SIYUAN_SOURCE_OFFER.md` with the pinned v3.8.1 repository, tag archive, license, and upstream build instructions. External legal review remains unclaimed. |
+| **Verification** | Fixture preparation tests PASS 5/5; full app typecheck PASS; real `D:\VibeSpace-Testing\_upstream\extracted\siyuan-3.8.1-win` materialization PASS; immediate no-source reverify/reuse PASS; generated payload ignore rule confirmed; manifest verifier PASS; artifact size-gate tests PASS 7/7; exact Prettier, staged diff check, and Gitleaks PASS. |
+| **Truthful state / next action** | Packaging is accepted, but checked-in runtime execution remains disabled and the manifest still reports no repository payload. Next: accept the native supervisor/command lane, then bind build-materialized payload discovery and enablement only after native launch/health/shutdown evidence passes. |
+
 ## 2026-08-20 - Release artifact size gate lane acquired
 
 | Field | Coordination record |
