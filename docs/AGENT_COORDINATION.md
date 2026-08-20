@@ -2355,6 +2355,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Verification** | Node manifest verifier/tests; focused frontend SiYuan tests; focused Rust `siyuan` tests; typecheck; PR31 integration verifier; exact-path formatting and diff checks. |
 | **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
 
+## 2026-08-20 - OpenCode catalog lane same-transport pricing extension
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:51 CT |
+| **Agent / task** | Worker `opencode_usage_audit` under controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `OPENCODE-LIVE-CATALOG-FREE-PROVENANCE`. |
+| **Added exact exclusive paths** | `app/src/lib/ai/adapters/types.ts`; `app/src/lib/ai/adapters/opencodePersistent.ts`; `app/src/lib/ai/adapters/opencodePersistent.test.ts`. These extend the already-recorded catalog/free manifest only. |
+| **Reason** | Review found that joining persistent-adapter executable rows to the separate managed `openCodeHarness` catalog by model ID could produce a false Free label. Pricing must instead travel with the same persistent adapter `/config/providers` response that authorized the executable row; authoritative/fresher records with unknown pricing must not inherit a lower-priority record's pricing. |
+| **Status / next action** | `IMPLEMENTING`; remove the cross-runtime join, carry bounded exact pricing through the provider-discovered model contract, add winner-only pricing regression coverage, and rerun the full focused catalog/OpenCode/typecheck verifier matrix. No staging or commit by the worker. |
+
 ## 2026-08-20 - Verified SiYuan Windows packaging lane accepted
 
 | Field | Coordination record |
