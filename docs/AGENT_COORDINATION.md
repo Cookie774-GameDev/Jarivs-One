@@ -2468,3 +2468,14 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Excluded paths** | No Composer, model picker/catalog/free-model UI, usage/taskbar, native harness/runtime manager, package/config, or SiYuan lane files. Those are later controlled slices after this foundation is green. |
 | **Verification** | Exact focused tests plus adjacent OpenCode production transport/session tests; app typecheck; PR31 integration verifier; exact-path Prettier and diff checks. |
 | **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
+
+## 2026-08-20 - SiYuan native broker and OpenCode live catalog lanes accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:01 CT |
+| **SiYuan accepted commit** | `8d103419` (`feat:register-disabled-SiYuan-native-broker`), exact eight-file manifest under `app/src-tauri/src/siyuan/**` plus `app/src-tauri/src/lib.rs`. Ordinary native builds register typed status/version/notebook/search/get commands, project workspace authority, loopback/random-port/access-code launch contracts, bounded cookie-authenticated HTTP calls, owned process lifecycle/crash/Exit cleanup, redacted errors, and frozen command authority. The feature, bundle, and payload gates remain false and no runtime was executed. |
+| **SiYuan verification** | Main-agent rerun: focused SiYuan PASS 28/28; frozen ordinary-handler authority PASS 1/1; `cargo check --locked --no-default-features --lib` PASS with existing/dormant warnings. Exact rustfmt and diff checks PASS. Initial staged Gitleaks correctly flagged three high-entropy test literals; controller replaced only those fake literals with generated repeated-character fixtures, reran 28/28, and obtained clean Gitleaks before commit. |
+| **OpenCode accepted commit** | `4596c3f4` (`feat:surface-authoritative-live-OpenCode-models`), exact sixteen-file manifest. Static OpenCode hints are display-only disabled rows; executable identities and complete pricing originate only from the persistent adapter's authenticated `/config/providers` response. Exact four-field zero pricing alone renders Free; canonical winner-only pricing prevents stale inheritance; hanging catalogs fail closed before prompt submission. |
+| **OpenCode verification** | Main-agent focused+adjacent combined matrix PASS 8 files / 126 tests; app typecheck PASS; PR31 OpenCode/RLM verifier PASS; staged diff and Gitleaks PASS. Review removed the earlier cross-runtime pricing join before acceptance. Legacy Prettier baseline was not broadly rewritten. |
+| **Status / next action** | Both worker scopes are `ACCEPTED` and released. Continue with actual payload discovery/spawn/health evidence, renderer project-ID bridge, SiYuan-to-Context/RLM federation, usage/taskbar truth, migration/nightly writes, fixture, scored native UAT, and final release passes. |
