@@ -16,6 +16,9 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.stop()).rejects.toThrow(/siyuan_feature_disabled/u);
     await expect(bridge.version()).rejects.toThrow(/siyuan_feature_disabled/u);
     await expect(bridge.listNotebooks()).rejects.toThrow(/siyuan_feature_disabled/u);
+    await expect(bridge.createNotebook('Project Vault')).rejects.toThrow(
+      /siyuan_feature_disabled/u,
+    );
     await expect(bridge.searchBlocks('spec')).rejects.toThrow(/siyuan_feature_disabled/u);
     await expect(bridge.getBlock('block-1')).rejects.toThrow(/siyuan_feature_disabled/u);
     await expect(bridge.createDocument('notebook-1', '/Note', '# Note')).rejects.toThrow(
@@ -70,6 +73,9 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.searchBlocks('', 25)).rejects.toThrow(/siyuan_query_invalid/u);
     await expect(bridge.searchBlocks('valid', 101)).rejects.toThrow(/siyuan_limit_invalid/u);
     await expect(bridge.getBlock('../secret')).rejects.toThrow(/siyuan_block_id_invalid/u);
+    await expect(bridge.createNotebook('line\nbreak')).rejects.toThrow(
+      /siyuan_notebook_name_invalid/u,
+    );
     await expect(bridge.createDocument('notebook-1', '../escape', '# Note')).rejects.toThrow(
       /siyuan_path_invalid/u,
     );
@@ -132,6 +138,26 @@ describe('SiYuan native bridge boundary', () => {
     expect(invokeNative).toHaveBeenNthCalledWith(5, SIYUAN_NATIVE_COMMANDS.createSnapshot, {
       projectId: 'project-1',
       memo: 'Before managed update',
+    });
+  });
+
+  it('creates a project notebook through one exact typed command', async () => {
+    const invokeNative = vi.fn<SiyuanNativeInvoker>().mockResolvedValue({
+      notebook: { id: 'notebook-1', name: 'VibeSpace Project Vault', closed: false },
+    });
+    const bridge = createSiyuanNativeBridge(invokeNative, {
+      featureEnabled: true,
+      projectId: 'project-1',
+    });
+
+    await expect(bridge.createNotebook('VibeSpace Project Vault')).resolves.toEqual({
+      id: 'notebook-1',
+      name: 'VibeSpace Project Vault',
+      closed: false,
+    });
+    expect(invokeNative).toHaveBeenCalledExactlyOnceWith(SIYUAN_NATIVE_COMMANDS.createNotebook, {
+      projectId: 'project-1',
+      name: 'VibeSpace Project Vault',
     });
   });
 

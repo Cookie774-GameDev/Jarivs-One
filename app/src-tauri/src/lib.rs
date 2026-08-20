@@ -605,6 +605,7 @@ fn run_ordinary(
             siyuan::commands::siyuan_stop,
             siyuan::commands::siyuan_version,
             siyuan::commands::siyuan_list_notebooks,
+            siyuan::commands::siyuan_create_notebook,
             siyuan::commands::siyuan_search_blocks,
             siyuan::commands::siyuan_get_block,
             siyuan::commands::siyuan_create_document,
@@ -870,6 +871,7 @@ siyuan::commands::siyuan_start
 siyuan::commands::siyuan_stop
 siyuan::commands::siyuan_version
 siyuan::commands::siyuan_list_notebooks
+siyuan::commands::siyuan_create_notebook
 siyuan::commands::siyuan_search_blocks
 siyuan::commands::siyuan_get_block
 siyuan::commands::siyuan_create_document
@@ -1042,9 +1044,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "a704d7c255dc6e2b83f55b07375b37ee5a51a26737bd3d0a10bef1b53586139d";
+        "9c32f74656b9b64cfb5e9ee1c9db3a643ee228d00f882ab50c0e238a0920ab85";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "bc93fd08d96b4d4e776dd12b7f46ab787c118671e6f8597d6eb6443cab01fef9";
+        "b7d5dd8470652b6c5cfa7a8b9c41b596b164e674330a264c34915f511e08fcc5";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1216,6 +1218,7 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("siyuan::commands::siyuan_stop,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_version,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_list_notebooks,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_create_notebook,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_search_blocks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_get_block,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_create_document,"));

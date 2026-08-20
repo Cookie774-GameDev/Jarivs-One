@@ -17,6 +17,12 @@ pub struct SiyuanNotebooksResponse {
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SiyuanNotebookResponse {
+    notebook: Notebook,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SiyuanSearchResponse {
     blocks: Vec<BlockSummary>,
 }
@@ -94,6 +100,26 @@ pub fn siyuan_list_notebooks(
         .list_notebooks()
         .map(|notebooks| SiyuanNotebooksResponse { notebooks })
         .map_err(client_error)
+}
+
+#[tauri::command]
+pub async fn siyuan_create_notebook(
+    project_id: String,
+    name: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanNotebookResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .create_notebook(&name)
+            .map(|notebook| SiyuanNotebookResponse { notebook })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
 }
 
 #[tauri::command]

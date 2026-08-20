@@ -2672,3 +2672,24 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Native verification** | Focused SiYuan suite PASS 35 with one real-runtime opt-in ignored; tests prove typed audit shapes omit content, bounds reject before transport, official endpoint bodies/cookie auth are exact, and stale expected content emits no update. Frozen ordinary command/lifecycle authority PASS with intentional hashes `a704d7c255dc6e2b83f55b07375b37ee5a51a26737bd3d0a10bef1b53586139d` and normalized `bc93fd08d96b4d4e776dd12b7f46ab787c118671e6f8597d6eb6443cab01fef9`; cargo check PASS with existing warnings; rustfmt PASS. |
 | **Renderer verification** | Focused matrix PASS 3 files / 15 tests; full app typecheck PASS; PR31 OpenCode/RLM production wiring verifier PASS; exact Prettier and diff checks PASS. Test-only production-port mock updated for structural compatibility without production behavior changes. |
 | **Status / next action** | Broker foundation `ACCEPTED`; stage exact nine-file product/test manifest plus this ledger and run staged Gitleaks before commit. Next integrate a serialized managed-knowledge production port into Nightly approve/auto/rollback flows while feature enablement remains false. |
+
+## 2026-08-20 - Typed SiYuan create-notebook prerequisite lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:29 CT |
+| **Exact reclaimed scope** | Native `siyuan/client.rs`, `siyuan/commands.rs`, `lib.rs`; renderer SiYuan contracts/bridge and their tests; test-only production-port mock. |
+| **Reason / intent** | A project-scoped workspace needs one real SiYuan notebook before managed documents or daily notes can exist. Add only a typed bounded `createNotebook` operation backed by `/api/notebook/createNotebook`, returning the authoritative notebook identity; register/freeze/test it under the same cookie-auth and redaction boundary. |
+| **Exclusions** | No Nightly, migration, production-port, Context UI, feature gate, parity ledger, or runtime payload edits in this micro-slice. |
+
+## 2026-08-20 - Typed SiYuan create-notebook prerequisite accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:34 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` from `ec7ff15f`. |
+| **Exact product scope** | `app/src-tauri/src/siyuan/client.rs`, `app/src-tauri/src/siyuan/commands.rs`, `app/src-tauri/src/lib.rs`, renderer SiYuan contracts/bridge and focused tests, plus the structural production-port mock. |
+| **Outcome** | Added a closed, bounded, cookie-authenticated typed create-notebook broker operation using only official `/api/notebook/createNotebook`; renderer bridge validates the name and exact response shape, while checked-in feature disablement still prevents invocation. |
+| **Native verification** | Full focused SiYuan suite PASS: 35 passed, one intentionally opt-in real-kernel test ignored. Official endpoint capture and closed audit-shape assertions include create-notebook. Frozen ordinary authority intentionally advanced to `9c32f74656b9b64cfb5e9ee1c9db3a643ee228d00f882ab50c0e238a0920ab85`; normalized authority `b7d5dd8470652b6c5cfa7a8b9c41b596b164e674330a264c34915f511e08fcc5`. |
+| **Renderer / integration verification** | Focused renderer matrix PASS 3 files / 16 tests; full app typecheck PASS; PR31 OpenCode/RLM production wiring verifier PASS; formatting, diff, and staged secret checks are the remaining commit-boundary gates. |
+| **Status / next action** | Product behavior `ACCEPTED`; complete commit-boundary gates, commit this micro-slice, release its scope, then claim the serialized production managed-knowledge/Nightly integration files. |

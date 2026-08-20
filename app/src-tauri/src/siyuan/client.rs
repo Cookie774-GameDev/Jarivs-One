@@ -65,6 +65,9 @@ pub struct Block {
 pub enum BrokerRequest<'a> {
     Status,
     ListNotebooks,
+    CreateNotebook {
+        name: &'a str,
+    },
     SearchBlocks {
         query: &'a str,
         limit: u16,
@@ -98,6 +101,7 @@ pub enum BrokerRequest<'a> {
 pub enum BrokerResponse {
     Status(RuntimeStatus),
     Notebooks(Vec<Notebook>),
+    NotebookCreated(Notebook),
     SearchResults(Vec<BlockSummary>),
     Block(Block),
     Identifier(String),
@@ -162,6 +166,11 @@ struct ApiEnvelope<T> {
 #[derive(Deserialize)]
 struct NotebookData {
     notebooks: Vec<NotebookWire>,
+}
+
+#[derive(Deserialize)]
+struct NotebookCreateData {
+    notebook: NotebookWire,
 }
 
 #[derive(Deserialize)]
@@ -367,6 +376,20 @@ impl HttpSiyuanTransport {
             .collect()
     }
 
+    fn create_notebook(&self, name: &str) -> Result<Notebook, ClientError> {
+        let data: NotebookCreateData =
+            self.post("/api/notebook/createNotebook", json!({ "name": name }))?;
+        validate_identifier(&data.notebook.id)?;
+        if data.notebook.name.is_empty() || data.notebook.name.len() > 256 {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        Ok(Notebook {
+            id: data.notebook.id,
+            name: data.notebook.name,
+            closed: data.notebook.closed,
+        })
+    }
+
     fn search(&self, query: &str, limit: u16) -> Result<Vec<BlockSummary>, ClientError> {
         let data: SearchData = self.post(
             "/api/search/fullTextSearchBlock",
@@ -482,6 +505,9 @@ impl SiyuanTransport for HttpSiyuanTransport {
                 })
             }),
             BrokerRequest::ListNotebooks => self.notebooks().map(BrokerResponse::Notebooks),
+            BrokerRequest::CreateNotebook { name } => self
+                .create_notebook(name)
+                .map(BrokerResponse::NotebookCreated),
             BrokerRequest::SearchBlocks { query, limit } => {
                 self.search(query, limit).map(BrokerResponse::SearchResults)
             }
@@ -553,6 +579,22 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
         self.require_enabled()?;
         match self.transport.send(BrokerRequest::ListNotebooks)? {
             BrokerResponse::Notebooks(notebooks) => Ok(notebooks),
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
+    pub fn create_notebook(&self, name: &str) -> Result<Notebook, ClientError> {
+        self.require_enabled()?;
+        validate_notebook_name(name)?;
+        match self
+            .transport
+            .send(BrokerRequest::CreateNotebook { name })?
+        {
+            BrokerResponse::NotebookCreated(notebook) => {
+                validate_identifier(&notebook.id)?;
+                validate_notebook_name(&notebook.name)?;
+                Ok(notebook)
+            }
             _ => Err(ClientError::ResponseTypeMismatch),
         }
     }
@@ -703,6 +745,17 @@ fn validate_query(value: &str) -> Result<(), ClientError> {
     }
 }
 
+fn validate_notebook_name(value: &str) -> Result<(), ClientError> {
+    if value.trim().is_empty()
+        || value.len() > 256
+        || value.bytes().any(|byte| byte.is_ascii_control())
+    {
+        Err(ClientError::InvalidContent)
+    } else {
+        Ok(())
+    }
+}
+
 fn validate_document_path(value: &str) -> Result<(), ClientError> {
     if !value.starts_with('/')
         || value.len() > MAX_DOCUMENT_PATH_BYTES
@@ -764,6 +817,9 @@ mod tests {
             let request = match request {
                 BrokerRequest::Status => "status".to_owned(),
                 BrokerRequest::ListNotebooks => "list_notebooks".to_owned(),
+                BrokerRequest::CreateNotebook { name } => {
+                    format!("create_notebook:{}", name.len())
+                }
                 BrokerRequest::SearchBlocks { query, limit } => format!("search:{query}:{limit}"),
                 BrokerRequest::GetBlock { id } => format!("get:{id}"),
                 BrokerRequest::CreateDocument {
@@ -878,6 +934,26 @@ mod tests {
 
     #[test]
     fn typed_managed_write_requests_are_closed_and_content_redacted_from_audit_shape() {
+        let notebook = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::NotebookCreated(Notebook {
+                id: "20260820-notebook".to_owned(),
+                name: "VibeSpace Project Vault".to_owned(),
+                closed: false,
+            })),
+        );
+        assert_eq!(
+            notebook
+                .create_notebook("VibeSpace Project Vault")
+                .unwrap()
+                .id,
+            "20260820-notebook"
+        );
+        assert_eq!(
+            notebook.transport.requests.borrow().as_slice(),
+            ["create_notebook:23"]
+        );
+
         let create = SiyuanClient::new(
             true,
             MockTransport::new(BrokerResponse::Identifier("20260820-document".to_owned())),
@@ -1101,6 +1177,7 @@ mod tests {
         let token = "w".repeat(48);
         let (port, requests, server) = mock_http_server(vec![
             r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"notebook":{"id":"20260820-notebook","name":"VibeSpace Project Vault","closed":false}}}"#.to_owned(),
             r#"{"code":0,"msg":"","data":"20260820-document"}"#.to_owned(),
             r#"{"code":0,"msg":"","data":{"id":"20260820-daily"}}"#.to_owned(),
             r#"{"code":0,"msg":"","data":null}"#.to_owned(),
@@ -1120,6 +1197,13 @@ mod tests {
 
         assert_eq!(
             client
+                .create_notebook("VibeSpace Project Vault")
+                .unwrap()
+                .id,
+            "20260820-notebook"
+        );
+        assert_eq!(
+            client
                 .create_document("20260820-notebook", "/Decision", "# Before")
                 .unwrap(),
             "20260820-document"
@@ -1134,20 +1218,21 @@ mod tests {
             .unwrap();
         client.delete_block("20260820-document", "# After").unwrap();
 
-        let captured: Vec<String> = (0..10).map(|_| requests.recv().unwrap()).collect();
+        let captured: Vec<String> = (0..11).map(|_| requests.recv().unwrap()).collect();
         assert!(captured[0].starts_with("POST /api/system/loginAuth HTTP/1.1"));
-        assert!(captured[1].starts_with("POST /api/filetree/createDocWithMd HTTP/1.1"));
-        assert!(captured[2].starts_with("POST /api/filetree/createDailyNote HTTP/1.1"));
-        assert!(captured[3].starts_with("POST /api/repo/createSnapshot HTTP/1.1"));
-        assert!(captured[4].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
-        assert!(captured[5].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
-        assert!(captured[6].starts_with("POST /api/block/updateBlock HTTP/1.1"));
-        assert!(captured[7].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
-        assert!(captured[8].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
-        assert!(captured[9].starts_with("POST /api/block/deleteBlock HTTP/1.1"));
-        assert!(captured[1].contains("\"notebook\":\"20260820-notebook\""));
-        assert!(captured[6].contains("\"dataType\":\"markdown\""));
-        assert!(captured[3].contains("\"memo\":\"Before managed update\""));
+        assert!(captured[1].starts_with("POST /api/notebook/createNotebook HTTP/1.1"));
+        assert!(captured[2].starts_with("POST /api/filetree/createDocWithMd HTTP/1.1"));
+        assert!(captured[3].starts_with("POST /api/filetree/createDailyNote HTTP/1.1"));
+        assert!(captured[4].starts_with("POST /api/repo/createSnapshot HTTP/1.1"));
+        assert!(captured[5].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[6].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(captured[7].starts_with("POST /api/block/updateBlock HTTP/1.1"));
+        assert!(captured[8].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[9].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(captured[10].starts_with("POST /api/block/deleteBlock HTTP/1.1"));
+        assert!(captured[2].contains("\"notebook\":\"20260820-notebook\""));
+        assert!(captured[7].contains("\"dataType\":\"markdown\""));
+        assert!(captured[4].contains("\"memo\":\"Before managed update\""));
         for request in captured.iter().skip(1) {
             assert!(request
                 .to_ascii_lowercase()

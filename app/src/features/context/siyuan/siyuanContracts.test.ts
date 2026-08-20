@@ -5,11 +5,13 @@ import {
   assertSiyuanDocumentPath,
   assertSiyuanIdentifier,
   assertSiyuanMarkdown,
+  assertSiyuanNotebookName,
   assertSiyuanQuery,
   assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
   parseSiyuanDocumentMutation,
   parseSiyuanMutationResult,
+  parseSiyuanNotebook,
   parseSiyuanSearchResults,
   parseSiyuanStatus,
 } from './siyuanContracts';
@@ -49,9 +51,16 @@ describe('SiYuan renderer contracts', () => {
     expect(assertSiyuanMarkdown('# Local knowledge')).toBe('# Local knowledge');
     expect(() => assertSiyuanMarkdown('🙂'.repeat(300_000))).toThrow(/siyuan_content_invalid/u);
     expect(assertSiyuanSnapshotMemo('Before nightly run')).toBe('Before nightly run');
+    expect(assertSiyuanNotebookName('VibeSpace Project Vault')).toBe('VibeSpace Project Vault');
+    expect(() => assertSiyuanNotebookName('line\nbreak')).toThrow(/siyuan_notebook_name_invalid/u);
     expect(() => assertSiyuanSnapshotMemo('line\nbreak')).toThrow(/siyuan_content_invalid/u);
     expect(parseSiyuanDocumentMutation({ id: 'document-1' })).toEqual({ id: 'document-1' });
     expect(parseSiyuanMutationResult({ applied: true })).toEqual({ applied: true });
+    expect(
+      parseSiyuanNotebook({
+        notebook: { id: 'notebook-1', name: 'VibeSpace Project Vault', closed: false },
+      }),
+    ).toEqual({ id: 'notebook-1', name: 'VibeSpace Project Vault', closed: false });
     expect(() => parseSiyuanMutationResult({ applied: true, token: 'forbidden' })).toThrow(
       /siyuan_mutation_response_keys_invalid/u,
     );

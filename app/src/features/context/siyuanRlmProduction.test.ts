@@ -22,6 +22,11 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
       commit: 'afa823b6b4e4f183511e0bc0a3be93caa94c7c97',
     })),
     listNotebooks: vi.fn(async () => []),
+    createNotebook: vi.fn(async (name: string) => ({
+      id: `notebook-${projectId}`,
+      name,
+      closed: false,
+    })),
     searchBlocks: vi.fn(async (query: string) => {
       events.push(`search:${projectId}:${query}`);
       return [

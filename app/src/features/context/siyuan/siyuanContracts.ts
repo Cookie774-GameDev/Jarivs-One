@@ -6,6 +6,7 @@ export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   stop: 'siyuan_stop',
   version: 'siyuan_version',
   listNotebooks: 'siyuan_list_notebooks',
+  createNotebook: 'siyuan_create_notebook',
   searchBlocks: 'siyuan_search_blocks',
   getBlock: 'siyuan_get_block',
   createDocument: 'siyuan_create_document',
@@ -142,6 +143,12 @@ export function assertSiyuanSearchLimit(value: unknown): number {
   return value as number;
 }
 
+export function assertSiyuanNotebookName(value: unknown): string {
+  const name = boundedString(value, 256, 'siyuan_notebook_name_invalid');
+  if (!name.trim()) fail('siyuan_notebook_name_invalid');
+  return name;
+}
+
 export function assertSiyuanDocumentPath(value: unknown): string {
   const documentPath = boundedString(value, SIYUAN_MAX_DOCUMENT_PATH_LENGTH, 'siyuan_path_invalid');
   if (
@@ -220,6 +227,12 @@ export function parseSiyuanNotebooks(value: unknown): SiyuanNotebook[] {
     fail('siyuan_notebooks_invalid');
   }
   return response.notebooks.map(parseNotebook);
+}
+
+export function parseSiyuanNotebook(value: unknown): SiyuanNotebook {
+  const response = record(value, 'siyuan_notebook_response_invalid');
+  exactKeys(response, ['notebook'], 'siyuan_notebook_response_keys_invalid');
+  return parseNotebook(response.notebook);
 }
 
 function parseBlockSummary(value: unknown): SiyuanBlockSummary {

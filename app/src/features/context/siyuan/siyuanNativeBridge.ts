@@ -5,12 +5,14 @@ import {
   assertSiyuanDocumentPath,
   assertSiyuanIdentifier,
   assertSiyuanMarkdown,
+  assertSiyuanNotebookName,
   assertSiyuanQuery,
   assertSiyuanSearchLimit,
   assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
   parseSiyuanDocumentMutation,
   parseSiyuanMutationResult,
+  parseSiyuanNotebook,
   parseSiyuanNotebooks,
   parseSiyuanSearchResults,
   parseSiyuanStatus,
@@ -35,6 +37,7 @@ export interface SiyuanNativeBridge {
   stop(): Promise<SiyuanStatus>;
   version(): Promise<SiyuanVersion>;
   listNotebooks(): Promise<SiyuanNotebook[]>;
+  createNotebook(name: string): Promise<SiyuanNotebook>;
   searchBlocks(query: string, limit?: number): Promise<SiyuanBlockSummary[]>;
   getBlock(id: string): Promise<SiyuanBlock>;
   createDocument(
@@ -105,6 +108,16 @@ export function createSiyuanNativeBridge(
       if (!featureEnabled) return featureDisabled();
       return parseSiyuanNotebooks(
         await invokeNative(SIYUAN_NATIVE_COMMANDS.listNotebooks, projectArguments()),
+      );
+    },
+
+    async createNotebook(name: string) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanNotebook(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.createNotebook, {
+          ...projectArguments(),
+          name: assertSiyuanNotebookName(name),
+        }),
       );
     },
 
