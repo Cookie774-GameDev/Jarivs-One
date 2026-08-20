@@ -274,3 +274,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Added an actionable missing-dependency error and temp-filesystem coverage for hoisted, app-local-precedence, and absent installations.
 - Focused sharder suite PASS: 8/8. Real workspace resolution returns repository-root `node_modules/vitest/vitest.mjs`; deterministic list-only coverage still finds 1,189 files exactly once.
 - Exact-file Prettier and `git diff --check` PASS. Next: stage only the two scripts plus this ledger, run staged diff and secret checks, commit, then execute the full 24-shard suite from the committed boundary.
+
+#### 2026-08-20 18:41 CDT — committed and scope released
+
+- Commit: `a7fe41e7` (`fix(test): resolve hoisted vitest for full shards`), based on `a5fe7c62`.
+- Staged diff check PASS and staged Gitleaks PASS (`4.40 KB`, no leaks).
+- Released the exact two-script scope. The repaired runner is now ready to execute the real full sharded suite from a committed boundary; list-only discovery is not being treated as final proof.
