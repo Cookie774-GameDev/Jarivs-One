@@ -2355,6 +2355,18 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Verification** | Node manifest verifier/tests; focused frontend SiYuan tests; focused Rust `siyuan` tests; typecheck; PR31 integration verifier; exact-path formatting and diff checks. |
 | **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
 
+## 2026-08-20 - Release artifact size gate lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:16 CT |
+| **Agent / task** | Controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `PR31-RELEASE-ARTIFACT-SIZE-GATE`. |
+| **Branch / base HEAD** | `integration/UnifiedChungus-final` at `32dbbcd3`; upstream `origin/UnifiedChungus`; ahead 4. |
+| **Exact exclusive paths** | `scripts/verify-release-artifact-size.mjs`; `scripts/verify-release-artifact-size.test.mjs`; `.github/workflows/release.yml`; `docs/oss/PR31_SIZE_BUDGET.md`. |
+| **Intent** | Add a deterministic release gate that rejects every recognized installer/updater artifact above 300,000,000 bytes, reports the preferred 285,000,000-byte threshold, and runs against downloaded release assets before checksums/updater publication. |
+| **Verification** | Node test matrix for boundary, overflow, discovery, and empty-input behavior; direct verifier against representative release fixtures; workflow static inspection; diff check. |
+| **Status / next action** | `IMPLEMENTING`; controller will commit only the exact four-file lane after tests pass. |
+
 ## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
 
 | Field | Coordination record |
