@@ -186,6 +186,9 @@ jobs:
           mkdir -p assets
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets
 
+      - name: Enforce PR31 release artifact size ceiling
+        run: node scripts/verify-release-artifact-size.mjs --assets-dir assets
+
       - name: Require updater signatures and build latest.json
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
