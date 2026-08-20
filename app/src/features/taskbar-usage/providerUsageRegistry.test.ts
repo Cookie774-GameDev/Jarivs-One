@@ -32,9 +32,9 @@ function workingAdapter(id: string): ProviderUsageAdapter {
 }
 
 describe('provider usage registry', () => {
-  it('defines at least 35 unique provider identities without pretending every provider has usage APIs', () => {
-    expect(PROVIDER_USAGE_DEFINITIONS).toHaveLength(35);
-    expect(new Set(PROVIDER_USAGE_DEFINITIONS.map(({ id }) => id)).size).toBe(35);
+  it('defines OpenCode plus the existing provider identities without pretending every provider has usage APIs', () => {
+    expect(PROVIDER_USAGE_DEFINITIONS).toHaveLength(36);
+    expect(new Set(PROVIDER_USAGE_DEFINITIONS.map(({ id }) => id)).size).toBe(36);
     expect(PROVIDER_USAGE_DEFINITIONS.every(({ routes }) => routes.length > 0)).toBe(true);
     expect(
       PROVIDER_USAGE_DEFINITIONS.some(({ usageCapability }) => usageCapability === 'unsupported'),
@@ -42,6 +42,10 @@ describe('provider usage registry', () => {
     expect(PROVIDER_USAGE_DEFINITIONS.find(({ id }) => id === 'deepgram')).toMatchObject({
       category: 'speech',
       usageCapability: 'partial',
+    });
+    expect(PROVIDER_USAGE_DEFINITIONS.find(({ id }) => id === 'opencode')).toMatchObject({
+      usageCapability: 'partial',
+      routes: [expect.objectContaining({ id: 'opencode-cli', type: 'cli_bridge' })],
     });
   });
 
@@ -65,6 +69,8 @@ describe('provider usage registry', () => {
       usageValue: null,
       usageLimit: null,
       usagePercent: null,
+      freshness: 'expired',
+      source: 'unavailable',
     });
   });
 

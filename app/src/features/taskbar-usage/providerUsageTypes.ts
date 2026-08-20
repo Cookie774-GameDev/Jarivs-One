@@ -52,6 +52,7 @@ export interface ProviderUsageSnapshot {
   connected: boolean;
   connectionState?: ProviderConnectionState;
   routeId?: string;
+  modelId?: string;
   routeLabel?: string;
   routeType?: ProviderConnectionRouteType;
   usageCapability?: ProviderUsageCapability;
@@ -72,6 +73,8 @@ export interface ProviderUsageSnapshot {
   retryAt?: number | null;
   rateLimitState?: 'clear' | 'limited' | 'unknown';
   freshness: ProviderUsageFreshness;
+  accountUsageState?: 'live' | 'stale' | 'unavailable' | 'error';
+  accountUsageUpdatedAt?: number;
   source:
     | 'local-events'
     | 'provider-api'

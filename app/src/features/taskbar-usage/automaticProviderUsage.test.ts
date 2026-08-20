@@ -48,17 +48,15 @@ describe('automatic provider usage discovery', () => {
         'codex-cli': { installation: 'installed', auth: 'authenticated' },
         'claude-cli': { installation: 'not-installed', auth: 'unknown' },
       },
-      localUsage: {
-        openai: {
+      connectionUsage: {
+        'openai-api': {
           inputTokens: 10,
           outputTokens: 5,
           cachedTokens: 2,
           costUsd: 0.01,
           calls: 1,
-          lastUsed: 100,
+          lastUsed: 190,
         },
-      },
-      connectionUsage: {
         'codex-cli': {
           inputTokens: 6,
           outputTokens: 3,
@@ -92,5 +90,24 @@ describe('automatic provider usage discovery', () => {
       usagePercent: null,
     });
     expect(JSON.stringify(snapshots)).not.toContain('api-key');
+  });
+
+  it('keeps a connected route without ledger evidence unavailable instead of freshly zero', () => {
+    const snapshots = buildAutomaticProviderSnapshots({
+      connections: [connection('openai-api', 'openai', 'native-api')],
+      connectedProviderIds: ['openai'],
+      connectionMetadata: {},
+      connectionUsage: {},
+      activity: { total: 0, byProvider: {} },
+      now: 200,
+    });
+
+    expect(snapshots[0]).toMatchObject({
+      usageValue: null,
+      localUsageValue: null,
+      updatedAt: 0,
+      freshness: 'expired',
+      source: 'unavailable',
+    });
   });
 });

@@ -36,6 +36,7 @@ import {
   getUsage,
   parseUsageSlashCommand,
   refreshUsage,
+  resolveUsageConnection,
 } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
@@ -2291,19 +2292,17 @@ export function Composer({
         return true;
       }
       const persistedChat = await chatRepo.getById(chatId as ChatId).catch(() => undefined);
-      const selectedId =
-        persistedChat?.connection?.id ??
-        (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined);
-      let selectedConnection = selectedId
-        ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selectedId)
-        : undefined;
-      selectedConnection ??= PROVIDER_CONNECTIONS.find(
-        (connection) =>
-          connection.providerId === provider &&
-          (provider === 'ollama' || provider === 'local'
-            ? connection.mode === 'local'
-            : connection.mode === 'native-api'),
-      );
+      const selectedConnection = resolveUsageConnection({
+        persistedConnection: persistedChat?.connection,
+        selectedConnectionId:
+          chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined,
+        selectedModelId:
+          chatModelSelection.mode === 'single' ? chatModelSelection.modelId : undefined,
+        fallbackProviderId: provider,
+        fallbackModelId:
+          selectedModels[provider] || defaultModelForProvider(provider, defaultLocalModel),
+        connections: PROVIDER_CONNECTIONS,
+      });
       if (!selectedConnection) {
         await addSystem(
           'Usage is unavailable until this chat has an exact AI connection selected.',
@@ -2313,7 +2312,9 @@ export function Composer({
       const snapshots =
         usageMode === 'all'
           ? await getAllUsage(
-              PROVIDER_CONNECTIONS.filter((connection) => connection.enabled),
+              PROVIDER_CONNECTIONS.filter((connection) => connection.enabled).map((connection) =>
+                connection.id === selectedConnection.id ? selectedConnection : connection,
+              ),
               chatId as ChatId,
             )
           : [

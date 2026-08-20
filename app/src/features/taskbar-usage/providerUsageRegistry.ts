@@ -22,6 +22,13 @@ export const PROVIDER_USAGE_DEFINITIONS: readonly ProviderUsageDefinition[] = Ob
     billingUrl: 'https://platform.openai.com/usage',
   },
   {
+    id: 'opencode',
+    displayName: 'OpenCode',
+    category: 'llm',
+    routes: [route('opencode-cli', 'OpenCode bridge', 'cli_bridge')],
+    usageCapability: 'partial',
+  },
+  {
     id: 'anthropic',
     displayName: 'Anthropic',
     category: 'llm',
@@ -280,6 +287,7 @@ export function normalizeProviderUsageSnapshot(
         : null;
   const localUsageValue = boundedNumber(value.localUsageValue);
   const localUsageUnit = value.localUsageUnit ?? null;
+  const hasUsageValue = usageValue !== null || localUsageValue !== null || usagePercent !== null;
   return Object.freeze({
     ...value,
     providerId: value.providerId.slice(0, 96),
@@ -301,6 +309,11 @@ export function normalizeProviderUsageSnapshot(
       }),
     requestsPerMinute: boundedNumber(value.requestsPerMinute),
     updatedAt: Number.isSafeInteger(value.updatedAt) && value.updatedAt >= 0 ? value.updatedAt : 0,
+    freshness: value.freshness === 'fresh' && !hasUsageValue ? 'expired' : value.freshness,
+    source:
+      !hasUsageValue && value.freshness !== 'error' && value.freshness !== 'offline'
+        ? 'unavailable'
+        : value.source,
     connectionState: value.connectionState ?? (value.connected ? 'connected' : 'disconnected'),
     usageCapability: value.usageCapability ?? 'unsupported',
     ...(value.providerFamilyId ? { providerFamilyId: value.providerFamilyId.slice(0, 96) } : {}),

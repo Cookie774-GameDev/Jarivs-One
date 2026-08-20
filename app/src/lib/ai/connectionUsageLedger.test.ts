@@ -35,6 +35,7 @@ describe('connection usage ledger', () => {
       inputTokens: 10,
       requests: 1,
       costUsd: 0,
+      availability: 'available',
       source: 'vibespace-local-request-ledger',
     });
     expect(aggregateConnectionUsage('openai-api', now - 7 * 86_400_000)).toMatchObject({
@@ -45,5 +46,13 @@ describe('connection usage ledger', () => {
     expect(aggregateConnectionUsage('openai-api', now - 30 * 86_400_000).models).toEqual([
       'gpt-5.6-sol',
     ]);
+    expect(
+      aggregateConnectionUsage('openai-api', now - 30 * 86_400_000, 'different-model'),
+    ).toMatchObject({
+      requests: 0,
+      costUsd: 0,
+      lastRequestAt: null,
+      availability: 'unavailable',
+    });
   });
 });

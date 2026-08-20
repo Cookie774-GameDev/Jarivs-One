@@ -15,6 +15,25 @@ export interface UsageValue {
   reason?: string;
 }
 
+export type UsageAvailability = 'available' | 'unavailable' | 'stale' | 'error';
+
+export interface UsageTotals {
+  inputTokens: UsageValue;
+  cachedInputTokens: UsageValue;
+  outputTokens: UsageValue;
+  totalTokens: UsageValue;
+  costUsd: UsageValue;
+  requests: UsageValue;
+}
+
+export interface RouteUsageWindow extends UsageTotals {
+  label: 'Current app session' | 'Rolling 30 days';
+  startedAt: number;
+  lastRequestAt: number | null;
+  models: readonly string[];
+  availability: UsageAvailability;
+}
+
 export interface UsageSnapshot {
   connectionId: string;
   providerId: string;
@@ -23,15 +42,15 @@ export interface UsageSnapshot {
   mode: ProviderConnection['mode'];
   authSource: ProviderConnection['authSource'];
   capturedAt: number;
-  currentChat: {
-    inputTokens: UsageValue;
-    outputTokens: UsageValue;
-    totalTokens: UsageValue;
-    costUsd: UsageValue;
-    requests: UsageValue;
-  };
+  usageMode: UsageMode;
+  availability: UsageAvailability;
+  currentChat: UsageTotals;
+  routeWindow?: RouteUsageWindow;
   providerPeriod: UsageValue;
   quota: UsageValue;
+  accountUsageState?: UsageAvailability;
+  accountUsageUpdatedAt?: number;
+  errorCode?: string;
   note?: string;
 }
 

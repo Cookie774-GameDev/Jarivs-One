@@ -40,6 +40,25 @@ describe('Codex app-server account usage', () => {
       updatedAt: 789,
       source: 'codex-app-server',
       freshness: 'live',
+      availability: 'available',
+    });
+  });
+
+  it('does not stamp an empty account response as live usage', () => {
+    expect(
+      normalizeCodexAccountUsage({
+        rateLimits: {},
+        tokenUsage: {},
+        updatedAt: 123,
+        source: 'codex-app-server',
+      }),
+    ).toMatchObject({
+      windows: [],
+      creditsRemaining: null,
+      tokens: null,
+      freshness: 'unavailable',
+      availability: 'unavailable',
+      unavailableReason: 'Codex returned no supported account usage values.',
     });
   });
 });

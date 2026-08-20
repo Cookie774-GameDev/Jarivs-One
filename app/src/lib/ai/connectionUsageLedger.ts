@@ -1,6 +1,8 @@
 const STORAGE_KEY = 'vibespace.ai-connection-usage.v1';
 const MAX_ENTRIES = 5_000;
 export const CONNECTION_USAGE_LEDGER_EVENT = 'jarvis:ai-connection-usage:changed';
+/** Shared renderer-session boundary used by `/usage session`. */
+export const CONNECTION_USAGE_SESSION_STARTED_AT = Date.now();
 
 export interface ConnectionUsageEntry {
   connectionId: string;
@@ -21,6 +23,8 @@ export interface ConnectionUsageWindow {
   costUsd: number;
   models: string[];
   lastRequestAt: number | null;
+  startedAt: number;
+  availability: 'available' | 'unavailable';
   source: 'vibespace-local-request-ledger';
 }
 
@@ -84,9 +88,13 @@ export function recordConnectionUsage(entry: ConnectionUsageEntry): void {
 export function aggregateConnectionUsage(
   connectionId: string,
   since: number,
+  modelId?: string,
 ): ConnectionUsageWindow {
   const entries = readConnectionUsageLedger().filter(
-    (entry) => entry.connectionId === connectionId && entry.timestamp >= since,
+    (entry) =>
+      entry.connectionId === connectionId &&
+      entry.timestamp >= since &&
+      (!modelId || entry.modelId === modelId),
   );
   return {
     inputTokens: entries.reduce((sum, entry) => sum + entry.inputTokens, 0),
@@ -95,8 +103,9 @@ export function aggregateConnectionUsage(
     requests: entries.length,
     costUsd: entries.reduce((sum, entry) => sum + entry.costUsd, 0),
     models: [...new Set(entries.map((entry) => entry.modelId))],
-    lastRequestAt:
-      entries.length > 0 ? Math.max(...entries.map((entry) => entry.timestamp)) : null,
+    lastRequestAt: entries.length > 0 ? Math.max(...entries.map((entry) => entry.timestamp)) : null,
+    startedAt: Math.max(0, since),
+    availability: entries.length > 0 ? 'available' : 'unavailable',
     source: 'vibespace-local-request-ledger',
   };
 }

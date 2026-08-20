@@ -51,7 +51,7 @@ describe('TaskbarUsageExpanded', () => {
       />,
     );
 
-    expect(screen.getAllByTestId('usage-registry-row')).toHaveLength(35);
+    expect(screen.getAllByTestId('usage-registry-row')).toHaveLength(36);
     expect(screen.getByText('No usage recorded this period')).toBeTruthy();
     expect(screen.getByText('Local OpenAI-compatible')).toBeTruthy();
     expect(screen.getByRole('generic', { name: 'Usage data source legend' })).toBeTruthy();

@@ -2,7 +2,6 @@ import { PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import { ensureExternalConnectionAutoDetection } from '@/lib/ai/adapters/autoDetectConnections';
 import { readConnectionMetadata } from '@/lib/ai/connectionState';
 import { getConnectedProviders } from '@/lib/ai/providerRegistry';
-import { getMonthlyAllProviderUsage } from '@/lib/usage/usageSummary';
 import { useAuthStore } from '@/stores/auth';
 import { providerActivityTracker } from './activityTracker';
 import { buildAutomaticProviderSnapshots } from './automaticProviderUsage';
@@ -15,7 +14,11 @@ import {
 import type { ProviderUsageSnapshot } from './providerUsageTypes';
 import { createUsageRefreshCoordinator } from './usageRefreshCoordinator';
 import { aggregateConnectionUsage } from '@/lib/ai/connectionUsageLedger';
-import { readCodexAccountUsage } from '@/lib/ai/adapters/codexAccountUsage';
+import {
+  readCodexAccountUsage,
+  type CodexAccountUsageSnapshot,
+} from '@/lib/ai/adapters/codexAccountUsage';
+import { supportsCodexAccountUsage } from '@/lib/usage/usageService';
 import {
   BACKGROUND_PROVIDER_REFRESH_MS,
   DISPLAY_REFRESH_MS,
@@ -29,6 +32,88 @@ export {
 } from './usageRefreshPolicy';
 
 let stopController: (() => void) | undefined;
+const ACCOUNT_USAGE_STALE_MS = 120_000;
+
+function eligibleAccountRouteIds(
+  connections: readonly Readonly<(typeof PROVIDER_CONNECTIONS)[number]>[],
+): Set<string> {
+  return new Set(connections.filter(supportsCodexAccountUsage).map((connection) => connection.id));
+}
+
+export function mergeCodexAccountUsageSnapshots(
+  snapshots: readonly ProviderUsageSnapshot[],
+  connections: readonly Readonly<(typeof PROVIDER_CONNECTIONS)[number]>[],
+  account: Readonly<CodexAccountUsageSnapshot>,
+  now = Date.now(),
+): ProviderUsageSnapshot[] {
+  const eligible = eligibleAccountRouteIds(connections);
+  return snapshots.map((snapshot) => {
+    if (!snapshot.routeId || !eligible.has(snapshot.routeId)) return snapshot;
+    if (account.availability === 'unavailable') {
+      return {
+        ...snapshot,
+        accountUsageState: 'unavailable',
+        accountUsageUpdatedAt: account.updatedAt,
+      };
+    }
+    const primary = account.windows[0];
+    const accountUsageState =
+      now - account.updatedAt >= ACCOUNT_USAGE_STALE_MS ? ('stale' as const) : ('live' as const);
+    const accountMetric = primary
+      ? {
+          usageValue: primary.usedPercent,
+          usageLimit: 100,
+          usageUnit: 'percent' as const,
+          usagePercent: primary.usedPercent,
+          resetAt: primary.resetsAt,
+        }
+      : account.tokens !== null
+        ? {
+            usageValue: account.tokens,
+            usageLimit: null,
+            usageUnit: 'tokens' as const,
+            usagePercent: null,
+          }
+        : {};
+    return {
+      ...snapshot,
+      ...accountMetric,
+      planScope: [
+        account.planType,
+        account.windows.map((window) => `${window.label} ${window.usedPercent}%`).join(' · '),
+        account.creditsRemaining === null ? null : `${account.creditsRemaining} credits`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      source: Object.keys(accountMetric).length > 0 ? 'provider-api' : snapshot.source,
+      updatedAt: Object.keys(accountMetric).length > 0 ? account.updatedAt : snapshot.updatedAt,
+      freshness:
+        Object.keys(accountMetric).length > 0
+          ? accountUsageState === 'stale'
+            ? 'stale'
+            : 'fresh'
+          : snapshot.freshness,
+      accountUsageState,
+      accountUsageUpdatedAt: account.updatedAt,
+    };
+  });
+}
+
+export function markCodexAccountUsageError(
+  snapshots: readonly ProviderUsageSnapshot[],
+  connections: readonly Readonly<(typeof PROVIDER_CONNECTIONS)[number]>[],
+): ProviderUsageSnapshot[] {
+  const eligible = eligibleAccountRouteIds(connections);
+  return snapshots.map((snapshot) =>
+    snapshot.routeId !== undefined && eligible.has(snapshot.routeId)
+      ? {
+          ...snapshot,
+          accountUsageState: 'error',
+          errorCode: 'CODEX_ACCOUNT_USAGE_UNAVAILABLE',
+        }
+      : snapshot,
+  );
+}
 
 export function createAsyncUnlistenerRegistry() {
   let stopped = false;
@@ -96,20 +181,23 @@ export function startTaskbarUsageController(): () => void {
             plan: auth.plan,
             defaultLocalModel: auth.defaultLocalModel,
           });
-          const localUsage = await getMonthlyAllProviderUsage(connectedProviderIds).catch(
-            () => ({}),
+          const usageConnections = PROVIDER_CONNECTIONS.map((connection) =>
+            auth.chatModelSelection.mode === 'single' &&
+            auth.chatModelSelection.connectionId === connection.id
+              ? { ...connection, modelId: auth.chatModelSelection.modelId }
+              : connection,
           );
           if (stopped) return;
           let refreshedSnapshots = buildAutomaticProviderSnapshots({
-            connections: PROVIDER_CONNECTIONS,
+            connections: usageConnections,
             connectedProviderIds,
             connectionMetadata: readConnectionMetadata(),
-            localUsage,
             connectionUsage: Object.fromEntries(
-              PROVIDER_CONNECTIONS.map((connection) => {
+              usageConnections.map((connection) => {
                 const usage = aggregateConnectionUsage(
                   connection.id,
                   Date.now() - 30 * 24 * 60 * 60 * 1_000,
+                  connection.modelId,
                 );
                 return [
                   connection.id,
@@ -127,42 +215,16 @@ export function startTaskbarUsageController(): () => void {
             activity: providerActivityTracker.snapshot(),
             now: Date.now(),
           });
-          if (refreshedSnapshots.some((snapshot) => snapshot.providerId === 'openai-codex')) {
+          if (usageConnections.some(supportsCodexAccountUsage)) {
             try {
               const codexUsage = await readCodexAccountUsage();
-              const primary = codexUsage.windows[0];
-              refreshedSnapshots = refreshedSnapshots.map((snapshot) =>
-                snapshot.providerId === 'openai-codex'
-                  ? {
-                      ...snapshot,
-                      ...(primary
-                        ? {
-                            usageValue: primary.usedPercent,
-                            usageLimit: 100,
-                            usageUnit: 'percent' as const,
-                            usagePercent: primary.usedPercent,
-                            resetAt: primary.resetsAt,
-                          }
-                        : {}),
-                      planScope: [
-                        codexUsage.planType,
-                        codexUsage.windows
-                          .map((window) => `${window.label} ${window.usedPercent}%`)
-                          .join(' · '),
-                        codexUsage.creditsRemaining === null
-                          ? null
-                          : `${codexUsage.creditsRemaining} credits`,
-                      ]
-                        .filter(Boolean)
-                        .join(' · '),
-                      source: 'provider-api' as const,
-                      updatedAt: codexUsage.updatedAt,
-                      freshness: 'fresh' as const,
-                    }
-                  : snapshot,
+              refreshedSnapshots = mergeCodexAccountUsageSnapshots(
+                refreshedSnapshots,
+                usageConnections,
+                codexUsage,
               );
             } catch {
-              // Exact-route local usage remains available with honest terminal provenance.
+              refreshedSnapshots = markCodexAccountUsageError(refreshedSnapshots, usageConnections);
             }
           }
           snapshots = providerId

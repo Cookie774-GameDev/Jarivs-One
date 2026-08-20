@@ -16,7 +16,9 @@ export interface CodexAccountUsageSnapshot {
   tokens: number | null;
   updatedAt: number;
   source: 'codex-app-server';
-  freshness: 'live';
+  freshness: 'live' | 'unavailable';
+  availability: 'available' | 'unavailable';
+  unavailableReason?: string;
 }
 
 interface NativeCodexSnapshot {
@@ -44,9 +46,7 @@ function windowLabel(duration: number | null, fallback: string): string {
   return `${duration}m`;
 }
 
-export function normalizeCodexAccountUsage(
-  value: NativeCodexSnapshot,
-): CodexAccountUsageSnapshot {
+export function normalizeCodexAccountUsage(value: NativeCodexSnapshot): CodexAccountUsageSnapshot {
   const result = record(value.rateLimits) ?? {};
   const snapshot = record(result.rateLimits) ?? result;
   const windows: CodexRateLimitWindow[] = [];
@@ -70,14 +70,21 @@ export function normalizeCodexAccountUsage(
   const credits = record(snapshot.credits);
   const usage = record(value.tokenUsage);
   const summary = record(usage?.summary);
+  const creditsRemaining = number(credits?.balance);
+  const tokens = number(summary?.tokens);
+  const available = windows.length > 0 || creditsRemaining !== null || tokens !== null;
   return {
     windows,
-    creditsRemaining: number(credits?.balance),
+    creditsRemaining,
     planType: typeof snapshot.planType === 'string' ? snapshot.planType.slice(0, 80) : null,
-    tokens: number(summary?.tokens),
-    updatedAt: value.updatedAt,
+    tokens,
+    updatedAt: Number.isSafeInteger(value.updatedAt) && value.updatedAt >= 0 ? value.updatedAt : 0,
     source: 'codex-app-server',
-    freshness: 'live',
+    freshness: available ? 'live' : 'unavailable',
+    availability: available ? 'available' : 'unavailable',
+    ...(!available
+      ? { unavailableReason: 'Codex returned no supported account usage values.' }
+      : {}),
   };
 }
 
