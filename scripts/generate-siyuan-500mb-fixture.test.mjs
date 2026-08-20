@@ -31,10 +31,21 @@ test('each deterministic document is exactly one million submitted Markdown byte
   assert.equal(Buffer.byteLength(document), 1_000_000);
   assert.match(document, /VIBESPACE_SIYUAN_500MB_SENTINEL_0499/u);
   assert.match(document, /DOCUMENT_ID=20260820084600-00000dv/u);
-  assert.equal(
-    createHash('sha256').update(document).digest('hex'),
-    'ffcd4d80a245a7a4139ed47d63406fafa087f216d7caaa98a48e8a637e2795b9',
+  assert.match(document, /CORPUS_PROFILE=structured-project-records-v2/u);
+  assert.match(document, /GOLD_EXACT_FACT artifact=atlas-0499/u);
+  assert.match(document, /GOLD_FRESHNESS current=rev-0499-20260820 stale=rev-0499-20260819/u);
+  assert.match(
+    document,
+    /GOLD_MULTI_HOP source=project-context-vault-0499 depends_on=project-context-vault-0000/u,
   );
+  assert.match(document, /authority=current/u);
+  assert.match(document, /authority=stale/u);
+  assert.match(document, /relation=depends_on/u);
+  assert.match(document, /provenance=source-0499-evidence-/u);
+  assert.doesNotMatch(document, /fixture-0499-offline-local-first-lossless-context-evidence/u);
+  const records = document.match(/^PROJECT_RECORD .+$/gmu) ?? [];
+  assert.ok(records.length > 2_500);
+  assert.equal(new Set(records).size, records.length);
   assert.ok((document.match(/```text/gu) ?? []).length > 30);
   assert.ok(
     document
@@ -42,6 +53,21 @@ test('each deterministic document is exactly one million submitted Markdown byte
       .slice(1)
       .every((block) => Buffer.byteLength(block.split('\n```', 1)[0]) <= 32_020),
   );
+});
+
+test('structured documents are deterministic, distinct, and retain exact retrieval relationships', () => {
+  const first = deterministicDocument(42, 64_000);
+  const repeated = deterministicDocument(42, 64_000);
+  const adjacent = deterministicDocument(43, 64_000);
+  assert.equal(first, repeated);
+  assert.notEqual(
+    createHash('sha256').update(first).digest('hex'),
+    createHash('sha256').update(adjacent).digest('hex'),
+  );
+  assert.match(first, /SOURCE_AUTHORITY=project-context-vault-0042/u);
+  assert.match(first, /NEXT_SOURCE=project-context-vault-0043/u);
+  assert.match(first, /target_document=00[0-9]{2}/u);
+  assert.ok((first.match(/^TAIL_RECORD .+$/gmu) ?? []).length >= 2);
 });
 
 test('document generation rejects undersized and invalid targets', () => {
@@ -92,6 +118,7 @@ test('production generator source preserves loopback, exact-corpus, and secret-s
   const source = await readFile(SCRIPT_PATH, 'utf8');
   assert.match(source, /const DOCUMENT_COUNT = 500;/u);
   assert.match(source, /const DOCUMENT_BYTES = 1_000_000;/u);
+  assert.match(source, /const CORPUS_PROFILE = 'structured-project-records-v2';/u);
   assert.match(source, /server\.listen\(0, '127\.0\.0\.1'/u);
   assert.match(source, /`http:\/\/127\.0\.0\.1:\$\{port\}`/u);
   assert.match(source, /SIYUAN_ACCESS_AUTH_CODE: accessCode/u);

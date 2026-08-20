@@ -18,6 +18,27 @@ const EVIDENCE_FILE = 'fixture-evidence.json';
 const DOCUMENT_COUNT = 500;
 const DOCUMENT_BYTES = 1_000_000;
 const TOTAL_MARKDOWN_BYTES = DOCUMENT_COUNT * DOCUMENT_BYTES;
+const CORPUS_PROFILE = 'structured-project-records-v2';
+const RECORD_COMPONENTS = [
+  'context-vault',
+  'model-router',
+  'usage-ledger',
+  'release-bundle',
+  'native-bridge',
+  'retrieval-index',
+  'project-memory',
+  'security-boundary',
+];
+const RECORD_OWNERS = ['amber', 'cobalt', 'indigo', 'jade', 'quartz', 'saffron'];
+const RECORD_DECISIONS = [
+  'retain-lossless-source',
+  'prefer-newest-authority',
+  'require-exact-model-identity',
+  'keep-loopback-private',
+  'preserve-route-provenance',
+  'reject-silent-downgrade',
+  'verify-before-release',
+];
 const RUNTIME_TAG = 'v3.8.1';
 const RUNTIME_COMMIT = 'afa823b6b4e4f183511e0bc0a3be93caa94c7c97';
 const RUNTIME_FINGERPRINT = '59ce62549b891a1e0fb8fce530442ec95882e240b3349795ed517ca8761d603c';
@@ -38,33 +59,102 @@ export function deterministicDocument(index, targetBytes = DOCUMENT_BYTES) {
     throw new Error('SiYuan fixture document size is invalid');
   }
   const ordinal = String(index).padStart(4, '0');
+  const previousOrdinal = String((index + DOCUMENT_COUNT - 1) % DOCUMENT_COUNT).padStart(4, '0');
+  const nextOrdinal = String((index + 1) % DOCUMENT_COUNT).padStart(4, '0');
+  const chainOrdinal = String(Math.floor(index / 10)).padStart(2, '0');
   const prefix = [
     `# VibeSpace SiYuan Fixture ${ordinal}`,
     '',
     `VIBESPACE_SIYUAN_500MB_SENTINEL_${ordinal}`,
     `DOCUMENT_ID=${deterministicDocumentId(index)}`,
-    `CROSS_SOURCE_CHAIN_${String(index % 5).padStart(2, '0')}=cobalt-${ordinal}-quartz`,
+    `CORPUS_PROFILE=${CORPUS_PROFILE}`,
+    `SOURCE_AUTHORITY=project-context-vault-${ordinal}`,
+    `CURRENT_REVISION=rev-${ordinal}-20260820`,
+    `SUPERSEDES_REVISION=rev-${ordinal}-20260819`,
+    `PREVIOUS_SOURCE=project-context-vault-${previousOrdinal}`,
+    `NEXT_SOURCE=project-context-vault-${nextOrdinal}`,
+    `CROSS_SOURCE_CHAIN_${chainOrdinal}=source-${ordinal}-to-source-${nextOrdinal}`,
+    `GOLD_EXACT_FACT artifact=atlas-${ordinal} custodian=${RECORD_OWNERS[index % RECORD_OWNERS.length]} retention_days=${365 + (index % 90)}`,
+    `GOLD_FRESHNESS current=rev-${ordinal}-20260820 stale=rev-${ordinal}-20260819 authority=project-context-vault-${ordinal}`,
+    `GOLD_MULTI_HOP source=project-context-vault-${ordinal} depends_on=project-context-vault-${nextOrdinal} resolves_to=artifact-atlas-${nextOrdinal}`,
   ].join('\n');
-  const seed = `fixture-${ordinal}-offline-local-first-lossless-context-evidence `;
   const blockOpen = '\n\n```text\n';
   const blockClose = '\n```';
   const blockOverhead = Buffer.byteLength(blockOpen) + Buffer.byteLength(blockClose);
   let remaining = targetBytes - Buffer.byteLength(prefix);
   const blocks = [];
+  let recordIndex = 0;
+  let blockIndex = 0;
   while (remaining > 0) {
     if (remaining <= blockOverhead) throw new Error('SiYuan fixture document target is too small');
     let payloadBytes = Math.min(32_000, remaining - blockOverhead);
     const leftover = remaining - blockOverhead - payloadBytes;
     if (leftover > 0 && leftover <= blockOverhead) payloadBytes += leftover;
-    const payload = seed.repeat(Math.ceil(payloadBytes / seed.length)).slice(0, payloadBytes);
+    const generated = structuredRecordPayload(index, recordIndex, blockIndex, payloadBytes);
+    const payload = generated.payload;
+    recordIndex = generated.nextRecordIndex;
     blocks.push(`${blockOpen}${payload}${blockClose}`);
     remaining -= blockOverhead + payloadBytes;
+    blockIndex += 1;
   }
   const document = `${prefix}${blocks.join('')}`;
   if (Buffer.byteLength(document) !== targetBytes) {
     throw new Error('SiYuan fixture document byte contract failed');
   }
   return document;
+}
+
+function structuredRecordLine(documentIndex, recordIndex) {
+  const ordinal = String(documentIndex).padStart(4, '0');
+  const record = String(recordIndex).padStart(6, '0');
+  const component = RECORD_COMPONENTS[(documentIndex + recordIndex) % RECORD_COMPONENTS.length];
+  const owner = RECORD_OWNERS[(documentIndex * 3 + recordIndex) % RECORD_OWNERS.length];
+  const decision = RECORD_DECISIONS[(documentIndex + recordIndex * 5) % RECORD_DECISIONS.length];
+  const authority = recordIndex % 13 === 0 ? 'stale' : 'current';
+  const revisionDay = authority === 'current' ? '20260820' : '20260819';
+  const targetDocument = (documentIndex + (recordIndex % 17) + 1) % DOCUMENT_COUNT;
+  const targetOrdinal = String(targetDocument).padStart(4, '0');
+  const targetRecord = String((recordIndex * 7 + documentIndex) % 10_000).padStart(6, '0');
+  const evidence = (documentIndex * 1_000_003 + recordIndex * 97).toString(36).padStart(8, '0');
+  return `PROJECT_RECORD document=${ordinal} record=${record} project=unified-chungus-${String(documentIndex % 25).padStart(2, '0')} component=${component} authority=${authority} revision=rev-${ordinal}-${revisionDay}-${record} owner=${owner} relation=depends_on target_document=${targetOrdinal} target_record=${targetRecord} provenance=source-${ordinal}-evidence-${evidence} fact_key=${component}.decision.${record} fact_value=${decision}\n`;
+}
+
+function structuredTail(documentIndex, recordIndex, blockIndex, targetBytes) {
+  const ordinal = String(documentIndex).padStart(4, '0');
+  const record = String(recordIndex).padStart(6, '0');
+  const prefix = `TAIL_RECORD document=${ordinal} record=${record} block=${String(blockIndex).padStart(3, '0')} authority=current provenance=exact-byte-contract fact_value=`;
+  if (Buffer.byteLength(prefix) > targetBytes) {
+    return `record-${ordinal}-${record}-${blockIndex.toString(36)}-`.slice(0, targetBytes);
+  }
+  let payload = prefix;
+  let segment = 0;
+  while (Buffer.byteLength(payload) < targetBytes) {
+    const token = `${ordinal}.${record}.${blockIndex.toString(36)}.${segment.toString(36)};`;
+    const remaining = targetBytes - Buffer.byteLength(payload);
+    payload += token.slice(0, remaining);
+    segment += 1;
+  }
+  return payload;
+}
+
+function structuredRecordPayload(documentIndex, firstRecordIndex, blockIndex, targetBytes) {
+  const minimumTailBytes = 180;
+  let payload = '';
+  let payloadBytes = 0;
+  let recordIndex = firstRecordIndex;
+  while (true) {
+    const line = structuredRecordLine(documentIndex, recordIndex);
+    const lineBytes = Buffer.byteLength(line);
+    if (targetBytes - payloadBytes - lineBytes < minimumTailBytes) break;
+    payload += line;
+    payloadBytes += lineBytes;
+    recordIndex += 1;
+  }
+  payload += structuredTail(documentIndex, recordIndex, blockIndex, targetBytes - payloadBytes);
+  if (Buffer.byteLength(payload) !== targetBytes) {
+    throw new Error('SiYuan fixture structured record byte contract failed');
+  }
+  return { payload, nextRecordIndex: recordIndex + 1 };
 }
 
 export function validateFixtureRoot(value) {
@@ -91,7 +181,7 @@ export function validateFixtureEvidence(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    value.schemaVersion !== 1 ||
+    value.schemaVersion !== 2 ||
     Number.isNaN(Date.parse(value.generatedAt)) ||
     value.runtimeTag !== RUNTIME_TAG ||
     value.runtimeCommit !== RUNTIME_COMMIT ||
@@ -103,6 +193,10 @@ export function validateFixtureEvidence(value) {
     value.documentCount !== DOCUMENT_COUNT ||
     value.bytesPerDocument !== DOCUMENT_BYTES ||
     value.submittedMarkdownBytes !== TOTAL_MARKDOWN_BYTES ||
+    value.corpusProfile !== CORPUS_PROFILE ||
+    value.recordSchemaVersion !== 2 ||
+    value.goldQuestionBlueprintCount !== 5 ||
+    value.minimumSourcesPerGoldQuestion !== 10 ||
     !Number.isSafeInteger(value.storedKramdownBytes) ||
     value.storedKramdownBytes < TOTAL_MARKDOWN_BYTES ||
     typeof value.corpusDigest !== 'string' ||
@@ -481,7 +575,7 @@ export async function generateSiyuan500MbFixture(options = {}) {
     const completed = Object.values(progress.completed);
     const workspaceMeasure = await measureDirectory(workspaceBase);
     const evidence = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       runtimeTag: RUNTIME_TAG,
       runtimeCommit: RUNTIME_COMMIT,
@@ -492,6 +586,10 @@ export async function generateSiyuan500MbFixture(options = {}) {
       documentCount: completed.length,
       bytesPerDocument: DOCUMENT_BYTES,
       submittedMarkdownBytes: completed.reduce((sum, item) => sum + item.submittedBytes, 0),
+      corpusProfile: CORPUS_PROFILE,
+      recordSchemaVersion: 2,
+      goldQuestionBlueprintCount: 5,
+      minimumSourcesPerGoldQuestion: 10,
       storedKramdownBytes: completed.reduce((sum, item) => sum + item.storedBytes, 0),
       corpusDigest: sha256Text(completed.map((item) => item.storedSha256).join('\n')),
       indexedSentinel: search.sentinel,
