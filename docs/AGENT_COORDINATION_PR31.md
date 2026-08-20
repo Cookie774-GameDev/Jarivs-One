@@ -182,3 +182,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Removed the PowerShell child/file-lock helper, its process/event imports, and Windows-only skip. This eliminates the live child that blocked the suite before test 26.
 - Verification: two consecutive complete `npm run test:release-manifest` passes (`44/44`, zero skipped; approximately 12.5 seconds each), exact-file Prettier PASS, `git diff --check` PASS, and the independent required `cargo check --manifest-path app/src-tauri/Cargo.toml` PASS with existing warnings.
 - Next: stage only the two scripts and this append-only ledger, run staged Gitleaks/diff checks, commit, record the resulting SHA, and release this exact scope.
+
+#### 2026-08-20 20:05 CDT — committed and scope released
+
+- Commit: `2de4cea0` (`test(release):remove-windows-helper-hang`), based on `2ed7ad0b`.
+- Staged diff check PASS and staged Gitleaks PASS (`3.60 KB`, no leaks).
+- Released exact two-script scope. The larger PR31 goal remains active and acceptance remains fail-closed until native preflight, scored Tests 1–5 in order, and the final two-pass proof can run.
