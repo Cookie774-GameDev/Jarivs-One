@@ -24,9 +24,9 @@ afterEach(() => {
 
 describe('ErrorBoundary crash containment', () => {
   it('contains the App at the renderer root rather than below early boot gates', () => {
-    const mainSource = readFileSync(resolve(process.cwd(), 'src/main.tsx'), 'utf8');
+    const bootstrapSource = readFileSync(resolve(process.cwd(), 'src/bootstrapApp.tsx'), 'utf8');
 
-    expect(mainSource).toMatch(/<ErrorBoundary>\s*<App\s*\/>\s*<\/ErrorBoundary>/);
+    expect(bootstrapSource).toMatch(/<ErrorBoundary>\s*<App\s*\/>\s*<\/ErrorBoundary>/);
   });
 
   it('redacts and bounds exception details before returning them', () => {

@@ -212,3 +212,19 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `8bad099a` (`test(opencode): align final boss max parity`), based on `592eb17f`.
 - Staged diff check PASS and staged Gitleaks PASS (`2.13 KB`, no leaks).
 - Released exact test-only product ownership. The native Tauri app remains running for continued manual verification, but the interrupted window-control session produced no scored UAT claim.
+
+### 2026-08-20 18:08 CDT — inherited zero-suite test maintenance claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-INHERITED-TEST-MAINTENANCE`.
+- Branch/base: `integration/UnifiedChungus-final` at `b10a8f5f`; worktree otherwise contains only the untracked live coordination-lock directory; no merge, rebase, or cherry-pick state.
+- Exact eight-file scope: `app/src/components/ErrorBoundary.test.tsx`; `app/src/features/appearance/warmTheme.test.ts`; `app/src/features/appearance/vibespacePalette.test.ts`; `app/src/features/appearance/sakura/SakuraStyleBoardFixture.test.tsx`; `app/src/features/appearance/MonochromeWorkbench.test.tsx`; `app/src/features/settings/sections/Notifications.monochromeAppearance.test.tsx`; `app/src/features/settings/sections/Plans.websiteParity.test.tsx`; `app/src/features/settings/sections/Plans.monochromeAppearance.test.tsx`.
+- Reproduction: the authoritative 10-file focused baseline produced 140 pass / 13 fail. One smoke contract is fully green; twelve failures in the claimed files are stale source-path, switch-count, pricing, or selector expectations. The separate App account-identity behavior failure is explicitly excluded.
+- Intent: align tests with existing authoritative `bootstrapApp.tsx`, 12-switch Notifications UI, current `$20/$30/$70/$120/$200` plan ledger, and stable plan-card identity. No production code changes are authorized in this slice.
+- Independent read-only audit supplied exact assertion updates and confirmed these failures predate the substantive SiYuan/OpenCode/RLM work.
+
+#### Implementation and verification boundary
+
+- Updated five source-contract tests to inspect the existing `bootstrapApp.tsx` authority; corrected the Notifications switch total to 12; scoped the duplicate Access `$20`; aligned plan CTAs to `$30/$70`; and selected the current Spark plan by stable `data-plan-id`.
+- Exact focused matrix PASS: 8 files / 79 tests. Existing non-failing accessibility/React warnings were observed; no production behavior changed.
+- `npm --prefix app run typecheck` PASS; exact-file Prettier PASS; `git diff --check` PASS.
+- Next: stage only the exact eight tests plus this ledger, run staged diff and secret checks, commit, and release the scope before addressing the separate account-identity behavior race.

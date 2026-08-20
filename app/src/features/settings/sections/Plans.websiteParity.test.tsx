@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import { PLAN_ORDER, PLANS, type PlanId } from '@/lib/entitlements';
@@ -55,7 +55,8 @@ describe('Plans website-parity billing UI', () => {
     render(<Plans />);
 
     expect(screen.getByRole('heading', { name: 'VibeSpace Access' })).toBeTruthy();
-    expect(screen.getByText('$20')).toBeTruthy();
+    const accessPricing = screen.getByRole('region', { name: 'VibeSpace Access pricing' });
+    expect(within(accessPricing).getByText('$20')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Review Access terms/i })).toBeTruthy();
 
     await waitFor(() => {
@@ -136,7 +137,7 @@ describe('Plans website-parity billing UI', () => {
       expect(document.querySelector('[data-plans-ready="true"]')).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Upgrade — \$50\/mo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Upgrade — \$70\/mo/i }));
     await waitFor(() => {
       expect(checkoutMock).toHaveBeenCalledWith('pro');
       expect(openExternalMock).toHaveBeenCalledWith('https://checkout.stripe.test/session');
@@ -151,7 +152,7 @@ describe('Plans website-parity billing UI', () => {
       expect(document.querySelector('[data-plans-ready="true"]')).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Upgrade — \$10\/mo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Upgrade — \$30\/mo/i }));
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toMatch(/stripe_unavailable/i);
       expect(toastError).toHaveBeenCalled();
@@ -168,7 +169,7 @@ describe('Plans website-parity billing UI', () => {
     });
 
     expect(screen.getByText(/Billing not configured/i)).toBeTruthy();
-    const upgrade = screen.getByRole('button', { name: /Upgrade — \$10\/mo/i });
+    const upgrade = screen.getByRole('button', { name: /Upgrade — \$30\/mo/i });
     expect(upgrade.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(upgrade);
     expect(checkoutMock).not.toHaveBeenCalled();
@@ -191,7 +192,7 @@ describe('Plans website-parity billing UI', () => {
       expect(document.querySelector('[data-plans-ready="true"]')).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Upgrade — \$50\/mo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Upgrade — \$70\/mo/i }));
     expect(await screen.findByRole('button', { name: /Starting checkout/i })).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Feature plans' }).getAttribute('aria-busy')).toBe(
       'true',

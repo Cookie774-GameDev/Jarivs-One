@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(__dirname, '../../styles/warm-theme.css'), 'utf8');
-const main = readFileSync(resolve(__dirname, '../../main.tsx'), 'utf8');
+const bootstrap = readFileSync(resolve(__dirname, '../../bootstrapApp.tsx'), 'utf8');
 const chatDecor = readFileSync(resolve(__dirname, '../chat/OrigamiChatDecor.tsx'), 'utf8');
 const chatView = readFileSync(resolve(__dirname, '../chat/ChatView.tsx'), 'utf8');
 const warmChatWelcome = readFileSync(resolve(__dirname, '../chat/WarmChatWelcome.tsx'), 'utf8');
@@ -127,7 +127,7 @@ describe('Warm theme presentation contract', () => {
   });
 
   it('is imported once and scoped exclusively to the Warm document theme', () => {
-    expect(main.match(/styles\/warm-theme\.css/g)).toHaveLength(1);
+    expect(bootstrap.match(/styles\/warm-theme\.css/g)).toHaveLength(1);
     expect(css).toContain("html[data-theme='warm']");
     expect(css).not.toMatch(
       /\[data-theme=['"](?:dark|default|jarvis|monochrome|sakura|vibespace)['"]\]/,

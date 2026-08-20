@@ -183,7 +183,10 @@ describe('Sakura development style board', () => {
   });
 
   it('uses the shared development entry without joining production routes or navigation', () => {
-    const mainSource = readFileSync(path.resolve(process.cwd(), 'src/main.tsx'), 'utf8');
+    const bootstrapSource = readFileSync(
+      path.resolve(process.cwd(), 'src/bootstrapApp.tsx'),
+      'utf8',
+    );
     const developmentEntrySource = readFileSync(
       path.resolve(process.cwd(), 'src/developmentEntry.tsx'),
       'utf8',
@@ -193,12 +196,12 @@ describe('Sakura development style board', () => {
       'utf8',
     );
 
-    expect(mainSource).toMatch(/import\.meta\.env\.DEV/u);
+    expect(bootstrapSource).toMatch(/import\.meta\.env\.DEV/u);
     expect(developmentSurfaceSource).toMatch(/sakura-style-board/u);
-    expect(mainSource).toMatch(/import\(['"]\.\/developmentEntry['"]\)/u);
-    expect(mainSource).not.toMatch(/SakuraStyleBoardFixture/u);
-    expect(mainSource).toMatch(/dataset\.theme = .*sakura/u);
-    expect(mainSource).toMatch(/<DevelopmentEntry surface=\{devSurface\}/u);
+    expect(bootstrapSource).toMatch(/import\(['"]\.\/developmentEntry['"]\)/u);
+    expect(bootstrapSource).not.toMatch(/SakuraStyleBoardFixture/u);
+    expect(bootstrapSource).toMatch(/dataset\.theme = .*sakura/u);
+    expect(bootstrapSource).toMatch(/<DevelopmentEntry surface=\{devSurface\}/u);
     expect(developmentEntrySource).toMatch(
       /import\(['"]\.\/features\/appearance\/sakura\/SakuraStyleBoardFixture['"]\)/u,
     );

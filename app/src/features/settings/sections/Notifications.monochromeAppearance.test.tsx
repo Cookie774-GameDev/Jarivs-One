@@ -79,9 +79,9 @@ describe('Notifications MonoChrome appearance', () => {
   it('flattens every visible Switch thumb and disables track/thumb motion only in MonoChrome or reduced motion', () => {
     render(<Notifications />);
 
-    // master + sound + badge + 7 categories + ai completion cue = 11
+    // master + notification sound + UI sounds + badge + 7 categories + AI completion cue = 12
     const switches = screen.getAllByRole('switch');
-    expect(switches).toHaveLength(11);
+    expect(switches).toHaveLength(12);
 
     for (const control of switches) {
       expect(control.firstElementChild?.className).toContain('shadow-lg');

@@ -32,7 +32,7 @@ const baseCssPath = resolve(__dirname, '../../styles/vibespace-theme.css');
 const assetRoot = resolve(__dirname, '../../../public/assets/origami-chat');
 const chatViewPath = resolve(__dirname, '../chat/ChatView.tsx');
 const schedulePagePath = resolve(__dirname, '../schedule/SchedulePage.tsx');
-const mainPath = resolve(__dirname, '../../main.tsx');
+const bootstrapAppPath = resolve(__dirname, '../../bootstrapApp.tsx');
 
 function readCss(): string {
   return existsSync(cssPath) ? readFileSync(cssPath, 'utf8').toLowerCase() : '';
@@ -79,7 +79,7 @@ describe('VibeSpace Origami Chat palette contract', () => {
     expect(readFileSync(baseCssPath, 'utf8').toLowerCase()).not.toContain(
       "[data-vibespace-page='chat']",
     );
-    expect(readFileSync(mainPath, 'utf8')).toContain("import './styles/origami-chat.css';");
+    expect(readFileSync(bootstrapAppPath, 'utf8')).toContain("import './styles/origami-chat.css';");
   });
 
   it('keeps the locked paper palette on the VibeSpace Chat branch', () => {

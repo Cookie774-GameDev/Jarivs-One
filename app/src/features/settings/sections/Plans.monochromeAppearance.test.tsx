@@ -50,7 +50,7 @@ describe('Plans MonoChrome appearance', () => {
     expect(className).toContain('[html[data-theme=monochrome]_&_*]:ring-0');
 
     // Ordinary themes keep the Spark current-plan ring affordance intact.
-    const spark = document.querySelector<HTMLElement>('article[aria-label="Spark plan, free"]');
+    const spark = document.querySelector<HTMLElement>('article[data-plan-id="free"]');
     expect(spark).not.toBeNull();
     expect(spark?.className ?? '').toContain('ring-1 ring-cyan-500/30');
   });
