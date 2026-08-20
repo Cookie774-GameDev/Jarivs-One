@@ -2559,3 +2559,12 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Result** | Added a production port that serializes project-scoped native SiYuan activation/search/get operations, stops the previous project before switching authority, and fails before native invocation while the checked-in feature gate is false. The production RLM tool now federates mapped files, history, and the lossless SiYuan repository; mixed search pointer capabilities are issued and validated only by the exact owning repository, while explicit mapped-file queries remain isolated from history and SiYuan echoes. |
 | **Verification** | Focused Context/SiYuan federation matrix PASS 4 files / 89 tests; full app typecheck PASS; PR31 OpenCode/RLM verifier PASS; staged Prettier, diff check, and Gitleaks PASS. |
 | **Status / next action** | Federation scope `ACCEPTED` and released. Correct generated bundle metadata, then create and index the deterministic 500 MB SiYuan fixture before enabling or scoring the feature. |
+
+## 2026-08-20 - Verified SiYuan generated-metadata refresh lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:42 CT |
+| **Controller exact paths** | `scripts/prepare-siyuan-runtime.mjs`; `scripts/prepare-siyuan-runtime.test.mjs`; metadata-only generated output under ignored `app/src-tauri/resources/siyuan-runtime`. |
+| **Intent** | Require complete closure verification before reusing a prepared payload, then compare and atomically refresh the copied authoritative runtime manifest, closure manifest, source offer, and ready marker so a valid 445,983,251-byte payload cannot silently retain stale packaging metadata. |
+| **Safety / verification** | Never rewrite component payload bytes during metadata refresh; invalid closure or ready-marker authority still fails closed. Add reuse/update/drift tests, run real local refresh and immediate reverify, then exact Prettier/diff/Gitleaks checks. |
