@@ -29,6 +29,7 @@ import {
   deepgramCostUsd,
   estimateSeconds,
   json,
+  preflight,
   MAX_TTS_CHARS,
 } from '../_shared/voice.ts';
 
@@ -179,7 +180,7 @@ async function settleAndAudit(
 async function handleRequest(req: Request): Promise<Response> {
   const origin = req.headers.get('origin');
   if (req.method === 'OPTIONS')
-    return new Response(null, { headers: { ...json({}, 200, origin).headers } });
+    return preflight(origin);
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
 
   // 1. Auth

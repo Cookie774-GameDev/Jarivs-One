@@ -10,6 +10,11 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 const WORKER_PROTOCOL: u8 = 1;
 const WORKER_SOURCE: &str = include_str!("../workers/model_foundry/worker.py");
 const TRAINING_CATALOG_SOURCE: &str = include_str!("../workers/model_foundry/training-models.json");
@@ -23,6 +28,14 @@ const INFERENCE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const TRAINING_MODEL_MARKER: &str = ".vibespace-model.json";
 const MAX_TRAINING_MODEL_MARKER_BYTES: u64 = 4 * 1024;
 const DOWNLOAD_BUFFER_BYTES: usize = 1024 * 1024;
+const TRAINING_TORCH_REQUIREMENT: &str = "torch==2.13.0+cpu";
+const TRAINING_TORCH_INDEX: &str = "https://download.pytorch.org/whl/cpu";
+const TRAINING_CORE_REQUIREMENTS: &[&str] = &[
+    "transformers==5.9.0",
+    "datasets==5.0.1",
+    "accelerate==1.13.0",
+    "peft==0.20.0",
+];
 static ACTIVE_TRAINING: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 static ACTIVE_INFERENCE: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
@@ -458,7 +471,8 @@ struct TrainingRunRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     resume_from_checkpoint: Option<String>,
     epochs: u8,
-    max_steps: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_steps: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -713,17 +727,151 @@ pub(crate) fn verify_training_artifact(root: &Path) -> Result<TrainingArtifactEv
     })
 }
 
-fn locate_python() -> Option<String> {
+fn private_python(root: &Path) -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        root.join("python-env").join("Scripts").join("python.exe")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        root.join("python-env").join("bin").join("python3")
+    }
+}
+
+fn hidden_command(program: &str) -> Command {
+    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
+    let mut command = Command::new(program);
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
+fn python_command(program: &str) -> Command {
+    let mut command = hidden_command(program);
+    if program.eq_ignore_ascii_case("py") {
+        command.arg("-3");
+    }
+    command
+}
+
+fn locate_system_python() -> Option<String> {
     ["python3", "python", "py"]
         .into_iter()
         .find_map(|candidate| {
-            Command::new(candidate)
+            python_command(candidate)
                 .arg("--version")
                 .output()
                 .ok()
                 .filter(|output| output.status.success())
                 .map(|_| candidate.to_string())
         })
+}
+
+#[cfg(test)]
+fn locate_python() -> Option<String> {
+    locate_system_python()
+}
+
+#[cfg(target_os = "windows")]
+fn install_python_for_current_user() -> Option<String> {
+    let status = hidden_command("winget")
+        .args([
+            "install",
+            "--id",
+            "Python.Python.3.12",
+            "--exact",
+            "--scope",
+            "user",
+            "--silent",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--disable-interactivity",
+        ])
+        .status()
+        .ok()?;
+    if !status.success() {
+        return None;
+    }
+    if let Some(found) = locate_system_python() {
+        return Some(found);
+    }
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?;
+    let candidate = local
+        .join("Programs")
+        .join("Python")
+        .join("Python312")
+        .join("python.exe");
+    candidate
+        .is_file()
+        .then(|| candidate.to_string_lossy().into_owned())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn install_python_for_current_user() -> Option<String> {
+    None
+}
+
+fn create_private_python(root: &Path) -> Result<PathBuf, String> {
+    let python = private_python(root);
+    if python.is_file() {
+        return Ok(python);
+    }
+    let system = locate_system_python()
+        .or_else(install_python_for_current_user)
+        .ok_or_else(|| {
+            "VibeSpace could not install or locate Python 3 for the private Model Foundry runtime."
+                .to_string()
+        })?;
+    let env_dir = root.join("python-env");
+    if env_dir.exists() {
+        fs::remove_dir_all(&env_dir)
+            .map_err(|error| format!("Could not repair the private Python runtime: {error}"))?;
+    }
+    let status = python_command(&system)
+        .args(["-m", "venv"])
+        .arg(&env_dir)
+        .status()
+        .map_err(|error| {
+            format!("Could not create the private Model Foundry Python runtime: {error}")
+        })?;
+    if !status.success() || !python.is_file() {
+        return Err("Could not create the private Model Foundry Python runtime.".into());
+    }
+    Ok(python)
+}
+
+fn install_private_training_packages(python: &Path) -> Result<(), String> {
+    let program = python.to_string_lossy();
+    let pip_base = [
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--no-input",
+    ];
+    let torch_status = hidden_command(&program)
+        .args(pip_base)
+        .args([
+            "--index-url",
+            TRAINING_TORCH_INDEX,
+            TRAINING_TORCH_REQUIREMENT,
+        ])
+        .status()
+        .map_err(|error| format!("Could not install the private PyTorch runtime: {error}"))?;
+    if !torch_status.success() {
+        return Err("The private PyTorch runtime installation failed.".into());
+    }
+    let core_status = hidden_command(&program)
+        .args(pip_base)
+        .args(TRAINING_CORE_REQUIREMENTS)
+        .status()
+        .map_err(|error| {
+            format!("Could not install the private Model Foundry libraries: {error}")
+        })?;
+    if !core_status.success() {
+        return Err("The private Model Foundry library installation failed.".into());
+    }
+    Ok(())
 }
 
 fn validated_probe(bytes: &[u8]) -> Result<TrainingWorkerProbe, String> {
@@ -754,7 +902,7 @@ fn validated_probe(bytes: &[u8]) -> Result<TrainingWorkerProbe, String> {
 }
 
 fn probe_worker(python: &str, path: &Path) -> Result<TrainingWorkerProbe, String> {
-    let output = Command::new(python)
+    let output = hidden_command(python)
         .arg(path)
         .arg("probe")
         .output()
@@ -768,13 +916,17 @@ fn probe_worker(python: &str, path: &Path) -> Result<TrainingWorkerProbe, String
 fn inspect_worker(root: &Path) -> TrainingWorkerStatus {
     let expected = expected_source_sha256();
     let path = worker_path(root);
+    let private = private_python(root);
+    let runtime_python = private
+        .is_file()
+        .then(|| private.to_string_lossy().into_owned());
     if !path.is_file() {
         return TrainingWorkerStatus {
             installed: false,
             attested: false,
             protocol: WORKER_PROTOCOL,
             source_sha256: expected,
-            python: locate_python(),
+            python: runtime_python.or_else(locate_system_python),
             methods: Vec::new(),
             modalities: Vec::new(),
             precisions: Vec::new(),
@@ -789,7 +941,7 @@ fn inspect_worker(root: &Path) -> TrainingWorkerStatus {
                 attested: false,
                 protocol: WORKER_PROTOCOL,
                 source_sha256: expected,
-                python: locate_python(),
+                python: runtime_python,
                 methods: Vec::new(),
                 modalities: Vec::new(),
                 precisions: Vec::new(),
@@ -805,28 +957,26 @@ fn inspect_worker(root: &Path) -> TrainingWorkerStatus {
             attested: false,
             protocol: WORKER_PROTOCOL,
             source_sha256: expected,
-            python: locate_python(),
+            python: runtime_python,
             methods: Vec::new(),
             modalities: Vec::new(),
             precisions: Vec::new(),
             reason: Some("The local training worker failed integrity verification.".into()),
         };
     }
-    let python = locate_python();
-    if python.is_none() {
+    let Some(python) = runtime_python else {
         return TrainingWorkerStatus {
             installed: true,
             attested: true,
             protocol: WORKER_PROTOCOL,
             source_sha256: expected,
-            python: None,
+            python: locate_system_python(),
             methods: Vec::new(),
             modalities: Vec::new(),
             precisions: Vec::new(),
-            reason: Some("Python 3 is required to run the local training worker.".into()),
+            reason: Some("Set up the private Model Foundry runtime before training.".into()),
         };
-    }
-    let python = python.unwrap_or_default();
+    };
     match probe_worker(&python, &path) {
         Ok(probe) if probe.ready => TrainingWorkerStatus {
             installed: true,
@@ -850,7 +1000,7 @@ fn inspect_worker(root: &Path) -> TrainingWorkerStatus {
             precisions: Vec::new(),
             reason: probe
                 .reason
-                .or_else(|| Some("Verified local training libraries are incomplete.".into())),
+                .or_else(|| Some("Verified private training libraries are incomplete.".into())),
         },
         Err(error) => TrainingWorkerStatus {
             installed: true,
@@ -1258,11 +1408,8 @@ pub fn model_foundry_remove_training_model(
     Ok(training_model_status(&root, model))
 }
 
-#[tauri::command]
-pub fn model_foundry_install_training_worker(
-    app: tauri::AppHandle,
-) -> Result<TrainingWorkerStatus, String> {
-    let root = training_root(&app)?;
+fn install_training_runtime(app: &tauri::AppHandle) -> Result<TrainingWorkerStatus, String> {
+    let root = training_root(app)?;
     fs::create_dir_all(&root)
         .map_err(|error| format!("Could not create the private training directory: {error}"))?;
     let path = worker_path(&root);
@@ -1272,14 +1419,32 @@ pub fn model_foundry_install_training_worker(
     fs::rename(&temporary, &path).map_err(|error| {
         format!("Could not activate the verified local training worker: {error}")
     })?;
+
+    let python = create_private_python(&root)?;
+    let python_text = python.to_string_lossy().into_owned();
+    let needs_packages = probe_worker(&python_text, &path)
+        .map(|probe| !probe.ready || !probe.methods.iter().any(|method| method == "lora"))
+        .unwrap_or(true);
+    if needs_packages {
+        install_private_training_packages(&python)?;
+    }
+
     let status = inspect_worker(&root);
-    if !status.attested {
-        let _ = fs::remove_file(&path);
+    if !status.attested || !status.methods.iter().any(|method| method == "lora") {
         return Err(status
             .reason
-            .unwrap_or_else(|| "Training worker attestation failed.".into()));
+            .unwrap_or_else(|| "Private Model Foundry runtime verification failed.".into()));
     }
     Ok(status)
+}
+
+#[tauri::command]
+pub async fn model_foundry_install_training_worker(
+    app: tauri::AppHandle,
+) -> Result<TrainingWorkerStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || install_training_runtime(&app))
+        .await
+        .map_err(|error| format!("Model Foundry setup worker failed: {error}"))?
 }
 
 fn safe_job_id(value: &str) -> Result<&str, String> {
@@ -1368,14 +1533,16 @@ pub(crate) fn run_training_worker(
     dataset_path: &Path,
     job_dir: &Path,
     epochs: u8,
-    max_steps: u32,
+    max_steps: Option<u32>,
     resume_checkpoint: Option<&Path>,
 ) -> Result<TrainingRunResult, String> {
     let job_id = safe_job_id(job_id)?;
     if !matches!(method, "lora" | "qlora" | "full") {
         return Err("Unsupported Model Foundry weight-training method.".into());
     }
-    if !(1..=20).contains(&epochs) || !(1..=1_000_000).contains(&max_steps) {
+    if !(1..=20).contains(&epochs)
+        || max_steps.is_some_and(|value| !(1..=1_000_000).contains(&value))
+    {
         return Err("Model Foundry training limits are invalid.".into());
     }
     let root = training_root(app)?;
@@ -1884,7 +2051,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = Command::new(python)
+        let result = Command::new(&python)
             .arg(worker_path(&root))
             .arg("validate")
             .arg(&request_path)
@@ -1900,6 +2067,31 @@ mod tests {
         assert_eq!(value["examples"], 1);
         assert_eq!(value["method"], "lora");
         assert_eq!(value["localOnly"], true);
+        assert_eq!(value["maxSteps"], 2);
+
+        let request_without_step_cap = serde_json::json!({
+            "protocol": WORKER_PROTOCOL,
+            "localOnly": true,
+            "method": "lora",
+            "baseModelPath": model,
+            "datasetPath": dataset,
+            "outputDir": output,
+            "epochs": 1
+        });
+        fs::write(
+            &request_path,
+            serde_json::to_vec(&request_without_step_cap).unwrap(),
+        )
+        .unwrap();
+        let epoch_governed = Command::new(&python)
+            .arg(worker_path(&root))
+            .arg("validate")
+            .arg(&request_path)
+            .output()
+            .unwrap();
+        assert!(epoch_governed.status.success());
+        let value: serde_json::Value = serde_json::from_slice(&epoch_governed.stdout).unwrap();
+        assert_eq!(value["maxSteps"], serde_json::Value::Null);
 
         let _ = fs::remove_dir_all(root);
     }

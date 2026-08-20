@@ -7,8 +7,8 @@ let livePanelScale = 1;
 const listeners = new Set<() => void>();
 
 export function setLivePanelUiScale(scale: number): void {
-  // Match petPanelUiScale floor (0.62) so pickers track the smallest panels.
-  const next = Number.isFinite(scale) ? Math.max(0.62, Math.min(1, scale)) : 1;
+  // Match petPanelUiScale floor/ceiling so pickers track the live panel size.
+  const next = Number.isFinite(scale) ? Math.max(0.62, Math.min(1.45, scale)) : 1;
   if (next === livePanelScale) return;
   livePanelScale = next;
   for (const listener of listeners) listener();

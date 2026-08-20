@@ -93,10 +93,14 @@ export function petPanelDensityForSize(width: number, height: number): PetPanelD
   return 'comfortable';
 }
 
+export const PET_UI_SCALE_MIN = 0.62;
+export const PET_UI_SCALE_MAX = 1.45;
+
 /**
  * Continuous UI scale for the mini panel. Reference size is the default
- * ~460×600 panel; shrinks as the user resizes down (never below 0.62).
- * Uses the smaller axis so both narrow and short panels densify.
+ * ~460×600 panel. Shrinks as the user resizes down (never below 0.62) and
+ * grows with a larger panel (never above 1.45). Uses the smaller axis so
+ * both narrow and short panels densify.
  */
 export function petPanelUiScale(width: number, height: number): number {
   const w = Number.isFinite(width) && width > 0 ? width : 460;
@@ -104,7 +108,7 @@ export function petPanelUiScale(width: number, height: number): number {
   const byW = w / 460;
   const byH = h / 560;
   const raw = Math.min(byW, byH);
-  return Math.max(0.62, Math.min(1, Number(raw.toFixed(3))));
+  return Math.max(PET_UI_SCALE_MIN, Math.min(PET_UI_SCALE_MAX, Number(raw.toFixed(3))));
 }
 
 /** Clamp size for the floating mini panel. */

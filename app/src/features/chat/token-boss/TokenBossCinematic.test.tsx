@@ -62,6 +62,27 @@ describe('TokenBossCinematic', () => {
     expect(screen.getAllByText(/Codex token/i).length).toBeGreaterThan(0);
   });
 
+  it('keeps page stacking from flattening or covering the cinematic overlay', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const origamiChat = readFileSync(
+      resolve(__dirname, '../../../styles/origami-chat.css'),
+      'utf8',
+    );
+    const origamiTheme = readFileSync(
+      resolve(__dirname, '../../../styles/origami-theme.css'),
+      'utf8',
+    );
+    const chatWelcome = readFileSync(resolve(__dirname, '../chat-welcome.css'), 'utf8');
+    const warmTheme = readFileSync(resolve(__dirname, '../../../styles/warm-theme.css'), 'utf8');
+    const tokenBossCss = readFileSync(resolve(__dirname, './token-boss.css'), 'utf8');
+    expect(origamiChat).toContain(':not(.origami-chat-decor):not(.token-boss-cinematic)');
+    expect(origamiTheme).toContain(':not(.origami-chat-decor):not(.token-boss-cinematic)');
+    expect(chatWelcome).toContain(':not(.warm-chat-welcome):not(.token-boss-cinematic)');
+    expect(warmTheme).toContain(':not(.warm-chat-welcome):not(.token-boss-cinematic)');
+    expect(tokenBossCss).toContain('z-index: 90 !important');
+  });
+
   it('uses an ordinary alpha canvas without a second desynchronized WebView surface', () => {
     render(<TokenBossCinematic chatId="chat-a" />);
 
@@ -76,6 +97,10 @@ describe('TokenBossCinematic', () => {
     const dialog = screen.getByRole('dialog', { name: /Token Boss/i });
     expect(dialog.getAttribute('data-token-boss-compact')).toBe('true');
     expect(dialog.className).toContain('token-boss-cinematic--compact');
+    expect(dialog.style.position).toBe('absolute');
+    expect(dialog.style.zIndex).toBe('90');
+    expect(dialog.style.width).toBe('100%');
+    expect(dialog.style.height).toBe('100%');
   });
 
   it('skips on Escape, cancels animation, and restores composer focus', () => {

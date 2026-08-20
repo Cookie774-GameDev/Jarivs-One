@@ -165,6 +165,14 @@ fn should_fall_open_after_guard_spawn(spawn_succeeded: bool) -> bool {
     !spawn_succeeded
 }
 
+fn should_hide_main_for_intro(intro_show_succeeded: bool) -> bool {
+    intro_show_succeeded
+}
+
+fn tray_show_should_reveal_main(intro_window_present: bool) -> bool {
+    !intro_window_present
+}
+
 fn schedule_cold_start_intro_fail_open(app: &tauri::AppHandle) {
     const NATIVE_INTRO_DEADLINE: std::time::Duration = std::time::Duration::from_secs(9);
     let app_handle = app.clone();
@@ -207,11 +215,6 @@ fn schedule_cold_start_intro_fail_open(app: &tauri::AppHandle) {
 /// the React shell continues loading underneath. Tray restores never reach this
 /// path because they reuse the existing process (single-instance).
 fn start_cold_start_intro(app: &tauri::AppHandle) {
-    // Keep main hidden while the intro owns the screen.
-    if let Some(main) = app.get_window("main") {
-        let _ = main.hide();
-    }
-
     let Some(intro) = app.get_webview_window("cold-start-intro") else {
         eprintln!("[cold-start-intro] window missing; falling back to main");
         show_main_window(app, "cold-start-intro-missing");
@@ -224,6 +227,9 @@ fn start_cold_start_intro(app: &tauri::AppHandle) {
     if let Err(err) = intro.set_always_on_top(true) {
         eprintln!("[cold-start-intro] always-on-top request failed: {err}");
     }
+    if let Err(err) = intro.unminimize() {
+        eprintln!("[cold-start-intro] unminimize failed: {err}");
+    }
     if let Err(err) = intro.show() {
         eprintln!("[cold-start-intro] show failed: {err}");
         show_main_window(app, "cold-start-intro-show-failed");
@@ -231,6 +237,15 @@ fn start_cold_start_intro(app: &tauri::AppHandle) {
     }
     if let Err(err) = intro.set_focus() {
         eprintln!("[cold-start-intro] focus failed: {err}");
+    }
+
+    // Windows can report is_visible=false for a just-shown skipTaskbar /
+    // fullscreen splash. Do not abort to main on that race — it leaves a
+    // white shell and skips the video. Hide main after a successful show().
+    if should_hide_main_for_intro(true) {
+        if let Some(main) = app.get_window("main") {
+            let _ = main.hide();
+        }
     }
 
     schedule_cold_start_intro_fail_open(app);
@@ -437,7 +452,20 @@ fn run_ordinary(
                 .menu(&tray_menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
-                        show_main_window(app, "tray-show");
+                        let intro = app.get_webview_window("cold-start-intro");
+                        let intro_present = intro.is_some();
+                        if tray_show_should_reveal_main(intro_present) {
+                            show_main_window(app, "tray-show");
+                        } else if let Some(window) = intro {
+                            println!(
+                                "[lifecycle] tray-show during intro; refocusing cinematic intro"
+                            );
+                            let _ = window.unminimize();
+                            let _ = window.set_fullscreen(true);
+                            let _ = window.set_always_on_top(true);
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                     "exit" => {
                         app.state::<terminal_snapshot::PersistenceFlushState>()
@@ -484,10 +512,11 @@ fn run_ordinary(
                     let _ = intro.close();
                 }
             } else {
-                // Cold-start cinematic intro: only on a true new process.
-                // Tray restore and second-instance focus never create a new process,
-                // so they never replay the intro (single-instance plugin handles that).
-                start_cold_start_intro(&app.handle());
+                // Cinematic intro is parked for a follow-up. Show the app now.
+                if let Some(intro) = app.get_webview_window("cold-start-intro") {
+                    let _ = intro.close();
+                }
+                show_main_window(&app.handle(), "startup");
             }
 
             Ok(())
@@ -500,12 +529,14 @@ fn run_ordinary(
                     if window.label() == "main" {
                         branding::apply_app_branding(&window.app_handle());
                         pets::schedule_visible_overlay_reconstrain(window.app_handle().clone());
+                        pets::pin_visible_pet_windows(&window.app_handle());
                     }
                 }
-                tauri::WindowEvent::Focused(true) => {
-                    if window.label() == "main" {
+                tauri::WindowEvent::Focused(focused) => {
+                    if window.label() == "main" && *focused {
                         branding::apply_app_branding(&window.app_handle());
                     }
+                    pets::pin_visible_pet_windows(&window.app_handle());
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     use tauri::Emitter as _;
@@ -771,6 +802,18 @@ mod tests {
     fn cold_start_intro_falls_open_when_the_native_guard_cannot_be_scheduled() {
         assert!(should_fall_open_after_guard_spawn(false));
         assert!(!should_fall_open_after_guard_spawn(true));
+    }
+
+    #[test]
+    fn intro_hides_main_after_a_successful_intro_show() {
+        assert!(should_hide_main_for_intro(true));
+        assert!(!should_hide_main_for_intro(false));
+    }
+
+    #[test]
+    fn tray_show_does_not_abort_while_the_intro_window_still_exists() {
+        assert!(!tray_show_should_reveal_main(true));
+        assert!(tray_show_should_reveal_main(false));
     }
 
     const ORDINARY_HANDLER_AUTHORITY: &str = "\

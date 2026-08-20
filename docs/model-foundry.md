@@ -37,9 +37,11 @@ The current production path is local retrieval knowledge:
 LoRA, QLoRA, and full fine-tuning become selectable only when the installed
 hash-attested local worker explicitly reports that method and the measured
 hardware fits it. VibeSpace ships an embedded, local-only worker boundary and
-an explicit **Set up local worker** action. Setup installs only that audited
-worker source into private app data; it does not silently install Python,
-download packages, or contact a cloud service.
+an explicit **Set up local worker** action. Setup is self-contained per user:
+it creates a private Python environment under VibeSpace app data and installs
+pinned CPU training libraries there without modifying the user's global Python
+packages. On Windows, if Python 3 is absent, setup may install Python 3.12 for
+the current user through WinGet before creating that private environment.
 
 The worker now has three closed commands:
 
@@ -72,10 +74,11 @@ confirmed, path-bounded, and denied while a download or training process is
 active. The catalog status is marker-backed for inexpensive display, and the
 full hashes are checked again before every training run.
 
-Pinned Python-environment installation, training-checkpoint resume, and final
-weight-artifact chat-runtime activation are not yet connected. The UI therefore
-enables only capabilities the attested worker can execute and never invents
-training or progress for the remaining gates.
+The private Python runtime, checkpoint-aware local worker, and weight-artifact
+activation are connected to the desktop workflow. Training honors the selected
+epoch count by default; an optional bounded `maxSteps` cap is accepted only
+when an advanced workflow explicitly supplies it. The UI enables only methods
+the attested private worker can execute and never invents training or progress.
 
 Hardware-aware plans keep LoRA, QLoRA, and full-weight requirements distinct,
 check VRAM/RAM/free storage conservatively, and never downgrade the selected

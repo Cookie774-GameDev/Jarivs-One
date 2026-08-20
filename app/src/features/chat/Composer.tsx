@@ -28,6 +28,7 @@ import { chatRepo, messageRepo, projectRepo, taskRepo, terminalSessionRepo } fro
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { getCurrentSyncQueueAuthorityScope } from '@/lib/cloudSyncQueueOwner';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
+import { playComposerKeySound, playUiSound } from '@/lib/sfx';
 import { formatUserDateTime } from '@/lib/timeFormat';
 import { HOTKEYS, matchesHotkey, resolveHotkey } from '@/lib/hotkeys';
 import {
@@ -2704,6 +2705,7 @@ export function Composer({
     if (jarvisRunning && !options.bypassQueue && (!overrideText || options.promptForgeApproved)) {
       // Send button defaults to after-run; Enter passes after-tool explicitly.
       enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run');
+      playUiSound('chat_message_send');
       return true;
     }
 
@@ -3112,6 +3114,7 @@ export function Composer({
       setAttachedPlugins([]);
       setAttachedContexts([]);
       setMentionCtx(null);
+      playUiSound('chat_message_send');
       return true;
     } catch (err) {
       // Anything thrown here (DB error, mention extraction edge case,
@@ -3214,6 +3217,7 @@ export function Composer({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    playComposerKeySound(e.nativeEvent);
     // Mod+Enter always sends, regardless of any popover state
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();

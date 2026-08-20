@@ -38,6 +38,7 @@ import { useAppAdmin } from '@/lib/admin';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { ChatEngineMenu } from '@/features/browser-chat';
+import type { Route } from '@/features/navigation/routeSchema';
 
 /**
  * TopBar - 40px chrome at the very top of the app.
@@ -63,26 +64,9 @@ import { ChatEngineMenu } from '@/features/browser-chat';
 // `route` and `setRoute` may not exist on useUIStore until that slice
 // lands. We read them defensively and gracefully degrade.
 
-type Route =
-  | 'chat'
-  | 'workbench'
-  | 'terminal'
-  | 'kanban'
-  | 'schedule'
-  | 'agents'
-  | 'model-foundry'
-  | 'agent-detail'
-  | 'project-detail'
-  | 'context'
-  | 'skills'
-  | 'benchmarks'
-  | 'history'
-  | 'tools'
-  | 'files'
-  | 'account';
-
 const ROUTES: ReadonlyArray<Route> = [
   'chat',
+  'canvas',
   'workbench',
   'terminal',
   'kanban',
@@ -100,7 +84,10 @@ const ROUTES: ReadonlyArray<Route> = [
 
 const ROUTE_LABELS: Record<Route, string> = {
   chat: 'Chat',
+  canvas: 'Canvas',
   workbench: 'Workbench',
+  preview: 'Preview',
+  browser: 'Browser',
   terminal: 'Terminal',
   kanban: 'Kanban',
   schedule: 'Schedule',

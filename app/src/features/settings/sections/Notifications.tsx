@@ -59,6 +59,8 @@ export function Notifications() {
   const setAiCompletionCue = useUIStore((s) => s.setAiCompletionCue);
   const notificationSound = useUIStore((s) => s.notificationSound);
   const setNotificationSound = useUIStore((s) => s.setNotificationSound);
+  const uiSounds = useUIStore((s) => s.uiSounds);
+  const setUiSounds = useUIStore((s) => s.setUiSounds);
   const notificationBadge = useUIStore((s) => s.notificationBadge);
   const setNotificationBadge = useUIStore((s) => s.setNotificationBadge);
 
@@ -191,6 +193,20 @@ export function Notifications() {
             checked={notificationSound}
             disabled={!notificationMaster}
             onCheckedChange={(v) => setNotificationSound(Boolean(v))}
+          />
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Label htmlFor="ui-sounds">Interface sounds</Label>
+            <p className="text-metadata text-muted-foreground mt-1">
+              Clicks, typing, send, and delete cues. Independent of OS notification permission.
+            </p>
+          </div>
+          <Switch
+            id="ui-sounds"
+            className={MONOCHROME_SWITCH_CLASS}
+            checked={uiSounds}
+            onCheckedChange={(v) => setUiSounds(Boolean(v))}
           />
         </div>
         <div className="flex items-start justify-between gap-3">

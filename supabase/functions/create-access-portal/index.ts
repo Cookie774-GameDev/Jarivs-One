@@ -38,7 +38,7 @@
 // `import.meta.main` (as dynamic imports) so importing this module for tests
 // performs no fetch.
 
-import { json } from '../_shared/voice.ts';
+import { json, preflight } from '../_shared/voice.ts';
 
 const MAX_URL_LENGTH = 2048;
 
@@ -108,7 +108,7 @@ export async function handleAccessPortal(req, deps) {
   const origin = req.headers.get('origin');
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: json({}, 200, origin).headers });
+    return preflight(origin);
   }
   if (req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405, origin);

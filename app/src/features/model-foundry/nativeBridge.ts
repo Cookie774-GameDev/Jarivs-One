@@ -66,6 +66,8 @@ export interface FoundryNativeTrainingRequest {
     readonly method: 'lora' | 'qlora';
     readonly seed: number;
     readonly epochs: number;
+    /** Optional bounded step cap for short local runs and advanced workflows. */
+    readonly maxSteps?: number;
     readonly batchSize: number;
     readonly gradientAccumulation: number;
     readonly maxSequenceLength: number;
@@ -306,6 +308,10 @@ export async function startFoundryTraining(request: FoundryNativeTrainingRequest
       instructions: null,
       baseModelId: request.modelId,
       method: request.trainingConfig.method,
+      epochs: request.trainingConfig.epochs,
+      ...(request.trainingConfig.maxSteps === undefined
+        ? {}
+        : { maxSteps: request.trainingConfig.maxSteps }),
       sourcePaths: [],
       datasetJsonl,
       datasetManifestHash: request.datasetManifestHash,

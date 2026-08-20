@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "vibespace-ai-news",
-  "main": "src/free.ts",
+  "main": "src/intelligence.ts",
   "compatibility_date": "2026-08-10",
   "workers_dev": true,
   "observability": {

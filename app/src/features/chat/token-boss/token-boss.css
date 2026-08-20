@@ -1,14 +1,25 @@
 .token-boss-cinematic {
   --token-boss-accent: #73e7ed;
   --token-boss-accent-2: #f0b66d;
-  position: absolute;
-  inset: 0;
-  z-index: 48;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  /* Above composer (z 5), origami decor (z 3), and welcome (z 3). */
+  z-index: 90 !important;
   overflow: hidden;
   color: #edf7f7;
   background: #080605;
   isolation: isolate;
   pointer-events: none;
+}
+
+/* Origami crane/axolotl is position:fixed z-index 3 and paints over the canvas. */
+[data-vibespace-page='chat']:has(.token-boss-cinematic:not([hidden])) > .origami-chat-decor,
+[data-vibespace-page='chat']:has(.token-boss-cinematic:not([hidden])) > .warm-chat-welcome {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  z-index: 0 !important;
 }
 
 .token-boss-cinematic canvas {
@@ -73,15 +84,15 @@
 
 /* Compact / pet mini-panel: fill chat thread host (not a floating card). */
 .token-boss-cinematic--compact {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
   border-radius: 0.55rem;
   /* No transform scale — canvas already resizes to the host box. */
   transform: none;
   pointer-events: none;
-  z-index: 30;
+  z-index: 90 !important;
 }
 
 .token-boss-cinematic--compact .token-boss-cinematic__caption {
@@ -106,6 +117,7 @@
 
 /* Chat canvas + thread host are the absolute containing blocks */
 [data-pet-chat-workspace='true'],
-[data-pet-chat-thread-host='true'] {
+[data-pet-chat-thread-host='true'],
+[data-token-boss-host='true'] {
   position: relative;
 }

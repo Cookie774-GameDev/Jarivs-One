@@ -9,6 +9,17 @@ import {
 } from './renderer';
 import './token-boss.css';
 
+const TOKEN_BOSS_HOST_SELECTOR =
+  '[data-token-boss-host="true"], [data-vibespace-page="chat"], [data-pet-chat-workspace="true"]';
+
+const TOKEN_BOSS_OVERLAY_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  zIndex: 90,
+};
+
 interface Playback {
   request: TokenBossRequest;
   provider: TokenBossProvider;
@@ -69,6 +80,7 @@ export function TokenBossCinematic({
 }) {
   const [playback, setPlayback] = React.useState<Playback | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const hostAnchorRef = React.useRef<HTMLSpanElement>(null);
   const frameRef = React.useRef(0);
   const playbackRef = React.useRef<Playback | null>(null);
   const cleanupAudioRef = React.useRef<() => void>(() => undefined);
@@ -87,6 +99,11 @@ export function TokenBossCinematic({
     const onRequest = (event: Event) => {
       const request = (event as CustomEvent<TokenBossRequest>).detail;
       if (!request || request.chatId !== chatId || playbackRef.current) return;
+      if (request.restoreFocus) {
+        const focusHost = request.restoreFocus.closest(TOKEN_BOSS_HOST_SELECTOR);
+        const myHost = hostAnchorRef.current?.closest(TOKEN_BOSS_HOST_SELECTOR);
+        if (focusHost && myHost && focusHost !== myHost) return;
+      }
       const next = { request, provider: getTokenBossProvider(request.providerId) };
       playbackRef.current = next;
       setPlayback(next);
@@ -123,6 +140,10 @@ export function TokenBossCinematic({
       context.imageSmoothingEnabled = false;
     };
     resize();
+    window.requestAnimationFrame(resize);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => resize());
+    resizeObserver?.observe(canvas);
 
     if (playback.request.allowAudio && !reduced) {
       cleanupAudioRef.current = scheduleImpactAudio(playback.provider);
@@ -162,6 +183,7 @@ export function TokenBossCinematic({
       window.cancelAnimationFrame(frameRef.current);
       cleanupAudioRef.current();
       cleanupAudioRef.current = () => undefined;
+      resizeObserver?.disconnect();
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
@@ -170,37 +192,42 @@ export function TokenBossCinematic({
 
   React.useEffect(() => stop, [stop]);
 
-  if (!playback) return null;
   return (
-    <div
-      className={
-        compact ? 'token-boss-cinematic token-boss-cinematic--compact' : 'token-boss-cinematic'
-      }
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${playback.provider.name} Token Boss cinematic`}
-      data-provider={playback.provider.id}
-      data-token-boss-compact={compact ? 'true' : undefined}
-      style={
-        {
-          '--token-boss-accent': playback.provider.accent,
-          '--token-boss-accent-2': playback.provider.accent2,
-        } as React.CSSProperties
-      }
-    >
-      <canvas ref={canvasRef} aria-hidden />
-      <div className="token-boss-cinematic__caption">
-        <strong>{playback.provider.name} token</strong>
-        <span>{playback.provider.tagline}</span>
-      </div>
-      <span className="token-boss-cinematic__skip">
-        {compact ? 'ESC · SKIP' : 'ESC TO SKIP · 4.72S'}
-      </span>
-      <span className="sr-only" role="status" aria-live="polite">
-        {playback.provider.name} Token Boss cinematic started. The visual usage meter does not
-        change real usage or billing.
-      </span>
-    </div>
+    <>
+      <span ref={hostAnchorRef} data-token-boss-anchor hidden />
+      {playback ? (
+        <div
+          className={
+            compact ? 'token-boss-cinematic token-boss-cinematic--compact' : 'token-boss-cinematic'
+          }
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${playback.provider.name} Token Boss cinematic`}
+          data-provider={playback.provider.id}
+          data-token-boss-compact={compact ? 'true' : undefined}
+          style={
+            {
+              ...TOKEN_BOSS_OVERLAY_STYLE,
+              '--token-boss-accent': playback.provider.accent,
+              '--token-boss-accent-2': playback.provider.accent2,
+            } as React.CSSProperties
+          }
+        >
+          <canvas ref={canvasRef} aria-hidden />
+          <div className="token-boss-cinematic__caption">
+            <strong>{playback.provider.name} token</strong>
+            <span>{playback.provider.tagline}</span>
+          </div>
+          <span className="token-boss-cinematic__skip">
+            {compact ? 'ESC · SKIP' : 'ESC TO SKIP · 4.72S'}
+          </span>
+          <span className="sr-only" role="status" aria-live="polite">
+            {playback.provider.name} Token Boss cinematic started. The visual usage meter does not
+            change real usage or billing.
+          </span>
+        </div>
+      ) : null}
+    </>
   );
 }
 

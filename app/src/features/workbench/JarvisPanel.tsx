@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Plus } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ChatThread, Composer, EmptyChat, ensureActiveChat } from '@/features/chat';
+import { TokenBossCinematic } from '@/features/chat/token-boss/TokenBossCinematic';
 import { toast } from '@/components/ui/toast';
 import { db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
@@ -146,9 +147,10 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
         </button>
       </div>
       {activeChatId ? (
-        <div className="workbench-jarvis-body">
+        <div className="workbench-jarvis-body relative min-h-0" data-token-boss-host="true">
           <ChatThread chatId={activeChatId} compact />
           <Composer chatId={activeChatId} compact disableRouteSlashCommands />
+          <TokenBossCinematic chatId={String(activeChatId)} compact />
         </div>
       ) : ensuring || creating ? (
         <div className="workbench-panel-empty">

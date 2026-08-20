@@ -14,6 +14,7 @@ import {
   useUIStore,
   type DoneNotificationKey,
 } from '@/stores/ui';
+import { playUiSound } from '@/lib/sfx';
 
 /** Stable category order for Settings → Notifications. */
 export const DONE_NOTIFICATION_KEYS: readonly DoneNotificationKey[] = [
@@ -186,6 +187,8 @@ export async function notifyDone(
       }),
     );
   }
+
+  playUiSound('notification_complete');
 
   const result = await notify(resolvedTitle, body, {
     silent: notificationSilent(),

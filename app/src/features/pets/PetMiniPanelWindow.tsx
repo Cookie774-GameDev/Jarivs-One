@@ -8,6 +8,7 @@ import { PetMiniPanel } from './PetMiniPanel';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync } from './petSettingsStore';
+import { reassertPetOverlayTopmost } from './petTauriBridge';
 
 export interface PetMiniPanelWindowProps {
   runtimeEffectsEnabled?: boolean;
@@ -25,7 +26,13 @@ export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPane
     if (!runtimeEffectsEnabled) return;
     const uninstallPresentation = installPetPresentationStorageSync();
     const uninstallSettings = installPetSettingsStorageSync();
+    const recoverTopmost = () => {
+      void reassertPetOverlayTopmost().catch(() => undefined);
+    };
+    recoverTopmost();
+    const boot = window.setTimeout(recoverTopmost, 400);
     return () => {
+      window.clearTimeout(boot);
       uninstallPresentation();
       uninstallSettings();
     };

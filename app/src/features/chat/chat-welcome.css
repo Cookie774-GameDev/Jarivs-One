@@ -1,4 +1,6 @@
-html:not([data-theme='warm']) [data-vibespace-page='chat'] > :not(.warm-chat-welcome) {
+html:not([data-theme='warm'])
+  [data-vibespace-page='chat']
+  > :not(.warm-chat-welcome):not(.token-boss-cinematic) {
   position: relative;
   z-index: 2;
 }

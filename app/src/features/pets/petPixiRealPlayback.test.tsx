@@ -204,6 +204,17 @@ describe('PetOverlay StrictMode player lifecycle', () => {
     view.unmount();
   });
 
+  it('keeps transparent inline Pet pixels click-through while retaining a focused hit target', () => {
+    const view = render(<PetOverlay animationLevelOverride="off" />);
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+    const hitTarget = view.container.querySelector('[data-pet-hit-target="true"]') as HTMLElement;
+
+    expect(overlay.className).toContain('pointer-events-none');
+    expect(hitTarget).toBeTruthy();
+    expect(hitTarget.className).toContain('pointer-events-auto');
+    view.unmount();
+  });
+
   it('snaps an unlocked desktop Pet only after the drag ends', async () => {
     const view = render(<PetOverlay tauriWindowMode edgeSnapping />);
     await waitFor(() => {

@@ -121,10 +121,18 @@ export class OpenCodeTurnCoordinator {
       };
     }
 
-    const runtimeResolution = resolveRuntimeModelControls(
+    let runtimeResolution = resolveRuntimeModelControls(
       { effort: settings.effort, fastMode: settings.fastMode },
       input.selection.metadata,
     );
+    // Codex Spark (and similar) only expose medium. Token Final Boss / leftover
+    // /effort max must still send the selected model, not fail the Jarvis turn.
+    if (!runtimeResolution.ok && runtimeResolution.code === 'EFFORT_UNSUPPORTED') {
+      runtimeResolution = resolveRuntimeModelControls(
+        { effort: 'auto', fastMode: settings.fastMode },
+        input.selection.metadata,
+      );
+    }
     if (!runtimeResolution.ok) {
       return {
         kind: 'rejected',

@@ -28,5 +28,6 @@ describe('PetMiniPanelWindow MonoChrome appearance', () => {
     expect(source).toContain('AuthGate');
     expect(source).toContain('runtimeEffectsEnabled');
     expect(source).toContain('applyThemeToDocument');
+    expect(source).toContain('reassertPetOverlayTopmost');
   });
 });

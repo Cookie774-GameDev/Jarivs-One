@@ -3,11 +3,12 @@
 import * as React from 'react';
 import * as SwitchPrimitive from '@radix-ui/react-switch';
 import { cn } from '@/lib/utils';
+import { playUiSound } from '@/lib/sfx';
 
 export const Switch = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root>
->(({ className, ...props }, ref) => (
+>(({ className, onCheckedChange, ...props }, ref) => (
   <SwitchPrimitive.Root
     ref={ref}
     className={cn(
@@ -17,6 +18,10 @@ export const Switch = React.forwardRef<
       'data-[state=checked]:bg-accent-cyan data-[state=unchecked]:bg-muted',
       className,
     )}
+    onCheckedChange={(checked) => {
+      playUiSound(checked ? 'ui_toggle' : 'ui_toggle_release');
+      onCheckedChange?.(checked);
+    }}
     {...props}
   >
     <SwitchPrimitive.Thumb

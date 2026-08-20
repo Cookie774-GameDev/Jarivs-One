@@ -228,7 +228,7 @@ html[data-theme='vibespace']
 html[data-theme='vibespace']
   body:has(main[aria-label='Workspace'] [data-vibespace-page='chat'])
   [data-vibespace-page='chat']
-  > :not(.origami-chat-decor) {
+  > :not(.origami-chat-decor):not(.token-boss-cinematic) {
   position: relative;
   z-index: 2;
 }

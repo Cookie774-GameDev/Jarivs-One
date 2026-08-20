@@ -40,6 +40,7 @@ import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { askAssistantAboutLabel, useAssistantPersonaName } from '@/lib/assistantPersona';
 import { ChatThread, Composer } from '@/features/chat';
+import { TokenBossCinematic } from '@/features/chat/token-boss/TokenBossCinematic';
 import { EmptyChat } from '@/features/chat/EmptyChat';
 // `useTodayEvents` exists on the V2 schedule hooks (added by the parallel
 // agent) but isn't re-exported from `@/features/schedule` yet. Import the
@@ -497,7 +498,10 @@ export function Inspector() {
                   </Button>
                 </div>
                 <TooltipProvider delayDuration={400}>
-                  <div className="flex-1 min-h-0 flex flex-col bg-background overflow-x-hidden w-full min-w-0">
+                  <div
+                    className="flex-1 min-h-0 flex flex-col bg-background overflow-x-hidden w-full min-w-0 relative"
+                    data-token-boss-host="true"
+                  >
                     {inspectorChatId ? (
                       <>
                         <ChatThread chatId={inspectorChatId} compact />
@@ -507,6 +511,7 @@ export function Inspector() {
                           disableRouteSlashCommands
                           placeholder={`${askAssistantAboutLabel('this project', assistantName)}...`}
                         />
+                        <TokenBossCinematic chatId={String(inspectorChatId)} compact />
                       </>
                     ) : (
                       <div className="flex-1 overflow-auto">

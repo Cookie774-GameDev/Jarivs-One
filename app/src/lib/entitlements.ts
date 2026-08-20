@@ -42,7 +42,6 @@ import {
   GLOBAL_DICTATION_LINE,
   PHONE_MINUTES_BY_PLAN,
   SCALE_5K_PAID_PROMO_LINE,
-  SPARK_NO_FREE_CREDIT_LINE,
   SPARK_PHASE2_HEADLINE,
   UNLIMITED_LOCAL_KOKORO_LINE,
 } from '@/lib/callVoiceMarketing';
@@ -64,7 +63,7 @@ export interface PlanDef {
   id: PlanId;
   /** Display label used as card title. */
   label: string;
-  /** Sticker price in USD. `0` for the free tier. */
+  /** Customer-facing total monthly package price in USD (Access + selected add-on). */
   priceUsd: number;
   /** Short tagline shown under the title. */
   tagline: string;
@@ -101,15 +100,15 @@ export interface PlanDef {
 const FREE: PlanDef = {
   id: 'free',
   label: 'Spark',
-  priceUsd: 0,
-  tagline: 'Your launchpad · bring your own keys',
+  priceUsd: 20,
+  tagline: 'VibeSpace Access · local-first launchpad',
   features: [
+    '1,000 shared company credits / mo (one fungible hosted-service pool)',
     'Free Gemini 2.5 Flash Lite via Google AI Studio (no card)',
     'Every BYOK provider works: Groq, Anthropic, OpenAI, OpenRouter, Together',
     UNLIMITED_LOCAL_KOKORO_LINE,
     FOUNDER_REWARD_HEADLINE,
     FOUNDER_WELCOME_TRY_LINE,
-    SPARK_NO_FREE_CREDIT_LINE,
     SPARK_PHASE2_HEADLINE,
     GLOBAL_DICTATION_LINE,
     'Custom tools (local), terminal swarm, wellness break',
@@ -127,11 +126,11 @@ const FREE: PlanDef = {
 const STARTER: PlanDef = {
   id: 'starter',
   label: 'Orbit',
-  priceUsd: 10,
-  tagline: 'Voice & sync · zero friction',
+  priceUsd: 30,
+  tagline: '$20 Access + $10 Orbit add-on',
   features: [
-    'Everything in Free',
-    '~3,300 shared company credits / mo (DeepSeek + phone + SMS)',
+    'Everything in Spark',
+    '5,500 shared company credits / mo (one fungible hosted-service pool)',
     callVoiceBucketLine('starter')!,
     UNLIMITED_LOCAL_KOKORO_LINE,
     GLOBAL_DICTATION_LINE,
@@ -152,11 +151,11 @@ const STARTER: PlanDef = {
 const PRO: PlanDef = {
   id: 'pro',
   label: 'Nova',
-  priceUsd: 50,
-  tagline: 'Premium firepower · every frontier model',
+  priceUsd: 70,
+  tagline: '$20 Access + $50 Nova add-on',
   features: [
     'Everything in Orbit',
-    '~16,500 shared company credits / mo (DeepSeek + phone + SMS)',
+    '27,500 shared company credits / mo (one fungible hosted-service pool)',
     callVoiceBucketLine('pro')!,
     UNLIMITED_LOCAL_KOKORO_LINE,
     GLOBAL_DICTATION_LINE,
@@ -183,11 +182,11 @@ const PRO: PlanDef = {
 const ULTRA: PlanDef = {
   id: 'ultra',
   label: 'Singularity',
-  priceUsd: 100,
-  tagline: 'Beyond limits · the entire universe unlocked',
+  priceUsd: 120,
+  tagline: '$20 Access + $100 Singularity add-on',
   features: [
     'Everything in Nova',
-    '~33,000 shared company credits / mo (DeepSeek + phone + SMS)',
+    '55,000 shared company credits / mo (one fungible hosted-service pool)',
     callVoiceBucketLine('ultra')!,
     UNLIMITED_LOCAL_KOKORO_LINE,
     GLOBAL_DICTATION_LINE,

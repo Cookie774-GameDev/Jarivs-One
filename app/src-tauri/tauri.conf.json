@@ -23,12 +23,12 @@
         "decorations": true,
         "resizable": true,
         "transparent": false,
-        "additionalBrowserArgs": "--js-flags=--max-old-space-size=3072"
+        "additionalBrowserArgs": "--js-flags=--max-old-space-size=1536"
       },
       {
         "label": "cold-start-intro",
         "title": "VibeSpace",
-        "url": "index.html?view=cold-start-intro",
+        "url": "cold-start-intro.html",
         "width": 1280,
         "height": 720,
         "resizable": false,
@@ -39,7 +39,8 @@
         "skipTaskbar": true,
         "visible": false,
         "center": true,
-        "focus": true
+        "focus": true,
+        "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required"
       },
       {
         "label": "dictation",

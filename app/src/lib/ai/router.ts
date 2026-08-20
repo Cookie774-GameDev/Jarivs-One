@@ -388,16 +388,12 @@ async function executePersistentOpenCode(
   if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
   const connection = openCodeGatewayConnection(selection);
   if (!openCodePersistentAdapter.send) throw new Error('Persistent OpenCode transport is unavailable.');
-  const detection = openCodePersistentAdapter.detect
-    ? await openCodePersistentAdapter.detect()
-    : { status: 'unavailable' as const };
-  if (detection.status !== 'available') throw new Error('Persistent OpenCode is unavailable.');
-  const auth = openCodePersistentAdapter.probeAuth
-    ? await openCodePersistentAdapter.probeAuth(connection)
-    : { status: 'unknown' as const };
-  if (auth.status === 'unauthenticated') throw new Error('OpenCode is signed out.');
-  if (auth.status !== 'authenticated') {
-    throw new Error('OpenCode authentication could not be verified.');
+  // Do not CLI-probe version or await auth on the send path. Those probes add
+  // seconds of delay and a flaky `unknown` result used to fail the Jarvis turn
+  // before OpenCode was asked. Kick a background probe for UI state. Real
+  // sign-out still fail-closes from the persistent session (401 / refresh).
+  if (openCodePersistentAdapter.probeAuth) {
+    void openCodePersistentAdapter.probeAuth(connection);
   }
 
   const requestId = req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`;

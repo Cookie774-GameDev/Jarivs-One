@@ -60,6 +60,7 @@ describe('chat model catalog', () => {
     expect(defaultModelForProvider('qwen')).toBe('qwen3.7-plus');
     expect(ids).toEqual(
       expect.arrayContaining([
+        'qwen3.8-max',
         'qwen3.7-max',
         'qwen3.7-max-2026-06-08',
         'qwen3.7-plus',

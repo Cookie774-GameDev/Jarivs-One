@@ -8,7 +8,7 @@ import { petPanelUiScale } from './petPanelPreferences';
 
 export type PetPanelUiValue = Readonly<{
   density: PetPanelDensity;
-  /** Continuous UI scale in [0.65, 1]. */
+  /** Continuous UI scale in [0.62, 1.45]. */
   scale: number;
   width: number;
   height: number;

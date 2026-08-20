@@ -2314,3 +2314,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Task 21C verification contract** | Follow frozen RED/GREEN TDD for dual browser/native opt-in, exact main-window/profile/PID/loopback/nonce attestation, pinned no-path STT fixture, deterministic real-path scenarios, sanitized evidence IDs, provider/CLI parity, safe process-tree containment and cleanup, production omission, exact focused TypeScript/Rust suites, full typecheck, exact 43-file manifest and security gates, isolated profile/unused-port smoke where locally actionable, and bounded review.                                        |
 | **Delegation/model rule**          | Use only the minimum sufficient bounded subagents. Every new Task 21C delegate must be explicitly dispatched with `gpt-5.6-sol` and `high`; architecture-sensitive integration remains coordinator-owned.                                                                                                                                                                                                                                                                                                                  |
 | **Protected state**                | The unrelated `install/install.ps1` deletion remains untouched and unstaged. `grok-workbench-pr25-v2`, the existing VibeSpace localhost/profile, unrelated worktrees/processes, production state, live Stripe, real credentials, and real user data remain untouched. Task 21C uses a new isolated profile, unused loopback port, and test-only provider paths.                                                                                                                                                            |
+
+## 2026-08-20 - PR31 SiYuan + OpenCode + RLM complete execution bootstrap
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 CT |
+| **Agent / task** | `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-SIYUAN-OPENCODE-RLM-COMPLETE` |
+| **Branch / base** | `integration/UnifiedChungus-final` at `0ed01de9dc64561d27689b0649ecc808e7e1fe74`; upstream `origin/UnifiedChungus` |
+| **Plan** | Preserve the inherited dirty handoff in an explicit checkpoint commit, then execute the owner-supplied 13-document SiYuan + OpenCode + RLM package in its mandatory order, including the 500 MB fixture, five scored native tests with Test 5 last, and two clean final native passes. |
+| **Initial ownership** | Repository-wide read/audit authority; preservation-only commit of the exact inherited dirty manifest; this coordination row and `.agent-coordination.lock/owner.txt`. Exact product write scopes will be appended before implementation edits and split into non-overlapping lead/subagent lanes. |
+| **Safety** | No reset, stash, clean, force-push, branch switch, production mutation, secret exposure, or overwrite of other worktrees/locks/processes. Existing uncommitted files are preserved without claiming original authorship. |
+| **Status** | `BOOTSTRAPPING` |
+| **Next action** | Commit the exact inherited dirty state as a recovery checkpoint, establish baselines and current official provenance, then begin SiYuan Phase 0/1. |

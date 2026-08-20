@@ -19,7 +19,7 @@
 // access decisions fail closed with zero billable effects. The authoritative
 // prelaunch decision remains usable for development builds per migration 0032.
 
-import { json } from '../_shared/voice.ts';
+import { json, preflight } from '../_shared/voice.ts';
 import { estimateCallCostUsd, MAX_CALL_SECONDS } from '../_shared/budget.ts';
 import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
 import { resolveServerAppVersion } from '../_shared/appVersion.ts';
@@ -92,7 +92,7 @@ export async function handleCallStart(deps: HandlerDeps, req: Request): Promise<
 
   // CORS preflight.
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: json({}, 200, origin).headers });
+    return preflight(origin);
   }
   if (req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405, origin);

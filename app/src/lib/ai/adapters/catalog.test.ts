@@ -305,7 +305,7 @@ describe('provider capability catalog', () => {
     });
   });
 
-  it('publishes a frozen current model catalog only for the Codex subscription connection', () => {
+  it('publishes a frozen current model catalog for Codex plus always-on OpenCode models', () => {
     expect(CONNECTION_MODEL_OPTIONS['openai-codex']?.map((option) => option.id)).toEqual([
       'gpt-5.3-codex-spark',
       'gpt-5.3-codex',
@@ -325,8 +325,13 @@ describe('provider capability catalog', () => {
       label: 'GPT-5.3 Codex Spark',
       contextWindowTokens: 128_000,
     });
+    expect(CONNECTION_MODEL_OPTIONS['opencode-cli']?.map((option) => option.id)).toEqual([
+      'deepseek/deepseek-v4-flash',
+      'qwen/qwen3.8-max',
+    ]);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['openai-codex'])).toBe(true);
+    expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['opencode-cli'])).toBe(true);
     expect(
       CONNECTION_MODEL_OPTIONS['openai-codex']?.every((option) => Object.isFrozen(option)),
     ).toBe(true);

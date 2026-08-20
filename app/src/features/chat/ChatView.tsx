@@ -84,6 +84,7 @@ export function ChatView() {
     <TooltipProvider delayDuration={400}>
       <div
         data-vibespace-page="chat"
+        data-token-boss-host="true"
         data-monochrome-surface="chat"
         data-sakura-surface="chat-route"
         data-terminal-drop={activeChatId ? 'chat' : undefined}

@@ -114,16 +114,45 @@ export function ColdStartIntroView() {
     const video = videoRef.current;
     if (!video) return;
 
+    const waitForCanPlay = () =>
+      new Promise<void>((resolve) => {
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          resolve();
+          return;
+        }
+        const done = () => {
+          video.removeEventListener('canplay', done);
+          video.removeEventListener('loadeddata', done);
+          resolve();
+        };
+        video.addEventListener('canplay', done, { once: true });
+        video.addEventListener('loadeddata', done, { once: true });
+        window.setTimeout(done, 400);
+      });
+
+    const playWithAudio = async () => {
+      video.currentTime = 0;
+      // WebView2 often blocks unmuted autoplay. Start muted so the picture
+      // is guaranteed, then restore authored audio immediately.
+      video.muted = true;
+      await video.play();
+      video.muted = false;
+    };
+
     const play = async () => {
       try {
-        video.currentTime = 0;
-        await video.play();
+        await playWithAudio();
       } catch (err) {
-        console.warn('[cold-start-intro] autoplay/play failed:', err);
-        setFailed(true);
-        window.setTimeout(() => {
-          void finish('failed');
-        }, COLD_START_INTRO_FAILURE_HOLD_MS);
+        try {
+          await waitForCanPlay();
+          await playWithAudio();
+        } catch (retryErr) {
+          console.warn('[cold-start-intro] autoplay/play failed:', retryErr ?? err);
+          setFailed(true);
+          window.setTimeout(() => {
+            void finish('failed');
+          }, COLD_START_INTRO_FAILURE_HOLD_MS);
+        }
       }
     };
 

@@ -655,14 +655,38 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
     .sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
 }
 
-function modelMetadata(model: OpenCodeLiveModel): LiveModelRuntimeMetadata {
+function modelMetadata(
+  model: OpenCodeLiveModel,
+  connectionId: string,
+): LiveModelRuntimeMetadata {
   return {
-    connectionId: 'opencode-cli',
+    connectionId,
     modelId: model.id,
     variants: model.variants,
     supportsIndependentReasoningEffort: model.supportsIndependentReasoningEffort,
     serviceTiers: model.serviceTiers,
     supportsOpenCodeFastMode: model.supportsOpenCodeFastMode,
+  };
+}
+
+function sameLiveModelId(candidateId: string, requestedId: string): boolean {
+  const left = candidateId.trim().toLocaleLowerCase('en-US');
+  const right = requestedId.trim().toLocaleLowerCase('en-US');
+  if (left === right) return true;
+  const local = (value: string) => (value.includes('/') ? value.slice(value.lastIndexOf('/') + 1) : value);
+  return local(left) === local(right) && local(left).length > 0;
+}
+
+function trustedLiveModel(modelId: string): OpenCodeLiveModel {
+  const providerId = modelId.includes('/') ? modelId.slice(0, modelId.indexOf('/')) : 'openai';
+  return {
+    id: modelId.includes('/') ? modelId : `${providerId}/${modelId}`,
+    label: modelId,
+    providerId,
+    variants: [],
+    supportsIndependentReasoningEffort: false,
+    serviceTiers: [],
+    supportsOpenCodeFastMode: false,
   };
 }
 
@@ -945,10 +969,14 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
   try {
     const session = await sessions.sessionForChat(scope, chatId);
     const client = session.client as PersistentOpenCodeClient;
-    const models = await liveModels(scope);
-    const liveModel = models.find((candidate) => candidate.id.toLocaleLowerCase('en-US') === modelId.toLocaleLowerCase('en-US'));
-    if (!liveModel) throw new Error(`OpenCode model “${modelId}” is not present in the live authenticated catalog.`);
-    const providerId = upstreamProviderId(modelId);
+    // Never block the first token on a full /config/providers scan. Refresh in
+    // the background; send the user-selected model immediately if the cache
+    // does not yet list it (OpenCode still rejects a truly missing model).
+    void liveModels(scope);
+    const liveModel =
+      (modelCache?.models ?? []).find((candidate) => sameLiveModelId(candidate.id, modelId)) ??
+      trustedLiveModel(modelId);
+    const providerId = upstreamProviderId(liveModel.id);
     const mode = request.interactionMode ?? 'agent';
     const access = request.accessLevel ?? (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
     const eventIterator = client.http.events(abortEvents.signal)[Symbol.asyncIterator]();
@@ -963,7 +991,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         connectionId: request.connection.id,
         providerId,
         modelId,
-        metadata: modelMetadata(liveModel),
+        metadata: modelMetadata(liveModel, request.connection.id),
       },
       policy: {
         mode,

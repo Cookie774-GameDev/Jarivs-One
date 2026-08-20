@@ -15,7 +15,7 @@ import {
   type PipelineRunResult,
 } from './runtime';
 
-export const ARTIFICIAL_ANALYSIS_API_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
+export const ARTIFICIAL_ANALYSIS_API_URL = 'https://artificialanalysis.ai/api/v2/language/models/free';
 export const ARTIFICIAL_ANALYSIS_SOURCE_URL = 'https://artificialanalysis.ai/leaderboards/models';
 export const ARTIFICIAL_ANALYSIS_METRIC = 'Artificial Analysis Intelligence Index' as const;
 
@@ -50,6 +50,7 @@ export interface ParsedBenchmarkDataset {
   sourceObservedAt: string;
   rows: BenchmarkModelRowV2[];
   checksum: string;
+  skippedRows: number;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -252,27 +253,32 @@ function rowFrom(sourceModel: UnknownRecord, variant: UnknownRecord): Omit<Bench
     outputTokensPerSecond: nonNegative(values, [
       'median_output_tokens_per_second',
       'output_tokens_per_second',
+      'performance.median_output_tokens_per_second',
       'performance.output_tokens_per_second',
       'speed.output_tokens_per_second',
     ]),
     timeToFirstTokenSeconds: nonNegative(values, [
       'median_time_to_first_token_seconds',
       'time_to_first_token_seconds',
+      'performance.median_time_to_first_token_seconds',
       'performance.time_to_first_token_seconds',
       'latency.time_to_first_token_seconds',
     ]),
     endToEndSeconds: nonNegative(values, [
       'median_end_to_end_seconds',
       'end_to_end_seconds',
+      'performance.median_end_to_end_response_time_seconds',
       'performance.end_to_end_seconds',
     ]),
     inputPricePer1MTokensUsd,
     outputPricePer1MTokensUsd,
     cacheWritePricePer1MUsd: nonNegative(values, [
+      'pricing.price_1m_cache_write_tokens',
       'pricing.cache_write_price_per_1m_tokens',
       'cache_write_price_per_1m_tokens',
     ]),
     cacheHitPricePer1MUsd: nonNegative(values, [
+      'pricing.price_1m_cache_hit_tokens',
       'pricing.cache_hit_price_per_1m_tokens',
       'pricing.cached_input_price_per_1m_tokens',
       'cache_hit_price_per_1m_tokens',
@@ -281,6 +287,7 @@ function rowFrom(sourceModel: UnknownRecord, variant: UnknownRecord): Omit<Bench
       'cost_per_task_usd',
       'evaluations.cost_per_task_usd',
       'pricing.cost_per_task_usd',
+      'artificial_analysis_intelligence_index_cost.cost_per_task.total_cost',
     ]),
     contextWindowTokens: nonNegative(values, [
       'context_window_tokens',
@@ -346,16 +353,25 @@ export async function parseArtificialAnalysisPayload(
 ): Promise<ParsedBenchmarkDataset> {
   const root = record(payload);
   const flattened: Array<Omit<BenchmarkModelRowV2, 'rank'> & { explicitRank?: number }> = [];
+  let skippedRows = 0;
   for (const rawModel of modelArray(payload)) {
     const sourceModel = record(rawModel);
     if (!sourceModel) throw new PipelineError('AA_ROW_MALFORMED', 'Artificial Analysis model row was not an object.');
     for (const variant of nestedVariants(sourceModel)) {
-      const normalized = rowFrom(sourceModel, variant);
-      const explicitRank = numberValue([variant, sourceModel], ['rank', 'ranking', 'intelligence_rank']);
-      flattened.push({
-        ...normalized,
-        ...(explicitRank && Number.isInteger(explicitRank) && explicitRank >= 1 ? { explicitRank } : {}),
-      });
+      try {
+        const normalized = rowFrom(sourceModel, variant);
+        const explicitRank = numberValue([variant, sourceModel], ['rank', 'ranking', 'intelligence_rank']);
+        flattened.push({
+          ...normalized,
+          ...(explicitRank && Number.isInteger(explicitRank) && explicitRank >= 1 ? { explicitRank } : {}),
+        });
+      } catch (error) {
+        if (error instanceof PipelineError && error.code === 'AA_ROW_MISSING_REQUIRED_FIELD') {
+          skippedRows += 1;
+          continue;
+        }
+        throw error;
+      }
     }
   }
 
@@ -392,6 +408,7 @@ export async function parseArtificialAnalysisPayload(
       'methodology.version',
       'metadata.methodology_version',
       'meta.methodology_version',
+      'intelligence_index_version',
       'version',
     ]) ?? 'not-exposed-by-api-v2';
   const checksum = await sha256(
@@ -418,6 +435,7 @@ export async function parseArtificialAnalysisPayload(
     sourceObservedAt,
     rows,
     checksum,
+    skippedRows,
   };
 }
 
@@ -587,6 +605,7 @@ export async function runBenchmarkIngestion(
         checksum: dataset.checksum,
         sourceObservedAt: dataset.sourceObservedAt,
         methodologyVersion: dataset.methodologyVersion,
+        skippedRows: dataset.skippedRows,
         topRow: dataset.rows[0]
           ? {
               id: dataset.rows[0].id,

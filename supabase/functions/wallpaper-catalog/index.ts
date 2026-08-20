@@ -2,7 +2,7 @@
 // wallpaper-catalog: returns active wallpaper metadata (no permanent full-file URLs).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
-import { json } from '../_shared/voice.ts';
+import { json, preflight } from '../_shared/voice.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -10,7 +10,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return new Response(null, { headers: { ...json({}, 200, origin).headers } });
+  if (req.method === 'OPTIONS') return preflight(origin);
   if (req.method !== 'GET' && req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405, origin);
   }

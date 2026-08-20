@@ -110,7 +110,7 @@ export function parseEventInput(input: string, ref: Date = new Date()): ParsedEv
   // ---- Date phrases ----
   const todayMatch = /\btoday\b/i.exec(working);
   const tomorrowMatch = /\btomorrow\b/i.exec(working);
-  const weekdayMatch = /\b(?:on\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|thu|thurs|fri|sat)\b/i.exec(working);
+  const weekdayMatch = /\b(?:(?:on|next)\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|thu|thurs|fri|sat)\b/i.exec(working);
   const isoDateMatch = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(working);
   const usDateMatch = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/.exec(working);
   const monthDayMatch = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+(\d{1,2})\b/i.exec(working);
@@ -154,7 +154,7 @@ export function parseEventInput(input: string, ref: Date = new Date()): ParsedEv
   // ---- Time phrases ----
   const atMatch = /\bat\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i.exec(working);
   const looseTimeMatch = /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i.exec(working);
-  const time24Match = /\b(\d{2}):(\d{2})\b/.exec(working);
+  const time24Match = /\b(\d{1,2}):(\d{2})\b/.exec(working);
 
   if (atMatch) {
     const t = parseTime(atMatch[1]);
@@ -182,7 +182,9 @@ export function parseEventInput(input: string, ref: Date = new Date()): ParsedEv
 
   // Default time if nothing parsed: next round hour from `ref`.
   if (allDay && (todayMatch || tomorrowMatch || weekdayMatch || isoDateMatch || usDateMatch || monthDayMatch)) {
-    // Date-only result — keep all-day.
+    // Date-only events are anchored to local midnight rather than inheriting
+    // the reference clock (which previously produced nearly-24h events).
+    date.setHours(0, 0, 0, 0);
   } else if (allDay) {
     // Couldn't parse anything date/time-ish; assume next hour from now.
     date = new Date(ref);

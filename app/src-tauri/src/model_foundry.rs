@@ -66,6 +66,10 @@ pub struct StartRequest {
     #[serde(default)]
     version: Option<u32>,
     #[serde(default)]
+    epochs: Option<u8>,
+    #[serde(default)]
+    max_steps: Option<u32>,
+    #[serde(default)]
     dataset_jsonl: Option<String>,
     #[serde(default)]
     dataset_manifest_hash: Option<String>,
@@ -634,6 +638,8 @@ fn process_weight(
         return;
     }
 
+    let epochs = request.epochs.unwrap_or(1);
+    let max_steps = request.max_steps;
     match crate::model_foundry_training::run_training_worker(
         &app,
         &job.id,
@@ -641,8 +647,8 @@ fn process_weight(
         &request.method,
         &dataset,
         &job_dir,
-        1,
-        1_000,
+        epochs,
+        max_steps,
         resume_checkpoint.as_deref(),
     ) {
         Ok(result) if !cancellation_path.exists() => {
@@ -708,6 +714,20 @@ pub fn model_foundry_start_training(
     let method = parsed_method(&request.method)?;
     if !allowed_model_for_method(&request.base_model_id, method) {
         return Err("The selected base model is not in the verified local catalog.".into());
+    }
+    if method == FoundryMethod::Weight {
+        if request
+            .epochs
+            .is_some_and(|value| !(1..=20).contains(&value))
+        {
+            return Err("Model Foundry epochs must be between 1 and 20.".into());
+        }
+        if request
+            .max_steps
+            .is_some_and(|value| !(1..=1_000_000).contains(&value))
+        {
+            return Err("Model Foundry max steps must be between 1 and 1000000.".into());
+        }
     }
     let inline_dataset = request
         .dataset_jsonl

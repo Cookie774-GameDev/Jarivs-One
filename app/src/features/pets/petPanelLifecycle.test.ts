@@ -87,12 +87,12 @@ describe('shouldShowStandalonePet (Axo + Glitch shared rule)', () => {
     expect(shouldShowStandalonePet(base)).toBe(true);
   });
 
-  it('keeps the pet visible when the panel open flag is set (Axo click path)', () => {
-    expect(shouldShowStandalonePet({ ...base, panelOpenFlag: true })).toBe(true);
+  it('hides the pet when the panel open flag is set (Axo click path)', () => {
+    expect(shouldShowStandalonePet({ ...base, panelOpenFlag: true })).toBe(false);
   });
 
-  it('keeps the pet visible when the Tauri panel is visible (Glitch click path)', () => {
-    expect(shouldShowStandalonePet({ ...base, panelVisible: true })).toBe(true);
+  it('hides the pet when the Tauri panel is visible (Glitch click path)', () => {
+    expect(shouldShowStandalonePet({ ...base, panelVisible: true })).toBe(false);
   });
 
   it('restores overlay after minimize/close (flags cleared)', () => {

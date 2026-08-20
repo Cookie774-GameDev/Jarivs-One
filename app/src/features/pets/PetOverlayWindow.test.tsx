@@ -98,4 +98,28 @@ describe('PetOverlayWindow transparency shell', () => {
 
     root.remove();
   });
+
+  it('reasserts topmost even when the overlay webview reports hidden/occluded', async () => {
+    const { reassertPetOverlayTopmost } = await import('./petTauriBridge');
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+
+    render(<PetOverlayWindow />, { container: root });
+
+    await waitFor(() => {
+      expect(reassertPetOverlayTopmost).toHaveBeenCalled();
+    });
+
+    root.remove();
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    });
+  });
 });

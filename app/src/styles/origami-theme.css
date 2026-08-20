@@ -245,7 +245,7 @@ html[data-theme='origami'] [data-vibespace-page='chat'] {
     linear-gradient(180deg, var(--origami-paper), #eee6dc);
 }
 
-html[data-theme='origami'] [data-vibespace-page='chat'] > :not(.origami-chat-decor) {
+html[data-theme='origami'] [data-vibespace-page='chat'] > :not(.origami-chat-decor):not(.token-boss-cinematic) {
   position: relative;
   z-index: 2;
 }

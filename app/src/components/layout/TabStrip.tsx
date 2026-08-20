@@ -253,6 +253,8 @@ export function TabStrip() {
       if (browserClose === 'cancelled') return;
       try {
         await chatRepo.delete(id);
+        const { playUiSound } = await import('@/lib/sfx');
+        playUiSound('trash_delete');
       } catch (err) {
         toast.error('Could not close tab', err instanceof Error ? err.message : 'Try again.');
         return;

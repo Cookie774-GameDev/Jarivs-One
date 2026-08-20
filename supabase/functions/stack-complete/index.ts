@@ -3,7 +3,7 @@
 // Auth ΓåÆ plan budget reserve ΓåÆ provider allowlist ΓåÆ stream SSE to client.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
-import { json } from '../_shared/voice.ts';
+import { corsHeaders, json, preflight } from '../_shared/voice.ts';
 import {
   estimateMessageCostUsd,
   MAX_PROMPT_CHARS,
@@ -172,7 +172,7 @@ async function streamOpenAICompatible(
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return new Response(null, { headers: json({}, 200, origin).headers });
+  if (req.method === 'OPTIONS') return preflight(origin);
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
 
   const jwt = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
@@ -278,7 +278,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response(stream, {
       status: 200,
       headers: {
-        ...json({}, 200, origin).headers,
+        ...corsHeaders(origin),
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
       },

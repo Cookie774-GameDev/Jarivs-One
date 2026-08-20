@@ -169,19 +169,20 @@
 }
 
 [data-pet-mini-panel='true'] .pet-panel-header-row {
-  min-height: calc(2rem * var(--pet-ui-scale, 1));
-  padding-block: var(--pet-space-1);
-  gap: var(--pet-space-1);
+  min-height: calc(2rem * var(--pet-ui-scale, 1)) !important;
+  padding-block: var(--pet-space-1) !important;
+  padding-inline: calc(0.5rem * var(--pet-ui-scale, 1)) !important;
+  gap: var(--pet-space-1) !important;
 }
 
 [data-pet-mini-panel='true'] .pet-panel-nav-button {
-  height: var(--pet-control-h);
-  font-size: var(--pet-font-sm);
-  padding-inline: calc(0.45rem * var(--pet-ui-scale, 1));
+  height: var(--pet-control-h) !important;
+  font-size: var(--pet-font-sm) !important;
+  padding-inline: calc(0.45rem * var(--pet-ui-scale, 1)) !important;
 }
 
 [data-pet-mini-panel='true'] .pet-panel-nav-button svg,
-[data-pet-mini-panel='true'] .pet-panel-header-row button svg {
+[data-pet-mini-panel='true'] .pet-panel-header-row svg {
   width: var(--pet-icon) !important;
   height: var(--pet-icon) !important;
 }

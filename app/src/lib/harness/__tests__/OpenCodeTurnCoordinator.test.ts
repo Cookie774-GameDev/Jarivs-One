@@ -69,8 +69,15 @@ describe('OpenCodeTurnCoordinator', () => {
     }));
   });
 
-  it('fails unsupported controls before starting a session', async () => {
-    const sessions = { sessionForChat: vi.fn() } as unknown as OpenCodeSessionPool;
+  it('sends Codex Spark even when leftover max effort is unsupported', async () => {
+    const sendAsync = vi.fn(async () => undefined);
+    const sessions = {
+      sessionForChat: vi.fn(async () => ({
+        sessionId: 'session-spark',
+        runtimeGeneration: 'gen-1',
+        client: { sendAsync },
+      })),
+    } as unknown as OpenCodeSessionPool;
     const coordinator = new OpenCodeTurnCoordinator(sessions);
     const result = await coordinator.dispatch({
       scope: { accountId: 'account' },
@@ -78,12 +85,17 @@ describe('OpenCodeTurnCoordinator', () => {
       text: 'hello',
       settings: { effort: 'max', fastMode: 'off', performance: 'quality', rlmEnabled: true },
       selection: {
-        connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'spark',
-        metadata: { connectionId: 'openai-chatgpt-pro', modelId: 'spark', variants: [{ id: 'medium' }] },
+        connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'gpt-5.3-codex-spark',
+        metadata: {
+          connectionId: 'openai-chatgpt-pro',
+          modelId: 'gpt-5.3-codex-spark',
+          variants: [{ id: 'medium' }],
+        },
       },
       policy: { mode: 'ask', access: 'read-only', approveAllForRun: false, projectRoot: 'C:/project' },
     });
-    expect(result.kind).toBe('rejected');
-    expect(sessions.sessionForChat).not.toHaveBeenCalled();
+    expect(result.kind).toBe('dispatched');
+    expect(sessions.sessionForChat).toHaveBeenCalledOnce();
+    expect(sendAsync).toHaveBeenCalledOnce();
   });
 });

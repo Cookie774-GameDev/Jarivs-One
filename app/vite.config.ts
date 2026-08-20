@@ -187,7 +187,7 @@ export default defineConfig({
       : undefined,
     watch: {
       // tell vite to ignore watching `src-tauri`
-      ignored: ['**/src-tauri/**'],
+      ignored: ['**/src-tauri/**', '**/public/audio/**'],
     },
   },
 
@@ -208,12 +208,18 @@ export default defineConfig({
     // Terminals page (xterm + addons + our pane chrome) is the
     // remaining lazy-loaded outlier and lives well under the new bound.
     chunkSizeWarningLimit: 700,
-    rollupOptions: process.env.TAURI_ENV_DEBUG
-      ? { treeshake: false }
-      : {
-          output: {
-            manualChunks,
-          },
-        },
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        intro: path.resolve(__dirname, 'cold-start-intro.html'),
+      },
+      ...(process.env.TAURI_ENV_DEBUG
+        ? { treeshake: false }
+        : {
+            output: {
+              manualChunks,
+            },
+          }),
+    },
   },
 });

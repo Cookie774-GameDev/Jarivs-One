@@ -142,7 +142,25 @@ function CanvasWallpaper({
 
 export function WallpaperHost({ config }: WallpaperHostProps) {
   const reducedMotion = useReducedMotion();
-  const paused = config.paused || reducedMotion;
+  const [documentHidden, setDocumentHidden] = React.useState(
+    typeof document !== 'undefined' ? document.hidden : false,
+  );
+  React.useEffect(() => {
+    const sync = () => setDocumentHidden(document.hidden);
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, []);
+  const paused = config.paused || reducedMotion || documentHidden;
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (paused) {
+      video.pause();
+    } else {
+      void video.play().catch(() => undefined);
+    }
+  }, [paused]);
   const assetKind = config.id === 'custom-video' ? 'video' : 'image';
   const safeAsset =
     config.assetUrl && isSafeWallpaperAssetUrl(config.assetUrl, assetKind) ? config.assetUrl : null;
@@ -175,6 +193,7 @@ export function WallpaperHost({ config }: WallpaperHostProps) {
       )}
       {config.id === 'custom-video' && safeAsset && (
         <video
+          ref={videoRef}
           src={safeAsset}
           muted
           loop

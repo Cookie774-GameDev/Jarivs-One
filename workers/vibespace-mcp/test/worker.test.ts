@@ -301,6 +301,33 @@ describe('VibeSpace MCP Worker', () => {
     socket.close(1000, 'test complete');
   });
 
+  it('serves a CORS preflight for native desktop relay tickets', async () => {
+    const response = await SELF.fetch(
+      request('/relay/ticket', {
+        method: 'OPTIONS',
+        headers: {
+          origin: 'http://localhost:5173',
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'authorization,content-type',
+        },
+      }),
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    expect(response.headers.get('access-control-allow-methods')).toBe('POST, OPTIONS');
+    expect(response.headers.get('access-control-allow-headers')).toBe(
+      'authorization,content-type',
+    );
+
+    const denied = await SELF.fetch(
+      request('/relay/ticket', {
+        method: 'OPTIONS',
+        headers: { origin: 'https://attacker.example' },
+      }),
+    );
+    expect(denied.status).toBe(403);
+  });
+
   it('serves only the public consent bootstrap to the VibeSpace site origin', async () => {
     const response = await SELF.fetch(
       request('/public-config', {

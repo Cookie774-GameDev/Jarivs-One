@@ -31,7 +31,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     vi.resetModules();
   });
 
-  it('keeps the overlay visible when the panel is confirmed visible', async () => {
+  it('hides the overlay when the panel is confirmed visible', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'pet_open_or_focus_panel') return undefined;
       if (cmd === 'pet_is_panel_visible') return true;
@@ -46,7 +46,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(result.panelVisible).toBe(true);
     expect(invoked('pet_open_or_focus_panel')).toBe(true);
     expect(invoked('pet_is_panel_visible')).toBe(true);
-    expect(invoked('pet_hide_overlay')).toBe(false);
+    expect(invoked('pet_hide_overlay')).toBe(true);
     expect(invoked('pet_show_overlay')).toBe(false);
   });
 
@@ -104,7 +104,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invokeMock).toHaveBeenCalledWith('pet_set_start_with_windows', { enabled: true });
   });
 
-  it('restores overlay when panel is not visible (no disappear)', async () => {
+  it('hides the overlay when falling back to the in-app panel', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'pet_open_or_focus_panel') return undefined;
       if (cmd === 'pet_is_panel_visible') return false;
@@ -113,12 +113,13 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
       return null;
     });
 
-    const { openPetPanelSafely } = await import('./petTauriBridge');
-    const result = await openPetPanelSafely();
+    const { openOrFocusPetMiniPanel } = await import('./petTauriBridge');
+    const result = await openOrFocusPetMiniPanel();
 
     expect(result.panelVisible).toBe(false);
-    expect(invoked('pet_show_overlay')).toBe(true);
-    expect(invoked('pet_hide_overlay')).toBe(false);
+    expect(result.useInlineFallback).toBe(true);
+    expect(invoked('pet_hide_overlay')).toBe(true);
+    expect(invoked('pet_show_overlay')).toBe(false);
   });
 
   it('single-flight: concurrent opens share one open request', async () => {

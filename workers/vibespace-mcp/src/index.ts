@@ -191,10 +191,28 @@ async function handleMcp(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleRelayTicket(request: Request, env: Env): Promise<Response> {
-  if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+  const originFailure = validateRequestOrigin(request, env);
+  if (originFailure) return originFailure;
+  if (request.method === 'OPTIONS') {
+    return withCors(
+      new Response(null, {
+        status: 204,
+        headers: {
+          'access-control-allow-methods': 'POST, OPTIONS',
+          'access-control-allow-headers': 'authorization,content-type',
+          'access-control-max-age': '600',
+        },
+      }),
+      request,
+      env,
+    );
+  }
+  if (request.method !== 'POST') {
+    return withCors(json({ error: 'Method not allowed.' }, 405), request, env);
+  }
   const authenticated = await authenticate(request, env, false);
   if (!authenticated || authenticated.identity.role !== 'authenticated') {
-    return json({ error: 'Authentication is required.' }, 401);
+    return withCors(json({ error: 'Authentication is required.' }, 401), request, env);
   }
   try {
     const ticket = await issueRelayTicket(authenticated.identity.sub, env.RELAY_TICKET_KEY);
@@ -203,9 +221,13 @@ async function handleRelayTicket(request: Request, env: Env): Promise<Response> 
     url.pathname = '/browser-chat/bridge';
     url.search = '';
     url.searchParams.set('ticket', ticket);
-    return json({ url: url.toString(), expires_in_seconds: 60 });
+    return withCors(json({ url: url.toString(), expires_in_seconds: 60 }), request, env);
   } catch {
-    return json({ error: 'The VibeSpace relay is not configured.' }, 503);
+    return withCors(
+      json({ error: 'The VibeSpace relay is not configured.' }, 503),
+      request,
+      env,
+    );
   }
 }
 

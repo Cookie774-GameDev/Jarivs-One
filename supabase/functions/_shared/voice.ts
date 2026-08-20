@@ -77,6 +77,13 @@ export function json(body: unknown, status: number, origin: string | null): Resp
   });
 }
 
+export function preflight(origin: string | null): Response {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders(origin),
+  });
+}
+
 // Approved provider allow-list. Anything else is rejected.
 export const APPROVED_PROVIDERS = new Set(['openai_tts', 'deepgram_tts', 'elevenlabs_tts']);
 export const APPROVED_PRESETS = new Set(['jarvis', 'friday']);

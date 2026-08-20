@@ -10,7 +10,7 @@
 // download placeholder URLs and instead falls back to system TTS. We never ship
 // fake checksums.
 
-import { json } from '../_shared/voice.ts';
+import { json, preflight } from '../_shared/voice.ts';
 
 const MODEL_MANIFEST_URL = Deno.env.get('MODEL_MANIFEST_URL') ?? '';
 
@@ -23,7 +23,7 @@ const PRESETS = {
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return new Response(null, { headers: json({}, 200, origin).headers });
+  if (req.method === 'OPTIONS') return preflight(origin);
 
   if (MODEL_MANIFEST_URL) {
     try {

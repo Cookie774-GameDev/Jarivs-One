@@ -6,9 +6,20 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
+
+static LAST_OVERLAY_SHOW_MS: AtomicU64 = AtomicU64::new(0);
+const OVERLAY_SHOW_DEBOUNCE_MS: u64 = 500;
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -24,6 +35,15 @@ const PANEL_MIN_W: f64 = 360.0;
 const PANEL_MIN_H: f64 = 360.0;
 const MAIN_NAV_EXCLUSION_LOGICAL_W: f64 = 240.0;
 const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
+const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
+
+#[cfg(target_os = "windows")]
+const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
+    windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS(
+        windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE.0
+            | windows::Win32::UI::WindowsAndMessaging::SWP_NOSIZE.0
+            | windows::Win32::UI::WindowsAndMessaging::SWP_NOACTIVATE.0,
+    );
 
 fn windows_startup_command(executable: &Path) -> String {
     let safe_path = executable.to_string_lossy().replace('"', "");
@@ -265,8 +285,14 @@ pub enum PetPanelMode {
     Normal,
 }
 
-fn panel_stays_on_top(mode: PetPanelMode) -> bool {
-    mode == PetPanelMode::AlwaysOnTop
+fn panel_stays_on_top(_mode: PetPanelMode) -> bool {
+    // Position modes (follow vs parked) do not drop OS z-order. A visible
+    // panel stays above other apps the same way the pet sprite does.
+    true
+}
+
+fn should_pin_pet_window(visible: bool, minimized: bool) -> bool {
+    visible && !minimized
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -286,6 +312,7 @@ pub struct PetWindowState {
     pub geometry: Mutex<PetGeometryState>,
     pub panel_open: Mutex<bool>,
     pub reconstrain_generation: AtomicU64,
+    pub topmost_watchdog_started: AtomicBool,
 }
 
 fn geometry_path(app: &AppHandle) -> Option<PathBuf> {
@@ -736,6 +763,78 @@ fn ensure_pet_overlay_transparent(win: &tauri::WebviewWindow) {
     let _ = win.set_ignore_cursor_events(false);
 }
 
+#[cfg(target_os = "windows")]
+fn native_pin_hwnd_topmost_noactivate(win: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
+        WS_EX_TOPMOST,
+    };
+
+    let Ok(raw) = win.hwnd() else {
+        return;
+    };
+    let hwnd = HWND(raw.0 as *mut _);
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let topmost_bit = WS_EX_TOPMOST.0 as isize;
+        if ex & topmost_bit == 0 {
+            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | topmost_bit);
+        }
+        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, PET_TOPMOST_POS_FLAGS);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_pin_hwnd_topmost_noactivate(_win: &WebviewWindow) {}
+
+fn pin_pet_window_topmost(win: &WebviewWindow, restore_overlay_chrome: bool) {
+    let _ = win.set_always_on_top(true);
+    if restore_overlay_chrome {
+        ensure_pet_overlay_transparent(win);
+    }
+    native_pin_hwnd_topmost_noactivate(win);
+}
+
+fn pet_window_should_stay_topmost(win: &WebviewWindow) -> bool {
+    should_pin_pet_window(
+        win.is_visible().unwrap_or(false),
+        win.is_minimized().unwrap_or(false),
+    )
+}
+
+pub(crate) fn pin_visible_pet_windows(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+        if pet_window_should_stay_topmost(&win) {
+            pin_pet_window_topmost(&win, true);
+        }
+    }
+    if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
+        if pet_window_should_stay_topmost(&win) {
+            pin_pet_window_topmost(&win, false);
+        }
+    }
+}
+
+pub(crate) fn ensure_pet_topmost_watchdog(app: &AppHandle) {
+    let started = &app.state::<PetWindowState>().topmost_watchdog_started;
+    if started.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let watchdog_app = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("pet-topmost-watchdog".into())
+        .spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(
+                TOPMOST_WATCHDOG_INTERVAL_MS,
+            ));
+            let callback_app = watchdog_app.clone();
+            let _ = watchdog_app.run_on_main_thread(move || {
+                pin_visible_pet_windows(&callback_app);
+            });
+        });
+}
+
 fn pet_webview_url(app: &AppHandle, view: &str) -> Result<WebviewUrl, String> {
     #[cfg(debug_assertions)]
     if let Some(mut dev_url) = app.config().build.dev_url.clone() {
@@ -813,8 +912,7 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     .resizable(true)
     .decorations(false)
     .transparent(false)
-    // The panel is a normal window unless the user explicitly selects topmost.
-    .always_on_top(false)
+    .always_on_top(true)
     .skip_taskbar(true)
     .visible(false)
     .focused(false)
@@ -825,6 +923,13 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
 /// Show the pet overlay (create visibility). Single instance by label.
 #[tauri::command]
 pub async fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
+    let now = now_ms();
+    let last = LAST_OVERLAY_SHOW_MS.load(Ordering::Relaxed);
+    if now.saturating_sub(last) < OVERLAY_SHOW_DEBOUNCE_MS {
+        return Ok(());
+    }
+    LAST_OVERLAY_SHOW_MS.store(now, Ordering::Relaxed);
+
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_show_overlay invoked");
 
@@ -889,9 +994,7 @@ fn show_existing_pet_overlay(app: AppHandle, x: f64, y: f64) -> Result<(), Strin
         .map_err(|e| format!("failed to set pet-overlay max size: {e}"))?;
     win.set_size(overlay_size)
         .map_err(|e| format!("failed to size pet-overlay: {e}"))?;
-    win.set_always_on_top(true)
-        .map_err(|e| format!("failed to set pet-overlay always-on-top: {e}"))?;
-    ensure_pet_overlay_transparent(&win);
+    pin_pet_window_topmost(&win, true);
     win.show()
         .map_err(|e| format!("failed to show pet-overlay: {e}"))?;
     // Windows/WebView2 can report a tiny transparent host HWND on first show.
@@ -899,9 +1002,8 @@ fn show_existing_pet_overlay(app: AppHandle, x: f64, y: f64) -> Result<(), Strin
     win.set_size(overlay_size)
         .map_err(|e| format!("failed to confirm pet-overlay size: {e}"))?;
     // Second topmost pass — some hosts drop Z-order during the first show.
-    let _ = win.set_always_on_top(true);
-    #[cfg(debug_assertions)]
-    log_pet_window_metrics("after pet_show_overlay", &win);
+    pin_pet_window_topmost(&win, true);
+    ensure_pet_topmost_watchdog(&app);
     Ok(())
 }
 
@@ -972,19 +1074,12 @@ fn read_geometry(path: &std::path::Path) -> Option<PetGeometryState> {
     geometry_is_valid(&geometry).then_some(geometry)
 }
 
-/// Reassert topmost only when the overlay is already visible. Never shows,
-/// focuses, or activates a hidden Pet window.
+/// Reassert topmost only for pet windows that are already visible.
+/// Never shows, focuses, or activates a hidden Pet window.
 #[tauri::command]
 pub fn pet_reassert_overlay_topmost(app: AppHandle) -> Result<(), String> {
-    let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
-        return Ok(());
-    };
-    if !win.is_visible().unwrap_or(false) {
-        return Ok(());
-    }
-    win.set_always_on_top(true)
-        .map_err(|e| format!("failed to restore pet-overlay topmost state: {e}"))?;
-    ensure_pet_overlay_transparent(&win);
+    pin_visible_pet_windows(&app);
+    ensure_pet_topmost_watchdog(&app);
     Ok(())
 }
 
@@ -1073,6 +1168,7 @@ pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), St
     // Keep at least ~24px of the pet window on-screen (cannot disappear off edge).
     let (cx, cy) = constrain_overlay_position(&app, x, y, None);
     let _ = win.set_position(PhysicalPosition::new(cx as i32, cy as i32));
+    pin_pet_window_topmost(&win, true);
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
         geo.overlay_x = Some(cx);
         geo.overlay_y = Some(cy);
@@ -1153,6 +1249,7 @@ pub fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
     );
     win.set_position(PhysicalPosition::new(x as i32, y as i32))
         .map_err(|e| format!("failed to snap pet-overlay: {e}"))?;
+    pin_pet_window_topmost(&win, true);
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
         geo.overlay_x = Some(x);
         geo.overlay_y = Some(y);
@@ -1230,6 +1327,8 @@ pub async fn pet_open_or_focus_panel(
     let _ = win.set_always_on_top(panel_stays_on_top(panel_mode));
     let _ = win.unminimize();
     let _ = win.show();
+    pin_pet_window_topmost(&win, false);
+    ensure_pet_topmost_watchdog(&app);
     let _ = win.set_focus();
 
     geo.panel_x = Some(x);
@@ -1384,11 +1483,32 @@ mod tests {
     }
 
     #[test]
-    fn panel_mode_defaults_to_normal_but_preserves_explicit_topmost() {
+    fn panel_mode_defaults_to_normal_but_visible_panel_stays_topmost() {
         assert_eq!(PetPanelMode::default(), PetPanelMode::Normal);
-        assert!(!panel_stays_on_top(PetPanelMode::FollowPet));
+        assert!(panel_stays_on_top(PetPanelMode::FollowPet));
         assert!(panel_stays_on_top(PetPanelMode::AlwaysOnTop));
-        assert!(!panel_stays_on_top(PetPanelMode::Normal));
+        assert!(panel_stays_on_top(PetPanelMode::Normal));
+    }
+
+    #[test]
+    fn topmost_pin_targets_visible_unminimized_pet_windows_only() {
+        assert!(should_pin_pet_window(true, false));
+        assert!(!should_pin_pet_window(true, true));
+        assert!(!should_pin_pet_window(false, false));
+        assert!(!should_pin_pet_window(false, true));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn topmost_pin_flags_do_not_activate_or_move() {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        };
+        assert_eq!(
+            PET_TOPMOST_POS_FLAGS.0,
+            SWP_NOMOVE.0 | SWP_NOSIZE.0 | SWP_NOACTIVATE.0
+        );
+        assert_eq!(PET_TOPMOST_POS_FLAGS.0 & SWP_SHOWWINDOW.0, 0);
     }
 
     #[test]
@@ -1725,6 +1845,7 @@ pub fn init_pet_state(app: &AppHandle) -> PetWindowState {
         geometry: Mutex::new(geo),
         panel_open: Mutex::new(false),
         reconstrain_generation: AtomicU64::new(0),
+        topmost_watchdog_started: AtomicBool::new(false),
     }
 }
 

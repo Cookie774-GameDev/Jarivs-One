@@ -102,6 +102,18 @@ function createDatabase(options?: {
           }
           return { meta: { changes: 1 } };
         }
+        if (query.includes('UPDATE ingestion_leases') && query.includes('SET lease_until = ?')) {
+          const [renewedUntil, runKey, suppliedFence] = bindings;
+          if (
+            !ingestionLeaseHeld ||
+            lastIngestionRunKey !== runKey ||
+            suppliedFence !== fencingToken
+          ) {
+            return { meta: { changes: 0 } };
+          }
+          ingestionLeaseUntil = String(renewedUntil);
+          return { meta: { changes: 1 } };
+        }
         if (query.includes('INSERT INTO ingestion_runs')) {
           latestRun = query.includes("'failed'")
             ? {
@@ -141,7 +153,9 @@ function createDatabase(options?: {
 
   return {
     prepare,
-    batch: vi.fn(async () => []),
+    batch: vi.fn(async (statements: Array<{ run: () => Promise<{ meta: { changes: number } }> }>) =>
+      Promise.all(statements.map((statement) => statement.run())),
+    ),
   };
 }
 
@@ -547,7 +561,10 @@ describe('AI News hourly ingestion boundary', () => {
       const attempts = (attemptsByUrl.get(url) ?? 0) + 1;
       attemptsByUrl.set(url, attempts);
       if (attempts === 1) throw new TypeError('temporary network failure');
-      return new Response('<rss></rss>', { status: 200 });
+      return new Response(
+        '<rss><channel><item><title>OpenAI model release</title><link>https://example.com/release</link><pubDate>Wed, 19 Aug 2026 18:00:00 GMT</pubDate><description>New AI model is available.</description></item></channel></rss>',
+        { status: 200 },
+      );
     });
     vi.stubGlobal('fetch', upstreamFetch);
     const DB = createDatabase();

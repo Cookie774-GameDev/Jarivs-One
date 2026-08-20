@@ -266,6 +266,12 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   },
   {
     provider: 'qwen',
+    id: 'qwen3.8-max',
+    label: 'Qwen 3.8 Max',
+    contextWindowTokens: 1_000_000,
+  },
+  {
+    provider: 'qwen',
     id: 'qwen3.7-max',
     label: 'Qwen 3.7 Max',
   },

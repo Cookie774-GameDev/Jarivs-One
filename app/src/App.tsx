@@ -54,6 +54,7 @@ import { JarvisContextMenu } from '@/components/layout/JarvisContextMenu';
 import { PageRouter } from '@/components/layout/PageRouter';
 import { NavigationHistoryBoundary } from '@/features/navigation/NavigationHistoryBoundary';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { waitForIdle } from '@/stability/bootWhenVisible';
 import { startNotificationLoop } from '@/features/tasks';
 import { startClockEngine } from '@/features/clock/clockEngine';
 import { WellnessBreak } from '@/features/wellness';
@@ -1162,8 +1163,9 @@ function useBoot() {
           .catch((err) => console.warn('[launcher] terminal command setup failed', err));
       }
 
-      // Phase 2: Supabase (non-blocking, fire-and-forget)
+      // Phase 2: Supabase. Do not block the chat chrome on this import.
       if (plan.cloudSyncEnabled) {
+        void (async () => {
         try {
           const { isSupabaseConfigured } = await withTimeout(
             import('@/lib/supabase/env').then((m) => m),
@@ -1311,6 +1313,7 @@ function useBoot() {
           applyCloudSession(null);
           /* Supabase unavailable, app works offline */
         }
+        })();
       } else {
         releaseEnqueueCloudAuthority();
         applyCloudSession(null);
@@ -1387,7 +1390,9 @@ function useBoot() {
         setRuntimeListenerReady(true);
       }
 
-      // Phase 5: background loops
+      // Phase 5: background loops (after first visible frame so they do not hitch paint)
+      await waitForIdle();
+      if (cancelled) return;
       if (plan.nativeNotificationsEnabled) {
         try {
           stopNotifications = startNotificationLoop();

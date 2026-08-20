@@ -253,6 +253,10 @@ export function HistoryList({
         selectedChatIdRef.current ? String(selectedChatIdRef.current) : null,
       );
       if (feedback.clearSelection) onSelectChat(null);
+      if (feedback.tone === 'success') {
+        const { playUiSound } = await import('@/lib/sfx');
+        playUiSound('trash_delete');
+      }
       toast[feedback.tone](feedback.title, feedback.message);
     } catch (error) {
       toast.error(

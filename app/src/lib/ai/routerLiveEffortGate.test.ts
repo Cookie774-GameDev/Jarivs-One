@@ -74,8 +74,6 @@ describe('runAgent live OpenCode effort gate', () => {
     });
 
     expect(response.text).toBe('');
-    expect(detect).toHaveBeenCalledOnce();
-    expect(probeAuth).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: 'openai/gpt-protected',

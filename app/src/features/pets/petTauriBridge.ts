@@ -43,9 +43,17 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   }
 }
 
+let overlayShowInFlight: Promise<void> | null = null;
+
 export async function showPetOverlay(): Promise<void> {
-  await invoke('pet_show_overlay');
-  signalPetOverlayShown();
+  if (overlayShowInFlight) return overlayShowInFlight;
+  overlayShowInFlight = (async () => {
+    await invoke('pet_show_overlay');
+    signalPetOverlayShown();
+  })().finally(() => {
+    overlayShowInFlight = null;
+  });
+  return overlayShowInFlight;
 }
 
 export async function hidePetOverlay(): Promise<void> {
@@ -169,8 +177,8 @@ export async function openPetPanelSafely(
  *
  * - Single-flight: concurrent clicks share one open promise (no duplicate panels).
  * - If pet-mini-panel already exists (hidden/minimized), show/unminimize/focus.
- * - Keep the standalone overlay visible throughout open/focus.
- * - On failure: keep the overlay visible and signal inline fallback.
+ * - Hide the standalone overlay once the panel is confirmed visible.
+ * - On failure: signal inline fallback (in-app panel replaces the pet).
  * - Also dispatches PET_OPEN_PANEL_EVENT so the main window can mount in-app UI.
  */
 export async function openOrFocusPetMiniPanel(
@@ -195,7 +203,7 @@ export async function openOrFocusPetMiniPanel(
       return { panelVisible: false, useInlineFallback: true, coalesced: false };
     }
 
-    // Optimistic flag coordinates panel state only; it never hides the pet.
+    // Optimistic flag so the host hides the floating pet while the panel opens.
     setPetPanelOpenFlag(true);
 
     await openOrFocusPetPanel(nearX, nearY, panelMode);
@@ -212,14 +220,13 @@ export async function openOrFocusPetMiniPanel(
 
     if (panelVisible) {
       setPetPanelOpenFlag(true);
+      await hidePetOverlay().catch(() => undefined);
       return { panelVisible: true, useInlineFallback: false, coalesced: false };
     }
 
-    // Panel did not confirm — restore sprite and force in-app fallback UI.
-    // Keep flag true when useInlineFallback so main host can show PetMiniPanel;
-    // callers that only use Tauri should clear via setPetPanelOpenFlag(false).
+    // Panel did not confirm — in-app fallback still replaces the floating pet.
     setPetPanelOpenFlag(true);
-    await showPetOverlay().catch(() => undefined);
+    await hidePetOverlay().catch(() => undefined);
     return { panelVisible: false, useInlineFallback: true, coalesced: false };
   })();
 

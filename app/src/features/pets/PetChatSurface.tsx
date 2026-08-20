@@ -213,19 +213,20 @@ export function PetChatSurface({ className }: { className?: string }) {
       <div
         className="pet-chat-canvas flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl border border-border/70 bg-background"
         data-pet-chat-workspace="true"
+        data-token-boss-host="true"
       >
         {activeId ? (
           <>
-            {/* Thread region is the Token Boss host so the cinematic fills chat, not the whole panel. */}
             <div
               className="relative min-h-0 flex-1 overflow-hidden"
               data-pet-chat-thread-host="true"
             >
               <WarmChatWelcome chatId={String(activeId)} compact />
               <ChatThread chatId={activeId} compact />
-              <TokenBossCinematic chatId={String(activeId)} compact />
             </div>
             <Composer chatId={activeId} compact />
+            {/* Sibling of composer so the cinematic covers the full chat box, including typing. */}
+            <TokenBossCinematic chatId={String(activeId)} compact />
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4 text-center">

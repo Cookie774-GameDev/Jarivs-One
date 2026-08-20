@@ -661,8 +661,17 @@ export function useAccessibleChatModels() {
       ]);
     }
 
+    const alwaysOnOpenCode = asCatalogModels(
+      CONNECTION_MODEL_OPTIONS[OPENCODE_CLI_CONNECTION.id] ?? [],
+      'connection-static',
+    );
     if (openCodeModels.length > 0) {
-      modelsByConnection[OPENCODE_CLI_CONNECTION.id] = openCodeModels;
+      modelsByConnection[OPENCODE_CLI_CONNECTION.id] = dedupeModelMetadataInOrder([
+        ...alwaysOnOpenCode,
+        ...openCodeModels,
+      ]);
+    } else if (alwaysOnOpenCode.length > 0) {
+      modelsByConnection[OPENCODE_CLI_CONNECTION.id] = alwaysOnOpenCode;
     }
 
     const connectionGroups = buildConnectionPickerGroups({

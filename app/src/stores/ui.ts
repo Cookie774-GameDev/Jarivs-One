@@ -241,6 +241,8 @@ export interface UIState {
   aiCompletionCue: boolean;
   /** Play OS notification sound when the platform supports it. */
   notificationSound: boolean;
+  /** Local UI/composer/send SFX. Independent of OS notification permission. */
+  uiSounds: boolean;
   /** Bump tray badge on delivered notifications when the platform supports it. */
   notificationBadge: boolean;
 
@@ -325,6 +327,7 @@ export interface UIState {
   setDoneNotification: (key: DoneNotificationKey, enabled: boolean) => void;
   setAiCompletionCue: (v: boolean) => void;
   setNotificationSound: (v: boolean) => void;
+  setUiSounds: (v: boolean) => void;
   setNotificationBadge: (v: boolean) => void;
 
   // V3 actions
@@ -375,6 +378,7 @@ const defaults: Pick<
   | 'doneNotifications'
   | 'aiCompletionCue'
   | 'notificationSound'
+  | 'uiSounds'
   | 'notificationBadge'
   | 'route'
   | 'callModalOpen'
@@ -421,6 +425,7 @@ const defaults: Pick<
   doneNotifications: createDefaultDoneNotifications(),
   aiCompletionCue: false,
   notificationSound: true,
+  uiSounds: true,
   notificationBadge: false,
   route: resolveInitialRoute(),
   callModalOpen: false,
@@ -485,6 +490,7 @@ export function migratePersistedUiState(
       doneNotifications: createDefaultDoneNotifications(),
       aiCompletionCue: false,
       notificationSound: true,
+      uiSounds: true,
       notificationBadge: false,
     };
   }
@@ -535,6 +541,10 @@ export function mergePersistedUiState(persistedState: unknown, currentState: UIS
           typeof persistedState.notificationSound === 'boolean'
             ? persistedState.notificationSound
             : currentState.notificationSound,
+        uiSounds:
+          typeof persistedState.uiSounds === 'boolean'
+            ? persistedState.uiSounds
+            : currentState.uiSounds,
         notificationBadge:
           typeof persistedState.notificationBadge === 'boolean'
             ? persistedState.notificationBadge
@@ -642,6 +652,7 @@ export const useUIStore = create<UIState>()(
         })),
       setAiCompletionCue: (v) => set({ aiCompletionCue: v }),
       setNotificationSound: (v) => set({ notificationSound: Boolean(v) }),
+      setUiSounds: (v) => set({ uiSounds: Boolean(v) }),
       setNotificationBadge: (v) => set({ notificationBadge: Boolean(v) }),
 
       // V3
@@ -699,6 +710,7 @@ export const useUIStore = create<UIState>()(
         doneNotifications: s.doneNotifications,
         aiCompletionCue: s.aiCompletionCue,
         notificationSound: s.notificationSound,
+        uiSounds: s.uiSounds,
         notificationBadge: s.notificationBadge,
         lastSeenWhatsNewVersion: s.lastSeenWhatsNewVersion,
       }),

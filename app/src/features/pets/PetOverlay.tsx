@@ -922,7 +922,7 @@ export function PetOverlay({
         className={cn(
           tauriWindowMode
             ? 'relative select-none touch-none w-full h-full'
-            : 'fixed z-[80] select-none touch-none pointer-events-auto',
+            : 'fixed z-[80] select-none touch-none pointer-events-none',
           'cursor-grab active:cursor-grabbing',
           positionLocked && 'cursor-pointer active:cursor-pointer',
           className,
@@ -996,6 +996,14 @@ export function PetOverlay({
             />
           ) : null}
         </div>
+        {!tauriWindowMode && (
+          <div
+            aria-hidden="true"
+            data-pet-hit-target="true"
+            className="pointer-events-auto absolute left-1/2 top-1/2 h-[78%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ touchAction: 'none' }}
+          />
+        )}
         <span className="sr-only" role="status" aria-live="polite">
           {runtimeReaction === 'idle' ? 'Pet is idle' : `Pet status: ${runtimeReaction}`}
         </span>

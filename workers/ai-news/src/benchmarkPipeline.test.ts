@@ -47,6 +47,63 @@ describe('Artificial Analysis benchmark ingestion', () => {
     });
   });
 
+
+  it('accepts the current free-tier language model envelope and cost path', async () => {
+    const data = Array.from({ length: 10 }, (_, index) => ({
+      id: `current-${index}`,
+      name: `Current Model ${index}`,
+      slug: `current-model-${index}`,
+      model_creator: { name: index % 2 === 0 ? 'Provider A' : 'Provider B' },
+      evaluations: { artificial_analysis_intelligence_index: 80 - index },
+      artificial_analysis_intelligence_index_cost: {
+        cost_per_task: { total_cost: (index + 1) / 100 },
+      },
+      pricing: {
+        price_1m_input_tokens: index + 0.5,
+        price_1m_output_tokens: index + 1.5,
+      },
+      performance: {
+        median_output_tokens_per_second: 200 - index,
+        median_time_to_first_token_seconds: 0.2 + index / 100,
+        median_end_to_end_response_time_seconds: 8 + index,
+      },
+      release_date: '2026-08-01',
+    }));
+    const dataset = await parseArtificialAnalysisPayload({
+      tier: 'free',
+      intelligence_index_version: 4.1,
+      pagination: { page: 1, page_size: 200, total_pages: 1, has_more: false },
+      data,
+    }, '2026-08-20T00:00:00Z');
+    expect(dataset.methodologyVersion).toBe('4.1');
+    expect(dataset.rows[0]).toMatchObject({
+      provider: 'Provider A',
+      model: 'Current Model 0',
+      intelligenceIndex: 80,
+      costPerTaskUsd: 0.01,
+      outputTokensPerSecond: 200,
+      endToEndSeconds: 8,
+    });
+  });
+
+
+  it('skips current API rows without a usable Intelligence Index', async () => {
+    const data = [
+      { id: 'unscored', name: 'Unscored Model', model_creator: { name: 'Provider C' }, evaluations: { artificial_analysis_intelligence_index: null } },
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `scored-${index}`,
+        name: `Scored Model ${index}`,
+        model_creator: { name: index % 2 === 0 ? 'Provider A' : 'Provider B' },
+        evaluations: { artificial_analysis_intelligence_index: 60 - index },
+        pricing: { price_1m_input_tokens: 1, price_1m_output_tokens: 2 },
+        performance: { median_output_tokens_per_second: 100 },
+      })),
+    ];
+    const dataset = await parseArtificialAnalysisPayload({ intelligence_index_version: 4.1, data });
+    expect(dataset.rows).toHaveLength(10);
+    expect(dataset.skippedRows).toBe(1);
+  });
+
   it('keeps nested reasoning efforts as separate stable rows', async () => {
     const data = Array.from({ length: 9 }, (_, index) => model(index + 1));
     data.push(

@@ -294,7 +294,7 @@ html[data-theme='warm'] [data-vibespace-page='chat'] {
   background: var(--warm-canvas);
 }
 
-html[data-theme='warm'] [data-vibespace-page='chat'] > :not(.warm-chat-welcome) {
+html[data-theme='warm'] [data-vibespace-page='chat'] > :not(.warm-chat-welcome):not(.token-boss-cinematic) {
   position: relative;
   z-index: 2;
 }

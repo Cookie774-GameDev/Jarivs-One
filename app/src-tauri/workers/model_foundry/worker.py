@@ -167,7 +167,12 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
     if output == model or output == dataset or model in output.parents:
         _fail("Output directory must be separate from source and base-model paths.")
     epochs = _bounded_integer(payload.get("epochs"), "epochs", 1, 20)
-    max_steps = _bounded_integer(payload.get("maxSteps"), "maxSteps", 1, 1_000_000)
+    raw_max_steps = payload.get("maxSteps")
+    max_steps = (
+        None
+        if raw_max_steps is None
+        else _bounded_integer(raw_max_steps, "maxSteps", 1, 1_000_000)
+    )
 
     examples = 0
     with dataset.open("r", encoding="utf-8") as stream:
@@ -381,13 +386,13 @@ def train(request_path: str) -> int:
         output_dir=str(output_dir),
         overwrite_output_dir=False,
         num_train_epochs=float(request["epochs"]),
-        max_steps=int(request["maxSteps"]),
+        max_steps=(int(request["maxSteps"]) if request["maxSteps"] is not None else -1),
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         learning_rate=2e-4 if method in ("lora", "qlora") else 2e-5,
         logging_steps=1,
         save_strategy="steps",
-        save_steps=max(1, min(50, int(request["maxSteps"]))),
+        save_steps=max(1, min(50, int(request["maxSteps"] or 50))),
         save_total_limit=2,
         report_to=[],
         dataloader_num_workers=0,

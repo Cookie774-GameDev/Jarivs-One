@@ -3,7 +3,7 @@
 // minutes (never raw dollar budgets). Remaining minutes are derived from the
 // SHARED company credit pool (DeepSeek + phone + SMS), not a siloed call cap.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
-import { json } from '../_shared/voice.ts';
+import { json, preflight } from '../_shared/voice.ts';
 import { USD_PER_CALL_MINUTE } from '../_shared/budget.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -12,7 +12,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return new Response(null, { headers: json({}, 200, origin).headers });
+  if (req.method === 'OPTIONS') return preflight(origin);
 
   const jwt = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
   if (!jwt) return json({ error: 'unauthorized' }, 401, origin);

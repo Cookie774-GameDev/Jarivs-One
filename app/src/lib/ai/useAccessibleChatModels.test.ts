@@ -111,12 +111,20 @@ describe('useAccessibleChatModels', () => {
     const { result } = renderHook(() => useAccessibleChatModels());
 
     await waitFor(() => {
+      const openCode = result.current.flatOptions.filter(
+        (option) => option.connectionId === 'opencode-cli',
+      );
+      expect(openCode.map((option) => option.modelId)).toEqual(
+        expect.arrayContaining([
+          'deepseek/deepseek-v4-flash',
+          'qwen/qwen3.8-max',
+          'openrouter/Model v2 (beta)+preview',
+        ]),
+      );
+      expect(openCode).toHaveLength(3);
       expect(
-        result.current.flatOptions.find((option) => option.connectionId === 'opencode-cli'),
-      ).toMatchObject({
-        modelId: 'openrouter/Model v2 (beta)+preview',
-        available: true,
-      });
+        openCode.find((option) => option.modelId === 'openrouter/Model v2 (beta)+preview'),
+      ).toMatchObject({ available: true });
     });
   });
 
@@ -219,6 +227,20 @@ describe('useAccessibleChatModels', () => {
         .filter((option) => option.connectionId === 'openai-api')
         .map((option) => option.modelId),
     ).toEqual(['gpt-4o', 'gpt-5.6-sol']);
+  });
+
+  it('lists DeepSeek V4 Flash and Qwen 3.8 Max on the shared OpenCode connection', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: CONNECTION_MODEL_OPTIONS,
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'authenticated' },
+      },
+    });
+    const ids = groups.flatMap((group) => group.options).map((option) => option.modelId);
+    expect(ids).toEqual(['deepseek/deepseek-v4-flash', 'qwen/qwen3.8-max']);
+    expect(groups[0]?.options.every((option) => option.available === true)).toBe(true);
   });
 
   it('never enables unknown Codex subscription authentication', () => {

@@ -78,13 +78,14 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
     // Keep the pet above browsers / borderless games. OS exclusive-fullscreen
     // can still cover all topmost HWNDs; reassert helps the common cases.
     const recoverTopmost = () => {
-      if (document.visibilityState === 'hidden') return;
+      // Occlusion sets visibilityState to hidden — that is exactly when the pet
+      // must re-pin above YouTube / other apps. Native watchdog owns the loop.
       void reassertPetOverlayTopmost().catch(() => undefined);
     };
     recoverTopmost();
     // Immediate follow-up — Windows/WebView2 sometimes drops topmost right after show.
     const boot = window.setTimeout(recoverTopmost, 400);
-    const interval = window.setInterval(recoverTopmost, 12_000);
+    const interval = window.setInterval(recoverTopmost, 15_000);
     window.addEventListener('focus', recoverTopmost);
     window.addEventListener('pageshow', recoverTopmost);
     document.addEventListener('visibilitychange', recoverTopmost);

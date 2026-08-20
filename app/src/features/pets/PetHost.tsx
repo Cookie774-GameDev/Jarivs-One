@@ -3,7 +3,7 @@
  *
  * Single visible pet path:
  * - Tauri: prefer dedicated pet-overlay; inline only as fallback.
- * - Keep the standalone pet visible while the mini panel is open.
+ * - Hide the standalone pet while the mini panel is open; restore on close/minimize.
  * - Poll isPetPanelVisible only to reconcile panel/fallback state.
  */
 import * as React from 'react';
@@ -260,7 +260,7 @@ export function PetHost({
           },
         );
         if (result.panelVisible) {
-          // Dedicated Tauri mini panel confirmed; keep the pet visible.
+          // Dedicated Tauri mini panel confirmed; hide the floating pet.
           setHideSpriteForPanel(true);
           setUseInlineFallback(false);
         } else {

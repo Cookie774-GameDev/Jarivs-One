@@ -48,9 +48,10 @@ describe('Pet panel preferences', () => {
     expect(petPanelDensityForSize(700, 480)).toBe('minimum');
   });
 
-  it('scales UI continuously with panel size and never below 0.62', () => {
+  it('scales UI continuously with panel size, never below 0.62, and grows with larger panels', () => {
     expect(petPanelUiScale(460, 600)).toBe(1);
-    expect(petPanelUiScale(920, 1200)).toBe(1);
+    expect(petPanelUiScale(920, 1200)).toBeGreaterThan(1);
+    expect(petPanelUiScale(920, 1200)).toBeLessThanOrEqual(1.45);
     expect(petPanelUiScale(320, 400)).toBeLessThan(0.9);
     expect(petPanelUiScale(320, 400)).toBeGreaterThanOrEqual(0.62);
     expect(petPanelUiScale(100, 100)).toBe(0.62);

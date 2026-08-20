@@ -148,6 +148,10 @@ export const CONNECTION_MODEL_OPTIONS: Readonly<
     frozenModelOption('gpt-5.6-terra', 'GPT-5.6 Terra', 1_000_000),
     frozenModelOption('gpt-5.6-sol', 'GPT-5.6 Sol', 1_000_000),
   ]),
+  'opencode-cli': Object.freeze([
+    frozenModelOption('deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 128_000),
+    frozenModelOption('qwen/qwen3.8-max', 'Qwen 3.8 Max', 1_000_000),
+  ]),
 });
 
 export const CLAUDE_CLI_CONNECTION = externalConnection({

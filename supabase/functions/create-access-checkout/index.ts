@@ -59,7 +59,7 @@
 // network. The URL SDK imports and Deno.serve live behind `import.meta.main`
 // (as dynamic imports) so importing this module for tests performs no fetch.
 
-import { json } from '../_shared/voice.ts';
+import { json, preflight } from '../_shared/voice.ts';
 
 const TERMINAL_PROVIDER_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired']);
 export const ACCESS_ENTITLEMENT_SELECT =
@@ -170,7 +170,7 @@ export async function handleAccessCheckout(req, deps) {
   const origin = req.headers.get('origin');
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: json({}, 200, origin).headers });
+    return preflight(origin);
   }
   if (req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405, origin);
