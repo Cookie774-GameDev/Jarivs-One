@@ -157,3 +157,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Detection now reports the same managed/native runtime connection used by production sends. The PR31 verifier now rejects any reintroduction of an adapter-local `serve` command and requires the manager/auth wiring.
 - Verification: focused/adjacent OpenCode and runtime matrix `7 files / 66 tests` PASS; additional coordinator/session matrix `5 files / 21 tests` PASS; `npm --prefix app run typecheck` PASS; `npm run verify:pr31-opencode-rlm` PASS; exact changed test/verifier Prettier PASS; `git diff --check` PASS. `opencodePersistent.ts` retains its documented pre-existing whole-file Prettier baseline debt; no broad formatting rewrite was performed.
 - Diff before staging: four tracked files (`opencodePersistent.ts`, its focused test, PR31 verifier, this append-only ledger), plus the untracked live coordination-lock directory. Next: stage only the four tracked files, run staged Gitleaks, commit the reversible slice, and release only this exact product scope.
+
+#### 2026-08-20 19:01 CDT — committed and scope released
+
+- Product/invariant commit: `3fd6a0a8` (`fix(opencode):unify-persistent-managed-runtime`), based on `ee23d964`.
+- Staged `git diff --check` PASS and staged Gitleaks PASS (`7.58 KB`, no leaks).
+- Released exact product/test/verifier ownership. The live controller lock remains active only for the larger unfinished PR31 acceptance goal; no other agent scope, process, branch, worktree, or external state was changed.
