@@ -2489,3 +2489,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Usage worker paths** | `app/src/lib/usage/usageService.ts` and test; `usageTypes.ts`; `app/src/features/chat/UsageCard.tsx` and test; `Composer.tsx` and `Composer.usage.test.tsx`; `app/src/features/taskbar-usage/automaticProviderUsage.ts` and test; `taskbarUsageController.ts` and test; `providerUsageRegistry.ts` and test; `providerUsageTypes.ts`; `app/src/lib/ai/connectionUsageLedger.ts` and test; `app/src/lib/ai/adapters/codexAccountUsage.ts` and test. Intent: make `/usage` modes and taskbar consume the same exact-route ledger and supported live Codex account snapshot, retain persisted connection/model identity, and display unavailable/stale/error honestly. |
 | **Exclusions / safety** | SiYuan worker excludes federation/UI outside `features/context/siyuan`, packaging/config, models, usage, and taskbar. Usage worker excludes model catalogs/transports, SiYuan, and unrelated Composer behavior. Both keep changes unstaged/uncommitted for controller review and do not touch production state. |
 | **Status / next action** | `IMPLEMENTING` in two non-overlapping lanes; run focused and adjacent matrices, typecheck/Cargo checks, exact diff/format checks, and secret scans before handoff. |
+
+## 2026-08-20 - SiYuan lossless RLM repository adapter lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:07 CT |
+| **Controller exact paths** | New `app/src/features/context/siyuanRlmRepository.ts` and `app/src/features/context/siyuanRlmRepository.test.ts`. |
+| **Intent** | Convert only the bounded native SiYuan notebook/search/get-block contract into existing `ContextQueryRepository` authority: exact account/workspace/project scope, full-block SHA-256, bounded search/open bytes, deterministic record/pointer identity, restart rehydration, and an issued-pointer capability gate. |
+| **Exclusions** | No native `features/context/siyuan/**` worker files, no existing production federation wiring, UI, migration, nightly writes, packaging, model, usage, or taskbar files. Integration occurs only after both the adapter and activation bridge contracts are accepted. |
+| **Status / next action** | `IMPLEMENTING`; write dependency-injected adapter and adversarial unit tests, then run focused Context/query/typecheck/diff/secret checks before commit. |
