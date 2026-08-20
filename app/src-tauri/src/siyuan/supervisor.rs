@@ -695,19 +695,19 @@ mod tests {
     }
 
     #[test]
-    fn checked_in_state_is_truthfully_disabled_and_build_materialized() {
+    fn checked_in_state_is_enabled_stopped_and_build_materialized() {
         let state = SiyuanRuntimeState::default();
         assert_eq!(
             state.status().unwrap(),
             RuntimeStatus {
-                feature_enabled: false,
+                feature_enabled: true,
                 runtime_bundled: true,
-                state: "disabled".to_owned(),
+                state: "stopped".to_owned(),
             }
         );
         assert_eq!(
             state.authorize_operation("project-1"),
-            Err(SupervisorError::FeatureDisabled)
+            Err(SupervisorError::WorkspaceUnavailable)
         );
     }
 

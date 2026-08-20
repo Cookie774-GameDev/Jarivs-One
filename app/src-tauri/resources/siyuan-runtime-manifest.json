@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "featureEnabled": false,
+  "featureEnabled": true,
   "runtime": {
     "id": "siyuan",
     "upstreamRepository": "https://github.com/siyuan-note/siyuan",

@@ -17,8 +17,8 @@ import {
 } from './siyuanContracts';
 
 describe('SiYuan renderer contracts', () => {
-  it('keeps the checked-in feature gate disabled', () => {
-    expect(SIYUAN_CONTEXT_VAULT_ENABLED).toBe(false);
+  it('keeps the checked-in verified feature gate enabled', () => {
+    expect(SIYUAN_CONTEXT_VAULT_ENABLED).toBe(true);
   });
 
   it('accepts only the closed status shape', () => {

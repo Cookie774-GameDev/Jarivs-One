@@ -1,4 +1,4 @@
-export const SIYUAN_CONTEXT_VAULT_ENABLED = false as const;
+export const SIYUAN_CONTEXT_VAULT_ENABLED = true as const;
 
 export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   status: 'siyuan_status',

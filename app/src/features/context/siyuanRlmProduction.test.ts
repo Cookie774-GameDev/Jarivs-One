@@ -112,8 +112,8 @@ describe('production SiYuan RLM port', () => {
     ]);
   });
 
-  it('fails closed before native invocation while the checked-in feature gate is disabled', async () => {
-    const port = createProductionSiyuanRlmPort();
+  it('fails closed before native invocation when the feature is explicitly disabled', async () => {
+    const port = createProductionSiyuanRlmPort({ featureEnabled: false });
 
     await expect(port.searchBlocks('project-a', 'needle', 2)).rejects.toThrow(
       'siyuan_feature_disabled',

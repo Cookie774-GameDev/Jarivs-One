@@ -23,6 +23,7 @@
   "integrationStatus": {
     "runtimeClosureDerived": true,
     "runtimeBuildMaterialized": true,
+    "featureEnabled": true,
     "runtimePayloadCommitted": false,
     "runtimeExecuted": true,
     "licenseReviewComplete": false,

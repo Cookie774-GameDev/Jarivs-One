@@ -1,6 +1,6 @@
-//! Compile-time binding to the reviewed, disabled SiYuan runtime manifest.
+//! Compile-time binding to the reviewed, enabled SiYuan runtime manifest.
 
-pub const SIYUAN_CONTEXT_VAULT_ENABLED: bool = false;
+pub const SIYUAN_CONTEXT_VAULT_ENABLED: bool = true;
 pub const SIYUAN_UPSTREAM_TAG: &str = "v3.8.1";
 pub const SIYUAN_UPSTREAM_COMMIT: &str = "afa823b6b4e4f183511e0bc0a3be93caa94c7c97";
 pub const SIYUAN_WINDOWS_X64_SHA256: &str =
@@ -56,10 +56,10 @@ pub fn runtime_availability() -> Result<RuntimeAvailability, &'static str> {
 
 /// A dependency-free tripwire for native builds. The strict structural verifier lives in
 /// `scripts/verify-siyuan-runtime-manifest.mjs`; this check prevents an isolated native module
-/// from silently compiling against an enabled or differently pinned manifest.
-pub fn verify_disabled_manifest_contract() -> Result<(), &'static str> {
+/// from silently compiling against a disabled or differently pinned manifest.
+pub fn verify_enabled_manifest_contract() -> Result<(), &'static str> {
     let required = [
-        "\"featureEnabled\": false",
+        "\"featureEnabled\": true",
         "\"runtimeBundled\": true",
         "\"payloadIncluded\": true",
         "\"status\": \"build-materialized\"",
@@ -77,8 +77,8 @@ pub fn verify_disabled_manifest_contract() -> Result<(), &'static str> {
     {
         return Err("siyuan_runtime_manifest_contract_invalid");
     }
-    if RUNTIME_MANIFEST.contains("\"featureEnabled\": true") {
-        return Err("siyuan_runtime_manifest_premature_enablement");
+    if RUNTIME_MANIFEST.contains("\"featureEnabled\": false") {
+        return Err("siyuan_runtime_manifest_enablement_missing");
     }
     Ok(())
 }
@@ -89,18 +89,18 @@ mod tests {
 
     #[test]
     fn pins_the_reviewed_upstream_release() {
-        assert!(!SIYUAN_CONTEXT_VAULT_ENABLED);
+        assert!(SIYUAN_CONTEXT_VAULT_ENABLED);
         assert_eq!(SIYUAN_UPSTREAM_TAG, "v3.8.1");
         assert_eq!(
             SIYUAN_UPSTREAM_COMMIT,
             "afa823b6b4e4f183511e0bc0a3be93caa94c7c97"
         );
         assert_eq!(SIYUAN_WINDOWS_X64_BYTES, 204_769_168);
-        assert!(verify_disabled_manifest_contract().is_ok());
+        assert!(verify_enabled_manifest_contract().is_ok());
         assert_eq!(
             runtime_availability().unwrap(),
             RuntimeAvailability {
-                feature_enabled: false,
+                feature_enabled: true,
                 payload_included: true,
                 runtime_bundled: true,
             }

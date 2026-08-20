@@ -6,6 +6,7 @@
   },
   "releaseClaim": "blocked",
   "execution": {
+    "featureEnabled": true,
     "productionUserDataMigrated": false,
     "legacyContextDeleted": false,
     "historicalNoteContentMigrated": false,
@@ -22,9 +23,9 @@
   ],
   "stages": [
     {
-      "id": "feature-flag-off",
+      "id": "feature-enabled",
       "status": "PASS_TESTED",
-      "reason": "The checked-in renderer and native feature gates remain false and existing Context behavior stays authoritative.",
+      "reason": "The checked-in renderer, native, embedded-manifest, and verifier gates are enabled after pinned-runtime acceptance while existing Context records remain authoritative.",
       "evidence": [
         "app/src/features/context/siyuan/siyuanContracts.ts",
         "app/src-tauri/src/siyuan/manifest.rs",

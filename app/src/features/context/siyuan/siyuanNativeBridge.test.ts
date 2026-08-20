@@ -5,7 +5,7 @@ import { createSiyuanNativeBridge, type SiyuanNativeInvoker } from './siyuanNati
 describe('SiYuan native bridge boundary', () => {
   it('never invokes native commands while the feature is disabled', async () => {
     const invokeNative = vi.fn<SiyuanNativeInvoker>();
-    const bridge = createSiyuanNativeBridge(invokeNative);
+    const bridge = createSiyuanNativeBridge(invokeNative, { featureEnabled: false });
 
     await expect(bridge.status()).resolves.toEqual({
       featureEnabled: false,

@@ -23,12 +23,12 @@ const rejectsCode = (operation, code) => {
   });
 };
 
-test('accepts the checked-in disabled manifest and truthful blocked ledgers', async () => {
+test('accepts the checked-in enabled manifest and truthful blocked ledgers', async () => {
   const result = await verifySiyuanRuntimeArtifacts();
   assert.deepEqual(result, {
     tag: 'v3.8.1',
     commitSha: 'afa823b6b4e4f183511e0bc0a3be93caa94c7c97',
-    featureEnabled: false,
+    featureEnabled: true,
     payloadIncluded: true,
     runtimeBundled: true,
     closureBytes: 445983251,
@@ -39,10 +39,10 @@ test('accepts the checked-in disabled manifest and truthful blocked ledgers', as
   });
 });
 
-test('fails closed if the feature is enabled before integration', async () => {
+test('fails closed if verified feature enablement is removed', async () => {
   const manifest = await load('app/src-tauri/resources/siyuan-runtime-manifest.json');
-  manifest.featureEnabled = true;
-  rejectsCode(() => validateRuntimeManifest(manifest), 'manifest_feature_must_be_disabled');
+  manifest.featureEnabled = false;
+  rejectsCode(() => validateRuntimeManifest(manifest), 'manifest_feature_must_be_enabled');
 });
 
 test('rejects unpinned, relocated, or mutated installer authority', async () => {
@@ -98,6 +98,7 @@ test('binds real runtime evidence while release claims remain false', async () =
   assert.equal(source.integrationStatus.runtimeClosureDerived, true);
   assert.equal(source.integrationStatus.runtimeBuildMaterialized, true);
   assert.equal(source.integrationStatus.runtimeExecuted, true);
+  assert.equal(source.integrationStatus.featureEnabled, true);
   for (const field of [
     'runtimePayloadCommitted',
     'licenseReviewComplete',

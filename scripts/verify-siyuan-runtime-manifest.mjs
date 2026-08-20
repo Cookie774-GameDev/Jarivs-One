@@ -196,7 +196,7 @@ export function validateRuntimeManifest(value) {
     'manifest_keys_invalid',
   );
   positiveInteger(manifest.schemaVersion, 1, 'manifest_schema_invalid');
-  boolean(manifest.featureEnabled, false, 'manifest_feature_must_be_disabled');
+  boolean(manifest.featureEnabled, true, 'manifest_feature_must_be_enabled');
 
   const runtime = record(manifest.runtime, 'manifest_runtime_invalid');
   exactKeys(
@@ -374,6 +374,7 @@ export function validateProvenance(value) {
     [
       'runtimeClosureDerived',
       'runtimeBuildMaterialized',
+      'featureEnabled',
       'runtimePayloadCommitted',
       'runtimeExecuted',
       'licenseReviewComplete',
@@ -384,6 +385,7 @@ export function validateProvenance(value) {
   );
   boolean(status.runtimeClosureDerived, true, 'provenance_runtime_closure_must_be_derived');
   boolean(status.runtimeBuildMaterialized, true, 'provenance_runtime_build_must_be_materialized');
+  boolean(status.featureEnabled, true, 'provenance_feature_must_be_enabled');
   boolean(status.runtimeExecuted, true, 'provenance_runtime_must_be_executed');
   for (const key of [
     'runtimePayloadCommitted',
@@ -679,7 +681,7 @@ export function validateElectronTauriLedger(value) {
 }
 
 const MIGRATION_STAGE_IDS = [
-  'feature-flag-off',
+  'feature-enabled',
   'read-only-sidecar',
   'shadow-projection',
   'dual-read',
@@ -707,11 +709,19 @@ export function validateMigrationNoLossLedger(value) {
       'historicalNoteContentMigrated',
       'dualReadProductionAuthority',
       'managedHumanWriteAuthority',
+      'featureEnabled',
     ],
     'migration_ledger_execution_keys_invalid',
   );
-  for (const value of Object.values(execution)) {
-    boolean(value, false, 'migration_ledger_production_claim_forbidden');
+  boolean(execution.featureEnabled, true, 'migration_ledger_feature_must_be_enabled');
+  for (const key of [
+    'productionUserDataMigrated',
+    'legacyContextDeleted',
+    'historicalNoteContentMigrated',
+    'dualReadProductionAuthority',
+    'managedHumanWriteAuthority',
+  ]) {
+    boolean(execution[key], false, 'migration_ledger_production_claim_forbidden');
   }
   const invariants = stringArray(ledger.invariants, 'migration_ledger_invariants_invalid');
   if (invariants.length < 6 || invariants.some((item) => item.length < 30 || item.length > 500)) {
@@ -764,7 +774,7 @@ export async function verifySiyuanRuntimeArtifacts() {
   return Object.freeze({
     tag: TAG,
     commitSha: COMMIT_SHA,
-    featureEnabled: false,
+    featureEnabled: true,
     payloadIncluded: true,
     runtimeBundled: true,
     closureBytes: runtimeClosure.closure.uncompressedBytes,
@@ -780,7 +790,7 @@ if (entryPath === import.meta.url) {
   verifySiyuanRuntimeArtifacts()
     .then((result) => {
       console.log(
-        `SiYuan runtime manifest: PASS (${result.tag}, disabled, build-materialized payload, ${result.featureBlockedCount} feature blocks, ${result.bridgeBlockedCount} bridge blocks, ${result.migrationBlockedCount} migration block)`,
+        `SiYuan runtime manifest: PASS (${result.tag}, enabled, build-materialized payload, ${result.featureBlockedCount} feature blocks, ${result.bridgeBlockedCount} bridge blocks, ${result.migrationBlockedCount} migration block)`,
       );
     })
     .catch((error) => {

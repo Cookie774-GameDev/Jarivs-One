@@ -17,21 +17,21 @@
       "id": "block-editing",
       "label": "Block editing and stable block identity",
       "status": "BLOCKED",
-      "reason": "The pinned runtime is not yet bundled or executed.",
+      "reason": "The pinned runtime is build-materialized and executed, but block editing still awaits scored native UI acceptance.",
       "evidence": []
     },
     {
       "id": "block-focus",
       "label": "Block focus, zoom, outline, and folding",
       "status": "BLOCKED",
-      "reason": "The official stage UI has not been integrated.",
+      "reason": "The restricted official stage UI is integrated, but focus, zoom, outline, and folding await scored native UI acceptance.",
       "evidence": []
     },
     {
       "id": "rich-blocks",
       "label": "Tables, code, math, diagrams, and callouts",
       "status": "BLOCKED",
-      "reason": "Rich-rendering runtime closure has not been derived.",
+      "reason": "The rich-rendering closure is build-materialized, but tables, code, math, diagrams, and callouts await scored native UI acceptance.",
       "evidence": []
     },
     {
@@ -84,7 +84,7 @@
       "id": "daily-notes",
       "label": "Daily notes",
       "status": "BLOCKED",
-      "reason": "Typed daily-note and Nightly managed-write routes are implemented behind the false gate, but real-runtime daily-note persistence and rollback scoring remain pending.",
+      "reason": "Typed daily-note and Nightly managed-write routes are enabled, but real-runtime daily-note persistence and rollback scoring remain pending.",
       "evidence": []
     },
     {
@@ -133,14 +133,14 @@
       "id": "appearance",
       "label": "Themes and icons",
       "status": "BLOCKED",
-      "reason": "Appearance bytes are build-materialized, but the official knowledge surface is not integrated or scored.",
+      "reason": "Appearance bytes and the restricted official knowledge surface are integrated, but theme and icon behavior is not yet scored.",
       "evidence": []
     },
     {
       "id": "languages",
       "label": "Language switching",
       "status": "BLOCKED",
-      "reason": "Language packs have not been inventoried in the runtime closure.",
+      "reason": "Language switching has not yet completed scored native UI acceptance.",
       "evidence": []
     },
     {
@@ -161,14 +161,14 @@
       "id": "offline",
       "label": "Local offline operation",
       "status": "BLOCKED",
-      "reason": "The runtime closure is build-materialized, but final installer measurement and release enablement remain blocked.",
+      "reason": "The enabled build-materialized runtime has passed an owned offline boot, but final installer measurement and release acceptance remain blocked.",
       "evidence": []
     },
     {
       "id": "full-vault-surface",
       "label": "Full official SiYuan knowledge surface inside VibeSpace",
       "status": "BLOCKED",
-      "reason": "The zero-permission exact-loopback official surface is implemented and compiled, but feature enablement and scored native UI acceptance remain pending.",
+      "reason": "The zero-permission exact-loopback official surface is implemented and enabled, but scored native UI acceptance remains pending.",
       "evidence": []
     }
   ]

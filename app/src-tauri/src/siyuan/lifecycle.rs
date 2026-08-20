@@ -85,7 +85,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checked_in_feature_gate_cannot_start() {
+    fn disabled_configuration_cannot_start() {
         let mut lifecycle = RuntimeLifecycle::new(false);
         assert_eq!(lifecycle.state(), RuntimeState::Disabled);
         assert_eq!(
