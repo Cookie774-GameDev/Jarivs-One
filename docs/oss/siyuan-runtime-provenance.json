@@ -21,7 +21,7 @@
     "sourceUrl": "https://github.com/siyuan-note/siyuan/releases/download/v3.8.1/siyuan-3.8.1-win.exe"
   },
   "integrationStatus": {
-    "runtimeClosureDerived": false,
+    "runtimeClosureDerived": true,
     "runtimePayloadCommitted": false,
     "runtimeExecuted": false,
     "licenseReviewComplete": false,

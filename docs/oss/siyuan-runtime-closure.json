@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "measuredAt": "2026-08-20T12:25:00Z",
+  "source": {
+    "tag": "v3.8.1",
+    "commitSha": "afa823b6b4e4f183511e0bc0a3be93caa94c7c97",
+    "installerName": "siyuan-3.8.1-win.exe",
+    "installerBytes": 204769168,
+    "installerSha256": "50df27aa899491323035aee59b2b9b55df174e13b8dc3694f7c46d7f82770787"
+  },
+  "closure": {
+    "status": "derived-not-bundled",
+    "uncompressedBytes": 445983251,
+    "fileCount": 1153,
+    "components": [
+      {
+        "id": "kernel",
+        "path": "resources/kernel",
+        "bytes": 110219152,
+        "files": 2,
+        "treeSha256": "baf7ad06b1def23b245d00cc4bdf271fcd11a418095fbc845ac5a517d60ee11e"
+      },
+      {
+        "id": "stage",
+        "path": "resources/stage",
+        "bytes": 49539638,
+        "files": 585,
+        "treeSha256": "bd9ab826ff50dc811510437333312a5d903b24a40636f1bf3187ce67d123ee46"
+      },
+      {
+        "id": "appearance",
+        "path": "resources/appearance",
+        "bytes": 38150238,
+        "files": 110,
+        "treeSha256": "29a73a7c71b1b35b2b94fe02d2f2fa74f2cf60e8cb70af2caf4e10b49f70bd0e"
+      },
+      {
+        "id": "guide-help",
+        "path": "resources/guide",
+        "bytes": 13381681,
+        "files": 445,
+        "treeSha256": "64e9d155e31111f00a8fb3cc189142226703ef406f7aa8ed76e0fd1d96d5c56e"
+      },
+      {
+        "id": "changelogs",
+        "path": "resources/changelogs",
+        "bytes": 29394,
+        "files": 3,
+        "treeSha256": "e4a7b9954b3608c3f98fddefa292d55fb08ca03345d1a7525551734e0d315ee4"
+      },
+      {
+        "id": "pandoc",
+        "path": "resources/pandoc",
+        "bytes": 233449872,
+        "files": 4,
+        "treeSha256": "1ab735130215765a16000564f0574c71ad6f69246df6fe268f0fec616f798573"
+      },
+      {
+        "id": "pandoc-resources",
+        "path": "resources/pandoc-resources",
+        "bytes": 23691,
+        "files": 2,
+        "treeSha256": "9242ea9390f1e16115e73cea7de844127c0bcbab201cde7bff18b1c6d2b4c31d"
+      },
+      {
+        "id": "license",
+        "path": "LICENSE",
+        "bytes": 35182,
+        "files": 1,
+        "treeSha256": "8526f89ed7ecfc7a03049d82e25b1fc7a51b2a78fb0cc488fb887d7d77f9f5dc"
+      },
+      {
+        "id": "third-party-notices",
+        "path": "THIRD_PARTY_NOTICES.md",
+        "bytes": 1154403,
+        "files": 1,
+        "treeSha256": "a2ddc733206a601168667cba3f762dfa00ea511d91fdbb5da69b241bb4f5cb20"
+      }
+    ],
+    "criticalBinaries": [
+      {
+        "path": "resources/kernel/SiYuan-Kernel.exe",
+        "bytes": 106248136,
+        "sha256": "583794c497a87c0cb2aed46a64d1a7b790793ffa91173998e0e36cc0e9bfb29b"
+      },
+      {
+        "path": "resources/kernel/elevator.exe",
+        "bytes": 3971016,
+        "sha256": "2239d76fe026273760afe064a2f2fe65421c612206b5d278c5966a0682b6cdf5"
+      }
+    ]
+  },
+  "compressionEvidence": {
+    "format": "7z",
+    "settings": "7-Zip 26.02, -t7z -mx=9",
+    "bytes": 87304479,
+    "sha256": "8e75d284cbd9b5e0c180a33d1143b116f14085cc4e860148546ec9c1d063250e",
+    "archiveTestPassed": true,
+    "finalReleaseArtifact": false
+  },
+  "excluded": [
+    {
+      "id": "electron-shell",
+      "path": "SiYuan.exe",
+      "bytes": 221945296,
+      "reason": "VibeSpace supplies the native Tauri shell; the upstream Electron executable is redundant."
+    }
+  ],
+  "claims": {
+    "runtimePayloadCommitted": false,
+    "runtimeExecuted": false,
+    "licenseReviewComplete": false,
+    "finalInstallerMeasured": false,
+    "releaseReady": false
+  }
+}

@@ -6,6 +6,7 @@ import {
   validateElectronTauriLedger,
   validateFeatureParityLedger,
   validateProvenance,
+  validateRuntimeClosure,
   validateRuntimeManifest,
   verifySiyuanRuntimeArtifacts,
 } from './verify-siyuan-runtime-manifest.mjs';
@@ -28,6 +29,8 @@ test('accepts the checked-in disabled manifest and truthful blocked ledgers', as
     commitSha: 'afa823b6b4e4f183511e0bc0a3be93caa94c7c97',
     featureEnabled: false,
     payloadIncluded: false,
+    closureBytes: 445983251,
+    compressedAnalysisBytes: 87304479,
     featureBlockedCount: 22,
     bridgeBlockedCount: 8,
   });
@@ -55,7 +58,7 @@ test('rejects unpinned, relocated, or mutated installer authority', async () => 
 test('rejects premature runtime closure and payload claims', async () => {
   const source = await load('app/src-tauri/resources/siyuan-runtime-manifest.json');
   const derived = clone(source);
-  derived.runtimeClosure.status = 'derived';
+  derived.runtimeClosure.status = 'not-derived';
   rejectsCode(() => validateRuntimeManifest(derived), 'manifest_closure_status_invalid');
 
   const bundled = clone(source);
@@ -63,8 +66,8 @@ test('rejects premature runtime closure and payload claims', async () => {
   rejectsCode(() => validateRuntimeManifest(bundled), 'manifest_payload_must_be_absent');
 
   const measured = clone(source);
-  measured.runtimeClosure.measuredBytes = 123;
-  rejectsCode(() => validateRuntimeManifest(measured), 'manifest_closure_bytes_must_be_null');
+  measured.runtimeClosure.measuredBytes += 1;
+  rejectsCode(() => validateRuntimeManifest(measured), 'manifest_closure_bytes_invalid');
 });
 
 test('rejects relaxed security boundaries and unknown manifest fields', async () => {
@@ -85,11 +88,31 @@ test('rejects relaxed security boundaries and unknown manifest fields', async ()
 test('keeps provenance integration claims false until independently verified', async () => {
   const source = await load('docs/oss/siyuan-runtime-provenance.json');
   assert.equal(validateProvenance(source), true);
-  for (const field of Object.keys(source.integrationStatus)) {
+  assert.equal(source.integrationStatus.runtimeClosureDerived, true);
+  for (const field of Object.keys(source.integrationStatus).filter(
+    (key) => key !== 'runtimeClosureDerived',
+  )) {
     const provenance = clone(source);
     provenance.integrationStatus[field] = true;
     rejectsCode(() => validateProvenance(provenance), `provenance_${field}_must_be_false`);
   }
+});
+
+test('binds the measured closure to exact component totals without claiming a final bundle', async () => {
+  const source = await load('docs/oss/siyuan-runtime-closure.json');
+  assert.equal(validateRuntimeClosure(source), true);
+
+  const changedBytes = clone(source);
+  changedBytes.closure.components[0].bytes += 1;
+  rejectsCode(() => validateRuntimeClosure(changedBytes), 'closure_component_bytes_invalid');
+
+  const changedDigest = clone(source);
+  changedDigest.closure.components[0].treeSha256 = '0'.repeat(64);
+  rejectsCode(() => validateRuntimeClosure(changedDigest), 'closure_component_sha_invalid');
+
+  const finalClaim = clone(source);
+  finalClaim.compressionEvidence.finalReleaseArtifact = true;
+  rejectsCode(() => validateRuntimeClosure(finalClaim), 'closure_final_artifact_claim_forbidden');
 });
 
 test('rejects premature feature-parity passes and summary inflation', async () => {

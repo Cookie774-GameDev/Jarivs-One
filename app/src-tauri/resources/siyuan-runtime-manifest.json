@@ -16,9 +16,12 @@
     "sha256": "50df27aa899491323035aee59b2b9b55df174e13b8dc3694f7c46d7f82770787"
   },
   "runtimeClosure": {
-    "status": "not-derived",
+    "status": "derived-not-bundled",
     "payloadIncluded": false,
-    "measuredBytes": null,
+    "measuredBytes": 445983251,
+    "fileCount": 1153,
+    "compressedAnalysisBytes": 87304479,
+    "componentsManifest": "docs/oss/siyuan-runtime-closure.json",
     "requiredFamilies": ["kernel", "stage", "appearance", "guide-help", "rich-rendering-assets"]
   },
   "security": {
