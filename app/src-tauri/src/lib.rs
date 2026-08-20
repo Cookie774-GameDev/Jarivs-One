@@ -419,7 +419,7 @@ fn run_ordinary(
             }
             match app.path().resource_dir() {
                 Ok(resource_dir) => {
-                    let runtime_root = resource_dir.join("siyuan-runtime");
+                    let runtime_root = resource_dir.join("resources").join("siyuan-runtime");
                     if let Err(error) = app
                         .state::<siyuan::SiyuanRuntimeState>()
                         .configure_resource_root(runtime_root)
@@ -1245,6 +1245,7 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("siyuan::surface::siyuan_surface_close,"));
         assert!(ordinary.contains("siyuan::surface::siyuan_surface_status,"));
         assert!(ordinary.contains(".configure_workspace_base(workspace_base)"));
+        assert!(ordinary.contains("resource_dir.join(\"resources\").join(\"siyuan-runtime\")"));
         assert!(ordinary.contains(".configure_resource_root(runtime_root)"));
         assert!(ordinary.contains("siyuan::shutdown_runtime(app_handle);"));
     }

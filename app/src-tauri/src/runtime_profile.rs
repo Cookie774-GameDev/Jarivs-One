@@ -46,12 +46,13 @@ pub const DENIED_EFFECT_MANIFEST_HASH: &str =
 
 const ORDINARY_APP_IDENTIFIER: &str = "ai.jarvis.desktop";
 const MONOCHROME_APP_IDENTIFIER_PREFIX: &str = "ai.vibespace.monochrome.test";
-const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 7] = [
+const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 8] = [
     "browser-chat-host",
     "cold-start-intro",
     "default",
     "pet-mini-panel",
     "pet-overlay",
+    "siyuan-context-vault",
     "taskbar-usage",
     "workbench-window",
 ];
@@ -679,6 +680,7 @@ mod tests {
             "default",
             "pet-mini-panel",
             "pet-overlay",
+            "siyuan-context-vault",
             "taskbar-usage",
             "workbench-window",
         ])
@@ -982,6 +984,7 @@ mod tests {
             "taskbar-usage",
             "pet-mini-panel",
             "cold-start-intro",
+            "siyuan-context-vault",
         ]);
 
         let context = resolve_startup_context(None, None, "ai.jarvis.desktop", &capabilities)
