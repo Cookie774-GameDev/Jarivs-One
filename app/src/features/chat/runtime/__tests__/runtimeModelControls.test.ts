@@ -37,11 +37,36 @@ describe('runtime model controls', () => {
     });
   });
 
+  it('keeps Ultra/xhigh and Max/max as separate exact live controls', () => {
+    expect(resolveRuntimeModelControls({ effort: 'ultra', fastMode: 'auto' }, sol)).toEqual({
+      ok: true,
+      controls: { effort: 'xhigh' },
+    });
+    expect(resolveRuntimeModelControls({ effort: 'max', fastMode: 'auto' }, sol)).toEqual({
+      ok: true,
+      controls: { effort: 'max' },
+    });
+  });
+
+  it('fails closed when an effort is not backed by an exact live variant', () => {
+    expect(
+      resolveRuntimeModelControls(
+        { effort: 'max', fastMode: 'auto' },
+        { ...sol, variants: [{ id: 'xhigh' }], supportsIndependentReasoningEffort: false },
+      ),
+    ).toMatchObject({
+      ok: false,
+      code: 'EFFORT_UNSUPPORTED',
+    });
+  });
+
   it('uses OpenCode-native subscription Fast control when exposed', () => {
-    expect(resolveRuntimeModelControls(
-      { effort: 'high', fastMode: 'on' },
-      { ...sol, serviceTiers: [], supportsOpenCodeFastMode: true },
-    )).toEqual({
+    expect(
+      resolveRuntimeModelControls(
+        { effort: 'high', fastMode: 'on' },
+        { ...sol, serviceTiers: [], supportsOpenCodeFastMode: true },
+      ),
+    ).toEqual({
       ok: true,
       controls: {
         effort: 'high',

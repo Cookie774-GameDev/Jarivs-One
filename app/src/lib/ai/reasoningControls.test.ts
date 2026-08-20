@@ -15,8 +15,8 @@ describe('reasoning controls', () => {
   it.each([
     [
       selection('openai', 'gpt-5.6-sol', 'openai-codex'),
-      ['low', 'medium', 'high', 'ultra'],
-      'xhigh',
+      ['low', 'medium', 'high', 'ultra', 'max'],
+      'max',
     ],
     [selection('openai', 'gpt-5.5'), ['minimal', 'low', 'medium', 'high', 'ultra'], 'xhigh'],
     [selection('anthropic', 'claude-opus-4-8'), ['low', 'medium', 'high', 'ultra'], 'max'],
@@ -45,7 +45,6 @@ describe('reasoning controls', () => {
     selection('ollama', 'gpt-oss:20b'),
     selection('deepseek', 'deepseek-chat'),
     // legacy DeepSeek IDs stay without fabricated effort
-    selection('openai', 'gpt-5.3-codex-spark', 'openai-codex'),
   ])('does not fabricate adjustable effort for %o', (selected) => {
     expect(getReasoningCapabilities(selected).supportedEfforts).toEqual([]);
     expect(
@@ -54,6 +53,31 @@ describe('reasoning controls', () => {
         preference: { mode: 'token-final-boss', effortOverride: null },
       }),
     ).toMatchObject({ resolvedEffort: null, providerOptions: {} });
+  });
+
+  it('keeps OpenCode ultra/xhigh distinct from max and exposes Spark medium only', () => {
+    const sol = selection('openai', 'gpt-5.6-sol', 'openai-codex');
+    expect(
+      resolveReasoningPolicy({
+        selection: sol,
+        preference: { mode: 'normal', effortOverride: 'ultra' },
+      }).providerOptions,
+    ).toEqual({ reasoning_effort: 'xhigh' });
+    expect(
+      resolveReasoningPolicy({
+        selection: sol,
+        preference: { mode: 'normal', effortOverride: 'max' },
+      }).providerOptions,
+    ).toEqual({ reasoning_effort: 'max' });
+
+    const spark = selection('openai', 'gpt-5.3-codex-spark', 'openai-codex');
+    expect(getReasoningCapabilities(spark).supportedEfforts).toEqual(['medium']);
+    expect(
+      resolveReasoningPolicy({
+        selection: spark,
+        preference: { mode: 'normal', effortOverride: 'medium' },
+      }).providerOptions,
+    ).toEqual({ reasoning_effort: 'medium' });
   });
 
   it('blocks unsupported effort instead of snapping it to a nearby level', () => {
@@ -126,8 +150,8 @@ describe('reasoning controls', () => {
       }),
     ).toMatchObject({
       selection: selected,
-      resolvedEffort: 'ultra',
-      providerOptions: { reasoning_effort: 'xhigh' },
+      resolvedEffort: 'max',
+      providerOptions: { reasoning_effort: 'max' },
       maxOutputTokens: undefined,
     });
   });
@@ -170,6 +194,9 @@ describe('reasoning controls', () => {
     const selected = selection('openai', 'gpt-5.6-sol', 'openai-codex');
     expect(sanitizeReasoningProviderOptions(selected, { reasoning_effort: 'xhigh' })).toEqual({
       reasoning_effort: 'xhigh',
+    });
+    expect(sanitizeReasoningProviderOptions(selected, { reasoning_effort: 'max' })).toEqual({
+      reasoning_effort: 'max',
     });
     expect(
       sanitizeReasoningProviderOptions(selected, {

@@ -122,7 +122,8 @@ export function parseReasoningEffortArgument(value: string): ReasoningEffort | n
     .toLowerCase()
     .replace(/[_\s]+/g, '-');
   if (['auto', 'default', 'normal', 'provider-default'].includes(normalized)) return null;
-  if (['x-high', 'xhigh', 'max', 'maximum', 'ultra'].includes(normalized)) return 'ultra';
+  if (['x-high', 'xhigh', 'ultra'].includes(normalized)) return 'ultra';
+  if (['max', 'maximum'].includes(normalized)) return 'max';
   if (['minimal', 'low', 'medium', 'high'].includes(normalized)) {
     return normalized as ReasoningEffort;
   }
@@ -206,6 +207,7 @@ export function buildReasoningSlashPickerState({
     'medium',
     'high',
     'ultra',
+    'max',
   ];
   const selectedEffort = preference.effortOverride
     ? capabilities.supportedEfforts.includes(preference.effortOverride)

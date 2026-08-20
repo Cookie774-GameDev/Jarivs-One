@@ -56,6 +56,7 @@ import type {
   LiveModelRuntimeMetadata,
   LiveModelVariant,
 } from '@/features/chat/runtime/runtimeModelControls';
+import { resolveRuntimeModelControls } from '@/features/chat/runtime/runtimeModelControls';
 import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
 
@@ -672,22 +673,24 @@ function modelMetadata(
 function sameLiveModelId(candidateId: string, requestedId: string): boolean {
   const left = candidateId.trim().toLocaleLowerCase('en-US');
   const right = requestedId.trim().toLocaleLowerCase('en-US');
-  if (left === right) return true;
-  const local = (value: string) => (value.includes('/') ? value.slice(value.lastIndexOf('/') + 1) : value);
-  return local(left) === local(right) && local(left).length > 0;
+  return left === right;
 }
 
-function trustedLiveModel(modelId: string): OpenCodeLiveModel {
-  const providerId = modelId.includes('/') ? modelId.slice(0, modelId.indexOf('/')) : 'openai';
-  return {
-    id: modelId.includes('/') ? modelId : `${providerId}/${modelId}`,
-    label: modelId,
-    providerId,
-    variants: [],
-    supportsIndependentReasoningEffort: false,
-    serviceTiers: [],
-    supportsOpenCodeFastMode: false,
-  };
+export function requireAuthoritativeOpenCodeModel(
+  models: readonly OpenCodeLiveModel[],
+  requestedModelId: string,
+): OpenCodeLiveModel {
+  const requested = requestedModelId.trim();
+  if (!requested.includes('/')) {
+    throw new Error('OpenCode requires a provider-qualified model from the live authenticated catalog.');
+  }
+  const model = models.find((candidate) => sameLiveModelId(candidate.id, requested));
+  if (!model) {
+    throw new Error(
+      `OpenCode model “${requested}” is not present in the live authenticated catalog.`,
+    );
+  }
+  return model;
 }
 
 function statusType(value: unknown): string {
@@ -743,15 +746,81 @@ function normalizeUsage(event: OpenCodeRawEvent): UsageSnapshot | undefined {
   };
 }
 
-function observedIdentity(event: OpenCodeRawEvent): { providerId?: string; modelId?: string; variant?: string } {
-  const properties = event.properties;
-  const part = recordOf(properties?.part);
-  const info = recordOf(properties?.info ?? properties?.message);
+export interface OpenCodeObservedIdentity {
+  providerId?: string;
+  modelId?: string;
+  variant?: string;
+  serviceTier?: string;
+}
+
+function identityFromInfo(
+  info: Record<string, unknown> | undefined,
+  part?: Record<string, unknown>,
+): OpenCodeObservedIdentity {
   return {
     providerId: cleanIdentifier(info?.providerID ?? info?.providerId ?? part?.providerID ?? part?.providerId),
     modelId: cleanIdentifier(info?.modelID ?? info?.modelId ?? part?.modelID ?? part?.modelId),
-    variant: cleanIdentifier(info?.variant ?? part?.variant),
+    variant: cleanIdentifier(
+      info?.variant ?? info?.reasoningEffort ?? info?.reasoning_effort
+        ?? part?.variant ?? part?.reasoningEffort ?? part?.reasoning_effort,
+    ),
+    serviceTier: cleanIdentifier(
+      info?.serviceTier ?? info?.service_tier ?? part?.serviceTier ?? part?.service_tier,
+    ),
   };
+}
+
+function observedIdentity(event: OpenCodeRawEvent): OpenCodeObservedIdentity {
+  const properties = event.properties;
+  const part = recordOf(properties?.part);
+  const info = recordOf(properties?.info ?? properties?.message);
+  return identityFromInfo(info, part);
+}
+
+function observedAssistantIdentity(
+  messages: readonly OpenCodeMessageRecord[],
+): OpenCodeObservedIdentity | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const record = messages[index];
+    const role = cleanIdentifier(record.info?.role, 32)?.toLocaleLowerCase('en-US');
+    if (role !== 'assistant') continue;
+    const identity = identityFromInfo(record.info);
+    if (identity.modelId) return identity;
+  }
+  return undefined;
+}
+
+export function assertAuthoritativeOpenCodeIdentity(input: {
+  connectionId: string;
+  providerId: string;
+  modelId: string;
+  variant?: string;
+  serviceTier?: string;
+  observed?: Readonly<OpenCodeObservedIdentity>;
+}): string {
+  if (!input.observed?.modelId) {
+    throw new Error('OpenCode completed without authoritative observed model identity.');
+  }
+  const observedModelId = input.observed.modelId.includes('/')
+    ? input.observed.modelId
+    : `${input.observed.providerId ?? input.providerId}/${input.observed.modelId}`;
+  assertObservedModelMatches({
+    requested: {
+      connectionId: input.connectionId,
+      providerId: input.providerId,
+      modelId: input.modelId,
+      ...(input.variant ? { variant: input.variant } : {}),
+      ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
+    },
+    observed: {
+      connectionId: input.connectionId,
+      providerId: input.observed.providerId ?? input.providerId,
+      modelId: observedModelId,
+      ...(input.observed.variant ? { variant: input.observed.variant } : {}),
+      ...(input.observed.serviceTier ? { serviceTier: input.observed.serviceTier } : {}),
+    },
+  });
+  return observedModelId;
 }
 
 function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): string {
@@ -767,24 +836,33 @@ function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): 
   return '';
 }
 
-let modelCache: { loadedAt: number; models: readonly OpenCodeLiveModel[] } | undefined;
-let modelLoad: Promise<readonly OpenCodeLiveModel[]> | undefined;
+const modelCache = new Map<
+  string,
+  { loadedAt: number; models: readonly OpenCodeLiveModel[] }
+>();
+const modelLoads = new Map<string, Promise<readonly OpenCodeLiveModel[]>>();
 
 async function liveModels(scope: HarnessScope, force = false): Promise<readonly OpenCodeLiveModel[]> {
-  if (!force && modelCache && Date.now() - modelCache.loadedAt < MODEL_CACHE_TTL_MS) return modelCache.models;
-  if (!force && modelLoad) return modelLoad;
-  modelLoad = (async () => {
+  const scopeKey = openCodeScopeKey(scope);
+  const cached = modelCache.get(scopeKey);
+  if (!force && cached && Date.now() - cached.loadedAt < MODEL_CACHE_TTL_MS) {
+    return cached.models;
+  }
+  const active = modelLoads.get(scopeKey);
+  if (!force && active) return active;
+  const load = (async () => {
     try {
       const entry = await sessions.clientForScope(scope);
       const client = entry.client as PersistentOpenCodeClient;
       const models = parseOpenCodeLiveModels(await client.listProviders());
-      if (models.length > 0) modelCache = { loadedAt: Date.now(), models };
-      return models.length > 0 ? models : modelCache?.models ?? [];
+      modelCache.set(scopeKey, { loadedAt: Date.now(), models });
+      return models;
     } finally {
-      modelLoad = undefined;
+      modelLoads.delete(scopeKey);
     }
   })();
-  return modelLoad;
+  modelLoads.set(scopeKey, load);
+  return load;
 }
 
 const authCache = new Map<string, { loadedAt: number; result: AuthProbeResult }>();
@@ -870,6 +948,18 @@ function defaultRuntimeSettings(request: ProviderRequest): ChatRuntimeSettings {
     performance: 'quality',
     rlmEnabled: true,
   };
+}
+
+export function assertAuthoritativeOpenCodeRuntimeControls(
+  settings: Pick<ChatRuntimeSettings, 'effort' | 'fastMode'>,
+  model: OpenCodeLiveModel,
+  connectionId: string,
+): void {
+  const resolution = resolveRuntimeModelControls(
+    { effort: settings.effort, fastMode: settings.fastMode },
+    modelMetadata(model, connectionId),
+  );
+  if (!resolution.ok) throw new Error(resolution.message);
 }
 
 function contextSystemAddendum(
@@ -969,18 +1059,14 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
   try {
     const session = await sessions.sessionForChat(scope, chatId);
     const client = session.client as PersistentOpenCodeClient;
-    // Never block the first token on a full /config/providers scan. Refresh in
-    // the background; send the user-selected model immediately if the cache
-    // does not yet list it (OpenCode still rejects a truly missing model).
-    void liveModels(scope);
-    const liveModel =
-      (modelCache?.models ?? []).find((candidate) => sameLiveModelId(candidate.id, modelId)) ??
-      trustedLiveModel(modelId);
+    const liveModel = requireAuthoritativeOpenCodeModel(await liveModels(scope), modelId);
+    const authoritativeModelId = liveModel.id;
     const providerId = upstreamProviderId(liveModel.id);
     const mode = request.interactionMode ?? 'agent';
     const access = request.accessLevel ?? (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
     const eventIterator = client.http.events(abortEvents.signal)[Symbol.asyncIterator]();
     const settings = defaultRuntimeSettings(request);
+    assertAuthoritativeOpenCodeRuntimeControls(settings, liveModel, request.connection.id);
     const systemPrompt = combineSystemPrompt(request.systemPrompt, contextSystemAddendum(request, settings));
     const dispatch = await coordinator.dispatch({
       scope,
@@ -990,7 +1076,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       selection: {
         connectionId: request.connection.id,
         providerId,
-        modelId,
+        modelId: authoritativeModelId,
         metadata: modelMetadata(liveModel, request.connection.id),
       },
       policy: {
@@ -1009,6 +1095,38 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     });
     if (dispatch.kind === 'command') throw new Error('VibeSpace slash commands must be consumed before provider dispatch.');
     if (dispatch.kind === 'rejected') throw new Error(dispatch.message);
+    const requestedVariant = dispatch.controls.variant ?? dispatch.controls.effort;
+    const observeAuthoritativeIdentity = (
+      identity: Readonly<OpenCodeObservedIdentity>,
+    ): string | undefined => {
+      const observedModel = assertAuthoritativeOpenCodeIdentity({
+        connectionId: request.connection.id,
+        providerId,
+        modelId: authoritativeModelId,
+        observed: {
+          ...(identity.providerId ? { providerId: identity.providerId } : {}),
+          modelId: identity.modelId,
+        },
+      });
+      if (requestedVariant && !identity.variant) return undefined;
+      if (dispatch.controls.serviceTier && !identity.serviceTier) return undefined;
+      assertAuthoritativeOpenCodeIdentity({
+        connectionId: request.connection.id,
+        providerId,
+        modelId: authoritativeModelId,
+        ...(requestedVariant ? { variant: requestedVariant } : {}),
+        ...(dispatch.controls.serviceTier ? { serviceTier: dispatch.controls.serviceTier } : {}),
+        observed: {
+          ...(identity.providerId ? { providerId: identity.providerId } : {}),
+          modelId: identity.modelId,
+          ...(identity.variant ? { variant: identity.variant } : {}),
+          ...(dispatch.controls.serviceTier && identity.serviceTier
+            ? { serviceTier: identity.serviceTier }
+            : {}),
+        },
+      });
+      return observedModel;
+    };
     boundSessionId = dispatch.sessionId;
     if (gatewayAuthority && !bindToolGatewaySessionAuthority(dispatch.sessionId, gatewayAuthority)) {
       await client.abort(dispatch.sessionId).catch(() => undefined);
@@ -1025,7 +1143,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 
     const accumulator = new OpenCodeTextAccumulator();
     let emittedText = '';
-    let observed = false;
+    let observedModelId: string | undefined;
     let done = false;
     let finishReason = 'stop';
     const startedAt = Date.now();
@@ -1046,7 +1164,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       if (next.kind === 'poll') {
         const status = statusType(await client.http.status(dispatch.sessionId).catch(() => undefined));
         if (status === 'idle') {
-          const canonical = assistantTextFromMessages(await client.http.messages(dispatch.sessionId).catch(() => []));
+          const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
+          const canonical = assistantTextFromMessages(messages);
+          const messageIdentity = observedAssistantIdentity(messages);
+          if (messageIdentity) {
+            observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
+          }
           if (canonical && canonical !== emittedText) {
             const delta = canonical.startsWith(emittedText) ? canonical.slice(emittedText.length) : canonical;
             if (delta) {
@@ -1087,25 +1210,9 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 
       const identity = observedIdentity(event);
       if (identity.modelId) {
-        const observedModelId = identity.modelId.includes('/')
-          ? identity.modelId
-          : `${identity.providerId ?? providerId}/${identity.modelId}`;
-        assertObservedModelMatches({
-          requested: {
-            connectionId: request.connection.id,
-            providerId,
-            modelId,
-            ...(dispatch.controls.variant ? { variant: dispatch.controls.variant } : {}),
-          },
-          observed: {
-            connectionId: request.connection.id,
-            providerId: identity.providerId ?? providerId,
-            modelId: observedModelId,
-            ...(identity.variant ? { variant: identity.variant } : {}),
-          },
-        });
-        if (!observed) {
-          observed = true;
+        const firstObservation = !observedModelId;
+        observedModelId = observeAuthoritativeIdentity(identity) ?? observedModelId;
+        if (firstObservation && observedModelId) {
           yield { type: 'model', modelId: observedModelId };
         }
       }
@@ -1157,7 +1264,17 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       }
     }
 
-    const canonical = assistantTextFromMessages(await client.http.messages(dispatch.sessionId).catch(() => []));
+    const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
+    const canonical = assistantTextFromMessages(messages);
+    const messageIdentity = observedAssistantIdentity(messages);
+    if (messageIdentity) {
+      const firstObservation = !observedModelId;
+      observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
+      if (firstObservation && observedModelId) yield { type: 'model', modelId: observedModelId };
+    }
+    if (!observedModelId) {
+      throw new Error('OpenCode completed without authoritative observed model identity.');
+    }
     if (canonical && canonical !== emittedText) {
       const delta = canonical.startsWith(emittedText) ? canonical.slice(emittedText.length) : canonical;
       if (delta) yield { type: 'text', delta };
@@ -1227,7 +1344,7 @@ export const openCodePersistentAdapter: ProviderAdapter = Object.freeze({
 });
 
 export function invalidateOpenCodePersistentModelCache(): void {
-  modelCache = undefined;
+  modelCache.clear();
 }
 
 export async function disposeOpenCodePersistentRuntimes(): Promise<void> {

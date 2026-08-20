@@ -92,10 +92,33 @@ describe('per-chat reasoning slash preferences', () => {
 
   it('parses friendly command spellings and rejects unknown values', () => {
     expect(parseReasoningEffortArgument('X-HIGH')).toBe('ultra');
+    expect(parseReasoningEffortArgument('max')).toBe('max');
+    expect(parseReasoningEffortArgument('maximum')).toBe('max');
     expect(parseReasoningEffortArgument('default')).toBeNull();
     expect(parseReasoningEffortArgument('impossible')).toBeUndefined();
     expect(parseReasoningModeArgument('token saver')).toBe('token-saver');
     expect(parseReasoningModeArgument('final boss')).toBe('token-final-boss');
     expect(parseReasoningModeArgument('deep forever')).toBeUndefined();
+  });
+
+  it('offers distinct Ultra and Max controls for OpenCode models', () => {
+    const state = buildReasoningSlashPickerState({
+      command: 'effort',
+      selection: {
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        connectionId: 'openai-codex',
+      },
+      preference: { mode: 'normal', effortOverride: 'max' },
+    });
+    expect(state.options.map(({ id }) => id)).toEqual([
+      'auto',
+      'low',
+      'medium',
+      'high',
+      'ultra',
+      'max',
+    ]);
+    expect(state.selectedId).toBe('max');
   });
 });

@@ -1,4 +1,4 @@
-export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'ultra';
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'ultra' | 'max';
 export type ReasoningMode = 'token-saver' | 'normal' | 'token-final-boss';
 
 export interface ReasoningSelection {
@@ -28,7 +28,7 @@ export interface ResolvedReasoningPolicy {
   executionInstructions: string;
 }
 
-const EFFORTS: readonly ReasoningEffort[] = ['minimal', 'low', 'medium', 'high', 'ultra'];
+const EFFORTS: readonly ReasoningEffort[] = ['minimal', 'low', 'medium', 'high', 'ultra', 'max'];
 const MODES: readonly ReasoningMode[] = ['token-saver', 'normal', 'token-final-boss'];
 const NO_REASONING: ReasoningCapabilities = {
   supportedEfforts: [],
@@ -94,11 +94,11 @@ function staticReasoningCapabilities(selection: ReasoningSelection): ReasoningCa
     const sparkSurface = model.includes('spark');
     return {
       supportedEfforts: sparkSurface
-        ? []
+        ? ['medium']
         : codexSurface || openCodeSurface
-          ? ['low', 'medium', 'high', 'ultra']
+          ? ['low', 'medium', 'high', 'ultra', 'max']
           : ['minimal', 'low', 'medium', 'high', 'ultra'],
-      providerOptionKey: sparkSurface ? null : 'reasoning_effort',
+      providerOptionKey: 'reasoning_effort',
       wireEffort: (effort) => (effort === 'ultra' ? 'xhigh' : effort),
     };
   }

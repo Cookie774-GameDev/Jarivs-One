@@ -83,6 +83,28 @@ describe('runAgent live OpenCode effort gate', () => {
     );
   });
 
+  it('preserves max as distinct from ultra/xhigh at the persistent boundary', async () => {
+    await runAgent({
+      agent,
+      chatId: 'chat-live-max-effort',
+      messages: [{ role: 'user', content: 'verify at max' }],
+      provider_options: { reasoning_effort: 'max' },
+      runtimeSettings: {
+        effort: 'max',
+        fastMode: 'auto',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasoningEffort: 'max',
+        runtimeSettings: expect.objectContaining({ effort: 'max' }),
+      }),
+    );
+  });
+
   it('rejects an invalid effort before persistent OpenCode send', async () => {
     await expect(
       runAgent({
