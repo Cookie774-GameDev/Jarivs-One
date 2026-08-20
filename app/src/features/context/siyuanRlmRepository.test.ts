@@ -1,0 +1,130 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createContextPointer } from './losslessContext';
+import {
+  ContextQueryError,
+  createContextQueryService,
+  type ContextScope,
+} from './contextQueryService';
+import { createSiyuanRlmRepository, type SiyuanRlmPort } from './siyuanRlmRepository';
+
+const scope: ContextScope = Object.freeze({
+  accountId: 'account-1',
+  workspaceId: 'workspace-1',
+  projectId: 'project-1',
+});
+
+function port(markdown = '# Project Atlas\nThe launch phrase is cobalt fern.'): SiyuanRlmPort {
+  return {
+    searchBlocks: vi.fn(async () => [
+      {
+        id: '20260820-block',
+        notebookId: '20260820-book',
+        path: '/Project Atlas.sy',
+        content: 'Project Atlas cobalt fern',
+      },
+    ]),
+    getBlock: vi.fn(async (_projectId, id) => ({
+      id,
+      notebookId: '20260820-book',
+      path: '/Project Atlas.sy',
+      markdown,
+    })),
+  };
+}
+
+describe('SiYuan RLM repository', () => {
+  it('produces scoped hash-bound pointers that open through ContextQueryService', async () => {
+    const native = port();
+    const repository = createSiyuanRlmRepository(native, { now: () => 1_000 });
+    const service = createContextQueryService({ repository });
+    const found = await service.search({ scope, query: 'cobalt fern' });
+
+    expect(found.items).toHaveLength(1);
+    expect(found.items[0]?.record).toMatchObject({
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      sourceKind: 'context_note',
+      sourceId: '20260820-block',
+      parentSourceId: '20260820-book',
+      trustLevel: 'app_verified',
+    });
+    expect(found.items[0]?.record.contentHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(found.items[0]?.pointer.contentHash).toBe(found.items[0]?.record.contentHash);
+
+    const opened = await service.open({ scope, pointer: found.items[0]!.pointer });
+    expect(opened.text).toContain('cobalt fern');
+    expect(native.searchBlocks).toHaveBeenCalledWith('project-1', 'cobalt fern', 20);
+    expect(native.getBlock).toHaveBeenCalledWith('project-1', '20260820-block');
+  });
+
+  it('does not issue authority for malformed, duplicate, or cross-notebook results', async () => {
+    const native: SiyuanRlmPort = {
+      searchBlocks: vi.fn(async () => [
+        { id: '../escape', notebookId: 'book', path: '/bad.sy', content: 'bad' },
+        { id: 'block-1', notebookId: 'book-1', path: '/one.sy', content: 'one' },
+        { id: 'block-1', notebookId: 'book-1', path: '/one.sy', content: 'duplicate' },
+        { id: 'block-2', notebookId: 'book-2', path: '/two.sy', content: 'two' },
+      ]),
+      getBlock: vi.fn(async (_projectId, id) => ({
+        id,
+        notebookId: id === 'block-1' ? 'wrong-book' : 'book-2',
+        path: '/value.sy',
+        markdown: 'bounded markdown',
+      })),
+    };
+    const repository = createSiyuanRlmRepository(native);
+    await expect(repository.search(scope, 'bounded')).resolves.toHaveLength(1);
+  });
+
+  it('rejects cross-project scope and a forged pointer that was never issued', async () => {
+    const repository = createSiyuanRlmRepository(port());
+    const hits = await repository.search(scope, 'atlas');
+    const record = await repository.getRecord(hits[0]!.recordId);
+    expect(record).toBeDefined();
+    await expect(repository.canOpen(record!, { ...scope, projectId: 'project-2' })).resolves.toBe(
+      false,
+    );
+
+    const source = await repository.readSource(record!);
+    const forged = createContextPointer({
+      ...hits[0]!.pointer,
+      id: `ptr:${record!.id}:0:1`,
+      byteStart: 0,
+      byteEnd: 1,
+    });
+    expect(await repository.validatePointer!(forged, record!, source!, scope)).toBe(false);
+  });
+
+  it('rehydrates an exact persisted record id after a new repository receives its scope', async () => {
+    const native = port();
+    const first = createSiyuanRlmRepository(native);
+    const [hit] = await first.search(scope, 'atlas');
+
+    const restarted = createSiyuanRlmRepository(native);
+    await expect(restarted.getRecord(hit!.recordId)).resolves.toBeUndefined();
+    await restarted.listRecords(scope);
+    await expect(restarted.getRecord(hit!.recordId)).resolves.toMatchObject({
+      id: hit!.recordId,
+      projectId: 'project-1',
+      sourceId: '20260820-block',
+    });
+  });
+
+  it('reports source_stale when SiYuan changes after pointer issuance', async () => {
+    let markdown = 'version one';
+    const native = port();
+    vi.mocked(native.getBlock).mockImplementation(async (_projectId, id) => ({
+      id,
+      notebookId: '20260820-book',
+      path: '/Project Atlas.sy',
+      markdown,
+    }));
+    const service = createContextQueryService({ repository: createSiyuanRlmRepository(native) });
+    const found = await service.search({ scope, query: 'version' });
+    markdown = 'version two';
+    await expect(service.open({ scope, pointer: found.items[0]!.pointer })).rejects.toEqual(
+      expect.objectContaining<Partial<ContextQueryError>>({ code: 'source_stale' }),
+    );
+  });
+});
