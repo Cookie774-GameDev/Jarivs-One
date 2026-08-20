@@ -2378,6 +2378,17 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Release contract** | Recognized installer/updater files must be regular non-symlink files; no-artifact input fails; any size greater than 300,000,000 bytes fails; sizes greater than 285,000,000 bytes are explicitly warned. |
 | **Status / next action** | `ACCEPTED`; scope released for future controlled extension. Continue the two active non-overlapping product lanes. |
 
+## 2026-08-20 - SiYuan upstream D-drive staging acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:22 CT |
+| **Agent / task** | Controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `SIYUAN-V3.8.1-RUNTIME-CLOSURE-DERIVATION`. |
+| **Exact external paths** | `D:\VibeSpace-Testing\_upstream\siyuan-v3.8.1` for the official source/build analysis; reserved later fixture root `D:\VibeSpace-Testing\SiYuan-Context-OpenCode-RLM-Feature-Testing`. Neither path existed at claim time. |
+| **Intent** | Shallow-clone the official stable tag, verify exact commit `afa823b6b4e4f183511e0bc0a3be93caa94c7c97`, derive the no-Electron kernel/stage/appearance/guide/help runtime closure, and measure every component before any repository payload or packaging claim. |
+| **Safety** | Upstream staging is read-only source evidence, outside the product worktree, and must not use real user workspaces or production state. No installer execution, credentials, service publication, or destructive cleanup is authorized. |
+| **Status / next action** | `STAGING`; create only the exact claimed parent/clone path, verify tag/commit/license, then inventory build/runtime assets. |
+
 ## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
 
 | Field | Coordination record |
