@@ -234,3 +234,22 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `55d68296` (`test(ui): refresh inherited source and pricing contracts`), based on `b10a8f5f`.
 - Staged diff check PASS and staged Gitleaks PASS (`4.60 KB`, no leaks).
 - Released the exact eight-file test-only scope. No production file changed; the separate account-identity race remains fail-closed and unmodified pending its own exact claim.
+
+### 2026-08-20 18:18 CDT — detached initial account-authority race claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-ACCOUNT-IDENTITY-INITIAL-SETTLEMENT`.
+- Branch/base: `integration/UnifiedChungus-final` at `c8ba74ab`; worktree otherwise contains only the untracked live coordination-lock directory; no merge, rebase, or cherry-pick state.
+- Exact scope: `app/src/App.tsx` and `app/src/App.accountIdentity.test.tsx`.
+- Reproduction: detached Phase 2 permits general runtime/paint to proceed, but an initial signed-out settlement can erase a concurrently introduced malformed cloud-session object, mark identity ready, and briefly start stable-local account listeners before later rejection.
+- Intent: validate initial account-authority settlement against current store state and normalized identity before starting persistence or scoped listeners. Preserve nonblocking paint, runtime readiness, live auth recovery, generation cancellation, and fail-closed malformed-session behavior.
+- Independent read-only deep audit recommended this exact two-file boundary. No auth store, persistence coordinator, bootstrap, or other product files are claimed.
+
+#### Implementation and verification boundary
+
+- Added a local initial-authority settlement gate inside `useBoot`. A cloud-session object appearing during detached recovery now prevents local authorization; blank recovered cloud IDs also remain fail-closed. Only an unchanged signed-out store with a valid local identity, or a normalized recovered Supabase identity, can start persistence and scoped listeners.
+- Preserved Phase 2 detachment: general runtime readiness and workspace paint remain nonblocking. Existing live auth callbacks, generation invalidation, unmount cancellation, queue authority ordering, and account teardown barriers are unchanged.
+- Strengthened the Phase 4 regression for both blank and syntactically valid-but-unverified cloud IDs, including zero learning/profile/live-evidence listeners, zero queue authority, and quarantined private stores.
+- Exact account lifecycle matrix PASS: 3 files / 48 tests. Repaired regression matrix PASS: 12 files / 166 tests. `npm --prefix app run typecheck` PASS and `npm run verify:pr31-opencode-rlm` PASS.
+- Exact test/ledger Prettier checks PASS and `git diff --check` PASS. `App.tsx` retains its pre-existing whole-file Prettier baseline debt: an in-memory Prettier check returns false for both HEAD and the working version, so no broad formatting rewrite was retained.
+- The live official Tauri development app reloaded `App.tsx`; its process remained alive with normal Vite full-page reload diagnostics and no startup/runtime crash.
+- Next: stage only the two owned product/test files plus this ledger, run staged diff and secret checks, commit, then release the exact scope.

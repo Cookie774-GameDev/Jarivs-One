@@ -1103,6 +1103,50 @@ function useBoot() {
       syncAccountScopedListeners();
     }
 
+    function settleInitialAccountAuthority(session: SupabaseSessionLike): boolean {
+      if (cancelled) return false;
+
+      // AppContent quarantines persisted cloud state before boot starts. Any
+      // cloud-session object that appears while detached initial recovery is
+      // pending represents a newer, unverified authority. Never erase that
+      // divergence and silently authorize the stable local account.
+      if (useAuthStore.getState().cloudSession !== null) {
+        releaseEnqueueCloudAuthority();
+        applyCloudSession(null);
+        accountIdentityReady = false;
+        syncAccountScopedListeners();
+        return false;
+      }
+
+      const recoveredUserId = cloudSessionUserId(session);
+      if (session !== null && !recoveredUserId) {
+        releaseEnqueueCloudAuthority();
+        applyCloudSession(session);
+        accountIdentityReady = false;
+        syncAccountScopedListeners();
+        return false;
+      }
+
+      publishVerifiedEnqueueCloudAuthority(session);
+      applyCloudSession(session);
+      const identity = resolveAccountIdentity(useAuthStore.getState());
+      const expectedIdentity =
+        session === null
+          ? identity?.source === 'local'
+          : identity?.source === 'supabase' && identity.accountId === recoveredUserId;
+      if (!identity || !expectedIdentity) {
+        releaseEnqueueCloudAuthority();
+        accountIdentityReady = false;
+        syncAccountScopedListeners();
+        return false;
+      }
+
+      accountIdentityReady = true;
+      ensurePersistenceCoordinatorStarted();
+      syncAccountScopedListeners();
+      return true;
+    }
+
     if (plan.cloudSyncEnabled) {
       stopAccountSubscription = useAuthStore.subscribe(() => {
         revokeEnqueueAuthorityOnStoreDivergence();
@@ -1174,10 +1218,7 @@ function useBoot() {
           );
           if (cancelled) return;
           if (!isSupabaseConfigured()) {
-            publishVerifiedEnqueueCloudAuthority(null);
-            applyCloudSession(null);
-            accountIdentityReady = true;
-            ensurePersistenceCoordinatorStarted();
+            settleInitialAccountAuthority(null);
           } else {
             const supabaseModules = await withTimeout(
               Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
@@ -1257,16 +1298,10 @@ function useBoot() {
                   .getSession()
                   .then(({ data }) => {
                     if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
-                    publishVerifiedEnqueueCloudAuthority(data.session as SupabaseSessionLike);
-                    applyCloudSession(data.session as SupabaseSessionLike);
-                    accountIdentityReady = true;
-                    ensurePersistenceCoordinatorStarted();
-                    syncAccountScopedListeners();
-                    reconcileCloudSyncAuthority(
-                      data.session as SupabaseSessionLike,
-                      sessionGeneration,
-                    );
-                    const userId = cloudSessionUserId(data.session as SupabaseSessionLike);
+                    const session = data.session as SupabaseSessionLike;
+                    if (!settleInitialAccountAuthority(session)) return;
+                    reconcileCloudSyncAuthority(session, sessionGeneration);
+                    const userId = cloudSessionUserId(session);
                     // Startup routing: when cloud auth is configured but no one is
                     // signed in, open the Account page so the user can sign up /
                     // sign in. When signed in, the persisted last route is restored

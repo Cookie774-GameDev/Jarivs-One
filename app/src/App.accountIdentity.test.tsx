@@ -1327,64 +1327,72 @@ function accountIdentityBootSuite(): void {
     });
   });
 
-  it('starts no scoped listener when a blank cloud id is present at the Phase 4 boot boundary', async () => {
-    const malformedCloudSession = cloudSession('   ');
-    prepareAppIdentity({
-      cloudSession: malformedCloudSession,
-      localUserId: 'stable-local-user',
-    });
-    useJarvisLearningStore.getState().setAccount('previous-private-account');
-    useJarvisLearningStore.getState().remember({
-      value: 'Previous private learning',
-      category: 'personal',
-      source: { kind: 'explicit' },
-    });
-    useAllAboutMeStore.getState().setAccountScope('previous-private-account');
-    useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nPrevious private profile');
-    seedCanonicalTaskProjection(
-      'previous-private-scope',
-      'previous-private-run',
-      'Previous private task',
-    );
-    const stopPhaseBoundary = useAgentStore.subscribe((state, previous) => {
-      if (Object.keys(previous.agents).length === 0 && Object.keys(state.agents).length > 0) {
-        useAuthStore.setState({ cloudSession: malformedCloudSession });
+  it.each([
+    ['blank', '   '],
+    ['unverified', 'unverified-cloud-user'],
+  ] as const)(
+    'starts no scoped listener when a %s cloud id is present at the Phase 4 boot boundary',
+    async (_label, userId) => {
+      const divergentCloudSession = cloudSession(userId);
+      prepareAppIdentity({
+        cloudSession: divergentCloudSession,
+        localUserId: 'stable-local-user',
+      });
+      useJarvisLearningStore.getState().setAccount('previous-private-account');
+      useJarvisLearningStore.getState().remember({
+        value: 'Previous private learning',
+        category: 'personal',
+        source: { kind: 'explicit' },
+      });
+      useAllAboutMeStore.getState().setAccountScope('previous-private-account');
+      useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nPrevious private profile');
+      seedCanonicalTaskProjection(
+        'previous-private-scope',
+        'previous-private-run',
+        'Previous private task',
+      );
+      const stopPhaseBoundary = useAgentStore.subscribe((state, previous) => {
+        if (Object.keys(previous.agents).length === 0 && Object.keys(state.agents).length > 0) {
+          useAuthStore.setState({ cloudSession: divergentCloudSession });
+        }
+      });
+
+      try {
+        render(<App />);
+        await waitForAccountScopeBoot();
+
+        await waitFor(() => {
+          expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
+        });
+        expect(accountListeners.learning).not.toHaveBeenCalled();
+        expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+        expect(kernelHost.openLiveEvidenceAccount).not.toHaveBeenCalled();
+        expect(queueAuthority.currentUserId()).toBeUndefined();
+        expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
+        expect(useJarvisLearningStore.getState()).toMatchObject({
+          activeAccountId: '',
+          profiles: {},
+          history: {},
+        });
+        expect(useAllAboutMeStore.getState()).toMatchObject({
+          accountScope: '',
+          markdown: '',
+        });
+        expect(useJarvisTaskRunStore.getState()).toMatchObject({
+          accountScope: '',
+          runs: {},
+        });
+        expect(
+          JSON.stringify({
+            learning: useJarvisLearningStore.getState(),
+            profile: useAllAboutMeStore.getState(),
+          }),
+        ).not.toContain('local-unassigned');
+      } finally {
+        stopPhaseBoundary();
       }
-    });
-
-    try {
-      render(<App />);
-      await waitForAccountScopeBoot();
-
-      await waitFor(() => {
-        expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
-      });
-      expect(accountListeners.learning).not.toHaveBeenCalled();
-      expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-      expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
-      expect(useJarvisLearningStore.getState()).toMatchObject({
-        activeAccountId: '',
-        profiles: {},
-        history: {},
-      });
-      expect(useAllAboutMeStore.getState()).toMatchObject({
-        accountScope: '',
-        markdown: '',
-      });
-      expect(useJarvisTaskRunStore.getState()).toMatchObject({
-        accountScope: '',
-        runs: {},
-      });
-      expect(
-        JSON.stringify({
-          learning: useJarvisLearningStore.getState(),
-          profile: useAllAboutMeStore.getState(),
-        }),
-      ).not.toContain('local-unassigned');
-    } finally {
-      stopPhaseBoundary();
-    }
-  });
+    },
+  );
 
   it('quarantines private state in the same turn a live blank cloud id tears down the scope', async () => {
     prepareAppIdentity({
