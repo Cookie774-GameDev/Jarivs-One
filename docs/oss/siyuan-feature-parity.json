@@ -161,7 +161,7 @@
       "id": "offline",
       "label": "Local offline operation",
       "status": "BLOCKED",
-      "reason": "The enabled build-materialized runtime has passed an owned offline boot, but final installer measurement and release acceptance remain blocked.",
+      "reason": "The enabled build-materialized runtime has passed owned offline boots and the final SiYuan-enabled installers pass the exact size gate, but scored native UI behavior under an enforced network-denial boundary remains pending.",
       "evidence": []
     },
     {
