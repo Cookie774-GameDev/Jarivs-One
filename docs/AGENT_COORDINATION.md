@@ -2519,3 +2519,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Added exact exclusive path** | `app/src/features/taskbar-usage/TaskbarUsageExpanded.test.tsx`, test-only, to update the frozen provider-registry count from 35 to the intentional 36 after the owned OpenCode registry definition. |
 | **Controller review correction** | Before handoff, account snapshots must match the authoritative route/connection ID rather than provider-family ID; current-chat totals must not claim exact selected-route attribution for messages lacking matching provider/model evidence; default/session/refresh/all must remain materially distinct and document the session boundary. |
 | **Verification / state** | Rerun the focused usage matrix, the adjacent expanded-taskbar matrix, full app typecheck, exact formatting/diff checks, and Gitleaks. Worker keeps every file unstaged/uncommitted for controller review. |
+
+## 2026-08-20 - SiYuan production RLM federation lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:27 CT |
+| **Controller exact paths** | New `app/src/features/context/siyuanRlmProduction.ts` and test; existing `app/src/features/context/contextRlmProduction.ts` and test. |
+| **Intent** | Adapt the typed project-ID native start/search/get bridge into the accepted SiYuan lossless repository, add it to production Context/RLM federation, and route pointer issuance/validation to the exact mapped-file, history, or SiYuan authority. Explicit mapped-file questions remain isolated to mapped-file authority. |
+| **Exclusions / safety** | No edits under the activation worker's `features/context/siyuan/**` or native/runtime manifest scope; no usage/taskbar/model/UI/migration files; no production data or unowned process access. Production remains fail-closed while the checked-in SiYuan feature gate is false. |
+| **Verification / state** | `IMPLEMENTING`; add mixed-source, pointer-capability, project-scope, disabled/web-preview, and bridge-invocation tests, then run focused Context matrices, full typecheck after the usage lane settles, exact formatting/diff checks, and Gitleaks. |
