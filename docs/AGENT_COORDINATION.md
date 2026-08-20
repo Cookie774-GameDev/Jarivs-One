@@ -2568,3 +2568,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Controller exact paths** | `scripts/prepare-siyuan-runtime.mjs`; `scripts/prepare-siyuan-runtime.test.mjs`; metadata-only generated output under ignored `app/src-tauri/resources/siyuan-runtime`. |
 | **Intent** | Require complete closure verification before reusing a prepared payload, then compare and atomically refresh the copied authoritative runtime manifest, closure manifest, source offer, and ready marker so a valid 445,983,251-byte payload cannot silently retain stale packaging metadata. |
 | **Safety / verification** | Never rewrite component payload bytes during metadata refresh; invalid closure or ready-marker authority still fails closed. Add reuse/update/drift tests, run real local refresh and immediate reverify, then exact Prettier/diff/Gitleaks checks. |
+
+## 2026-08-20 - Verified SiYuan generated-metadata refresh accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:43 CT |
+| **Accepted commit** | `0744c618` (`build:refresh-verified-SiYuan-bundle-metadata`), exact two-file source manifest. |
+| **Result** | Reuse now verifies the complete measured closure and exact ready-marker authority before atomically refreshing only the copied runtime manifest, closure manifest, source offer, and canonical ready JSON. Payload or marker drift remains fail-closed and the existing output is preserved. |
+| **Verification** | Materializer matrix PASS 7/7; real ignored payload refresh reported verified/reused; byte comparison confirmed all three copied source metadata files equal their checked-in authorities; immediate second reuse PASS; exact Prettier, diff check, and staged Gitleaks PASS. |
+| **Status / next action** | Metadata scope `ACCEPTED` and released. Begin deterministic 500 MB SiYuan fixture generation through the authenticated native API and record measured/indexed evidence before any feature enablement. |
