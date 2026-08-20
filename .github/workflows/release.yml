@@ -107,6 +107,10 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Prepare verified SiYuan Windows runtime
+        if: matrix.platform == 'windows-latest'
+        run: npm run prepare:siyuan-runtime
+
       - name: Prepare signed updater release config
         shell: bash
         run: |

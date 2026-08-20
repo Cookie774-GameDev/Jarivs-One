@@ -16,6 +16,7 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/Cargo.lock
 app/src-tauri/tauri.windows-signing.generated.json
+app/src-tauri/resources/siyuan-runtime/
 target/
 
 # Environment

@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "resources": [
+      "resources/intro/*",
+      "../../docs/oss/dependency-lock.json",
+      "../../docs/oss/grammar-license-inventory.md",
+      "../../docs/oss/THIRD_PARTY_NOTICES.md",
+      "../../docs/oss/sbom-pr31.cdx.json",
+      "../../docs/oss/browser-agent-feature-pack.json",
+      "../../docs/oss/licenses/*",
+      "resources/siyuan-runtime/**/*"
+    ]
+  }
+}
