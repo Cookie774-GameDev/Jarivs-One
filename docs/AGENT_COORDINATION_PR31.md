@@ -206,3 +206,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - `npm --prefix app run typecheck` PASS; `npm run verify:pr31-opencode-rlm` PASS; exact-file Prettier PASS; `git diff --check` PASS.
 - Official Tauri development app launched successfully from this worktree and rendered the native `VibeSpace` window. Window-scoped manual interaction was then stopped by the user's physical Escape key, so no scored native UAT result is claimed from this launch.
 - Next: stage only the owned test and this ledger, run staged diff and secret checks, commit the reversible repair, then release this exact scope.
+
+#### 2026-08-20 17:46 CDT — committed and scope released
+
+- Commit: `8bad099a` (`test(opencode): align final boss max parity`), based on `592eb17f`.
+- Staged diff check PASS and staged Gitleaks PASS (`2.13 KB`, no leaks).
+- Released exact test-only product ownership. The native Tauri app remains running for continued manual verification, but the interrupted window-control session produced no scored UAT claim.
