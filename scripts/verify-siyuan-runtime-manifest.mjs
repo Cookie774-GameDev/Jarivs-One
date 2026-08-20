@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const TAG = 'v3.8.1';
@@ -142,6 +143,14 @@ function stringArray(value, code) {
   }
   if (new Set(value).size !== value.length) fail(code);
   return value;
+}
+
+function evidencePath(value) {
+  return (
+    /^(?:app|docs|scripts)\/[A-Za-z0-9_./-]+$/u.test(value) &&
+    !value.includes('..') &&
+    existsSync(new URL(`../${value}`, import.meta.url))
+  );
 }
 
 function officialGithubUrl(value, expected, code) {
@@ -591,12 +600,19 @@ function validateLedgerEntries(entries, entryKeys, evidenceKey, codePrefix) {
     }
     ids.add(entry.id);
     if (!STATUS_VALUES.has(entry.status)) fail(`${codePrefix}_entry_status_invalid`);
-    if (entry.status !== 'BLOCKED') fail(`${codePrefix}_premature_pass_claim`);
     if (typeof entry.reason !== 'string' || entry.reason.length < 12 || entry.reason.length > 500) {
       fail(`${codePrefix}_entry_reason_invalid`);
     }
-    stringArray(entry[evidenceKey], `${codePrefix}_entry_evidence_invalid`);
-    if (entry[evidenceKey].length !== 0) fail(`${codePrefix}_unverified_evidence_forbidden`);
+    const evidence = stringArray(entry[evidenceKey], `${codePrefix}_entry_evidence_invalid`);
+    if (evidence.some((item) => !evidencePath(item))) {
+      fail(`${codePrefix}_entry_evidence_invalid`);
+    }
+    if (entry.status === 'BLOCKED' && evidence.length !== 0) {
+      fail(`${codePrefix}_blocked_evidence_forbidden`);
+    }
+    if (entry.status !== 'BLOCKED' && evidence.length === 0) {
+      fail(`${codePrefix}_pass_evidence_required`);
+    }
     counts.set(entry.status, counts.get(entry.status) + 1);
   }
   return counts;
@@ -662,23 +678,89 @@ export function validateElectronTauriLedger(value) {
   return true;
 }
 
+const MIGRATION_STAGE_IDS = [
+  'feature-flag-off',
+  'read-only-sidecar',
+  'shadow-projection',
+  'dual-read',
+  'managed-writes',
+  'historical-knowledge-migration',
+];
+const MIGRATION_STATUSES = new Set(['PASS_TESTED', 'PASS_NATIVE', 'BLOCKED']);
+
+export function validateMigrationNoLossLedger(value) {
+  const ledger = record(value, 'migration_ledger_invalid');
+  exactKeys(
+    ledger,
+    ['schemaVersion', 'upstream', 'releaseClaim', 'execution', 'invariants', 'stages'],
+    'migration_ledger_keys_invalid',
+  );
+  positiveInteger(ledger.schemaVersion, 1, 'migration_ledger_schema_invalid');
+  validateUpstream(ledger.upstream, 'migration_ledger_upstream');
+  exactString(ledger.releaseClaim, 'blocked', 'migration_ledger_release_claim_invalid');
+  const execution = record(ledger.execution, 'migration_ledger_execution_invalid');
+  exactKeys(
+    execution,
+    [
+      'productionUserDataMigrated',
+      'legacyContextDeleted',
+      'historicalNoteContentMigrated',
+      'dualReadProductionAuthority',
+      'managedHumanWriteAuthority',
+    ],
+    'migration_ledger_execution_keys_invalid',
+  );
+  for (const value of Object.values(execution)) {
+    boolean(value, false, 'migration_ledger_production_claim_forbidden');
+  }
+  const invariants = stringArray(ledger.invariants, 'migration_ledger_invariants_invalid');
+  if (invariants.length < 6 || invariants.some((item) => item.length < 30 || item.length > 500)) {
+    fail('migration_ledger_invariants_invalid');
+  }
+  if (!Array.isArray(ledger.stages) || ledger.stages.length !== MIGRATION_STAGE_IDS.length) {
+    fail('migration_ledger_stages_invalid');
+  }
+  ledger.stages.forEach((raw, index) => {
+    const stage = record(raw, 'migration_ledger_stage_invalid');
+    exactKeys(stage, ['id', 'status', 'reason', 'evidence'], 'migration_ledger_stage_keys_invalid');
+    exactString(stage.id, MIGRATION_STAGE_IDS[index], 'migration_ledger_stage_id_invalid');
+    if (!MIGRATION_STATUSES.has(stage.status)) fail('migration_ledger_stage_status_invalid');
+    if (typeof stage.reason !== 'string' || stage.reason.length < 30 || stage.reason.length > 500) {
+      fail('migration_ledger_stage_reason_invalid');
+    }
+    const evidence = stringArray(stage.evidence, 'migration_ledger_stage_evidence_invalid');
+    if (evidence.some((item) => !evidencePath(item))) {
+      fail('migration_ledger_stage_evidence_invalid');
+    }
+    if (stage.status === 'BLOCKED' ? evidence.length !== 0 : evidence.length === 0) {
+      fail('migration_ledger_stage_evidence_status_invalid');
+    }
+  });
+  const historical = ledger.stages.at(-1);
+  if (historical.status !== 'BLOCKED') fail('migration_ledger_historical_claim_forbidden');
+  return true;
+}
+
 async function readJson(url) {
   return JSON.parse(await readFile(url, 'utf8'));
 }
 
 export async function verifySiyuanRuntimeArtifacts() {
-  const [manifest, provenance, runtimeClosure, featureParity, bridgeParity] = await Promise.all([
-    readJson(new URL('../app/src-tauri/resources/siyuan-runtime-manifest.json', import.meta.url)),
-    readJson(new URL('../docs/oss/siyuan-runtime-provenance.json', import.meta.url)),
-    readJson(new URL('../docs/oss/siyuan-runtime-closure.json', import.meta.url)),
-    readJson(new URL('../docs/oss/siyuan-feature-parity.json', import.meta.url)),
-    readJson(new URL('../docs/oss/siyuan-electron-tauri-parity.json', import.meta.url)),
-  ]);
+  const [manifest, provenance, runtimeClosure, featureParity, bridgeParity, migration] =
+    await Promise.all([
+      readJson(new URL('../app/src-tauri/resources/siyuan-runtime-manifest.json', import.meta.url)),
+      readJson(new URL('../docs/oss/siyuan-runtime-provenance.json', import.meta.url)),
+      readJson(new URL('../docs/oss/siyuan-runtime-closure.json', import.meta.url)),
+      readJson(new URL('../docs/oss/siyuan-feature-parity.json', import.meta.url)),
+      readJson(new URL('../docs/oss/siyuan-electron-tauri-parity.json', import.meta.url)),
+      readJson(new URL('../docs/oss/siyuan-migration-no-loss.json', import.meta.url)),
+    ]);
   validateRuntimeManifest(manifest);
   validateProvenance(provenance);
   validateRuntimeClosure(runtimeClosure);
   validateFeatureParityLedger(featureParity);
   validateElectronTauriLedger(bridgeParity);
+  validateMigrationNoLossLedger(migration);
   return Object.freeze({
     tag: TAG,
     commitSha: COMMIT_SHA,
@@ -689,6 +771,7 @@ export async function verifySiyuanRuntimeArtifacts() {
     compressedAnalysisBytes: runtimeClosure.compressionEvidence.bytes,
     featureBlockedCount: featureParity.summary.blocked,
     bridgeBlockedCount: bridgeParity.entries.length,
+    migrationBlockedCount: migration.stages.filter(({ status }) => status === 'BLOCKED').length,
   });
 }
 
@@ -697,7 +780,7 @@ if (entryPath === import.meta.url) {
   verifySiyuanRuntimeArtifacts()
     .then((result) => {
       console.log(
-        `SiYuan runtime manifest: PASS (${result.tag}, disabled, build-materialized payload, ${result.featureBlockedCount} feature blocks, ${result.bridgeBlockedCount} bridge blocks)`,
+        `SiYuan runtime manifest: PASS (${result.tag}, disabled, build-materialized payload, ${result.featureBlockedCount} feature blocks, ${result.bridgeBlockedCount} bridge blocks, ${result.migrationBlockedCount} migration block)`,
       );
     })
     .catch((error) => {

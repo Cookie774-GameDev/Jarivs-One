@@ -2738,3 +2738,26 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Renderer outcome** | Context has an accessible local-vault shell with bounded native geometry, resize/main-window-move synchronization, reload, stable redacted retry, explicit close, and the official SiYuan v3.8.1 surface over its reserved rectangle. The checked-in gate remains `false`, so existing users and route output are unchanged until the later migration/parity acceptance lane. |
 | **Verification** | Native SiYuan suite PASS 39 with one explicit real-runtime opt-in ignored; cargo check PASS; frozen ordinary authority exact PASS at `4379ba5f17e3ba791b0723ce8e0715fc5f8cd3bc91ba2618ac01df230c90d11c`, normalized `e6cc7ab17a4e112b7ad348a987eca223e227bd7dc67eba6cf0d7931242a26806`. Renderer/security focused suite PASS 3 files / 11 tests; adjacent SiYuan/Nightly/RLM matrix PASS 10 files / 52 tests; Context appearance matrix PASS 3 files / 8 tests; full typecheck, manifest verifier, and PR31 verifier PASS. |
 | **Status / next action** | Lane `ACCEPTED`; finish exact formatting/diff/staged-secret gates, commit, and release this scope. Next implement staged lossless migration and parity truth before enabling the feature or claiming native UI acceptance. |
+
+## 2026-08-20 - Staged SiYuan shadow migration and parity-truth lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 10:20 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` at `394b786c`. |
+| **Exact scope** | New shadow-migration domain/test and machine-readable no-loss ledger; existing SiYuan feature/Electron parity ledgers; manifest verifier/test; this coordination ledger. |
+| **Intent** | Project selected Context Graph records into managed SiYuan shadow documents without changing or deleting Context authority. Persist stable source-to-block mappings, source digests and exact projected Markdown; create a repository snapshot before writes/rollback; reread every block before verification; resume prepared runs; reject changed source/remote content; and roll back only unchanged owned shadow documents. |
+| **Truth boundary** | Checked-in feature gate stays false and no production user data is migrated in this lane. Historical external note-content bytes, dual-read authority, managed human-write cutover, and feature enablement remain blocked until their later real-runtime acceptance gates. |
+
+## 2026-08-20 - Staged SiYuan shadow migration and parity truth accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 10:33 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` from `394b786c`. |
+| **Exact product scope** | New `siyuanShadowMigration.ts` and eight-test matrix; new no-loss ledger; feature-parity ledger; manifest verifier/test; this ledger. The Electron-to-Tauri ledger was reviewed but remains unchanged with all eight gaps blocked. |
+| **Migration outcome** | Explicit preview performs no write. Approved shadow projection builds bounded deterministic per-map Markdown with full canonical source/entity/edge/provenance payload, snapshots first, authoritative-rereads each block, persists source/block/digest mappings after every accepted write, resumes prepared runs, and verifies the Context source digest again before acceptance. Existing Context records are never updated or deleted. |
+| **Rollback outcome** | Rollback snapshots first, preflights all remaining blocks before deletion, rejects any user/remote edit, records pending delete intent before each mutation, checkpoints completion after each delete, and reconciles the crash gap where deletion succeeded before its completion checkpoint. Stable mapping history is retained. |
+| **Truthful ledger outcome** | Real 500,000,000-byte full-text search advances only `search` to `PASS_NATIVE`; 21 feature rows and all 8 Electron bridge rows remain explicitly blocked. The new staged ledger records feature-off, real sidecar, tested shadow/federation/managed-write progress while keeping production migration, legacy deletion, historical note-content migration, production dual-read, and managed human-write authority false. |
+| **Verification** | New shadow matrix PASS 8/8; adjacent V1→V2 migration PASS 17/17; combined migration/federation/managed/Nightly matrix PASS 5 files / 41 tests before final crash-gap hardening; verifier PASS 10/10 and direct manifest PASS; full app typecheck PASS; exact formatting/diff/staged-secret gates remain for commit. |
+| **Status / next action** | Lane `ACCEPTED`; commit and release exact scope. Next enable the feature only with a native real-runtime surface/migration fixture and then execute the remaining parity/scored/manual gates. |

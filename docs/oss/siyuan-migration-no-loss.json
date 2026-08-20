@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "tag": "v3.8.1",
+    "commitSha": "afa823b6b4e4f183511e0bc0a3be93caa94c7c97"
+  },
+  "releaseClaim": "blocked",
+  "execution": {
+    "productionUserDataMigrated": false,
+    "legacyContextDeleted": false,
+    "historicalNoteContentMigrated": false,
+    "dualReadProductionAuthority": false,
+    "managedHumanWriteAuthority": false
+  },
+  "invariants": [
+    "Existing Context Graph and raw-source records remain authoritative and are never mutated by shadow projection.",
+    "Every shadow document is bound to a stable map identity, source digest, SiYuan block identity, and authoritative Markdown digest.",
+    "Projection and rollback create a SiYuan repository snapshot before mutation.",
+    "Prepared projection and rolling-back manifests resume per document after interruption.",
+    "Rollback preflights every remaining document and deletes only exact unchanged owned shadow Markdown.",
+    "Historical external note-content bytes cannot migrate until their storage adapter proves exact round-trip fidelity."
+  ],
+  "stages": [
+    {
+      "id": "feature-flag-off",
+      "status": "PASS_TESTED",
+      "reason": "The checked-in renderer and native feature gates remain false and existing Context behavior stays authoritative.",
+      "evidence": [
+        "app/src/features/context/siyuan/siyuanContracts.ts",
+        "app/src-tauri/src/siyuan/manifest.rs",
+        "app/src/features/context/siyuan/siyuanContracts.test.ts"
+      ]
+    },
+    {
+      "id": "read-only-sidecar",
+      "status": "PASS_NATIVE",
+      "reason": "The pinned project-scoped loopback runtime booted, authenticated, served typed reads, and shut down inside the owned fixture.",
+      "evidence": [
+        "docs/oss/siyuan-runtime-provenance.json",
+        "app/src-tauri/src/siyuan/supervisor.rs",
+        "app/src-tauri/src/siyuan/client.rs"
+      ]
+    },
+    {
+      "id": "shadow-projection",
+      "status": "PASS_TESTED",
+      "reason": "The additive projector inventories exact Context snapshots, writes stable managed documents, rereads them, persists resumable mappings, and proves source bytes unchanged in focused tests.",
+      "evidence": [
+        "app/src/features/context/siyuanShadowMigration.ts",
+        "app/src/features/context/siyuanShadowMigration.test.ts"
+      ]
+    },
+    {
+      "id": "dual-read",
+      "status": "PASS_TESTED",
+      "reason": "Feature-gated Context federation retains existing Context authority and adds SiYuan candidates under the unified result contract in focused tests.",
+      "evidence": [
+        "app/src/features/context/rlm/contextRlmProduction.ts",
+        "app/src/features/context/rlm/contextRlmProduction.test.ts"
+      ]
+    },
+    {
+      "id": "managed-writes",
+      "status": "PASS_TESTED",
+      "reason": "Approve-only, typed create/update/delete, snapshot-first application, authoritative reread, compensation, and rollback are covered without enabling production writes.",
+      "evidence": [
+        "app/src/features/context/siyuanManagedKnowledge.ts",
+        "app/src/features/context/siyuanManagedKnowledge.test.ts",
+        "app/src/features/context/nightlySecondBrain.test.ts"
+      ]
+    },
+    {
+      "id": "historical-knowledge-migration",
+      "status": "BLOCKED",
+      "reason": "External Context note-content bytes and full official-UI round-trip fidelity have not yet passed the real-runtime migration acceptance matrix.",
+      "evidence": []
+    }
+  ]
+}

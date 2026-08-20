@@ -6,11 +6,11 @@
   },
   "releaseClaim": "blocked",
   "summary": {
-    "passNative": 0,
+    "passNative": 1,
     "passBridged": 0,
     "passVibeSpaceRoute": 0,
     "entitlementExternal": 0,
-    "blocked": 22
+    "blocked": 21
   },
   "entries": [
     {
@@ -51,15 +51,19 @@
     {
       "id": "search",
       "label": "Full-text and focused search",
-      "status": "BLOCKED",
-      "reason": "Pinned native search transport is verified, but production enablement and scored index evidence remain blocked.",
-      "evidence": []
+      "status": "PASS_NATIVE",
+      "reason": "Pinned native full-text search returned the unique final sentinel from the exact 500,000,000-byte authenticated fixture; production route enablement remains separately blocked.",
+      "evidence": [
+        "docs/oss/siyuan-500mb-fixture-evidence.json",
+        "app/src-tauri/src/siyuan/client.rs",
+        "app/src-tauri/src/siyuan/supervisor.rs"
+      ]
     },
     {
       "id": "notebooks",
       "label": "Notebook and document tree",
       "status": "BLOCKED",
-      "reason": "Project-scoped runtime boot is verified, but notebook mapping and its VibeSpace surface are not integrated.",
+      "reason": "Project-scoped runtime, managed notebook mapping, and the restricted official surface are implemented, but the native tree workflow has not completed scored UI acceptance.",
       "evidence": []
     },
     {
@@ -80,7 +84,7 @@
       "id": "daily-notes",
       "label": "Daily notes",
       "status": "BLOCKED",
-      "reason": "Nightly and daily-note writes do not target SiYuan.",
+      "reason": "Typed daily-note and Nightly managed-write routes are implemented behind the false gate, but real-runtime daily-note persistence and rollback scoring remain pending.",
       "evidence": []
     },
     {
@@ -115,7 +119,7 @@
       "id": "history",
       "label": "History, snapshots, and rollback",
       "status": "BLOCKED",
-      "reason": "No SiYuan history boundary is connected to managed writes.",
+      "reason": "Snapshot-first managed writes and reversible shadow mappings are implemented, but official history UI and real-runtime rollback acceptance remain pending.",
       "evidence": []
     },
     {
@@ -164,7 +168,7 @@
       "id": "full-vault-surface",
       "label": "Full official SiYuan knowledge surface inside VibeSpace",
       "status": "BLOCKED",
-      "reason": "No restricted child WebView surface has been implemented.",
+      "reason": "The zero-permission exact-loopback official surface is implemented and compiled, but feature enablement and scored native UI acceptance remain pending.",
       "evidence": []
     }
   ]

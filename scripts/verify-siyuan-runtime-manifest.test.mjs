@@ -5,6 +5,7 @@ import {
   SiyuanManifestValidationError,
   validateElectronTauriLedger,
   validateFeatureParityLedger,
+  validateMigrationNoLossLedger,
   validateProvenance,
   validateRuntimeClosure,
   validateRuntimeManifest,
@@ -32,8 +33,9 @@ test('accepts the checked-in disabled manifest and truthful blocked ledgers', as
     runtimeBundled: true,
     closureBytes: 445983251,
     compressedAnalysisBytes: 87304479,
-    featureBlockedCount: 22,
+    featureBlockedCount: 21,
     bridgeBlockedCount: 8,
+    migrationBlockedCount: 1,
   });
 });
 
@@ -136,31 +138,63 @@ test('binds the measured closure to exact component totals without claiming a fi
   rejectsCode(() => validateRuntimeClosure(finalClaim), 'closure_final_artifact_claim_forbidden');
 });
 
-test('rejects premature feature-parity passes and summary inflation', async () => {
+test('requires evidence for feature-parity passes and rejects summary inflation', async () => {
   const source = await load('docs/oss/siyuan-feature-parity.json');
   assert.equal(validateFeatureParityLedger(source), true);
 
-  const pass = clone(source);
-  pass.entries[0].status = 'PASS_NATIVE';
-  rejectsCode(() => validateFeatureParityLedger(pass), 'feature_ledger_premature_pass_claim');
+  const unevidencedPass = clone(source);
+  unevidencedPass.entries[0].status = 'PASS_NATIVE';
+  unevidencedPass.summary.passNative += 1;
+  unevidencedPass.summary.blocked -= 1;
+  rejectsCode(
+    () => validateFeatureParityLedger(unevidencedPass),
+    'feature_ledger_pass_evidence_required',
+  );
 
   const inflated = clone(source);
   inflated.summary.blocked += 1;
   rejectsCode(() => validateFeatureParityLedger(inflated), 'feature_ledger_summary_invalid');
 });
 
-test('rejects unverified Electron-to-Tauri bridge claims', async () => {
+test('rejects unevidenced Electron-to-Tauri bridge claims', async () => {
   const source = await load('docs/oss/siyuan-electron-tauri-parity.json');
   assert.equal(validateElectronTauriLedger(source), true);
 
   const pass = clone(source);
   pass.entries[0].status = 'PASS_BRIDGED';
-  rejectsCode(() => validateElectronTauriLedger(pass), 'bridge_ledger_premature_pass_claim');
+  rejectsCode(() => validateElectronTauriLedger(pass), 'bridge_ledger_pass_evidence_required');
 
   const inventedEvidence = clone(source);
-  inventedEvidence.entries[0].testEvidence.push('not-a-real-test');
+  inventedEvidence.entries[0].testEvidence.push('app/src/not-a-real-test.ts');
   rejectsCode(
     () => validateElectronTauriLedger(inventedEvidence),
-    'bridge_ledger_unverified_evidence_forbidden',
+    'bridge_ledger_entry_evidence_invalid',
+  );
+});
+
+test('binds staged migration truth and forbids production or historical-cutover claims', async () => {
+  const source = await load('docs/oss/siyuan-migration-no-loss.json');
+  assert.equal(validateMigrationNoLossLedger(source), true);
+
+  const production = clone(source);
+  production.execution.productionUserDataMigrated = true;
+  rejectsCode(
+    () => validateMigrationNoLossLedger(production),
+    'migration_ledger_production_claim_forbidden',
+  );
+
+  const historical = clone(source);
+  historical.stages.at(-1).status = 'PASS_TESTED';
+  historical.stages.at(-1).evidence = ['app/src/features/context/siyuanShadowMigration.test.ts'];
+  rejectsCode(
+    () => validateMigrationNoLossLedger(historical),
+    'migration_ledger_historical_claim_forbidden',
+  );
+
+  const missingEvidence = clone(source);
+  missingEvidence.stages[2].evidence = [];
+  rejectsCode(
+    () => validateMigrationNoLossLedger(missingEvidence),
+    'migration_ledger_stage_evidence_status_invalid',
   );
 });
