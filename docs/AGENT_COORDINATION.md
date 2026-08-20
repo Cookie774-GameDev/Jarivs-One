@@ -2588,3 +2588,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **External fixture authority** | `D:\VibeSpace-Testing\SiYuan-Context-OpenCode-RLM-Feature-Testing\fixture-runtime` and `fixture-workspace`; no real user workspace or production data. |
 | **Intent** | Launch only the verified pinned v3.8.1 kernel, authenticate through access-code login/session cookie, create a resumable deterministic corpus with exactly 500,000,000 source Markdown bytes through official notebook/document APIs, re-read authoritative stored bytes, prove a unique sentinel through full-text search, write a secret-free evidence manifest, and shut down the owned process. |
 | **Safety / verification** | Fail closed on runtime marker/hash, unexpected workspace contents, API envelope drift, stored-content drift, missing index sentinel, non-loopback networking, or surviving PID. Unit-test deterministic sizing/IDs/root bounds/envelopes before running the long fixture build. |
+
+## 2026-08-20 - Deterministic fixture generator implementation checkpoint
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:52 CT |
+| **Owned source** | `scripts/generate-siyuan-500mb-fixture.mjs`; `scripts/generate-siyuan-500mb-fixture.test.mjs`. |
+| **Implementation** | Added a fixed-root, resumable generator for 500 deterministic one-million-byte Markdown documents. It verifies the pinned runtime marker and kernel hash, reserves only an OS-selected loopback port, authenticates by access-code login/session cookie, creates and re-reads every document through official APIs, checkpoints each stored digest, requires the final full-text sentinel, measures the isolated workspace, records secret-free evidence, and requires graceful process exit. |
+| **Verification** | Node syntax PASS; focused contract tests PASS 6/6; exact Prettier and diff checks PASS; exact-file Gitleaks PASS for both owned files. The wider `scripts` directory reported three unrelated existing findings and is not used as this lane's security evidence. |
+| **State / next action** | Source implementation is ready for checkpoint commit. Next run the unchanged generator against only the reserved D: fixture authority, retain resumable progress, and audit final evidence plus process exit before accepting the fixture. |
