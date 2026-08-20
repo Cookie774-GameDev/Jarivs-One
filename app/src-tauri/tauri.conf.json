@@ -65,7 +65,8 @@
         "pet-mini-panel",
         "pet-overlay",
         "workbench-window",
-        "taskbar-usage"
+        "taskbar-usage",
+        "siyuan-context-vault"
       ],
       "assetProtocol": {
         "enable": true,

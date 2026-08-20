@@ -10,11 +10,13 @@ pub mod manifest;
 pub mod resource;
 pub mod security;
 pub mod supervisor;
+pub mod surface;
 
 pub use supervisor::SiyuanRuntimeState;
 
 pub fn shutdown_runtime(app: &tauri::AppHandle) {
     use tauri::Manager;
+    surface::shutdown_surface(app);
     app.state::<SiyuanRuntimeState>().shutdown();
 }
 

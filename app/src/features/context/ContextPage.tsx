@@ -108,6 +108,8 @@ import {
   type GitHubContextServerRepository,
 } from './githubContextAuth';
 import { buildGitHubProjectContextTree } from './githubContextTree';
+import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
+import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface';
 import './sakura-context.css';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
@@ -154,6 +156,7 @@ export function ContextPage() {
   const [inspectorTab, setInspectorTab] = React.useState<ContextInspectorTabId>('details');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [focusedMap, setFocusedMap] = React.useState(false);
+  const [vaultOpen, setVaultOpen] = React.useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = React.useState(false);
   const [githubInstallationId, setGithubInstallationId] = React.useState('');
   const [githubRepositories, setGithubRepositories] = React.useState<
@@ -203,6 +206,7 @@ export function ContextPage() {
     setSelectedId(null);
     setGenerating(false);
     setStructuralPreview(null);
+    setVaultOpen(false);
     setJarvisUi(buildJarvisContextUi(null));
     lastAppliedFileRef.current = '';
     if (!accountId) return;
@@ -875,6 +879,18 @@ export function ContextPage() {
                 Create a cozy draggable map for every AI chat and terminal.
               </p>
             </div>
+            {SIYUAN_CONTEXT_VAULT_ENABLED && projectId ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setVaultOpen(true)}
+                aria-label="Open SiYuan Context Vault"
+                className="gap-1.5"
+              >
+                <NotebookPen className="h-4 w-4" />
+                Open vault
+              </Button>
+            ) : null}
             <Button
               variant="accent"
               size="sm"
@@ -1061,6 +1077,9 @@ export function ContextPage() {
           />
         )}
       </main>
+      {vaultOpen && SIYUAN_CONTEXT_VAULT_ENABLED && projectId ? (
+        <SiyuanVaultSurface projectId={projectId} onClose={() => setVaultOpen(false)} />
+      ) : null}
     </div>
   );
 }

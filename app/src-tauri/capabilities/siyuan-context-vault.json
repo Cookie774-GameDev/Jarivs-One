@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "siyuan-context-vault",
+  "description": "Zero-IPC capability marker for the authenticated official SiYuan child WebView. The native owner sets its HttpOnly loopback session; the remote surface receives no Tauri command, event, shell, dialog, process, filesystem, updater, or external HTTP authority.",
+  "windows": ["siyuan-context-vault"],
+  "permissions": []
+}

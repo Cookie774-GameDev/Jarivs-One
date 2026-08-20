@@ -2715,3 +2715,26 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Nightly behavior** | Checked-in false gate retains the legacy path. Enabled proposals search the exact managed notebook/document markers without writing, embed exact source IDs, deduplicate facts, and show reviewable block-level changes. Approval/auto creates a repository snapshot first, applies typed operations, captures authoritative block identity/content, compensates earlier mutations in reverse on failure, and supports snapshot-backed explicit rollback. Morning summaries distinguish queued versus applied changes and record snapshot creation. |
 | **Verification** | Broad focused matrix PASS 8 files / 96 tests, including scheduler/store/panel/runtime/federation; focused managed authority matrix PASS 3 files / 17 tests after authoritative post-write reread hardening; full app typecheck PASS; PR31 OpenCode/RLM wiring verifier PASS; exact Prettier and diff checks PASS. |
 | **Status / next action** | Lane `ACCEPTED`; run staged secret/diff checks, commit, and release scope. Next implement staged migration/no-loss truth before enabling production and exposing the full SiYuan Context surface. |
+## 2026-08-20 - Restricted official SiYuan Context surface lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:58 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` at `b3f38249`. |
+| **Exact scope** | Native SiYuan client/supervisor/module plus new surface module, ordinary registration/frozen authority, zero-permission surface capability, renderer surface bridge/component/tests, minimal ContextPage route integration, this ledger. |
+| **Intent** | Start/reuse the project-scoped kernel, establish its HttpOnly session entirely in native code, set that cookie directly on an isolated child WebView, then navigate only to the exact random loopback origin. Position the surface over a reserved Context rectangle, deny cross-origin navigation, popups, and downloads, grant the remote label no Tauri capability, and return no port/token/cookie to the renderer. |
+| **Compatibility boundary** | The checked-in gate remains false; no ordinary user sees or launches this surface yet. Migration, feature/parity ledgers, desktop dialog/import/export bridges, packaging, and release claims remain separate lanes. |
+| **Scope extension** | Added only `app/src-tauri/tauri.conf.json` to register the dedicated zero-permission `siyuan-context-vault` capability in the production allowlist; no CSP or other window capability changes are authorized. |
+
+## 2026-08-20 - Restricted official SiYuan Context surface accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 10:13 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` from `b3f38249`. |
+| **Exact product scope** | Native `siyuan/client.rs`, `siyuan/supervisor.rs`, `siyuan/mod.rs`, new `siyuan/surface.rs`, ordinary registration/frozen authority in `lib.rs`; new zero-permission capability and explicit config allowlist; renderer bridge/component/tests and gated `ContextPage.tsx` integration; this ledger. |
+| **Runtime / lifecycle outcome** | Opening the official surface starts or idempotently reuses the exact project-scoped managed kernel. A native-only login captures the HttpOnly session cookie; the renderer receives only redacted created/visible/project identity. Project changes replace the runtime authority, explicit close clears browsing data and destroys the surface, shutdown performs the same cleanup, and renderer unmount only hides the reusable owned surface. |
+| **Surface security outcome** | The owned `siyuan-context-vault` WebviewWindow accepts only `about:blank` during creation and the exact `http://127.0.0.1:<OS-random-port>` origin afterward. Different scheme/host/port, credentials, popups, and downloads are denied. Its dedicated capability has zero permissions and is absent from the default capability. No token, cookie, port, URL, or origin crosses the public command/status/error boundary. |
+| **Renderer outcome** | Context has an accessible local-vault shell with bounded native geometry, resize/main-window-move synchronization, reload, stable redacted retry, explicit close, and the official SiYuan v3.8.1 surface over its reserved rectangle. The checked-in gate remains `false`, so existing users and route output are unchanged until the later migration/parity acceptance lane. |
+| **Verification** | Native SiYuan suite PASS 39 with one explicit real-runtime opt-in ignored; cargo check PASS; frozen ordinary authority exact PASS at `4379ba5f17e3ba791b0723ce8e0715fc5f8cd3bc91ba2618ac01df230c90d11c`, normalized `e6cc7ab17a4e112b7ad348a987eca223e227bd7dc67eba6cf0d7931242a26806`. Renderer/security focused suite PASS 3 files / 11 tests; adjacent SiYuan/Nightly/RLM matrix PASS 10 files / 52 tests; Context appearance matrix PASS 3 files / 8 tests; full typecheck, manifest verifier, and PR31 verifier PASS. |
+| **Status / next action** | Lane `ACCEPTED`; finish exact formatting/diff/staged-secret gates, commit, and release this scope. Next implement staged lossless migration and parity truth before enabling the feature or claiming native UI acceptance. |

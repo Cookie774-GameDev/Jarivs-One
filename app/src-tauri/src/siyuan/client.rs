@@ -146,6 +146,17 @@ pub(crate) struct HttpSiyuanTransport {
     session_cookie: Mutex<Option<String>>,
 }
 
+pub(crate) struct SurfaceSessionAuthority {
+    origin: url::Url,
+    cookie_value: String,
+}
+
+impl SurfaceSessionAuthority {
+    pub(crate) fn into_parts(self) -> (url::Url, String) {
+        (self.origin, self.cookie_value)
+    }
+}
+
 impl fmt::Debug for HttpSiyuanTransport {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -341,6 +352,23 @@ impl HttpSiyuanTransport {
         } else {
             Err(ClientError::ResponseTypeMismatch)
         }
+    }
+
+    pub(crate) fn surface_session(&self) -> Result<SurfaceSessionAuthority, ClientError> {
+        let cookie = self.ensure_authenticated()?;
+        let cookie_value = cookie
+            .strip_prefix("siyuan=")
+            .filter(|value| !value.is_empty() && value.len() <= 4_096)
+            .ok_or(ClientError::TransportUnavailable)?
+            .to_owned();
+        let origin = self
+            .base_url
+            .parse()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        Ok(SurfaceSessionAuthority {
+            origin,
+            cookie_value,
+        })
     }
 
     pub(crate) fn request_shutdown(&self) -> Result<(), ClientError> {

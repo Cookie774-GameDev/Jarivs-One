@@ -613,6 +613,12 @@ fn run_ordinary(
             siyuan::commands::siyuan_delete_block,
             siyuan::commands::siyuan_create_daily_note,
             siyuan::commands::siyuan_create_snapshot,
+            siyuan::surface::siyuan_surface_open,
+            siyuan::surface::siyuan_surface_set_bounds,
+            siyuan::surface::siyuan_surface_hide,
+            siyuan::surface::siyuan_surface_reload,
+            siyuan::surface::siyuan_surface_close,
+            siyuan::surface::siyuan_surface_status,
             kernel_host::register_kernel_host,
             kernel_host::kernel_client_request,
             kernel_host::kernel_host_respond,
@@ -879,6 +885,12 @@ siyuan::commands::siyuan_update_block
 siyuan::commands::siyuan_delete_block
 siyuan::commands::siyuan_create_daily_note
 siyuan::commands::siyuan_create_snapshot
+siyuan::surface::siyuan_surface_open
+siyuan::surface::siyuan_surface_set_bounds
+siyuan::surface::siyuan_surface_hide
+siyuan::surface::siyuan_surface_reload
+siyuan::surface::siyuan_surface_close
+siyuan::surface::siyuan_surface_status
 kernel_host::register_kernel_host
 kernel_host::kernel_client_request
 kernel_host::kernel_host_respond
@@ -1044,9 +1056,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "9c32f74656b9b64cfb5e9ee1c9db3a643ee228d00f882ab50c0e238a0920ab85";
+        "4379ba5f17e3ba791b0723ce8e0715fc5f8cd3bc91ba2618ac01df230c90d11c";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "b7d5dd8470652b6c5cfa7a8b9c41b596b164e674330a264c34915f511e08fcc5";
+        "e6cc7ab17a4e112b7ad348a987eca223e227bd7dc67eba6cf0d7931242a26806";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1226,6 +1238,12 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("siyuan::commands::siyuan_delete_block,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_create_daily_note,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_create_snapshot,"));
+        assert!(ordinary.contains("siyuan::surface::siyuan_surface_open,"));
+        assert!(ordinary.contains("siyuan::surface::siyuan_surface_set_bounds,"));
+        assert!(ordinary.contains("siyuan::surface::siyuan_surface_hide,"));
+        assert!(ordinary.contains("siyuan::surface::siyuan_surface_reload,"));
+        assert!(ordinary.contains("siyuan::surface::siyuan_surface_close,"));
+        assert!(ordinary.contains("siyuan::surface::siyuan_surface_status,"));
         assert!(ordinary.contains(".configure_workspace_base(workspace_base)"));
         assert!(ordinary.contains(".configure_resource_root(runtime_root)"));
         assert!(ordinary.contains("siyuan::shutdown_runtime(app_handle);"));

@@ -402,6 +402,19 @@ impl SupervisorInner {
     }
 
     fn start(&mut self, project_id: &str) -> Result<RuntimeStatus, SupervisorError> {
+        self.ensure_payload_ready()?;
+        self.poll_crash()?;
+        if self.lifecycle.state() == RuntimeState::Ready
+            && self
+                .running
+                .as_ref()
+                .is_some_and(|running| running.project_id == project_id)
+        {
+            return self.status();
+        }
+        if self.running.is_some() {
+            self.stop()?;
+        }
         let mut plan = self.prepare_launch(project_id)?;
         let transport = match HttpSiyuanTransport::new(
             plan.port(),
@@ -747,6 +760,29 @@ mod tests {
         assert!(terminated.load(Ordering::SeqCst));
         assert_eq!(inner.lifecycle.state(), RuntimeState::Stopped);
         assert!(inner.running.is_none());
+    }
+
+    #[test]
+    fn matching_ready_project_start_is_idempotent_and_keeps_the_owned_process() {
+        let base = std::env::temp_dir().join("vibespace-siyuan-idempotent-test");
+        let terminated = Arc::new(AtomicBool::new(false));
+        let state = SiyuanRuntimeState::with_availability(ready_availability());
+        state.configure_workspace_base(base).unwrap();
+        let mut inner = state.inner.lock().unwrap();
+        let plan = inner.prepare_launch("project-1").unwrap();
+        inner
+            .attach_running(
+                plan,
+                Box::new(MockProcess {
+                    exited: Arc::new(AtomicBool::new(false)),
+                    terminated: terminated.clone(),
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(inner.start("project-1").unwrap().state, "ready");
+        assert!(!terminated.load(Ordering::SeqCst));
+        assert_eq!(inner.running.as_ref().unwrap().project_id, "project-1");
     }
 
     #[test]
