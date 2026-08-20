@@ -1,12 +1,21 @@
 //! Isolated SiYuan runtime contracts.
 //!
-//! This module is intentionally not registered with the Tauri command surface yet. Phase 0/1
-//! keeps the feature disabled while the packaging closure and native integration are unfinished.
+//! Commands are registered only on the ordinary Tauri builder. The supervisor remains
+//! fail-closed while the feature is disabled and no verified runtime payload is bundled.
 
 pub mod client;
+pub mod commands;
 pub mod lifecycle;
 pub mod manifest;
 pub mod security;
+pub mod supervisor;
+
+pub use supervisor::SiyuanRuntimeState;
+
+pub fn shutdown_runtime(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    app.state::<SiyuanRuntimeState>().shutdown();
+}
 
 #[cfg(test)]
 mod tests {

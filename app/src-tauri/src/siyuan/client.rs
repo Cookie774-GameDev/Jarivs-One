@@ -1,30 +1,48 @@
 //! Closed, typed broker contract for the small SiYuan API subset approved for Phase 1.
 
+use super::security::{validate_runtime_token, LOOPBACK_HOST};
+use reqwest::blocking::Client;
+use reqwest::redirect::Policy;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::fmt;
+use std::io::Read;
+use std::sync::Mutex;
+use std::time::Duration;
+
 pub const MAX_IDENTIFIER_BYTES: usize = 128;
 pub const MAX_QUERY_BYTES: usize = 512;
 pub const MAX_SEARCH_RESULTS: u16 = 100;
 pub const MAX_BLOCK_CONTENT_BYTES: usize = 1_048_576;
+const MAX_HTTP_RESPONSE_BYTES: u64 = 1_100_000;
+const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeStatus {
+    pub feature_enabled: bool,
     pub state: String,
     pub runtime_bundled: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeVersion {
     pub version: String,
     pub commit: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Notebook {
     pub id: String,
     pub name: String,
     pub closed: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockSummary {
     pub id: String,
     pub notebook_id: String,
@@ -32,7 +50,8 @@ pub struct BlockSummary {
     pub content: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Block {
     pub id: String,
     pub notebook_id: String,
@@ -43,7 +62,6 @@ pub struct Block {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BrokerRequest<'a> {
     Status,
-    Version,
     ListNotebooks,
     SearchBlocks { query: &'a str, limit: u16 },
     GetBlock { id: &'a str },
@@ -52,7 +70,6 @@ pub enum BrokerRequest<'a> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BrokerResponse {
     Status(RuntimeStatus),
-    Version(RuntimeVersion),
     Notebooks(Vec<Notebook>),
     SearchResults(Vec<BlockSummary>),
     Block(Block),
@@ -80,6 +97,254 @@ impl std::fmt::Display for ClientError {
             Self::ResponseTypeMismatch => "siyuan_response_type_mismatch",
             Self::TransportUnavailable => "siyuan_transport_unavailable",
         })
+    }
+}
+
+pub(crate) struct HttpSiyuanTransport {
+    client: Client,
+    base_url: String,
+    token: String,
+    session_cookie: Mutex<Option<String>>,
+}
+
+impl fmt::Debug for HttpSiyuanTransport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HttpSiyuanTransport")
+            .field("base_url", &self.base_url)
+            .field("token", &"[REDACTED]")
+            .field("session_cookie", &"[REDACTED]")
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
+struct ApiEnvelope<T> {
+    code: i64,
+    data: T,
+}
+
+#[derive(Deserialize)]
+struct NotebookData {
+    notebooks: Vec<NotebookWire>,
+}
+
+#[derive(Deserialize)]
+struct NotebookWire {
+    id: String,
+    name: String,
+    closed: bool,
+}
+
+#[derive(Deserialize)]
+struct SearchData {
+    blocks: Vec<SearchBlockWire>,
+}
+
+#[derive(Deserialize)]
+struct SearchBlockWire {
+    id: String,
+    #[serde(rename = "box")]
+    notebook_id: String,
+    path: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct BlockInfoData {
+    #[serde(rename = "box")]
+    notebook_id: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct BlockKramdownData {
+    id: String,
+    kramdown: String,
+}
+
+impl HttpSiyuanTransport {
+    pub(crate) fn new(port: u16, token: String) -> Result<Self, ClientError> {
+        if port == 0 || validate_runtime_token(&token).is_err() {
+            return Err(ClientError::TransportUnavailable);
+        }
+        let client = Client::builder()
+            .redirect(Policy::none())
+            .timeout(HTTP_TIMEOUT)
+            .build()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        Ok(Self {
+            client,
+            base_url: format!("http://{LOOPBACK_HOST}:{port}"),
+            token,
+            session_cookie: Mutex::new(None),
+        })
+    }
+
+    fn read_envelope<T: DeserializeOwned>(
+        &self,
+        mut response: reqwest::blocking::Response,
+    ) -> Result<T, ClientError> {
+        if !response.status().is_success()
+            || response
+                .content_length()
+                .is_some_and(|length| length > MAX_HTTP_RESPONSE_BYTES)
+        {
+            return Err(ClientError::TransportUnavailable);
+        }
+        let mut bytes = Vec::new();
+        response
+            .by_ref()
+            .take(MAX_HTTP_RESPONSE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        if bytes.len() as u64 > MAX_HTTP_RESPONSE_BYTES {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        let envelope: ApiEnvelope<T> =
+            serde_json::from_slice(&bytes).map_err(|_| ClientError::ResponseTypeMismatch)?;
+        if envelope.code != 0 {
+            return Err(ClientError::TransportUnavailable);
+        }
+        Ok(envelope.data)
+    }
+
+    fn ensure_authenticated(&self) -> Result<String, ClientError> {
+        let mut session_cookie = self
+            .session_cookie
+            .lock()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        if let Some(cookie) = session_cookie.as_ref() {
+            return Ok(cookie.clone());
+        }
+
+        let response = self
+            .client
+            .post(format!("{}/api/system/loginAuth", self.base_url))
+            .json(&json!({
+                "authCode": self.token,
+                "captcha": "",
+                "rememberMe": false,
+            }))
+            .send()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        let cookie = response
+            .headers()
+            .get(reqwest::header::SET_COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .filter(|value| value.starts_with("siyuan=") && value.len() <= 4_096)
+            .ok_or(ClientError::TransportUnavailable)?
+            .to_owned();
+        let _: Value = self.read_envelope(response)?;
+        *session_cookie = Some(cookie.clone());
+        Ok(cookie)
+    }
+
+    fn post<T: DeserializeOwned>(&self, path: &'static str, body: Value) -> Result<T, ClientError> {
+        let session_cookie = self.ensure_authenticated()?;
+        let response = self
+            .client
+            .post(format!("{}{path}", self.base_url))
+            .header(reqwest::header::COOKIE, session_cookie)
+            .json(&body)
+            .send()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        self.read_envelope(response)
+    }
+
+    fn runtime_version(&self) -> Result<String, ClientError> {
+        self.post("/api/system/version", json!({}))
+    }
+
+    fn notebooks(&self) -> Result<Vec<Notebook>, ClientError> {
+        let data: NotebookData = self.post("/api/notebook/lsNotebooks", json!({}))?;
+        if data.notebooks.len() > 1_000 {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        data.notebooks
+            .into_iter()
+            .map(|notebook| {
+                validate_identifier(&notebook.id)?;
+                if notebook.name.is_empty() || notebook.name.len() > 256 {
+                    return Err(ClientError::ResponseTooLarge);
+                }
+                Ok(Notebook {
+                    id: notebook.id,
+                    name: notebook.name,
+                    closed: notebook.closed,
+                })
+            })
+            .collect()
+    }
+
+    fn search(&self, query: &str, limit: u16) -> Result<Vec<BlockSummary>, ClientError> {
+        let data: SearchData = self.post(
+            "/api/search/fullTextSearchBlock",
+            json!({
+                "query": query,
+                "page": 1,
+                "pageSize": limit,
+                "method": 0,
+            }),
+        )?;
+        if data.blocks.len() > usize::from(limit) {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        data.blocks
+            .into_iter()
+            .map(|block| {
+                validate_identifier(&block.id)?;
+                validate_identifier(&block.notebook_id)?;
+                if block.path.len() > 4_096 || block.content.len() > MAX_BLOCK_CONTENT_BYTES {
+                    return Err(ClientError::ResponseTooLarge);
+                }
+                Ok(BlockSummary {
+                    id: block.id,
+                    notebook_id: block.notebook_id,
+                    path: block.path,
+                    content: block.content,
+                })
+            })
+            .collect()
+    }
+
+    fn block(&self, id: &str) -> Result<Block, ClientError> {
+        let info: BlockInfoData = self.post("/api/block/getBlockInfo", json!({ "id": id }))?;
+        let content: BlockKramdownData =
+            self.post("/api/block/getBlockKramdown", json!({ "id": id }))?;
+        if content.id != id {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        validate_identifier(&info.notebook_id)?;
+        if info.path.len() > 4_096 || content.kramdown.len() > MAX_BLOCK_CONTENT_BYTES {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        Ok(Block {
+            id: content.id,
+            notebook_id: info.notebook_id,
+            path: info.path,
+            markdown: content.kramdown,
+        })
+    }
+}
+
+impl SiyuanTransport for HttpSiyuanTransport {
+    fn send(&self, request: BrokerRequest<'_>) -> Result<BrokerResponse, ClientError> {
+        match request {
+            BrokerRequest::Status => self.runtime_version().map(|_| {
+                BrokerResponse::Status(RuntimeStatus {
+                    feature_enabled: true,
+                    runtime_bundled: true,
+                    state: "ready".to_owned(),
+                })
+            }),
+            BrokerRequest::ListNotebooks => self.notebooks().map(BrokerResponse::Notebooks),
+            BrokerRequest::SearchBlocks { query, limit } => {
+                self.search(query, limit).map(BrokerResponse::SearchResults)
+            }
+            BrokerRequest::GetBlock { id } => self.block(id).map(BrokerResponse::Block),
+        }
     }
 }
 
@@ -112,14 +377,6 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
         self.require_enabled()?;
         match self.transport.send(BrokerRequest::Status)? {
             BrokerResponse::Status(status) => Ok(status),
-            _ => Err(ClientError::ResponseTypeMismatch),
-        }
-    }
-
-    pub fn version(&self) -> Result<RuntimeVersion, ClientError> {
-        self.require_enabled()?;
-        match self.transport.send(BrokerRequest::Version)? {
-            BrokerResponse::Version(version) => Ok(version),
             _ => Err(ClientError::ResponseTypeMismatch),
         }
     }
@@ -199,6 +456,10 @@ fn validate_query(value: &str) -> Result<(), ClientError> {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc::{self, Receiver};
+    use std::thread::JoinHandle;
 
     struct MockTransport {
         requests: RefCell<Vec<String>>,
@@ -218,7 +479,6 @@ mod tests {
         fn send(&self, request: BrokerRequest<'_>) -> Result<BrokerResponse, ClientError> {
             let request = match request {
                 BrokerRequest::Status => "status".to_owned(),
-                BrokerRequest::Version => "version".to_owned(),
                 BrokerRequest::ListNotebooks => "list_notebooks".to_owned(),
                 BrokerRequest::SearchBlocks { query, limit } => format!("search:{query}:{limit}"),
                 BrokerRequest::GetBlock { id } => format!("get:{id}"),
@@ -228,9 +488,48 @@ mod tests {
         }
     }
 
+    fn mock_http_server(responses: Vec<String>) -> (u16, Receiver<String>, JoinHandle<()>) {
+        let listener = TcpListener::bind((LOOPBACK_HOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (sender, receiver) = mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            for response_body in responses {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut request = String::new();
+                let mut content_length = 0_usize;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                    if let Some(length) = line.to_ascii_lowercase().strip_prefix("content-length: ")
+                    {
+                        content_length = length.trim().parse().unwrap();
+                    }
+                    request.push_str(&line);
+                }
+                let mut body = vec![0_u8; content_length];
+                reader.read_exact(&mut body).unwrap();
+                request.push_str(&String::from_utf8(body).unwrap());
+                sender.send(request).unwrap();
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: siyuan=vibespace-native-session; Path=/; HttpOnly; SameSite=Lax\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    response_body.len(),
+                    response_body
+                )
+                .unwrap();
+            }
+        });
+        (port, receiver, handle)
+    }
+
     #[test]
     fn disabled_client_never_reaches_transport() {
         let transport = MockTransport::new(BrokerResponse::Status(RuntimeStatus {
+            feature_enabled: true,
             state: "ready".to_owned(),
             runtime_bundled: true,
         }));
@@ -277,10 +576,7 @@ mod tests {
     fn response_variants_and_payload_sizes_are_fail_closed() {
         let mismatch = SiyuanClient::new(
             true,
-            MockTransport::new(BrokerResponse::Version(RuntimeVersion {
-                version: "3.8.1".to_owned(),
-                commit: "afa823b6".to_owned(),
-            })),
+            MockTransport::new(BrokerResponse::Notebooks(Vec::new())),
         );
         assert_eq!(mismatch.status(), Err(ClientError::ResponseTypeMismatch));
 
@@ -305,5 +601,79 @@ mod tests {
         assert_eq!(rendered, "siyuan_transport_unavailable");
         assert!(!rendered.contains("token"));
         assert!(!rendered.contains("http"));
+    }
+
+    #[test]
+    fn native_http_transport_keeps_auth_code_in_native_login_and_uses_session_cookie() {
+        let token = "0".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"notebooks":[{"id":"20260820-book","name":"Project","closed":false}]}}"#
+                .to_owned(),
+        ]);
+        let transport = HttpSiyuanTransport::new(port, token.clone()).unwrap();
+        assert!(!format!("{transport:?}").contains(token.as_str()));
+        let client = SiyuanClient::new(true, transport);
+        assert_eq!(client.list_notebooks().unwrap()[0].name, "Project");
+        let login = requests.recv().unwrap();
+        let request = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(login.contains(token.as_str()));
+        assert!(request.starts_with("POST /api/notebook/lsNotebooks HTTP/1.1"));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("cookie: siyuan=vibespace-native-session"));
+        assert!(!request.contains(token.as_str()));
+        assert!(!request.to_ascii_lowercase().contains("authorization:"));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_search_transport_selects_full_text_mode_and_never_sql() {
+        let token = "a".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"blocks":[{"id":"20260820-block","box":"20260820-book","path":"/spec.sy","content":"Pinned runtime"}]}}"#
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+        assert_eq!(
+            client.search_blocks("pinned", 5).unwrap()[0].id,
+            "20260820-block"
+        );
+        let login = requests.recv().unwrap();
+        let request = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(request.starts_with("POST /api/search/fullTextSearchBlock HTTP/1.1"));
+        assert!(request.contains("\"method\":0"));
+        assert!(!request.contains("/api/query/sql"));
+        assert!(!request.contains(token.as_str()));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_get_block_combines_bounded_metadata_and_kramdown_endpoints() {
+        let token = "f".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-book","path":"/spec.sy"}}"#.to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-block","kramdown":"# Spec"}}"##
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+        let block = client.get_block("20260820-block").unwrap();
+        assert_eq!(block.notebook_id, "20260820-book");
+        assert_eq!(block.markdown, "# Spec");
+        let login = requests.recv().unwrap();
+        let first = requests.recv().unwrap();
+        let second = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(first.starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(second.starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(!first.contains(token.as_str()));
+        assert!(!second.contains(token.as_str()));
+        server.join().unwrap();
     }
 }

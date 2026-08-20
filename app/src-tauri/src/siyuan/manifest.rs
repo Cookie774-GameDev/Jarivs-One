@@ -13,6 +13,43 @@ pub fn runtime_manifest_json() -> &'static str {
     RUNTIME_MANIFEST
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeAvailability {
+    pub feature_enabled: bool,
+    pub payload_included: bool,
+    pub runtime_bundled: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedManifest {
+    feature_enabled: bool,
+    runtime_closure: EmbeddedClosure,
+    packaging: EmbeddedPackaging,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedClosure {
+    payload_included: bool,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EmbeddedPackaging {
+    runtime_bundled: bool,
+}
+
+pub fn runtime_availability() -> Result<RuntimeAvailability, &'static str> {
+    let manifest: EmbeddedManifest =
+        serde_json::from_str(RUNTIME_MANIFEST).map_err(|_| "siyuan_runtime_manifest_invalid")?;
+    Ok(RuntimeAvailability {
+        feature_enabled: manifest.feature_enabled,
+        payload_included: manifest.runtime_closure.payload_included,
+        runtime_bundled: manifest.packaging.runtime_bundled,
+    })
+}
+
 /// A dependency-free tripwire for native builds. The strict structural verifier lives in
 /// `scripts/verify-siyuan-runtime-manifest.mjs`; this check prevents an isolated native module
 /// from silently compiling against an enabled or differently pinned manifest.
@@ -21,7 +58,7 @@ pub fn verify_disabled_manifest_contract() -> Result<(), &'static str> {
         "\"featureEnabled\": false",
         "\"runtimeBundled\": false",
         "\"payloadIncluded\": false",
-        "\"status\": \"not-derived\"",
+        "\"status\": \"derived-not-bundled\"",
         "\"bindHost\": \"127.0.0.1\"",
         "\"randomPortRequired\": true",
         "\"runtimeTokenRequired\": true",
@@ -58,5 +95,13 @@ mod tests {
         );
         assert_eq!(SIYUAN_WINDOWS_X64_BYTES, 204_769_168);
         assert!(verify_disabled_manifest_contract().is_ok());
+        assert_eq!(
+            runtime_availability().unwrap(),
+            RuntimeAvailability {
+                feature_enabled: false,
+                payload_included: false,
+                runtime_bundled: false,
+            }
+        );
     }
 }

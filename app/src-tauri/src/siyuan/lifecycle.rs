@@ -1,6 +1,7 @@
 //! Pure lifecycle state machine. It owns no process and performs no I/O.
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RuntimeState {
     Disabled,
     Stopped,
@@ -14,9 +15,9 @@ pub enum RuntimeState {
 pub enum RuntimeEvent {
     StartRequested,
     HealthCheckPassed,
-    StartFailed,
     StopRequested,
     ProcessExited,
+    CrashDetected,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -55,15 +56,27 @@ impl RuntimeLifecycle {
         let next = match (self.state, event) {
             (RuntimeState::Stopped, RuntimeEvent::StartRequested) => RuntimeState::Starting,
             (RuntimeState::Starting, RuntimeEvent::HealthCheckPassed) => RuntimeState::Ready,
-            (RuntimeState::Starting, RuntimeEvent::StartFailed) => RuntimeState::Failed,
-            (RuntimeState::Ready | RuntimeState::Failed, RuntimeEvent::StopRequested) => {
-                RuntimeState::Stopping
-            }
+            (
+                RuntimeState::Starting | RuntimeState::Ready | RuntimeState::Failed,
+                RuntimeEvent::StopRequested,
+            ) => RuntimeState::Stopping,
             (RuntimeState::Stopping, RuntimeEvent::ProcessExited) => RuntimeState::Stopped,
+            (RuntimeState::Starting | RuntimeState::Ready, RuntimeEvent::CrashDetected) => {
+                RuntimeState::Failed
+            }
             (state, event) => return Err(LifecycleError::InvalidTransition { state, event }),
         };
         self.state = next;
         Ok(next)
+    }
+
+    pub fn force_stopped(&mut self) -> RuntimeState {
+        self.state = if self.state == RuntimeState::Disabled {
+            RuntimeState::Disabled
+        } else {
+            RuntimeState::Stopped
+        };
+        self.state
     }
 }
 
@@ -110,5 +123,17 @@ mod tests {
             Err(LifecycleError::InvalidTransition { .. })
         ));
         assert_eq!(lifecycle.state(), RuntimeState::Stopped);
+    }
+
+    #[test]
+    fn crash_and_shutdown_transitions_are_explicit() {
+        let mut lifecycle = RuntimeLifecycle::new(true);
+        lifecycle.apply(RuntimeEvent::StartRequested).unwrap();
+        lifecycle.apply(RuntimeEvent::HealthCheckPassed).unwrap();
+        assert_eq!(
+            lifecycle.apply(RuntimeEvent::CrashDetected),
+            Ok(RuntimeState::Failed)
+        );
+        assert_eq!(lifecycle.force_stopped(), RuntimeState::Stopped);
     }
 }

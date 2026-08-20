@@ -71,6 +71,7 @@ mod renderer_watchdog;
 pub mod runtime_profile;
 #[cfg(debug_assertions)]
 mod sik_smoke;
+mod siyuan;
 mod static_server;
 mod terminal;
 pub mod terminal_cli;
@@ -401,8 +402,21 @@ fn run_ordinary(
         .manage(terminal_cli::TerminalCliState::default())
         .manage(pets::PetWindowState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
+        .manage(siyuan::SiyuanRuntimeState::default())
         .manage(runtime_context)
         .setup(|app| {
+            match app.path().app_data_dir() {
+                Ok(app_data_dir) => {
+                    let workspace_base = app_data_dir.join("siyuan-projects");
+                    if let Err(error) = app
+                        .state::<siyuan::SiyuanRuntimeState>()
+                        .configure_workspace_base(workspace_base)
+                    {
+                        eprintln!("[siyuan] workspace authority unavailable: {error}");
+                    }
+                }
+                Err(_) => eprintln!("[siyuan] app data authority unavailable"),
+            }
             let renderer_recovery_restart =
                 renderer_watchdog::consume_recovery_restart(&app.handle());
             renderer_watchdog::install(app);
@@ -574,6 +588,11 @@ fn run_ordinary(
             chat_temp_attachments::chat_temp_attachment_create,
             chat_temp_attachments::chat_temp_attachment_cleanup,
             runtime_profile_query,
+            siyuan::commands::siyuan_status,
+            siyuan::commands::siyuan_version,
+            siyuan::commands::siyuan_list_notebooks,
+            siyuan::commands::siyuan_search_blocks,
+            siyuan::commands::siyuan_get_block,
             kernel_host::register_kernel_host,
             kernel_host::kernel_client_request,
             kernel_host::kernel_host_respond,
@@ -746,6 +765,7 @@ fn run_ordinary(
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if matches!(event, tauri::RunEvent::Exit) {
+                siyuan::shutdown_runtime(app_handle);
                 harness::server::shutdown_owned_server(app_handle);
                 kernel_host::release_on_process_exit(app_handle);
                 return;
@@ -826,6 +846,11 @@ browser_chat_surface::browser_chat_surface_hide_all
 chat_temp_attachments::chat_temp_attachment_create
 chat_temp_attachments::chat_temp_attachment_cleanup
 runtime_profile_query
+siyuan::commands::siyuan_status
+siyuan::commands::siyuan_version
+siyuan::commands::siyuan_list_notebooks
+siyuan::commands::siyuan_search_blocks
+siyuan::commands::siyuan_get_block
 kernel_host::register_kernel_host
 kernel_host::kernel_client_request
 kernel_host::kernel_host_respond
@@ -991,9 +1016,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "5488a7e5f7b91f5f4a43097cedea0b1a7314d5d0ae3a403b0c869264a22439b6";
+        "7ee860715eae82f0bd9d14d7a2efadd133881d47c7bec8b09c1500f4f6115083";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "0a3093942b091116933a95c19e016b0c94c321f831e951853502b64756094287";
+        "4b908d411db34225ac0e7d4e82752a7b24e9f6ce5b14aa2165675469b26fc835";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1147,6 +1172,26 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("harness::tool_gateway::tool_gateway_respond,"));
         assert!(ordinary.contains("harness::tool_gateway::start_tool_gateway_server("));
         assert!(ordinary.contains("harness::server::shutdown_owned_server(app_handle);"));
+    }
+
+    #[test]
+    fn siyuan_commands_and_cleanup_are_registered_only_on_the_ordinary_builder() {
+        let source = include_str!("lib.rs");
+        let visual_test =
+            function_source(source, "fn run_monochrome_visual_test(", "fn run_ordinary(");
+        let ordinary = function_source(source, "fn run_ordinary(", "#[cfg(test)]");
+
+        assert!(!visual_test.contains("SiyuanRuntimeState"));
+        assert!(!visual_test.contains("siyuan::commands::"));
+        assert!(!visual_test.contains("siyuan::shutdown_runtime"));
+        assert!(ordinary.contains(".manage(siyuan::SiyuanRuntimeState::default())"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_status,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_version,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_list_notebooks,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_search_blocks,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_get_block,"));
+        assert!(ordinary.contains(".configure_workspace_base(workspace_base)"));
+        assert!(ordinary.contains("siyuan::shutdown_runtime(app_handle);"));
     }
 
     #[test]
