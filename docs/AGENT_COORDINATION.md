@@ -2354,3 +2354,16 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Shared files excluded** | No ownership of `lib.rs`, `tauri.conf.json`, `Cargo.toml`, `package.json`, Context closed-set contracts/schema/page, or either production RLM entry. Those require a later controller checkpoint after isolated tests pass. |
 | **Verification** | Node manifest verifier/tests; focused frontend SiYuan tests; focused Rust `siyuan` tests; typecheck; PR31 integration verifier; exact-path formatting and diff checks. |
 | **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
+
+## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:14 CT |
+| **Agent / task** | Worker `opencode_usage_audit` under controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `OPENCODE-EXACT-EFFORT-LIVE-AUTHORITY`. |
+| **Branch / base HEAD** | `integration/UnifiedChungus-final` at `957fa149`; upstream `origin/UnifiedChungus`; ahead 3. |
+| **Exact exclusive paths** | `app/src/lib/ai/reasoningControls.ts`; `app/src/features/chat/reasoningSlashStore.ts`; `app/src/features/chat/runtime/runtimeModelControls.ts`; `app/src/lib/ai/router.ts`; `app/src/lib/ai/adapters/opencodePersistent.ts`; focused tests `app/src/lib/ai/reasoningControls.test.ts`, `app/src/features/chat/reasoningSlashStore.test.ts`, `app/src/features/chat/runtime/runtimeModelControls.test.ts`, `app/src/lib/ai/routerLiveEffortGate.test.ts`, and `app/src/lib/ai/adapters/opencodePersistent.test.ts`. |
+| **Root cause / intent** | Repair deterministic pre-send `max` failure caused by legacy `max -> ultra -> xhigh` remapping conflicting with literal active runtime `max`; preserve distinct exact `max` and `ultra/xhigh`; remove silent unsupported-effort downgrade; fail closed unless the selected live model/variant is authoritative; require observed execution identity when the transport can provide it. |
+| **Excluded paths** | No Composer, model picker/catalog/free-model UI, usage/taskbar, native harness/runtime manager, package/config, or SiYuan lane files. Those are later controlled slices after this foundation is green. |
+| **Verification** | Exact focused tests plus adjacent OpenCode production transport/session tests; app typecheck; PR31 integration verifier; exact-path Prettier and diff checks. |
+| **Status / next action** | `IMPLEMENTING`; worker may edit only the exact manifest above and must preserve all concurrent work. |
