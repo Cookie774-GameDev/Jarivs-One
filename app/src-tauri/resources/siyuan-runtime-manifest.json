@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "featureEnabled": false,
+  "runtime": {
+    "id": "siyuan",
+    "upstreamRepository": "https://github.com/siyuan-note/siyuan",
+    "tag": "v3.8.1",
+    "commitSha": "afa823b6b4e4f183511e0bc0a3be93caa94c7c97",
+    "license": "AGPL-3.0",
+    "publishedAt": "2026-08-18T11:15:08Z"
+  },
+  "windowsX64Installer": {
+    "name": "siyuan-3.8.1-win.exe",
+    "url": "https://github.com/siyuan-note/siyuan/releases/download/v3.8.1/siyuan-3.8.1-win.exe",
+    "sizeBytes": 204769168,
+    "sha256": "50df27aa899491323035aee59b2b9b55df174e13b8dc3694f7c46d7f82770787"
+  },
+  "runtimeClosure": {
+    "status": "not-derived",
+    "payloadIncluded": false,
+    "measuredBytes": null,
+    "requiredFamilies": ["kernel", "stage", "appearance", "guide-help", "rich-rendering-assets"]
+  },
+  "security": {
+    "bindHost": "127.0.0.1",
+    "randomPortRequired": true,
+    "runtimeTokenRequired": true,
+    "publishModeEnabled": false,
+    "rendererDirectApiAccess": false,
+    "modelRawSqlAccess": false
+  },
+  "packaging": {
+    "runtimeBundled": false,
+    "hardInstallerLimitBytes": 300000000,
+    "preferredInstallerLimitBytes": 285000000
+  }
+}

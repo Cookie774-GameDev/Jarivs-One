@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-08-20T12:00:00Z",
+  "verificationSource": "official-github-api",
+  "repository": "https://github.com/siyuan-note/siyuan",
+  "release": {
+    "tag": "v3.8.1",
+    "commitSha": "afa823b6b4e4f183511e0bc0a3be93caa94c7c97",
+    "publishedAt": "2026-08-18T11:15:08Z",
+    "releaseUrl": "https://github.com/siyuan-note/siyuan/releases/tag/v3.8.1"
+  },
+  "license": {
+    "spdxId": "AGPL-3.0",
+    "sourceUrl": "https://github.com/siyuan-note/siyuan/blob/v3.8.1/LICENSE",
+    "distributionReviewStatus": "required"
+  },
+  "windowsX64Installer": {
+    "name": "siyuan-3.8.1-win.exe",
+    "sizeBytes": 204769168,
+    "sha256": "50df27aa899491323035aee59b2b9b55df174e13b8dc3694f7c46d7f82770787",
+    "sourceUrl": "https://github.com/siyuan-note/siyuan/releases/download/v3.8.1/siyuan-3.8.1-win.exe"
+  },
+  "integrationStatus": {
+    "runtimeClosureDerived": false,
+    "runtimePayloadCommitted": false,
+    "runtimeExecuted": false,
+    "licenseReviewComplete": false,
+    "installerMeasured": false,
+    "releaseReady": false
+  }
+}

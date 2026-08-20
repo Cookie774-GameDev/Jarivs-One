@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "tag": "v3.8.1",
+    "commitSha": "afa823b6b4e4f183511e0bc0a3be93caa94c7c97"
+  },
+  "releaseClaim": "blocked",
+  "entries": [
+    {
+      "id": "file-open-save-dialogs",
+      "status": "BLOCKED",
+      "reason": "The exact v3.8.1 frontend contract has not been mapped to typed Tauri dialogs.",
+      "testEvidence": []
+    },
+    {
+      "id": "clipboard",
+      "status": "BLOCKED",
+      "reason": "Clipboard semantics have not been exercised in an embedded SiYuan surface.",
+      "testEvidence": []
+    },
+    {
+      "id": "external-links",
+      "status": "BLOCKED",
+      "reason": "An allowlisted external-link bridge has not been implemented.",
+      "testEvidence": []
+    },
+    {
+      "id": "import-export-handoff",
+      "status": "BLOCKED",
+      "reason": "Browser-served import and export limitations have no Tauri replacement.",
+      "testEvidence": []
+    },
+    {
+      "id": "print-pdf",
+      "status": "BLOCKED",
+      "reason": "Print and PDF behavior has not been mapped or verified.",
+      "testEvidence": []
+    },
+    {
+      "id": "window-actions",
+      "status": "BLOCKED",
+      "reason": "Required window-level desktop contracts have not been inventoried.",
+      "testEvidence": []
+    },
+    {
+      "id": "native-shell-actions",
+      "status": "BLOCKED",
+      "reason": "No least-privilege shell action registry exists for the SiYuan surface.",
+      "testEvidence": []
+    },
+    {
+      "id": "plugin-lifecycle",
+      "status": "BLOCKED",
+      "reason": "Plugin install, enable, disable, and permission behavior has not been bridged.",
+      "testEvidence": []
+    }
+  ]
+}
