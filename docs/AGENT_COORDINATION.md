@@ -2365,6 +2365,15 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Reason** | Review found that joining persistent-adapter executable rows to the separate managed `openCodeHarness` catalog by model ID could produce a false Free label. Pricing must instead travel with the same persistent adapter `/config/providers` response that authorized the executable row; authoritative/fresher records with unknown pricing must not inherit a lower-priority record's pricing. |
 | **Status / next action** | `IMPLEMENTING`; remove the cross-runtime join, carry bounded exact pricing through the provider-discovered model contract, add winner-only pricing regression coverage, and rerun the full focused catalog/OpenCode/typecheck verifier matrix. No staging or commit by the worker. |
 
+## 2026-08-20 - OpenCode fail-closed adjacent harness test extension
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:55 CT |
+| **Added exact exclusive path** | `app/src/lib/harness/openCodeHarness.test.ts` for worker `opencode_usage_audit`. |
+| **Reason** | The adjacent matrix found one stale test that expected a timed-out `/config/providers` scan to manufacture and send the requested model. Production now correctly returns `PROVIDER_NOT_CONFIGURED`; the test must assert that fail-closed contract. |
+| **Status / next action** | `IMPLEMENTING`; update only that assertion/name, rerun the adjacent harness matrix, and keep all files unstaged/uncommitted for controller review. |
+
 ## 2026-08-20 - Verified SiYuan Windows packaging lane accepted
 
 | Field | Coordination record |
