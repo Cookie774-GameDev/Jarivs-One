@@ -2509,3 +2509,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Result** | A dependency-injected `ContextQueryRepository` now converts bounded native SiYuan search/get-block responses into account/workspace/project-scoped `context_note` records; full markdown is SHA-256 bound, pointers are byte-bounded, authority is re-read before open, changed content reports stale, malformed/cross-notebook rows are dropped, project crossing is denied, issued pointer capabilities are bounded, and exact record IDs can rehydrate after the repository receives the matching scope. No production federation or write path is active yet. |
 | **Verification** | Adapter plus adjacent ContextQueryService PASS 2 files / 26 tests; exact Prettier, staged diff check, and Gitleaks PASS. Full typecheck reached only concurrent usage-worker intermediate errors after all adapter errors were cleared; rerun is required after that owned lane reaches a safe boundary. |
 | **Status / next action** | Adapter scope `ACCEPTED` and released. Wire it into production federation only after the typed native start/project bridge is accepted, then add cross-source and stale-pointer integration coverage. |
+
+## 2026-08-20 - Shared usage lane adjacent registry-test extension and review correction
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:19 CT |
+| **Agent / task** | Worker `opencode_usage_audit` under controller `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM`; task `SHARED-EXACT-ROUTE-USAGE-TRUTH`. |
+| **Added exact exclusive path** | `app/src/features/taskbar-usage/TaskbarUsageExpanded.test.tsx`, test-only, to update the frozen provider-registry count from 35 to the intentional 36 after the owned OpenCode registry definition. |
+| **Controller review correction** | Before handoff, account snapshots must match the authoritative route/connection ID rather than provider-family ID; current-chat totals must not claim exact selected-route attribution for messages lacking matching provider/model evidence; default/session/refresh/all must remain materially distinct and document the session boundary. |
+| **Verification / state** | Rerun the focused usage matrix, the adjacent expanded-taskbar matrix, full app typecheck, exact formatting/diff checks, and Gitleaks. Worker keeps every file unstaged/uncommitted for controller review. |
