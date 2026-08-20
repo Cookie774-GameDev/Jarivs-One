@@ -2327,3 +2327,17 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Safety** | No reset, stash, clean, force-push, branch switch, production mutation, secret exposure, or overwrite of other worktrees/locks/processes. Existing uncommitted files are preserved without claiming original authorship. |
 | **Status** | `BOOTSTRAPPING` |
 | **Next action** | Commit the exact inherited dirty state as a recovery checkpoint, establish baselines and current official provenance, then begin SiYuan Phase 0/1. |
+
+## 2026-08-20 - PR31 bootstrap checkpoint and baseline accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:04 CT |
+| **Agent / task** | `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-SIYUAN-OPENCODE-RLM-COMPLETE` |
+| **Branch / HEAD** | `integration/UnifiedChungus-final` at `0dce232b`; upstream `origin/UnifiedChungus`; ahead 1; no merge, rebase, or cherry-pick state. |
+| **Preservation boundary** | The exact 121-file inherited handoff was staged path-by-path, passed `git diff --cached --check` and staged Gitleaks, and was preserved as `0dce232b` (`chore: checkpoint preserved UnifiedChungus handoff state`). No push was performed. |
+| **Baseline evidence** | `npm run typecheck` PASS; `node scripts/verify-pr31-opencode-rlm-integration.mjs` PASS; focused Context matrix PASS at 81 files / 851 tests. Working tree contains only this active untracked lock before this ledger checkpoint. |
+| **Release-size evidence** | Published VibeSpace v1.5.0 Windows artifacts are 41,497,166-byte NSIS and 43,597,824-byte MSI. Official SiYuan v3.8.1 Windows x64 asset is 204,769,168 bytes with SHA-256 `50df27aa899491323035aee59b2b9b55df174e13b8dc3694f7c46d7f82770787`; integration must retain the hard 300,000,000-byte artifact ceiling and preferred 285 MB headroom. |
+| **Official provenance** | SiYuan stable tag `v3.8.1`, tag commit `afa823b6b4e4f183511e0bc0a3be93caa94c7c97`, AGPL-3.0. This is provenance only; no upstream binary has yet been committed, bundled, or executed. |
+| **Parallel audit state** | The two user-authorized read-only workers are auditing (1) SiYuan/Context/RLM/packaging and (2) OpenCode/models/usage. They own no files yet. Exact non-overlapping implementation paths will be recorded before product edits. |
+| **Status / next action** | `BASELINE_ACCEPTED`; reconcile both audits, claim exact lane manifests, then begin SiYuan Phase 0/1 implementation and commit the checkpoint. |
