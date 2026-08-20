@@ -2402,6 +2402,17 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **New intent** | Record exact measured component byte/file/tree-digest evidence and update strict verification while keeping `runtimeBundled=false`, `payloadIncluded=false`, `runtimeExecuted=false`, license review pending, and release readiness false. |
 | **Status / next action** | `IMPLEMENTING`; commit only the five-file measured-closure evidence slice after verifier tests pass. |
 
+## 2026-08-20 - SiYuan measured closure and OpenCode exact authority accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:31 CT |
+| **SiYuan closure result** | PASS at `71da4d72` (`docs: bind measured SiYuan runtime closure`), exact five-file manifest. Strict verifier now binds 1,153 files / 445,983,251 bytes, nine component tree digests, two critical binary hashes, and 87,304,479-byte tested compression evidence while keeping bundle/execution/license/final-installer/release claims false. Node verifier matrix PASS 9/9; Prettier, staged diff, and Gitleaks PASS. |
+| **OpenCode result** | PASS at `a159c854` (`fix(opencode): preserve exact model effort authority`), exact eight-file substantive manifest. Distinct `max` and `ultra/xhigh`, Spark `medium`, provider-qualified live catalog authority, no silent effort downgrade, scope-keyed cache, canonical model dispatch, and observed identity/variant/tier proof are enforced before success. |
+| **OpenCode verification** | Main-agent combined matrix PASS 13 files / 118 tests; worker final typecheck and PR31 integration verifier PASS; staged diff and Gitleaks PASS. The actual runtime-control test path is `app/src/features/chat/runtime/__tests__/runtimeModelControls.test.ts`, correcting the provisional claim-row shorthand. |
+| **No-op file evidence** | `app/src/features/chat/runtime/runtimeModelControls.ts` had identical worktree and HEAD blob SHA `ea7061f8999ac90da113ee0bf9eb9abca9c45c3e`; index refresh cleared the status-only modification with no diff or commit content. `router.ts` was unchanged. |
+| **Status / next action** | Both first-slice worker scopes are `ACCEPTED` and released. Continue to native runtime registration/payload, Context/RLM federation, catalog/free/usage/taskbar, fixture, scored UAT, and final native passes. |
+
 ## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
 
 | Field | Coordination record |
