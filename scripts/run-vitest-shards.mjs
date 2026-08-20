@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -113,6 +114,17 @@ export function buildVitestArgs(shard, maxWorkers = DEFAULT_MAX_WORKERS) {
   ];
 }
 
+export function resolveVitestCli(appDir) {
+  try {
+    return createRequire(path.join(appDir, 'package.json')).resolve('vitest/vitest.mjs');
+  } catch (error) {
+    throw new Error(
+      `Unable to resolve the installed Vitest CLI from ${appDir}. Run the workspace dependency install before executing the full suite.`,
+      { cause: error },
+    );
+  }
+}
+
 export async function runVitestShards({
   repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
   shardSize = DEFAULT_SHARD_SIZE,
@@ -138,7 +150,7 @@ export async function runVitestShards({
     return { files, shards };
   }
 
-  const vitestCli = path.join(appDir, 'node_modules', 'vitest', 'vitest.mjs');
+  const vitestCli = resolveVitestCli(appDir);
   for (const [index, shard] of shards.entries()) {
     console.log(`\n=== Vitest shard ${index + 1}/${shards.length} (${shard.length} files) ===`);
     const result = spawnSync(process.execPath, [vitestCli, ...buildVitestArgs(shard, maxWorkers)], {

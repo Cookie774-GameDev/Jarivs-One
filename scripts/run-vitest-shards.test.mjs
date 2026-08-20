@@ -9,6 +9,7 @@ import {
   buildVitestArgs,
   discoverVitestFiles,
   partitionTestFiles,
+  resolveVitestCli,
 } from './run-vitest-shards.mjs';
 
 test('discovers frontend Vitest files recursively in deterministic order', async (t) => {
@@ -68,4 +69,50 @@ test('bounds worker concurrency for every shard', () => {
     'src/a.test.ts',
   ]);
   assert.throws(() => buildVitestArgs(['src/a.test.ts'], 0), /positive integer/i);
+});
+
+test('resolves the Vitest CLI from a workspace-hoisted installation', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'vibespace-vitest-hoisted-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  const appDir = path.join(repoRoot, 'app');
+  const packageDir = path.join(repoRoot, 'node_modules', 'vitest');
+  const cliPath = path.join(packageDir, 'vitest.mjs');
+  await mkdir(appDir, { recursive: true });
+  await mkdir(packageDir, { recursive: true });
+  await writeFile(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'vitest' }));
+  await writeFile(cliPath, '');
+
+  assert.equal(resolveVitestCli(appDir), cliPath);
+});
+
+test('resolves the Vitest CLI from an app-local installation', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'vibespace-vitest-local-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  const appDir = path.join(repoRoot, 'app');
+  const packageDir = path.join(appDir, 'node_modules', 'vitest');
+  const cliPath = path.join(packageDir, 'vitest.mjs');
+  const hoistedPackageDir = path.join(repoRoot, 'node_modules', 'vitest');
+  await mkdir(packageDir, { recursive: true });
+  await mkdir(hoistedPackageDir, { recursive: true });
+  await writeFile(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'vitest' }));
+  await writeFile(cliPath, '');
+  await writeFile(path.join(hoistedPackageDir, 'package.json'), JSON.stringify({ name: 'vitest' }));
+  await writeFile(path.join(hoistedPackageDir, 'vitest.mjs'), '');
+
+  assert.equal(resolveVitestCli(appDir), cliPath);
+});
+
+test('fails with an actionable error when Vitest is not installed', async (t) => {
+  const repoRoot = await mkdtemp(path.join(tmpdir(), 'vibespace-vitest-missing-'));
+  t.after(() => rm(repoRoot, { recursive: true, force: true }));
+
+  const appDir = path.join(repoRoot, 'app');
+  await mkdir(appDir, { recursive: true });
+
+  assert.throws(
+    () => resolveVitestCli(appDir),
+    /Unable to resolve the installed Vitest CLI.*workspace dependency install/is,
+  );
 });

@@ -259,3 +259,18 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `1af82245` (`fix(auth): gate detached initial account authority`), based on `c8ba74ab`.
 - Staged diff check PASS and staged Gitleaks PASS (`7.25 KB`, no leaks).
 - Released exact `App.tsx` plus account-identity test ownership. The focused inherited regression set is now fully green; scored native PR31 acceptance remains separately gated by official app control and current provider availability.
+
+### 2026-08-20 18:34 CDT — full-suite Vitest resolver claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-FULL-SUITE-VITEST-RESOLUTION`.
+- Branch/base: `integration/UnifiedChungus-final` at `a5fe7c62`; worktree otherwise contains only the untracked live coordination-lock directory; no merge, rebase, or cherry-pick state.
+- Exact scope: `scripts/run-vitest-shards.mjs` and `scripts/run-vitest-shards.test.mjs`.
+- Reproduction: `npm run test:full:sharded` discovers 1,189 tests, then shard 1 fails before execution because the runner hardcodes missing `app/node_modules/vitest/vitest.mjs`; the installed workspace package is hoisted under repository-root `node_modules`.
+- Intent: resolve `vitest/vitest.mjs` using Node's installed-package resolution from the app/repository search roots, preserve app working-directory/config behavior, and cover hoisted plus app-local layouts without platform-specific paths.
+
+#### Implementation and verification boundary
+
+- Replaced the app-local absolute path with `createRequire(app/package.json).resolve('vitest/vitest.mjs')`, preserving `process.execPath`, app working directory, environment, stdio, sharding, and Vitest arguments. Resolution now prefers app-local installs and naturally falls back to workspace-hoisted installs on every Node platform.
+- Added an actionable missing-dependency error and temp-filesystem coverage for hoisted, app-local-precedence, and absent installations.
+- Focused sharder suite PASS: 8/8. Real workspace resolution returns repository-root `node_modules/vitest/vitest.mjs`; deterministic list-only coverage still finds 1,189 files exactly once.
+- Exact-file Prettier and `git diff --check` PASS. Next: stage only the two scripts plus this ledger, run staged diff and secret checks, commit, then execute the full 24-shard suite from the committed boundary.
