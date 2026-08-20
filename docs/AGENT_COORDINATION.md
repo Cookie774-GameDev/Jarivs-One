@@ -2367,6 +2367,17 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Verification** | Node test matrix for boundary, overflow, discovery, and empty-input behavior; direct verifier against representative release fixtures; workflow static inspection; diff check. |
 | **Status / next action** | `IMPLEMENTING`; controller will commit only the exact four-file lane after tests pass. |
 
+## 2026-08-20 - Release artifact size gate accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:20 CT |
+| **Resulting commit** | `26eab6cd` (`build: enforce PR31 artifact size ceiling`). |
+| **Exact changes** | Added the fail-closed cross-platform artifact scanner and seven-test boundary matrix; wired the gate immediately after draft-release asset download and before updater verification/checksum publication; updated the existing PR31 size budget with the exact hard/preferred limits and current public Windows baseline. |
+| **Verification** | `node scripts/verify-release-artifact-size.test.mjs` PASS, 7/7; exact four-file Prettier check PASS after formatting; `git diff --check` PASS. |
+| **Release contract** | Recognized installer/updater files must be regular non-symlink files; no-artifact input fails; any size greater than 300,000,000 bytes fails; sizes greater than 285,000,000 bytes are explicitly warned. |
+| **Status / next action** | `ACCEPTED`; scope released for future controlled extension. Continue the two active non-overlapping product lanes. |
+
 ## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
 
 | Field | Coordination record |
