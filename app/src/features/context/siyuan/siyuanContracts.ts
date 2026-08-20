@@ -2,6 +2,8 @@ export const SIYUAN_CONTEXT_VAULT_ENABLED = false as const;
 
 export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   status: 'siyuan_status',
+  start: 'siyuan_start',
+  stop: 'siyuan_stop',
   version: 'siyuan_version',
   listNotebooks: 'siyuan_list_notebooks',
   searchBlocks: 'siyuan_search_blocks',

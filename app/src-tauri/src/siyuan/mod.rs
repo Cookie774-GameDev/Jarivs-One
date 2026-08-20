@@ -7,6 +7,7 @@ pub mod client;
 pub mod commands;
 pub mod lifecycle;
 pub mod manifest;
+pub mod resource;
 pub mod security;
 pub mod supervisor;
 

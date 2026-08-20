@@ -22,10 +22,27 @@
   },
   "integrationStatus": {
     "runtimeClosureDerived": true,
+    "runtimeBuildMaterialized": true,
     "runtimePayloadCommitted": false,
-    "runtimeExecuted": false,
+    "runtimeExecuted": true,
     "licenseReviewComplete": false,
     "installerMeasured": false,
     "releaseReady": false
+  },
+  "executionEvidence": {
+    "observedAt": "2026-08-20T08:25:21-05:00",
+    "platform": "windows-x64",
+    "runtimeRoot": "D:\\VibeSpace-Testing\\SiYuan-Context-OpenCode-RLM-Feature-Testing\\runtime-resources",
+    "workspace": "D:\\VibeSpace-Testing\\SiYuan-Context-OpenCode-RLM-Feature-Testing\\runtime-evidence\\native-runtime-evidence\\workspace",
+    "version": "3.8.1",
+    "healthProgress": 100,
+    "sessionCookieEstablished": true,
+    "observedPid": 32008,
+    "observedPort": 61698,
+    "gracefulShutdown": true,
+    "processExited": true,
+    "elapsedMs": 15904,
+    "secretLogged": false,
+    "test": "siyuan::supervisor::tests::real_pinned_kernel_boots_authenticates_and_shuts_down_inside_owned_fixture"
   }
 }

@@ -417,6 +417,18 @@ fn run_ordinary(
                 }
                 Err(_) => eprintln!("[siyuan] app data authority unavailable"),
             }
+            match app.path().resource_dir() {
+                Ok(resource_dir) => {
+                    let runtime_root = resource_dir.join("siyuan-runtime");
+                    if let Err(error) = app
+                        .state::<siyuan::SiyuanRuntimeState>()
+                        .configure_resource_root(runtime_root)
+                    {
+                        eprintln!("[siyuan] verified runtime resources unavailable: {error}");
+                    }
+                }
+                Err(_) => eprintln!("[siyuan] resource authority unavailable"),
+            }
             let renderer_recovery_restart =
                 renderer_watchdog::consume_recovery_restart(&app.handle());
             renderer_watchdog::install(app);
@@ -589,6 +601,8 @@ fn run_ordinary(
             chat_temp_attachments::chat_temp_attachment_cleanup,
             runtime_profile_query,
             siyuan::commands::siyuan_status,
+            siyuan::commands::siyuan_start,
+            siyuan::commands::siyuan_stop,
             siyuan::commands::siyuan_version,
             siyuan::commands::siyuan_list_notebooks,
             siyuan::commands::siyuan_search_blocks,
@@ -847,6 +861,8 @@ chat_temp_attachments::chat_temp_attachment_create
 chat_temp_attachments::chat_temp_attachment_cleanup
 runtime_profile_query
 siyuan::commands::siyuan_status
+siyuan::commands::siyuan_start
+siyuan::commands::siyuan_stop
 siyuan::commands::siyuan_version
 siyuan::commands::siyuan_list_notebooks
 siyuan::commands::siyuan_search_blocks
@@ -1016,9 +1032,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "7ee860715eae82f0bd9d14d7a2efadd133881d47c7bec8b09c1500f4f6115083";
+        "756e271cc48065e32937c7b30ff8aa20d224fc5faf9ae1bb0e04859cfaa8404d";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "4b908d411db34225ac0e7d4e82752a7b24e9f6ce5b14aa2165675469b26fc835";
+        "f5ef0c708f252cb65ae4120f26b4fb4f66c88b8398ad177ad2728b04c10a85ab";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1186,11 +1202,14 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(!visual_test.contains("siyuan::shutdown_runtime"));
         assert!(ordinary.contains(".manage(siyuan::SiyuanRuntimeState::default())"));
         assert!(ordinary.contains("siyuan::commands::siyuan_status,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_start,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_stop,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_version,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_list_notebooks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_search_blocks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_get_block,"));
         assert!(ordinary.contains(".configure_workspace_base(workspace_base)"));
+        assert!(ordinary.contains(".configure_resource_root(runtime_root)"));
         assert!(ordinary.contains("siyuan::shutdown_runtime(app_handle);"));
     }
 

@@ -18,14 +18,14 @@ describe('SiYuan renderer contracts', () => {
     expect(
       parseSiyuanStatus({
         featureEnabled: false,
-        runtimeBundled: false,
+        runtimeBundled: true,
         state: 'disabled',
       }),
-    ).toEqual({ featureEnabled: false, runtimeBundled: false, state: 'disabled' });
+    ).toEqual({ featureEnabled: false, runtimeBundled: true, state: 'disabled' });
     expect(() =>
       parseSiyuanStatus({
         featureEnabled: false,
-        runtimeBundled: false,
+        runtimeBundled: true,
         state: 'disabled',
         token: 'must-never-cross-the-renderer-boundary',
       }),

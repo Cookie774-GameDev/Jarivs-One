@@ -41,6 +41,30 @@ pub fn siyuan_status(state: State<'_, SiyuanRuntimeState>) -> Result<RuntimeStat
 }
 
 #[tauri::command]
+pub async fn siyuan_start(
+    project_id: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<RuntimeStatus, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || runtime.start(&project_id).map_err(public_error))
+        .await
+        .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
+pub async fn siyuan_stop(
+    project_id: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<RuntimeStatus, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime.stop_project(&project_id).map_err(public_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
 pub fn siyuan_version() -> RuntimeVersion {
     RuntimeVersion {
         version: SIYUAN_UPSTREAM_TAG.trim_start_matches('v').to_owned(),
@@ -109,9 +133,11 @@ mod tests {
             SupervisorError::RuntimeNotReady,
             SupervisorError::ProjectUnauthorized,
             SupervisorError::WorkspaceUnavailable,
+            SupervisorError::ResourceUnavailable,
             SupervisorError::StateUnavailable,
             SupervisorError::LifecycleInvalid,
             SupervisorError::ProcessUnavailable,
+            SupervisorError::StartupTimeout,
         ] {
             let rendered = public_error(error);
             assert!(rendered.starts_with("siyuan_"));

@@ -38,7 +38,7 @@
       "id": "references",
       "label": "Block references, embeds, and backlinks",
       "status": "BLOCKED",
-      "reason": "No typed SiYuan broker exists in the production command registry.",
+      "reason": "The typed broker is registered, but reference and backlink operations are not in its approved API subset.",
       "evidence": []
     },
     {
@@ -52,14 +52,14 @@
       "id": "search",
       "label": "Full-text and focused search",
       "status": "BLOCKED",
-      "reason": "No SiYuan search adapter or measured index is active.",
+      "reason": "Pinned native search transport is verified, but production enablement and scored index evidence remain blocked.",
       "evidence": []
     },
     {
       "id": "notebooks",
       "label": "Notebook and document tree",
       "status": "BLOCKED",
-      "reason": "No project-to-notebook mapping has been implemented.",
+      "reason": "Project-scoped runtime boot is verified, but notebook mapping and its VibeSpace surface are not integrated.",
       "evidence": []
     },
     {
@@ -129,7 +129,7 @@
       "id": "appearance",
       "label": "Themes and icons",
       "status": "BLOCKED",
-      "reason": "Appearance payload bytes have not been derived or bundled.",
+      "reason": "Appearance bytes are build-materialized, but the official knowledge surface is not integrated or scored.",
       "evidence": []
     },
     {
@@ -157,7 +157,7 @@
       "id": "offline",
       "label": "Local offline operation",
       "status": "BLOCKED",
-      "reason": "No complete offline runtime payload ships with VibeSpace.",
+      "reason": "The runtime closure is build-materialized, but final installer measurement and release enablement remain blocked.",
       "evidence": []
     },
     {

@@ -16,8 +16,9 @@
     "sha256": "50df27aa899491323035aee59b2b9b55df174e13b8dc3694f7c46d7f82770787"
   },
   "runtimeClosure": {
-    "status": "derived-not-bundled",
-    "payloadIncluded": false,
+    "status": "build-materialized",
+    "payloadIncluded": true,
+    "fingerprint": "59ce62549b891a1e0fb8fce530442ec95882e240b3349795ed517ca8761d603c",
     "measuredBytes": 445983251,
     "fileCount": 1153,
     "compressedAnalysisBytes": 87304479,
@@ -33,7 +34,7 @@
     "modelRawSqlAccess": false
   },
   "packaging": {
-    "runtimeBundled": false,
+    "runtimeBundled": true,
     "hardInstallerLimitBytes": 300000000,
     "preferredInstallerLimitBytes": 285000000
   }

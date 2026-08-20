@@ -28,7 +28,8 @@ test('accepts the checked-in disabled manifest and truthful blocked ledgers', as
     tag: 'v3.8.1',
     commitSha: 'afa823b6b4e4f183511e0bc0a3be93caa94c7c97',
     featureEnabled: false,
-    payloadIncluded: false,
+    payloadIncluded: true,
+    runtimeBundled: true,
     closureBytes: 445983251,
     compressedAnalysisBytes: 87304479,
     featureBlockedCount: 22,
@@ -55,15 +56,19 @@ test('rejects unpinned, relocated, or mutated installer authority', async () => 
   }
 });
 
-test('rejects premature runtime closure and payload claims', async () => {
+test('rejects runtime closure drift and missing build materialization', async () => {
   const source = await load('app/src-tauri/resources/siyuan-runtime-manifest.json');
   const derived = clone(source);
-  derived.runtimeClosure.status = 'not-derived';
+  derived.runtimeClosure.status = 'derived-not-bundled';
   rejectsCode(() => validateRuntimeManifest(derived), 'manifest_closure_status_invalid');
 
-  const bundled = clone(source);
-  bundled.runtimeClosure.payloadIncluded = true;
-  rejectsCode(() => validateRuntimeManifest(bundled), 'manifest_payload_must_be_absent');
+  const absent = clone(source);
+  absent.runtimeClosure.payloadIncluded = false;
+  rejectsCode(() => validateRuntimeManifest(absent), 'manifest_payload_must_be_materialized');
+
+  const unbundled = clone(source);
+  unbundled.packaging.runtimeBundled = false;
+  rejectsCode(() => validateRuntimeManifest(unbundled), 'manifest_runtime_must_be_bundled');
 
   const measured = clone(source);
   measured.runtimeClosure.measuredBytes += 1;
@@ -85,17 +90,33 @@ test('rejects relaxed security boundaries and unknown manifest fields', async ()
   rejectsCode(() => validateRuntimeManifest(extra), 'manifest_runtime_keys_invalid');
 });
 
-test('keeps provenance integration claims false until independently verified', async () => {
+test('binds real runtime evidence while release claims remain false', async () => {
   const source = await load('docs/oss/siyuan-runtime-provenance.json');
   assert.equal(validateProvenance(source), true);
   assert.equal(source.integrationStatus.runtimeClosureDerived, true);
-  for (const field of Object.keys(source.integrationStatus).filter(
-    (key) => key !== 'runtimeClosureDerived',
-  )) {
+  assert.equal(source.integrationStatus.runtimeBuildMaterialized, true);
+  assert.equal(source.integrationStatus.runtimeExecuted, true);
+  for (const field of [
+    'runtimePayloadCommitted',
+    'licenseReviewComplete',
+    'installerMeasured',
+    'releaseReady',
+  ]) {
     const provenance = clone(source);
     provenance.integrationStatus[field] = true;
     rejectsCode(() => validateProvenance(provenance), `provenance_${field}_must_be_false`);
   }
+
+  const noShutdown = clone(source);
+  noShutdown.executionEvidence.gracefulShutdown = false;
+  rejectsCode(
+    () => validateProvenance(noShutdown),
+    'provenance_execution_gracefulShutdown_invalid',
+  );
+
+  const leaked = clone(source);
+  leaked.executionEvidence.secretLogged = true;
+  rejectsCode(() => validateProvenance(leaked), 'provenance_execution_secret_log_invalid');
 });
 
 test('binds the measured closure to exact component totals without claiming a final bundle', async () => {

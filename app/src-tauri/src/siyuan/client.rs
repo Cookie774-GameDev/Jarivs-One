@@ -163,6 +163,11 @@ struct BlockKramdownData {
     kramdown: String,
 }
 
+#[derive(Deserialize)]
+struct BootProgressData {
+    progress: i64,
+}
+
 impl HttpSiyuanTransport {
     pub(crate) fn new(port: u16, token: String) -> Result<Self, ClientError> {
         if port == 0 || validate_runtime_token(&token).is_err() {
@@ -241,6 +246,20 @@ impl HttpSiyuanTransport {
         Ok(cookie)
     }
 
+    fn post_public<T: DeserializeOwned>(
+        &self,
+        path: &'static str,
+        body: Value,
+    ) -> Result<T, ClientError> {
+        let response = self
+            .client
+            .post(format!("{}{path}", self.base_url))
+            .json(&body)
+            .send()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        self.read_envelope(response)
+    }
+
     fn post<T: DeserializeOwned>(&self, path: &'static str, body: Value) -> Result<T, ClientError> {
         let session_cookie = self.ensure_authenticated()?;
         let response = self
@@ -255,6 +274,36 @@ impl HttpSiyuanTransport {
 
     fn runtime_version(&self) -> Result<String, ClientError> {
         self.post("/api/system/version", json!({}))
+    }
+
+    pub(crate) fn boot_progress(&self) -> Result<u8, ClientError> {
+        let data: BootProgressData = self.post_public("/api/system/bootProgress", json!({}))?;
+        u8::try_from(data.progress)
+            .ok()
+            .filter(|progress| *progress <= 100)
+            .ok_or(ClientError::ResponseTypeMismatch)
+    }
+
+    pub(crate) fn verify_ready_session(&self) -> Result<(), ClientError> {
+        self.ensure_authenticated()?;
+        let version = self.runtime_version()?;
+        if version == super::manifest::SIYUAN_UPSTREAM_TAG.trim_start_matches('v') {
+            Ok(())
+        } else {
+            Err(ClientError::ResponseTypeMismatch)
+        }
+    }
+
+    pub(crate) fn request_shutdown(&self) -> Result<(), ClientError> {
+        let _: Value = self.post(
+            "/api/system/exit",
+            json!({
+                "force": false,
+                "execInstallPkg": 1,
+                "setCurrentWorkspace": false,
+            }),
+        )?;
+        Ok(())
     }
 
     fn notebooks(&self) -> Result<Vec<Notebook>, ClientError> {
@@ -674,6 +723,41 @@ mod tests {
         assert!(second.starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
         assert!(!first.contains(token.as_str()));
         assert!(!second.contains(token.as_str()));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_boot_auth_version_and_shutdown_contract_is_cookie_scoped() {
+        let token = "q".repeat(48);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":{"progress":100,"details":"ready"}}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":"3.8.1"}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"closeTimeout":0}}"#.to_owned(),
+        ]);
+        let transport = HttpSiyuanTransport::new(port, token.clone()).unwrap();
+
+        assert_eq!(transport.boot_progress(), Ok(100));
+        assert_eq!(transport.verify_ready_session(), Ok(()));
+        assert_eq!(transport.request_shutdown(), Ok(()));
+
+        let boot = requests.recv().unwrap();
+        let login = requests.recv().unwrap();
+        let version = requests.recv().unwrap();
+        let shutdown = requests.recv().unwrap();
+        assert!(boot.starts_with("POST /api/system/bootProgress HTTP/1.1"));
+        assert!(!boot.contains(&token));
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(login.contains(&token));
+        assert!(version.starts_with("POST /api/system/version HTTP/1.1"));
+        assert!(shutdown.starts_with("POST /api/system/exit HTTP/1.1"));
+        assert!(shutdown.contains("\"force\":false"));
+        for request in [&version, &shutdown] {
+            assert!(request
+                .to_ascii_lowercase()
+                .contains("cookie: siyuan=vibespace-native-session"));
+            assert!(!request.contains(&token));
+        }
         server.join().unwrap();
     }
 }

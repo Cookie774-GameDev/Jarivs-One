@@ -9,6 +9,7 @@ const OFFICIAL_REPOSITORY = 'https://github.com/siyuan-note/siyuan';
 const CLOSURE_BYTES = 445_983_251;
 const CLOSURE_FILES = 1_153;
 const CLOSURE_COMPRESSED_ANALYSIS_BYTES = 87_304_479;
+const CLOSURE_FINGERPRINT = '59ce62549b891a1e0fb8fce530442ec95882e240b3349795ed517ca8761d603c';
 const CLOSURE_COMPONENTS = Object.freeze([
   [
     'kernel',
@@ -218,6 +219,7 @@ export function validateRuntimeManifest(value) {
     [
       'status',
       'payloadIncluded',
+      'fingerprint',
       'measuredBytes',
       'fileCount',
       'compressedAnalysisBytes',
@@ -226,8 +228,9 @@ export function validateRuntimeManifest(value) {
     ],
     'manifest_closure_keys_invalid',
   );
-  exactString(closure.status, 'derived-not-bundled', 'manifest_closure_status_invalid');
-  boolean(closure.payloadIncluded, false, 'manifest_payload_must_be_absent');
+  exactString(closure.status, 'build-materialized', 'manifest_closure_status_invalid');
+  boolean(closure.payloadIncluded, true, 'manifest_payload_must_be_materialized');
+  exactString(closure.fingerprint, CLOSURE_FINGERPRINT, 'manifest_closure_fingerprint_invalid');
   positiveInteger(closure.measuredBytes, CLOSURE_BYTES, 'manifest_closure_bytes_invalid');
   positiveInteger(closure.fileCount, CLOSURE_FILES, 'manifest_closure_files_invalid');
   positiveInteger(
@@ -275,7 +278,7 @@ export function validateRuntimeManifest(value) {
     ['runtimeBundled', 'hardInstallerLimitBytes', 'preferredInstallerLimitBytes'],
     'manifest_packaging_keys_invalid',
   );
-  boolean(packaging.runtimeBundled, false, 'manifest_runtime_must_not_be_bundled');
+  boolean(packaging.runtimeBundled, true, 'manifest_runtime_must_be_bundled');
   positiveInteger(packaging.hardInstallerLimitBytes, 300_000_000, 'manifest_hard_limit_invalid');
   positiveInteger(
     packaging.preferredInstallerLimitBytes,
@@ -298,6 +301,7 @@ export function validateProvenance(value) {
       'license',
       'windowsX64Installer',
       'integrationStatus',
+      'executionEvidence',
     ],
     'provenance_keys_invalid',
   );
@@ -360,6 +364,7 @@ export function validateProvenance(value) {
     status,
     [
       'runtimeClosureDerived',
+      'runtimeBuildMaterialized',
       'runtimePayloadCommitted',
       'runtimeExecuted',
       'licenseReviewComplete',
@@ -369,15 +374,67 @@ export function validateProvenance(value) {
     'provenance_status_keys_invalid',
   );
   boolean(status.runtimeClosureDerived, true, 'provenance_runtime_closure_must_be_derived');
+  boolean(status.runtimeBuildMaterialized, true, 'provenance_runtime_build_must_be_materialized');
+  boolean(status.runtimeExecuted, true, 'provenance_runtime_must_be_executed');
   for (const key of [
     'runtimePayloadCommitted',
-    'runtimeExecuted',
     'licenseReviewComplete',
     'installerMeasured',
     'releaseReady',
   ]) {
     boolean(status[key], false, `provenance_${key}_must_be_false`);
   }
+
+  const evidence = record(provenance.executionEvidence, 'provenance_execution_invalid');
+  exactKeys(
+    evidence,
+    [
+      'observedAt',
+      'platform',
+      'runtimeRoot',
+      'workspace',
+      'version',
+      'healthProgress',
+      'sessionCookieEstablished',
+      'observedPid',
+      'observedPort',
+      'gracefulShutdown',
+      'processExited',
+      'elapsedMs',
+      'secretLogged',
+      'test',
+    ],
+    'provenance_execution_keys_invalid',
+  );
+  if (typeof evidence.observedAt !== 'string' || Number.isNaN(Date.parse(evidence.observedAt))) {
+    fail('provenance_execution_time_invalid');
+  }
+  exactString(evidence.platform, 'windows-x64', 'provenance_execution_platform_invalid');
+  exactString(evidence.version, '3.8.1', 'provenance_execution_version_invalid');
+  positiveInteger(evidence.healthProgress, 100, 'provenance_execution_health_invalid');
+  positiveInteger(evidence.observedPid, undefined, 'provenance_execution_pid_invalid');
+  positiveInteger(evidence.observedPort, undefined, 'provenance_execution_port_invalid');
+  if (evidence.observedPort > 65_535) fail('provenance_execution_port_invalid');
+  positiveInteger(evidence.elapsedMs, undefined, 'provenance_execution_elapsed_invalid');
+  for (const key of ['sessionCookieEstablished', 'gracefulShutdown', 'processExited']) {
+    boolean(evidence[key], true, `provenance_execution_${key}_invalid`);
+  }
+  boolean(evidence.secretLogged, false, 'provenance_execution_secret_log_invalid');
+  for (const key of ['runtimeRoot', 'workspace']) {
+    if (
+      typeof evidence[key] !== 'string' ||
+      !evidence[key].startsWith(
+        'D:\\VibeSpace-Testing\\SiYuan-Context-OpenCode-RLM-Feature-Testing\\',
+      )
+    ) {
+      fail(`provenance_execution_${key}_invalid`);
+    }
+  }
+  exactString(
+    evidence.test,
+    'siyuan::supervisor::tests::real_pinned_kernel_boots_authenticates_and_shuts_down_inside_owned_fixture',
+    'provenance_execution_test_invalid',
+  );
   return true;
 }
 
@@ -626,7 +683,8 @@ export async function verifySiyuanRuntimeArtifacts() {
     tag: TAG,
     commitSha: COMMIT_SHA,
     featureEnabled: false,
-    payloadIncluded: false,
+    payloadIncluded: true,
+    runtimeBundled: true,
     closureBytes: runtimeClosure.closure.uncompressedBytes,
     compressedAnalysisBytes: runtimeClosure.compressionEvidence.bytes,
     featureBlockedCount: featureParity.summary.blocked,
@@ -639,7 +697,7 @@ if (entryPath === import.meta.url) {
   verifySiyuanRuntimeArtifacts()
     .then((result) => {
       console.log(
-        `SiYuan runtime manifest: PASS (${result.tag}, disabled, no payload, ${result.featureBlockedCount} feature blocks, ${result.bridgeBlockedCount} bridge blocks)`,
+        `SiYuan runtime manifest: PASS (${result.tag}, disabled, build-materialized payload, ${result.featureBlockedCount} feature blocks, ${result.bridgeBlockedCount} bridge blocks)`,
       );
     })
     .catch((error) => {

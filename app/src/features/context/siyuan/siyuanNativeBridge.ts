@@ -24,6 +24,8 @@ export type SiyuanNativeInvoker = (
 
 export interface SiyuanNativeBridge {
   status(): Promise<SiyuanStatus>;
+  start(): Promise<SiyuanStatus>;
+  stop(): Promise<SiyuanStatus>;
   version(): Promise<SiyuanVersion>;
   listNotebooks(): Promise<SiyuanNotebook[]>;
   searchBlocks(query: string, limit?: number): Promise<SiyuanBlockSummary[]>;
@@ -33,11 +35,13 @@ export interface SiyuanNativeBridge {
 interface SiyuanNativeBridgeOptions {
   /** Test-only seam until the checked-in feature gate and native commands are integrated. */
   featureEnabled?: boolean;
+  /** Opaque VibeSpace project authority attached to every operational command. */
+  projectId?: string;
 }
 
 const DISABLED_STATUS: SiyuanStatus = Object.freeze({
   featureEnabled: false,
-  runtimeBundled: false,
+  runtimeBundled: true,
   state: 'disabled',
 });
 
@@ -50,11 +54,26 @@ export function createSiyuanNativeBridge(
   options: SiyuanNativeBridgeOptions = {},
 ): SiyuanNativeBridge {
   const featureEnabled = options.featureEnabled ?? SIYUAN_CONTEXT_VAULT_ENABLED;
+  const projectArguments = (): Readonly<{ projectId: string }> => ({
+    projectId: assertSiyuanIdentifier(options.projectId, 'siyuan_project_id_invalid'),
+  });
 
   return Object.freeze({
     async status() {
       if (!featureEnabled) return DISABLED_STATUS;
       return parseSiyuanStatus(await invokeNative(SIYUAN_NATIVE_COMMANDS.status));
+    },
+
+    async start() {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanStatus(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.start, projectArguments()),
+      );
+    },
+
+    async stop() {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanStatus(await invokeNative(SIYUAN_NATIVE_COMMANDS.stop, projectArguments()));
     },
 
     async version() {
@@ -64,7 +83,9 @@ export function createSiyuanNativeBridge(
 
     async listNotebooks() {
       if (!featureEnabled) return featureDisabled();
-      return parseSiyuanNotebooks(await invokeNative(SIYUAN_NATIVE_COMMANDS.listNotebooks));
+      return parseSiyuanNotebooks(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.listNotebooks, projectArguments()),
+      );
     },
 
     async searchBlocks(query: string, limit = 25) {
@@ -73,6 +94,7 @@ export function createSiyuanNativeBridge(
       const validatedLimit = assertSiyuanSearchLimit(limit);
       return parseSiyuanSearchResults(
         await invokeNative(SIYUAN_NATIVE_COMMANDS.searchBlocks, {
+          ...projectArguments(),
           query: validatedQuery,
           limit: validatedLimit,
         }),
@@ -84,7 +106,10 @@ export function createSiyuanNativeBridge(
       if (!featureEnabled) return featureDisabled();
       const validatedId = assertSiyuanIdentifier(id, 'siyuan_block_id_invalid');
       return parseSiyuanBlock(
-        await invokeNative(SIYUAN_NATIVE_COMMANDS.getBlock, { id: validatedId }),
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.getBlock, {
+          ...projectArguments(),
+          id: validatedId,
+        }),
       );
     },
   });
