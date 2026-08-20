@@ -2413,6 +2413,18 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **No-op file evidence** | `app/src/features/chat/runtime/runtimeModelControls.ts` had identical worktree and HEAD blob SHA `ea7061f8999ac90da113ee0bf9eb9abca9c45c3e`; index refresh cleared the status-only modification with no diff or commit content. `router.ts` was unchanged. |
 | **Status / next action** | Both first-slice worker scopes are `ACCEPTED` and released. Continue to native runtime registration/payload, Context/RLM federation, catalog/free/usage/taskbar, fixture, scored UAT, and final native passes. |
 
+## 2026-08-20 - SiYuan native, verified packaging, and OpenCode catalog lanes acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 07:34 CT |
+| **Branch / base HEAD** | `integration/UnifiedChungus-final` at `b77d0f22`; upstream `origin/UnifiedChungus`; ahead 13. |
+| **SiYuan native worker paths** | `app/src-tauri/src/siyuan/**`; `app/src-tauri/src/lib.rs`. Intent: register disabled-first typed commands, production lifecycle/supervisor contracts, project-scoped workspace authority, loopback random-port/token arguments, shutdown cleanup, redacted errors, and frozen ordinary-handler authority updates. Excludes packaging/config/payload/frontend/Context/RLM files. |
+| **OpenCode catalog worker paths** | `app/src/lib/ai/useAccessibleChatModels.ts` plus smoke/unit tests; `app/src/lib/ai/adapters/catalog.ts` plus test; `app/src/lib/ai/catalog/canonicalModelCatalog.ts` plus test; `app/src/lib/harness/freeModelSelection.ts` plus test; `app/src/lib/harness/providerReconciliation.ts` plus test; `app/src/features/chat/ModelPickerTypeahead.tsx` plus smoke test. Intent: authoritative live `OpenCode Models` grouping, exact target-model identity, and truthful all-zero-price free discovery/visibility without static executable fallback. |
+| **Controller packaging paths** | `.gitignore`; root and app `package.json`; `.github/workflows/release.yml`; `app/src-tauri/tauri.conf.json`; new `scripts/prepare-siyuan-runtime.mjs` and test; new `docs/oss/siyuan-source-offer.md`. Intent: verified/reusable official payload materialization, git exclusion, local/native/release preparation, Tauri resource inclusion, source offer, and existing size-gate sequencing. |
+| **Index safety** | Both workers must keep work unstaged/uncommitted. Controller sequences exact-path review, verification, secret scan, and commits. All lanes preserve concurrent files and production/user state. |
+| **Status / next action** | `IMPLEMENTING` in three non-overlapping lanes. |
+
 ## 2026-08-20 - OpenCode exact-effort and live-authority lane acquired
 
 | Field | Coordination record |
