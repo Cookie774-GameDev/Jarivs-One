@@ -100,6 +100,15 @@ test('API envelope parsing returns successful data and rejects malformed authori
 test('checked-in fixture evidence preserves the exact measured acceptance contract', async () => {
   const evidence = JSON.parse(await readFile(CHECKED_IN_EVIDENCE_PATH, 'utf8'));
   assert.equal(validateFixtureEvidence(evidence), evidence);
+  assert.equal(evidence.acceptance.generatorCommit, '1ced1b3e9e8f4dbe74d84ca42d44c1828cb3dee3');
+  assert.equal(evidence.acceptance.structuredRecordCount, 1_466_500);
+  assert.equal(evidence.acceptance.pairwiseDistinctSubmittedDocuments, 500);
+  assert.equal(evidence.acceptance.exactGeneratedHashMatchedEveryProgressRow, true);
+  assert.equal(evidence.acceptance.allRecordsUniqueWithinDocument, true);
+  assert.equal(evidence.acceptance.legacyRepeatedSeedAbsent, true);
+  assert.equal(evidence.acceptance.authorityFreshnessProvenanceRelationshipsPresent, true);
+  assert.equal(evidence.acceptance.oldFixtureArchivePreserved, true);
+  assert.equal(evidence.acceptance.releaseReadyClaimed, false);
   assert.throws(
     () => validateFixtureEvidence({ ...evidence, submittedMarkdownBytes: 499_999_999 }),
     /evidence contract is invalid/u,
