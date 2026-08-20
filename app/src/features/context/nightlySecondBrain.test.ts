@@ -135,6 +135,35 @@ describe('nightly second-brain maintenance', () => {
     expect(apply).toHaveBeenCalledTimes(2);
   });
 
+  it('performs zero approval-mode writes until approval and records the managed snapshot receipt', async () => {
+    const appliedChange = { ...change, backend: 'siyuan' as const, targetBlockId: 'block-1' };
+    const apply = vi.fn().mockResolvedValue({
+      changes: [appliedChange],
+      snapshotCreated: true,
+    });
+    const runner = new NightlySecondBrainRunner({
+      collectSources: async () => sources,
+      propose: async () => [change],
+      apply,
+      rollback: vi.fn(),
+      saveRun: vi.fn(),
+    });
+
+    const pending = await runner.run({
+      config: { ...DEFAULT_SECOND_BRAIN_CONFIG, enabled: true, model },
+      scheduledFor: 300,
+      now: 300,
+    });
+    expect(pending.status).toBe('pending_approval');
+    expect(pending.snapshotCreated).toBeUndefined();
+    expect(apply).not.toHaveBeenCalled();
+
+    const applied = await runner.approve(pending);
+    expect(applied.snapshotCreated).toBe(true);
+    expect(applied.changes[0].targetBlockId).toBe('block-1');
+    expect(applied.summary).toContain('repository snapshot was created first');
+  });
+
   it('records failure for morning recovery without applying partial changes', async () => {
     const apply = vi.fn();
     const saveRun = vi.fn();

@@ -21,12 +21,18 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
       version: '3.8.1',
       commit: 'afa823b6b4e4f183511e0bc0a3be93caa94c7c97',
     })),
-    listNotebooks: vi.fn(async () => []),
-    createNotebook: vi.fn(async (name: string) => ({
-      id: `notebook-${projectId}`,
-      name,
-      closed: false,
-    })),
+    listNotebooks: vi.fn(async () => {
+      events.push(`notebooks:${projectId}`);
+      return [];
+    }),
+    createNotebook: vi.fn(async (name: string) => {
+      events.push(`create-notebook:${projectId}:${name}`);
+      return {
+        id: `notebook-${projectId}`,
+        name,
+        closed: false,
+      };
+    }),
     searchBlocks: vi.fn(async (query: string) => {
       events.push(`search:${projectId}:${query}`);
       return [
@@ -47,11 +53,23 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
         markdown: `body:${projectId}`,
       };
     }),
-    createDocument: vi.fn(async () => ({ id: `document-${projectId}` })),
-    updateBlock: vi.fn(async () => ({ applied: true as const })),
-    deleteBlock: vi.fn(async () => ({ applied: true as const })),
+    createDocument: vi.fn(async (_notebookId, path) => {
+      events.push(`create-document:${projectId}:${path}`);
+      return { id: `document-${projectId}` };
+    }),
+    updateBlock: vi.fn(async (id) => {
+      events.push(`update:${projectId}:${id}`);
+      return { applied: true as const };
+    }),
+    deleteBlock: vi.fn(async (id) => {
+      events.push(`delete:${projectId}:${id}`);
+      return { applied: true as const };
+    }),
     createDailyNote: vi.fn(async () => ({ id: `daily-${projectId}` })),
-    createSnapshot: vi.fn(async () => ({ applied: true as const })),
+    createSnapshot: vi.fn(async (memo) => {
+      events.push(`snapshot:${projectId}:${memo}`);
+      return { applied: true as const };
+    }),
   };
 }
 
@@ -100,5 +118,59 @@ describe('production SiYuan RLM port', () => {
     await expect(port.searchBlocks('project-a', 'needle', 2)).rejects.toThrow(
       'siyuan_feature_disabled',
     );
+  });
+
+  it('finds only the exact managed notebook and marker-backed document', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    vi.mocked(bridge.listNotebooks).mockResolvedValue([
+      { id: 'notebook-project-a', name: 'VibeSpace Project Vault', closed: false },
+      { id: 'other', name: 'Other', closed: false },
+    ]);
+    vi.mocked(bridge.getBlock).mockResolvedValue({
+      id: 'block-project-a',
+      notebookId: 'notebook-project-a',
+      path: '/managed.sy',
+      markdown: '# VibeSpace Project Context\n\n<!-- vibespace-managed-key:project-context -->',
+    });
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+
+    await expect(
+      port.readManagedDocument('project-a', {
+        query: 'VibeSpace Project Context',
+        marker: '<!-- vibespace-managed-key:project-context -->',
+      }),
+    ).resolves.toMatchObject({ id: 'block-project-a', notebookId: 'notebook-project-a' });
+  });
+
+  it('creates the managed notebook lazily and exposes only typed mutations', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+
+    await port.createManagedSnapshot('project-a', 'Before managed writes');
+    await expect(
+      port.createManagedDocument('project-a', '/VibeSpace Managed/Project Context', '# Context'),
+    ).resolves.toMatchObject({ id: 'document-project-a', notebookId: 'notebook-project-a' });
+    await port.updateManagedDocument('project-a', 'document-project-a', '# Context', '# Updated');
+    await port.deleteManagedDocument('project-a', 'document-project-a', '# Updated');
+
+    expect(events).toEqual([
+      'start:project-a',
+      'snapshot:project-a:Before managed writes',
+      'notebooks:project-a',
+      'create-notebook:project-a:VibeSpace Project Vault',
+      'create-document:project-a:/VibeSpace Managed/Project Context',
+      'get:project-a:document-project-a',
+      'update:project-a:document-project-a',
+      'get:project-a:document-project-a',
+      'delete:project-a:document-project-a',
+    ]);
   });
 });

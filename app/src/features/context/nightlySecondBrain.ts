@@ -31,6 +31,10 @@ export interface SecondBrainSource {
 export interface SecondBrainChange {
   id: string;
   target: SecondBrainTarget;
+  /** Storage selected when the proposal was created. Missing means legacy storage. */
+  backend?: 'legacy' | 'siyuan';
+  /** Authoritative SiYuan document block captured by read/create, never model supplied. */
+  targetBlockId?: string;
   /** Immutable Context Map identity captured when this change was proposed. */
   targetMapId?: string;
   path: string;
@@ -50,6 +54,8 @@ export interface SecondBrainRun {
   model: SecondBrainModel;
   changes: readonly SecondBrainChange[];
   summary: string;
+  /** True only when the managed SiYuan batch created a repository snapshot before mutation. */
+  snapshotCreated?: boolean;
   error?: string;
   retryOf?: string;
 }
@@ -154,9 +160,14 @@ export interface SecondBrainRuntimePorts {
     model: SecondBrainModel;
     sources: readonly SecondBrainSource[];
   }): Promise<readonly SecondBrainChange[]>;
-  apply(changes: readonly SecondBrainChange[]): Promise<void>;
+  apply(changes: readonly SecondBrainChange[]): Promise<SecondBrainApplyReceipt | void>;
   rollback(changes: readonly SecondBrainChange[]): Promise<void>;
   saveRun(run: SecondBrainRun): Promise<void>;
+}
+
+export interface SecondBrainApplyReceipt {
+  changes: readonly SecondBrainChange[];
+  snapshotCreated: boolean;
 }
 
 function normalizedFact(value: string): string {
@@ -216,7 +227,15 @@ export class NightlySecondBrainRunner {
         admitted,
       );
       const status = input.config.mode === 'auto' ? 'applied' : 'pending_approval';
-      if (status === 'applied' && changes.length > 0) await this.ports.apply(changes);
+      let appliedChanges = changes;
+      let snapshotCreated = false;
+      if (status === 'applied' && changes.length > 0) {
+        const receipt = await this.ports.apply(changes);
+        if (receipt) {
+          appliedChanges = receipt.changes;
+          snapshotCreated = receipt.snapshotCreated;
+        }
+      }
       const run: SecondBrainRun = Object.freeze({
         id: `second-brain-${input.scheduledFor}-${startedAt}`,
         scheduledFor: input.scheduledFor,
@@ -225,13 +244,14 @@ export class NightlySecondBrainRunner {
         status,
         mode: input.config.mode,
         model,
-        changes,
+        changes: appliedChanges,
         summary:
           changes.length === 0
             ? 'No meaningful new context was found.'
             : `${changes.length} verified context ${changes.length === 1 ? 'update' : 'updates'} ${
                 status === 'applied' ? 'applied' : 'awaiting approval'
-              }.`,
+              }.${snapshotCreated ? ' A repository snapshot was created first.' : ''}`,
+        ...(snapshotCreated ? { snapshotCreated: true } : {}),
         ...(input.retryOf ? { retryOf: input.retryOf } : {}),
       });
       await this.ports.saveRun(run);
@@ -257,8 +277,20 @@ export class NightlySecondBrainRunner {
 
   async approve(run: SecondBrainRun): Promise<SecondBrainRun> {
     if (run.status !== 'pending_approval') throw new Error('Run is not awaiting approval.');
-    await this.ports.apply(run.changes);
-    const applied = Object.freeze({ ...run, status: 'applied' as const, completedAt: Date.now() });
+    const receipt = await this.ports.apply(run.changes);
+    const applied = Object.freeze({
+      ...run,
+      status: 'applied' as const,
+      completedAt: Date.now(),
+      changes: receipt?.changes ?? run.changes,
+      summary:
+        run.changes.length === 0
+          ? 'No meaningful new context was found.'
+          : `${run.changes.length} verified context ${
+              run.changes.length === 1 ? 'update' : 'updates'
+            } applied.${receipt?.snapshotCreated ? ' A repository snapshot was created first.' : ''}`,
+      ...(receipt?.snapshotCreated ? { snapshotCreated: true } : {}),
+    });
     await this.ports.saveRun(applied);
     return applied;
   }

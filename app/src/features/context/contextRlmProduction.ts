@@ -48,7 +48,7 @@ import {
   loadProductionRlmHistory,
 } from './contextRlmHistory';
 import { createSiyuanRlmRepository } from './siyuanRlmRepository';
-import { createProductionSiyuanRlmPort } from './siyuanRlmProduction';
+import { getProductionSiyuanRlmPort } from './siyuanRlmProduction';
 
 const MAX_SOURCE_SHARD_BYTES = 1024 * 1024;
 const MAX_CHILD_OUTPUT_CHARACTERS = 12_000;
@@ -2165,7 +2165,7 @@ export function createProductionRlmContextTool() {
     indexStatus: (accountId, mapId) => indexPort.status(accountId, mapId),
   });
   const historyRepository = createHistoryRlmRepository({ load: loadProductionRlmHistory });
-  const siyuanRepository = createSiyuanRlmRepository(createProductionSiyuanRlmPort());
+  const siyuanRepository = createSiyuanRlmRepository(getProductionSiyuanRlmPort());
   const repository = createProductionFederatedRlmRepository(
     contextMapRepository,
     historyRepository,

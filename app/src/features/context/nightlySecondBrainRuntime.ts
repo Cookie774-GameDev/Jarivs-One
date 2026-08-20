@@ -28,6 +28,13 @@ import {
   type ContextPersistenceState,
 } from './contextPersistence';
 import { contextMapFilePath, type ContextMapRecord, type ProjectContextTree } from './tree';
+import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
+import { getProductionSiyuanRlmPort } from './siyuanRlmProduction';
+import {
+  applySiyuanManagedChanges,
+  proposeSiyuanManagedChanges,
+  rollbackSiyuanManagedChanges,
+} from './siyuanManagedKnowledge';
 
 const MAX_SOURCE_CHARS = 8_000;
 const MAX_TOTAL_SOURCE_CHARS = 80_000;
@@ -503,6 +510,15 @@ async function proposedChanges(input: {
     };
   });
   const projectId = input.scope.projectId;
+  if (SIYUAN_CONTEXT_VAULT_ENABLED) {
+    if (!projectId) throw new Error('Nightly SiYuan maintenance requires a project scope.');
+    return proposeSiyuanManagedChanges({
+      projectId,
+      proposals: grouped,
+      port: getProductionSiyuanRlmPort(),
+      now,
+    });
+  }
   const root = getStoredProjectRoot(projectId);
   const map = await loadScopedSelectedContextMap(input.scope, input.getContextPersistence);
   assertActiveNightlySecondBrainScope(input.scope);
@@ -703,13 +719,35 @@ function scopedPorts(scope: NightlySecondBrainScope): SecondBrainRuntimePorts {
     collectSources: () => collectProductionSources(scope, getContextPersistence),
     propose: ({ model, sources }) =>
       proposedChanges({ model, sources, scope, getContextPersistence }),
-    apply: (changes) =>
-      applySecondBrainChangesWithRollback(changes, {
+    apply: (changes) => {
+      if (SIYUAN_CONTEXT_VAULT_ENABLED) {
+        assertActiveNightlySecondBrainScope(scope);
+        if (!scope.projectId)
+          throw new Error('Nightly SiYuan maintenance requires a project scope.');
+        return applySiyuanManagedChanges({
+          projectId: scope.projectId,
+          changes,
+          port: getProductionSiyuanRlmPort(),
+        });
+      }
+      return applySecondBrainChangesWithRollback(changes, {
         assertActive: () => assertActiveNightlySecondBrainScope(scope),
         write: (change, direction) =>
           writeChange(change, direction, scope, getContextPersistence, direction === 'apply'),
-      }),
+      });
+    },
     rollback: async (changes) => {
+      if (SIYUAN_CONTEXT_VAULT_ENABLED) {
+        assertActiveNightlySecondBrainScope(scope);
+        if (!scope.projectId)
+          throw new Error('Nightly SiYuan maintenance requires a project scope.');
+        await rollbackSiyuanManagedChanges({
+          projectId: scope.projectId,
+          changes,
+          port: getProductionSiyuanRlmPort(),
+        });
+        return;
+      }
       const rolledBack: SecondBrainChange[] = [];
       try {
         for (const change of changes) {

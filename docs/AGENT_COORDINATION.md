@@ -2693,3 +2693,25 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Native verification** | Full focused SiYuan suite PASS: 35 passed, one intentionally opt-in real-kernel test ignored. Official endpoint capture and closed audit-shape assertions include create-notebook. Frozen ordinary authority intentionally advanced to `9c32f74656b9b64cfb5e9ee1c9db3a643ee228d00f882ab50c0e238a0920ab85`; normalized authority `b7d5dd8470652b6c5cfa7a8b9c41b596b164e674330a264c34915f511e08fcc5`. |
 | **Renderer / integration verification** | Focused renderer matrix PASS 3 files / 16 tests; full app typecheck PASS; PR31 OpenCode/RLM production wiring verifier PASS; formatting, diff, and staged secret checks are the remaining commit-boundary gates. |
 | **Status / next action** | Product behavior `ACCEPTED`; complete commit-boundary gates, commit this micro-slice, release its scope, then claim the serialized production managed-knowledge/Nightly integration files. |
+
+## 2026-08-20 - SiYuan Nightly managed-knowledge integration lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:43 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` at `18eb3489`. |
+| **Exact scope** | Production SiYuan port and test; new managed-knowledge adapter and test; Nightly domain/runtime and focused tests; Context RLM production construction and focused test; this ledger. |
+| **Intent** | Reuse one serialized native runtime authority and, only when the checked-in SiYuan gate is enabled, route Nightly durable knowledge into a project vault. Approve-only proposals perform no writes; approved/auto batches create a repo snapshot, use typed create/update/delete operations with authoritative expected-content conflict checks, preserve source pointers, and compensate in reverse order on failure. |
+| **Compatibility boundary** | With the gate false, existing Context Map, All About Me, and related-markdown behavior remains byte-for-byte on the legacy path. No native broker, UI, migration, parity, packaging, or feature-gate edits are in this lane. |
+
+## 2026-08-20 - SiYuan Nightly managed-knowledge integration accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 09:51 CT |
+| **Branch / base** | `integration/UnifiedChungus-final` from `18eb3489`. |
+| **Exact product manifest** | `siyuanRlmProduction.ts` and test; new `siyuanManagedKnowledge.ts` and test; `nightlySecondBrain.ts` and test; `nightlySecondBrainRuntime.ts`; `contextRlmProduction.ts`; this ledger. |
+| **Shared authority** | Context RLM and Nightly now reuse one serialized production SiYuan port. It owns project switches and exposes only exact managed notebook/document read, create, conflict-checked update/delete, snapshot, and stop operations; created/updated content is re-read from the kernel before being recorded as authoritative. |
+| **Nightly behavior** | Checked-in false gate retains the legacy path. Enabled proposals search the exact managed notebook/document markers without writing, embed exact source IDs, deduplicate facts, and show reviewable block-level changes. Approval/auto creates a repository snapshot first, applies typed operations, captures authoritative block identity/content, compensates earlier mutations in reverse on failure, and supports snapshot-backed explicit rollback. Morning summaries distinguish queued versus applied changes and record snapshot creation. |
+| **Verification** | Broad focused matrix PASS 8 files / 96 tests, including scheduler/store/panel/runtime/federation; focused managed authority matrix PASS 3 files / 17 tests after authoritative post-write reread hardening; full app typecheck PASS; PR31 OpenCode/RLM wiring verifier PASS; exact Prettier and diff checks PASS. |
+| **Status / next action** | Lane `ACCEPTED`; run staged secret/diff checks, commit, and release scope. Next implement staged migration/no-loss truth before enabling production and exposing the full SiYuan Context surface. |

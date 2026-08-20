@@ -6,7 +6,38 @@ import {
 } from './siyuan/siyuanNativeBridge';
 import type { SiyuanRlmPort } from './siyuanRlmRepository';
 
+export const SIYUAN_MANAGED_NOTEBOOK_NAME = 'VibeSpace Project Vault';
+
+export interface SiyuanManagedDocument {
+  id: string;
+  notebookId: string;
+  path: string;
+  markdown: string;
+}
+
+export interface SiyuanManagedDocumentLookup {
+  query: string;
+  marker: string;
+}
+
 export interface ProductionSiyuanRlmPort extends SiyuanRlmPort {
+  readManagedDocument(
+    projectId: string,
+    lookup: SiyuanManagedDocumentLookup,
+  ): Promise<SiyuanManagedDocument | null>;
+  createManagedDocument(
+    projectId: string,
+    path: string,
+    markdown: string,
+  ): Promise<SiyuanManagedDocument>;
+  updateManagedDocument(
+    projectId: string,
+    id: string,
+    expectedMarkdown: string,
+    markdown: string,
+  ): Promise<SiyuanManagedDocument>;
+  deleteManagedDocument(projectId: string, id: string, expectedMarkdown: string): Promise<void>;
+  createManagedSnapshot(projectId: string, memo: string): Promise<void>;
   stopActive(): Promise<void>;
 }
 
@@ -58,12 +89,77 @@ export function createProductionSiyuanRlmPort(
     return run;
   };
 
+  const exactNotebook = async (bridge: SiyuanNativeBridge, create: boolean) => {
+    const matches = (await bridge.listNotebooks()).filter(
+      (notebook) => notebook.name === SIYUAN_MANAGED_NOTEBOOK_NAME && !notebook.closed,
+    );
+    if (matches.length > 1) throw new Error('siyuan_managed_notebook_ambiguous');
+    if (matches[0]) return matches[0];
+    if (!create) return null;
+    const notebook = await bridge.createNotebook(SIYUAN_MANAGED_NOTEBOOK_NAME);
+    if (notebook.name !== SIYUAN_MANAGED_NOTEBOOK_NAME || notebook.closed) {
+      throw new Error('siyuan_managed_notebook_invalid');
+    }
+    return notebook;
+  };
+
   const port: ProductionSiyuanRlmPort = {
     searchBlocks(projectId: string, query: string, limit: number) {
       return enqueue(projectId, (bridge) => bridge.searchBlocks(query, limit));
     },
     getBlock(projectId: string, id: string) {
       return enqueue(projectId, (bridge) => bridge.getBlock(id));
+    },
+    readManagedDocument(projectId, lookup) {
+      return enqueue(projectId, async (bridge) => {
+        const notebook = await exactNotebook(bridge, false);
+        if (!notebook) return null;
+        const summaries = await bridge.searchBlocks(lookup.query, 50);
+        const ids = [
+          ...new Set(
+            summaries.filter((block) => block.notebookId === notebook.id).map((block) => block.id),
+          ),
+        ];
+        const candidates: SiyuanManagedDocument[] = [];
+        for (const id of ids) {
+          const block = await bridge.getBlock(id);
+          if (block.notebookId === notebook.id && block.markdown.includes(lookup.marker)) {
+            candidates.push(block);
+          }
+        }
+        if (candidates.length > 1) throw new Error('siyuan_managed_document_ambiguous');
+        return candidates[0] ?? null;
+      });
+    },
+    createManagedDocument(projectId, path, markdown) {
+      return enqueue(projectId, async (bridge) => {
+        const notebook = await exactNotebook(bridge, true);
+        if (!notebook) throw new Error('siyuan_managed_notebook_unavailable');
+        const mutation = await bridge.createDocument(notebook.id, path, markdown);
+        const document = await bridge.getBlock(mutation.id);
+        if (document.notebookId !== notebook.id) {
+          throw new Error('siyuan_managed_document_authority_invalid');
+        }
+        return document;
+      });
+    },
+    updateManagedDocument(projectId, id, expectedMarkdown, markdown) {
+      return enqueue(projectId, async (bridge) => {
+        await bridge.updateBlock(id, expectedMarkdown, markdown);
+        const document = await bridge.getBlock(id);
+        if (document.id !== id) throw new Error('siyuan_managed_document_authority_invalid');
+        return document;
+      });
+    },
+    deleteManagedDocument(projectId, id, expectedMarkdown) {
+      return enqueue(projectId, async (bridge) => {
+        await bridge.deleteBlock(id, expectedMarkdown);
+      });
+    },
+    createManagedSnapshot(projectId, memo) {
+      return enqueue(projectId, async (bridge) => {
+        await bridge.createSnapshot(memo);
+      });
     },
     async stopActive() {
       const run = operationQueue.then(async () => {
@@ -81,4 +177,11 @@ export function createProductionSiyuanRlmPort(
     },
   };
   return Object.freeze(port);
+}
+
+let sharedProductionPort: ProductionSiyuanRlmPort | undefined;
+
+export function getProductionSiyuanRlmPort(): ProductionSiyuanRlmPort {
+  sharedProductionPort ??= createProductionSiyuanRlmPort();
+  return sharedProductionPort;
 }
