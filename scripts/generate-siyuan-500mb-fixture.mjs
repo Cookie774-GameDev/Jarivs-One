@@ -158,7 +158,7 @@ async function login(baseUrl, accessCode) {
   const { response } = await fetchEnvelope(
     baseUrl,
     '/api/system/loginAuth',
-    { accessAuthCode: accessCode },
+    { authCode: accessCode, captcha: '', rememberMe: false },
     undefined,
   );
   const setCookie = response.headers.get('set-cookie') ?? '';

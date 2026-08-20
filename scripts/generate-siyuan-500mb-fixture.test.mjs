@@ -67,6 +67,8 @@ test('production generator source preserves loopback, exact-corpus, and secret-s
   assert.match(source, /server\.listen\(0, '127\.0\.0\.1'/u);
   assert.match(source, /`http:\/\/127\.0\.0\.1:\$\{port\}`/u);
   assert.match(source, /SIYUAN_ACCESS_AUTH_CODE: accessCode/u);
+  assert.match(source, /\{ authCode: accessCode, captcha: '', rememberMe: false \}/u);
+  assert.doesNotMatch(source, /accessAuthCode/u);
   assert.doesNotMatch(source, /--access-auth-code/u);
   assert.match(source, /\/api\/block\/getBlockKramdown/u);
   assert.match(source, /\/api\/search\/fullTextSearchBlock/u);

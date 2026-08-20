@@ -2598,3 +2598,12 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Implementation** | Added a fixed-root, resumable generator for 500 deterministic one-million-byte Markdown documents. It verifies the pinned runtime marker and kernel hash, reserves only an OS-selected loopback port, authenticates by access-code login/session cookie, creates and re-reads every document through official APIs, checkpoints each stored digest, requires the final full-text sentinel, measures the isolated workspace, records secret-free evidence, and requires graceful process exit. |
 | **Verification** | Node syntax PASS; focused contract tests PASS 6/6; exact Prettier and diff checks PASS; exact-file Gitleaks PASS for both owned files. The wider `scripts` directory reported three unrelated existing findings and is not used as this lane's security evidence. |
 | **State / next action** | Source implementation is ready for checkpoint commit. Next run the unchanged generator against only the reserved D: fixture authority, retain resumable progress, and audit final evidence plus process exit before accepting the fixture. |
+
+## 2026-08-20 - Fixture login contract corrected after safe first-run failure
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:54 CT |
+| **Observed boundary** | The first real fixture attempt booted the owned runtime but stopped before notebook or document creation because its login body used the wrong field name and therefore established no session cookie. The generator's `finally` path stopped the owned kernel; only an empty resumable progress authority and isolated runtime-home files remain. |
+| **Correction** | Aligned the generator with the already proven native broker and pinned SiYuan API: `/api/system/loginAuth` now receives `{ authCode, captcha: '', rememberMe: false }`. The access code remains environment/login-only, never enters launch arguments, later requests use only the session cookie, and errors do not surface response messages. |
+| **Verification / next action** | Focused contracts PASS 6/6 including the exact login body and forbidden legacy field; exact Prettier, diff, and per-file Gitleaks PASS. Checkpoint this correction, then resume the unchanged isolated fixture authority. |
