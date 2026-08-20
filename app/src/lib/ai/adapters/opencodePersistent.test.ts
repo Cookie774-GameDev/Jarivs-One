@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
+  createPersistentOpenCodeRuntimeSupervisor,
   parseOpenCodeLiveModels,
   requireAuthoritativeOpenCodeModel,
   toOpenCodeDiscoveredModels,
 } from './opencodePersistent';
+import type { HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
 
 const liveModels = parseOpenCodeLiveModels({
   providers: [
@@ -35,6 +37,52 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('uses the native managed runtime connection and private Basic auth', async () => {
+    const refresh = vi.fn(async () => undefined);
+    const runtime = {
+      refresh,
+      getConnection: () => ({
+        baseUrl: 'http://127.0.0.1:41600',
+        username: 'vibespace',
+        password: 'a'.repeat(64),
+        version: '1.18.18',
+        source: 'system' as const,
+        generation: 'opencode-server-test',
+      }),
+    } as unknown as HarnessRuntimeManager;
+
+    const handle = await createPersistentOpenCodeRuntimeSupervisor(runtime).start({
+      accountId: 'local-desktop-account',
+      workingDirectory: 'C:\\workspace',
+    });
+
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(handle).toMatchObject({
+      generation: 'opencode-server-test',
+      baseUrl: 'http://127.0.0.1:41600',
+      version: '1.18.18',
+      authorization: `Basic ${btoa(`vibespace:${'a'.repeat(64)}`)}`,
+      scope: {
+        accountId: 'local-desktop-account',
+        workingDirectory: 'C:\\workspace',
+      },
+    });
+    await handle.dispose();
+  });
+
+  it('fails closed when the managed runtime has no private connection', async () => {
+    const runtime = {
+      refresh: vi.fn(async () => undefined),
+      getConnection: () => undefined,
+    } as unknown as HarnessRuntimeManager;
+
+    await expect(
+      createPersistentOpenCodeRuntimeSupervisor(runtime).start({
+        accountId: 'local-desktop-account',
+      }),
+    ).rejects.toThrow(/private server connection/);
+  });
+
   it('selects only an exact provider-qualified live model', () => {
     expect(requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol').providerId).toBe(
       'openai',
@@ -59,7 +107,9 @@ describe('persistent OpenCode live authority', () => {
       cacheRead: 0,
       cacheWrite: 0,
     });
-    expect(requireAuthoritativeOpenCodeModel(liveModels, 'other/gpt-5.6-sol').pricing).toBeUndefined();
+    expect(
+      requireAuthoritativeOpenCodeModel(liveModels, 'other/gpt-5.6-sol').pricing,
+    ).toBeUndefined();
     expect(
       toOpenCodeDiscoveredModels(liveModels).find(({ id }) => id === 'openai/gpt-5.6-sol'),
     ).toMatchObject({ pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });

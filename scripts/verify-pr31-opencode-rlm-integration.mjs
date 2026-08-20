@@ -34,10 +34,12 @@ const [
 
 assert.match(router, /openCodePersistentAdapter/);
 assert.doesNotMatch(router, /import \{ openCodeCliAdapter \} from '\.\/adapters\/opencode'/);
-assert.match(persistent, /'serve',[\s\S]*'--hostname', HOST/);
+assert.match(persistent, /harnessRuntimeManager/);
+assert.match(persistent, /createPersistentOpenCodeRuntimeSupervisor/);
+assert.match(persistent, /authorization: basicAuthorization\(connection\)/);
+assert.match(persistent, /Authorization: this\.handle\.authorization/);
+assert.doesNotMatch(persistent, /'serve'/);
 assert.doesNotMatch(persistent, /args:\s*\['run'/);
-assert.match(persistent, /interface SharedOpenCodeServer/);
-assert.match(persistent, /server\.refs \+= 1/);
 assert.match(persistent, /let pendingEvent = eventIterator\.next\(\)/);
 assert.match(persistent, /pendingEvent\.then/);
 assert.match(persistent, /sessions\.sessionForChat/);

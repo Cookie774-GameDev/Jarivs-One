@@ -1,12 +1,5 @@
 import { isTauri } from '@/lib/utils';
 import { nativeFetch } from '@/lib/nativeFetch';
-import {
-  cancelCliBridge,
-  probeCliBridge,
-  scanCliBridge,
-  streamCliBridge,
-  type DetectedExecutable,
-} from './cliBridge';
 import { openCodeDiagnosticCliAdapter } from './opencode';
 import type {
   AuthProbeResult,
@@ -64,14 +57,12 @@ import type {
 import { resolveRuntimeModelControls } from '@/features/chat/runtime/runtimeModelControls';
 import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
+import {
+  harnessRuntimeManager,
+  type HarnessRuntimeManager,
+  type OpenCodeServerConnection,
+} from '@/lib/harness/runtimeManager';
 
-const HOST = '127.0.0.1';
-const MIN_PORT = 41_600;
-const PORT_SPAN = 1_200;
-const START_ATTEMPTS = 8;
-const START_TIMEOUT_MS = 15_000;
-const SERVER_LIFETIME_TIMEOUT_MS = 86_400_000;
-const SERVER_OUTPUT_LIMIT_BYTES = 1_048_576;
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
 const MODEL_CACHE_TTL_MS = 60_000;
@@ -84,7 +75,7 @@ interface OpenCodeServerHandle extends OpenCodeRuntimeHandle {
   baseUrl: string;
   version: string;
   scope: HarnessScope;
-  processRequestId: string;
+  authorization: string;
 }
 
 export interface OpenCodeLiveModel {
@@ -122,27 +113,6 @@ function cleanIdentifier(value: unknown, max = 512): string | undefined {
   return clean;
 }
 
-function randomId(prefix: string): string {
-  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  return `${prefix}_${id}`.replace(/[^A-Za-z0-9_-]/gu, '_').slice(0, 120);
-}
-
-function stableHash(input: string): string {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-function portCandidate(attempt: number): number {
-  const entropy = globalThis.crypto?.getRandomValues
-    ? globalThis.crypto.getRandomValues(new Uint32Array(1))[0] ?? 0
-    : Math.floor(Math.random() * 0xffff_ffff);
-  return MIN_PORT + ((entropy + attempt * 97) % PORT_SPAN);
-}
-
 function withDirectory(path: string, scope: Readonly<HarnessScope>): string {
   const directory = scope.workingDirectory?.trim();
   if (!directory) return path;
@@ -168,11 +138,13 @@ async function requestJson(
   path: string,
   init: RequestInit = {},
   timeoutMs = 30_000,
+  authorization?: string,
 ): Promise<unknown> {
   const response = await nativeFetch(`${baseUrl}${withDirectory(path, scope)}`, {
     ...init,
     headers: {
       Accept: 'application/json',
+      ...(authorization ? { Authorization: authorization } : {}),
       ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(init.headers ?? {}),
     },
@@ -238,6 +210,7 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       '/global/health',
       {},
       5_000,
+      this.handle.authorization,
     ),
   };
 
@@ -248,6 +221,7 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       '/config/providers',
       {},
       15_000,
+      this.handle.authorization,
     ),
   };
 
@@ -257,17 +231,24 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       this.handle.scope,
       '/session',
       { method: 'POST', body: JSON.stringify(input.body) },
+      30_000,
+      this.handle.authorization,
     ),
     get: async (input: { path: { id: string } }): Promise<unknown> => requestJson(
       this.handle.baseUrl,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}`,
+      {},
+      30_000,
+      this.handle.authorization,
     ),
     abort: async (input: { path: { id: string } }): Promise<unknown> => requestJson(
       this.handle.baseUrl,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}/abort`,
       { method: 'POST', body: '{}' },
+      30_000,
+      this.handle.authorization,
     ),
     promptAsync: async (input: {
       path: { id: string };
@@ -278,6 +259,7 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       `/session/${encodeURIComponent(input.path.id)}/prompt_async`,
       { method: 'POST', body: JSON.stringify(input.body) },
       30_000,
+      this.handle.authorization,
     ),
     replyPermission: async (input: {
       path: { id: string; permissionId: string };
@@ -288,6 +270,7 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       `/session/${encodeURIComponent(input.path.id)}/permissions/${encodeURIComponent(input.path.permissionId)}`,
       { method: 'POST', body: JSON.stringify(input.body) },
       30_000,
+      this.handle.authorization,
     ),
   };
 
@@ -302,7 +285,10 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       `${this.handle.baseUrl}${withDirectory('/event', this.handle.scope)}`,
       {
         method: 'GET',
-        headers: { Accept: 'text/event-stream' },
+        headers: {
+          Accept: 'text/event-stream',
+          Authorization: this.handle.authorization,
+        },
         signal,
         timeoutMs: 0,
       },
@@ -311,7 +297,14 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
   }
 
   async status(sessionId: string): Promise<unknown> {
-    const all = await requestJson(this.handle.baseUrl, this.handle.scope, '/session/status');
+    const all = await requestJson(
+      this.handle.baseUrl,
+      this.handle.scope,
+      '/session/status',
+      {},
+      30_000,
+      this.handle.authorization,
+    );
     return recordOf(unwrapData(all))?.[sessionId];
   }
 
@@ -320,6 +313,9 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       this.handle.baseUrl,
       this.handle.scope,
       `/session/${encodeURIComponent(sessionId)}/message?limit=100`,
+      {},
+      30_000,
+      this.handle.authorization,
     ));
     return Array.isArray(value)
       ? value.map((entry) => recordOf(entry) as OpenCodeMessageRecord).filter(Boolean)
@@ -327,7 +323,14 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
   }
 
   async providerState(): Promise<unknown> {
-    return requestJson(this.handle.baseUrl, this.handle.scope, '/provider', {}, 15_000);
+    return requestJson(
+      this.handle.baseUrl,
+      this.handle.scope,
+      '/provider',
+      {},
+      15_000,
+      this.handle.authorization,
+    );
   }
 }
 
@@ -374,163 +377,33 @@ class LocalStorageSessionRegistry implements OpenCodeSessionRegistry {
   }
 }
 
-let executableLoad: Promise<DetectedExecutable> | undefined;
-async function findOpenCodeExecutable(): Promise<DetectedExecutable> {
-  if (!executableLoad) {
-    executableLoad = scanCliBridge({
-      executableNames: ['opencode'],
-      customPath: null,
-      customPathConfirmed: false,
-    }).then((result) => {
-      const executable = result.executables[0];
-      if (!executable) throw new Error('OpenCode is not installed or is not an approved executable.');
-      return executable;
-    }).catch((error) => {
-      executableLoad = undefined;
-      throw error;
-    });
-  }
-  return executableLoad;
+function basicAuthorization(connection: Readonly<OpenCodeServerConnection>): string {
+  return `Basic ${btoa(`${connection.username}:${connection.password}`)}`;
 }
 
-async function healthAt(baseUrl: string, scope: HarnessScope): Promise<{ version: string }> {
-  const value = recordOf(unwrapData(await requestJson(baseUrl, scope, '/global/health', {}, 1_500)));
-  const version = cleanIdentifier(value?.version, 128);
-  if (value?.healthy !== true || !version) throw new Error('OpenCode health response is invalid.');
-  return { version };
-}
-
-interface SharedOpenCodeServer {
-  generation: string;
-  baseUrl: string;
-  version: string;
-  processRequestId: string;
-  abort: AbortController;
-  monitor: Promise<void>;
-  refs: number;
-}
-
-class PersistentServerSupervisor implements OpenCodeRuntimeSupervisor {
-  private shared: SharedOpenCodeServer | undefined;
-  private starting: Promise<SharedOpenCodeServer> | undefined;
-
-  private async launch(): Promise<SharedOpenCodeServer> {
-    if (!isTauri) throw new Error('Persistent OpenCode requires the VibeSpace desktop runtime.');
-    const executable = await findOpenCodeExecutable();
-    const serverScope: HarnessScope = { accountId: 'local-desktop-account' };
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt < START_ATTEMPTS; attempt += 1) {
-      const port = portCandidate(attempt);
-      const baseUrl = `http://${HOST}:${port}`;
-      const processRequestId = randomId('opencode_server');
-      const abort = new AbortController();
-      let terminalError: Error | undefined;
-      const monitor = (async () => {
-        try {
-          for await (const event of streamCliBridge({
-            requestId: processRequestId,
-            executableId: executable.executableId,
-            args: [
-              'serve',
-              '--hostname', HOST,
-              '--port', String(port),
-              '--cors', 'tauri://localhost',
-              '--cors', 'http://localhost:5173',
-            ],
-            cwd: null,
-            stdin: null,
-            timeoutMs: SERVER_LIFETIME_TIMEOUT_MS,
-            outputLimitBytes: SERVER_OUTPUT_LIMIT_BYTES,
-          }, abort.signal)) {
-            if (event.status === 'failed' || event.status === 'timedOut') {
-              terminalError = new Error(event.data || `OpenCode server ${event.status}.`);
-            } else if (event.status === 'completed' && event.exitCode !== 0) {
-              terminalError = new Error(`OpenCode server exited with code ${event.exitCode ?? 'unknown'}.`);
-            }
-          }
-        } catch (error) {
-          if (!abort.signal.aborted) terminalError = error instanceof Error ? error : new Error(String(error));
-        }
-      })();
-
-      try {
-        const deadline = Date.now() + START_TIMEOUT_MS;
-        let healthy: { version: string } | undefined;
-        while (Date.now() < deadline) {
-          if (terminalError) throw terminalError;
-          try {
-            healthy = await healthAt(baseUrl, serverScope);
-            break;
-          } catch {
-            await new Promise((resolve) => setTimeout(resolve, 150));
-          }
-        }
-        if (!healthy) throw terminalError ?? new Error('OpenCode server did not become healthy.');
-        return {
-          generation: `opencode:${healthy.version}:${stableHash(executable.executablePath)}`,
-          baseUrl,
-          version: healthy.version,
-          processRequestId,
-          abort,
-          monitor,
-          refs: 0,
-        };
-      } catch (error) {
-        lastError = error;
-        abort.abort();
-        await cancelCliBridge(processRequestId).catch(() => false);
-        await Promise.race([monitor.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 500))]);
+export function createPersistentOpenCodeRuntimeSupervisor(
+  runtime: HarnessRuntimeManager = harnessRuntimeManager,
+): OpenCodeRuntimeSupervisor {
+  return {
+    async start(scope: HarnessScope): Promise<OpenCodeRuntimeHandle> {
+      await runtime.refresh();
+      const connection = runtime.getConnection();
+      if (!connection) {
+        throw new Error('The managed OpenCode runtime did not provide a private server connection.');
       }
-    }
-    throw lastError instanceof Error ? lastError : new Error('OpenCode server failed to start.');
-  }
-
-  private async ensureShared(): Promise<SharedOpenCodeServer> {
-    if (this.shared) return this.shared;
-    if (!this.starting) {
-      this.starting = this.launch()
-        .then((server) => {
-          this.shared = server;
-          return server;
-        })
-        .finally(() => {
-          this.starting = undefined;
-        });
-    }
-    return this.starting;
-  }
-
-  private async release(server: SharedOpenCodeServer): Promise<void> {
-    server.refs = Math.max(0, server.refs - 1);
-    if (server.refs > 0 || this.shared !== server) return;
-    this.shared = undefined;
-    server.abort.abort();
-    await cancelCliBridge(server.processRequestId).catch(() => false);
-    await Promise.race([
-      server.monitor.catch(() => undefined),
-      new Promise((resolve) => setTimeout(resolve, 2_000)),
-    ]);
-  }
-
-  async start(scope: HarnessScope): Promise<OpenCodeRuntimeHandle> {
-    const server = await this.ensureShared();
-    server.refs += 1;
-    let disposed = false;
-    const handle: OpenCodeServerHandle = {
-      generation: server.generation,
-      baseUrl: server.baseUrl,
-      version: server.version,
-      scope: { ...scope },
-      processRequestId: server.processRequestId,
-      dispose: async () => {
-        if (disposed) return;
-        disposed = true;
-        await this.release(server);
-      },
-    };
-    return handle;
-  }
+      const handle: OpenCodeServerHandle = {
+        generation: connection.generation,
+        baseUrl: connection.baseUrl,
+        version: connection.version,
+        scope: { ...scope },
+        authorization: basicAuthorization(connection),
+        // Native runtimeManager owns the single app-scoped server and its Exit cleanup.
+        // Releasing a warm chat scope must not terminate that shared runtime.
+        dispose: async () => undefined,
+      };
+      return handle;
+    },
+  };
 }
 
 const clientFactory: OpenCodeClientFactory = {
@@ -543,7 +416,7 @@ const clientFactory: OpenCodeClientFactory = {
 };
 
 const sessions = new OpenCodeSessionPool(
-  new PersistentServerSupervisor(),
+  createPersistentOpenCodeRuntimeSupervisor(),
   clientFactory,
   { maxWarmScopes: 2, registry: new LocalStorageSessionRegistry() },
 );
@@ -1317,15 +1190,15 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 async function detectPersistent(): Promise<DetectionResult> {
   if (!isTauri) return { status: 'unavailable', detail: 'OpenCode is available in the VibeSpace desktop app.' };
   try {
-    const executable = await findOpenCodeExecutable();
-    const probe = await probeCliBridge({
-      executableId: executable.executableId,
-      args: ['--version'],
-      timeoutMs: 3_000,
-      outputLimitBytes: 16_384,
-    });
-    if (probe.timedOut || probe.exitCode !== 0) return { status: 'requires_attention', detail: 'OpenCode did not pass its version probe.' };
-    return { status: 'available', version: probe.stdout.data.trim(), executablePath: executable.executablePath };
+    await harnessRuntimeManager.refresh();
+    const connection = harnessRuntimeManager.getConnection();
+    if (!connection) {
+      return {
+        status: 'requires_attention',
+        detail: 'The managed OpenCode runtime is not ready.',
+      };
+    }
+    return { status: 'available', version: connection.version };
   } catch (error) {
     return { status: 'unavailable', detail: error instanceof Error ? error.message : String(error) };
   }

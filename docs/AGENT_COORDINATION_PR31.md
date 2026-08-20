@@ -136,3 +136,24 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 | **Workspace drift**         | A post-run audit found the mutable runtime workspace now measures 2,121,432,129 bytes / 627 files, +9,102 bytes / +2 files from the generation snapshot. The changed entries are a runtime-home startup profile, SiYuan temp queue lock, and SiYuan temp log; the submitted 500-document/progress-hash contract still reproduces. Both measurements are preserved, and no immutable-workspace claim is made. |
 | **Evidence**                | D: `acceptance-evidence/backend-search-performance-5e45252e.json`; 80 full-text queries and 40 exact-source reads verified. `nativeContextMapRlmUiPerformanceClaimed=false` and `releaseReadyClaimed=false`.                                                                                                                                                                                                 |
 | **Next action**             | Preserve this baseline. Product-level optimization must be evaluated through the real Context/RLM path once native UI control is available; do not substitute raw SiYuan endpoint latency for the scored app measurement.                                                                                                                                                                                    |
+### 2026-08-20 18:50 CDT — OpenCode managed-runtime unification claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-OPENCODE-RUNTIME-UNIFICATION`
+- Branch/base: `integration/UnifiedChungus-final` at `ee23d9647b90f63cd788c6df2acaef9fa143ee3e`
+- Exclusive files: `app/src/lib/ai/adapters/opencodePersistent.ts`, `app/src/lib/ai/adapters/opencodePersistent.test.ts`
+- Intent: retire the adapter-local unauthenticated `opencode serve` supervisor in favor of the existing native `HarnessRuntimeManager` connection (managed fallback, loopback validation, Basic auth), without changing live catalog, exact effort, or observed identity authority.
+- Worktree before claim: only the untracked live coordination-lock directory; no merge/rebase/cherry-pick state.
+- Next: implement the narrow supervisor/auth boundary, run focused and adjacent OpenCode/runtime tests, typecheck, PR31 verifier, diff/format checks, and staged secret scan before commit.
+
+#### Scope extension — verifier contract
+
+- Added exclusive test-only ownership of `scripts/verify-pr31-opencode-rlm-integration.mjs` after its old invariant correctly failed because it required the retired adapter-local `opencode serve` launcher.
+- The replacement invariant will require `HarnessRuntimeManager`, private Basic authentication, and absence of any adapter-local `serve` command.
+
+#### 2026-08-20 19:00 CDT — implementation and verification boundary
+
+- Replaced `PersistentServerSupervisor` and its independent CLI process/CORS/port lifecycle with `createPersistentOpenCodeRuntimeSupervisor`, which refreshes the existing native `harnessRuntimeManager`, consumes only its validated private loopback connection, and leaves global process shutdown to the native app lifecycle.
+- Every persistent JSON and SSE request now carries the native server's Basic authorization; the live `/config/providers`, exact runtime-control preflight, and observed model/variant evidence gates remain on the same persistent adapter path.
+- Detection now reports the same managed/native runtime connection used by production sends. The PR31 verifier now rejects any reintroduction of an adapter-local `serve` command and requires the manager/auth wiring.
+- Verification: focused/adjacent OpenCode and runtime matrix `7 files / 66 tests` PASS; additional coordinator/session matrix `5 files / 21 tests` PASS; `npm --prefix app run typecheck` PASS; `npm run verify:pr31-opencode-rlm` PASS; exact changed test/verifier Prettier PASS; `git diff --check` PASS. `opencodePersistent.ts` retains its documented pre-existing whole-file Prettier baseline debt; no broad formatting rewrite was performed.
+- Diff before staging: four tracked files (`opencodePersistent.ts`, its focused test, PR31 verifier, this append-only ledger), plus the untracked live coordination-lock directory. Next: stage only the four tracked files, run staged Gitleaks, commit the reversible slice, and release only this exact product scope.
