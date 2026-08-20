@@ -2529,3 +2529,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Intent** | Adapt the typed project-ID native start/search/get bridge into the accepted SiYuan lossless repository, add it to production Context/RLM federation, and route pointer issuance/validation to the exact mapped-file, history, or SiYuan authority. Explicit mapped-file questions remain isolated to mapped-file authority. |
 | **Exclusions / safety** | No edits under the activation worker's `features/context/siyuan/**` or native/runtime manifest scope; no usage/taskbar/model/UI/migration files; no production data or unowned process access. Production remains fail-closed while the checked-in SiYuan feature gate is false. |
 | **Verification / state** | `IMPLEMENTING`; add mixed-source, pointer-capability, project-scope, disabled/web-preview, and bridge-invocation tests, then run focused Context matrices, full typecheck after the usage lane settles, exact formatting/diff checks, and Gitleaks. |
+
+## 2026-08-20 - Shared exact-route usage authority accepted
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:32 CT |
+| **Accepted commit** | `8723a5e0` (`feat:unify-exact-route-usage-authority`), exact nineteen-file worker manifest. |
+| **Result** | `/usage` default/session/refresh/all now have distinct boundaries; current-chat evidence requires exact provider+model, session uses the renderer-session ledger boundary, refresh adds a supported live Codex snapshot, and all reports enabled exact routes without fabricating per-chat attribution. The taskbar consumes the same connection+model ledger, joins account data only by exact `routeId`, preserves bridge-local OpenCode totals separately, and marks null, stale, unavailable, or error states explicitly. |
+| **Verification** | Controller focused rerun PASS 9 files / 37 tests; full app typecheck PASS with the concurrent federation lane; staged diff check and Gitleaks PASS. Worker additionally reported adjacent PASS 10 files / 74 tests, PR31 verifier PASS, and exact nineteen-file Prettier PASS. |
+| **Status / next action** | Usage worker scope `ACCEPTED` and released. Continue SiYuan native activation acceptance and production RLM federation, then fixture/native UAT. |
