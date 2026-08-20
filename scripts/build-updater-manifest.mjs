@@ -1143,7 +1143,12 @@ async function publishManifestNoReplace(
         await revalidateDirectoryIdentity(binding);
       }
       await revalidateBindingAtPath(temporaryBinding, outfile.path, 'Published manifest');
-      const temporaryRemoved = await unlinkOwnedPath(temporaryBinding);
+      const temporaryRemoved = hooks.unlinkPublishedTemporary
+        ? await hooks.unlinkPublishedTemporary({
+            temporary: temporaryBinding.path,
+            unlink: () => unlinkOwnedPath(temporaryBinding),
+          })
+        : await unlinkOwnedPath(temporaryBinding);
       const targetAfterCleanup = await lstat(outfile.path, { bigint: true });
       const retainedOwnedTemporary = !temporaryRemoved && targetAfterCleanup.nlink === 2n;
       if (retainedOwnedTemporary) {

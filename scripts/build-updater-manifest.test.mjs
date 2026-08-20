@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
 import {
   link,
   mkdir,
@@ -26,7 +25,6 @@ const execFileAsync = promisify(execFile);
 const script = path.resolve('scripts/build-updater-manifest.mjs');
 const VERSION = '2.3.4';
 const PUB_DATE = '2026-07-30T20:15:30.000Z';
-const windowsTest = process.platform === 'win32' ? test : test.skip;
 const MINISIGN_SIGNATURE = [
   'untrusted comment: signature from minisign secret key',
   'RWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=',
@@ -124,52 +122,6 @@ function buildDirect(assetsDir, hooks = {}, options = {}) {
     },
     hooks,
   );
-}
-
-async function holdFileWithoutDeleteSharing(value) {
-  const command = [
-    '$stream = [System.IO.File]::Open(',
-    '$env:VIBESPACE_TEST_LOCK_PATH,',
-    '[System.IO.FileMode]::Open,',
-    '[System.IO.FileAccess]::Read,',
-    '[System.IO.FileShare]::ReadWrite',
-    ');',
-    "[Console]::Out.WriteLine('LOCKED');",
-    '[Console]::Out.Flush();',
-    '[Console]::In.ReadLine() | Out-Null;',
-    '$stream.Dispose();',
-  ].join(' ');
-  const child = spawn('pwsh.exe', ['-NoProfile', '-Command', command], {
-    env: { ...process.env, VIBESPACE_TEST_LOCK_PATH: value },
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  let stderr = '';
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk;
-  });
-  await new Promise((resolve, reject) => {
-    const onData = (chunk) => {
-      if (!chunk.includes('LOCKED')) return;
-      child.stdout.off('data', onData);
-      child.off('error', reject);
-      child.off('exit', onEarlyExit);
-      resolve();
-    };
-    const onEarlyExit = (code) => {
-      reject(new Error(`file-lock helper exited before locking (${code}): ${stderr}`));
-    };
-    child.stdout.on('data', onData);
-    child.once('error', reject);
-    child.once('exit', onEarlyExit);
-  });
-  return async () => {
-    child.stdin.end('\n');
-    const [code] = await once(child, 'exit');
-    assert.equal(code, 0, stderr);
-  };
 }
 
 test('selects deterministic version-bound artifacts for every updater platform', async () => {
@@ -891,34 +843,32 @@ test('preserves a regular-file replacement at the temporary cleanup pathname', a
   });
 });
 
-windowsTest('truthfully commits when unlink fails for the verified owned temporary hardlink', async () => {
+test('truthfully commits when unlink fails for the verified owned temporary hardlink', async () => {
   await withAssets(async ({ assetsDir }) => {
     const artifact = `VibeSpace-${VERSION}-Windows-x64.exe`;
     const artifactPath = path.join(assetsDir, artifact);
     const outfile = path.join(assetsDir, 'latest.json');
-    let releaseLock;
     let temporary;
     await addArtifact(assetsDir, artifact);
 
-    try {
-      const result = await buildDirect(assetsDir, {
-        async afterPublishLink(context) {
-          temporary = context.temporary;
-          releaseLock = await holdFileWithoutDeleteSharing(temporary);
-        },
-      });
+    const result = await buildDirect(assetsDir, {
+      async afterPublishLink(context) {
+        temporary = context.temporary;
+      },
+      async unlinkPublishedTemporary(context) {
+        assert.equal(context.temporary, temporary);
+        return false;
+      },
+    });
 
-      assert.equal(result.manifest.version, VERSION);
-      assert.equal(JSON.parse(await readFile(outfile, 'utf8')).version, VERSION);
-      assert.equal((await stat(outfile)).nlink, 2);
-      assert.equal((await stat(temporary)).nlink, 2);
-      assert.equal(
-        (await readdir(assetsDir)).some((name) => name.includes('.transaction-')),
-        true,
-      );
-    } finally {
-      await releaseLock?.();
-    }
+    assert.equal(result.manifest.version, VERSION);
+    assert.equal(JSON.parse(await readFile(outfile, 'utf8')).version, VERSION);
+    assert.equal((await stat(outfile)).nlink, 2);
+    assert.equal((await stat(temporary)).nlink, 2);
+    assert.equal(
+      (await readdir(assetsDir)).some((name) => name.includes('.transaction-')),
+      true,
+    );
 
     const committed = await readFile(outfile, 'utf8');
     await unlink(artifactPath);

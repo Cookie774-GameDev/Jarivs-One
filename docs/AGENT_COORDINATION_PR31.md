@@ -163,3 +163,22 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Product/invariant commit: `3fd6a0a8` (`fix(opencode):unify-persistent-managed-runtime`), based on `ee23d964`.
 - Staged `git diff --check` PASS and staged Gitleaks PASS (`7.58 KB`, no leaks).
 - Released exact product/test/verifier ownership. The live controller lock remains active only for the larger unfinished PR31 acceptance goal; no other agent scope, process, branch, worktree, or external state was changed.
+
+### 2026-08-20 19:51 CDT — required release-manifest gate hang claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-RELEASE-MANIFEST-WINDOWS-HELPER-CLEANUP`
+- Branch/base: `integration/UnifiedChungus-final` at `2ed7ad0bed672a5cb58c00c0867c25930a8cc35e` (ahead 60); worktree otherwise contains only the untracked live coordination-lock directory.
+- Reproduction: `npm run test:release-manifest` reports the first 25 tests passing and then never completes. A diagnostic run after 20 seconds showed an active `ChildProcess` whose PID was a `pwsh.exe`; the suite's remaining tests never started. `cargo check --manifest-path app/src-tauri/Cargo.toml` independently passed with existing warnings.
+- Exclusive file: `scripts/build-updater-manifest.test.mjs`; intent is to make the test-only Windows file-lock helper release its file handle and child process deterministically, then rerun the complete required gate.
+
+#### Scope extension — deterministic cleanup-failure injection
+
+- A first cleanup-only change could not execute because the suite hangs inside `buildUpdaterManifest` while the PowerShell helper still holds the hardlinked temporary; the test's `finally` release is never reached.
+- Extended exact ownership to `scripts/build-updater-manifest.mjs` to add a narrow publication-cleanup fault-injection hook. The test will simulate the same `unlinkOwnedPath` false result without an OS child/file lock, retain and verify the two-link committed publication, and remove the only `pwsh.exe` test helper/imports.
+
+#### 2026-08-20 20:03 CDT — implementation verified
+
+- Added the narrow `unlinkPublishedTemporary` publication hook, preserving the default production call to the identity-revalidating `unlinkOwnedPath`. The hardlink-retention test now injects the exact false cleanup result deterministically, verifies both links plus recovery, and runs on every platform.
+- Removed the PowerShell child/file-lock helper, its process/event imports, and Windows-only skip. This eliminates the live child that blocked the suite before test 26.
+- Verification: two consecutive complete `npm run test:release-manifest` passes (`44/44`, zero skipped; approximately 12.5 seconds each), exact-file Prettier PASS, `git diff --check` PASS, and the independent required `cargo check --manifest-path app/src-tauri/Cargo.toml` PASS with existing warnings.
+- Next: stage only the two scripts and this append-only ledger, run staged Gitleaks/diff checks, commit, record the resulting SHA, and release this exact scope.
