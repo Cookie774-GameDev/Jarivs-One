@@ -228,3 +228,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Exact focused matrix PASS: 8 files / 79 tests. Existing non-failing accessibility/React warnings were observed; no production behavior changed.
 - `npm --prefix app run typecheck` PASS; exact-file Prettier PASS; `git diff --check` PASS.
 - Next: stage only the exact eight tests plus this ledger, run staged diff and secret checks, commit, and release the scope before addressing the separate account-identity behavior race.
+
+#### 2026-08-20 18:16 CDT — committed and scope released
+
+- Commit: `55d68296` (`test(ui): refresh inherited source and pricing contracts`), based on `b10a8f5f`.
+- Staged diff check PASS and staged Gitleaks PASS (`4.60 KB`, no leaks).
+- Released the exact eight-file test-only scope. No production file changed; the separate account-identity race remains fail-closed and unmodified pending its own exact claim.
