@@ -2578,3 +2578,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Result** | Reuse now verifies the complete measured closure and exact ready-marker authority before atomically refreshing only the copied runtime manifest, closure manifest, source offer, and canonical ready JSON. Payload or marker drift remains fail-closed and the existing output is preserved. |
 | **Verification** | Materializer matrix PASS 7/7; real ignored payload refresh reported verified/reused; byte comparison confirmed all three copied source metadata files equal their checked-in authorities; immediate second reuse PASS; exact Prettier, diff check, and staged Gitleaks PASS. |
 | **Status / next action** | Metadata scope `ACCEPTED` and released. Begin deterministic 500 MB SiYuan fixture generation through the authenticated native API and record measured/indexed evidence before any feature enablement. |
+
+## 2026-08-20 - Deterministic 500 MB SiYuan fixture lane acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-08-20 08:46 CT |
+| **Controller exact source paths** | New `scripts/generate-siyuan-500mb-fixture.mjs` and test. |
+| **External fixture authority** | `D:\VibeSpace-Testing\SiYuan-Context-OpenCode-RLM-Feature-Testing\fixture-runtime` and `fixture-workspace`; no real user workspace or production data. |
+| **Intent** | Launch only the verified pinned v3.8.1 kernel, authenticate through access-code login/session cookie, create a resumable deterministic corpus with exactly 500,000,000 source Markdown bytes through official notebook/document APIs, re-read authoritative stored bytes, prove a unique sentinel through full-text search, write a secret-free evidence manifest, and shut down the owned process. |
+| **Safety / verification** | Fail closed on runtime marker/hash, unexpected workspace contents, API envelope drift, stored-content drift, missing index sentinel, non-loopback networking, or surviving PID. Unit-test deterministic sizing/IDs/root bounds/envelopes before running the long fixture build. |
