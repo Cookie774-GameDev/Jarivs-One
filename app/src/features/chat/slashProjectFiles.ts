@@ -167,7 +167,8 @@ export function getInlineSlashContext(
 const INLINE_CLEAR_RE = /(^|[\s([{'"`,;:])\/(clearfiles?|clear-files|cearfiles?)\b/gi;
 // Path token allows dots (readme.md). Trailing sentence punct is trimmed later.
 const INLINE_FILE_RE = /(^|[\s([{'"`,;:])\/(file|attach)(?:[ \t]+("([^"]+)"|'([^']+)'|(\S+)))?/gi;
-const INLINE_HELP_RE = /(^|[\s([{'"`,;:])\/(usage|help|commands)\b/gi;
+const INLINE_USAGE_RE = /(^|[\s([{'"`,;:])\/(usage)(?:[ \t]+(refresh|session|all))?\b/gi;
+const INLINE_HELP_RE = /(^|[\s([{'"`,;:])\/(help|commands)\b/gi;
 
 function normalizeUtilityCmd(cmd: string): string {
   const c = cmd.toLowerCase();
@@ -198,13 +199,14 @@ export function extractInlineUtilitySlashCommands(text: string): {
     }
   };
 
-  // Order: file/attach (with path token), then clear, then help/usage/commands
+  // Order: file/attach (with path token), then clear, then usage modes, then help/commands.
   collect(INLINE_FILE_RE, (m) => {
     const raw = (m[4] || m[5] || m[6] || '').trim();
     // Keep extension dots; only strip trailing sentence punctuation.
     return raw.replace(/[),;:!?]+$/g, '');
   });
   collect(INLINE_CLEAR_RE, () => '');
+  collect(INLINE_USAGE_RE, (m) => m[3] ?? '');
   collect(INLINE_HELP_RE, () => '');
 
   cleaned = cleaned

@@ -343,3 +343,19 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `b4218f00` (`fix(security): refresh dependency and scan baselines`), based on `72b5dad3`.
 - Staged diff check PASS and staged Gitleaks PASS (`9.12 KB`, no leaks). Released the exact dependency-lock and fingerprint-maintenance scopes.
 - Automated source verification is now green at this boundary. Final installer generation is environmentally blocked by disk/policy rather than a source failure; ordered native Tests 1–5 remain order-gated by external Spark authentication and the owner-supplied Test-5 semantic rubric.
+
+### 2026-08-20 22:18 CDT — native `/usage` mode interception repair claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-NATIVE-USAGE-MODE-INTERCEPTION`.
+- Branch/base: `integration/UnifiedChungus-final` at `d920b688`; worktree contains only the untracked live lock before this ledger claim.
+- Exact product scope: `app/src/features/chat/slashProjectFiles.ts` and `app/src/features/chat/slashProjectFiles.test.ts`. Composer, usage service, provider transport, and authentication are excluded.
+- App-scoped Playwright/CDP attached only to the official native WebView2 and proved plain `/usage` local, then exposed `/usage session` incorrectly becoming a user message `session`, entering protected Claude dispatch, and rendering `@jarvis failed`. Sanitized raw evidence and screenshot are preserved under the owned D: acceptance-evidence root.
+- Cause: the inline utility extractor removes only `/usage`, discards its valid mode, and leaves `session|refresh|all` as ordinary send text before the correct Composer usage handler can own the full command. Intent: capture the valid usage mode as extractor `rest`, remove the complete local command, and add table coverage for all four accepted forms without changing other inline utility semantics.
+
+#### Implementation and native verification boundary
+
+- Split `/usage` from the `/help|commands` inline matcher and captured only the three supported modes (`refresh`, `session`, `all`) as utility-command remainder. The extractor now removes the complete valid command, while invalid trailing text retains the prior ordinary-text behavior.
+- Added exact table coverage for `/usage`, `/usage refresh`, `/usage session`, and `/usage all`, including command, remainder, raw text, and empty cleaned text.
+- Focused matrix PASS: 3 files / 30 tests. `npm run typecheck` PASS; exact-file Prettier PASS; owned `git diff --check` PASS.
+- App-scoped Playwright/CDP retested all four modes in separate disposable native chats. Every mode cleared the composer, rendered only local usage UI, created no user-mode line, emitted no `@jarvis failed`, and made zero inference-shaped network requests. Screenshots are preserved as `native-playwright-usage-{default,session,all,refresh}-hotfix.png` under the owned D: acceptance-evidence root.
+- Next: stage only the exact two product/test files plus this append-only ledger, run staged diff and secret checks, commit, and release this scope. The official native app remains running for further app-scoped acceptance; whole-computer control is excluded.

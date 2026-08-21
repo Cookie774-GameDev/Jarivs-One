@@ -35,6 +35,18 @@ describe('extractInlineUtilitySlashCommands', () => {
     const result = extractInlineUtilitySlashCommands('/multitask build the thing');
     expect(result.utilities).toEqual([]);
   });
+
+  it.each([
+    ['/usage', '', '/usage'],
+    ['/usage refresh', 'refresh', '/usage refresh'],
+    ['/usage session', 'session', '/usage session'],
+    ['/usage all', 'all', '/usage all'],
+  ])('preserves the complete local usage command for %s', (input, rest, raw) => {
+    expect(extractInlineUtilitySlashCommands(input)).toEqual({
+      cleaned: '',
+      utilities: [{ cmd: 'usage', rest, raw }],
+    });
+  });
 });
 
 describe('relativeDisplayPath', () => {
