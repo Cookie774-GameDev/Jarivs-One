@@ -301,3 +301,39 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `cd530817` (`fix(history): decouple delete feedback from sound`), based on `4db1c08c`.
 - Staged diff check PASS and staged Gitleaks PASS (`3.03 KB`, no leaks).
 - Released the exact History product/test scope. The complete full-suite rerun will restart from this committed boundary rather than resuming after the former shard-10 failure.
+
+### 2026-08-20 20:57 CDT — final-HEAD automated release checkpoint
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-SIYUAN-OPENCODE-RLM-COMPLETE`.
+- Branch/HEAD: `integration/UnifiedChungus-final` at `72b5dad3`; worktree contains no product changes and only the untracked live coordination-lock directory.
+- Restarted the complete deterministic frontend suite from the committed History repair boundary. All 1,189 test files passed exactly once across all 24/24 shards; the former shard-10 History failure passed under the same full-suite load.
+- Final-HEAD hard gates passed: `npm run typecheck`; `npm run build` (4,919 modules); `npm run test:release-manifest` (44/44); `cargo check --manifest-path app/src-tauri/Cargo.toml`; and the CI-parity `cargo check --manifest-path app/src-tauri/Cargo.toml --release`. Cargo/build emitted only previously known non-fatal warnings.
+- Next: complete PR31 contract, security, formatting, and artifact gates. Ordered official-native scored Tests 1–5 remain a separate final phase; Test 1 is still fail-closed on external Spark/OpenAI authentication, so later scored tests have not been run out of order.
+
+#### PR31 contract and packaging-preflight boundary
+
+- Final-HEAD PR31 contract matrix PASS: OpenCode/RLM production wiring; OSS bundle consistency; 34/34 combined OSS, SiYuan manifest, runtime preparation, meaningful fixture, and artifact-size tests; and the direct SiYuan runtime verifier.
+- Direct runtime evidence remains internally consistent: pinned SiYuan v3.8.1, feature enabled, payload build-materialized, 21 feature blocks, 8 bridge blocks, and 1 migration block.
+- Release-build preflight found no debug/release process conflict: the live official app uses `target/debug`, while packaging writes `target/release`. The current C: volume has only about 2 GiB free, so a local release build must use an explicitly owned D: Cargo target rather than risk another disk-exhaustion failure or disturb the running native app.
+- Temporal security audit found a newly published high-severity transitive advisory in the installed dependency graph; it is being triaged before the clean packaging boundary. No release-readiness claim is made while that advisory and the external native acceptance blockers remain open.
+
+### 2026-08-20 21:09 CDT — transitive dependency security claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-NANOID-SECURITY-REPAIR`.
+- Branch/base: `integration/UnifiedChungus-final` at `72b5dad3`; only this append-only ledger and the live lock are dirty.
+- Exact product scope: `package-lock.json` only. `package.json`, application source, and the unaffected root `nanoid@5.1.16` are excluded.
+- Temporal audit found GHSA-2v37-7h3g-55p8 in the nested `postcss@8.5.25 -> nanoid@3.3.17` copy. Intent is the smallest package-manager-produced lockfile-only bump to fixed `nanoid@3.3.18`, retaining PostCSS's existing `^3.3.16` range, then verify the diff is limited to nested package resolution metadata and rerun install/audit/build gates.
+
+### 2026-08-20 21:13 CDT — exact security-fingerprint maintenance claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-SECURITY-FINGERPRINT-MAINTENANCE`.
+- Branch/base: `integration/UnifiedChungus-final` at `72b5dad3`.
+- Exact scope: `scripts/security/scan-added-lines.allowlist.json` and `.gitleaksignore`. Scanner/rule source and product fixtures are excluded.
+- The base-`06823aa3` added-lines scan reports five reviewed synthetic secret-detection/rejection fixtures while the existing 57-entry allowlist is stale for this exact scan set. The historical Gitleaks range reports 17 reviewed non-secret conversation/profile/coordination identifiers that are not in the existing exact-fingerprint ignore file. Intent is exact fingerprint-only maintenance with a clean configured/used count; no path-, rule-, repository-wide, or secret-value ignore is permitted.
+
+#### Implementation and verification boundary
+
+- `npm audit fix --package-lock-only --ignore-scripts --omit=optional` changed only the nested PostCSS `nanoid` resolution/version/integrity metadata from 3.3.17 to fixed 3.3.18. `npm ls nanoid --all` confirms root 5.1.16 plus nested 3.3.18; the high-threshold production audit now reports zero vulnerabilities.
+- Replaced the stale added-lines allowlist with the exact five currently reviewed synthetic test/documentation findings and added only the 17 exact historical Gitleaks fingerprints. The base scan is CLEAN (`tracked=1198`, `addedLines=184129`, `allowlisted=5`) and Gitleaks is clean across 452 commits / 7.68 MB. No broad path, rule, or repository ignore was added.
+- Security-scanner contract tests PASS 14/14. Final dependency boundary `npm run typecheck` PASS, `npm run build` PASS (4,919 modules), and release-manifest tests PASS 44/44. Exact JSON/lockfile Prettier, cumulative diff check, and Cargo formatting check PASS.
+- Next: stage only `.gitleaksignore`, `package-lock.json`, `scripts/security/scan-added-lines.allowlist.json`, and this ledger; run staged diff and secret checks; commit; release the exact scopes. Installer generation remains blocked by C: capacity and Windows Application Control on a D: Cargo target, while ordered scored native acceptance remains externally Spark-auth blocked.
