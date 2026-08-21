@@ -1863,11 +1863,6 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       created_at: 1,
       updated_at: 1,
     });
-    mocks.resolveJarvisContext.mockImplementationOnce(() => new Promise(() => {}));
-    mocks.getProjectContextBlock.mockImplementationOnce(() => new Promise(() => {}));
-    mocks.getProjectContextTreeBlock.mockReturnValueOnce('must-not-prefetch-context-tree');
-    mocks.retrieveApprovedLocalKnowledge.mockImplementationOnce(() => new Promise(() => {}));
-
     const stop = trackListener(
       startRuntimeListener({
         getAgentById: (id) => (id === jarvis.id ? jarvis : null),

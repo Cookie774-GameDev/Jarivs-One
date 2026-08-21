@@ -9,6 +9,7 @@ use tauri::{
 use super::SiyuanRuntimeState;
 
 const SURFACE_LABEL: &str = "siyuan-context-vault";
+const MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS: &str = "--js-flags=--max-old-space-size=1536";
 const MIN_SURFACE_WIDTH: f64 = 320.0;
 const MIN_SURFACE_HEIGHT: f64 = 240.0;
 const MAX_SURFACE_EDGE: f64 = 16_384.0;
@@ -138,12 +139,7 @@ pub async fn siyuan_surface_open(
     let project_for_runtime = project_id.clone();
     let authority = tauri::async_runtime::spawn_blocking(move || {
         runtime
-            .start(&project_for_runtime)
-            .map_err(|error| error.to_string())?;
-        runtime
-            .runtime_transport(&project_for_runtime)
-            .map_err(|error| error.to_string())?
-            .surface_session()
+            .surface_session_with_recovery(&project_for_runtime)
             .map_err(|error| error.to_string())
     })
     .await
@@ -213,6 +209,7 @@ pub async fn siyuan_surface_open(
         .always_on_top(true)
         .visible(false)
         .focused(true)
+        .additional_browser_args(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
         .inner_size(size.width as f64, size.height as f64)
         .position(position.x as f64, position.y as f64)
         .on_navigation(move |candidate| navigation_allowed(&allowed_origin, candidate))
@@ -222,10 +219,10 @@ pub async fn siyuan_surface_open(
     #[cfg(windows)]
     let builder = builder
         .owner(&main)
-        .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
+        .map_err(|_| public_error("siyuan_surface_owner_unavailable"))?;
     let window = builder
         .build()
-        .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
+        .map_err(|_| public_error("siyuan_surface_webview_unavailable"))?;
     window
         .set_cookie(
             Cookie::build(("siyuan", cookie_value))
@@ -410,5 +407,22 @@ mod tests {
         for forbidden in ["cookie", "token", "port", "origin", "url"] {
             assert!(!rendered.contains(forbidden));
         }
+    }
+
+    #[test]
+    fn surface_webview_browser_args_match_the_main_window_environment() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+        let main_window = config["app"]["windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|window| window["label"] == "main")
+            .unwrap();
+
+        assert_eq!(
+            main_window["additionalBrowserArgs"].as_str(),
+            Some(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
+        );
     }
 }

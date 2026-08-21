@@ -39,7 +39,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 export function redactSiyuanSurfaceError(value: unknown): string {
-  const message = value instanceof Error ? value.message : '';
+  const message = typeof value === 'string' ? value : value instanceof Error ? value.message : '';
   return /^siyuan_[a-z0-9_]{1,96}$/u.test(message) ? message : 'siyuan_surface_unavailable';
 }
 

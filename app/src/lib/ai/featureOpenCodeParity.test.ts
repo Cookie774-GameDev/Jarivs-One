@@ -92,7 +92,7 @@ describe('PR31 OpenCode feature parity', () => {
         router.indexOf('async function executePersistentOpenCode') + 1,
       ),
     );
-    expect(persistentDispatch).toContain('openCodePersistentAdapter.send({');
+    expect(persistentDispatch).toContain('openCodePersistentAdapter.send(providerRequest)');
     expect(persistentDispatch).toContain('modelId: qualifiedModel');
 
     const routerTests = source('src/lib/ai/router.test.ts');

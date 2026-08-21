@@ -43,9 +43,18 @@ describe('SiYuan restricted surface bridge', () => {
     expect(redactSiyuanSurfaceError(new Error('siyuan_surface_window_unavailable'))).toBe(
       'siyuan_surface_window_unavailable',
     );
+    expect(redactSiyuanSurfaceError('siyuan_transport_unavailable')).toBe(
+      'siyuan_transport_unavailable',
+    );
     expect(
       redactSiyuanSurfaceError(new Error('failed at http://127.0.0.1:63333?token=secret')),
     ).toBe('siyuan_surface_unavailable');
+    expect(redactSiyuanSurfaceError('failed at http://127.0.0.1:63333?token=secret')).toBe(
+      'siyuan_surface_unavailable',
+    );
+    expect(redactSiyuanSurfaceError({ message: 'siyuan_transport_unavailable' })).toBe(
+      'siyuan_surface_unavailable',
+    );
   });
 
   it('measures the exact reserved renderer rectangle', () => {

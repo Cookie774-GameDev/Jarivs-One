@@ -371,6 +371,11 @@ impl HttpSiyuanTransport {
         })
     }
 
+    pub(crate) fn verified_surface_session(&self) -> Result<SurfaceSessionAuthority, ClientError> {
+        self.verify_ready_session()?;
+        self.surface_session()
+    }
+
     pub(crate) fn request_shutdown(&self) -> Result<(), ClientError> {
         let _: Value = self.post(
             "/api/system/exit",
@@ -1198,6 +1203,34 @@ mod tests {
             assert!(!request.contains(&token));
         }
         server.join().unwrap();
+    }
+
+    #[test]
+    fn verified_surface_session_reuses_the_authenticated_cookie() {
+        let token = "s".repeat(48);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":"3.8.1"}"#.to_owned(),
+        ]);
+        let transport = HttpSiyuanTransport::new(port, token.clone()).unwrap();
+
+        let (origin, cookie) = transport.verified_surface_session().unwrap().into_parts();
+        assert_eq!(origin.scheme(), "http");
+        assert_eq!(origin.host_str(), Some(LOOPBACK_HOST));
+        assert_eq!(origin.port(), Some(port));
+        assert_eq!(cookie, "vibespace-native-session");
+
+        let login = requests.recv().unwrap();
+        let version = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(login.contains(&token));
+        assert!(version.starts_with("POST /api/system/version HTTP/1.1"));
+        assert!(version
+            .to_ascii_lowercase()
+            .contains("cookie: siyuan=vibespace-native-session"));
+        assert!(!version.contains(&token));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
     }
 
     #[test]

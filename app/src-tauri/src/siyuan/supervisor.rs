@@ -1,7 +1,7 @@
 //! Managed native runtime state. The checked-in build cannot prepare or attach a process because
 //! both the feature gate and packaged-payload readiness are false.
 
-use super::client::{HttpSiyuanTransport, RuntimeStatus};
+use super::client::{ClientError, HttpSiyuanTransport, RuntimeStatus, SurfaceSessionAuthority};
 use super::lifecycle::{RuntimeEvent, RuntimeLifecycle, RuntimeState};
 use super::manifest::{runtime_availability, RuntimeAvailability};
 use super::resource::{RuntimeResourceError, VerifiedRuntimeResources};
@@ -63,6 +63,33 @@ impl From<RuntimeResourceError> for SupervisorError {
 impl fmt::Display for SupervisorError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.public_code())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum SurfaceSessionError {
+    Client(ClientError),
+    Supervisor(SupervisorError),
+}
+
+impl fmt::Display for SurfaceSessionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Client(error) => error.fmt(formatter),
+            Self::Supervisor(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl From<ClientError> for SurfaceSessionError {
+    fn from(error: ClientError) -> Self {
+        Self::Client(error)
+    }
+}
+
+impl From<SupervisorError> for SurfaceSessionError {
+    fn from(error: SupervisorError) -> Self {
+        Self::Supervisor(error)
     }
 }
 
@@ -241,6 +268,7 @@ impl fmt::Debug for RuntimeLaunchPlan {
 }
 
 struct RunningRuntime {
+    generation: u64,
     project_id: String,
     workspace: PathBuf,
     executable: PathBuf,
@@ -248,6 +276,12 @@ struct RunningRuntime {
     port: u16,
     token: RuntimeToken,
     process: Box<dyn RuntimeProcess>,
+}
+
+struct SurfaceRuntimeLease {
+    generation: u64,
+    reused: bool,
+    transport: HttpSiyuanTransport,
 }
 
 impl RunningRuntime {
@@ -287,6 +321,7 @@ struct SupervisorInner {
     workspace_base: Option<PathBuf>,
     resources: Option<VerifiedRuntimeResources>,
     running: Option<RunningRuntime>,
+    next_generation: u64,
     last_stop_graceful: bool,
 }
 
@@ -298,6 +333,7 @@ impl SupervisorInner {
             workspace_base: None,
             resources: None,
             running: None,
+            next_generation: 0,
             last_stop_graceful: false,
         }
     }
@@ -383,13 +419,19 @@ impl SupervisorInner {
         if self.lifecycle.state() != RuntimeState::Starting || self.running.is_some() {
             return Err(SupervisorError::LifecycleInvalid);
         }
+        let generation = self
+            .next_generation
+            .checked_add(1)
+            .ok_or(SupervisorError::LifecycleInvalid)?;
         plan.release_port_reservation();
         self.lifecycle
             .apply(RuntimeEvent::HealthCheckPassed)
             .map_err(|_| SupervisorError::LifecycleInvalid)?;
+        self.next_generation = generation;
         let executable = plan.resources.executable().to_path_buf();
         let arguments = plan.command_arguments();
         self.running = Some(RunningRuntime {
+            generation,
             project_id: plan.project_id,
             workspace: plan.workspace,
             executable,
@@ -500,16 +542,69 @@ impl SupervisorInner {
         &mut self,
         project_id: &str,
     ) -> Result<HttpSiyuanTransport, SupervisorError> {
+        Ok(self.runtime_transport_lease(project_id, false)?.transport)
+    }
+
+    fn runtime_transport_lease(
+        &mut self,
+        project_id: &str,
+        reused: bool,
+    ) -> Result<SurfaceRuntimeLease, SupervisorError> {
         self.authorize_operation(project_id)?;
         let running = self
             .running
             .as_ref()
             .ok_or(SupervisorError::RuntimeNotReady)?;
-        HttpSiyuanTransport::new(
+        let transport = HttpSiyuanTransport::new(
             running.port,
             running.token.expose_to_native_broker().to_owned(),
         )
-        .map_err(|_| SupervisorError::ProcessUnavailable)
+        .map_err(|_| SupervisorError::ProcessUnavailable)?;
+        Ok(SurfaceRuntimeLease {
+            generation: running.generation,
+            reused,
+            transport,
+        })
+    }
+
+    fn acquire_surface_runtime(
+        &mut self,
+        project_id: &str,
+    ) -> Result<SurfaceRuntimeLease, SupervisorError> {
+        self.poll_crash()?;
+        let reused = self.lifecycle.state() == RuntimeState::Ready
+            && self
+                .running
+                .as_ref()
+                .is_some_and(|running| running.project_id == project_id);
+        self.start(project_id)?;
+        self.runtime_transport_lease(project_id, reused)
+    }
+
+    fn stop_surface_runtime_if_current(
+        &mut self,
+        project_id: &str,
+        generation: u64,
+    ) -> Result<(), SupervisorError> {
+        self.authorize_operation(project_id)?;
+        if !self
+            .running
+            .as_ref()
+            .is_some_and(|running| running.generation == generation)
+        {
+            return Err(SupervisorError::RuntimeNotReady);
+        }
+        self.stop()
+    }
+
+    fn restart_surface_runtime_if_current(
+        &mut self,
+        project_id: &str,
+        generation: u64,
+    ) -> Result<SurfaceRuntimeLease, SupervisorError> {
+        self.stop_surface_runtime_if_current(project_id, generation)?;
+        self.start(project_id)?;
+        self.runtime_transport_lease(project_id, false)
     }
 
     fn stop(&mut self) -> Result<(), SupervisorError> {
@@ -634,11 +729,43 @@ impl SiyuanRuntimeState {
             .runtime_transport(project_id)
     }
 
+    pub(crate) fn surface_session_with_recovery(
+        &self,
+        project_id: &str,
+    ) -> Result<SurfaceSessionAuthority, SurfaceSessionError> {
+        let lease = self
+            .inner
+            .lock()
+            .map_err(|_| SupervisorError::StateUnavailable)?
+            .acquire_surface_runtime(project_id)?;
+        let first = if lease.reused {
+            lease.transport.verified_surface_session()
+        } else {
+            lease.transport.surface_session()
+        };
+        match first {
+            Ok(authority) => Ok(authority),
+            Err(error) if should_recover_surface_session(lease.reused, &error) => {
+                let retry = self
+                    .inner
+                    .lock()
+                    .map_err(|_| SupervisorError::StateUnavailable)?
+                    .restart_surface_runtime_if_current(project_id, lease.generation)?;
+                retry.transport.surface_session().map_err(Into::into)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub fn shutdown(&self) {
         if let Ok(mut inner) = self.inner.lock() {
             let _ = inner.stop();
         }
     }
+}
+
+fn should_recover_surface_session(reused: bool, error: &ClientError) -> bool {
+    reused && matches!(error, ClientError::TransportUnavailable)
 }
 
 impl Drop for SiyuanRuntimeState {
@@ -779,10 +906,85 @@ mod tests {
                 }),
             )
             .unwrap();
+        let generation = inner.running.as_ref().unwrap().generation;
 
         assert_eq!(inner.start("project-1").unwrap().state, "ready");
         assert!(!terminated.load(Ordering::SeqCst));
         assert_eq!(inner.running.as_ref().unwrap().project_id, "project-1");
+        assert_eq!(inner.running.as_ref().unwrap().generation, generation);
+    }
+
+    #[test]
+    fn surface_recovery_is_project_and_generation_bound() {
+        let base = std::env::temp_dir().join("vibespace-siyuan-surface-recovery-test");
+        let terminated = Arc::new(AtomicBool::new(false));
+        let replacement_terminated = Arc::new(AtomicBool::new(false));
+        let state = SiyuanRuntimeState::with_availability(ready_availability());
+        state.configure_workspace_base(base).unwrap();
+        let mut inner = state.inner.lock().unwrap();
+        let plan = inner.prepare_launch("project-1").unwrap();
+        inner
+            .attach_running(
+                plan,
+                Box::new(MockProcess {
+                    exited: Arc::new(AtomicBool::new(false)),
+                    terminated: terminated.clone(),
+                }),
+            )
+            .unwrap();
+        let generation = inner.running.as_ref().unwrap().generation;
+
+        assert_eq!(
+            inner.stop_surface_runtime_if_current("project-2", generation),
+            Err(SupervisorError::ProjectUnauthorized)
+        );
+        assert_eq!(
+            inner.stop_surface_runtime_if_current("project-1", generation + 1),
+            Err(SupervisorError::RuntimeNotReady)
+        );
+        assert!(!terminated.load(Ordering::SeqCst));
+
+        inner
+            .stop_surface_runtime_if_current("project-1", generation)
+            .unwrap();
+        assert!(terminated.load(Ordering::SeqCst));
+        assert_eq!(inner.lifecycle.state(), RuntimeState::Stopped);
+        assert!(inner.running.is_none());
+
+        let replacement_plan = inner.prepare_launch("project-1").unwrap();
+        inner
+            .attach_running(
+                replacement_plan,
+                Box::new(MockProcess {
+                    exited: Arc::new(AtomicBool::new(false)),
+                    terminated: replacement_terminated,
+                }),
+            )
+            .unwrap();
+        assert!(inner.running.as_ref().unwrap().generation > generation);
+    }
+
+    #[test]
+    fn surface_recovery_is_reused_transport_unavailable_only() {
+        assert!(should_recover_surface_session(
+            true,
+            &ClientError::TransportUnavailable
+        ));
+        assert!(!should_recover_surface_session(
+            false,
+            &ClientError::TransportUnavailable
+        ));
+        for error in [
+            ClientError::ResponseTypeMismatch,
+            ClientError::ResponseTooLarge,
+            ClientError::Conflict,
+        ] {
+            assert!(!should_recover_surface_session(true, &error));
+        }
+        assert_eq!(
+            SurfaceSessionError::Client(ClientError::TransportUnavailable).to_string(),
+            "siyuan_transport_unavailable"
+        );
     }
 
     #[test]
