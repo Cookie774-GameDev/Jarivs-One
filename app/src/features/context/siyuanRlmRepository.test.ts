@@ -58,6 +58,69 @@ describe('SiYuan RLM repository', () => {
     expect(native.getBlock).toHaveBeenCalledWith('project-1', '20260820-block');
   });
 
+  it('prioritizes only an exact structured identifier without changing ordinary scores', async () => {
+    const native = port('# Project Atlas\nArtifact demo-0042 is maintained here.');
+    vi.mocked(native.searchBlocks).mockResolvedValue([
+      {
+        id: '20260820-block',
+        notebookId: '20260820-book',
+        path: '/Project Atlas.sy',
+        content: 'Artifact demo-0042 is maintained here.',
+      },
+    ]);
+    const repository = createSiyuanRlmRepository(native);
+
+    const [exact] = await repository.search(scope, 'what is authoritative for artifact demo-0042?');
+    const [repeated] = await repository.search(
+      scope,
+      'compare artifact demo-0042 with record DEMO-0042',
+    );
+    const [ordinary] = await repository.search(scope, 'what is authoritative for this project?');
+    const [partial] = await repository.search(scope, 'what is authoritative for artifact demo-004?');
+    const [ambiguous] = await repository.search(
+      scope,
+      'compare artifact demo-0042 with record demo-0043',
+    );
+
+    expect(exact?.score).toBe(3_000_000_020);
+    expect(repeated?.score).toBe(3_000_000_020);
+    expect(ordinary?.score).toBe(20);
+    expect(partial?.score).toBe(20);
+    expect(ambiguous?.score).toBe(20);
+    expect(native.searchBlocks).toHaveBeenNthCalledWith(1, 'project-1', 'demo-0042', 20);
+    expect(native.searchBlocks).toHaveBeenNthCalledWith(2, 'project-1', 'demo-0042', 20);
+    expect(native.searchBlocks).toHaveBeenNthCalledWith(
+      3,
+      'project-1',
+      'what is authoritative for this project?',
+      20,
+    );
+    expect(native.searchBlocks).toHaveBeenNthCalledWith(4, 'project-1', 'demo-004', 20);
+    expect(native.searchBlocks).toHaveBeenNthCalledWith(
+      5,
+      'project-1',
+      'compare artifact demo-0042 with record demo-0043',
+      20,
+    );
+  });
+
+  it('does not trust summary-only identifier text for authoritative ranking', async () => {
+    const native = port('# Project Atlas\nNo structured identifier is present.');
+    vi.mocked(native.searchBlocks).mockResolvedValue([
+      {
+        id: '20260820-block',
+        notebookId: '20260820-book',
+        path: '/Project Atlas.sy',
+        content: 'Artifact demo-0042 is present only in the summary.',
+      },
+    ]);
+    const repository = createSiyuanRlmRepository(native);
+
+    const [hit] = await repository.search(scope, 'what is authoritative for artifact demo-0042?');
+
+    expect(hit?.score).toBe(20);
+  });
+
   it('does not issue authority for malformed, duplicate, or cross-notebook results', async () => {
     const native: SiyuanRlmPort = {
       searchBlocks: vi.fn(async () => [

@@ -832,6 +832,9 @@ export async function installJarvisKernelRuntimeHost(
                 agent: providerInput.agent,
                 messages: [...providerInput.messages],
                 connectionId: providerInput.model.connectionId,
+                accountId: providerInput.accountId,
+                workspaceId: providerInput.workspaceId,
+                projectId: providerInput.projectId,
                 workingDirectory: providerInput.workingDirectory,
                 compiledPrompt: providerInput.compiledPrompt,
                 tools: openCodeToolsForInteractionMode(
@@ -3143,7 +3146,7 @@ export function startRuntimeListener(
       activeControllers.delete(controller);
     };
     dispatchKernelSmokeRuntimeStage('accepted');
-    const failEarlySetup = (stage: 'agent' | 'context', error: unknown): void => {
+    const failEarlySetup = (stage: 'agent' | 'context' | 'model', error: unknown): void => {
       devConsole.log({
         channel: 'ai',
         level: 'error',
@@ -3343,19 +3346,36 @@ export function startRuntimeListener(
           : undefined,
     });
     setLiveAgentActivityPhase(chatId, agentActivityId, initialActivityPhase);
+    const requestsContextTool = requestsReadOnlyContextTool(text);
     let resolvedRequestContext: Awaited<ReturnType<typeof resolveJarvisContext>>;
     try {
       rememberConversationDestination(chatId, text);
-      resolvedRequestContext = await resolveJarvisContext({
-        projectId,
-        chatId,
-        currentText: text,
-        enabledCapabilities: [
-          ...agent.capabilities,
-          ...agent.tools_allowed,
-          ...(agent.skills ?? []),
-        ],
-      });
+      const enabledCapabilities = Array.from(
+        new Set([...agent.capabilities, ...agent.tools_allowed, ...(agent.skills ?? [])]),
+      ).slice(0, 32);
+      if (requestsContextTool) {
+        const activeProjectPath = getStoredProjectRoot(projectId).trim() || undefined;
+        resolvedRequestContext = {
+          activeProjectId: projectId ? String(projectId) : undefined,
+          activeProjectPath,
+          preferredDestination: activeProjectPath,
+          relevantFiles: [],
+          enabledCapabilities,
+          sourceReasons: activeProjectPath ? ['active selected project'] : [],
+        };
+        setLiveAgentActivityPhase(chatId, agentActivityId, {
+          category: 'context',
+          title: `@${agent.slug} is gathering context`,
+          subtitle: 'Routing this fact lookup through the bound Context authority',
+        });
+      } else {
+        resolvedRequestContext = await resolveJarvisContext({
+          projectId,
+          chatId,
+          currentText: text,
+          enabledCapabilities,
+        });
+      }
     } catch (error) {
       activity.update(chatId, agentActivityId, {
         status: 'error',
@@ -3483,24 +3503,28 @@ export function startRuntimeListener(
     let selectedSkillsContext = '';
     const resolvedContextBlock = formatResolvedJarvisContext(resolvedRequestContext);
     const requestIntentBlock = formatJarvisIntentPolicy(requestIntent);
-    const autoRetrieveProjectKnowledge = shouldAutoRetrieveProjectKnowledge({
-      text,
-      intent: requestIntent,
-      hasExplicitAttachments:
-        (detail.contextNodes?.length ?? 0) > 0 ||
-        (detail.filePaths?.length ?? 0) > 0 ||
-        (detail.terminalRefs?.length ?? 0) > 0 ||
-        (detail.terminalSessionIds?.length ?? 0) > 0,
-    });
-    try {
-      projectContext = await getProjectContextBlock(projectId);
-    } catch (err) {
-      devConsole.log({
-        channel: 'ai',
-        level: 'warn',
-        message: 'project context fetch failed',
-        detail: { error: err instanceof Error ? err.message : String(err) },
+    const autoRetrieveProjectKnowledge =
+      !requestsContextTool &&
+      shouldAutoRetrieveProjectKnowledge({
+        text,
+        intent: requestIntent,
+        hasExplicitAttachments:
+          (detail.contextNodes?.length ?? 0) > 0 ||
+          (detail.filePaths?.length ?? 0) > 0 ||
+          (detail.terminalRefs?.length ?? 0) > 0 ||
+          (detail.terminalSessionIds?.length ?? 0) > 0,
       });
+    if (!requestsContextTool) {
+      try {
+        projectContext = await getProjectContextBlock(projectId);
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'project context fetch failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
     }
     if (autoRetrieveProjectKnowledge) {
       try {
@@ -3514,7 +3538,11 @@ export function startRuntimeListener(
         });
       }
     }
-    if (typeof projectId === 'string' && projectId.trim().length > 0) {
+    if (
+      !requestsContextTool &&
+      typeof projectId === 'string' &&
+      projectId.trim().length > 0
+    ) {
       try {
         const identity = resolveAccountIdentity(authState);
         if (identity) {
@@ -3593,59 +3621,61 @@ export function startRuntimeListener(
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
     }
-    try {
-      connectedFilesContext = await getConnectedFilesBlock(agent.slug, projectId);
-    } catch (err) {
-      devConsole.log({
-        channel: 'ai',
-        level: 'warn',
-        message: 'connected-files context fetch failed',
-        detail: { error: err instanceof Error ? err.message : String(err) },
-      });
-    }
-    try {
-      const mentionedBlocks = [getMentionedAgentProfileBlock(mentionedAgents)];
-      for (const mentioned of mentionedAgents) {
-        const connected = await getConnectedFilesBlock(mentioned.slug, projectId);
-        if (connected) mentionedBlocks.push(connected);
-        const terminal = buildAgentTerminalContext(mentioned.slug);
-        if (terminal) mentionedBlocks.push(terminal);
+    if (!requestsContextTool) {
+      try {
+        connectedFilesContext = await getConnectedFilesBlock(agent.slug, projectId);
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'connected-files context fetch failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
       }
-      mentionedAgentContext = mentionedBlocks.filter(Boolean).join('\n\n');
-    } catch (err) {
-      devConsole.log({
-        channel: 'ai',
-        level: 'warn',
-        message: 'mentioned-agent context build failed',
-        detail: { error: err instanceof Error ? err.message : String(err) },
-      });
     }
-    try {
-      if ((detail.filePaths?.length ?? 0) > 0) {
+    if (!requestsContextTool) {
+      try {
+        const mentionedBlocks = [getMentionedAgentProfileBlock(mentionedAgents)];
+        for (const mentioned of mentionedAgents) {
+          const connected = await getConnectedFilesBlock(mentioned.slug, projectId);
+          if (connected) mentionedBlocks.push(connected);
+          const terminal = buildAgentTerminalContext(mentioned.slug);
+          if (terminal) mentionedBlocks.push(terminal);
+        }
+        mentionedAgentContext = mentionedBlocks.filter(Boolean).join('\n\n');
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'mentioned-agent context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    }
+    if ((detail.filePaths?.length ?? 0) > 0) {
+      try {
         setLiveAgentActivityPhase(chatId, agentActivityId, {
           category: 'file',
           title: `@${agent.slug} is reading attached files`,
           subtitle: `${detail.filePaths!.length} file(s)`,
         });
-      }
-      explicitFilesContext = await getExplicitFilesBlock(
-        detail.filePaths ?? [],
-        getStoredProjectRoot(projectId),
-      );
-      if ((detail.filePaths?.length ?? 0) > 0) {
+        explicitFilesContext = await getExplicitFilesBlock(
+          detail.filePaths ?? [],
+          getStoredProjectRoot(projectId),
+        );
         setLiveAgentActivityPhase(chatId, agentActivityId, {
           category: 'context',
           title: `@${agent.slug} is gathering context`,
           subtitle: 'Combining approved sources for this turn',
         });
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'attached-files context fetch failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
       }
-    } catch (err) {
-      devConsole.log({
-        channel: 'ai',
-        level: 'warn',
-        message: 'attached-files context fetch failed',
-        detail: { error: err instanceof Error ? err.message : String(err) },
-      });
     }
     try {
       explicitTerminalContext = getExplicitTerminalBlock(
@@ -3657,6 +3687,13 @@ export function startRuntimeListener(
         level: 'warn',
         message: 'attached-terminal context fetch failed',
         detail: { error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+    if (requestsContextTool) {
+      setLiveAgentActivityPhase(chatId, agentActivityId, {
+        category: 'context',
+        title: `@${agent.slug} is gathering context`,
+        subtitle: 'Preparing the protected Context tool turn',
       });
     }
     if (isProtectedJarvis) {
@@ -3690,14 +3727,16 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
-      try {
-        const defaultWriteFolder = await resolveDefaultWriteDir();
-        defaultWriteFolderContext = [
-          '## Default write folder',
-          `When the user requests a new file without a destination, use: ${defaultWriteFolder}`,
-        ].join('\n');
-      } catch {
-        // The file action still applies its own safe fallback directory.
+      if (!requestsContextTool) {
+        try {
+          const defaultWriteFolder = await resolveDefaultWriteDir();
+          defaultWriteFolderContext = [
+            '## Default write folder',
+            `When the user requests a new file without a destination, use: ${defaultWriteFolder}`,
+          ].join('\n');
+        } catch {
+          // The file action still applies its own safe fallback directory.
+        }
       }
       try {
         allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
@@ -3709,15 +3748,17 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
-      try {
-        jarvisCoordinationContext = await getJarvisCoordinationContextBlock(projectId);
-      } catch (err) {
-        devConsole.log({
-          channel: 'ai',
-          level: 'warn',
-          message: 'Jarvis coordination context fetch failed',
-          detail: { error: err instanceof Error ? err.message : String(err) },
-        });
+      if (!requestsContextTool) {
+        try {
+          jarvisCoordinationContext = await getJarvisCoordinationContextBlock(projectId);
+        } catch (err) {
+          devConsole.log({
+            channel: 'ai',
+            level: 'warn',
+            message: 'Jarvis coordination context fetch failed',
+            detail: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       }
       try {
         jarvisTerminalOperatingContext = getJarvisTerminalOperatingContextBlock(
@@ -3745,6 +3786,13 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
+    }
+    if (requestsContextTool) {
+      setLiveAgentActivityPhase(chatId, agentActivityId, {
+        category: 'context',
+        title: `@${agent.slug} is gathering context`,
+        subtitle: 'Finalizing the Context tool request',
+      });
     }
     userIdentityContext = buildUserIdentityContextBlock(authState.displayName);
     try {
@@ -3811,6 +3859,15 @@ export function startRuntimeListener(
         { key: 'completion_instruction', text: getAiCompletionInstruction() },
       ] satisfies JarvisRuntimeContextBlock[]
     ).filter((block) => block.text.length > 0);
+    if (requestsContextTool) {
+      setLiveAgentActivityPhase(chatId, agentActivityId, {
+        category: 'context',
+        title: `@${agent.slug} is gathering context`,
+        subtitle: automaticRoutingAllowed
+          ? 'Validating routing history for the Context tool turn'
+          : 'Context tool request prepared for provider dispatch',
+      });
+    }
     if (automaticRoutingAllowed) {
       let routingHistory: Message[];
       try {
@@ -3902,23 +3959,29 @@ export function startRuntimeListener(
       tokenOptimizationMode,
       baseReasoningPreference,
     );
-    const reasoningPolicy =
-      stackStepsEarly.length === 0 && chatModelSelection.mode === 'single'
-        ? resolveReasoningPolicy({
-            selection: {
-              providerId: chatModelSelection.providerId,
-              modelId: chatModelSelection.modelId,
-              ...(chatModelSelection.connectionId
-                ? { connectionId: chatModelSelection.connectionId }
-                : {}),
-            },
-            preference: effectiveReasoningPreference,
-            liveVariants: liveVariantsForSelection(getLiveOpenCodeProviders(), {
-              providerId: chatModelSelection.providerId,
-              modelId: chatModelSelection.modelId,
-            }),
-          })
-        : null;
+    let reasoningPolicy: ReturnType<typeof resolveReasoningPolicy> | null = null;
+    try {
+      reasoningPolicy =
+        stackStepsEarly.length === 0 && chatModelSelection.mode === 'single'
+          ? resolveReasoningPolicy({
+              selection: {
+                providerId: chatModelSelection.providerId,
+                modelId: chatModelSelection.modelId,
+                ...(chatModelSelection.connectionId
+                  ? { connectionId: chatModelSelection.connectionId }
+                  : {}),
+              },
+              preference: effectiveReasoningPreference,
+              liveVariants: liveVariantsForSelection(getLiveOpenCodeProviders(), {
+                providerId: chatModelSelection.providerId,
+                modelId: chatModelSelection.modelId,
+              }),
+            })
+          : null;
+    } catch (error) {
+      failEarlySetup('model', error);
+      return;
+    }
     const bufferExactLiteralStreaming =
       reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null;
     if (stackStepsEarly.length === 0) {

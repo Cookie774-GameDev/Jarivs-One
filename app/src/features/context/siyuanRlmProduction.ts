@@ -51,6 +51,13 @@ const invokeNative: SiyuanNativeInvoker = async (command, argumentsValue) => {
   return invoke(command, argumentsValue);
 };
 
+function isTransportUnavailable(error: unknown): boolean {
+  return (
+    error === 'siyuan_transport_unavailable' ||
+    (error instanceof Error && error.message === 'siyuan_transport_unavailable')
+  );
+}
+
 export function createProductionSiyuanRlmPort(
   options: ProductionSiyuanRlmPortOptions = {},
 ): ProductionSiyuanRlmPort {
@@ -80,7 +87,22 @@ export function createProductionSiyuanRlmPort(
       }
       const bridge = activeBridge;
       if (!bridge) throw new Error('siyuan_runtime_not_ready');
-      return operation(bridge);
+      try {
+        return await operation(bridge);
+      } catch (error) {
+        if (
+          !isTransportUnavailable(error) ||
+          activeProjectId !== projectId ||
+          activeBridge !== bridge
+        ) {
+          throw error;
+        }
+        const replacement = createBridge(projectId);
+        await replacement.start();
+        activeProjectId = projectId;
+        activeBridge = replacement;
+        return operation(replacement);
+      }
     });
     operationQueue = run.then(
       () => undefined,

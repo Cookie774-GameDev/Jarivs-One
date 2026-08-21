@@ -378,6 +378,13 @@ describe('runJarvisKernelTurn explicit kernel integration', () => {
       kind: 'committed',
     });
 
+    expect(harness.deps.prepareProvider).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: input.accountId,
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+      }),
+    );
     expect(executeAutoApprovedSafe).toHaveBeenCalledOnce();
     expect(executeAutoApprovedSafe).toHaveBeenCalledWith(
       expect.objectContaining({

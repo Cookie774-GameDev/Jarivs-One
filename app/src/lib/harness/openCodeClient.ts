@@ -1,6 +1,7 @@
 import { redactHarnessText } from './errors';
 import { QWEN_COMPATIBLE_BASE_URLS } from '@/lib/ai/nativeConnectionProbe';
 import type { OpenCodeServerConnection } from './runtimeManager';
+import { nativeOpenCodeEvents, nativeOpenCodeRequest } from './openCodeNativeTransport';
 import { parseOpenCodeSse, type OpenCodeSseEvent } from './sseParser';
 
 type JsonRecord = Record<string, unknown>;
@@ -75,8 +76,6 @@ export interface OpenCodeHttpClient {
     signal?: AbortSignal,
     directory?: string,
   ): Promise<void>;
-  command(sessionId: string, input: unknown, directory?: string): Promise<unknown>;
-  shell(sessionId: string, input: unknown, directory?: string): Promise<unknown>;
   abortSession(sessionId: string, directory?: string): Promise<boolean>;
   replyPermission(
     sessionId: string,
@@ -263,32 +262,19 @@ export function createOpenCodeHttpClient(
   connection: OpenCodeServerConnection,
   options: ClientOptions = {},
 ): OpenCodeHttpClient {
-  const connectionUrl = new URL(connection.baseUrl);
   if (
-    connectionUrl.protocol !== 'http:' ||
-    connectionUrl.hostname !== '127.0.0.1' ||
-    connectionUrl.username ||
-    connectionUrl.password ||
-    connectionUrl.pathname !== '/' ||
-    connectionUrl.search ||
-    connectionUrl.hash ||
-    connection.username !== 'vibespace' ||
-    !/^[A-Za-z0-9_-]{64}$/.test(connection.password)
+    !connection.version.trim() ||
+    !['system', 'managed'].includes(connection.source) ||
+    !/^opencode-server-[A-Za-z0-9_-]+$/u.test(connection.generation)
   ) {
-    throw new Error('OpenCode client requires a validated private loopback connection.');
+    throw new Error('OpenCode client requires a validated managed server descriptor.');
   }
-  const fetchImpl = options.fetch ?? globalThis.fetch;
-  const authorization = `Basic ${btoa(`${connection.username}:${connection.password}`)}`;
-  const baseUrl = connection.baseUrl;
 
   const sanitize = (value: string): string =>
-    redactHarnessText(value.split(connection.password).join('[REDACTED]')).slice(
-      0,
-      MAX_ERROR_BYTES,
-    );
+    redactHarnessText(value).slice(0, MAX_ERROR_BYTES);
 
   const requestUrl = (path: string, directory?: string): string => {
-    const url = new URL(path, baseUrl);
+    const url = new URL(path, 'http://127.0.0.1');
     if (directory !== undefined) {
       if (
         !directory ||
@@ -300,7 +286,7 @@ export function createOpenCodeHttpClient(
       }
       url.searchParams.set('directory', directory);
     }
-    return url.toString();
+    return `${url.pathname}${url.search}`;
   };
 
   const request = async (
@@ -312,17 +298,19 @@ export function createOpenCodeHttpClient(
   ): Promise<unknown> => {
     let response: Response;
     try {
-      response = await fetchImpl(requestUrl(path, directory), {
-        ...init,
-        credentials: 'omit',
-        redirect: 'error',
-        headers: {
-          accept: expected === 'json' ? 'application/json' : '*/*',
-          authorization,
-          ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
-          ...init.headers,
-        },
-      });
+      const requestPath = requestUrl(path, directory);
+      response = options.fetch
+        ? await options.fetch(new URL(requestPath, 'http://127.0.0.1').toString(), {
+            ...init,
+            credentials: 'omit',
+            redirect: 'error',
+            headers: {
+              accept: expected === 'json' ? 'application/json' : '*/*',
+              ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
+              ...init.headers,
+            },
+          })
+        : await nativeOpenCodeRequest(connection.generation, requestPath, init);
     } catch (error) {
       throw new Error(
         sanitize(error instanceof Error ? error.message : 'OpenCode request failed.'),
@@ -463,28 +451,6 @@ export function createOpenCodeHttpClient(
         directory,
       );
     },
-    command: (sessionId, input, directory) =>
-      request(
-        sessionPath(sessionId, '/command'),
-        {
-          method: 'POST',
-          body: JSON.stringify(input),
-        },
-        'json',
-        MAX_JSON_BYTES,
-        directory,
-      ),
-    shell: (sessionId, input, directory) =>
-      request(
-        sessionPath(sessionId, '/shell'),
-        {
-          method: 'POST',
-          body: JSON.stringify(input),
-        },
-        'json',
-        MAX_JSON_BYTES,
-        directory,
-      ),
     abortSession: (sessionId, directory) =>
       booleanRequest(sessionPath(sessionId, '/abort'), { method: 'POST' }, directory),
     replyPermission: (sessionId, permissionId, response, directory) =>
@@ -497,16 +463,25 @@ export function createOpenCodeHttpClient(
         directory,
       ),
     async *events(signal, directory) {
+      if (!options.fetch) {
+        for await (const event of nativeOpenCodeEvents(
+          connection.generation,
+          requestUrl('/event', directory),
+          signal,
+        )) {
+          yield { data: JSON.stringify(event) };
+        }
+        return;
+      }
       let response: Response;
       try {
-        response = await fetchImpl(requestUrl('/event', directory), {
+        response = await options.fetch(new URL(requestUrl('/event', directory), 'http://127.0.0.1').toString(), {
           method: 'GET',
           credentials: 'omit',
           redirect: 'error',
           signal,
           headers: {
             accept: 'text/event-stream',
-            authorization,
             'cache-control': 'no-cache',
           },
         });

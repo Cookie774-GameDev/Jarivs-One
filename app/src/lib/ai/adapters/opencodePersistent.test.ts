@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assertAuthoritativeOpenCodeCompletion,
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
+  createGenerationSafeAsyncCache,
   createPersistentOpenCodeRuntimeSupervisor,
+  filterOpenCodeModelsToConnectedProviders,
+  managedOpenCodeAuthResult,
+  openCodePersistentAdapter,
   parseOpenCodeLiveModels,
+  parseConnectedOpenCodeProviderIds,
   requireAuthoritativeOpenCodeModel,
+  shouldReportPersistentTurnFailure,
+  shouldReconcileOpenCodeSessionCompletion,
   toOpenCodeDiscoveredModels,
 } from './opencodePersistent';
 import type { HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
@@ -37,14 +45,60 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
-  it('uses the native managed runtime connection and private Basic auth', async () => {
+  it('keeps closed diagnostics free of request and prompt material', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const events = openCodePersistentAdapter.send!({
+      requestId: 'secret-request-sentinel',
+      prompt: 'secret-prompt-sentinel',
+    } as never);
+
+    await expect(events.next()).rejects.toThrow(/exact model selection/i);
+    expect(warn).toHaveBeenCalledExactlyOnceWith('OpenCode protected turn failed.', {
+      diagnosticCode: 'request_identity',
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/secret-(request|prompt)-sentinel/i);
+    warn.mockRestore();
+  });
+
+  it('does not report ordinary cancellation as a protected-turn failure', () => {
+    expect(shouldReportPersistentTurnFailure(new DOMException('cancelled', 'AbortError'))).toBe(
+      false,
+    );
+    expect(shouldReportPersistentTurnFailure({ name: 'AbortError' })).toBe(false);
+    expect(shouldReportPersistentTurnFailure(new Error('failed'))).toBe(true);
+  });
+
+  it('does not reuse or cache a stale in-flight load after invalidation', async () => {
+    const cache = createGenerationSafeAsyncCache<string, string>(60_000);
+    let resolveOld: ((value: string) => void) | undefined;
+    let resolveFresh: ((value: string) => void) | undefined;
+    const old = cache.get(
+      'catalog',
+      () => new Promise<string>((resolve) => (resolveOld = resolve)),
+    );
+
+    cache.invalidate();
+    const fresh = cache.get(
+      'catalog',
+      () => new Promise<string>((resolve) => (resolveFresh = resolve)),
+    );
+    expect(fresh).not.toBe(old);
+
+    resolveOld?.('stale');
+    await expect(old).resolves.toBe('stale');
+    expect(cache.peek('catalog')).toBeUndefined();
+
+    resolveFresh?.('fresh');
+    await expect(fresh).resolves.toBe('fresh');
+    expect(cache.peek('catalog')).toBe('fresh');
+    await expect(cache.get('catalog', async () => 'unexpected')).resolves.toBe('fresh');
+  });
+
+  it('uses only the native managed runtime descriptor', async () => {
     const refresh = vi.fn(async () => undefined);
     const runtime = {
       refresh,
       getConnection: () => ({
-        baseUrl: 'http://127.0.0.1:41600',
-        username: 'vibespace',
-        password: 'a'.repeat(64),
         version: '1.18.18',
         source: 'system' as const,
         generation: 'opencode-server-test',
@@ -59,14 +113,13 @@ describe('persistent OpenCode live authority', () => {
     expect(refresh).toHaveBeenCalledOnce();
     expect(handle).toMatchObject({
       generation: 'opencode-server-test',
-      baseUrl: 'http://127.0.0.1:41600',
       version: '1.18.18',
-      authorization: `Basic ${btoa(`vibespace:${'a'.repeat(64)}`)}`,
       scope: {
         accountId: 'local-desktop-account',
         workingDirectory: 'C:\\workspace',
       },
     });
+    expect(JSON.stringify(handle)).not.toMatch(/baseUrl|username|password|authorization|basic/i);
     await handle.dispose();
   });
 
@@ -84,15 +137,28 @@ describe('persistent OpenCode live authority', () => {
   });
 
   it('selects only an exact provider-qualified live model', () => {
-    expect(requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol').providerId).toBe(
-      'openai',
-    );
+    expect(requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol')).toMatchObject({
+      providerId: 'openai',
+      upstreamModelId: 'gpt-5.6-sol',
+    });
     expect(() => requireAuthoritativeOpenCodeModel(liveModels, 'gpt-5.6-sol')).toThrow(
       /provider-qualified/,
     );
     expect(() => requireAuthoritativeOpenCodeModel(liveModels, 'missing/gpt-5.6-sol')).toThrow(
       /live authenticated catalog/,
     );
+  });
+
+  it('keeps nested provider-local model IDs distinct from canonical catalog IDs', () => {
+    const [model] = parseOpenCodeLiveModels({
+      providers: [{ id: 'openrouter', models: { 'openai/gpt-5.6-luna': { name: 'Luna' } } }],
+    });
+
+    expect(model).toMatchObject({
+      id: 'openrouter/openai/gpt-5.6-luna',
+      providerId: 'openrouter',
+      upstreamModelId: 'openai/gpt-5.6-luna',
+    });
   });
 
   it('preserves separate xhigh and max live variants', () => {
@@ -116,6 +182,25 @@ describe('persistent OpenCode live authority', () => {
     expect(
       toOpenCodeDiscoveredModels(liveModels).find(({ id }) => id === 'other/gpt-5.6-sol'),
     ).not.toHaveProperty('pricing');
+  });
+
+  it('uses managed provider truth for auth and executable catalog authority', () => {
+    expect(parseConnectedOpenCodeProviderIds({ connected: ['openai', 'openrouter'] })).toEqual([
+      'openai',
+      'openrouter',
+    ]);
+    expect(managedOpenCodeAuthResult({ connected: ['openai'] })).toMatchObject({
+      status: 'authenticated',
+    });
+    expect(managedOpenCodeAuthResult({ connected: [] })).toMatchObject({
+      status: 'unauthenticated',
+    });
+    expect(
+      filterOpenCodeModelsToConnectedProviders(liveModels, ['openai']).map(({ id }) => id),
+    ).toEqual(['openai/gpt-5.6-sol']);
+    expect(() => parseConnectedOpenCodeProviderIds({ connected: ['openai', null] })).toThrow(
+      /malformed provider status/,
+    );
   });
 
   it('rejects an unsupported live effort before the coordinator can downgrade it', () => {
@@ -175,5 +260,67 @@ describe('persistent OpenCode live authority', () => {
         },
       }),
     ).toBe('openai/gpt-5.6-sol');
+  });
+
+  it('accepts stream EOF only after authoritative identity and non-empty assistant text', () => {
+    expect(() =>
+      assertAuthoritativeOpenCodeCompletion({
+        observedModelId: 'openai/gpt-5.3-codex-spark',
+        streamedText: 'OK',
+        canonicalText: '',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertAuthoritativeOpenCodeCompletion({
+        streamedText: 'OK',
+        canonicalText: '',
+      }),
+    ).toThrow(/authoritative observed model identity/);
+    expect(() =>
+      assertAuthoritativeOpenCodeCompletion({
+        observedModelId: 'openai/gpt-5.3-codex-spark',
+        streamedText: '',
+        canonicalText: '',
+      }),
+    ).toThrow(/canonical assistant text/);
+  });
+
+  it('reconciles omitted idle status only after persisted assistant evidence', () => {
+    expect(
+      shouldReconcileOpenCodeSessionCompletion({
+        statusLookupSucceeded: true,
+        streamedText: 'OK',
+        hasPersistedAssistantIdentity: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldReconcileOpenCodeSessionCompletion({
+        statusLookupSucceeded: false,
+        streamedText: 'OK',
+        hasPersistedAssistantIdentity: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldReconcileOpenCodeSessionCompletion({
+        statusLookupSucceeded: true,
+        streamedText: '',
+        hasPersistedAssistantIdentity: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldReconcileOpenCodeSessionCompletion({
+        statusLookupSucceeded: true,
+        streamedText: 'OK',
+        hasPersistedAssistantIdentity: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldReconcileOpenCodeSessionCompletion({
+        status: 'idle',
+        statusLookupSucceeded: true,
+        streamedText: '',
+        hasPersistedAssistantIdentity: false,
+      }),
+    ).toBe(true);
   });
 });

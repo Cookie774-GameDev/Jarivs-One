@@ -78,6 +78,25 @@ describe('reasoning controls', () => {
         preference: { mode: 'normal', effortOverride: 'medium' },
       }).providerOptions,
     ).toEqual({ reasoning_effort: 'medium' });
+
+    for (const qualifiedSpark of [
+      selection('openai', 'openai/gpt-5.3-codex-spark', 'opencode-cli'),
+      selection('opencode', 'openai/gpt-5.3-codex-spark', 'opencode-cli'),
+    ]) {
+      expect(getReasoningCapabilities(qualifiedSpark).supportedEfforts).toEqual(['medium']);
+      expect(
+        resolveReasoningPolicy({
+          selection: qualifiedSpark,
+          preference: { mode: 'normal', effortOverride: 'medium' },
+        }).providerOptions,
+      ).toEqual({ reasoning_effort: 'medium' });
+    }
+
+    expect(
+      getReasoningCapabilities(
+        selection('openrouter', 'openai/gpt-5.3-codex-spark', 'opencode-cli'),
+      ).supportedEfforts,
+    ).toEqual([]);
   });
 
   it('blocks unsupported effort instead of snapping it to a nearby level', () => {

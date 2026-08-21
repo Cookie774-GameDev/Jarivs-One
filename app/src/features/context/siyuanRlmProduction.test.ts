@@ -112,6 +112,41 @@ describe('production SiYuan RLM port', () => {
     ]);
   });
 
+  it('rebinds once when a same-project renderer bridge loses its native transport', async () => {
+    const events: string[] = [];
+    const stale = mockBridge('project-a-stale', events);
+    vi.mocked(stale.searchBlocks).mockRejectedValue('siyuan_transport_unavailable');
+    const replacement = mockBridge('project-a', events);
+    const createBridge = vi
+      .fn<(projectId: string) => SiyuanNativeBridge>()
+      .mockReturnValueOnce(stale)
+      .mockReturnValueOnce(replacement);
+    const port = createProductionSiyuanRlmPort({ featureEnabled: true, createBridge });
+
+    await expect(port.searchBlocks('project-a', 'needle', 2)).resolves.toHaveLength(1);
+
+    expect(createBridge).toHaveBeenCalledTimes(2);
+    expect(events).toEqual([
+      'start:project-a-stale',
+      'start:project-a',
+      'search:project-a:needle',
+    ]);
+  });
+
+  it('does not retry unrelated bridge failures', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    vi.mocked(bridge.searchBlocks).mockRejectedValue(new Error('siyuan_query_failed'));
+    const createBridge = vi.fn(() => bridge);
+    const port = createProductionSiyuanRlmPort({ featureEnabled: true, createBridge });
+
+    await expect(port.searchBlocks('project-a', 'needle', 2)).rejects.toThrow(
+      'siyuan_query_failed',
+    );
+
+    expect(createBridge).toHaveBeenCalledTimes(1);
+  });
+
   it('fails closed before native invocation when the feature is explicitly disabled', async () => {
     const port = createProductionSiyuanRlmPort({ featureEnabled: false });
 

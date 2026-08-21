@@ -14,8 +14,15 @@ import { claudeCliAdapter } from '@/lib/ai/adapters/claude';
 import { geminiCliAdapter } from '@/lib/ai/adapters/gemini';
 import { copilotCliAdapter } from '@/lib/ai/adapters/copilot';
 import { qwenCliAdapter } from '@/lib/ai/adapters/qwen';
-import { openCodeCliAdapter } from '@/lib/ai/adapters/opencode';
-import { ensureExternalConnectionAutoDetection } from '@/lib/ai/adapters/autoDetectConnections';
+import {
+  invalidateOpenCodePersistentCaches,
+  openCodePersistentAdapter,
+} from '@/lib/ai/adapters/opencodePersistent';
+import {
+  ensureExternalConnectionAutoDetection,
+  refreshExternalConnectionAutoDetection,
+} from '@/lib/ai/adapters/autoDetectConnections';
+import { requestOpenCodeModelCatalogRefresh } from '@/lib/ai/useAccessibleChatModels';
 import {
   AI_CONNECTION_STATE_EVENT,
   markConnectionSessionChecked,
@@ -88,7 +95,7 @@ const ADAPTERS: Readonly<Record<string, ProviderAdapter>> = Object.freeze(
       geminiCliAdapter,
       copilotCliAdapter,
       qwenCliAdapter,
-      openCodeCliAdapter,
+      openCodePersistentAdapter,
     ].map((adapter) => [adapter.id, adapter]),
   ),
 );
@@ -211,6 +218,13 @@ function OpenCodeSubscriptionCenter({
     }
   }, [client]);
 
+  const refreshSubscriptions = useCallback(async () => {
+    await load();
+    invalidateOpenCodePersistentCaches();
+    await refreshExternalConnectionAutoDetection().catch(() => undefined);
+    requestOpenCodeModelCatalogRefresh();
+  }, [load]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -237,7 +251,7 @@ function OpenCodeSubscriptionCenter({
       setInstructions(result.instructions);
       if (result.kind === 'code_required') setPending(result);
       else {
-        await load();
+        await refreshSubscriptions();
       }
     } catch (startError) {
       setError(
@@ -258,7 +272,7 @@ function OpenCodeSubscriptionCenter({
       await completeOpenCodeSubscription(client, pending, code);
       setPending(undefined);
       setCode('');
-      await load();
+      await refreshSubscriptions();
     } catch (finishError) {
       setError(
         redactHarnessText(
@@ -286,7 +300,13 @@ function OpenCodeSubscriptionCenter({
           </p>
         </div>
         {client ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => void load()}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void refreshSubscriptions()}
+            disabled={Boolean(busyRoute)}
+          >
             Refresh subscriptions
           </Button>
         ) : null}

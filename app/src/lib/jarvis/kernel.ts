@@ -123,6 +123,8 @@ export type JarvisPreparedProviderDispatch = Readonly<{
 
 export type JarvisKernelPrepareProvider = (input: {
   accountId: string;
+  workspaceId?: string;
+  projectId?: string;
   runId: string;
   requestId: string;
   attemptNumber: number;
@@ -653,6 +655,8 @@ async function runJarvisKernelExecution(
       () =>
         deps.prepareProvider({
           accountId: input.accountId,
+          ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
+          ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
           runId: input.run.id,
           requestId: input.attempt.requestId,
           attemptNumber: input.attempt.attemptNumber,

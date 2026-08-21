@@ -4,6 +4,10 @@ const MUTATING_REQUEST =
 const READ_OR_EVIDENCE_REQUEST =
   /\b(?:read|search|find|look\s+up|answer|quote|cite|citation|source|where\s+(?:you|u)\s+found)\b/i;
 const FILE_LIKE_SOURCE = /\b(?:files?|documents?|corpus|records?|sources?|literature)\b/i;
+const BOUND_PROJECT_SCOPE =
+  /\b(?:in|from|within)\s+the\s+(?:currently\s+)?bound\b[^\r\n]{0,160}\bproject\b/iu;
+const BOUND_PROJECT_FACT_LOOKUP =
+  /\b(?:what|which|who|when|where|how\s+(?:many|long)|authoritative|custodian|retention|artifact)\b/iu;
 const MAX_DIRECT_CONTEXT_REQUEST_CHARS = 32_768;
 const UNSAFE_DIRECT_CONTEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const DIRECT_ADDRESS_ONLY = /\bvibespace_context\b[ \t]+address[ \t]+operation[ \t]+only\b/iu;
@@ -474,7 +478,10 @@ export function requestsReadOnlyContextTool(userText: string): boolean {
   if (MUTATING_REQUEST.test(userText)) return false;
   // Registered disk reads must stay on files.read, not Context-map search.
   if (/\bfiles\.read\b/i.test(userText) && /[A-Za-z]:[\\/]/.test(userText)) return false;
-  return READ_OR_EVIDENCE_REQUEST.test(userText) && FILE_LIKE_SOURCE.test(userText);
+  return (
+    (READ_OR_EVIDENCE_REQUEST.test(userText) && FILE_LIKE_SOURCE.test(userText)) ||
+    (BOUND_PROJECT_SCOPE.test(userText) && BOUND_PROJECT_FACT_LOOKUP.test(userText))
+  );
 }
 
 /**

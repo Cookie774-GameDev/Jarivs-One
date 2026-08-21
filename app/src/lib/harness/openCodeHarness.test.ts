@@ -4,13 +4,11 @@ import type { HarnessRuntimeManager, OpenCodeServerConnection } from './runtimeM
 import type { HarnessEvent, HarnessSendRequest } from './types';
 
 const connection: OpenCodeServerConnection = {
-  baseUrl: 'http://127.0.0.1:43123/',
-  username: 'vibespace',
-  password: 's'.repeat(64),
   source: 'system',
   version: '1.2.3',
   generation: 'opencode-server-test',
 };
+const syntheticSecret = `sk-proj-${'A'.repeat(80)}`;
 
 function runtime(): HarnessRuntimeManager {
   return {
@@ -392,7 +390,7 @@ describe('OpenCodeHarness', () => {
   });
 
   it('emits a sanitized terminal error when the server dies and recovery fails', async () => {
-    const secretFailure = `server ${connection.password} died`;
+    const secretFailure = `server ${syntheticSecret} died`;
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
       const path = new URL(String(url)).pathname;
       if (path === '/config/providers') return providerResponse();
@@ -427,7 +425,7 @@ describe('OpenCodeHarness', () => {
     expect(events[0]).toMatchObject({ type: 'error', code: 'HARNESS_CRASHED' });
     const message = events[0]?.type === 'error' ? events[0].message : '';
     expect(message).toContain('retry the active turn');
-    expect(message).not.toContain(connection.password);
+    expect(message).not.toContain(syntheticSecret);
   });
 
   it('submits only the exact reconciled OpenCode provider and model identity', async () => {
@@ -603,7 +601,7 @@ describe('OpenCodeHarness', () => {
     await harness.dispose();
 
     expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:43123/instance/dispose',
+      'http://127.0.0.1/instance/dispose',
       expect.objectContaining({ method: 'POST' }),
     );
   });

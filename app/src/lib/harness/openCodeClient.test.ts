@@ -3,22 +3,20 @@ import { createOpenCodeHttpClient } from './openCodeClient';
 import type { OpenCodeServerConnection } from './runtimeManager';
 
 const connection: OpenCodeServerConnection = {
-  baseUrl: 'http://127.0.0.1:43123/',
-  username: 'vibespace',
-  password: 'p'.repeat(64),
   source: 'managed',
   version: '1.2.3',
   generation: 'opencode-server-test',
 };
+const syntheticSecret = 'synthetic-secret-value';
 
 describe('OpenCodeHttpClient', () => {
-  it('rejects non-loopback or credential-bearing connection URLs', () => {
+  it('rejects malformed managed server descriptors', () => {
     expect(() =>
       createOpenCodeHttpClient(
-        { ...connection, baseUrl: 'https://example.com/', password: 'secret-in-url' },
+        { ...connection, generation: '../unsafe' },
         { fetch: vi.fn() },
       ),
-    ).toThrow('private loopback');
+    ).toThrow('managed server descriptor');
   });
 
   it('builds typed authenticated endpoints and encodes path segments', async () => {
@@ -36,10 +34,8 @@ describe('OpenCodeHttpClient', () => {
     });
 
     const [url, init] = fetch.mock.calls[0]!;
-    expect(url).toBe('http://127.0.0.1:43123/session/session%2Fone');
-    expect(new Headers(init?.headers).get('authorization')).toBe(
-      `Basic ${btoa(`vibespace:${'p'.repeat(64)}`)}`,
-    );
+    expect(url).toBe('http://127.0.0.1/session/session%2Fone');
+    expect(new Headers(init?.headers).get('authorization')).toBeNull();
     expect(init?.redirect).toBe('error');
     expect(init?.credentials).toBe('omit');
   });
@@ -221,13 +217,13 @@ describe('OpenCodeHttpClient', () => {
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(new Response(null, { status: 302 }))
       .mockResolvedValueOnce(
-        new Response(`Bearer ${connection.password} ${'x'.repeat(10_000)}`, { status: 500 }),
+        new Response(`Bearer ${syntheticSecret} ${'x'.repeat(10_000)}`, { status: 500 }),
       );
     const client = createOpenCodeHttpClient(connection, { fetch });
 
     await expect(client.health()).rejects.toThrow('redirect');
     await expect(client.health()).rejects.toSatisfy((error: Error) => {
-      expect(error.message).not.toContain(connection.password);
+      expect(error.message).not.toContain(syntheticSecret);
       expect(error.message.length).toBeLessThan(2_300);
       return true;
     });
@@ -248,8 +244,6 @@ describe('OpenCodeHttpClient', () => {
     };
 
     await expect(consume()).rejects.toThrow('event stream');
-    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('authorization')).toBe(
-      `Basic ${btoa(`vibespace:${'p'.repeat(64)}`)}`,
-    );
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('authorization')).toBeNull();
   });
 });

@@ -11,7 +11,7 @@ import { claudeCliAdapter } from './claude';
 import { codexCliAdapter } from './codex';
 import { copilotCliAdapter } from './copilot';
 import { geminiCliAdapter } from './gemini';
-import { openCodeCliAdapter } from './opencode';
+import { openCodePersistentAdapter } from './opencodePersistent';
 import { qwenCliAdapter } from './qwen';
 import type { ProviderAdapter, ProviderConnection } from './types';
 
@@ -23,7 +23,7 @@ const EXTERNAL_CLI_ADAPTERS: Readonly<Record<string, ProviderAdapter>> = Object.
       geminiCliAdapter,
       copilotCliAdapter,
       qwenCliAdapter,
-      openCodeCliAdapter,
+      openCodePersistentAdapter,
     ].map((adapter) => [adapter.id, adapter]),
   ),
 );
@@ -169,24 +169,41 @@ export function createExternalConnectionAutoDetector(
   invalidate: () => void;
 }> {
   let inFlight: Promise<ConnectionMetadata> | undefined;
+  let queuedForce: Promise<ConnectionMetadata> | undefined;
   let lastCompletedAt = Number.NEGATIVE_INFINITY;
-  return Object.freeze({
-    ensure(options): Promise<ConnectionMetadata> {
-      if (inFlight) return inFlight;
-      if (!options?.force && dependencies.now() - lastCompletedAt < ttlMs) {
-        return Promise.resolve(dependencies.readMetadata());
+  const runScan = (): Promise<ConnectionMetadata> => {
+    const scan = detectExternalConnectionStates(dependencies);
+    inFlight = scan;
+    const complete = () => {
+      if (inFlight === scan) {
+        lastCompletedAt = dependencies.now();
+        inFlight = undefined;
       }
-      const scan = detectExternalConnectionStates(dependencies);
-      inFlight = scan;
-      const complete = () => {
-        if (inFlight === scan) {
-          lastCompletedAt = dependencies.now();
-          inFlight = undefined;
-        }
-      };
-      void scan.then(complete, complete);
-      return scan;
-    },
+    };
+    void scan.then(complete, complete);
+    return scan;
+  };
+  const ensure = (options?: Readonly<{ force?: boolean }>): Promise<ConnectionMetadata> => {
+    if (inFlight) {
+      if (!options?.force) return inFlight;
+      if (!queuedForce) {
+        const blocking = inFlight;
+        queuedForce = blocking
+          .catch(() => dependencies.readMetadata())
+          .then(() => runScan())
+          .finally(() => {
+            queuedForce = undefined;
+          });
+      }
+      return queuedForce;
+    }
+    if (!options?.force && dependencies.now() - lastCompletedAt < ttlMs) {
+      return Promise.resolve(dependencies.readMetadata());
+    }
+    return runScan();
+  };
+  return Object.freeze({
+    ensure,
     invalidate(): void {
       lastCompletedAt = Number.NEGATIVE_INFINITY;
     },

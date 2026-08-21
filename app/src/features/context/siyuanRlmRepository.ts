@@ -18,6 +18,10 @@ const MAX_SEARCH_RESULTS = 20;
 const MAX_BLOCK_CHARACTERS = 1_048_576;
 const MAX_POINTER_BYTES = 64 * 1024;
 const MAX_AUTHORITIES = 2_000;
+const EXACT_STRUCTURED_IDENTIFIER_SCORE = 3_000_000_000;
+const STRUCTURED_IDENTIFIER_QUERY_RE =
+  /\b(?:artifact|record|document|item)\s+([A-Za-z0-9][A-Za-z0-9._:@/-]*[-_:][A-Za-z0-9._:@/-]+)\b/giu;
+const STRUCTURED_IDENTIFIER_CHARACTER_RE = /[A-Za-z0-9._:@/-]/u;
 
 export interface SiyuanRlmBlockSummary {
   id: string;
@@ -140,6 +144,32 @@ function retainBounded<K, V>(map: Map<K, V>, key: K, value: V): void {
   if (map.size > MAX_AUTHORITIES) map.delete(map.keys().next().value!);
 }
 
+function structuredQueryIdentifier(query: string): string | undefined {
+  const identifiers = new Set(
+    [...query.matchAll(STRUCTURED_IDENTIFIER_QUERY_RE)]
+      .map((match) => match[1]?.toLocaleLowerCase('en-US'))
+      .filter((value): value is string => Boolean(value)),
+  );
+  return identifiers.size === 1 ? identifiers.values().next().value : undefined;
+}
+
+function containsExactIdentifier(content: string, identifier: string): boolean {
+  const normalized = content.toLocaleLowerCase('en-US');
+  let offset = normalized.indexOf(identifier);
+  while (offset >= 0) {
+    const before = normalized[offset - 1];
+    const after = normalized[offset + identifier.length];
+    if (
+      (before === undefined || !STRUCTURED_IDENTIFIER_CHARACTER_RE.test(before)) &&
+      (after === undefined || !STRUCTURED_IDENTIFIER_CHARACTER_RE.test(after))
+    ) {
+      return true;
+    }
+    offset = normalized.indexOf(identifier, offset + identifier.length);
+  }
+  return false;
+}
+
 export function createSiyuanRlmRepository(
   port: SiyuanRlmPort,
   options: Readonly<{ upstreamVersion?: string; now?: () => number }> = {},
@@ -241,12 +271,13 @@ export function createSiyuanRlmRepository(
         return [];
       }
       const remembered = await rememberScope(scope);
+      const exactIdentifier = structuredQueryIdentifier(normalizedQuery);
       abortIfNeeded(signal);
       let summaries: SiyuanRlmBlockSummary[];
       try {
         summaries = await port.searchBlocks(
           remembered.scope.projectId,
-          normalizedQuery,
+          exactIdentifier ?? normalizedQuery,
           MAX_SEARCH_RESULTS,
         );
       } catch {
@@ -285,7 +316,11 @@ export function createSiyuanRlmRepository(
           recordId: authority.record.id,
           pointer,
           preview: (summary.content || authority.block.markdown).slice(0, 320),
-          score: MAX_SEARCH_RESULTS - hits.length,
+          score:
+            exactIdentifier &&
+            containsExactIdentifier(authority.block.markdown, exactIdentifier)
+              ? EXACT_STRUCTURED_IDENTIFIER_SCORE + MAX_SEARCH_RESULTS - hits.length
+              : MAX_SEARCH_RESULTS - hits.length,
         });
       }
       return hits;

@@ -90,4 +90,47 @@ describe('SiYuan renderer contracts', () => {
       }),
     ).toThrow(/siyuan_block_keys_invalid/u);
   });
+
+  it('accepts bounded multiline SiYuan evidence while rejecting unsafe controls', () => {
+    expect(
+      parseSiyuanSearchResults(
+        {
+          blocks: [
+            {
+              id: 'block-1',
+              notebookId: 'notebook-1',
+              path: '/spec',
+              content: 'Heading: local evidence\r\nStatus:\tverified',
+            },
+          ],
+        },
+        1,
+      )[0]?.content,
+    ).toBe('Heading: local evidence\r\nStatus:\tverified');
+    expect(
+      parseSiyuanBlock({
+        block: {
+          id: 'block-1',
+          notebookId: 'notebook-1',
+          path: '/spec',
+          markdown: '# Spec\n\nMultiline project evidence',
+        },
+      }).markdown,
+    ).toBe('# Spec\n\nMultiline project evidence');
+    expect(() =>
+      parseSiyuanSearchResults(
+        {
+          blocks: [
+            {
+              id: 'block-1',
+              notebookId: 'notebook-1',
+              path: '/spec',
+              content: 'unsafe\u0000text',
+            },
+          ],
+        },
+        1,
+      ),
+    ).toThrow(/siyuan_block_content_invalid/u);
+  });
 });

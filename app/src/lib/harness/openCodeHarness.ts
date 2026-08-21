@@ -106,9 +106,8 @@ function latestAssistantTextSnapshot(state: FullTextSnapshotState): string {
   return text.length <= MAX_RECOVERED_ASSISTANT_TEXT ? text : '';
 }
 
-function safeError(error: unknown, connection?: OpenCodeServerConnection): string {
-  let message = error instanceof Error ? error.message : 'OpenCode stream failed.';
-  if (connection) message = message.split(connection.password).join('[REDACTED]');
+function safeError(error: unknown, _connection?: OpenCodeServerConnection): string {
+  const message = error instanceof Error ? error.message : 'OpenCode stream failed.';
   return redactHarnessText(message).slice(0, MAX_ERROR_LENGTH);
 }
 

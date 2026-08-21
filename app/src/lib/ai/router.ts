@@ -37,6 +37,7 @@ import type {
   ProviderCapabilities,
   ProviderConnection,
   ProviderEvent,
+  ProviderRequest,
 } from './adapters/types';
 import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './adapters/catalog';
 import { openCodePersistentAdapter } from './adapters/opencodePersistent';
@@ -107,6 +108,24 @@ type ProtectedAttemptHooks = Readonly<{
   onResponseObservation: (observation: LLMResponseObservation) => void;
   onActionDispatch: (input: { observedAt: number }) => void;
 }>;
+
+type OpenCodeDispatchDiagnosticCode =
+  | 'router_connection'
+  | 'router_request_controls'
+  | 'router_request_assembly'
+  | 'router_adapter_open'
+  | 'router_adapter_send'
+  | 'router_chunk_delivery'
+  | 'router_usage_event'
+  | 'router_done_event'
+  | 'router_completion';
+
+function reportOpenCodeDispatchFailure(diagnosticCode: OpenCodeDispatchDiagnosticCode): void {
+  // Never pass the caught value here. Native/provider errors can contain
+  // request or credential material; the closed stage is sufficient for the
+  // in-app DevConsole to locate the failing boundary.
+  console.warn('Protected OpenCode dispatch failed.', { diagnosticCode });
+}
 
 function isAbortError(error: unknown): boolean {
   return (
@@ -385,85 +404,115 @@ async function executePersistentOpenCode(
   selection: Readonly<OpenCodeSelection>,
   hooks?: ProtectedAttemptHooks,
 ): Promise<LLMResponse> {
-  if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
-  const connection = openCodeGatewayConnection(selection);
-  if (!openCodePersistentAdapter.send) throw new Error('Persistent OpenCode transport is unavailable.');
-  // Do not CLI-probe version or await auth on the send path. Those probes add
-  // seconds of delay and a flaky `unknown` result used to fail the Jarvis turn
-  // before OpenCode was asked. Kick a background probe for UI state. Real
-  // sign-out still fail-closes from the persistent session (401 / refresh).
-  if (openCodePersistentAdapter.probeAuth) {
-    void openCodePersistentAdapter.probeAuth(connection);
-  }
-
-  const requestId = req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`;
-  const qualifiedModel = qualifyOpenCodeModel(selection);
-  const variant = resolveOpenCodeVariant(req.provider_options);
-  const runtimeSettings: ChatRuntimeSettings = req.runtimeSettings
-    ? { ...req.runtimeSettings }
-    : { ...DEFAULT_CHAT_RUNTIME_SETTINGS };
-  const requestedEffort = runtimeEffortForVariant(variant);
-  if (requestedEffort) {
-    if (runtimeSettings.effort !== 'auto' && runtimeSettings.effort !== requestedEffort) {
-      throw new Error('OpenCode reasoning effort conflicts with the active runtime setting.');
-    }
-    runtimeSettings.effort = requestedEffort;
-  }
-
-  let text = '';
-  let first = true;
-  let finishReason: string | undefined;
-  let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
-  for await (const event of openCodePersistentAdapter.send({
-    requestId,
-    connection,
-    chatId: req.chatId ?? req.parentChatId ?? requestId,
-    accountId: req.accountId,
-    workspaceId: req.workspaceId,
-    projectId: req.projectId,
-    worktreeId: req.worktreeId,
-    prompt: promptForOpenCode(req.messages),
-    modelId: qualifiedModel,
-    reasoningEffort: variant,
-    systemPrompt: req.compiledPrompt?.systemText ?? req.agent.system_prompt,
-    workingDirectory: req.workingDirectory,
-    runtimeSettings,
-    interactionMode: req.interactionMode,
-    accessLevel: req.accessLevel,
-    approveAllForRun: req.approveAllForRun,
-    tools: req.tools,
-    signal: req.signal,
-    onApprovalRequested: req.onApprovalRequested,
-    onSessionBound: req.onHarnessSessionBound,
-    onResponseObservation: hooks?.onResponseObservation,
-    onActionDispatch: hooks?.onActionDispatch,
-  })) {
+  let diagnosticCode: OpenCodeDispatchDiagnosticCode = 'router_connection';
+  let providerReportedFailure = false;
+  try {
     if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
-    if (event.type === 'text') {
-      text += event.delta;
-      req.onChunk?.({ delta: event.delta, first });
-      first = false;
-    } else if (event.type === 'usage') {
-      usage = event.usage;
-    } else if (event.type === 'error') {
-      throw new Error(event.message);
-    } else if (event.type === 'done') {
-      finishReason = event.finishReason;
+    const connection = openCodeGatewayConnection(selection);
+    if (!openCodePersistentAdapter.send) {
+      throw new Error('Persistent OpenCode transport is unavailable.');
     }
+    // Do not CLI-probe version or await auth on the send path. Those probes add
+    // seconds of delay and a flaky `unknown` result used to fail the Jarvis turn
+    // before OpenCode was asked. Kick a background probe for UI state. Real
+    // sign-out still fail-closes from the persistent session (401 / refresh).
+    if (openCodePersistentAdapter.probeAuth) {
+      void openCodePersistentAdapter.probeAuth(connection);
+    }
+
+    diagnosticCode = 'router_request_controls';
+    const requestId = req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`;
+    const qualifiedModel = qualifyOpenCodeModel(selection);
+    const variant = resolveOpenCodeVariant(req.provider_options);
+    const runtimeSettings: ChatRuntimeSettings = req.runtimeSettings
+      ? { ...req.runtimeSettings }
+      : { ...DEFAULT_CHAT_RUNTIME_SETTINGS };
+    const requestedEffort = runtimeEffortForVariant(variant);
+    if (requestedEffort) {
+      if (runtimeSettings.effort !== 'auto' && runtimeSettings.effort !== requestedEffort) {
+        throw new Error('OpenCode reasoning effort conflicts with the active runtime setting.');
+      }
+      runtimeSettings.effort = requestedEffort;
+    }
+
+    let text = '';
+    let first = true;
+    let finishReason: string | undefined;
+    let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
+    diagnosticCode = 'router_request_assembly';
+    const providerRequest: ProviderRequest = {
+      requestId,
+      connection,
+      chatId: req.chatId ?? req.parentChatId ?? requestId,
+      accountId: req.accountId,
+      workspaceId: req.workspaceId,
+      projectId: req.projectId,
+      worktreeId: req.worktreeId,
+      prompt: promptForOpenCode(req.messages),
+      modelId: qualifiedModel,
+      reasoningEffort: variant,
+      systemPrompt: req.compiledPrompt?.systemText ?? req.agent.system_prompt,
+      workingDirectory: req.workingDirectory,
+      runtimeSettings,
+      interactionMode: req.interactionMode,
+      accessLevel: req.accessLevel,
+      approveAllForRun: req.approveAllForRun,
+      tools: req.tools,
+      signal: req.signal,
+      onApprovalRequested: req.onApprovalRequested,
+      onSessionBound: req.onHarnessSessionBound,
+      onResponseObservation: hooks?.onResponseObservation,
+      onActionDispatch: hooks?.onActionDispatch,
+    };
+    diagnosticCode = 'router_adapter_open';
+    const providerEvents = openCodePersistentAdapter.send(providerRequest);
+    const iterator = providerEvents[Symbol.asyncIterator]();
+    try {
+      while (true) {
+        diagnosticCode = 'router_adapter_send';
+        const next = await iterator.next();
+        if (next.done) break;
+        const event = next.value;
+        if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+        if (event.type === 'text') {
+          diagnosticCode = 'router_chunk_delivery';
+          text += event.delta;
+          req.onChunk?.({ delta: event.delta, first });
+          first = false;
+        } else if (event.type === 'usage') {
+          diagnosticCode = 'router_usage_event';
+          usage = event.usage;
+        } else if (event.type === 'error') {
+          providerReportedFailure = true;
+          throw new Error(event.message);
+        } else if (event.type === 'done') {
+          diagnosticCode = 'router_done_event';
+          finishReason = event.finishReason;
+        }
+      }
+    } finally {
+      await iterator.return?.();
+    }
+    if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+    diagnosticCode = 'router_completion';
+    req.onChunk?.({ delta: '', done: true });
+    return {
+      text,
+      usage: {
+        input_tokens: usageNumber(usage?.inputTokens),
+        output_tokens: usageNumber(usage?.outputTokens),
+        cost_usd: usageNumber(usage?.costUsd),
+      },
+      provider: (selection.providerId === 'local' ? 'ollama' : selection.providerId) as ProviderId,
+      model: selection.modelId,
+      ...(finishReason ? { finish_reason: finishReason } : {}),
+    };
+  } catch (error) {
+    if (!isAbortError(error) && !providerReportedFailure) {
+      reportOpenCodeDispatchFailure(diagnosticCode);
+    }
+    throw error;
   }
-  if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
-  req.onChunk?.({ delta: '', done: true });
-  return {
-    text,
-    usage: {
-      input_tokens: usageNumber(usage?.inputTokens),
-      output_tokens: usageNumber(usage?.outputTokens),
-      cost_usd: usageNumber(usage?.costUsd),
-    },
-    provider: (selection.providerId === 'local' ? 'ollama' : selection.providerId) as ProviderId,
-    model: selection.modelId,
-    ...(finishReason ? { finish_reason: finishReason } : {}),
-  };
 }
 
 async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMResponse> {

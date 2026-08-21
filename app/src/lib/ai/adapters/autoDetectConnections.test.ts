@@ -298,16 +298,16 @@ describe('automatic external CLI connection detection', () => {
       calls += 1;
       if (calls > 1) return Promise.resolve({ status: 'unavailable' as const });
       return new Promise<{ status: 'unavailable' }>((resolve) => {
-          release = () => resolve({ status: 'unavailable' });
-        });
+        release = () => resolve({ status: 'unavailable' });
+      });
     });
     let now = 1_000;
     const detector = createExternalConnectionAutoDetector(
       {
         ...dependencies({
-        adapters: {
-          'openai-codex-adapter': { id: 'openai-codex-adapter', detect },
-        },
+          adapters: {
+            'openai-codex-adapter': { id: 'openai-codex-adapter', detect },
+          },
         }),
         now: () => now,
       },
@@ -330,5 +330,50 @@ describe('automatic external CLI connection detection', () => {
     now += 60_001;
     await detector.ensure();
     expect(detect).toHaveBeenCalledTimes(3);
+  });
+
+  it('queues and coalesces a forced post-login scan behind an older in-flight scan', async () => {
+    const releases: Array<() => void> = [];
+    let authenticated = false;
+    const detect = vi.fn(
+      () =>
+        new Promise<{ status: 'available' }>((resolve) => {
+          releases.push(() => resolve({ status: 'available' }));
+        }),
+    );
+    const probeAuth = vi.fn(async () => ({
+      status: authenticated ? ('authenticated' as const) : ('unauthenticated' as const),
+    }));
+    let current: ConnectionMetadata = {};
+    const detector = createExternalConnectionAutoDetector(
+      dependencies({
+        adapters: {
+          'openai-codex-adapter': {
+            id: 'openai-codex-adapter',
+            detect,
+            probeAuth,
+          },
+        },
+        write: (value) => (current = value),
+      }),
+    );
+
+    const old = detector.ensure();
+    const forced = detector.ensure({ force: true });
+    const sameForced = detector.ensure({ force: true });
+    expect(sameForced).toBe(forced);
+    expect(detect).toHaveBeenCalledTimes(1);
+
+    releases.shift()?.();
+    await old;
+    authenticated = true;
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(2));
+    releases.shift()?.();
+
+    await expect(forced).resolves.toMatchObject({
+      'openai-codex': { installation: 'installed', auth: 'authenticated' },
+    });
+    expect(probeAuth).toHaveBeenCalledTimes(2);
+    expect(current['openai-codex']?.auth).toBe('authenticated');
   });
 });

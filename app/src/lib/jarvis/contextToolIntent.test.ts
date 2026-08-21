@@ -532,6 +532,22 @@ describe('bounded Test07 evidence intent', () => {
 });
 
 describe('requestsReadOnlyContextTool', () => {
+  it('routes bounded natural fact lookups in the bound project to Context authority', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        'In the bound Unified Chungus project, what custodian and retention period are authoritative for artifact atlas-0317?',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not grant read-only Context routing to bound-project mutation requests', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        'In the bound Unified Chungus project, change the retention period for artifact atlas-0317.',
+      ),
+    ).toBe(false);
+  });
+
   it('does not rewrite an explicit files.read of absolute disk paths into Context search', () => {
     expect(
       requestsReadOnlyContextTool(

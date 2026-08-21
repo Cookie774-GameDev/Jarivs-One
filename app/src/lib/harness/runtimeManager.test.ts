@@ -15,9 +15,6 @@ const readyDetection: NativeRuntimeDetection = {
 };
 
 const readyConnection: OpenCodeServerConnection = {
-  baseUrl: 'http://127.0.0.1:43123',
-  username: 'vibespace',
-  password: 'A'.repeat(64),
   version: '1.18.16',
   source: 'managed',
   generation: 'opencode-server-safe-generation',
@@ -330,14 +327,15 @@ describe('harness runtime manager', () => {
     });
   });
 
-  it('keeps ephemeral server credentials out of the public snapshot', async () => {
+  it('exposes only the managed server descriptor to the renderer', async () => {
     const native = adapter();
     const manager = createHarnessRuntimeManager(native);
 
     await manager.refresh();
 
     expect(manager.getConnection()).toEqual(readyConnection);
-    expect(JSON.stringify(manager.getSnapshot())).not.toContain(readyConnection.password);
+    expect(JSON.stringify(manager.getConnection())).not.toMatch(/baseUrl|username|password|authorization/i);
+    expect(JSON.stringify(manager.getSnapshot())).not.toMatch(/baseUrl|username|password|authorization/i);
   });
 
   it('fails closed for a compatible detection without an opaque executable ID', async () => {
@@ -361,11 +359,10 @@ describe('harness runtime manager', () => {
     });
   });
 
-  it('rejects non-loopback or malformed native server connections', async () => {
+  it('rejects malformed native server descriptors', async () => {
     for (const candidate of [
-      { ...readyConnection, baseUrl: 'http://0.0.0.0:43123' },
-      { ...readyConnection, baseUrl: 'https://127.0.0.1:43123' },
-      { ...readyConnection, password: 'short' },
+      { ...readyConnection, version: '' },
+      { ...readyConnection, source: 'remote' },
       { ...readyConnection, generation: '../unsafe' },
     ]) {
       const native = adapter({
@@ -379,7 +376,7 @@ describe('harness runtime manager', () => {
       expect(manager.getSnapshot()).toEqual({
         kind: 'failed',
         recoverable: true,
-        message: 'OpenCode server returned an invalid private connection.',
+        message: 'OpenCode server returned an invalid managed descriptor.',
       });
     }
   });

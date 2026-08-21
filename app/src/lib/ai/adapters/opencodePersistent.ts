@@ -1,6 +1,4 @@
 import { isTauri } from '@/lib/utils';
-import { nativeFetch } from '@/lib/nativeFetch';
-import { openCodeDiagnosticCliAdapter } from './opencode';
 import type {
   AuthProbeResult,
   DetectionResult,
@@ -60,28 +58,53 @@ import { decideContextRoute } from '@/features/context/rlm/routeDecision';
 import {
   harnessRuntimeManager,
   type HarnessRuntimeManager,
-  type OpenCodeServerConnection,
 } from '@/lib/harness/runtimeManager';
+import { nativeOpenCodeEvents, nativeOpenCodeRequest } from '@/lib/harness/openCodeNativeTransport';
 
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
 const MODEL_CACHE_TTL_MS = 60_000;
-const MAX_SSE_EVENT_CHARS = 1_048_576;
-const MAX_SSE_BUFFER_CHARS = 2_097_152;
 const TURN_IDLE_POLL_MS = 500;
 const TURN_MAX_WALL_MS = 30 * 60_000;
 
+type PersistentTurnFailureStage =
+  | 'request_identity'
+  | 'request_scope'
+  | 'gateway_authority'
+  | 'turn_binding'
+  | 'session_binding'
+  | 'live_model_authority'
+  | 'runtime_controls'
+  | 'prompt_dispatch'
+  | 'session_authority'
+  | 'event_stream'
+  | 'completion_authority'
+  | 'provider_reported';
+
+function reportPersistentTurnFailure(stage: PersistentTurnFailureStage): void {
+  // Deliberately exclude the caught error: native/provider failures can carry
+  // prompt or credential material. The DevConsole console patcher captures this
+  // closed code, which is enough to locate a protected-turn boundary safely.
+  console.warn('OpenCode protected turn failed.', { diagnosticCode: stage });
+}
+
+export function shouldReportPersistentTurnFailure(error: unknown): boolean {
+  return !(
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError')
+  );
+}
+
 interface OpenCodeServerHandle extends OpenCodeRuntimeHandle {
-  baseUrl: string;
   version: string;
   scope: HarnessScope;
-  authorization: string;
 }
 
 export interface OpenCodeLiveModel {
   id: string;
   label: string;
   providerId: string;
+  upstreamModelId: string;
   variants: readonly LiveModelVariant[];
   pricing?: Readonly<HarnessModelPricing>;
   supportsIndependentReasoningEffort: boolean;
@@ -133,69 +156,38 @@ async function responseError(response: Response): Promise<Error> {
 }
 
 async function requestJson(
-  baseUrl: string,
+  generation: string,
   scope: Readonly<HarnessScope>,
   path: string,
   init: RequestInit = {},
   timeoutMs = 30_000,
-  authorization?: string,
 ): Promise<unknown> {
-  const response = await nativeFetch(`${baseUrl}${withDirectory(path, scope)}`, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(authorization ? { Authorization: authorization } : {}),
-      ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(init.headers ?? {}),
-    },
-    timeoutMs,
-  });
-  if (!response.ok) throw await responseError(response);
-  if (response.status === 204) return undefined;
-  const text = await response.text();
-  return text.trim() ? JSON.parse(text) as unknown : undefined;
+  const controller = new AbortController();
+  const upstreamSignal = init.signal;
+  const abort = () => controller.abort(upstreamSignal?.reason);
+  if (upstreamSignal?.aborted) abort();
+  else upstreamSignal?.addEventListener('abort', abort, { once: true });
+  const timeout = timeoutMs > 0
+    ? setTimeout(() => controller.abort(new Error('OpenCode request timed out.')), timeoutMs)
+    : undefined;
+  try {
+    const response = await nativeOpenCodeRequest(generation, withDirectory(path, scope), {
+      ...init,
+      signal: controller.signal,
+    }, timeoutMs);
+    if (!response.ok) throw await responseError(response);
+    if (response.status === 204) return undefined;
+    const text = await response.text();
+    return text.trim() ? JSON.parse(text) as unknown : undefined;
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    upstreamSignal?.removeEventListener('abort', abort);
+  }
 }
 
 function unwrapData(value: unknown): unknown {
   const record = recordOf(value);
   return record && 'data' in record ? record.data : value;
-}
-
-async function* parseSseResponse(response: Response): AsyncGenerator<OpenCodeRawEvent> {
-  if (!response.ok) throw await responseError(response);
-  if (!response.body) throw new Error('OpenCode event stream response has no body.');
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      if (buffer.length > MAX_SSE_BUFFER_CHARS) throw new Error('OpenCode SSE buffer exceeded its safe bound.');
-      let boundary = buffer.search(/\r?\n\r?\n/u);
-      while (boundary >= 0) {
-        const frame = buffer.slice(0, boundary);
-        const delimiter = buffer.slice(boundary).match(/^\r?\n\r?\n/u)?.[0] ?? '\n\n';
-        buffer = buffer.slice(boundary + delimiter.length);
-        const data = frame
-          .split(/\r?\n/u)
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trimStart())
-          .join('\n');
-        if (data && data !== '[DONE]') {
-          if (data.length > MAX_SSE_EVENT_CHARS) throw new Error('OpenCode SSE event exceeded its safe bound.');
-          const parsed = JSON.parse(data) as unknown;
-          const event = recordOf(unwrapData(parsed));
-          const type = cleanIdentifier(event?.type, 256);
-          if (event && type) yield { type, properties: recordOf(event.properties) };
-        }
-        boundary = buffer.search(/\r?\n\r?\n/u);
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
@@ -205,72 +197,65 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
 
   readonly global = {
     health: async (): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       '/global/health',
       {},
       5_000,
-      this.handle.authorization,
     ),
   };
 
   readonly config = {
     providers: async (): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       '/config/providers',
       {},
       15_000,
-      this.handle.authorization,
     ),
   };
 
   readonly session = {
     create: async (input: { body: { title?: string } }): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       '/session',
       { method: 'POST', body: JSON.stringify(input.body) },
       30_000,
-      this.handle.authorization,
     ),
     get: async (input: { path: { id: string } }): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}`,
       {},
       30_000,
-      this.handle.authorization,
     ),
     abort: async (input: { path: { id: string } }): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}/abort`,
       { method: 'POST', body: '{}' },
       30_000,
-      this.handle.authorization,
     ),
     promptAsync: async (input: {
       path: { id: string };
       body: Readonly<Record<string, unknown>>;
     }): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}/prompt_async`,
       { method: 'POST', body: JSON.stringify(input.body) },
       30_000,
-      this.handle.authorization,
     ),
     replyPermission: async (input: {
       path: { id: string; permissionId: string };
       body: { response: HarnessApprovalResponse['response'] };
     }): Promise<unknown> => requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       `/session/${encodeURIComponent(input.path.id)}/permissions/${encodeURIComponent(input.path.permissionId)}`,
       { method: 'POST', body: JSON.stringify(input.body) },
       30_000,
-      this.handle.authorization,
     ),
   };
 
@@ -281,41 +266,31 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
   };
 
   async *events(signal?: AbortSignal): AsyncGenerator<OpenCodeRawEvent> {
-    const response = await nativeFetch(
-      `${this.handle.baseUrl}${withDirectory('/event', this.handle.scope)}`,
-      {
-        method: 'GET',
-        headers: {
-          Accept: 'text/event-stream',
-          Authorization: this.handle.authorization,
-        },
-        signal,
-        timeoutMs: 0,
-      },
+    yield* nativeOpenCodeEvents(
+      this.handle.generation,
+      withDirectory('/event', this.handle.scope),
+      signal,
     );
-    yield* parseSseResponse(response);
   }
 
   async status(sessionId: string): Promise<unknown> {
     const all = await requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       '/session/status',
       {},
       30_000,
-      this.handle.authorization,
     );
     return recordOf(unwrapData(all))?.[sessionId];
   }
 
   async messages(sessionId: string): Promise<readonly OpenCodeMessageRecord[]> {
     const value = unwrapData(await requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       `/session/${encodeURIComponent(sessionId)}/message?limit=100`,
       {},
       30_000,
-      this.handle.authorization,
     ));
     return Array.isArray(value)
       ? value.map((entry) => recordOf(entry) as OpenCodeMessageRecord).filter(Boolean)
@@ -324,12 +299,11 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
 
   async providerState(): Promise<unknown> {
     return requestJson(
-      this.handle.baseUrl,
+      this.handle.generation,
       this.handle.scope,
       '/provider',
       {},
       15_000,
-      this.handle.authorization,
     );
   }
 }
@@ -377,10 +351,6 @@ class LocalStorageSessionRegistry implements OpenCodeSessionRegistry {
   }
 }
 
-function basicAuthorization(connection: Readonly<OpenCodeServerConnection>): string {
-  return `Basic ${btoa(`${connection.username}:${connection.password}`)}`;
-}
-
 export function createPersistentOpenCodeRuntimeSupervisor(
   runtime: HarnessRuntimeManager = harnessRuntimeManager,
 ): OpenCodeRuntimeSupervisor {
@@ -393,10 +363,8 @@ export function createPersistentOpenCodeRuntimeSupervisor(
       }
       const handle: OpenCodeServerHandle = {
         generation: connection.generation,
-        baseUrl: connection.baseUrl,
         version: connection.version,
         scope: { ...scope },
-        authorization: basicAuthorization(connection),
         // Native runtimeManager owns the single app-scoped server and its Exit cleanup.
         // Releasing a warm chat scope must not terminate that shared runtime.
         dispose: async () => undefined,
@@ -518,13 +486,18 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
     for (const [rawId, model] of entries) {
       const modelLocalId = cleanIdentifier(model.id ?? model.modelID ?? model.modelId ?? rawId);
       if (!modelLocalId) continue;
-      const id = modelLocalId.includes('/') ? modelLocalId : `${providerId}/${modelLocalId}`;
+      const providerPrefix = `${providerId}/`;
+      const id = modelLocalId.startsWith(providerPrefix)
+        ? modelLocalId
+        : `${providerPrefix}${modelLocalId}`;
+      const upstreamModelId = id.slice(providerPrefix.length);
       const label = cleanIdentifier(model.name ?? model.label, 256) ?? id;
       const pricing = parseOpenCodeModelPricing(model.cost);
       result.push({
         id,
         label,
         providerId,
+        upstreamModelId,
         variants: variantsFrom(model),
         ...(pricing ? { pricing } : {}),
         supportsIndependentReasoningEffort: false,
@@ -546,6 +519,41 @@ export function toOpenCodeDiscoveredModels(
     variants: model.variants.map((variant) => variant.id),
     ...(model.pricing ? { pricing: model.pricing } : {}),
   }));
+}
+
+export function parseConnectedOpenCodeProviderIds(value: unknown): readonly string[] {
+  const data = recordOf(unwrapData(value));
+  if (!data || !Array.isArray(data.connected) || data.connected.length > 512) {
+    throw new Error('OpenCode returned malformed provider status.');
+  }
+  const connected = data.connected.map((providerId) => cleanIdentifier(providerId, 128));
+  if (connected.some((providerId) => !providerId)) {
+    throw new Error('OpenCode returned malformed provider status.');
+  }
+  return [...new Set(connected as string[])];
+}
+
+export function filterOpenCodeModelsToConnectedProviders(
+  models: readonly Readonly<OpenCodeLiveModel>[],
+  connectedProviderIds: readonly string[],
+): readonly OpenCodeLiveModel[] {
+  const connected = new Set(
+    connectedProviderIds.map((providerId) => providerId.toLocaleLowerCase('en-US')),
+  );
+  return models.filter((model) => connected.has(model.providerId.toLocaleLowerCase('en-US')));
+}
+
+export function managedOpenCodeAuthResult(value: unknown): AuthProbeResult {
+  const connected = parseConnectedOpenCodeProviderIds(value);
+  return connected.length > 0
+    ? {
+        status: 'authenticated',
+        detail: 'Authentication verified by the managed OpenCode provider service.',
+      }
+    : {
+        status: 'unauthenticated',
+        detail: 'The managed OpenCode provider service reports no connected providers.',
+      };
 }
 
 function modelMetadata(
@@ -715,6 +723,34 @@ export function assertAuthoritativeOpenCodeIdentity(input: {
   return observedModelId;
 }
 
+export function assertAuthoritativeOpenCodeCompletion(input: {
+  observedModelId?: string;
+  streamedText: string;
+  canonicalText: string;
+}): void {
+  if (!input.observedModelId) {
+    throw new Error('OpenCode completed without authoritative observed model identity.');
+  }
+  if (!input.streamedText.trim() && !input.canonicalText.trim()) {
+    throw new Error('OpenCode completed without canonical assistant text.');
+  }
+}
+
+export function shouldReconcileOpenCodeSessionCompletion(input: {
+  status?: string;
+  statusLookupSucceeded: boolean;
+  streamedText: string;
+  hasPersistedAssistantIdentity: boolean;
+}): boolean {
+  if (input.status === 'idle') return true;
+  return Boolean(
+    input.statusLookupSucceeded &&
+      input.status === undefined &&
+      input.streamedText.trim() &&
+      input.hasPersistedAssistantIdentity,
+  );
+}
+
 function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const record = messages[index];
@@ -728,67 +764,92 @@ function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): 
   return '';
 }
 
-const modelCache = new Map<
-  string,
-  { loadedAt: number; models: readonly OpenCodeLiveModel[] }
->();
-const modelLoads = new Map<string, Promise<readonly OpenCodeLiveModel[]>>();
+export function createGenerationSafeAsyncCache<Key, Value>(ttlMs: number): Readonly<{
+  get: (key: Key, loader: () => Promise<Value>, force?: boolean) => Promise<Value>;
+  peek: (key: Key) => Value | undefined;
+  invalidate: () => void;
+}> {
+  const cache = new Map<Key, { loadedAt: number; value: Value }>();
+  const loads = new Map<Key, { generation: number; promise: Promise<Value> }>();
+  let generation = 0;
+  return Object.freeze({
+    get(key, loader, force = false): Promise<Value> {
+      const cached = cache.get(key);
+      if (!force && cached && Date.now() - cached.loadedAt < ttlMs) return Promise.resolve(cached.value);
+      const active = loads.get(key);
+      if (!force && active?.generation === generation) return active.promise;
+      const loadGeneration = generation;
+      let promise: Promise<Value>;
+      promise = loader()
+        .then((value) => {
+          if (loadGeneration === generation) {
+            cache.set(key, { loadedAt: Date.now(), value });
+          }
+          return value;
+        })
+        .finally(() => {
+          if (loads.get(key)?.promise === promise) loads.delete(key);
+        });
+      loads.set(key, { generation: loadGeneration, promise });
+      return promise;
+    },
+    peek(key): Value | undefined {
+      return cache.get(key)?.value;
+    },
+    invalidate(): void {
+      generation += 1;
+      cache.clear();
+      loads.clear();
+    },
+  });
+}
+
+const modelCatalogs = createGenerationSafeAsyncCache<string, readonly OpenCodeLiveModel[]>(
+  MODEL_CACHE_TTL_MS,
+);
 
 async function liveModels(scope: HarnessScope, force = false): Promise<readonly OpenCodeLiveModel[]> {
   const scopeKey = openCodeScopeKey(scope);
-  const cached = modelCache.get(scopeKey);
-  if (!force && cached && Date.now() - cached.loadedAt < MODEL_CACHE_TTL_MS) {
-    return cached.models;
-  }
-  const active = modelLoads.get(scopeKey);
-  if (!force && active) return active;
-  const load = (async () => {
-    try {
+  return modelCatalogs.get(
+    scopeKey,
+    async () => {
       const entry = await sessions.clientForScope(scope);
       const client = entry.client as PersistentOpenCodeClient;
-      const models = parseOpenCodeLiveModels(await client.listProviders());
-      modelCache.set(scopeKey, { loadedAt: Date.now(), models });
-      return models;
-    } finally {
-      modelLoads.delete(scopeKey);
-    }
-  })();
-  modelLoads.set(scopeKey, load);
-  return load;
+      const providerState = await client.http.providerState();
+      const connectedProviderIds = parseConnectedOpenCodeProviderIds(providerState);
+      return filterOpenCodeModelsToConnectedProviders(
+        parseOpenCodeLiveModels(await client.listProviders()),
+        connectedProviderIds,
+      );
+    },
+    force,
+  );
 }
 
-const authCache = new Map<string, { loadedAt: number; result: AuthProbeResult }>();
-const authLoads = new Map<string, Promise<AuthProbeResult>>();
+const authProbes = createGenerationSafeAsyncCache<string, AuthProbeResult>(AUTH_CACHE_TTL_MS);
 async function cachedAuthProbe(connection: ProviderRequest['connection']): Promise<AuthProbeResult> {
-  const cached = authCache.get(connection.id);
-  if (cached && Date.now() - cached.loadedAt < AUTH_CACHE_TTL_MS) return cached.result;
-  const active = authLoads.get(connection.id);
-  if (active) return active;
-  const load: Promise<AuthProbeResult> = (async (): Promise<AuthProbeResult> => {
+  return authProbes.get(connection.id, async (): Promise<AuthProbeResult> => {
+    const cached = authProbes.peek(connection.id);
     try {
-      const result = await openCodeDiagnosticCliAdapter.probeAuth?.(connection)
-        ?? { status: 'unknown' as const, detail: 'OpenCode authentication probe is unavailable.' };
+      const entry = await sessions.clientForScope(catalogScope);
+      const client = entry.client as PersistentOpenCodeClient;
+      const result = managedOpenCodeAuthResult(await client.http.providerState());
       // A timeout/unknown probe is not an authoritative sign-out and must not
       // erase the last verified authenticated snapshot.
-      if (result.status === 'unknown' && cached?.result.status === 'authenticated') {
+      if (result.status === 'unknown' && cached?.status === 'authenticated') {
         return {
-          ...cached.result,
+          ...cached,
           detail: result.detail
-            ? `${cached.result.detail ?? 'Last verified authentication retained.'} ${result.detail}`
-            : cached.result.detail,
+            ? `${cached.detail ?? 'Last verified authentication retained.'} ${result.detail}`
+            : cached.detail,
         };
       }
-      authCache.set(connection.id, { loadedAt: Date.now(), result });
       return result;
     } catch (error) {
-      if (cached) return cached.result;
+      if (cached) return cached;
       return { status: 'unknown' as const, detail: error instanceof Error ? error.message : String(error) };
-    } finally {
-      authLoads.delete(connection.id);
     }
-  })();
-  authLoads.set(connection.id, load);
-  return load;
+  });
 }
 
 function requestScope(request: ProviderRequest): HarnessScope {
@@ -933,11 +994,35 @@ function toolsForPolicy(input: {
 
 async function* sendPersistent(request: ProviderRequest): AsyncGenerator<ProviderEvent> {
   const modelId = request.modelId?.trim();
-  if (!modelId) throw new Error('OpenCode requires an exact model selection.');
-  const scope = requestScope(request);
-  const gatewayAuthority = captureRequestGatewayAuthority(request);
+  if (!modelId) {
+    reportPersistentTurnFailure('request_identity');
+    throw new Error('OpenCode requires an exact model selection.');
+  }
+  const scope = (() => {
+    try {
+      return requestScope(request);
+    } catch (error) {
+      reportPersistentTurnFailure('request_scope');
+      throw error;
+    }
+  })();
+  const gatewayAuthority = (() => {
+    try {
+      return captureRequestGatewayAuthority(request);
+    } catch (error) {
+      reportPersistentTurnFailure('gateway_authority');
+      throw error;
+    }
+  })();
   const chatId = request.chatId?.trim() || request.sessionId?.trim() || request.requestId;
-  const turn = turnGate.begin(chatId, request.requestId);
+  const turn = (() => {
+    try {
+      return turnGate.begin(chatId, request.requestId);
+    } catch (error) {
+      reportPersistentTurnFailure('turn_binding');
+      throw error;
+    }
+  })();
   activeRequests.set(request.requestId, { scope, chatId });
   const abortEvents = new AbortController();
   let boundSessionId: string | undefined;
@@ -947,10 +1032,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     void sessions.cancelChat(scope, chatId).catch(() => undefined);
   };
   request.signal?.addEventListener('abort', abort, { once: true });
+  let failureStage: PersistentTurnFailureStage = 'session_binding';
 
   try {
     const session = await sessions.sessionForChat(scope, chatId);
     const client = session.client as PersistentOpenCodeClient;
+    failureStage = 'live_model_authority';
     const liveModel = requireAuthoritativeOpenCodeModel(await liveModels(scope), modelId);
     const authoritativeModelId = liveModel.id;
     const providerId = upstreamProviderId(liveModel.id);
@@ -958,8 +1045,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     const access = request.accessLevel ?? (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
     const eventIterator = client.http.events(abortEvents.signal)[Symbol.asyncIterator]();
     const settings = defaultRuntimeSettings(request);
+    failureStage = 'runtime_controls';
     assertAuthoritativeOpenCodeRuntimeControls(settings, liveModel, request.connection.id);
     const systemPrompt = combineSystemPrompt(request.systemPrompt, contextSystemAddendum(request, settings));
+    failureStage = 'prompt_dispatch';
     const dispatch = await coordinator.dispatch({
       scope,
       chatId,
@@ -968,7 +1057,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       selection: {
         connectionId: request.connection.id,
         providerId,
-        modelId: authoritativeModelId,
+        modelId: liveModel.upstreamModelId,
         metadata: modelMetadata(liveModel, request.connection.id),
       },
       policy: {
@@ -1020,6 +1109,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       return observedModel;
     };
     boundSessionId = dispatch.sessionId;
+    failureStage = 'session_authority';
     if (gatewayAuthority && !bindToolGatewaySessionAuthority(dispatch.sessionId, gatewayAuthority)) {
       await client.abort(dispatch.sessionId).catch(() => undefined);
       throw new Error('Tool Gateway session authority changed before dispatch.');
@@ -1039,6 +1129,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     let done = false;
     let finishReason = 'stop';
     const startedAt = Date.now();
+    failureStage = 'event_stream';
     let pendingEvent = eventIterator.next();
 
     while (!done) {
@@ -1054,8 +1145,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         new Promise<{ kind: 'poll' }>((resolve) => setTimeout(() => resolve({ kind: 'poll' }), TURN_IDLE_POLL_MS)),
       ]);
       if (next.kind === 'poll') {
-        const status = statusType(await client.http.status(dispatch.sessionId).catch(() => undefined));
-        if (status === 'idle') {
+        const statusLookup = await client.http
+          .status(dispatch.sessionId)
+          .then((value) => ({ succeeded: true as const, value }))
+          .catch(() => ({ succeeded: false as const, value: undefined }));
+        const status = statusType(statusLookup.value);
+        if (status === 'idle' || (statusLookup.succeeded && status === undefined && emittedText.trim())) {
           const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
           const canonical = assistantTextFromMessages(messages);
           const messageIdentity = observedAssistantIdentity(messages);
@@ -1070,11 +1165,23 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
               emittedText = canonical;
             }
           }
-          done = true;
+          done = shouldReconcileOpenCodeSessionCompletion({
+            status,
+            statusLookupSucceeded: statusLookup.succeeded,
+            streamedText: emittedText,
+            hasPersistedAssistantIdentity: Boolean(messageIdentity),
+          });
         }
         continue;
       }
-      if (next.value.done) throw new Error('OpenCode event stream ended before the session completed.');
+      if (next.value.done) {
+        // OpenCode may close its per-connection event feed after persisting the
+        // assistant record without emitting a final session.idle frame. Treat
+        // normal EOF as a reconciliation boundary; the authoritative identity
+        // and non-empty response checks below still fail closed.
+        done = true;
+        continue;
+      }
       const event = next.value.value;
       pendingEvent = eventIterator.next();
       const eventScope = eventSessionId(event);
@@ -1139,9 +1246,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       const usage = normalizeUsage(event);
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {
-        const message = cleanIdentifier(event.properties?.message ?? recordOf(event.properties?.error)?.message, 2_048)
-          ?? 'OpenCode reported a session error.';
-        yield { type: 'error', message };
+        reportPersistentTurnFailure('provider_reported');
+        yield { type: 'error', message: 'OpenCode reported a provider session error.' };
         return;
       }
       if (event.type === 'session.idle') done = true;
@@ -1150,12 +1256,14 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         if (status === 'idle') done = true;
         if (status === 'error') {
           finishReason = 'error';
+          reportPersistentTurnFailure('provider_reported');
           yield { type: 'error', message: 'OpenCode session entered an error state.' };
           return;
         }
       }
     }
 
+    failureStage = 'completion_authority';
     const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
     const canonical = assistantTextFromMessages(messages);
     const messageIdentity = observedAssistantIdentity(messages);
@@ -1164,14 +1272,19 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
       if (firstObservation && observedModelId) yield { type: 'model', modelId: observedModelId };
     }
-    if (!observedModelId) {
-      throw new Error('OpenCode completed without authoritative observed model identity.');
-    }
+    assertAuthoritativeOpenCodeCompletion({
+      observedModelId,
+      streamedText: emittedText,
+      canonicalText: canonical,
+    });
     if (canonical && canonical !== emittedText) {
       const delta = canonical.startsWith(emittedText) ? canonical.slice(emittedText.length) : canonical;
       if (delta) yield { type: 'text', delta };
     }
     yield { type: 'done', finishReason };
+  } catch (error) {
+    if (shouldReportPersistentTurnFailure(error)) reportPersistentTurnFailure(failureStage);
+    throw error;
   } finally {
     request.signal?.removeEventListener('abort', abort);
     abortEvents.abort();
@@ -1217,10 +1330,9 @@ export const openCodePersistentAdapter: ProviderAdapter = Object.freeze({
         return toOpenCodeDiscoveredModels(models);
       }
     } catch {
-      // Model discovery is allowed to use the guarded one-shot diagnostic probe;
-      // normal chat transport never does.
+      // The managed authenticated server is the only executable catalog authority.
     }
-    return openCodeDiagnosticCliAdapter.listModels?.() ?? [];
+    return [];
   },
   send: (request: ProviderRequest) => sendPersistent(request),
   cancel: async (requestId: string) => {
@@ -1232,7 +1344,16 @@ export const openCodePersistentAdapter: ProviderAdapter = Object.freeze({
 });
 
 export function invalidateOpenCodePersistentModelCache(): void {
-  modelCache.clear();
+  modelCatalogs.invalidate();
+}
+
+export function invalidateOpenCodePersistentAuthCache(): void {
+  authProbes.invalidate();
+}
+
+export function invalidateOpenCodePersistentCaches(): void {
+  invalidateOpenCodePersistentAuthCache();
+  invalidateOpenCodePersistentModelCache();
 }
 
 export async function disposeOpenCodePersistentRuntimes(): Promise<void> {

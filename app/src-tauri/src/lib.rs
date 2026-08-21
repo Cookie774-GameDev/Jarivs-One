@@ -634,6 +634,9 @@ fn run_ordinary(
             harness::server::opencode_server_ensure,
             harness::server::opencode_server_status,
             harness::server::opencode_server_stop,
+            harness::server::opencode_server_request,
+            harness::server::opencode_server_event_stream,
+            harness::server::opencode_server_event_cancel,
             harness::tool_gateway::tool_gateway_respond,
             command_center_tool::command_center_tool,
             context_search::context_search_replace_documents,
@@ -906,6 +909,9 @@ harness::download::opencode_runtime_install_cancel
 harness::server::opencode_server_ensure
 harness::server::opencode_server_status
 harness::server::opencode_server_stop
+harness::server::opencode_server_request
+harness::server::opencode_server_event_stream
+harness::server::opencode_server_event_cancel
 harness::tool_gateway::tool_gateway_respond
 command_center_tool::command_center_tool
 context_search::context_search_replace_documents
@@ -1056,9 +1062,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "4379ba5f17e3ba791b0723ce8e0715fc5f8cd3bc91ba2618ac01df230c90d11c";
+        "ea0730364829815742eee5edbcbc12015f5974620881282cd7e855a5b0c3c875";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "e6cc7ab17a4e112b7ad348a987eca223e227bd7dc67eba6cf0d7931242a26806";
+        "7eb278ae1f7ea23d85560289264f07624fce4a9d24197981e5ba817c3d9d8de6";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1209,6 +1215,9 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("harness::server::opencode_server_ensure,"));
         assert!(ordinary.contains("harness::server::opencode_server_status,"));
         assert!(ordinary.contains("harness::server::opencode_server_stop,"));
+        assert!(ordinary.contains("harness::server::opencode_server_request,"));
+        assert!(ordinary.contains("harness::server::opencode_server_event_stream,"));
+        assert!(ordinary.contains("harness::server::opencode_server_event_cancel,"));
         assert!(ordinary.contains("harness::tool_gateway::tool_gateway_respond,"));
         assert!(ordinary.contains("harness::tool_gateway::start_tool_gateway_server("));
         assert!(ordinary.contains("harness::server::shutdown_owned_server(app_handle);"));

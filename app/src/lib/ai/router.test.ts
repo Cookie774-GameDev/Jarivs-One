@@ -169,6 +169,7 @@ describe('canonical OpenCode AI routing', () => {
   });
 
   it('rejects conflicting runtime and provider reasoning controls instead of guessing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await expect(
       runAgent({
         agent: openaiAgent,
@@ -183,6 +184,10 @@ describe('canonical OpenCode AI routing', () => {
       }),
     ).rejects.toThrow(/conflicts with the active runtime setting/i);
     expect(openCodeSend).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Protected OpenCode dispatch failed.', {
+      diagnosticCode: 'router_request_controls',
+    });
+    warn.mockRestore();
   });
 
   it('routes an exact local connection through OpenCode without native provider fallback', async () => {
@@ -227,6 +232,7 @@ describe('canonical OpenCode AI routing', () => {
   });
 
   it('passes Model Foundry cancellation through the persistent OpenCode boundary', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const controller = new AbortController();
     let entered!: () => void;
     const started = new Promise<void>((resolve) => { entered = resolve; });
@@ -255,6 +261,42 @@ describe('canonical OpenCode AI routing', () => {
     await started;
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('reports an iterator failure at the adapter boundary without leaking its cause', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'text', delta: 'partial' } as const;
+        throw new Error('secret-native-cause-sentinel');
+      })(),
+    );
+
+    await expect(
+      runAgent({ agent: openaiAgent, messages: [{ role: 'user', content: 'hello' }] }),
+    ).rejects.toThrow(/secret-native-cause-sentinel/i);
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Protected OpenCode dispatch failed.', {
+      diagnosticCode: 'router_adapter_send',
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/secret-native-cause-sentinel/i);
+    warn.mockRestore();
+  });
+
+  it('does not duplicate a provider-reported failure diagnostic in the router', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'error', message: 'OpenCode reported a provider session error.' } as const;
+      })(),
+    );
+
+    await expect(
+      runAgent({ agent: openaiAgent, messages: [{ role: 'user', content: 'hello' }] }),
+    ).rejects.toThrow(/provider session error/i);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('preserves protected prompt, exact connection, scope, signal and evidence hooks', async () => {

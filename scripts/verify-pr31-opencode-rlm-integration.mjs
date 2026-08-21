@@ -16,6 +16,9 @@ const [
   mcpBuiltins,
   auth,
   credentialSnapshot,
+  nativeTransport,
+  server,
+  runtimeManager,
 ] = await Promise.all([
   read('app/src/lib/ai/router.ts'),
   read('app/src/lib/ai/adapters/opencodePersistent.ts'),
@@ -30,14 +33,28 @@ const [
   read('app/src/lib/mcp/builtins.ts'),
   read('app/src/stores/auth.ts'),
   read('app/src/lib/harness/CredentialHydrationSnapshot.ts'),
+  read('app/src/lib/harness/openCodeNativeTransport.ts'),
+  read('app/src-tauri/src/harness/server.rs'),
+  read('app/src/lib/harness/runtimeManager.ts'),
 ]);
 
 assert.match(router, /openCodePersistentAdapter/);
 assert.doesNotMatch(router, /import \{ openCodeCliAdapter \} from '\.\/adapters\/opencode'/);
 assert.match(persistent, /harnessRuntimeManager/);
 assert.match(persistent, /createPersistentOpenCodeRuntimeSupervisor/);
-assert.match(persistent, /authorization: basicAuthorization\(connection\)/);
-assert.match(persistent, /Authorization: this\.handle\.authorization/);
+assert.match(persistent, /nativeOpenCodeRequest/);
+assert.match(persistent, /nativeOpenCodeEvents/);
+assert.doesNotMatch(persistent, /basicAuthorization|Authorization:\s*this\.handle|globalThis\.fetch/);
+assert.match(nativeTransport, /opencode_server_request/);
+assert.match(nativeTransport, /opencode_server_event_stream/);
+assert.doesNotMatch(nativeTransport, /Authorization|Basic|baseUrl|password/);
+assert.match(server, /rename_all_fields = "camelCase"/);
+assert.match(server, /OpenCodeTransportRoute/);
+assert.match(server, /basic_auth\(&connection\.username, Some\(&connection\.password\)\)/);
+assert.match(server, /transport_caller_allowed/);
+assert.match(server, /task\.abort\(\)/);
+assert.match(runtimeManager, /version: string;\s*source: 'system' \| 'managed';\s*generation: string;/s);
+assert.doesNotMatch(runtimeManager, /baseUrl: string;|username: string;|password: string;/);
 assert.doesNotMatch(persistent, /'serve'/);
 assert.doesNotMatch(persistent, /args:\s*\['run'/);
 assert.match(persistent, /let pendingEvent = eventIterator\.next\(\)/);

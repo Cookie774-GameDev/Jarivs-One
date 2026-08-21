@@ -45,9 +45,18 @@ export function routeDefaultContextQuery(
   extra: Partial<ContextModeSignals> = {},
 ): ContextModeDecision {
   const trimmed = question.trim();
+  const exactIdentifierLookup =
+    extra.exactIdentifierLookup ??
+    (/\b(?:authoritative|custodian|retention\s+period|record\s+owner|source\s+of\s+truth)\b/iu.test(
+      trimmed,
+    ) &&
+      /\b(?:artifact|record|document|item)\s+[A-Za-z0-9][A-Za-z0-9._:@/-]*[-_:][A-Za-z0-9._:@/-]+\b/u.test(
+        trimmed,
+      ));
   const looksLikeOrdinaryChat =
     trimmed.length > 0 &&
     trimmed.length <= 240 &&
+    !exactIdentifierLookup &&
     !/\b(?:search|investigate|corpus|entire project|infinite context|rlm)\b/iu.test(trimmed);
   return decideContextMode({
     estimatedCorpusTokens: extra.estimatedCorpusTokens ?? 0,
@@ -56,6 +65,7 @@ export function routeDefaultContextQuery(
     ambiguity: extra.ambiguity ?? 0,
     rlmAvailable: extra.rlmAvailable ?? true,
     smallBoundedTask: extra.smallBoundedTask ?? looksLikeOrdinaryChat,
+    exactIdentifierLookup,
     entireProjectHistory:
       extra.entireProjectHistory ?? /\bentire project history\b/iu.test(trimmed),
     explicitRlm: extra.explicitRlm ?? /\brlm\b/iu.test(trimmed),
@@ -103,6 +113,8 @@ export function decideContextMode(input: ContextModeSignals): ContextModeDecisio
     mode = 'retrieval';
     if (input.exactIdentifierLookup && input.historicalLookup) {
       reasons.push('exact_historical_lookup');
+    } else if (input.exactIdentifierLookup) {
+      reasons.push('exact_identifier_lookup');
     } else if (input.historicalLookup) {
       reasons.push('bounded_historical_lookup');
     } else {

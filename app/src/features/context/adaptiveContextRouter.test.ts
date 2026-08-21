@@ -36,6 +36,18 @@ describe('adaptive direct/retrieval/RLM router', () => {
     });
   });
 
+  it('uses bounded retrieval for an authoritative artifact identifier lookup', () => {
+    const decision = routeDefaultContextQuery(
+      'In the bound Unified Chungus project, what custodian and retention period are authoritative for artifact atlas-0317?',
+    );
+    expect(decision).toMatchObject({
+      mode: 'retrieval',
+      recursiveChildCallsAllowed: false,
+      broadContextScanAllowed: false,
+      reasons: ['exact_identifier_lookup'],
+    });
+  });
+
   it('chooses direct mode for a small active working-set edit', () => {
     expect(
       decideContextMode({

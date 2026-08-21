@@ -2,17 +2,18 @@ use crate::harness::runtime::{OpenCodeRuntimeState, ResolvedTrustedRuntime, Runt
 use crate::harness::tool_gateway::{ToolGatewayEndpoint, ToolGatewayState};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::ipc::Channel;
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 const RUNTIME_STATE_EVENT: &str = "vibespace://opencode-runtime-state";
 const LOOPBACK_HOST: &str = "127.0.0.1";
@@ -24,6 +25,10 @@ const MAX_START_ATTEMPTS: usize = 3;
 const MAX_AUTOMATIC_RESTARTS: usize = 2;
 const CRASH_WINDOW: Duration = Duration::from_secs(5 * 60);
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
+const TRANSPORT_MAX_BODY_BYTES: usize = 2 * 1_048_576;
+const TRANSPORT_MAX_RESPONSE_BYTES: usize = 32 * 1_048_576;
+const TRANSPORT_MAX_SSE_BUFFER_BYTES: usize = 2 * 1_048_576;
+const TRANSPORT_MAX_SSE_EVENT_BYTES: usize = 1_048_576;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServerFailure {
@@ -37,8 +42,11 @@ fn failure(message: &'static str) -> ServerFailure {
 #[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenCodeServerConnection {
+    #[serde(skip_serializing)]
     pub base_url: String,
+    #[serde(skip_serializing)]
     pub username: String,
+    #[serde(skip_serializing)]
     pub password: String,
     pub version: String,
     pub source: RuntimeSource,
@@ -225,6 +233,14 @@ struct ServerInner {
     running: Option<RunningServer>,
     starting: bool,
     recent_crashes: VecDeque<Instant>,
+    active_streams: BTreeMap<String, ActiveStream>,
+}
+
+struct ActiveStream {
+    generation: String,
+    owner: String,
+    token: Arc<()>,
+    task: tauri::async_runtime::JoinHandle<()>,
 }
 
 #[derive(Default)]
@@ -988,6 +1004,7 @@ fn reuse_or_stop_existing(
         }
     }
     if let Some(mut previous) = inner.running.take() {
+        cancel_active_streams(inner);
         previous.process.terminate()?;
     }
     Ok(None)
@@ -1069,6 +1086,7 @@ fn take_crashed_runtime(
         return Ok(None);
     }
     if running.process.has_exited()? {
+        cancel_active_streams(inner);
         return Ok(inner.running.take().map(|server| server.executable_id));
     }
     Ok(None)
@@ -1140,18 +1158,665 @@ fn server_status(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenCodeTransportRequest {
+    generation: String,
+    route: OpenCodeTransportRoute,
+    directory: Option<String>,
+    body: Option<String>,
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+enum OpenCodeTransportRoute {
+    Health,
+    Config,
+    ConfigProviders,
+    ProviderAuth,
+    ProviderStatus,
+    ProviderAuthorize {
+        provider_id: String,
+    },
+    ProviderCallback {
+        provider_id: String,
+    },
+    SessionCreate,
+    SessionGet {
+        session_id: String,
+    },
+    SessionDelete {
+        session_id: String,
+    },
+    SessionChildren {
+        session_id: String,
+    },
+    SessionMessages {
+        session_id: String,
+        limit: Option<u16>,
+    },
+    SessionDiff {
+        session_id: String,
+    },
+    SessionPromptAsync {
+        session_id: String,
+    },
+    SessionAbort {
+        session_id: String,
+    },
+    SessionPermission {
+        session_id: String,
+        permission_id: String,
+    },
+    SessionStatus,
+    InstanceDispose,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenCodeTransportResponse {
+    status: u16,
+    status_text: String,
+    body: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OpenCodeTransportStreamMessage {
+    Event { data: String },
+    Done,
+    Error { message: &'static str },
+}
+
+fn cancel_active_streams(inner: &mut ServerInner) {
+    for active in inner.active_streams.values() {
+        active.task.abort();
+    }
+    inner.active_streams.clear();
+}
+
+fn valid_transport_identifier(value: &str, maximum: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= maximum
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'%'))
+}
+
+fn encoded_route_identifier(value: &str) -> Result<String, String> {
+    if value.is_empty()
+        || value.len() > 512
+        || value.chars().any(|character| character.is_control())
+    {
+        return Err("OpenCode transport identifier is invalid.".to_string());
+    }
+    Ok(url::form_urlencoded::byte_serialize(value.as_bytes()).collect())
+}
+
+fn ensure_transport_caller(window: &WebviewWindow) -> Result<(), String> {
+    if transport_caller_allowed(window.label()) {
+        Ok(())
+    } else {
+        Err("OpenCode transport caller is not authorized.".to_string())
+    }
+}
+
+fn transport_caller_allowed(label: &str) -> bool {
+    matches!(label, "main" | "workbench-main")
+}
+
+fn validate_transport_directory(directory: Option<&str>) -> Result<(), String> {
+    if directory.is_some_and(|value| {
+        value.is_empty()
+            || value.len() > 4_096
+            || value.contains('\0')
+            || value.contains('\r')
+            || value.contains('\n')
+    }) {
+        return Err("OpenCode working directory is invalid.".to_string());
+    }
+    Ok(())
+}
+
+fn transport_route_parts(
+    route: &OpenCodeTransportRoute,
+) -> Result<(reqwest::Method, String), String> {
+    let parts = match route {
+        OpenCodeTransportRoute::Health => (reqwest::Method::GET, "/global/health".to_string()),
+        OpenCodeTransportRoute::Config => (reqwest::Method::PATCH, "/config".to_string()),
+        OpenCodeTransportRoute::ConfigProviders => {
+            (reqwest::Method::GET, "/config/providers".to_string())
+        }
+        OpenCodeTransportRoute::ProviderAuth => {
+            (reqwest::Method::GET, "/provider/auth".to_string())
+        }
+        OpenCodeTransportRoute::ProviderStatus => (reqwest::Method::GET, "/provider".to_string()),
+        OpenCodeTransportRoute::ProviderAuthorize { provider_id } => (
+            reqwest::Method::POST,
+            format!(
+                "/provider/{}/oauth/authorize",
+                encoded_route_identifier(provider_id)?
+            ),
+        ),
+        OpenCodeTransportRoute::ProviderCallback { provider_id } => (
+            reqwest::Method::POST,
+            format!(
+                "/provider/{}/oauth/callback",
+                encoded_route_identifier(provider_id)?
+            ),
+        ),
+        OpenCodeTransportRoute::SessionCreate => (reqwest::Method::POST, "/session".to_string()),
+        OpenCodeTransportRoute::SessionGet { session_id } => (
+            reqwest::Method::GET,
+            format!("/session/{}", encoded_route_identifier(session_id)?),
+        ),
+        OpenCodeTransportRoute::SessionDelete { session_id } => (
+            reqwest::Method::DELETE,
+            format!("/session/{}", encoded_route_identifier(session_id)?),
+        ),
+        OpenCodeTransportRoute::SessionChildren { session_id } => (
+            reqwest::Method::GET,
+            format!(
+                "/session/{}/children",
+                encoded_route_identifier(session_id)?
+            ),
+        ),
+        OpenCodeTransportRoute::SessionMessages { session_id, limit } => {
+            let mut path = format!("/session/{}/message", encoded_route_identifier(session_id)?);
+            if let Some(limit) = limit {
+                path.push_str(&format!("?limit={limit}"));
+            }
+            (reqwest::Method::GET, path)
+        }
+        OpenCodeTransportRoute::SessionDiff { session_id } => (
+            reqwest::Method::GET,
+            format!("/session/{}/diff", encoded_route_identifier(session_id)?),
+        ),
+        OpenCodeTransportRoute::SessionPromptAsync { session_id } => (
+            reqwest::Method::POST,
+            format!(
+                "/session/{}/prompt_async",
+                encoded_route_identifier(session_id)?
+            ),
+        ),
+        OpenCodeTransportRoute::SessionAbort { session_id } => (
+            reqwest::Method::POST,
+            format!("/session/{}/abort", encoded_route_identifier(session_id)?),
+        ),
+        OpenCodeTransportRoute::SessionPermission {
+            session_id,
+            permission_id,
+        } => (
+            reqwest::Method::POST,
+            format!(
+                "/session/{}/permissions/{}",
+                encoded_route_identifier(session_id)?,
+                encoded_route_identifier(permission_id)?
+            ),
+        ),
+        OpenCodeTransportRoute::SessionStatus => {
+            (reqwest::Method::GET, "/session/status".to_string())
+        }
+        OpenCodeTransportRoute::InstanceDispose => {
+            (reqwest::Method::POST, "/instance/dispose".to_string())
+        }
+    };
+    Ok(parts)
+}
+
+fn validate_transport_body(
+    route: &OpenCodeTransportRoute,
+    body: Option<&str>,
+) -> Result<(), String> {
+    let bodyless = matches!(
+        route,
+        OpenCodeTransportRoute::Health
+            | OpenCodeTransportRoute::ConfigProviders
+            | OpenCodeTransportRoute::ProviderAuth
+            | OpenCodeTransportRoute::ProviderStatus
+            | OpenCodeTransportRoute::SessionGet { .. }
+            | OpenCodeTransportRoute::SessionDelete { .. }
+            | OpenCodeTransportRoute::SessionChildren { .. }
+            | OpenCodeTransportRoute::SessionMessages { .. }
+            | OpenCodeTransportRoute::SessionDiff { .. }
+            | OpenCodeTransportRoute::SessionStatus
+            | OpenCodeTransportRoute::InstanceDispose
+    );
+    if bodyless {
+        return if body.is_none() {
+            Ok(())
+        } else {
+            Err("OpenCode transport route does not accept a body.".to_string())
+        };
+    }
+    if matches!(route, OpenCodeTransportRoute::SessionAbort { .. }) && body.is_none() {
+        return Ok(());
+    }
+    let value: Value = serde_json::from_str(
+        body.ok_or_else(|| "OpenCode transport route requires a JSON body.".to_string())?,
+    )
+    .map_err(|_| "OpenCode transport body is invalid.".to_string())?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| "OpenCode transport body is invalid.".to_string())?;
+    let only_keys = |allowed: &[&str]| object.keys().all(|key| allowed.contains(&key.as_str()));
+    let bounded_string = |key: &str, required: bool| {
+        object.get(key).map_or(!required, |entry| {
+            entry.as_str().is_some_and(|text| {
+                !text.is_empty() && text.len() <= 8_192 && !text.chars().any(char::is_control)
+            })
+        })
+    };
+    let valid = match route {
+        OpenCodeTransportRoute::Config => {
+            const QWEN_ENDPOINTS: [&str; 5] = [
+                "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+                "https://coding-intl.dashscope.aliyuncs.com/v1",
+                "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            ];
+            let endpoint = value
+                .pointer("/provider/qwen/options/baseURL")
+                .and_then(Value::as_str)
+                .filter(|endpoint| QWEN_ENDPOINTS.contains(endpoint));
+            endpoint.is_some_and(|endpoint| {
+                value == json!({ "provider": { "qwen": { "options": { "baseURL": endpoint } } } })
+            })
+        }
+        OpenCodeTransportRoute::ProviderAuthorize { .. } => {
+            only_keys(&["method", "inputs"])
+                && object
+                    .get("method")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|method| method <= 64)
+                && object.get("inputs").map_or(true, |inputs| {
+                    inputs.as_object().is_some_and(|entries| {
+                        entries.len() <= 32
+                            && entries
+                                .values()
+                                .all(|entry| entry.as_str().is_some_and(|text| text.len() <= 8_192))
+                    })
+                })
+        }
+        OpenCodeTransportRoute::ProviderCallback { .. } => {
+            only_keys(&["method", "code"])
+                && object
+                    .get("method")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|method| method <= 64)
+                && object.get("code").map_or(true, |code| {
+                    code.as_str().is_some_and(|text| {
+                        !text.is_empty()
+                            && text.len() <= 8_192
+                            && !text.chars().any(char::is_control)
+                    })
+                })
+        }
+        OpenCodeTransportRoute::SessionCreate => {
+            only_keys(&["title", "parentID"])
+                && bounded_string("title", false)
+                && bounded_string("parentID", false)
+        }
+        OpenCodeTransportRoute::SessionPromptAsync { .. } => !object.is_empty(),
+        OpenCodeTransportRoute::SessionAbort { .. } => object.is_empty(),
+        OpenCodeTransportRoute::SessionPermission { .. } => {
+            only_keys(&["response"])
+                && object.len() == 1
+                && object
+                    .get("response")
+                    .and_then(Value::as_str)
+                    .is_some_and(|response| matches!(response, "once" | "always" | "reject"))
+        }
+        _ => false,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err("OpenCode transport body is not authorized for this route.".to_string())
+    }
+}
+
+fn running_connection_for_generation(
+    state: &OpenCodeServerState,
+    generation: &str,
+) -> Result<OpenCodeServerConnection, String> {
+    if !valid_transport_identifier(generation, 256) {
+        return Err("OpenCode transport generation is invalid.".to_string());
+    }
+    let mut inner = state
+        .inner
+        .lock()
+        .map_err(|_| "OpenCode server state is unavailable.".to_string())?;
+    let running = inner
+        .running
+        .as_mut()
+        .ok_or_else(|| "OpenCode managed server is unavailable.".to_string())?;
+    if running.connection.generation != generation
+        || running
+            .process
+            .has_exited()
+            .map_err(|error| error.message.to_string())?
+    {
+        return Err("OpenCode managed server generation is unavailable.".to_string());
+    }
+    Ok(running.connection.clone())
+}
+
+fn build_transport_url(
+    connection: &OpenCodeServerConnection,
+    path: &str,
+) -> Result<url::Url, String> {
+    let base = url::Url::parse(&connection.base_url)
+        .map_err(|_| "OpenCode managed server endpoint is invalid.".to_string())?;
+    let url = base
+        .join(path)
+        .map_err(|_| "OpenCode transport path is invalid.".to_string())?;
+    if url.scheme() != "http"
+        || url.host_str() != Some(LOOPBACK_HOST)
+        || url.port_or_known_default() != base.port_or_known_default()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("OpenCode transport endpoint is invalid.".to_string());
+    }
+    Ok(url)
+}
+
+fn read_bounded_response(mut response: reqwest::blocking::Response) -> Result<String, String> {
+    let mut body = Vec::new();
+    response
+        .by_ref()
+        .take((TRANSPORT_MAX_RESPONSE_BYTES + 1) as u64)
+        .read_to_end(&mut body)
+        .map_err(|_| "OpenCode transport response could not be read.".to_string())?;
+    if body.len() > TRANSPORT_MAX_RESPONSE_BYTES {
+        return Err("OpenCode transport response exceeded its safe bound.".to_string());
+    }
+    String::from_utf8(body)
+        .map_err(|_| "OpenCode transport response was not valid UTF-8.".to_string())
+}
+
+#[tauri::command]
+pub async fn opencode_server_request(
+    app: AppHandle,
+    window: WebviewWindow,
+    request: OpenCodeTransportRequest,
+) -> Result<OpenCodeTransportResponse, String> {
+    ensure_transport_caller(&window)?;
+    validate_transport_directory(request.directory.as_deref())?;
+    if request.body.as_ref().map(String::len).unwrap_or(0) > TRANSPORT_MAX_BODY_BYTES {
+        return Err("OpenCode transport request exceeded its safe bound.".to_string());
+    }
+    validate_transport_body(&request.route, request.body.as_deref())?;
+    let (method, path) = transport_route_parts(&request.route)?;
+    let connection = running_connection_for_generation(
+        &app.state::<OpenCodeServerState>(),
+        &request.generation,
+    )?;
+    let mut url = build_transport_url(&connection, &path)?;
+    if let Some(directory) = request.directory.as_deref() {
+        url.query_pairs_mut().append_pair("directory", directory);
+    }
+    let generation = request.generation.clone();
+    let response = tauri::async_runtime::spawn_blocking(move || {
+        let timeout = Duration::from_millis(
+            request
+                .timeout_ms
+                .unwrap_or(30_000)
+                .clamp(1_000, 30 * 60_000),
+        );
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(3))
+            .timeout(timeout)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| "OpenCode transport could not be initialized.".to_string())?;
+        let mut outbound = client
+            .request(method, url)
+            .basic_auth(&connection.username, Some(&connection.password))
+            .header(reqwest::header::ACCEPT, "application/json");
+        if let Some(body) = request.body {
+            outbound = outbound
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body);
+        }
+        let response = outbound
+            .send()
+            .map_err(|_| "OpenCode managed server request failed.".to_string())?;
+        let status = response.status();
+        let status_text = status.canonical_reason().unwrap_or_default().to_string();
+        let body = if status.is_success() {
+            read_bounded_response(response)?
+        } else {
+            String::new()
+        };
+        Ok::<OpenCodeTransportResponse, String>(OpenCodeTransportResponse {
+            status: status.as_u16(),
+            status_text,
+            body,
+        })
+    })
+    .await
+    .map_err(|_| "OpenCode transport worker failed.".to_string())??;
+    running_connection_for_generation(&app.state::<OpenCodeServerState>(), &generation)?;
+    Ok(response)
+}
+
+fn sse_frame_boundary(buffer: &[u8]) -> Option<(usize, usize)> {
+    buffer
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| (index, 4))
+        .or_else(|| {
+            buffer
+                .windows(2)
+                .position(|window| window == b"\n\n")
+                .map(|index| (index, 2))
+        })
+}
+
+fn event_data(frame: &[u8]) -> Result<Option<String>, String> {
+    if frame.len() > TRANSPORT_MAX_SSE_EVENT_BYTES {
+        return Err("OpenCode event exceeded its safe bound.".to_string());
+    }
+    let text = std::str::from_utf8(frame)
+        .map_err(|_| "OpenCode event was not valid UTF-8.".to_string())?;
+    let data = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .map(str::trim_start)
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok((!data.is_empty() && data != "[DONE]").then_some(data))
+}
+
+async fn run_event_stream(
+    connection: OpenCodeServerConnection,
+    path: String,
+    on_event: Channel<OpenCodeTransportStreamMessage>,
+) -> Result<(), String> {
+    let url = build_transport_url(&connection, &path)?;
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| "OpenCode event transport could not be initialized.".to_string())?;
+    let mut response = client
+        .get(url)
+        .basic_auth(&connection.username, Some(&connection.password))
+        .header(reqwest::header::ACCEPT, "text/event-stream")
+        .send()
+        .await
+        .map_err(|_| "OpenCode event stream could not be opened.".to_string())?;
+    if !response.status().is_success() {
+        return Err("OpenCode event stream was rejected.".to_string());
+    }
+    let mut buffer = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "OpenCode event stream failed.".to_string())?
+    {
+        buffer.extend_from_slice(&chunk);
+        if buffer.len() > TRANSPORT_MAX_SSE_BUFFER_BYTES {
+            return Err("OpenCode event buffer exceeded its safe bound.".to_string());
+        }
+        while let Some((boundary, delimiter)) = sse_frame_boundary(&buffer) {
+            let frame = buffer[..boundary].to_vec();
+            buffer.drain(..boundary + delimiter);
+            if let Some(data) = event_data(&frame)? {
+                if on_event
+                    .send(OpenCodeTransportStreamMessage::Event { data })
+                    .is_err()
+                {
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn opencode_server_event_stream(
+    app: AppHandle,
+    window: WebviewWindow,
+    generation: String,
+    directory: Option<String>,
+    stream_id: String,
+    on_event: Channel<OpenCodeTransportStreamMessage>,
+) -> Result<(), String> {
+    ensure_transport_caller(&window)?;
+    validate_transport_directory(directory.as_deref())?;
+    if !valid_transport_identifier(&stream_id, 128) {
+        return Err("OpenCode event stream identifier is invalid.".to_string());
+    }
+    let mut path = "/event".to_string();
+    if let Some(directory) = directory.as_deref() {
+        let mut event_url = url::Url::parse("http://127.0.0.1/event")
+            .map_err(|_| "OpenCode event route is invalid.".to_string())?;
+        event_url
+            .query_pairs_mut()
+            .append_pair("directory", directory);
+        path = format!(
+            "{}{}",
+            event_url.path(),
+            event_url
+                .query()
+                .map(|query| format!("?{query}"))
+                .unwrap_or_default()
+        );
+    }
+    let owner = window.label().to_string();
+    let token = Arc::new(());
+    let task_token = token.clone();
+    let task_stream_id = stream_id.clone();
+    let task_app = app.clone();
+    let worker_event = on_event.clone();
+    let state = app.state::<OpenCodeServerState>();
+    let mut inner = state
+        .inner
+        .lock()
+        .map_err(|_| "OpenCode server state is unavailable.".to_string())?;
+    if inner.active_streams.contains_key(&stream_id) {
+        return Err("OpenCode event stream identifier is already active.".to_string());
+    }
+    let running = inner
+        .running
+        .as_mut()
+        .ok_or_else(|| "OpenCode managed server is unavailable.".to_string())?;
+    if running.connection.generation != generation
+        || running
+            .process
+            .has_exited()
+            .map_err(|error| error.message.to_string())?
+    {
+        return Err("OpenCode managed server generation is unavailable.".to_string());
+    }
+    let connection = running.connection.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        let result = run_event_stream(connection, path, worker_event.clone()).await;
+        if result.is_ok() {
+            let _ = worker_event.send(OpenCodeTransportStreamMessage::Done);
+        } else {
+            let _ = worker_event.send(OpenCodeTransportStreamMessage::Error {
+                message: "OpenCode event stream failed.",
+            });
+        }
+        let task_state = task_app.state::<OpenCodeServerState>();
+        if let Ok(mut task_inner) = task_state.inner.lock() {
+            if task_inner
+                .active_streams
+                .get(&task_stream_id)
+                .map(|active| Arc::ptr_eq(&active.token, &task_token))
+                .unwrap_or(false)
+            {
+                task_inner.active_streams.remove(&task_stream_id);
+            }
+        };
+    });
+    inner.active_streams.insert(
+        stream_id,
+        ActiveStream {
+            generation,
+            owner,
+            token,
+            task,
+        },
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn opencode_server_event_cancel(
+    window: WebviewWindow,
+    state: State<'_, OpenCodeServerState>,
+    generation: String,
+    stream_id: String,
+) -> Result<bool, String> {
+    ensure_transport_caller(&window)?;
+    if !valid_transport_identifier(&generation, 256) || !valid_transport_identifier(&stream_id, 128)
+    {
+        return Err("OpenCode event stream identity is invalid.".to_string());
+    }
+    let mut inner = state
+        .inner
+        .lock()
+        .map_err(|_| "OpenCode server state is unavailable.".to_string())?;
+    let Some(active) = inner.active_streams.get(&stream_id) else {
+        return Ok(false);
+    };
+    if active.generation != generation || active.owner != window.label() {
+        return Ok(false);
+    }
+    let active = inner
+        .active_streams
+        .remove(&stream_id)
+        .expect("checked above");
+    active.task.abort();
+    Ok(true)
+}
+
 #[tauri::command]
 pub fn opencode_server_stop(state: State<'_, OpenCodeServerState>) -> Result<bool, String> {
     stop_server(&state).map_err(|error| error.message.to_string())
 }
 
 fn stop_server(state: &OpenCodeServerState) -> Result<bool, ServerFailure> {
-    let running = state
-        .inner
-        .lock()
-        .map_err(|_| failure("OpenCode server state is unavailable."))?
-        .running
-        .take();
+    let running = {
+        let mut inner = state
+            .inner
+            .lock()
+            .map_err(|_| failure("OpenCode server state is unavailable."))?;
+        cancel_active_streams(&mut inner);
+        inner.running.take()
+    };
     let Some(mut running) = running else {
         return Ok(false);
     };
@@ -1161,11 +1826,10 @@ fn stop_server(state: &OpenCodeServerState) -> Result<bool, ServerFailure> {
 
 pub fn shutdown_owned_server(app: &AppHandle) {
     let state = app.state::<OpenCodeServerState>();
-    let running = state
-        .inner
-        .lock()
-        .ok()
-        .and_then(|mut inner| inner.running.take());
+    let running = state.inner.lock().ok().and_then(|mut inner| {
+        cancel_active_streams(&mut inner);
+        inner.running.take()
+    });
     if let Some(mut running) = running {
         let _ = running.process.terminate();
     }
@@ -1286,12 +1950,15 @@ mod windows_process_tree {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_launch_spec_with, claim_start, failure, probe_health_once, reserve_loopback_port,
-        reuse_or_stop_existing, server_status, start_server_attempt_with, stop_server,
-        take_crashed_runtime, write_scoped_config, CredentialSource, HealthWaiter,
-        LocalModelSource, OpenCodeServerConnection, OpenCodeServerState, OwnedProcess,
-        ProcessLauncher, ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure,
-        ServerRuntimeEvent, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
+        build_launch_spec_with, claim_start, event_data, failure, probe_health_once,
+        reserve_loopback_port, reuse_or_stop_existing, server_status, sse_frame_boundary,
+        start_server_attempt_with, stop_server, take_crashed_runtime, transport_caller_allowed,
+        transport_route_parts, validate_transport_body, validate_transport_directory,
+        write_scoped_config, ActiveStream, CredentialSource, HealthWaiter, LocalModelSource,
+        OpenCodeServerConnection, OpenCodeServerState, OpenCodeTransportRequest,
+        OpenCodeTransportRoute, OwnedProcess, ProcessLauncher, ResolvedTrustedRuntime,
+        RunningServer, RuntimeSource, ServerFailure, ServerRuntimeEvent, CRASH_WINDOW,
+        MAX_AUTOMATIC_RESTARTS,
     };
     use crate::harness::tool_gateway::ToolGatewayEndpoint;
     use base64::Engine as _;
@@ -1949,5 +2616,141 @@ mod tests {
             claim_start(&mut inner).unwrap_err().message,
             "OpenCode server startup is already running."
         );
+    }
+
+    #[test]
+    fn managed_transport_accepts_only_trusted_callers_and_allowlisted_routes() {
+        assert!(transport_caller_allowed("main"));
+        assert!(transport_caller_allowed("workbench-main"));
+        assert!(!transport_caller_allowed("jarvis-pet-companion"));
+        assert!(!transport_caller_allowed("browser-chat-provider"));
+
+        for route in [
+            OpenCodeTransportRoute::Health,
+            OpenCodeTransportRoute::ConfigProviders,
+            OpenCodeTransportRoute::ProviderStatus,
+            OpenCodeTransportRoute::ProviderAuth,
+            OpenCodeTransportRoute::SessionStatus,
+            OpenCodeTransportRoute::SessionGet {
+                session_id: "session/one".into(),
+            },
+            OpenCodeTransportRoute::SessionMessages {
+                session_id: "session-1".into(),
+                limit: Some(100),
+            },
+            OpenCodeTransportRoute::SessionCreate,
+            OpenCodeTransportRoute::SessionAbort {
+                session_id: "session-1".into(),
+            },
+            OpenCodeTransportRoute::SessionPromptAsync {
+                session_id: "session-1".into(),
+            },
+            OpenCodeTransportRoute::SessionPermission {
+                session_id: "session-1".into(),
+                permission_id: "permission-1".into(),
+            },
+            OpenCodeTransportRoute::ProviderAuthorize {
+                provider_id: "github/copilot".into(),
+            },
+            OpenCodeTransportRoute::ProviderCallback {
+                provider_id: "github/copilot".into(),
+            },
+            OpenCodeTransportRoute::SessionDelete {
+                session_id: "session-1".into(),
+            },
+            OpenCodeTransportRoute::Config,
+        ] {
+            assert!(transport_route_parts(&route).is_ok());
+        }
+        assert!(validate_transport_directory(Some("C:\\workspace")).is_ok());
+        assert!(validate_transport_directory(Some("")).is_err());
+        assert!(validate_transport_directory(Some("bad\npath")).is_err());
+        let (_, provider_path) =
+            transport_route_parts(&OpenCodeTransportRoute::ProviderAuthorize {
+                provider_id: "github/copilot".into(),
+            })
+            .unwrap();
+        assert_eq!(provider_path, "/provider/github%2Fcopilot/oauth/authorize");
+    }
+
+    #[test]
+    fn managed_transport_deserializes_camel_case_routes_and_authorizes_bodies() {
+        let request: OpenCodeTransportRequest = serde_json::from_value(serde_json::json!({
+            "generation": "opencode-server-test",
+            "route": {
+                "kind": "session_permission",
+                "sessionId": "session/one",
+                "permissionId": "permission-1"
+            },
+            "directory": "C:\\workspace",
+            "body": "{\"response\":\"once\"}",
+            "timeoutMs": 30_000
+        }))
+        .unwrap();
+        assert!(matches!(
+            &request.route,
+            OpenCodeTransportRoute::SessionPermission { .. }
+        ));
+        assert!(validate_transport_body(&request.route, request.body.as_deref()).is_ok());
+
+        let valid_config = serde_json::json!({
+            "provider": { "qwen": { "options": {
+                "baseURL": "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+            } } }
+        })
+        .to_string();
+        assert!(
+            validate_transport_body(&OpenCodeTransportRoute::Config, Some(&valid_config)).is_ok()
+        );
+        assert!(validate_transport_body(
+            &OpenCodeTransportRoute::Config,
+            Some(r#"{"provider":{"qwen":{"options":{"baseURL":"http://attacker.test"}}}}"#),
+        )
+        .is_err());
+        assert!(validate_transport_body(&OpenCodeTransportRoute::Health, Some("{}")).is_err());
+    }
+
+    #[test]
+    fn managed_transport_parses_bounded_sse_frames() {
+        assert_eq!(sse_frame_boundary(b"data: one\n\ndata: two"), Some((9, 2)));
+        assert_eq!(
+            sse_frame_boundary(b"event: update\r\ndata: one\r\n\r\n"),
+            Some((24, 4))
+        );
+        assert_eq!(
+            event_data(b"event: update\ndata: {\"type\":\"one\"}\ndata: tail").unwrap(),
+            Some("{\"type\":\"one\"}\ntail".to_string())
+        );
+        assert_eq!(event_data(b"data: [DONE]").unwrap(), None);
+        assert!(event_data(&vec![b'x'; super::TRANSPORT_MAX_SSE_EVENT_BYTES + 1]).is_err());
+        assert!(event_data(&[0xff, 0xfe]).is_err());
+    }
+
+    #[test]
+    fn stopping_the_owned_server_cancels_native_event_streams() {
+        let state = OpenCodeServerState::default();
+        let terminated = Arc::new(AtomicBool::new(false));
+        let mut inner = state.inner.lock().unwrap();
+        inner.active_streams.insert(
+            "stream-1".into(),
+            ActiveStream {
+                generation: "opencode-server-test".into(),
+                owner: "main".into(),
+                token: Arc::new(()),
+                task: tauri::async_runtime::spawn(async {
+                    std::future::pending::<()>().await;
+                }),
+            },
+        );
+        inner.running = Some(RunningServer {
+            executable_id: "runtime-a".into(),
+            connection: connection("http://127.0.0.1:43123".into()),
+            process: fake_process(42, Arc::new(AtomicBool::new(false)), terminated.clone()),
+        });
+        drop(inner);
+
+        assert!(stop_server(&state).unwrap());
+        assert!(terminated.load(Ordering::Acquire));
+        assert!(state.inner.lock().unwrap().active_streams.is_empty());
     }
 }

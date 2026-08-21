@@ -412,3 +412,115 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `d4dcc235` (`fix(settings): persist OpenCode connection truth`), based on `8cde8916`.
 - Staged diff check PASS and staged Gitleaks PASS (`5.32 KB`, no leaks). Released the exact settings component/test scope.
 - The user confirmed the fresh sign-in. OpenCode persistence and post-restart native UI truth are green; the previously paused exact attachment parser/test claim now resumes without overlap.
+
+### 2026-08-20 23:09 CDT — OpenCode subscription-to-picker refresh claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-OPENCODE-PICKER-REFRESH`.
+- Branch/base: `integration/UnifiedChungus-final` at `38bd1294`; the native Context Map flow created an untracked `context_map.json`, which is runtime evidence and excluded from staging together with the live lock.
+- Exact scope: `app/src/features/settings/sections/SubscriptionCliBridge.tsx`, `app/src/features/settings/SubscriptionCliBridge.test.tsx`, and `app/src/lib/ai/useAccessibleChatModels.test.ts`. Auth material, OpenCode persistent transport, runtime supervision, and model/effort safety gates are excluded.
+- Native preflight proved OpenAI connected in Settings after OAuth, but the chat picker still omitted the required executable `opencode-cli:openai/gpt-5.3-codex-spark` row and showed only the expected disabled legacy Codex/API routes. Cause: successful/explicit subscription refresh updates `/provider` UI truth but never forces current-session external connection detection followed by live OpenCode model-catalog invalidation.
+- Intent: bridge those existing refresh authorities after successful automatic/code OAuth completion and explicit subscription refresh, preserve fail-closed current-session and exact live-catalog gates, and add exact call/order plus enabled provider-qualified Spark coverage.
+
+#### Scope expansion after managed-runtime diagnosis
+
+- Sanitized current-session metadata repeatedly records `opencode-cli` as `installation=unknown`, `auth=unknown`, while the managed authenticated OpenCode server reports OpenAI connected. The external diagnostic CLI cannot establish picker readiness and will not converge by waiting or restarting.
+- Expanded exact scope: `app/src/lib/ai/adapters/opencodePersistent.ts` and its test plus `app/src/lib/ai/adapters/autoDetectConnections.ts` and its test. Intent is to derive OpenCode Bridge readiness from the same managed server/provider authority used for production sends, restrict executable catalog rows to connected provider IDs, expose bounded cache invalidation, and route auto-detection to that adapter. No static model enabling or safety-gate relaxation is permitted.
+
+#### Scope expansion after packaged transport audit
+
+- Whole-computer native QA now proves the exact `opencode-cli:openai/gpt-5.3-codex-spark` row is enabled, Ready/Free, selected, and `/effort medium` is handled locally without inference. The live catalog advertises `none|low|medium|high|xhigh` for the exact Spark identity.
+- Independent review caught a release-only blocker before commit: direct browser `globalThis.fetch` to the managed OS-random loopback port violates packaged CSP and OpenCode's deliberate no-CORS launch contract. Broad loopback CSP/CORS or HTTP-plugin scope expansion is rejected.
+- Expanded exact scope: new `app/src/lib/harness/openCodeNativeTransport.ts` plus test, `app/src-tauri/src/harness/server.rs`, and `app/src-tauri/src/lib.rs`. Intent is a generation-bound, allowlisted native JSON/SSE bridge that derives endpoint and Basic authentication only from the owned running server, keeps credentials native, supports bounded cancellation, and preserves the existing model/effort/observed-identity gates. No auth material, CSP, capability, or unrelated runtime-supervision change is permitted.
+
+#### Native-only credential authority expansion
+
+- Security review requires the private server endpoint, username, password, and Basic header to stop crossing the renderer boundary entirely. Expanded exact scope: `app/src/lib/harness/runtimeManager.ts` plus test, `app/src/lib/harness/openCodeClient.ts` plus test, `app/src/lib/harness/openCodeHarness.ts`, `scripts/verify-pr31-opencode-rlm-integration.mjs`, and `docs/superpowers/specs/2026-08-11-vibespace-opencode-server-lifecycle-design.md`.
+- Intent: serialize only `{version, source, generation}` to trusted renderer callers; map sealed/bounded OpenCode operations to the native-owned loopback endpoint; keep subscription OAuth, JSON, SSE, model/effort, session, permission, and observed-identity behavior unchanged; and invert verifier/design assertions away from renderer-created Basic auth. No CSP/CORS/capability broadening is permitted.
+
+### 2026-08-21 01:04 CDT — ordered Test-1 pre-provider Context repair claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-NATIVE-ACCEPTANCE-CONTEXT-ROUTING`.
+- Branch/HEAD: `integration/UnifiedChungus-final` at `38bd1294`; concurrent OpenCode native-transport work remains preserved and the UI-created untracked `context_map.json` remains excluded.
+- Exact scope: `app/src/lib/jarvis/contextToolIntent.ts`, `app/src/lib/jarvis/contextToolIntent.test.ts`, `app/src/lib/ai/runtime.ts`, and `app/src/lib/ai/runtime.test.ts`.
+- Official native Test 1 remained at `@jarvis is gathering context` for more than twenty minutes. Sanitized OpenCode store metadata and loopback sockets prove no provider session, prompt, or SSE was created; the native OpenCode transport is not implicated.
+- Source audit found two linked acceptance defects: the natural authoritative-fact question scoped to the bound project is not classified for the real read-only `vibespace_context` tool, and protected-chat pre-dispatch assembly redundantly performs unbounded local Context-map knowledge retrieval. That old adapter does not query the active SiYuan vault that owns the frozen acceptance corpus.
+- Intent: classify bounded natural bound-project factual lookups as read-only Context-tool turns, skip redundant repository-prefetch/local-knowledge scans for those turns, preserve the original user question and exclusive read-only tool gate, and add exact regression coverage proving provider dispatch is reached with no automatic repository scan. No provider/model/effort or mutation authority is changed.
+### 2026-08-21T03:20:48-05:00 — VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM / Test-1 provider-bound reasoning checkpoint
+
+- Branch / HEAD: `integration/UnifiedChungus-final` at `38bd1294a1084e59708047eaaa8b7c575f6393f0`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state observed.
+- Exact added write scope: `app/src/lib/ai/reasoningControls.ts` and `app/src/lib/ai/reasoningControls.test.ts`.
+- Native finding: the selected OpenCode bridge surface stores `providerId=opencode`, `connectionId=opencode-cli`, and provider-qualified model `openai/gpt-5.3-codex-spark`. The pre-provider reasoning resolver treated the surface provider as the model provider, rejected exact Medium against an empty volatile live-catalog cache, and left the Test-1 turn before dispatch.
+- Intended repair: normalize only provider-qualified OpenCode reasoning selections to their embedded provider/local model identity, preserve explicit Medium on the wire, and leave the persistent adapter's exact live model/variant and observed-identity gates authoritative.
+- Verification next: focused reasoning/runtime tests, typecheck after bounded recoverable build-cache cleanup if required, then official native Test-1 rerun and canonical provider/model/variant evidence.
+
+### 2026-08-21T03:35:00-05:00 — Test-1 production Context route checkpoint
+
+- Official native Test 1 now crosses context preparation and exact Spark Medium provider dispatch, proving the prior cold-cache/deadlock repair in the real app. The run observed a real tool dispatch but failed before canonical completion.
+- A provider-free call through the exact production `vibespace_context` tool reproduced a second defect: the authoritative `artifact atlas-0317` lookup was classified `direct` / `small_bounded_task` and returned no evidence, so the federated Context Map/history/SiYuan authority was never searched.
+- Exact added scope: `app/src/features/context/adaptiveContextRouter.ts` and `app/src/features/context/adaptiveContextRouter.test.ts`.
+- Intended repair: route an explicit authoritative artifact/record identifier lookup to bounded retrieval while keeping ordinary short chat direct and preserving account/project leases, exact pointers, and live SiYuan authority.
+
+### 2026-08-21T03:53:00-05:00 — Test-1 real SiYuan response-contract checkpoint
+
+- The corrected production Context route now performs bounded federated search, but native SiYuan results were silently excluded because renderer parsing rejected ordinary multiline block content with `siyuan_block_content_invalid`.
+- Read-only native shape inspection proved the pinned runtime returned two closed-shape blocks with valid IDs/notebook IDs/paths and 528-character string content; the only incompatibility was natural CR/LF/tab text being treated like forbidden control data.
+- Exact added scope: `app/src/features/context/siyuan/siyuanContracts.ts` and `app/src/features/context/siyuan/siyuanContracts.test.ts`.
+- Intended repair: accept bounded UTF-8 markdown/search text with CR/LF/tab while retaining NUL/other-control rejection, byte ceilings, exact response keys, and identifier/path validation.
+
+### 2026-08-21T04:22:59-05:00 — Test-1 cross-source exact-identifier ranking claim
+
+- Branch / HEAD: `integration/UnifiedChungus-final` at `38bd1294a1084e59708047eaaa8b7c575f6393f0`; all concurrent OpenCode transport and prior acceptance changes remain preserved.
+- Provider-free native evidence now proves the active SiYuan vault returns two valid exact artifact blocks, but the federated result set still contains only fuzzy local Context-map files.
+- Cause: SiYuan results use a bounded ordinal score of at most 20, while local semantic hits can score thousands. Exact structured artifact evidence is therefore crowded out before pointer issuance even though the authoritative source succeeded.
+- Exact added scope: `app/src/features/context/siyuanRlmRepository.ts` and `app/src/features/context/siyuanRlmRepository.test.ts`.
+- Intended repair: recognize only an explicit structured identifier following an artifact/record/document/item noun, give a deterministic high relevance score only when that exact token appears in the returned SiYuan summary or authoritative block, and leave ordinary-query scoring, scopes, pointers, and all provider/model gates unchanged.
+
+### 2026-08-21T06:39:00-05:00 — native SiYuan stale renderer-bridge recovery claim
+
+- Official app-scoped manual QA found the managed SiYuan kernel still alive and a freshly constructed production port able to return the two exact artifact hits, while the hot-reloaded shared renderer port and Context Vault Retry surface repeatedly returned `siyuan_transport_unavailable`.
+- Cause boundary: the shared production port retains a same-project bridge after its transport generation becomes stale; `enqueue` therefore skips `start()` forever and repeats the stale operation. A fresh bridge immediately rebinds to the healthy native supervisor.
+- Exact added scope: `app/src/features/context/siyuanRlmProduction.ts` and `app/src/features/context/siyuanRlmProduction.test.ts`.
+- Intended repair: on only the exact sanitized transport-unavailable error, replace and start the same-project bridge and retry the requested typed operation once. All other errors remain unchanged; no unbounded retry, process kill, cross-project reuse, or authority relaxation is permitted.
+
+### 2026-08-21T07:19:00-05:00 — Test-1 native 204 response repair checkpoint
+
+- Branch / HEAD: `integration/UnifiedChungus-final` at `38bd1294a1084e59708047eaaa8b7c575f6393f0`; all existing dirty acceptance and native-transport work remains preserved.
+- Official Test 1 crossed exact Context retrieval and exact Spark Medium provider dispatch, then failed before canonical completion in about 580 ms. A provider-only production-adapter probe reproduced the precise underlying error without exposing prompt, credential, or auth data: the managed server returned the normal bodyless HTTP 204 acceptance response for `prompt_async`, while `nativeOpenCodeRequest` passed an empty-string body to the browser `Response` constructor. Browser Fetch semantics reject bodies for 204/205/304, so the renderer threw synchronously before consuming the native SSE stream.
+- Exact existing claimed scope: `app/src/lib/harness/openCodeNativeTransport.ts` and `app/src/lib/harness/openCodeNativeTransport.test.ts`. Repair maps only body-forbidden response statuses to `null` and adds table coverage for 204, 205, and 304. Native generation, route, auth, body validation, model/effort, observed-identity, and provider gates remain unchanged.
+
+### 2026-08-21T07:30:00-05:00 — provider-local OpenCode model transport checkpoint
+
+- After the bodyless-response repair, native JSON session creation and `prompt_async` persisted successfully and the renderer stayed attached to the event stream, but repeated bounded probes produced only the user message with no assistant or upstream API error record.
+- Source review found that the persistent adapter passed its provider-qualified canonical catalog key as OpenCode's prompt `modelID`. The upstream prompt contract requires `providerID=openai` with provider-local `modelID=gpt-5.3-codex-spark`; nested routes analogously require `providerID=openrouter` with local `modelID=openai/gpt-5.6-luna`.
+- Exact existing claimed scope: `app/src/lib/ai/adapters/opencodePersistent.ts` and `app/src/lib/ai/adapters/opencodePersistent.test.ts`. The live model now retains both its canonical provider-qualified `id` and its provider-local `upstreamModelId`. Only the latter crosses `prompt_async`; picker authority, cache identity, runtime metadata, and requested/observed canonical identity gates continue using the canonical ID. Added nested-provider regression coverage prevents cross-provider ambiguity.
+
+### 2026-08-21T07:35:00-05:00 — canonical reconciliation after normal event EOF
+
+- The provider-local transport probe produced non-empty Spark output, observed `openai/gpt-5.3-codex-spark` identity, Medium variant evidence, and usage. OpenCode persisted the authoritative assistant record, then closed the event connection without a final `session.idle` frame; the adapter treated normal EOF as an unconditional failure before its existing final message reconciliation.
+- Exact existing claimed scope: `app/src/lib/ai/adapters/opencodePersistent.ts` and its test. Normal native event EOF now enters final message reconciliation. Success still requires an authoritative observed model identity and non-empty canonical or streamed assistant text; native error events, identity/variant mismatches, empty completions, and malformed records remain hard failures. Added direct evidence-gate coverage for accepted streamed text and both missing-identity/empty-text rejection cases.
+
+### 2026-08-21T07:40:00-05:00 — omitted-idle completion boundary checkpoint
+
+- A second live Spark Medium probe retained the global native event feed for the full 90-second diagnostic cap while already delivering non-empty text, exact observed model/variant evidence, usage, and a persisted assistant record. Read-only `/session/status` inspection confirmed OpenCode omits completed idle sessions from the keyed active-status response rather than returning an explicit idle row.
+- Exact existing claimed scope: `app/src/lib/ai/adapters/opencodePersistent.ts` and its test. The poller now distinguishes a successful status lookup with an absent session entry from an actual lookup failure. Absence becomes a completion boundary only after non-empty streamed text and a persisted assistant identity; explicit idle remains a reconciliation boundary, while request failure, missing text, missing assistant identity, error status, and identity/variant mismatch remain fail-closed. Added exact positive and negative boundary coverage.
+
+### 2026-08-21T08:31:00-05:00 — protected Test-1 closed-stage diagnostic claim
+
+- Branch / HEAD: `integration/UnifiedChungus-final` at `38bd1294a1084e59708047eaaa8b7c575f6393f0`; all concurrent dirty acceptance/native-transport work remains preserved and unstaged.
+- Official Test 1 still failed before canonical completion in 369 ms after the provider adapter's direct Spark Medium + Context-tool probe passed. The existing persistent-adapter diagnostic did not appear, narrowing the failure to `executePersistentOpenCode` before generator execution or the router's provider-event boundary.
+- Expanded exact controller scope: `app/src/lib/ai/router.ts` and `app/src/lib/ai/router.test.ts`. The diagnostic may emit only a fixed closed stage code through the already-redacting DevConsole console patch; it must not log or serialize the caught error, prompt, provider payload, credential, or auth material, and must not change public/durable failure evidence.
+
+### 2026-08-21T09:14:00-05:00 — kernel provider scope-forwarding root cause and claim
+
+- Native closed-stage evidence reduced the failure from router adapter consumption to the persistent-adapter preamble and then exactly to `request_scope`; no OpenCode session/provider request was attempted.
+- Root cause: the canonical kernel turn already contains optional `workspaceId`/`projectId`, but `JarvisKernelPrepareProvider` omitted those fields and the runtime's kernel-owned `runAgent` call forwarded only `accountId`. The legacy/direct test path carried workspace scope and therefore did not reproduce the official native failure.
+- Expanded exact controller scope: `app/src/lib/jarvis/kernel.ts` and `app/src/lib/jarvis/kernel.integration.test.ts`, alongside already-claimed `app/src/lib/ai/runtime.ts` and its test. The repair forwards only the existing bound workspace/project values; it does not invent a fallback, weaken persistent-adapter validation, or relax Tool Gateway account/workspace/project equality.
+
+### 2026-08-21T10:10:57-05:00 — scope-forwarding verification and external Spark acceptance blocker
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-NATIVE-ACCEPTANCE-TEST1`; branch/HEAD `integration/UnifiedChungus-final` at `38bd1294a1084e59708047eaaa8b7c575f6393f0`. All work remains unstaged and unrelated runtime-created `.vibespace/`, `context_map.json`, and live coordination state remain preserved.
+- Kernel repair verified: existing account/workspace/project values now reach the exact protected OpenCode request. The official native Test-1 run crossed Context preparation, session creation, prompt persistence, and exact Spark Medium provider dispatch instead of failing at `request_scope`.
+- The newest native run reached the provider and truthfully failed with assistant `APIError`, HTTP 429, `isRetryable=true`, no tool/step part, and zero cost/tokens. Sanitized rate authority identifies exact bucket `GPT-5.3-Codex-Spark`: primary 0%, secondary 100%, absolute reset `2026-08-21 17:09:12 CDT`. This is an external provider-window block, not OAuth, native transport, session, scope, tool, or model/effort fallback. No retry loop or substitute model is permitted; ordered Tests 2–5 remain gated until one bounded exact Test-1 retry after reset plus clock-skew buffer.
+- Closed diagnostic hardening in the already-claimed router/persistent scopes now suppresses AbortError noise, reports provider errors once, resets iterator-stage attribution before each await, converts provider-controlled session-error text to a constant public message, and tests that request/prompt/native sentinel values never enter console arguments.
+- Verification: exact runtime Test-1 regression PASS 1/1 (110 skipped); OpenCode/kernel/runtime-control matrix PASS 9 files/122 tests; authoritative Context/SiYuan matrix PASS 2 files/67 tests; router+persistent diagnostic matrix PASS 2 files/30 tests; `npm run verify:pr31-opencode-rlm` PASS; `git diff --check` PASS. Full TypeScript compile passed after the runtime test typing correction; a later redundant post-diagnostic rerun was stopped after the agreed two-minute ceiling with no output while C: had only about 0.99 GiB free. The changed diagnostic sources compiled in the green Vitest matrices. Test temp was redirected to the owned D: acceptance-evidence area; no build, app, auth, or ChatGPT process was stopped.
+- Remaining environment gate: C: free space is insufficient for the combined local release build and intermittently prevents Vitest temp-file creation. No generated build tree was deleted because the official debug VibeSpace process and inherited artifacts must remain preserved.

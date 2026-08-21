@@ -27,9 +27,6 @@ export type NativeRuntimeEvent =
   | { kind: 'failed'; recoverable: boolean; message: string };
 
 export interface OpenCodeServerConnection {
-  baseUrl: string;
-  username: string;
-  password: string;
   version: string;
   source: 'system' | 'managed';
   generation: string;
@@ -157,25 +154,12 @@ export function createHarnessRuntimeManager(
   };
 
   const validatedConnection = (candidate: OpenCodeServerConnection): OpenCodeServerConnection => {
-    const url = new URL(candidate.baseUrl);
-    const port = Number(url.port);
     if (
-      url.protocol !== 'http:' ||
-      url.hostname !== '127.0.0.1' ||
-      url.username !== '' ||
-      url.password !== '' ||
-      url.pathname !== '/' ||
-      url.search !== '' ||
-      url.hash !== '' ||
-      !Number.isInteger(port) ||
-      port < 1 ||
-      port > 65_535 ||
-      candidate.username !== 'vibespace' ||
-      candidate.password.length !== 64 ||
-      !/^[A-Za-z0-9_-]+$/.test(candidate.password) ||
+      !candidate.version.trim() ||
+      !['system', 'managed'].includes(candidate.source) ||
       !/^opencode-server-[A-Za-z0-9_-]+$/.test(candidate.generation)
     ) {
-      throw new Error('OpenCode server returned an invalid private connection.');
+      throw new Error('OpenCode server returned an invalid managed descriptor.');
     }
     return candidate;
   };

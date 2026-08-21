@@ -48,19 +48,26 @@ recent-crash budget. The running slot owns:
 - compatible server version;
 - a unique generation ID used by the crash watcher.
 
-No caller supplies an executable path, hostname, port, username, password,
-command, or environment map.
+No renderer caller supplies an executable path, hostname, port, username,
+password, command, shell, arbitrary HTTP method/path, or environment map.
 
 The native command surface is:
 
 - `opencode_server_ensure(executable_id)` — lazy start or reuse;
 - `opencode_server_status()` — return the live owned connection or stopped;
 - `opencode_server_stop()` — stop only the currently owned process.
+- `opencode_server_request(generation, sealed_route, ...)` — issue one bounded,
+  generation-checked request selected from a native route enum;
+- `opencode_server_event_stream(...)` / `opencode_server_event_cancel(...)` —
+  stream one caller- and generation-bound SSE channel with deterministic abort.
 
-The connection response contains the loopback base URL, Basic-auth username
-and password, and compatible version. The password is returned only to the
-in-process frontend client boundary. It is never included in events, errors,
-logs, files, persistent state, URLs, or diagnostics.
+The renderer-visible connection descriptor contains only compatible version,
+runtime source, and opaque generation. The loopback base URL and Basic-auth
+username/password remain native-only and are never serialized to WebView code.
+They are never included in events, errors, logs, files, persistent state, URLs,
+or diagnostics. The native transport accepts only `main` and `workbench-main`,
+rejects redirects, validates route-specific JSON bodies, and rechecks the
+active server generation before returning a response.
 
 ## Runtime trust and process launch
 
@@ -104,8 +111,8 @@ Each attempt polls only:
 http://127.0.0.1:<port>/global/health
 ```
 
-Requests use the in-memory Basic-auth credentials, short connect/read
-timeouts, a bounded response body, and strict JSON. Readiness requires
+Native requests use the in-memory Basic-auth credentials, short connect/read
+timeouts, a bounded response body, sealed routes, and strict JSON. Readiness requires
 `healthy: true` and a version equal to the trusted Phase 2 probe version.
 Unauthorized, malformed, incompatible, exited, or timed-out processes fail
 closed and are terminated before retry.

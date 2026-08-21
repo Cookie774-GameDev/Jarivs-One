@@ -2,7 +2,7 @@ import { vi } from 'vitest';
 import { createJarvisDb } from '@/lib/db';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Agent, Message, Part } from '@/types';
-import type { AgentId, ChatId, MessageId } from '@/types/common';
+import type { AgentId, ChatId, MessageId, ProviderId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
@@ -58,6 +58,11 @@ const mocks = vi.hoisted(() => ({
   getJarvisCoordinationContextBlock: vi.fn(),
   getJarvisTerminalOperatingContextBlock: vi.fn(),
   getJarvisConnectivityInventoryBlock: vi.fn(),
+  resolveJarvisContext: vi.fn(async () => ({
+    relevantFiles: [],
+    enabledCapabilities: [],
+    sourceReasons: [],
+  })),
   retrieveApprovedLocalKnowledge:
     vi.fn<typeof import('@/features/context/retrieval').retrieveApprovedLocalKnowledge>(),
   buildJarvisContextPackForAi: vi.fn(
@@ -166,11 +171,7 @@ vi.mock('./context', () => ({
   getJarvisCoordinationContextBlock: mocks.getJarvisCoordinationContextBlock,
   getJarvisTerminalOperatingContextBlock: mocks.getJarvisTerminalOperatingContextBlock,
   rememberConversationDestination: () => undefined,
-  resolveJarvisContext: async () => ({
-    relevantFiles: [],
-    enabledCapabilities: [],
-    sourceReasons: [],
-  }),
+  resolveJarvisContext: mocks.resolveJarvisContext,
   formatResolvedJarvisContext: () => '',
 }));
 
@@ -192,6 +193,8 @@ import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
 import { setPermissionAccess } from '@/features/jarvis-interaction/permissionAccessStore';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
+import { PROVIDER_CONNECTIONS } from './adapters/catalog';
+import { rememberLiveOpenCodeProviders } from './openCodeProductionTransport';
 
 function startRuntimeListener(
   ...args: Parameters<typeof startKernelAwareRuntimeListener>
@@ -1821,6 +1824,102 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       'context-map-must-not-attach',
     );
     expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).not.toContain('should not attach');
+
+    stop();
+  });
+
+  it('dispatches a bound-project fact lookup through only the federated Context tool', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    rememberLiveOpenCodeProviders([]);
+    useAuthStore.setState({
+      projectId: 'project_unified_chungus' as never,
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'openai/gpt-5.3-codex-spark',
+        openCodeConnection,
+      ),
+    });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_bound_project_fact' as ChatId;
+    const userText =
+      'In the bound Unified Chungus project, what custodian and retention period are authoritative for artifact atlas-0317?';
+    const userMessage: Message = {
+      id: 'msg_bound_project_fact_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: userText }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.chatGetById.mockResolvedValueOnce({
+      id: chatId,
+      workspace_id: 'workspace_unified_chungus' as never,
+      project_id: 'project_unified_chungus' as never,
+      title: 'Bound project fact',
+      mode: 'chat',
+      active_agent_ids: [jarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.resolveJarvisContext.mockImplementationOnce(() => new Promise(() => {}));
+    mocks.getProjectContextBlock.mockImplementationOnce(() => new Promise(() => {}));
+    mocks.getProjectContextTreeBlock.mockReturnValueOnce('must-not-prefetch-context-tree');
+    mocks.retrieveApprovedLocalKnowledge.mockImplementationOnce(() => new Promise(() => {}));
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: 'msg_bound_project_fact_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: userText,
+          reasoningPreference: { mode: 'normal', effortOverride: 'medium' },
+          runtimeSettings: { effort: 'medium' },
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.resolveJarvisContext).not.toHaveBeenCalled();
+    expect(mocks.getProjectContextBlock).not.toHaveBeenCalled();
+    expect(mocks.getProjectContextTreeBlock).not.toHaveBeenCalled();
+    expect(mocks.retrieveApprovedLocalKnowledge).not.toHaveBeenCalled();
+    expect(mocks.getConnectedFilesBlock).not.toHaveBeenCalled();
+    expect(mocks.getJarvisCoordinationContextBlock).not.toHaveBeenCalled();
+    const providerInput = mocks.runAgent.mock.calls[0]![0];
+    expect(providerInput.agent.model).toEqual({
+      provider: 'opencode',
+      model: 'openai/gpt-5.3-codex-spark',
+    });
+    expect(providerInput.connectionId).toBe('opencode-cli');
+    expect(providerInput.provider_options).toEqual({ reasoning_effort: 'medium' });
+    expect(providerInput.runtimeSettings).toMatchObject({ effort: 'medium' });
+    expect(providerInput.tools.vibespace_context).toBe(true);
+    expect(
+      Object.entries(providerInput.tools)
+        .filter(([tool]) => tool !== 'vibespace_context')
+        .every(([, enabled]) => enabled === false),
+    ).toBe(true);
+    expect(providerInput.messages.at(-1)?.content).toContain(
+      'Call the real `vibespace_context` function now',
+    );
+    expect(providerInput.messages.at(-1)?.content).toContain(JSON.stringify(userText));
 
     stop();
   });

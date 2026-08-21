@@ -8,8 +8,29 @@ import { writeConnectionMetadata } from '@/lib/ai/connectionState';
 import { useAuthStore } from '@/stores/auth';
 import type { OpenCodeSubscriptionClient } from '@/lib/harness/subscriptionBridge';
 
-vi.mock('@/lib/ai/adapters/autoDetectConnections', () => ({
+const bridgeRefreshMocks = vi.hoisted(() => ({
   ensureExternalConnectionAutoDetection: vi.fn(async () => ({})),
+  refreshExternalConnectionAutoDetection: vi.fn(async () => ({})),
+  invalidateOpenCodePersistentCaches: vi.fn(),
+  requestOpenCodeModelCatalogRefresh: vi.fn(),
+}));
+
+vi.mock('@/lib/ai/adapters/autoDetectConnections', () => ({
+  ensureExternalConnectionAutoDetection: bridgeRefreshMocks.ensureExternalConnectionAutoDetection,
+  refreshExternalConnectionAutoDetection: bridgeRefreshMocks.refreshExternalConnectionAutoDetection,
+}));
+
+vi.mock('@/lib/ai/adapters/opencodePersistent', () => ({
+  openCodePersistentAdapter: {
+    id: 'opencode-cli',
+    detect: vi.fn(async () => ({ status: 'available' })),
+    probeAuth: vi.fn(async () => ({ status: 'authenticated' })),
+  },
+  invalidateOpenCodePersistentCaches: bridgeRefreshMocks.invalidateOpenCodePersistentCaches,
+}));
+
+vi.mock('@/lib/ai/useAccessibleChatModels', () => ({
+  requestOpenCodeModelCatalogRefresh: bridgeRefreshMocks.requestOpenCodeModelCatalogRefresh,
 }));
 
 vi.mock('@/lib/tauri', () => ({
@@ -29,6 +50,7 @@ describe('SubscriptionCliBridge', () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     useAuthStore.setState({ preferredConnectionIdByProviderFamily: {} });
+    vi.clearAllMocks();
   });
 
   it('never starts sign-in or scanning without an explicit click when autoDetect is off', async () => {
@@ -84,10 +106,26 @@ describe('SubscriptionCliBridge', () => {
     fireEvent.click(connect);
     expect(await screen.findByText('Connected in OpenCode')).toBeTruthy();
     expect(screen.getByText('Approve ChatGPT access in your browser.')).toBeTruthy();
+    expect(bridgeRefreshMocks.invalidateOpenCodePersistentCaches).toHaveBeenCalledOnce();
+    expect(bridgeRefreshMocks.refreshExternalConnectionAutoDetection).toHaveBeenCalledOnce();
+    expect(bridgeRefreshMocks.requestOpenCodeModelCatalogRefresh).toHaveBeenCalledOnce();
+    expect(
+      bridgeRefreshMocks.invalidateOpenCodePersistentCaches.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      bridgeRefreshMocks.refreshExternalConnectionAutoDetection.mock.invocationCallOrder[0]!,
+    );
+    expect(
+      bridgeRefreshMocks.refreshExternalConnectionAutoDetection.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      bridgeRefreshMocks.requestOpenCodeModelCatalogRefresh.mock.invocationCallOrder[0]!,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh subscriptions' }));
     await waitFor(() => expect(providerStatus).toHaveBeenCalledTimes(4));
     expect(await screen.findByText('Connected in OpenCode')).toBeTruthy();
+    expect(bridgeRefreshMocks.invalidateOpenCodePersistentCaches).toHaveBeenCalledTimes(2);
+    expect(bridgeRefreshMocks.refreshExternalConnectionAutoDetection).toHaveBeenCalledTimes(2);
+    expect(bridgeRefreshMocks.requestOpenCodeModelCatalogRefresh).toHaveBeenCalledTimes(2);
 
     view.unmount();
     render(

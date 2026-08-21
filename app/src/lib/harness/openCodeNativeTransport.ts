@@ -1,0 +1,245 @@
+import type { OpenCodeRawEvent } from './OpenCodeSdkSessionClient';
+
+interface NativeTransportResponse {
+  status: number;
+  statusText: string;
+  body: string;
+}
+
+type NativeTransportRoute =
+  | { kind: 'health' }
+  | { kind: 'config' }
+  | { kind: 'config_providers' }
+  | { kind: 'provider_auth' }
+  | { kind: 'provider_status' }
+  | { kind: 'provider_authorize'; providerId: string }
+  | { kind: 'provider_callback'; providerId: string }
+  | { kind: 'session_create' }
+  | { kind: 'session_get'; sessionId: string }
+  | { kind: 'session_delete'; sessionId: string }
+  | { kind: 'session_children'; sessionId: string }
+  | { kind: 'session_messages'; sessionId: string; limit?: number }
+  | { kind: 'session_diff'; sessionId: string }
+  | { kind: 'session_prompt_async'; sessionId: string }
+  | { kind: 'session_abort'; sessionId: string }
+  | { kind: 'session_permission'; sessionId: string; permissionId: string }
+  | { kind: 'session_status' }
+  | { kind: 'instance_dispose' };
+
+type NativeStreamMessage =
+  | { kind: 'event'; data: string }
+  | { kind: 'done' }
+  | { kind: 'error'; message: string };
+
+interface NativeChannel {
+  onmessage: (message: unknown) => void;
+}
+
+interface NativeTransportBridge {
+  invoke(command: string, args: Record<string, unknown>): Promise<unknown>;
+  channel(onmessage: (message: unknown) => void): NativeChannel;
+}
+
+async function defaultBridge(): Promise<NativeTransportBridge> {
+  const core = await import('@tauri-apps/api/core');
+  return {
+    invoke: (command, args) => core.invoke(command, args),
+    channel: (onmessage) => new core.Channel(onmessage),
+  };
+}
+
+function streamId(): string {
+  const random = globalThis.crypto?.randomUUID?.().replace(/-/g, '');
+  if (random) return `opencode-stream-${random}`;
+  const bytes = new Uint8Array(24);
+  globalThis.crypto?.getRandomValues?.(bytes);
+  const fallback = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  if (!fallback || /^0+$/u.test(fallback)) {
+    throw new Error('OpenCode event stream identity could not be created.');
+  }
+  return `opencode-stream-${fallback}`;
+}
+
+function safeError(error: unknown, fallback: string): Error {
+  const text = error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+  const bounded = text.replace(/[\r\n\u0000-\u001f\u007f]+/gu, ' ').trim().slice(0, 512);
+  return new Error(bounded || fallback);
+}
+
+function decodedIdentifier(value: string | undefined): string {
+  if (!value) throw new Error('OpenCode native transport route is invalid.');
+  const decoded = decodeURIComponent(value);
+  if (decoded.length > 512 || /[\u0000-\u001f\u007f]/u.test(decoded)) {
+    throw new Error('OpenCode native transport identifier is invalid.');
+  }
+  return decoded;
+}
+
+function nativeRoute(
+  path: string,
+  method: string,
+): { route: NativeTransportRoute; directory?: string } {
+  const url = new URL(path, 'http://127.0.0.1');
+  if (url.origin !== 'http://127.0.0.1' || url.hash) {
+    throw new Error('OpenCode native transport route is invalid.');
+  }
+  const directory = url.searchParams.get('directory') ?? undefined;
+  const segments = url.pathname.split('/').filter(Boolean);
+  const key = `${method} /${segments.join('/')}`;
+  let route: NativeTransportRoute;
+  if (key === 'GET /global/health') route = { kind: 'health' };
+  else if (key === 'PATCH /config') route = { kind: 'config' };
+  else if (key === 'GET /config/providers') route = { kind: 'config_providers' };
+  else if (key === 'GET /provider/auth') route = { kind: 'provider_auth' };
+  else if (key === 'GET /provider') route = { kind: 'provider_status' };
+  else if (method === 'POST' && segments.length === 4 && segments[0] === 'provider' && segments[2] === 'oauth') {
+    const providerId = decodedIdentifier(segments[1]);
+    if (segments[3] === 'authorize') route = { kind: 'provider_authorize', providerId };
+    else if (segments[3] === 'callback') route = { kind: 'provider_callback', providerId };
+    else throw new Error('OpenCode native transport route is invalid.');
+  } else if (key === 'POST /session') route = { kind: 'session_create' };
+  else if (key === 'GET /session/status') route = { kind: 'session_status' };
+  else if (key === 'POST /instance/dispose') route = { kind: 'instance_dispose' };
+  else if (segments[0] === 'session' && segments.length >= 2) {
+    const sessionId = decodedIdentifier(segments[1]);
+    if (segments.length === 2 && method === 'GET') route = { kind: 'session_get', sessionId };
+    else if (segments.length === 2 && method === 'DELETE') route = { kind: 'session_delete', sessionId };
+    else if (segments.length === 3 && segments[2] === 'children' && method === 'GET') route = { kind: 'session_children', sessionId };
+    else if (segments.length === 3 && segments[2] === 'message' && method === 'GET') {
+      const rawLimit = url.searchParams.get('limit');
+      const limit = rawLimit === null ? undefined : Number(rawLimit);
+      if (limit !== undefined && (!Number.isInteger(limit) || limit < 0 || limit > 65_535)) {
+        throw new Error('OpenCode native transport message limit is invalid.');
+      }
+      route = { kind: 'session_messages', sessionId, ...(limit === undefined ? {} : { limit }) };
+    } else if (segments.length === 3 && segments[2] === 'diff' && method === 'GET') route = { kind: 'session_diff', sessionId };
+    else if (segments.length === 3 && segments[2] === 'prompt_async' && method === 'POST') route = { kind: 'session_prompt_async', sessionId };
+    else if (segments.length === 3 && segments[2] === 'abort' && method === 'POST') route = { kind: 'session_abort', sessionId };
+    else if (segments.length === 4 && segments[2] === 'permissions' && method === 'POST') route = {
+      kind: 'session_permission',
+      sessionId,
+      permissionId: decodedIdentifier(segments[3]),
+    };
+    else throw new Error('OpenCode native transport route is invalid.');
+  } else throw new Error('OpenCode native transport route is invalid.');
+  const allowedQueries = new Set(directory === undefined ? [] : ['directory']);
+  if (route.kind === 'session_messages' && url.searchParams.has('limit')) allowedQueries.add('limit');
+  for (const key of url.searchParams.keys()) {
+    if (!allowedQueries.has(key)) throw new Error('OpenCode native transport query is invalid.');
+  }
+  return { route, ...(directory === undefined ? {} : { directory }) };
+}
+
+export async function nativeOpenCodeRequest(
+  generation: string,
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = 30_000,
+  bridgeFactory: () => Promise<NativeTransportBridge> = defaultBridge,
+): Promise<Response> {
+  if (init.signal?.aborted) throw init.signal.reason;
+  const bridge = await bridgeFactory();
+  const method = (init.method ?? 'GET').toUpperCase();
+  const mapped = nativeRoute(path, method);
+  const result = await bridge.invoke('opencode_server_request', {
+    request: {
+      generation,
+      ...mapped,
+      body: typeof init.body === 'string' ? init.body : undefined,
+      timeoutMs,
+    },
+  });
+  const response = result as NativeTransportResponse;
+  const body = [204, 205, 304].includes(response.status) ? null : response.body;
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function parsedEvent(data: string): OpenCodeRawEvent | undefined {
+  const parsed = JSON.parse(data) as unknown;
+  const wrapped = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : undefined;
+  const value = wrapped && 'data' in wrapped ? wrapped.data : parsed;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const event = value as Record<string, unknown>;
+  if (typeof event.type !== 'string' || !event.type.trim()) return undefined;
+  return {
+    type: event.type,
+    properties:
+      event.properties && typeof event.properties === 'object' && !Array.isArray(event.properties)
+        ? event.properties as Record<string, unknown>
+        : undefined,
+  };
+}
+
+export async function* nativeOpenCodeEvents(
+  generation: string,
+  path: string,
+  signal?: AbortSignal,
+  bridgeFactory: () => Promise<NativeTransportBridge> = defaultBridge,
+): AsyncGenerator<OpenCodeRawEvent> {
+  if (signal?.aborted) return;
+  const eventUrl = new URL(path, 'http://127.0.0.1');
+  if (eventUrl.pathname !== '/event' || eventUrl.hash) {
+    throw new Error('OpenCode native event route is invalid.');
+  }
+  const directory = eventUrl.searchParams.get('directory') ?? undefined;
+  for (const key of eventUrl.searchParams.keys()) {
+    if (key !== 'directory') throw new Error('OpenCode native event query is invalid.');
+  }
+  const bridge = await bridgeFactory();
+  const id = streamId();
+  const queued: NativeStreamMessage[] = [];
+  let wake: (() => void) | undefined;
+  let terminal = false;
+  const push = (message: NativeStreamMessage) => {
+    if (terminal) return;
+    queued.push(message);
+    wake?.();
+    wake = undefined;
+  };
+  const channel = bridge.channel((message) => push(message as NativeStreamMessage));
+  const invocation = bridge
+    .invoke('opencode_server_event_stream', {
+      generation,
+      directory,
+      streamId: id,
+      onEvent: channel,
+    })
+    .catch((error) => push({ kind: 'error', message: safeError(error, 'OpenCode event stream failed.').message }));
+  const cancel = () => {
+    void bridge.invoke('opencode_server_event_cancel', {
+      generation,
+      streamId: id,
+    }).catch(() => undefined);
+    push({ kind: 'done' });
+  };
+  signal?.addEventListener('abort', cancel, { once: true });
+  try {
+    while (true) {
+      if (queued.length === 0) {
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+      const message = queued.shift();
+      if (!message) continue;
+      if (message.kind === 'done') return;
+      if (message.kind === 'error') throw new Error(message.message);
+      const event = parsedEvent(message.data);
+      if (event) yield event;
+    }
+  } finally {
+    terminal = true;
+    signal?.removeEventListener('abort', cancel);
+    await bridge.invoke('opencode_server_event_cancel', {
+      generation,
+      streamId: id,
+    }).catch(() => false);
+    await invocation;
+  }
+}

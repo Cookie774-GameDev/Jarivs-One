@@ -76,9 +76,19 @@ export function normalizeReasoningPreference(value: unknown): ReasoningPreferenc
 }
 
 function staticReasoningCapabilities(selection: ReasoningSelection): ReasoningCapabilities {
-  const provider = selection.providerId.toLowerCase();
-  const model = selection.modelId.toLowerCase();
   const connection = selection.connectionId?.toLowerCase() ?? '';
+  let provider = selection.providerId.toLowerCase();
+  let model = selection.modelId.toLowerCase();
+  if (connection.includes('opencode')) {
+    const separator = model.indexOf('/');
+    if (separator > 0 && separator < model.length - 1) {
+      const qualifiedProvider = model.slice(0, separator);
+      if (provider === 'opencode' || provider === qualifiedProvider) {
+        provider = qualifiedProvider;
+        model = model.slice(separator + 1);
+      }
+    }
+  }
 
   if (provider === 'deepseek' && /v4/.test(model)) {
     return {

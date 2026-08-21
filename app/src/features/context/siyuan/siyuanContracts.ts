@@ -120,6 +120,23 @@ function boundedString(
   return value;
 }
 
+function boundedText(
+  value: unknown,
+  maximumBytes: number,
+  code: string,
+  allowEmpty = false,
+): string {
+  if (
+    typeof value !== 'string' ||
+    (!allowEmpty && value.length === 0) ||
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value) ||
+    new TextEncoder().encode(value).byteLength > maximumBytes
+  ) {
+    fail(code);
+  }
+  return value;
+}
+
 export function assertSiyuanIdentifier(value: unknown, code = 'siyuan_identifier_invalid'): string {
   const identifier = boundedString(value, SIYUAN_MAX_IDENTIFIER_LENGTH, code);
   if (!/^[A-Za-z0-9_-]+$/u.test(identifier)) fail(code);
@@ -242,7 +259,7 @@ function parseBlockSummary(value: unknown): SiyuanBlockSummary {
     id: assertSiyuanIdentifier(block.id, 'siyuan_block_id_invalid'),
     notebookId: assertSiyuanIdentifier(block.notebookId, 'siyuan_notebook_id_invalid'),
     path: boundedString(block.path, 4_096, 'siyuan_block_path_invalid'),
-    content: boundedString(
+    content: boundedText(
       block.content,
       SIYUAN_MAX_BLOCK_CONTENT_LENGTH,
       'siyuan_block_content_invalid',
@@ -273,7 +290,7 @@ export function parseSiyuanBlock(value: unknown): SiyuanBlock {
     id: assertSiyuanIdentifier(block.id, 'siyuan_block_id_invalid'),
     notebookId: assertSiyuanIdentifier(block.notebookId, 'siyuan_notebook_id_invalid'),
     path: boundedString(block.path, 4_096, 'siyuan_block_path_invalid'),
-    markdown: boundedString(
+    markdown: boundedText(
       block.markdown,
       SIYUAN_MAX_BLOCK_CONTENT_LENGTH,
       'siyuan_block_markdown_invalid',

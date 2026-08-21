@@ -96,6 +96,11 @@ describe('useAccessibleChatModels', () => {
     isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
     listPersistentOpenCodeModels.mockResolvedValue([
       {
+        id: 'openai/gpt-5.3-codex-spark',
+        label: 'GPT-5.3 Codex Spark',
+        variants: ['medium'],
+      },
+      {
         id: 'openrouter/Model v2 (beta)+preview',
         label: 'Model v2 (beta)+preview',
         pricing: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -120,16 +125,22 @@ describe('useAccessibleChatModels', () => {
         expect.arrayContaining([
           'deepseek/deepseek-v4-flash',
           'qwen/qwen3.8-max',
+          'openai/gpt-5.3-codex-spark',
           'openrouter/Model v2 (beta)+preview',
         ]),
       );
-      expect(openCode).toHaveLength(3);
+      expect(openCode).toHaveLength(4);
+      expect(
+        openCode.find((option) => option.modelId === 'openai/gpt-5.3-codex-spark'),
+      ).toMatchObject({
+        id: 'opencode-cli:openai/gpt-5.3-codex-spark',
+        available: true,
+        variants: ['medium'],
+      });
       expect(
         openCode.find((option) => option.modelId === 'openrouter/Model v2 (beta)+preview'),
       ).toMatchObject({ available: true, pricingStatus: 'free', isFree: true });
-      expect(
-        openCode.filter((option) => option.catalogSource === 'connection-static'),
-      ).toEqual([
+      expect(openCode.filter((option) => option.catalogSource === 'connection-static')).toEqual([
         expect.objectContaining({ modelId: 'deepseek/deepseek-v4-flash', available: false }),
         expect.objectContaining({ modelId: 'qwen/qwen3.8-max', available: false }),
       ]);
@@ -356,9 +367,7 @@ describe('useAccessibleChatModels', () => {
     );
     expect(codexOptions.every((option) => option.available === true)).toBe(true);
     expect(codexOptions.map((option) => option.modelId).sort()).toEqual(
-      (CONNECTION_MODEL_OPTIONS['openai-codex'] ?? [])
-        .map((option) => option.id)
-        .sort(),
+      (CONNECTION_MODEL_OPTIONS['openai-codex'] ?? []).map((option) => option.id).sort(),
     );
   });
 
@@ -407,7 +416,10 @@ describe('useAccessibleChatModels foundry adapter injection', () => {
   function seedAdapter(args: { promote: boolean; gate?: 'pass' | 'blocked' }): void {
     // LocalAdapterRegistry writes through the same storage authority used by
     // the Foundry Studio, so the picker sees exactly what the studio records.
-    const registry = new LocalAdapterRegistry(window.localStorage, () => '2026-08-16T00:00:00.000Z');
+    const registry = new LocalAdapterRegistry(
+      window.localStorage,
+      () => '2026-08-16T00:00:00.000Z',
+    );
     const artifact = {
       projectId: 'project-alpha',
       jobId: 'job_beta',
