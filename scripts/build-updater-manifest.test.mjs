@@ -1310,6 +1310,7 @@ test('requires official Windows installers to be Authenticode-signed before rele
 
   assert.match(workflow, /createUpdaterArtifacts:\s*true/u);
   assert.match(workflow, /signCommand:\s*\{\s*cmd:\s*'powershell'/u);
+  assert.match(workflow, /tauri-apps\/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5/u);
   assert.match(workflow, /path\.resolve\('scripts\/sign-windows\.ps1'\)/u);
   assert.match(workflow, /'%1'/u);
   assert.match(workflow, /JARVIS_WINDOWS_SIGN_REQUIRED:\s*'1'/u);
@@ -1318,7 +1319,8 @@ test('requires official Windows installers to be Authenticode-signed before rele
   assert.match(workflow, /WINDOWS_CERT_PASSWORD: \$\{\{ matrix\.platform == 'windows-latest'/u);
   assert.match(workflow, /WINDOWS_CERT_THUMBPRINT: \$\{\{ matrix\.platform == 'windows-latest'/u);
   assert.match(workflow, /WINDOWS_TIMESTAMP_URL: \$\{\{ matrix\.platform == 'windows-latest'/u);
-  assert.match(workflow, /Verify Windows installer Authenticode/u);
+  assert.match(workflow, /Verify Windows release Authenticode/u);
+  assert.match(workflow, /app\/src-tauri\/target\/release\/jarvis\.exe/u);
   assert.match(workflow, /Get-AuthenticodeSignature -LiteralPath/u);
   assert.match(workflow, /\$nsis\.Count -ne 1/u);
   assert.match(workflow, /\$msi\.Count -ne 1/u);

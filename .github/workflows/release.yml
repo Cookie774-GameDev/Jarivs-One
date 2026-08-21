@@ -117,7 +117,7 @@ jobs:
           node -e "const path=require('path'); require('fs').writeFileSync('app/src-tauri/tauri.release.generated.json', JSON.stringify({ bundle: { createUpdaterArtifacts: true, windows: { signCommand: { cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/sign-windows.ps1'), '%1'] } } } }))"
 
       - name: Build & publish (tauri-action)
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.JARVIS_TAURI_PRIVATE_KEY }}
@@ -160,15 +160,17 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.generated.json
 
-      - name: Verify Windows installer Authenticode
+      - name: Verify Windows release Authenticode
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
           $nsis = @(Get-ChildItem -LiteralPath 'app/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File)
           $msi = @(Get-ChildItem -LiteralPath 'app/src-tauri/target/release/bundle/msi' -Filter '*.msi' -File)
+          $executable = Get-Item -LiteralPath 'app/src-tauri/target/release/jarvis.exe'
           if ($nsis.Count -ne 1) { throw "Expected exactly one NSIS installer, found $($nsis.Count)." }
           if ($msi.Count -ne 1) { throw "Expected exactly one MSI installer, found $($msi.Count)." }
-          foreach ($artifact in @($nsis[0], $msi[0])) {
+          if (-not $executable.PSIsContainer) { $releaseExecutable = $executable } else { throw 'Expected the Windows release executable to be a file.' }
+          foreach ($artifact in @($releaseExecutable, $nsis[0], $msi[0])) {
             $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
             if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
               throw "Authenticode verification failed for $($artifact.Name): $($signature.Status)."

@@ -587,3 +587,15 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 
 - The generated Tauri release config now invokes the existing absolute `scripts/sign-windows.ps1` path before updater-signature generation, and the official workflow hard-requires signing. Certificate variables resolve only for `windows-latest`. After the build action, the Windows job requires exactly one NSIS EXE and one MSI and rejects any Authenticode status other than `Valid`.
 - Verification: release-manifest suite PASS 45/45 twice; exact workflow/test Prettier PASS; repository `git diff --check` PASS; an isolated no-certificate invocation with `JARVIS_WINDOWS_SIGN_REQUIRED=1` failed closed before SignTool as required. No certificate value was read, no artifact was signed or published, and no local Windows trust policy was changed. A positive signed-installer proof remains an official protected-runner gate.
+
+### 2026-08-21T14:35:00-05:00 — canonical model-picker and signing follow-up claims
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-CANONICAL-MODEL-PICKER`; branch/HEAD `integration/UnifiedChungus-final` at `0694d7ffb67a2e22a2f6796d9050fec98089e72d`. Runtime-created `.agent-coordination.lock/`, `.vibespace/`, and `context_map.json` remain preserved and excluded.
+- Official VibeSpace inspection confirmed the picker presents the same logical GPT-5.3/GPT-5.6 and Qwen models repeatedly across static legacy, direct API, OpenCode subscription, and upstream provider-qualified routes. Exact execution routes are distinct, but the renderer bypasses the existing canonical one-row/multiple-route model and renders every connection as an indistinguishable top-level model.
+- Worker `remaining_regression_triage` exclusively owns `app/src/lib/ai/useAccessibleChatModels.ts`, its test, `app/src/features/chat/ModelPickerTypeahead.tsx`, and its smoke test. Intent: one visible logical model, exact selectable route detail beneath it, authoritative healthy live subscription preferred, no static execution authority, and fail-closed preservation of route/provider/billing identity.
+- Controller additionally owns the existing release workflow/test pair for two blocking follow-ups: immutable full-SHA pinning of the signing-capable Tauri action and a required `Valid` Authenticode check for `app/src-tauri/target/release/jarvis.exe` alongside MSI/NSIS. No signing secret is read or changed.
+
+#### Signing follow-up verification checkpoint
+
+- The signing-capable action is pinned to reviewed immutable commit `84b9d35b5fc46c1e45415bdb6144030364f7ebc5` instead of mutable `@v0`. The Windows post-build gate now requires the release executable plus exactly one NSIS installer and one MSI installer, and all three must report `Valid` Authenticode before the release matrix can succeed.
+- Verification: release-manifest suite PASS 45/45; exact workflow/test Prettier and cumulative diff/security checks are the remaining commit-boundary steps. No credential value was read, no artifact was built, signed, or published, and local Windows trust policy was untouched.
