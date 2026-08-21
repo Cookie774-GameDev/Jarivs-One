@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   getById: vi.fn(),
   remove: vi.fn(),
   removeSnapshot: vi.fn(),
+  playUiSound: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -86,6 +87,10 @@ vi.mock('@/components/ui/toast', () => ({
   },
 }));
 
+vi.mock('@/lib/sfx', () => ({
+  playUiSound: mocks.playUiSound,
+}));
+
 function chat(id: string, title: string): Chat {
   return {
     id,
@@ -131,6 +136,7 @@ beforeEach(() => {
   mocks.remove.mockResolvedValue(undefined);
   mocks.removeSnapshot.mockReset();
   mocks.removeSnapshot.mockResolvedValue(undefined);
+  mocks.playUiSound.mockReset();
   mocks.toastError.mockReset();
   mocks.toastSuccess.mockReset();
 });
@@ -244,6 +250,22 @@ describe('HistoryList destructive confirmation', () => {
 
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledTimes(1));
     expect(mocks.remove).toHaveBeenCalledWith('chat-a');
+  });
+
+  it('keeps successful deletion feedback independent from optional sound failure', async () => {
+    mocks.playUiSound.mockImplementationOnce(() => {
+      throw new Error('audio unavailable');
+    });
+    renderHistory();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Alpha chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete chat' }));
+
+    await waitFor(() =>
+      expect(mocks.toastSuccess).toHaveBeenCalledWith('Chat removed', '1 chat deleted.'),
+    );
+    await waitFor(() => expect(mocks.playUiSound).toHaveBeenCalledWith('trash_delete'));
+    expect(mocks.toastError).not.toHaveBeenCalled();
   });
 
   it('names the visible count and deletes only the confirmed visible ids', async () => {

@@ -253,11 +253,12 @@ export function HistoryList({
         selectedChatIdRef.current ? String(selectedChatIdRef.current) : null,
       );
       if (feedback.clearSelection) onSelectChat(null);
-      if (feedback.tone === 'success') {
-        const { playUiSound } = await import('@/lib/sfx');
-        playUiSound('trash_delete');
-      }
       toast[feedback.tone](feedback.title, feedback.message);
+      if (feedback.tone === 'success') {
+        void import('@/lib/sfx')
+          .then(({ playUiSound }) => playUiSound('trash_delete'))
+          .catch(() => undefined);
+      }
     } catch (error) {
       toast.error(
         'Could not delete history',

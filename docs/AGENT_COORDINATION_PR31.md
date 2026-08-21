@@ -280,3 +280,18 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `a7fe41e7` (`fix(test): resolve hoisted vitest for full shards`), based on `a5fe7c62`.
 - Staged diff check PASS and staged Gitleaks PASS (`4.40 KB`, no leaks).
 - Released the exact two-script scope. The repaired runner is now ready to execute the real full sharded suite from a committed boundary; list-only discovery is not being treated as final proof.
+
+### 2026-08-20 18:58 CDT — History deletion feedback claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-HISTORY-DELETE-FEEDBACK`.
+- Branch/base: `integration/UnifiedChungus-final` at `4db1c08c`; worktree otherwise contains only the untracked live coordination-lock directory.
+- Exact scope: `app/src/features/history/HistoryList.tsx` and `app/src/features/history/HistoryList.test.tsx`.
+- Reproduction: the repaired full runner completed nine shards, then shard 10 failed one of 331 tests because the deletion-success toast never arrived. The exact History test reproduces deterministically in isolation (10 pass / 1 fail).
+- Initial diagnosis: successful deletion awaits a nonessential dynamic sound-module import before publishing durable user feedback. A delayed or failed sound load can therefore suppress or misclassify an already-completed deletion. Intent is to publish deletion feedback immediately and make the sound strictly best-effort without changing deletion authority or selection-race semantics.
+
+#### Implementation and verification boundary
+
+- Published the authoritative deletion toast immediately after computing feedback, before optional sound loading. Successful deletion now launches the sound import best-effort and swallows only that noncritical audio failure; deletion authority, selection clearing, and error feedback remain unchanged.
+- Added explicit coverage proving a thrown delete sound cannot replace the successful `Chat removed` result with an error. The previously failing selection-race test now completes without cross-test async leakage.
+- Exact/adjacent History and SFX matrix PASS: 4 files / 24 tests. The broader History matrix also passed 5 files / 24 tests before the added sound-failure case. `npm --prefix app run typecheck` PASS; exact-file Prettier PASS; `git diff --check` PASS.
+- Next: stage only the exact two product/test files plus this ledger, run staged diff and secret checks, commit, release the scope, and restart the complete sharded suite from the committed boundary.
