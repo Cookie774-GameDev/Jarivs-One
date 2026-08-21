@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(path.join(process.cwd(), 'src', 'features', 'chat', 'Composer.tsx'), 'utf8');
+const source = readFileSync(
+  path.join(process.cwd(), 'src', 'features', 'chat', 'Composer.tsx'),
+  'utf8',
+);
 
 describe('Composer smoke controls', () => {
   it('exposes the genuine composer, submit, model-picker, and Hive controls only through constants', () => {
@@ -16,5 +19,13 @@ describe('Composer smoke controls', () => {
     expect(source).not.toContain('data-sik-evidence="chat.submit"');
     expect(source).not.toContain('data-sik-evidence="hive.fixture"');
     expect(source).not.toContain('data-sik-evidence="hive.dispatch"');
+  });
+
+  it('keeps bare /canvas on the registered local attachment-picker path', () => {
+    const bareCanvasGuard = "if (cmd === 'canvas' && !rest) return openAttachPicker('canvas');";
+    const remainderRoute = "canvas: 'canvas',";
+    expect(source).toContain(bareCanvasGuard);
+    expect(source).toContain(remainderRoute);
+    expect(source.indexOf(bareCanvasGuard)).toBeLessThan(source.indexOf(remainderRoute));
   });
 });

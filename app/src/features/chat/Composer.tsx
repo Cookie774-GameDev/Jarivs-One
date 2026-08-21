@@ -2416,6 +2416,7 @@ export function Composer({
       setText('');
       return parsed.brief || true;
     }
+    if (cmd === 'canvas' && !rest) return openAttachPicker('canvas');
     const routes: Record<string, string> = {
       kanban: 'kanban',
       canvas: 'canvas',
