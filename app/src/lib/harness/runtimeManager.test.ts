@@ -96,6 +96,68 @@ describe('harness runtime manager', () => {
     expect(manager.getSnapshot().kind).toBe('ready');
   });
 
+  it('keeps an exact ready generation visible across a background refresh', async () => {
+    const native = adapter();
+    const manager = createHarnessRuntimeManager(native);
+    await manager.refresh();
+    vi.mocked(native.detect).mockClear();
+    vi.mocked(native.ensureServer).mockClear();
+    vi.mocked(native.serverStatus).mockClear();
+    const notifications = vi.fn();
+    const unsubscribe = manager.subscribe(notifications);
+    await settle();
+    notifications.mockClear();
+
+    await manager.refresh();
+
+    expect(native.serverStatus).toHaveBeenCalledTimes(1);
+    expect(native.detect).not.toHaveBeenCalled();
+    expect(native.ensureServer).not.toHaveBeenCalled();
+    expect(manager.getConnection()).toEqual(readyConnection);
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+    });
+    expect(notifications).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it.each([
+    ['missing', null],
+    ['different generation', { ...readyConnection, generation: 'opencode-server-next-generation' }],
+    ['different source', { ...readyConnection, source: 'system' as const }],
+    ['different version', { ...readyConnection, version: '1.18.17' }],
+  ])('falls back to fail-closed detection when ready status is %s', async (_label, status) => {
+    const native = adapter();
+    const manager = createHarnessRuntimeManager(native);
+    await manager.refresh();
+    vi.mocked(native.detect).mockClear();
+    vi.mocked(native.ensureServer).mockClear();
+    vi.mocked(native.serverStatus).mockResolvedValueOnce(status);
+
+    await manager.refresh();
+
+    expect(native.detect).toHaveBeenCalledTimes(1);
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot().kind).toBe('ready');
+  });
+
+  it('falls back to fail-closed detection when ready status cannot be read', async () => {
+    const native = adapter();
+    const manager = createHarnessRuntimeManager(native);
+    await manager.refresh();
+    vi.mocked(native.detect).mockClear();
+    vi.mocked(native.ensureServer).mockClear();
+    vi.mocked(native.serverStatus).mockRejectedValueOnce(new Error('status unavailable'));
+
+    await manager.refresh();
+
+    expect(native.detect).toHaveBeenCalledTimes(1);
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot().kind).toBe('ready');
+  });
+
   it('coalesces a StrictMode-style immediate unsubscribe and remount', async () => {
     const detection = deferred<NativeRuntimeDetection>();
     const native = adapter({ detect: vi.fn(() => detection.promise) });
@@ -334,8 +396,12 @@ describe('harness runtime manager', () => {
     await manager.refresh();
 
     expect(manager.getConnection()).toEqual(readyConnection);
-    expect(JSON.stringify(manager.getConnection())).not.toMatch(/baseUrl|username|password|authorization/i);
-    expect(JSON.stringify(manager.getSnapshot())).not.toMatch(/baseUrl|username|password|authorization/i);
+    expect(JSON.stringify(manager.getConnection())).not.toMatch(
+      /baseUrl|username|password|authorization/i,
+    );
+    expect(JSON.stringify(manager.getSnapshot())).not.toMatch(
+      /baseUrl|username|password|authorization/i,
+    );
   });
 
   it('fails closed for a compatible detection without an opaque executable ID', async () => {

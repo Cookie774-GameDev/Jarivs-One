@@ -50,7 +50,7 @@ describe('persistent OpenCode live authority', () => {
     const events = openCodePersistentAdapter.send!({
       requestId: 'secret-request-sentinel',
       prompt: 'secret-prompt-sentinel',
-    } as never);
+    } as never)[Symbol.asyncIterator]();
 
     await expect(events.next()).rejects.toThrow(/exact model selection/i);
     expect(warn).toHaveBeenCalledExactlyOnceWith('OpenCode protected turn failed.', {
