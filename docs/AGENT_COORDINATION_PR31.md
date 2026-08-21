@@ -374,6 +374,14 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Read-only regression audit found the broader slash matrix green (4 files / 43 tests) but reproduced a pre-existing same-class defect: literal `/attach C:\work tree\notes.md` is split into attachment `C:\work` plus provider-bound text `tree\notes.md`; `/file` has the same ambiguity. Quoting avoids it, but the command/help contract does not require quotes and Composer accepts safe absolute paths containing spaces.
 - Intent: treat a literal whole-input `/attach` or `/file` command as one local command whose complete operand is the path, while preserving the existing bounded single-token/quoted behavior for commands embedded inside ordinary prose.
 
+#### Implementation and native verification boundary
+
+- Added a whole-input `/attach|/file` matcher that owns the complete quoted or unquoted operand, including spaces, before the existing bounded inline-prose extractor runs. Embedded prose retains the prior one-token-or-quoted boundary, so ordinary surrounding text remains eligible for intentional send.
+- Added table coverage for Windows absolute paths, project filenames, quoted operands, and the preserved inline-prose boundary. Focused/adjacent matrix PASS: 3 files / 36 tests; the earlier broader slash routing matrix also passed 4 files / 43 tests.
+- `npm run typecheck` PASS, `verify:pr31-opencode-rlm` PASS, exact-file Prettier PASS, and cumulative `git diff --check` PASS.
+- App-scoped native Playwright submitted an unquoted existing D: image path containing spaces in a disposable chat. The composer cleared, the full filename appeared as a local attachment, no tail became a user message, no `@jarvis failed` appeared, and zero inference-shaped requests were observed.
+- Next: stage only the exact two parser/test files plus the append-only ledger, run staged diff and secret checks, commit, and release this scope.
+
 #### 2026-08-20 22:45 CDT — paused for user-prioritized OpenAI persistence repair
 
 - The exact attachment parser/test claim remains reserved but no source edit was made. The user explicitly prioritized a lost-looking OpenAI subscription connection, so this slice is paused at a safe boundary.
@@ -393,3 +401,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - User-authorized fresh official browser OAuth completed successfully. The OpenCode-owned auth-store timestamp advanced from 19:19 to 20:44 CDT without reading credential contents. Native VibeSpace was then fully restarted; after authoritative discovery, both OpenAI subscription routes rendered `Connected in OpenCode`, remained connected after refresh, and remained connected after Settings remount.
 - Screenshot evidence: `native-playwright-openai-persisted-refresh.png` under the owned D: acceptance-evidence root, SHA-256 `D686D311852C6DB92B4C14A6379AA21147D3C32055E879B025151E947DCA6BF6`.
 - This slice fixes the user's observed post-refresh loss and confirms the newly completed credential persisted across a full app restart. A deeper interrupted-in-flight callback can still require native generation-scoped ownership; that hardening is intentionally separate from this exact UI truth slice.
+
+#### 2026-08-20 22:51 CDT — committed and scope released
+
+- Commit: `d4dcc235` (`fix(settings): persist OpenCode connection truth`), based on `8cde8916`.
+- Staged diff check PASS and staged Gitleaks PASS (`5.32 KB`, no leaks). Released the exact settings component/test scope.
+- The user confirmed the fresh sign-in. OpenCode persistence and post-restart native UI truth are green; the previously paused exact attachment parser/test claim now resumes without overlap.

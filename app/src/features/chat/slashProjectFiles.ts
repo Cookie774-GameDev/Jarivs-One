@@ -165,6 +165,7 @@ export function getInlineSlashContext(
  * only known attach/utility commands.
  */
 const INLINE_CLEAR_RE = /(^|[\s([{'"`,;:])\/(clearfiles?|clear-files|cearfiles?)\b/gi;
+const LITERAL_FILE_RE = /^\/(file|attach)(?:[ \t]+(?:"([^"]+)"|'([^']+)'|(.+)))?[ \t]*$/i;
 // Path token allows dots (readme.md). Trailing sentence punct is trimmed later.
 const INLINE_FILE_RE = /(^|[\s([{'"`,;:])\/(file|attach)(?:[ \t]+("([^"]+)"|'([^']+)'|(\S+)))?/gi;
 const INLINE_USAGE_RE = /(^|[\s([{'"`,;:])\/(usage)(?:[ \t]+(refresh|session|all))?\b/gi;
@@ -182,6 +183,21 @@ export function extractInlineUtilitySlashCommands(text: string): {
   cleaned: string;
   utilities: Array<{ cmd: string; rest: string; raw: string }>;
 } {
+  const literalFile = text.trim().match(LITERAL_FILE_RE);
+  if (literalFile) {
+    const raw = text.trim();
+    return {
+      cleaned: '',
+      utilities: [
+        {
+          cmd: normalizeUtilityCmd(literalFile[1] ?? ''),
+          rest: (literalFile[2] ?? literalFile[3] ?? literalFile[4] ?? '').trim(),
+          raw,
+        },
+      ],
+    };
+  }
+
   const utilities: Array<{ cmd: string; rest: string; raw: string }> = [];
   let cleaned = text;
 

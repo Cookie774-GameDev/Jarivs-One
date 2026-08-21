@@ -37,6 +37,24 @@ describe('extractInlineUtilitySlashCommands', () => {
   });
 
   it.each([
+    ['/attach C:\\work tree\\notes.md', 'attach', 'C:\\work tree\\notes.md'],
+    ['/file Project Notes.md', 'file', 'Project Notes.md'],
+    ['/attach "C:\\work tree\\notes.md"', 'attach', 'C:\\work tree\\notes.md'],
+  ])('keeps a literal path with spaces local for %s', (input, cmd, rest) => {
+    expect(extractInlineUtilitySlashCommands(input)).toEqual({
+      cleaned: '',
+      utilities: [{ cmd, rest, raw: input }],
+    });
+  });
+
+  it('keeps inline unquoted file operands bounded to one token', () => {
+    expect(extractInlineUtilitySlashCommands('Review /file notes.md and summarize')).toEqual({
+      cleaned: 'Review and summarize',
+      utilities: [{ cmd: 'file', rest: 'notes.md', raw: '/file notes.md' }],
+    });
+  });
+
+  it.each([
     ['/usage', '', '/usage'],
     ['/usage refresh', 'refresh', '/usage refresh'],
     ['/usage session', 'session', '/usage session'],
