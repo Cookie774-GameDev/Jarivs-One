@@ -13,7 +13,6 @@ import type { ProviderConnection, ProviderDiscoveredModel } from './adapters/typ
 import {
   OPENCODE_CLI_CONNECTION,
   CONNECTION_MODEL_OPTIONS,
-  PROVIDER_CATALOG,
   PROVIDER_CONNECTIONS,
 } from './adapters/catalog';
 import { ensureExternalConnectionAutoDetection } from './adapters/autoDetectConnections';
@@ -48,8 +47,6 @@ import {
   type ModelCatalogSource,
 } from './catalog/canonicalModelCatalog';
 import {
-  getDiscoveredOpenAiSubscriptionModels,
-  resolveOpenAiSubscriptionModels,
   setDiscoveredOpenAiSubscriptionModels,
   subscribeDiscoveredOpenAiSubscriptionModels,
 } from './openCodeOpenAiCatalog';
@@ -85,9 +82,13 @@ export interface ModelPickerOption {
   pricing?: Readonly<HarnessModelPricing>;
   pricingStatus?: 'free' | 'paid' | 'unknown';
   isFree?: boolean;
+  /** Exact live routes for one logical OpenCode model, when more than one exists. */
+  alternativeRoutes?: readonly ModelPickerOption[];
 }
 
 export interface ModelPickerGroup {
+  /** Stable presentation identity; provider alone is not unique across auth/billing surfaces. */
+  id?: string;
   provider: ProviderId;
   label: string;
   options: ModelPickerOption[];
@@ -234,8 +235,8 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
       return normalized;
     })
     .catch((error) => {
-      // A transient discovery/auth failure must not erase the last verified list.
-      if (openCodeModelCache) return openCodeModelCache.models;
+      // A cache from an earlier auth/catalog generation is never executable.
+      if (openCodeModelCache?.generation === generation) return openCodeModelCache.models;
       throw error;
     })
     .finally(() => {
@@ -254,8 +255,157 @@ export function requestOpenCodeModelCatalogRefresh(): void {
   }
 }
 
+function isLiveOpenAiSubscriptionRoute(model: Readonly<PickerCatalogModel>): boolean {
+  if (model.available === false || model.source !== 'opencode-live') return false;
+  const segments = canonicalModelId(model.id).split('/').filter(Boolean);
+  return segments.length === 2 && segments[0] === 'openai';
+}
+
 function pickerCanonicalModelId(providerId: string, modelId: string): string {
   return canonicalProviderModelId(providerId, modelId);
+}
+
+function pickerRouteDisplayName(option: ModelPickerOption): string | undefined {
+  const connectionName = option.connection?.displayName?.trim();
+  if (option.connectionId !== OPENCODE_CLI_CONNECTION.id) return connectionName;
+  const separator = option.modelId.indexOf('/');
+  if (separator <= 0) return connectionName;
+  const upstreamProvider = option.modelId.slice(0, separator);
+  const providerName = getProviderDisplayName(upstreamProvider as ProviderId);
+  return connectionName ? `${connectionName} · ${providerName}` : providerName;
+}
+
+function openCodeBaseLeaf(option: ModelPickerOption): string {
+  const segments = canonicalModelId(option.modelId).split('/').filter(Boolean);
+  const leaf = segments.at(-1) ?? '';
+  return leaf.endsWith('-fast') ? leaf.slice(0, -'-fast'.length) : leaf;
+}
+
+function openCodeSourceProductKey(option: ModelPickerOption): string {
+  const segments = canonicalModelId(option.modelId).split('/').filter(Boolean);
+  const leaf = openCodeBaseLeaf(option);
+  const providerPath = segments.slice(0, -1);
+  if (providerPath[0] === 'qwen-coding-plan') providerPath[0] = 'qwen';
+  return [...providerPath, leaf].join('/');
+}
+
+function preferOpenCodeRoute(left: ModelPickerOption, right: ModelPickerOption): number {
+  const leftSegments = canonicalModelId(left.modelId).split('/').filter(Boolean);
+  const rightSegments = canonicalModelId(right.modelId).split('/').filter(Boolean);
+  return (
+    Number(right.available !== false) - Number(left.available !== false) ||
+    Number(right.catalogSource === 'opencode-live') -
+      Number(left.catalogSource === 'opencode-live') ||
+    Number(canonicalModelId(left.modelId).endsWith('-fast')) -
+      Number(canonicalModelId(right.modelId).endsWith('-fast')) ||
+    leftSegments.length - rightSegments.length ||
+    (leftSegments[0]?.length ?? 0) - (rightSegments[0]?.length ?? 0) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function logicalOpenCodeOption(candidateRoutes: readonly ModelPickerOption[]): ModelPickerOption {
+  const routes = [...candidateRoutes].sort(preferOpenCodeRoute);
+  const preferred = routes[0]!;
+  if (routes.length === 1) return preferred;
+  const logicalLabel = candidateRoutes[0]!.label.split(' · ')[0]!.trim();
+  return { ...preferred, label: logicalLabel, alternativeRoutes: routes };
+}
+
+function isDirectOpenAiBaseRoute(option: ModelPickerOption): boolean {
+  if (
+    option.connectionId !== OPENCODE_CLI_CONNECTION.id ||
+    option.catalogSource !== 'opencode-live' ||
+    option.available === false
+  ) {
+    return false;
+  }
+  const segments = canonicalModelId(option.modelId).split('/').filter(Boolean);
+  return segments.length === 2 && segments[0] === 'openai' && !segments[1]!.endsWith('-fast');
+}
+
+function isOpenAiProductRoute(option: ModelPickerOption): boolean {
+  if (
+    option.connectionId !== OPENCODE_CLI_CONNECTION.id ||
+    option.catalogSource !== 'opencode-live' ||
+    option.available === false
+  ) {
+    return false;
+  }
+  const segments = canonicalModelId(option.modelId).split('/').filter(Boolean);
+  return (
+    (segments.length === 2 && segments[0] === 'openai') ||
+    (segments.length === 3 && segments[0] === 'openrouter' && segments[1] === 'openai')
+  );
+}
+
+function openCodeRouteOwner(option: ModelPickerOption): string {
+  const owner = canonicalModelId(option.modelId).split('/').filter(Boolean)[0] ?? 'other';
+  return owner === 'qwen-coding-plan' ? 'qwen' : owner;
+}
+
+function openCodeProviderGroupLabel(owner: string): string {
+  if (owner === 'openrouter') return 'OpenRouter Models';
+  if (owner === 'qwen') return 'Qwen Models';
+  if (owner === 'openai') return 'Other OpenAI Routes';
+  const provider = getProviderDisplayName(owner as ProviderId);
+  return `${provider === owner ? owner : provider} Models`;
+}
+
+/**
+ * Present one authenticated OpenAI-subscription row per direct live product while preserving every
+ * exact OpenCode route. Nested aggregators can be alternatives, but can never seed subscription
+ * authority. Unconsumed providers remain selectable under their own truthful source group.
+ */
+function partitionOpenCodePickerGroup(group: ModelPickerGroup): ModelPickerGroup[] {
+  const unconsumed = new Map(group.options.map((option) => [option.id, option]));
+  const subscriptionOptions: ModelPickerOption[] = [];
+  const subscriptionKeys = new Set<string>();
+
+  for (const seed of group.options.filter(isDirectOpenAiBaseRoute)) {
+    const key = openCodeBaseLeaf(seed);
+    if (subscriptionKeys.has(key)) continue;
+    subscriptionKeys.add(key);
+    const routes = group.options.filter(
+      (option) => isOpenAiProductRoute(option) && openCodeBaseLeaf(option) === key,
+    );
+    for (const route of routes) unconsumed.delete(route.id);
+    subscriptionOptions.push(logicalOpenCodeOption(routes));
+  }
+
+  const result: ModelPickerGroup[] = [];
+  if (subscriptionOptions.length > 0) {
+    result.push({
+      id: 'opencode:openai-subscription',
+      provider: group.provider,
+      label: 'OpenAI Subscription',
+      options: subscriptionOptions,
+    });
+  }
+
+  const routesByOwner = new Map<string, ModelPickerOption[]>();
+  for (const route of unconsumed.values()) {
+    const owner = openCodeRouteOwner(route);
+    const routes = routesByOwner.get(owner) ?? [];
+    routes.push(route);
+    routesByOwner.set(owner, routes);
+  }
+  for (const [owner, providerRoutes] of routesByOwner) {
+    const logicalRoutes = new Map<string, ModelPickerOption[]>();
+    for (const route of providerRoutes) {
+      const key = openCodeSourceProductKey(route);
+      const routes = logicalRoutes.get(key) ?? [];
+      routes.push(route);
+      logicalRoutes.set(key, routes);
+    }
+    result.push({
+      id: `opencode:${owner}`,
+      provider: group.provider,
+      label: openCodeProviderGroupLabel(owner),
+      options: [...logicalRoutes.values()].map(logicalOpenCodeOption),
+    });
+  }
+  return result;
 }
 
 /** Pure connection-qualified picker builder; unavailable entries remain visible but disabled. */
@@ -266,9 +416,6 @@ export function buildConnectionPickerGroups(args: {
   stateByConnection?: Partial<Record<string, ConnectionPickerState>>;
   credentialSavedByProvider?: Partial<Record<string, boolean>>;
 }): ModelPickerGroup[] {
-  const familyByProvider = new Map(
-    Object.values(PROVIDER_CATALOG).map((family) => [family.id as string, family]),
-  );
   const groups = new Map<string, ModelPickerGroup>();
 
   for (const connection of args.connections) {
@@ -279,11 +426,11 @@ export function buildConnectionPickerGroups(args: {
     );
     if (models.length === 0) continue;
 
-    const group = groups.get(connection.providerId) ?? {
+    const groupId = `connection:${connection.id}`;
+    const group = groups.get(groupId) ?? {
+      id: groupId,
       provider: connection.providerId as ProviderId,
-      label:
-        familyByProvider.get(connection.providerId)?.displayName ??
-        getProviderDisplayName(connection.providerId as ProviderId),
+      label: connection.displayName,
       options: [],
     };
     let state = args.stateByConnection?.[connection.id] ?? {
@@ -311,7 +458,7 @@ export function buildConnectionPickerGroups(args: {
         connection,
         connectionId: connection.id,
         modeLabel: CONNECTION_MODE_LABELS[connection.mode],
-        authLabel: connectionAuthLabel(state),
+        authLabel: model.available === false ? 'Unavailable' : connectionAuthLabel(state),
         available: state.available && authAllowsUse && model.available !== false,
         catalogSource: model.source,
         lastVerifiedAt: model.lastVerifiedAt,
@@ -321,7 +468,7 @@ export function buildConnectionPickerGroups(args: {
         isFree: model.isFree,
       });
     }
-    groups.set(connection.providerId, group);
+    groups.set(groupId, group);
   }
 
   // Dedupe only within an exact connection+canonical-model route. Distinct
@@ -336,24 +483,31 @@ export function buildConnectionPickerGroups(args: {
     }
     const visible = [...uniqueByRoute.values()];
     const routeCounts = new Map<string, number>();
+    const labelCounts = new Map<string, number>();
     for (const option of visible) {
       const key = pickerCanonicalModelId(group.provider, option.modelId);
       routeCounts.set(key, (routeCounts.get(key) ?? 0) + 1);
+      const labelKey = option.label.trim().toLocaleLowerCase('en-US');
+      labelCounts.set(labelKey, (labelCounts.get(labelKey) ?? 0) + 1);
     }
-    group.options = visible.map((option) => {
+    const labeled = visible.map((option) => {
       const key = pickerCanonicalModelId(group.provider, option.modelId);
+      const labelKey = option.label.trim().toLocaleLowerCase('en-US');
       return {
         ...option,
         label: modelRouteLabel(
           option.label,
-          option.connection?.displayName,
-          routeCounts.get(key) ?? 1,
+          pickerRouteDisplayName(option),
+          Math.max(routeCounts.get(key) ?? 1, labelCounts.get(labelKey) ?? 1),
         ),
       };
     });
+    group.options = labeled;
   }
 
-  return [...groups.values()];
+  return [...groups.values()].flatMap((group) =>
+    group.provider === ('opencode' as ProviderId) ? partitionOpenCodePickerGroup(group) : [group],
+  );
 }
 
 export function buildModelPickerGroups(args: {
@@ -379,6 +533,7 @@ export function buildModelPickerGroups(args: {
     );
     if (models.length === 0) continue;
     groups.push({
+      id: `provider:${provider}`,
       provider,
       label: getProviderDisplayName(provider),
       options: models.map((model) => ({
@@ -399,14 +554,15 @@ export function useAccessibleChatModels() {
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
-  const preferredConnections = useAuthStore(
-    (s) => s.preferredConnectionIdByProviderFamily ?? {},
-  );
+  const preferredConnections = useAuthStore((s) => s.preferredConnectionIdByProviderFamily ?? {});
   const ollamaOptions = useOllamaModelOptions();
   const [connectionRevision, setConnectionRevision] = useState(0);
   const [foundryRevision, setFoundryRevision] = useState(0);
   const [catalogRevision, setCatalogRevision] = useState(0);
-  const [openCodeModels, setOpenCodeModels] = useState<readonly PickerCatalogModel[]>([]);
+  const [openCodeCatalog, setOpenCodeCatalog] = useState<{
+    readonly generation: number;
+    readonly models: readonly PickerCatalogModel[];
+  }>({ generation: -1, models: [] });
 
   const openCodeSessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
   const openCodeSessionChecked = isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id);
@@ -434,6 +590,7 @@ export function useAccessibleChatModels() {
       if (nextSignature !== openCodeStateSignatureRef.current) {
         openCodeStateSignatureRef.current = nextSignature;
         invalidateOpenCodeModelCatalog();
+        invalidateOpenCodePersistentModelCache();
       }
       setConnectionRevision((value) => value + 1);
     };
@@ -467,13 +624,15 @@ export function useAccessibleChatModels() {
   useEffect(() => {
     const refreshFoundry = () => setFoundryRevision((value) => value + 1);
     window.addEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
-    return () =>
-      window.removeEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
+    return () => window.removeEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
   }, []);
 
   useEffect(() => {
     if (offlineMode) return;
     let cancelled = false;
+    // The legacy subscription bridge still consumes this provider-scoped
+    // allowlist for exact dispatch validation. Visible picker authority comes
+    // from the authenticated persistent catalog loaded below, never this copy.
     void import('@/lib/harness/openCodeHarness')
       .then(async ({ openCodeHarness }) => {
         const openai = await openCodeHarness.listModels('openai');
@@ -558,7 +717,7 @@ export function useAccessibleChatModels() {
     void loadOpenCodeModels()
       .then((models) => {
         if (cancelled || expectedGeneration !== openCodeCatalogGeneration) return;
-        setOpenCodeModels(models);
+        setOpenCodeCatalog({ generation: expectedGeneration, models });
         const age = openCodeModelCache ? Date.now() - openCodeModelCache.loadedAt : 0;
         const delay = Math.max(1_000, OPEN_CODE_MODEL_CACHE_TTL_MS - age);
         refreshTimer = setTimeout(() => {
@@ -568,6 +727,8 @@ export function useAccessibleChatModels() {
         }, delay);
       })
       .catch(() => {
+        if (cancelled || expectedGeneration !== openCodeCatalogGeneration) return;
+        setOpenCodeCatalog({ generation: expectedGeneration, models: [] });
         refreshTimer = setTimeout(() => {
           if (cancelled) return;
           invalidateOpenCodeModelCatalog();
@@ -671,14 +832,28 @@ export function useAccessibleChatModels() {
       ]),
     );
 
-    const openAiSubscriptionModels = resolveOpenAiSubscriptionModels(
-      CONNECTION_MODEL_OPTIONS['openai-codex'],
+    // Cached rows may survive a transient load failure, but current-session
+    // readiness remains the authority for whether they are visible as live.
+    const currentLiveOpenCodeModels =
+      openCodeReady && openCodeCatalog.generation === openCodeCatalogGeneration
+        ? openCodeCatalog.models
+        : [];
+    const hasHealthyLiveOpenAiSubscription = currentLiveOpenCodeModels.some(
+      isLiveOpenAiSubscriptionRoute,
     );
-    modelsByConnection['openai-codex'] = asCatalogModels(
-      openAiSubscriptionModels,
-      getDiscoveredOpenAiSubscriptionModels().length > 0 ? 'opencode-live' : 'connection-static',
-      getDiscoveredOpenAiSubscriptionModels().length > 0 ? Date.now() : undefined,
-    );
+    // The managed live OpenCode catalog owns authenticated subscription truth.
+    // Once it exposes an exact OpenAI route, do not also surface stale Codex
+    // static rows for the same subscription. When live authority is absent,
+    // static fallback stays visible but disabled and cannot be selected for a send.
+    modelsByConnection['openai-codex'] = hasHealthyLiveOpenAiSubscription
+      ? []
+      : asCatalogModels(
+          (CONNECTION_MODEL_OPTIONS['openai-codex'] ?? []).map((model) => ({
+            ...model,
+            available: false,
+          })),
+          'connection-static',
+        );
 
     for (const connection of pickerConnections) {
       const discovered = getDiscoveredConnectionModels(connection.id);
@@ -704,11 +879,9 @@ export function useAccessibleChatModels() {
       CONNECTION_MODEL_OPTIONS[OPENCODE_CLI_CONNECTION.id] ?? [],
       'connection-static',
     );
-    if (openCodeModels.length > 0) {
-      modelsByConnection[OPENCODE_CLI_CONNECTION.id] = dedupeModelMetadataInOrder([
-        ...alwaysOnOpenCode,
-        ...openCodeModels,
-      ]);
+    if (currentLiveOpenCodeModels.length > 0) {
+      // Live catalog truth replaces static hints; it is never unioned with them.
+      modelsByConnection[OPENCODE_CLI_CONNECTION.id] = currentLiveOpenCodeModels;
     } else if (alwaysOnOpenCode.length > 0) {
       modelsByConnection[OPENCODE_CLI_CONNECTION.id] = alwaysOnOpenCode;
     }
@@ -748,6 +921,7 @@ export function useAccessibleChatModels() {
       typeof window === 'undefined' ? [] : listPromotedAdapters(window.localStorage);
     if (foundryAdapters.length === 0) return connectionGroups;
     const foundryGroup: ModelPickerGroup = {
+      id: 'provider:foundry',
       provider: 'foundry',
       label: getProviderDisplayName('foundry'),
       options: foundryAdapters.map((record) => ({
@@ -769,13 +943,20 @@ export function useAccessibleChatModels() {
     defaultLocalModel,
     ollamaSignature,
     connectionRevision,
-    openCodeModels,
+    catalogRevision,
+    openCodeCatalog,
     openCodeReady,
     preferredConnections,
     foundryRevision,
   ]);
 
-  const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
+  const flatOptions = useMemo(
+    () =>
+      groups.flatMap((group) =>
+        group.options.flatMap((option) => option.alternativeRoutes ?? [option]),
+      ),
+    [groups],
+  );
   return {
     groups,
     flatOptions,

@@ -83,6 +83,17 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     const panelScale = compact ? getLivePanelUiScale() : 1;
 
     const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
+    const exactOptions = useMemo(
+      () => flatOptions.flatMap((option) => option.alternativeRoutes ?? [option]),
+      [flatOptions],
+    );
+    const selectedRowId = useMemo(
+      () =>
+        flatOptions.find((option) =>
+          option.alternativeRoutes?.some((route) => route.id === selectedId),
+        )?.id ?? selectedId,
+      [flatOptions, selectedId],
+    );
 
     // Navigation order: pinned Hive entry first (when available), then models.
     const navIds = useMemo(() => {
@@ -97,7 +108,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         onSelectHive?.();
         return;
       }
-      const option = flatOptions.find((item) => item.id === id);
+      const option = exactOptions.find((item) => item.id === id);
       if (option && option.available !== false)
         onSelect(option.provider, option.modelId, option.connection);
     };
@@ -105,18 +116,21 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     useImperativeHandle(ref, () => ({
       moveUp: () => {
         if (navIds.length === 0) return;
-        const index = navIds.indexOf(selectedId);
+        const index = navIds.indexOf(selectedRowId);
         const next = navIds[(index - 1 + navIds.length) % navIds.length]!;
         onHoverId?.(next);
       },
       moveDown: () => {
         if (navIds.length === 0) return;
-        const index = navIds.indexOf(selectedId);
+        const index = navIds.indexOf(selectedRowId);
         const next = navIds[(index + 1) % navIds.length]!;
         onHoverId?.(next);
       },
       selectCurrent: () => {
-        const id = navIds.includes(selectedId) ? selectedId : navIds[0];
+        const selectedExactRoute = exactOptions.find((option) => option.id === selectedId);
+        const id = navIds.includes(selectedRowId)
+          ? (selectedExactRoute?.id ?? selectedRowId)
+          : navIds[0];
         if (id) selectId(id);
       },
     }));
@@ -245,82 +259,117 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
             groups.map((group) => {
               const GroupIcon = PROVIDER_ICONS[group.provider] ?? Sparkles;
               return (
-                <div key={group.provider}>
+                <div key={group.id ?? `${group.provider}:${group.label}`}>
                   <div className="px-4 pb-1 pt-0.5 text-[11px] uppercase tracking-[0.2em] text-accent-copper/70">
                     {group.label}
                   </div>
                   {group.options.map((option) => {
-                    const isSelected = selectedId === option.id;
+                    const isSelected =
+                      selectedId === option.id ||
+                      option.alternativeRoutes?.some((route) => route.id === selectedId) === true;
                     const isActive =
-                      activeProvider === option.provider && activeModel === option.modelId;
+                      (activeProvider === option.provider && activeModel === option.modelId) ||
+                      option.alternativeRoutes?.some(
+                        (route) =>
+                          activeProvider === route.provider && activeModel === route.modelId,
+                      ) === true;
 
                     return (
-                      <div
-                        key={option.id}
-                        data-value={option.id}
-                        data-sik-evidence={
-                          option.connection?.id === 'vibespace-kernel-smoke-native'
-                            ? SIK_CONTROL.modelTransportNative
-                            : option.connection?.id === 'vibespace-kernel-smoke-cli'
-                              ? SIK_CONTROL.modelTransportCli
-                              : undefined
-                        }
-                        onClick={() =>
-                          option.available !== false &&
-                          onSelect(option.provider, option.modelId, option.connection)
-                        }
-                        onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
-                        aria-disabled={option.available === false}
-                        data-model-price={option.pricingStatus ?? 'unknown'}
-                        className={cn(
-                          'mx-2 flex cursor-pointer items-center border',
-                          compact
-                            ? 'gap-2 rounded-[8px] px-2 py-1.5'
-                            : 'gap-3 rounded-[12px] px-3 py-2.5',
-                          'transition-all duration-100',
-                          option.available === false && 'cursor-not-allowed opacity-55',
-                          isSelected
-                            ? 'jarvis-slash-item-selected border-accent-copper/60 bg-accent-copper/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]'
-                            : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
-                        )}
-                      >
-                        <GroupIcon
+                      <div key={option.id}>
+                        <div
+                          data-value={option.id}
+                          data-sik-evidence={
+                            option.connection?.id === 'vibespace-kernel-smoke-native'
+                              ? SIK_CONTROL.modelTransportNative
+                              : option.connection?.id === 'vibespace-kernel-smoke-cli'
+                                ? SIK_CONTROL.modelTransportCli
+                                : undefined
+                          }
+                          onClick={() =>
+                            option.available !== false &&
+                            onSelect(option.provider, option.modelId, option.connection)
+                          }
+                          onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
+                          aria-disabled={option.available === false}
+                          data-model-price={option.pricingStatus ?? 'unknown'}
                           className={cn(
-                            'shrink-0',
-                            compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-                            isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
+                            'mx-2 flex cursor-pointer items-center border',
+                            compact
+                              ? 'gap-2 rounded-[8px] px-2 py-1.5'
+                              : 'gap-3 rounded-[12px] px-3 py-2.5',
+                            'transition-all duration-100',
+                            option.available === false && 'cursor-not-allowed opacity-55',
+                            isSelected
+                              ? 'jarvis-slash-item-selected border-accent-copper/60 bg-accent-copper/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]'
+                              : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
                           )}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <span
+                        >
+                          <GroupIcon
                             className={cn(
-                              'block truncate font-medium text-foreground',
-                              compact ? 'text-[12px] leading-4' : 'text-[15px] leading-5',
+                              'shrink-0',
+                              compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                              isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
                             )}
-                          >
-                            {option.label}
-                          </span>
-                          <span
-                            className={cn(
-                              'block truncate text-muted-foreground',
-                              compact ? 'text-[10px] leading-3' : 'text-[11px] leading-4',
-                            )}
-                          >
-                            {option.modeLabel ?? option.modelId}
-                            {option.authLabel ? ` · ${option.authLabel}` : ''}
-                          </span>
+                          />
+                          <div className="min-w-0 flex-1">
+                            <span
+                              className={cn(
+                                'block truncate font-medium text-foreground',
+                                compact ? 'text-[12px] leading-4' : 'text-[15px] leading-5',
+                              )}
+                            >
+                              {option.label}
+                            </span>
+                            <span
+                              className={cn(
+                                'block truncate text-muted-foreground',
+                                compact ? 'text-[10px] leading-3' : 'text-[11px] leading-4',
+                              )}
+                            >
+                              {option.modeLabel ?? option.modelId}
+                              {option.authLabel ? ` · ${option.authLabel}` : ''}
+                            </span>
+                          </div>
+                          {isActive && (
+                            <span className="shrink-0 text-[11px] font-medium text-accent-copper">
+                              active
+                            </span>
+                          )}
+                          {option.isFree && (
+                            <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                              Free
+                            </span>
+                          )}
+                          {isSelected && <span className="shrink-0 text-accent-copper">&gt;</span>}
                         </div>
-                        {isActive && (
-                          <span className="shrink-0 text-[11px] font-medium text-accent-copper">
-                            active
-                          </span>
-                        )}
-                        {option.isFree && (
-                          <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
-                            Free
-                          </span>
-                        )}
-                        {isSelected && <span className="shrink-0 text-accent-copper">&gt;</span>}
+                        {option.alternativeRoutes && option.alternativeRoutes.length > 1 ? (
+                          <div
+                            role="group"
+                            aria-label={`${option.label} routes`}
+                            className="mx-5 mb-1 flex flex-wrap gap-1.5 px-3"
+                          >
+                            {option.alternativeRoutes.map((route) => (
+                              <button
+                                key={route.id}
+                                type="button"
+                                data-value={route.id}
+                                disabled={route.available === false}
+                                aria-label={`Use ${route.label}`}
+                                aria-pressed={route.id === selectedId}
+                                onClick={() =>
+                                  onSelect(route.provider, route.modelId, route.connection)
+                                }
+                                className={cn(
+                                  'rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground',
+                                  route.id === selectedId &&
+                                    'border-accent-copper/60 text-accent-copper',
+                                )}
+                              >
+                                {route.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}

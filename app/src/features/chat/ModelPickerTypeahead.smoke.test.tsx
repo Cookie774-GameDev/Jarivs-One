@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { createRef } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
-import { ModelPickerTypeahead } from './ModelPickerTypeahead';
+import { ModelPickerTypeahead, type ModelPickerTypeaheadRef } from './ModelPickerTypeahead';
 
 const capabilities = {
   text: true,
@@ -117,6 +118,124 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(surface?.className).toContain('[html[data-theme=monochrome]_&_*]:shadow-none');
     fireEvent.click(cliControl!);
     expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli);
+  });
+
+  it('renders one logical model row while selecting an exact live alias route', () => {
+    const openCode = {
+      ...connection('opencode-cli', 'external-cli'),
+      adapterId: 'opencode-cli',
+      providerId: 'opencode',
+      displayName: 'OpenCode Bridge',
+    };
+    const onSelect = vi.fn();
+    render(
+      <ModelPickerTypeahead
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:qwen/qwen3.7-plus',
+                provider: 'opencode' as never,
+                modelId: 'qwen/qwen3.7-plus',
+                label: 'Qwen 3.7 Plus',
+                connection: openCode,
+                available: true,
+                alternativeRoutes: [
+                  {
+                    id: 'opencode-cli:qwen/qwen3.7-plus',
+                    provider: 'opencode' as never,
+                    modelId: 'qwen/qwen3.7-plus',
+                    label: 'Qwen 3.7 Plus · OpenCode Bridge · Qwen',
+                    connection: openCode,
+                    available: true,
+                  },
+                  {
+                    id: 'opencode-cli:qwen/qwen3.7-plus-fast',
+                    provider: 'opencode' as never,
+                    modelId: 'qwen/qwen3.7-plus-fast',
+                    label: 'Qwen 3.7 Plus Fast',
+                    connection: openCode,
+                    available: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:qwen/qwen3.7-plus"
+        onSelect={onSelect}
+      />,
+    );
+
+    expect(screen.getAllByText('Qwen 3.7 Plus')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Use Qwen 3.7 Plus Fast' }));
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus-fast', openCode);
+    expect(screen.getByRole('group', { name: 'Qwen 3.7 Plus routes' })).not.toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Use Qwen 3.7 Plus Fast' }).getAttribute('aria-pressed'),
+    ).toBe('false');
+  });
+
+  it('preserves an exact selected alias when keyboard activation repeats the current row', () => {
+    const openCode = {
+      ...connection('opencode-cli', 'external-cli'),
+      adapterId: 'opencode-cli',
+      providerId: 'opencode',
+      displayName: 'OpenCode Bridge',
+    };
+    const ref = createRef<ModelPickerTypeaheadRef>();
+    const onSelect = vi.fn();
+    render(
+      <ModelPickerTypeahead
+        ref={ref}
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-sol',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-5.6-sol',
+                label: 'GPT-5.6 Sol',
+                connection: openCode,
+                available: true,
+                alternativeRoutes: [
+                  {
+                    id: 'opencode-cli:openai/gpt-5.6-sol',
+                    provider: 'opencode' as never,
+                    modelId: 'openai/gpt-5.6-sol',
+                    label: 'GPT-5.6 Sol · OpenAI',
+                    connection: openCode,
+                    available: true,
+                  },
+                  {
+                    id: 'opencode-cli:openrouter/openai/gpt-5.6-sol',
+                    provider: 'opencode' as never,
+                    modelId: 'openrouter/openai/gpt-5.6-sol',
+                    label: 'GPT-5.6 Sol · OpenRouter',
+                    connection: openCode,
+                    available: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openrouter/openai/gpt-5.6-sol"
+        onSelect={onSelect}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Use GPT-5.6 Sol · OpenRouter' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    act(() => ref.current?.selectCurrent());
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'openrouter/openai/gpt-5.6-sol', openCode);
   });
 
   it('exposes an accessible user control for disabling automatic routing', () => {

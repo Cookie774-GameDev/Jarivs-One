@@ -54,13 +54,15 @@ export function VoiceModelSelector({
       >
         {!currentOptionId ? <option value="">Select model</option> : null}
         {groups.map((group) => (
-          <optgroup key={group.provider} label={group.label}>
-            {group.options.map((option) => (
-              <option key={option.id} value={option.id} disabled={option.available === false}>
-                {option.label}
-                {option.available === false ? ' — unavailable' : ''}
-              </option>
-            ))}
+          <optgroup key={group.id ?? `${group.provider}:${group.label}`} label={group.label}>
+            {group.options
+              .flatMap((option) => option.alternativeRoutes ?? [option])
+              .map((option) => (
+                <option key={option.id} value={option.id} disabled={option.available === false}>
+                  {option.label}
+                  {option.available === false ? ' — unavailable' : ''}
+                </option>
+              ))}
           </optgroup>
         ))}
       </select>

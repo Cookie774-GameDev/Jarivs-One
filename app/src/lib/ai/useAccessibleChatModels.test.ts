@@ -29,7 +29,8 @@ const { ensureExternalConnectionAutoDetection, isConnectionSessionChecked } = vi
   ensureExternalConnectionAutoDetection: vi.fn(async () => ({})),
   isConnectionSessionChecked: vi.fn((_connectionId?: string) => false),
 }));
-const { listPersistentOpenCodeModels } = vi.hoisted(() => ({
+const { invalidatePersistentModelCache, listPersistentOpenCodeModels } = vi.hoisted(() => ({
+  invalidatePersistentModelCache: vi.fn(),
   listPersistentOpenCodeModels: vi.fn(async (): Promise<readonly ProviderDiscoveredModel[]> => []),
 }));
 
@@ -43,7 +44,7 @@ vi.mock('./connectionState', async (importOriginal) => ({
 }));
 
 vi.mock('./adapters/opencodePersistent', () => ({
-  invalidateOpenCodePersistentModelCache: vi.fn(),
+  invalidateOpenCodePersistentModelCache: invalidatePersistentModelCache,
   openCodePersistentAdapter: {
     listModels: listPersistentOpenCodeModels,
   },
@@ -59,6 +60,7 @@ describe('useAccessibleChatModels', () => {
     listPersistentOpenCodeModels.mockReset();
     listPersistentOpenCodeModels.mockResolvedValue([]);
     requestOpenCodeModelCatalogRefresh();
+    invalidatePersistentModelCache.mockClear();
     syncDiscoveredOllamaModels([]);
     useAuthStore.setState({ defaultLocalModel: '', apiKeys: {}, offlineMode: false, plan: 'free' });
   });
@@ -123,13 +125,11 @@ describe('useAccessibleChatModels', () => {
       );
       expect(openCode.map((option) => option.modelId)).toEqual(
         expect.arrayContaining([
-          'deepseek/deepseek-v4-flash',
-          'qwen/qwen3.8-max',
           'openai/gpt-5.3-codex-spark',
           'openrouter/Model v2 (beta)+preview',
         ]),
       );
-      expect(openCode).toHaveLength(4);
+      expect(openCode).toHaveLength(2);
       expect(
         openCode.find((option) => option.modelId === 'openai/gpt-5.3-codex-spark'),
       ).toMatchObject({
@@ -140,10 +140,10 @@ describe('useAccessibleChatModels', () => {
       expect(
         openCode.find((option) => option.modelId === 'openrouter/Model v2 (beta)+preview'),
       ).toMatchObject({ available: true, pricingStatus: 'free', isFree: true });
-      expect(openCode.filter((option) => option.catalogSource === 'connection-static')).toEqual([
-        expect.objectContaining({ modelId: 'deepseek/deepseek-v4-flash', available: false }),
-        expect.objectContaining({ modelId: 'qwen/qwen3.8-max', available: false }),
-      ]);
+      expect(openCode.some((option) => option.catalogSource === 'connection-static')).toBe(false);
+      expect(
+        result.current.flatOptions.some((option) => option.connectionId === 'openai-codex'),
+      ).toBe(false);
     });
   });
 
@@ -188,6 +188,380 @@ describe('useAccessibleChatModels', () => {
     });
   });
 
+  it('keeps exact fast and provider routes under one live logical model row', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        'opencode-cli': [
+          { id: 'qwen/qwen3.7-plus', label: 'Qwen 3.7 Plus', source: 'opencode-live' },
+          { id: 'qwen/qwen3.7-plus-fast', label: 'Qwen 3.7 Plus Fast', source: 'opencode-live' },
+          {
+            id: 'qwen-coding-plan/qwen3.7-plus',
+            label: 'Qwen 3.7 Plus',
+            source: 'opencode-live',
+          },
+        ],
+      },
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'authenticated' },
+      },
+    });
+
+    expect(groups[0]?.options).toHaveLength(1);
+    expect(groups[0]?.options[0]).toMatchObject({
+      modelId: 'qwen/qwen3.7-plus',
+      label: 'Qwen 3.7 Plus',
+      available: true,
+    });
+    expect(groups[0]?.options[0]?.alternativeRoutes?.map((route) => route.modelId)).toEqual([
+      'qwen/qwen3.7-plus',
+      'qwen-coding-plan/qwen3.7-plus',
+      'qwen/qwen3.7-plus-fast',
+    ]);
+    expect(groups[0]?.options[0]?.alternativeRoutes?.map((route) => route.label)).toEqual([
+      'Qwen 3.7 Plus · OpenCode Bridge · Qwen / Alibaba Cloud',
+      'Qwen 3.7 Plus · OpenCode Bridge · qwen-coding-plan',
+      'Qwen 3.7 Plus Fast',
+    ]);
+  });
+
+  it('keeps lone fast aliases and unrelated same-label model ids separate', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        'opencode-cli': [
+          { id: 'openai/example-fast', label: 'Example Fast', source: 'opencode-live' },
+          { id: 'provider-a/alpha', label: 'Shared Label', source: 'opencode-live' },
+          { id: 'provider-b/beta', label: 'Shared Label', source: 'opencode-live' },
+        ],
+      },
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'authenticated' },
+      },
+    });
+
+    expect(groups.flatMap((group) => group.options).map((option) => option.modelId)).toEqual([
+      'openai/example-fast',
+      'provider-a/alpha',
+      'provider-b/beta',
+    ]);
+    expect(
+      groups
+        .flatMap((group) => group.options)
+        .every((option) => option.alternativeRoutes === undefined),
+    ).toBe(true);
+  });
+
+  it('nests only explicit OpenRouter alternatives under a direct OpenAI product seed', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        'opencode-cli': [
+          { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol', source: 'opencode-live' },
+          { id: 'openai/gpt-5.6-sol-fast', label: 'GPT-5.6 Sol Fast', source: 'opencode-live' },
+          {
+            id: 'openrouter/openai/gpt-5.6-sol',
+            label: 'OpenRouter Sol Alias',
+            source: 'opencode-live',
+          },
+          {
+            id: 'unknown/openai/gpt-5.6-sol',
+            label: 'GPT-5.6 Sol',
+            source: 'opencode-live',
+          },
+        ],
+      },
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'authenticated' },
+      },
+    });
+
+    const subscription = groups.find((group) => group.id === 'opencode:openai-subscription');
+    expect(subscription?.options).toHaveLength(1);
+    expect(subscription?.options[0]?.alternativeRoutes?.map((route) => route.modelId)).toEqual([
+      'openai/gpt-5.6-sol',
+      'openrouter/openai/gpt-5.6-sol',
+      'openai/gpt-5.6-sol-fast',
+    ]);
+    const unknownRoutes = groups.find((group) => group.id === 'opencode:unknown')?.options;
+    expect(unknownRoutes).toEqual([
+      expect.objectContaining({ modelId: 'unknown/openai/gpt-5.6-sol' }),
+    ]);
+    expect(unknownRoutes?.[0]?.alternativeRoutes).toBeUndefined();
+  });
+
+  it('keeps distinct OpenRouter upstream products separate while collapsing fast aliases', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        'opencode-cli': [
+          { id: 'openrouter/openai/foo', label: 'Foo', source: 'opencode-live' },
+          { id: 'openrouter/openai/foo-fast', label: 'Foo Fast', source: 'opencode-live' },
+          { id: 'openrouter/anthropic/foo', label: 'Foo', source: 'opencode-live' },
+        ],
+      },
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'authenticated' },
+      },
+    });
+
+    const openRouter = groups.find((group) => group.id === 'opencode:openrouter');
+    expect(openRouter?.options).toHaveLength(2);
+    expect(
+      openRouter?.options
+        .map((option) => (option.alternativeRoutes ?? [option]).map((route) => route.modelId))
+        .sort((left, right) => left[0]!.localeCompare(right[0]!)),
+    ).toEqual([
+      ['openrouter/anthropic/foo'],
+      ['openrouter/openai/foo', 'openrouter/openai/foo-fast'],
+    ]);
+  });
+
+  it('shows each live OpenAI subscription model once without API or fast-alias leakage', async () => {
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    listPersistentOpenCodeModels.mockResolvedValue([
+      {
+        id: 'openai/gpt-5.3-codex-spark',
+        label: 'GPT-5.3 Codex Spark',
+        variants: ['medium'],
+      },
+      { id: 'openai/gpt-5.4', label: 'GPT-5.4' },
+      { id: 'openai/gpt-5.4-fast', label: 'GPT-5.4 Fast' },
+      { id: 'openai/gpt-5.4-mini', label: 'GPT-5.4 Mini' },
+      { id: 'openai/gpt-5.4-mini-fast', label: 'GPT-5.4 Mini Fast' },
+      { id: 'openai/gpt-5.5', label: 'GPT-5.5' },
+      { id: 'openai/gpt-5.5-fast', label: 'GPT-5.5 Fast' },
+      { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+      { id: 'openai/gpt-5.6-luna-fast', label: 'GPT-5.6 Luna Fast' },
+      { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+      { id: 'openai/gpt-5.6-sol-fast', label: 'GPT-5.6 Sol Fast' },
+      { id: 'openai/gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+      { id: 'openai/gpt-5.6-terra-fast', label: 'GPT-5.6 Terra Fast' },
+      { id: 'openrouter/openai/gpt-5.6-sol', label: 'OpenRouter Sol Alias' },
+      { id: 'openrouter/openai/gpt-5.1', label: 'GPT-5.1' },
+      { id: 'qwen/qwen3.7-plus', label: 'Qwen 3.7 Plus' },
+      { id: 'qwen-coding-plan/qwen3.7-plus', label: 'Qwen 3.7 Plus' },
+    ]);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
+    markConnectionSessionChecked(['opencode-cli']);
+    useAuthStore.setState({ apiKeys: { openai: 'test-key' } });
+
+    const { result } = renderHook(() => useAccessibleChatModels());
+
+    await waitFor(() => {
+      const subscription =
+        result.current.groups.find((group) => group.id === 'opencode:openai-subscription')
+          ?.options ?? [];
+      expect(
+        result.current.groups.find((group) => group.id === 'opencode:openai-subscription')?.label,
+      ).toBe('OpenAI Subscription');
+      expect(subscription.map((option) => option.modelId)).toEqual([
+        'openai/gpt-5.3-codex-spark',
+        'openai/gpt-5.4',
+        'openai/gpt-5.4-mini',
+        'openai/gpt-5.5',
+        'openai/gpt-5.6-luna',
+        'openai/gpt-5.6-sol',
+        'openai/gpt-5.6-terra',
+      ]);
+      expect(new Set(subscription.map((option) => option.modelId)).size).toBe(subscription.length);
+      expect(subscription.some((option) => option.modelId.endsWith('-fast'))).toBe(false);
+      expect(
+        subscription
+          .flatMap((option) => option.alternativeRoutes ?? [option])
+          .map((option) => option.modelId),
+      ).toEqual([
+        'openai/gpt-5.3-codex-spark',
+        'openai/gpt-5.4',
+        'openai/gpt-5.4-fast',
+        'openai/gpt-5.4-mini',
+        'openai/gpt-5.4-mini-fast',
+        'openai/gpt-5.5',
+        'openai/gpt-5.5-fast',
+        'openai/gpt-5.6-luna',
+        'openai/gpt-5.6-luna-fast',
+        'openai/gpt-5.6-sol',
+        'openrouter/openai/gpt-5.6-sol',
+        'openai/gpt-5.6-sol-fast',
+        'openai/gpt-5.6-terra',
+        'openai/gpt-5.6-terra-fast',
+      ]);
+      const exactSubscriptionRoutes = result.current.flatOptions.filter(
+        (option) => option.connectionId === 'opencode-cli' && option.modelId.startsWith('openai/'),
+      );
+      expect(exactSubscriptionRoutes).toHaveLength(13);
+      expect(
+        exactSubscriptionRoutes.filter((option) => option.modelId.endsWith('-fast')),
+      ).toHaveLength(6);
+      expect(
+        result.current.flatOptions.some((option) => option.connectionId === 'openai-codex'),
+      ).toBe(false);
+      expect(
+        result.current.flatOptions.some(
+          (option) => option.connectionId === 'openai-api' && option.modelId === 'gpt-4o',
+        ),
+      ).toBe(true);
+      expect(
+        result.current.groups.find((group) => group.id === 'opencode:openrouter')?.options,
+      ).toEqual([expect.objectContaining({ modelId: 'openrouter/openai/gpt-5.1' })]);
+      expect(result.current.groups.find((group) => group.id === 'opencode:qwen')?.options).toEqual([
+        expect.objectContaining({
+          modelId: 'qwen/qwen3.7-plus',
+          alternativeRoutes: expect.arrayContaining([
+            expect.objectContaining({ modelId: 'qwen/qwen3.7-plus' }),
+            expect.objectContaining({ modelId: 'qwen-coding-plan/qwen3.7-plus' }),
+          ]),
+        }),
+      ]);
+      const openCodeRoutes = result.current.groups
+        .filter((group) => group.id?.startsWith('opencode:'))
+        .flatMap((group) => group.options)
+        .flatMap((option) => option.alternativeRoutes ?? [option])
+        .map((option) => option.modelId);
+      expect([...openCodeRoutes].sort()).toEqual(
+        [
+          'openai/gpt-5.3-codex-spark',
+          'openai/gpt-5.4',
+          'openai/gpt-5.4-fast',
+          'openai/gpt-5.4-mini',
+          'openai/gpt-5.4-mini-fast',
+          'openai/gpt-5.5',
+          'openai/gpt-5.5-fast',
+          'openai/gpt-5.6-luna',
+          'openai/gpt-5.6-luna-fast',
+          'openai/gpt-5.6-sol',
+          'openai/gpt-5.6-sol-fast',
+          'openai/gpt-5.6-terra',
+          'openai/gpt-5.6-terra-fast',
+          'openrouter/openai/gpt-5.6-sol',
+          'openrouter/openai/gpt-5.1',
+          'qwen/qwen3.7-plus',
+          'qwen-coding-plan/qwen3.7-plus',
+        ].sort(),
+      );
+      expect(new Set(openCodeRoutes).size).toBe(openCodeRoutes.length);
+      expect(new Set(result.current.groups.map((group) => group.id)).size).toBe(
+        result.current.groups.length,
+      );
+      expect(
+        subscription
+          .flatMap((option) => option.alternativeRoutes ?? [option])
+          .some((option) => option.connectionId === 'openai-api'),
+      ).toBe(false);
+      expect(subscription.find((option) => option.modelId.endsWith('codex-spark'))).toMatchObject({
+        id: 'opencode-cli:openai/gpt-5.3-codex-spark',
+        provider: 'opencode',
+        variants: ['medium'],
+        available: true,
+      });
+    });
+  });
+
+  it('does not treat a nested OpenRouter route as direct OpenAI subscription authority', async () => {
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    listPersistentOpenCodeModels.mockResolvedValue([
+      {
+        id: 'openrouter/openai/gpt-5.6-sol',
+        label: 'GPT-5.6 Sol',
+      },
+    ]);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
+    markConnectionSessionChecked(['opencode-cli']);
+
+    const { result } = renderHook(() => useAccessibleChatModels());
+
+    await waitFor(() => {
+      expect(
+        result.current.flatOptions.find(
+          (option) => option.modelId === 'openrouter/openai/gpt-5.6-sol',
+        ),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true });
+      expect(
+        result.current.flatOptions.some((option) => option.connectionId === 'openai-codex'),
+      ).toBe(true);
+      expect(
+        result.current.groups.some((group) => group.id === 'opencode:openai-subscription'),
+      ).toBe(false);
+      expect(
+        result.current.groups.find((group) => group.id === 'opencode:openrouter')?.options,
+      ).toEqual([
+        expect.objectContaining({
+          modelId: 'openrouter/openai/gpt-5.6-sol',
+          available: true,
+        }),
+      ]);
+    });
+  });
+
+  it('clears prior live rows when a newer catalog generation rejects', async () => {
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    let rejectRefresh!: (reason: Error) => void;
+    const rejectedRefresh = new Promise<readonly ProviderDiscoveredModel[]>((_, reject) => {
+      rejectRefresh = reject;
+    });
+    listPersistentOpenCodeModels
+      .mockResolvedValueOnce([{ id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol' }])
+      .mockImplementationOnce(() => rejectedRefresh);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
+    markConnectionSessionChecked(['opencode-cli']);
+
+    const { result } = renderHook(() => useAccessibleChatModels());
+    await waitFor(() =>
+      expect(
+        result.current.flatOptions.find((option) => option.modelId === 'openai/gpt-5.6-sol'),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true }),
+    );
+
+    act(() => requestOpenCodeModelCatalogRefresh());
+    await waitFor(() => expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(2));
+    expect(
+      result.current.flatOptions.some(
+        (option) =>
+          option.connectionId === 'opencode-cli' && option.modelId === 'openai/gpt-5.6-sol',
+      ),
+    ).toBe(false);
+
+    await act(async () => {
+      rejectRefresh(new Error('catalog refresh failed'));
+      await rejectedRefresh.catch(() => undefined);
+    });
+    await waitFor(() => {
+      const staleFallback = result.current.flatOptions.filter(
+        (option) => option.connectionId === 'openai-codex',
+      );
+      expect(staleFallback.length).toBeGreaterThan(0);
+      expect(staleFallback.every((option) => option.available === false)).toBe(true);
+      expect(
+        result.current.flatOptions.some(
+          (option) =>
+            option.connectionId === 'opencode-cli' && option.modelId === 'openai/gpt-5.6-sol',
+        ),
+      ).toBe(false);
+    });
+  });
+
   it('does not probe OpenCode models until current-session authentication is verified', async () => {
     isConnectionSessionChecked.mockReturnValue(false);
 
@@ -216,6 +590,21 @@ describe('useAccessibleChatModels', () => {
     expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
   });
 
+  it('invalidates both picker and persistent catalogs when OpenCode auth truth changes', () => {
+    renderHook(() => useAccessibleChatModels());
+    invalidatePersistentModelCache.mockClear();
+
+    isConnectionSessionChecked.mockReturnValue(true);
+    act(() => {
+      writeConnectionPickerStates({
+        'opencode-cli': { available: true, auth: 'authenticated' },
+      });
+      window.dispatchEvent(new Event(AI_CONNECTION_STATE_EVENT));
+    });
+
+    expect(invalidatePersistentModelCache).toHaveBeenCalledOnce();
+  });
+
   it('removes every cloud and external connection from Fully Local Chat', () => {
     syncDiscoveredOllamaModels(['qwen3.5:4b']);
     writeConnectionPickerStates({
@@ -239,7 +628,7 @@ describe('useAccessibleChatModels', () => {
     ]);
   });
 
-  it('groups exact connections by provider family with mode and availability labels', () => {
+  it('keeps exact connection auth and billing surfaces in separate groups', () => {
     const groups = buildConnectionPickerGroups({
       connections: [CODEX_CLI_CONNECTION, OPENAI_API_CONNECTION],
       modelsByProvider: { openai: [{ id: 'gpt-5', label: 'GPT-5' }] },
@@ -248,13 +637,14 @@ describe('useAccessibleChatModels', () => {
         'openai-api': { available: false, auth: 'unauthenticated' },
       },
     });
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe('OpenAI');
-    expect(groups[0]?.options.map((option) => option.modeLabel)).toEqual([
-      'Subscription bridge · External agent',
-      'Native Jarvis Chat · API billed',
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => [group.id, group.label])).toEqual([
+      ['connection:openai-codex', 'Codex CLI'],
+      ['connection:openai-api', 'OpenAI API'],
     ]);
-    expect(groups[0]?.options[1]).toMatchObject({
+    expect(groups[0]?.options[0]?.modeLabel).toBe('Subscription bridge · External agent');
+    expect(groups[1]?.options[0]).toMatchObject({
+      modeLabel: 'Native Jarvis Chat · API billed',
       available: false,
       authLabel: 'Sign in required',
     });
@@ -275,7 +665,7 @@ describe('useAccessibleChatModels', () => {
         'openai-api': { available: true, auth: 'authenticated' },
       },
     });
-    const options = groups[0]?.options ?? [];
+    const options = groups.flatMap((group) => group.options);
 
     expect(
       options
@@ -300,8 +690,10 @@ describe('useAccessibleChatModels', () => {
     });
     const ids = groups.flatMap((group) => group.options).map((option) => option.modelId);
     expect(ids).toEqual(['deepseek/deepseek-v4-flash', 'qwen/qwen3.8-max']);
-    expect(groups[0]?.label).toBe('OpenCode Models');
-    expect(groups[0]?.options.every((option) => option.available === false)).toBe(true);
+    expect(groups.map((group) => group.label)).toEqual(['DeepSeek Models', 'Qwen Models']);
+    expect(
+      groups.flatMap((group) => group.options).every((option) => option.available === false),
+    ).toBe(true);
   });
 
   it('never enables unknown Codex subscription authentication', () => {
@@ -337,7 +729,7 @@ describe('useAccessibleChatModels', () => {
     ]);
   });
 
-  it('does not trust persisted ChatGPT auth until this app session completes detection', async () => {
+  it('keeps stale static subscription fallback visible but disabled without live authority', async () => {
     writeConnectionPickerStates({
       'openai-codex': { available: true, auth: 'authenticated' },
     });
@@ -365,7 +757,9 @@ describe('useAccessibleChatModels', () => {
     const codexOptions = result.current.flatOptions.filter(
       (option) => option.connectionId === 'openai-codex',
     );
-    expect(codexOptions.every((option) => option.available === true)).toBe(true);
+    expect(codexOptions.every((option) => option.available === false)).toBe(true);
+    expect(codexOptions.every((option) => option.catalogSource === 'connection-static')).toBe(true);
+    expect(codexOptions.every((option) => option.authLabel === 'Unavailable')).toBe(true);
     expect(codexOptions.map((option) => option.modelId).sort()).toEqual(
       (CONNECTION_MODEL_OPTIONS['openai-codex'] ?? []).map((option) => option.id).sort(),
     );
