@@ -359,3 +359,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Focused matrix PASS: 3 files / 30 tests. `npm run typecheck` PASS; exact-file Prettier PASS; owned `git diff --check` PASS.
 - App-scoped Playwright/CDP retested all four modes in separate disposable native chats. Every mode cleared the composer, rendered only local usage UI, created no user-mode line, emitted no `@jarvis failed`, and made zero inference-shaped network requests. Screenshots are preserved as `native-playwright-usage-{default,session,all,refresh}-hotfix.png` under the owned D: acceptance-evidence root.
 - Next: stage only the exact two product/test files plus this append-only ledger, run staged diff and secret checks, commit, and release this scope. The official native app remains running for further app-scoped acceptance; whole-computer control is excluded.
+
+#### 2026-08-20 22:34 CDT — committed and scope released
+
+- Commit: `97a0fb43` (`fix(chat): keep usage modes local`), based on `d920b688`.
+- Staged diff check PASS and staged Gitleaks PASS (`3.27 KB`, no leaks). Released the exact extractor product/test scope.
+- The four-mode native Playwright matrix is green. Further native acceptance continues through the single VibeSpace WebView only; no whole-computer control is authorized or used.
