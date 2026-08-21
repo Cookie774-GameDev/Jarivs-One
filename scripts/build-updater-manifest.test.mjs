@@ -1305,6 +1305,26 @@ test('documents structural Minisign parsing as non-cryptographic validation', as
   assert.match(source, /Tauri client remains the cryptographic verification boundary/iu);
 });
 
+test('requires official Windows installers to be Authenticode-signed before release acceptance', async () => {
+  const workflow = await readFile(path.resolve('.github/workflows/release.yml'), 'utf8');
+
+  assert.match(workflow, /createUpdaterArtifacts:\s*true/u);
+  assert.match(workflow, /signCommand:\s*\{\s*cmd:\s*'powershell'/u);
+  assert.match(workflow, /path\.resolve\('scripts\/sign-windows\.ps1'\)/u);
+  assert.match(workflow, /'%1'/u);
+  assert.match(workflow, /JARVIS_WINDOWS_SIGN_REQUIRED:\s*'1'/u);
+  assert.doesNotMatch(workflow, /JARVIS_WINDOWS_SIGN_REQUIRED:\s*\$\{\{\s*secrets\./u);
+  assert.match(workflow, /WINDOWS_CERT_BASE64: \$\{\{ matrix\.platform == 'windows-latest'/u);
+  assert.match(workflow, /WINDOWS_CERT_PASSWORD: \$\{\{ matrix\.platform == 'windows-latest'/u);
+  assert.match(workflow, /WINDOWS_CERT_THUMBPRINT: \$\{\{ matrix\.platform == 'windows-latest'/u);
+  assert.match(workflow, /WINDOWS_TIMESTAMP_URL: \$\{\{ matrix\.platform == 'windows-latest'/u);
+  assert.match(workflow, /Verify Windows installer Authenticode/u);
+  assert.match(workflow, /Get-AuthenticodeSignature -LiteralPath/u);
+  assert.match(workflow, /\$nsis\.Count -ne 1/u);
+  assert.match(workflow, /\$msi\.Count -ne 1/u);
+  assert.match(workflow, /SignatureStatus\]::Valid/u);
+});
+
 test('rejects matching directories and symlinks rather than ignoring or following them', async () => {
   await withAssets(async ({ assetsDir }) => {
     await addArtifact(assetsDir, `VibeSpace-${VERSION}-Windows-x64.exe`);

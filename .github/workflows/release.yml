@@ -114,7 +114,7 @@ jobs:
       - name: Prepare signed updater release config
         shell: bash
         run: |
-          node -e "require('fs').writeFileSync('app/src-tauri/tauri.release.generated.json', JSON.stringify({ bundle: { createUpdaterArtifacts: true } }))"
+          node -e "const path=require('path'); require('fs').writeFileSync('app/src-tauri/tauri.release.generated.json', JSON.stringify({ bundle: { createUpdaterArtifacts: true, windows: { signCommand: { cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/sign-windows.ps1'), '%1'] } } } }))"
 
       - name: Build & publish (tauri-action)
         uses: tauri-apps/tauri-action@v0
@@ -128,11 +128,11 @@ jobs:
           VITE_JARVIS_LOCAL_ADMIN: 'false'
           VITE_JARVIS_ADMIN_EMAILS: ''
           VITE_JARVIS_ADMIN_LOCAL_IDS: ''
-          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-          WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
-          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
-          JARVIS_WINDOWS_SIGN_REQUIRED: ${{ secrets.JARVIS_WINDOWS_SIGN_REQUIRED }}
+          WINDOWS_CERT_BASE64: ${{ matrix.platform == 'windows-latest' && secrets.WINDOWS_CERT_BASE64 || '' }}
+          WINDOWS_CERT_PASSWORD: ${{ matrix.platform == 'windows-latest' && secrets.WINDOWS_CERT_PASSWORD || '' }}
+          WINDOWS_CERT_THUMBPRINT: ${{ matrix.platform == 'windows-latest' && secrets.WINDOWS_CERT_THUMBPRINT || '' }}
+          WINDOWS_TIMESTAMP_URL: ${{ matrix.platform == 'windows-latest' && secrets.WINDOWS_TIMESTAMP_URL || '' }}
+          JARVIS_WINDOWS_SIGN_REQUIRED: '1'
         with:
           projectPath: app
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
@@ -159,6 +159,21 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.generated.json
+
+      - name: Verify Windows installer Authenticode
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $nsis = @(Get-ChildItem -LiteralPath 'app/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File)
+          $msi = @(Get-ChildItem -LiteralPath 'app/src-tauri/target/release/bundle/msi' -Filter '*.msi' -File)
+          if ($nsis.Count -ne 1) { throw "Expected exactly one NSIS installer, found $($nsis.Count)." }
+          if ($msi.Count -ne 1) { throw "Expected exactly one MSI installer, found $($msi.Count)." }
+          foreach ($artifact in @($nsis[0], $msi[0])) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+              throw "Authenticode verification failed for $($artifact.Name): $($signature.Status)."
+            }
+          }
 
   checksums:
     name: Generate updater manifest and SHA256SUMS

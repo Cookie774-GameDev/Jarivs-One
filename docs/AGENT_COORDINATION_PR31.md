@@ -576,3 +576,14 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 
 - The literal extractor now canonicalizes command/rest once and preserves exact operand-free `/file` as `cleaned: '/file'` with zero utility tokens. Composer's existing leading-slash path therefore opens the local bounded project-file picker and returns before persistence/provider dispatch, including when the draft already has attachments. Bare `/attach`, operand-bearing file/attach forms, and inline prose remain unchanged.
 - Automated evidence: focused/adjacent slash matrix PASS 5 files/59 tests; TypeScript typecheck PASS; exact-file Prettier PASS; exact two-file `git diff --check` PASS. The current native binary truthfully remains pre-fix because Windows Code Integrity blocks a trusted recompile; its canceled failure is retained as regression evidence and no native post-fix claim is made.
+
+### 2026-08-21T14:18:00-05:00 — official Windows Authenticode fail-closed claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-RELEASE-AUTHENTICODE`; branch/HEAD `integration/UnifiedChungus-final` at `06b53655`. Exact write scope: `.github/workflows/release.yml`, `scripts/build-updater-manifest.test.mjs`, this append-only ledger, and the controller's own lock record.
+- Release audit found that the workflow supplies Windows certificate variables but generates only `createUpdaterArtifacts: true`; no Tauri `bundle.windows.signCommand` invokes the existing fail-closed `scripts/sign-windows.ps1`. Updater signatures remain gated, but the MSI/NSIS Authenticode boundary is therefore not enforced.
+- Intent: generate a Windows `signCommand` using the existing script and `%1` artifact placeholder, hard-require Windows signing in the official release job, expose certificate material only to the Windows matrix entry, and reject release acceptance unless exactly one MSI and NSIS installer each reports a valid Authenticode signature. No local security-policy bypass, certificate access, release publication, or current runtime process change is authorized.
+
+#### Verification checkpoint
+
+- The generated Tauri release config now invokes the existing absolute `scripts/sign-windows.ps1` path before updater-signature generation, and the official workflow hard-requires signing. Certificate variables resolve only for `windows-latest`. After the build action, the Windows job requires exactly one NSIS EXE and one MSI and rejects any Authenticode status other than `Valid`.
+- Verification: release-manifest suite PASS 45/45 twice; exact workflow/test Prettier PASS; repository `git diff --check` PASS; an isolated no-certificate invocation with `JARVIS_WINDOWS_SIGN_REQUIRED=1` failed closed before SignTool as required. No certificate value was read, no artifact was signed or published, and no local Windows trust policy was changed. A positive signed-installer proof remains an official protected-runner gate.
