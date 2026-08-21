@@ -365,3 +365,31 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Commit: `97a0fb43` (`fix(chat): keep usage modes local`), based on `d920b688`.
 - Staged diff check PASS and staged Gitleaks PASS (`3.27 KB`, no leaks). Released the exact extractor product/test scope.
 - The four-mode native Playwright matrix is green. Further native acceptance continues through the single VibeSpace WebView only; no whole-computer control is authorized or used.
+
+### 2026-08-20 22:39 CDT — literal attachment-path interception claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-NATIVE-ATTACH-PATH-INTERCEPTION`.
+- Branch/base: `integration/UnifiedChungus-final` at `8cde8916`; worktree otherwise contains only the untracked live lock.
+- Exact scope: `app/src/features/chat/slashProjectFiles.ts` and `app/src/features/chat/slashProjectFiles.test.ts`. Composer, filesystem authority, providers, authentication, and other slash commands are excluded.
+- Read-only regression audit found the broader slash matrix green (4 files / 43 tests) but reproduced a pre-existing same-class defect: literal `/attach C:\work tree\notes.md` is split into attachment `C:\work` plus provider-bound text `tree\notes.md`; `/file` has the same ambiguity. Quoting avoids it, but the command/help contract does not require quotes and Composer accepts safe absolute paths containing spaces.
+- Intent: treat a literal whole-input `/attach` or `/file` command as one local command whose complete operand is the path, while preserving the existing bounded single-token/quoted behavior for commands embedded inside ordinary prose.
+
+#### 2026-08-20 22:45 CDT — paused for user-prioritized OpenAI persistence repair
+
+- The exact attachment parser/test claim remains reserved but no source edit was made. The user explicitly prioritized a lost-looking OpenAI subscription connection, so this slice is paused at a safe boundary.
+
+### 2026-08-20 22:45 CDT — refreshed OpenCode subscription truth claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-OPENCODE-SUBSCRIPTION-PERSISTENCE`.
+- Branch/base: `integration/UnifiedChungus-final` at `8cde8916`.
+- Exact scope: `app/src/features/settings/sections/SubscriptionCliBridge.tsx` and `app/src/features/settings/SubscriptionCliBridge.test.tsx`. OpenCode auth material, native runtime, provider bridge protocol, and browser credentials are excluded.
+- App-scoped Playwright plus the user's existing signed-in browser session completed one fresh official OpenAI browser OAuth flow. The OpenCode auth-store timestamp advanced and the native UI reported success. Immediately clicking `Refresh subscriptions` reproduced the complaint: the badge fell from `Subscription connected this session` to `Provider available in OpenCode` even though the credential remained persisted and `/provider` still reported the route connected.
+- Cause: the success badge depends on component-local `confirmedSubscriptions`, while refreshed/remounted authority is already present as `route.providerAvailable`. Intent: render persistent connection truth from the refreshed OpenCode provider snapshot and add explicit refresh/remount regression coverage without reading or copying credentials.
+
+#### Implementation and native verification boundary
+
+- Removed the component-local success set and now renders a success badge only from refreshed OpenCode provider truth: `Connected in OpenCode` when `route.providerAvailable` is authoritative, otherwise `Not connected`. A successful callback already refreshes provider status before returning, so no transient button-only claim is retained.
+- Strengthened the component test to prove the connected state survives both `Refresh subscriptions` and a full component unmount/remount. Focused OpenCode settings/client/bridge matrix PASS: 3 files / 26 tests. `npm run typecheck` PASS; exact-file Prettier and owned diff checks PASS.
+- User-authorized fresh official browser OAuth completed successfully. The OpenCode-owned auth-store timestamp advanced from 19:19 to 20:44 CDT without reading credential contents. Native VibeSpace was then fully restarted; after authoritative discovery, both OpenAI subscription routes rendered `Connected in OpenCode`, remained connected after refresh, and remained connected after Settings remount.
+- Screenshot evidence: `native-playwright-openai-persisted-refresh.png` under the owned D: acceptance-evidence root, SHA-256 `D686D311852C6DB92B4C14A6379AA21147D3C32055E879B025151E947DCA6BF6`.
+- This slice fixes the user's observed post-refresh loss and confirms the newly completed credential persisted across a full app restart. A deeper interrupted-in-flight callback can still require native generation-scoped ownership; that hardening is intentionally separate from this exact UI truth slice.

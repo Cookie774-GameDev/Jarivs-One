@@ -193,9 +193,6 @@ function OpenCodeSubscriptionCenter({
   const [instructions, setInstructions] = useState('');
   const [error, setError] = useState('');
   const [inputs, setInputs] = useState<Record<string, string>>({});
-  const [confirmedSubscriptions, setConfirmedSubscriptions] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
 
   const load = useCallback(async () => {
     if (!client) {
@@ -240,7 +237,6 @@ function OpenCodeSubscriptionCenter({
       setInstructions(result.instructions);
       if (result.kind === 'code_required') setPending(result);
       else {
-        setConfirmedSubscriptions((current) => new Set(current).add(route.providerId));
         await load();
       }
     } catch (startError) {
@@ -260,7 +256,6 @@ function OpenCodeSubscriptionCenter({
     setError('');
     try {
       await completeOpenCodeSubscription(client, pending, code);
-      setConfirmedSubscriptions((current) => new Set(current).add(pending.providerId));
       setPending(undefined);
       setCode('');
       await load();
@@ -318,14 +313,8 @@ function OpenCodeSubscriptionCenter({
                   <h4 className="text-sm font-semibold text-foreground">{route.displayName}</h4>
                   <p className="text-xs text-muted-foreground">{route.label}</p>
                 </div>
-                <Badge
-                  variant={confirmedSubscriptions.has(route.providerId) ? 'success' : 'outline'}
-                >
-                  {confirmedSubscriptions.has(route.providerId)
-                    ? 'Subscription connected this session'
-                    : route.providerAvailable
-                      ? 'Provider available in OpenCode'
-                      : 'Not connected'}
+                <Badge variant={route.providerAvailable ? 'success' : 'outline'}>
+                  {route.providerAvailable ? 'Connected in OpenCode' : 'Not connected'}
                 </Badge>
               </div>
 
