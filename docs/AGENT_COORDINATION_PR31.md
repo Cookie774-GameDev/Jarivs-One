@@ -337,3 +337,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Replaced the stale added-lines allowlist with the exact five currently reviewed synthetic test/documentation findings and added only the 17 exact historical Gitleaks fingerprints. The base scan is CLEAN (`tracked=1198`, `addedLines=184129`, `allowlisted=5`) and Gitleaks is clean across 452 commits / 7.68 MB. No broad path, rule, or repository ignore was added.
 - Security-scanner contract tests PASS 14/14. Final dependency boundary `npm run typecheck` PASS, `npm run build` PASS (4,919 modules), and release-manifest tests PASS 44/44. Exact JSON/lockfile Prettier, cumulative diff check, and Cargo formatting check PASS.
 - Next: stage only `.gitleaksignore`, `package-lock.json`, `scripts/security/scan-added-lines.allowlist.json`, and this ledger; run staged diff and secret checks; commit; release the exact scopes. Installer generation remains blocked by C: capacity and Windows Application Control on a D: Cargo target, while ordered scored native acceptance remains externally Spark-auth blocked.
+
+#### 2026-08-20 21:50 CDT — committed and scopes released
+
+- Commit: `b4218f00` (`fix(security): refresh dependency and scan baselines`), based on `72b5dad3`.
+- Staged diff check PASS and staged Gitleaks PASS (`9.12 KB`, no leaks). Released the exact dependency-lock and fingerprint-maintenance scopes.
+- Automated source verification is now green at this boundary. Final installer generation is environmentally blocked by disk/policy rather than a source failure; ordered native Tests 1–5 remain order-gated by external Spark authentication and the owner-supplied Test-5 semantic rubric.
