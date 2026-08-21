@@ -19,6 +19,7 @@ pub const MAX_DOCUMENT_PATH_BYTES: usize = 4_096;
 pub const MAX_SNAPSHOT_MEMO_BYTES: usize = 256;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 1_100_000;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
+const SEARCH_HTTP_TIMEOUT: Duration = Duration::from_secs(45);
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,6 +144,7 @@ pub(crate) struct HttpSiyuanTransport {
     client: Client,
     base_url: String,
     token: String,
+    search_timeout: Duration,
     session_cookie: Mutex<Option<String>>,
 }
 
@@ -230,18 +232,28 @@ struct BootProgressData {
 
 impl HttpSiyuanTransport {
     pub(crate) fn new(port: u16, token: String) -> Result<Self, ClientError> {
+        Self::new_with_timeouts(port, token, HTTP_TIMEOUT, SEARCH_HTTP_TIMEOUT)
+    }
+
+    fn new_with_timeouts(
+        port: u16,
+        token: String,
+        ordinary_timeout: Duration,
+        search_timeout: Duration,
+    ) -> Result<Self, ClientError> {
         if port == 0 || validate_runtime_token(&token).is_err() {
             return Err(ClientError::TransportUnavailable);
         }
         let client = Client::builder()
             .redirect(Policy::none())
-            .timeout(HTTP_TIMEOUT)
+            .timeout(ordinary_timeout)
             .build()
             .map_err(|_| ClientError::TransportUnavailable)?;
         Ok(Self {
             client,
             base_url: format!("http://{LOOPBACK_HOST}:{port}"),
             token,
+            search_timeout,
             session_cookie: Mutex::new(None),
         })
     }
@@ -325,6 +337,23 @@ impl HttpSiyuanTransport {
         let response = self
             .client
             .post(format!("{}{path}", self.base_url))
+            .header(reqwest::header::COOKIE, session_cookie)
+            .json(&body)
+            .send()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        self.read_envelope(response)
+    }
+
+    fn post_search<T: DeserializeOwned>(
+        &self,
+        path: &'static str,
+        body: Value,
+    ) -> Result<T, ClientError> {
+        let session_cookie = self.ensure_authenticated()?;
+        let response = self
+            .client
+            .post(format!("{}{path}", self.base_url))
+            .timeout(self.search_timeout)
             .header(reqwest::header::COOKIE, session_cookie)
             .json(&body)
             .send()
@@ -424,7 +453,7 @@ impl HttpSiyuanTransport {
     }
 
     fn search(&self, query: &str, limit: u16) -> Result<Vec<BlockSummary>, ClientError> {
-        let data: SearchData = self.post(
+        let data: SearchData = self.post_search(
             "/api/search/fullTextSearchBlock",
             json!({
                 "query": query,
@@ -881,12 +910,14 @@ mod tests {
         }
     }
 
-    fn mock_http_server(responses: Vec<String>) -> (u16, Receiver<String>, JoinHandle<()>) {
+    fn mock_http_server_with_delays(
+        responses: Vec<(String, Duration)>,
+    ) -> (u16, Receiver<String>, JoinHandle<()>) {
         let listener = TcpListener::bind((LOOPBACK_HOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         let (sender, receiver) = mpsc::channel();
         let handle = std::thread::spawn(move || {
-            for response_body in responses {
+            for (response_body, delay) in responses {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 let mut request = String::new();
@@ -907,16 +938,25 @@ mod tests {
                 reader.read_exact(&mut body).unwrap();
                 request.push_str(&String::from_utf8(body).unwrap());
                 sender.send(request).unwrap();
-                write!(
+                std::thread::sleep(delay);
+                let _ = write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: siyuan=vibespace-native-session; Path=/; HttpOnly; SameSite=Lax\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     response_body.len(),
                     response_body
-                )
-                .unwrap();
+                );
             }
         });
         (port, receiver, handle)
+    }
+
+    fn mock_http_server(responses: Vec<String>) -> (u16, Receiver<String>, JoinHandle<()>) {
+        mock_http_server_with_delays(
+            responses
+                .into_iter()
+                .map(|response| (response, Duration::ZERO))
+                .collect(),
+        )
     }
 
     #[test]
@@ -1143,6 +1183,112 @@ mod tests {
         assert!(!request.contains("/api/query/sql"));
         assert!(!request.contains(token.as_str()));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn native_search_has_a_bounded_extended_timeout_without_widening_ordinary_requests() {
+        assert_eq!(HTTP_TIMEOUT, Duration::from_secs(15));
+        assert_eq!(SEARCH_HTTP_TIMEOUT, Duration::from_secs(45));
+
+        let token = "b".repeat(32);
+        let delayed = Duration::from_millis(120);
+        let ordinary_timeout = Duration::from_millis(40);
+        let search_timeout = Duration::from_millis(250);
+        let (search_port, search_requests, search_server) = mock_http_server_with_delays(vec![
+            (
+                r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+                Duration::ZERO,
+            ),
+            (
+                r#"{"code":0,"msg":"","data":{"blocks":[]}}"#.to_owned(),
+                delayed,
+            ),
+        ]);
+        let search_client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new_with_timeouts(
+                search_port,
+                token.clone(),
+                ordinary_timeout,
+                search_timeout,
+            )
+            .unwrap(),
+        );
+        assert_eq!(search_client.search_blocks("bounded", 5), Ok(Vec::new()));
+        let search_login = search_requests.recv().unwrap();
+        let search_request = search_requests.recv().unwrap();
+        assert!(search_login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(search_request.starts_with("POST /api/search/fullTextSearchBlock HTTP/1.1"));
+        assert!(search_request.contains("\"method\":0"));
+        assert!(!search_request.contains(token.as_str()));
+        search_server.join().unwrap();
+
+        let (ordinary_port, ordinary_requests, ordinary_server) =
+            mock_http_server_with_delays(vec![
+                (
+                    r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+                    Duration::ZERO,
+                ),
+                (
+                    r#"{"code":0,"msg":"","data":{"notebooks":[]}}"#.to_owned(),
+                    delayed,
+                ),
+            ]);
+        let ordinary_client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new_with_timeouts(
+                ordinary_port,
+                token.clone(),
+                ordinary_timeout,
+                search_timeout,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            ordinary_client.list_notebooks(),
+            Err(ClientError::TransportUnavailable)
+        );
+        let ordinary_login = ordinary_requests.recv().unwrap();
+        let ordinary_request = ordinary_requests.recv().unwrap();
+        assert!(ordinary_login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(ordinary_request.starts_with("POST /api/notebook/lsNotebooks HTTP/1.1"));
+        assert!(!ordinary_request.contains(token.as_str()));
+        ordinary_server.join().unwrap();
+
+        let (bounded_port, bounded_requests, bounded_server) = mock_http_server_with_delays(vec![
+            (
+                r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+                Duration::ZERO,
+            ),
+            (
+                r#"{"code":0,"msg":"","data":{"blocks":[]}}"#.to_owned(),
+                delayed,
+            ),
+        ]);
+        let bounded_client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new_with_timeouts(
+                bounded_port,
+                token.clone(),
+                search_timeout,
+                ordinary_timeout,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            bounded_client.search_blocks("bounded", 5),
+            Err(ClientError::TransportUnavailable)
+        );
+        assert_eq!(
+            ClientError::TransportUnavailable.to_string(),
+            "siyuan_transport_unavailable"
+        );
+        let bounded_login = bounded_requests.recv().unwrap();
+        let bounded_request = bounded_requests.recv().unwrap();
+        assert!(bounded_login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(bounded_request.starts_with("POST /api/search/fullTextSearchBlock HTTP/1.1"));
+        assert!(!bounded_request.contains(token.as_str()));
+        bounded_server.join().unwrap();
     }
 
     #[test]

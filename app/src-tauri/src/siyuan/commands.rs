@@ -123,17 +123,24 @@ pub async fn siyuan_create_notebook(
 }
 
 #[tauri::command]
-pub fn siyuan_search_blocks(
+pub async fn siyuan_search_blocks(
     project_id: String,
     query: String,
     limit: u16,
     state: State<'_, SiyuanRuntimeState>,
 ) -> Result<SiyuanSearchResponse, String> {
-    let transport = state.runtime_transport(&project_id).map_err(public_error)?;
-    SiyuanClient::new(true, transport)
-        .search_blocks(&query, limit)
-        .map(|blocks| SiyuanSearchResponse { blocks })
-        .map_err(client_error)
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .search_blocks(&query, limit)
+            .map(|blocks| SiyuanSearchResponse { blocks })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
 }
 
 #[tauri::command]
@@ -257,6 +264,23 @@ pub async fn siyuan_create_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_command_offloads_blocking_http_transport() {
+        let source = include_str!("commands.rs");
+        let command = source
+            .split("pub async fn siyuan_search_blocks")
+            .nth(1)
+            .and_then(|remainder| remainder.split("pub fn siyuan_get_block").next())
+            .expect("search command must remain async");
+
+        assert!(
+            command.contains("tauri::async_runtime::spawn_blocking"),
+            "blocking SiYuan HTTP search must not run on the Tauri command thread"
+        );
+        assert!(command.contains("runtime_transport(&project_id)"));
+        assert!(command.contains("search_blocks(&query, limit)"));
+    }
 
     #[test]
     fn version_is_pinned_metadata_without_runtime_or_token_material() {
