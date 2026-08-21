@@ -295,3 +295,9 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Added explicit coverage proving a thrown delete sound cannot replace the successful `Chat removed` result with an error. The previously failing selection-race test now completes without cross-test async leakage.
 - Exact/adjacent History and SFX matrix PASS: 4 files / 24 tests. The broader History matrix also passed 5 files / 24 tests before the added sound-failure case. `npm --prefix app run typecheck` PASS; exact-file Prettier PASS; `git diff --check` PASS.
 - Next: stage only the exact two product/test files plus this ledger, run staged diff and secret checks, commit, release the scope, and restart the complete sharded suite from the committed boundary.
+
+#### 2026-08-20 19:03 CDT — committed and scope released
+
+- Commit: `cd530817` (`fix(history): decouple delete feedback from sound`), based on `4db1c08c`.
+- Staged diff check PASS and staged Gitleaks PASS (`3.03 KB`, no leaks).
+- Released the exact History product/test scope. The complete full-suite rerun will restart from this committed boundary rather than resuming after the former shard-10 failure.
