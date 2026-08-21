@@ -99,6 +99,28 @@ describe('reasoning controls', () => {
     ).toEqual([]);
   });
 
+  it('preserves Luna Max for the exact OpenRouter OpenAI route on OpenCode', () => {
+    const luna = selection('opencode', 'openrouter/openai/gpt-5.6-luna', 'opencode-cli');
+    for (const liveVariants of [undefined, []] as const) {
+      expect(getReasoningCapabilities(luna, liveVariants).supportedEfforts).toContain('max');
+      expect(
+        resolveReasoningPolicy({
+          selection: luna,
+          preference: { mode: 'normal', effortOverride: 'max' },
+          liveVariants,
+        }).providerOptions,
+      ).toEqual({ reasoning_effort: 'max' });
+    }
+
+    for (const unrelated of [
+      selection('opencode', 'unknown/openai/gpt-5.6-luna', 'opencode-cli'),
+      selection('opencode', 'openrouter/anthropic/gpt-5.6-luna', 'opencode-cli'),
+      selection('openrouter', 'openrouter/openai/gpt-5.6-luna', 'openrouter-api'),
+    ]) {
+      expect(getReasoningCapabilities(unrelated).supportedEfforts).toEqual([]);
+    }
+  });
+
   it('blocks unsupported effort instead of snapping it to a nearby level', () => {
     const selected = selection('google', 'gemini-2.5-pro');
     expect(getReasoningCapabilities(selected).supportedEfforts).toEqual(['low', 'medium', 'high']);

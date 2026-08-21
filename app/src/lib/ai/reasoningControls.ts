@@ -80,12 +80,20 @@ function staticReasoningCapabilities(selection: ReasoningSelection): ReasoningCa
   let provider = selection.providerId.toLowerCase();
   let model = selection.modelId.toLowerCase();
   if (connection.includes('opencode')) {
-    const separator = model.indexOf('/');
-    if (separator > 0 && separator < model.length - 1) {
-      const qualifiedProvider = model.slice(0, separator);
+    const segments = model.split('/');
+    if (
+      segments.length === 3 &&
+      segments[0] === 'openrouter' &&
+      segments[1] === 'openai' &&
+      (provider === 'opencode' || provider === 'openrouter')
+    ) {
+      provider = 'openai';
+      model = segments[2]!;
+    } else if (segments.length === 2 && segments[0] && segments[1]) {
+      const qualifiedProvider = segments[0];
       if (provider === 'opencode' || provider === qualifiedProvider) {
         provider = qualifiedProvider;
-        model = model.slice(separator + 1);
+        model = segments[1];
       }
     }
   }
