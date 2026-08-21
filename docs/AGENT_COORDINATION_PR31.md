@@ -382,6 +382,11 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - App-scoped native Playwright submitted an unquoted existing D: image path containing spaces in a disposable chat. The composer cleared, the full filename appeared as a local attachment, no tail became a user message, no `@jarvis failed` appeared, and zero inference-shaped requests were observed.
 - Next: stage only the exact two parser/test files plus the append-only ledger, run staged diff and secret checks, commit, and release this scope.
 
+#### 2026-08-20 22:56 CDT — committed and scope released
+
+- Commit: `fdc19e83` (`fix(chat): keep spaced attachment paths local`), based on `d4dcc235`.
+- Staged diff check PASS and staged Gitleaks PASS (`2.85 KB`, no leaks). Released the exact parser/test scope.
+
 #### 2026-08-20 22:45 CDT — paused for user-prioritized OpenAI persistence repair
 
 - The exact attachment parser/test claim remains reserved but no source edit was made. The user explicitly prioritized a lost-looking OpenAI subscription connection, so this slice is paused at a safe boundary.
