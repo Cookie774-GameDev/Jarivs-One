@@ -36,6 +36,13 @@ describe('extractInlineUtilitySlashCommands', () => {
     expect(result.utilities).toEqual([]);
   });
 
+  it('preserves an exact bare /file for the local picker handler', () => {
+    expect(extractInlineUtilitySlashCommands('/file')).toEqual({
+      cleaned: '/file',
+      utilities: [],
+    });
+  });
+
   it.each([
     ['/attach C:\\work tree\\notes.md', 'attach', 'C:\\work tree\\notes.md'],
     ['/file Project Notes.md', 'file', 'Project Notes.md'],

@@ -186,12 +186,20 @@ export function extractInlineUtilitySlashCommands(text: string): {
   const literalFile = text.trim().match(LITERAL_FILE_RE);
   if (literalFile) {
     const raw = text.trim();
+    const cmd = normalizeUtilityCmd(literalFile[1] ?? '');
+    const rest = (literalFile[2] ?? literalFile[3] ?? literalFile[4] ?? '').trim();
+    // An exact bare /file is a picker command, not an attachment utility.
+    // Preserve it for Composer's full-message slash handler so existing
+    // attachments can never turn the emptied draft into a provider send.
+    if (cmd === 'file' && rest.length === 0) {
+      return { cleaned: raw, utilities: [] };
+    }
     return {
       cleaned: '',
       utilities: [
         {
-          cmd: normalizeUtilityCmd(literalFile[1] ?? ''),
-          rest: (literalFile[2] ?? literalFile[3] ?? literalFile[4] ?? '').trim(),
+          cmd,
+          rest,
           raw,
         },
       ],
