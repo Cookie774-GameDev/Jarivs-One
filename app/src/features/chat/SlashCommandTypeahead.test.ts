@@ -6,10 +6,11 @@ import {
   isChatAttachSlashCmd,
   normalizeSlashCmd,
   orderSlashCommandsForDisplay,
+  resolveSlashCommandSelection,
   slashCmdMatchScore,
   type SlashCommandDef,
 } from './SlashCommandTypeahead';
-import { SECTION_20_COMMANDS } from './slashCommandRouting';
+import { SECTION_20_COMMANDS, SLASH_COMMAND_ALIASES } from './slashCommandRouting';
 
 describe('orderSlashCommandsForDisplay', () => {
   it('matches the grouped visual order used by the slash dropdown', () => {
@@ -24,6 +25,32 @@ describe('orderSlashCommandsForDisplay', () => {
       'tools',
       'help',
     ]);
+  });
+
+  it('prefers an exact command or alias over an earlier cross-category fuzzy selection', () => {
+    const agents = SLASH_COMMANDS.find((cmd) => cmd.cmd === 'agents')!;
+    const subagents = SLASH_COMMANDS.find((cmd) => cmd.cmd === 'subagents')!;
+    const terminals = SLASH_COMMANDS.find((cmd) => cmd.cmd === 'terminals')!;
+
+    expect(resolveSlashCommandSelection('agents', [subagents, agents], 'subagents')).toBe('agents');
+    expect(resolveSlashCommandSelection('terminal', [terminals], '')).toBe('terminals');
+    expect(resolveSlashCommandSelection('agen', [subagents, agents], 'subagents')).toBe(
+      'subagents',
+    );
+  });
+
+  it('keeps every registered exact alias visible and selects its canonical command', () => {
+    for (const [alias, canonical] of Object.entries(SLASH_COMMAND_ALIASES)) {
+      const candidates = SLASH_COMMANDS.filter((command) => slashCmdMatchScore(alias, command) > 0);
+      expect(
+        candidates.map((command) => command.cmd),
+        alias,
+      ).toContain(canonical);
+      const staleSelection = candidates.find((command) => command.cmd !== canonical)?.cmd ?? '';
+      expect(resolveSlashCommandSelection(alias, candidates, staleSelection), alias).toBe(
+        canonical,
+      );
+    }
   });
 
   it('archives Hive in the full table but hides it from product resolution by default', () => {

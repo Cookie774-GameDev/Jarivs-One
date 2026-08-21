@@ -98,6 +98,7 @@ function fuzzyTokenScore(query: string, target: string): number {
 
 export function slashCmdMatchScore(query: string, def: SlashCommandDef): number {
   const q = query.toLowerCase();
+  if (normalizeSlashCmd(q) === def.cmd) return 100;
   return Math.max(
     fuzzyTokenScore(q, def.cmd),
     ...(def.aliases ?? []).map((alias) => fuzzyTokenScore(q, alias)),
@@ -395,6 +396,20 @@ export function orderSlashCommandsForDisplay(commands: SlashCommandDef[]): Slash
     return acc;
   }, {});
   return CATEGORY_ORDER.flatMap((category) => grouped[category] ?? []);
+}
+
+export function resolveSlashCommandSelection(
+  query: string,
+  commands: SlashCommandDef[],
+  current: string,
+): string {
+  if (commands.length === 0) return '';
+  const exactCommand = commands.find((command) => command.cmd === normalizeSlashCmd(query));
+  if (exactCommand) return exactCommand.cmd;
+  const displayCommands = orderSlashCommandsForDisplay(commands);
+  return displayCommands.some((command) => command.cmd === current)
+    ? current
+    : (displayCommands[0]?.cmd ?? '');
 }
 
 export interface SlashCommandTypeaheadProps {

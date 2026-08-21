@@ -146,7 +146,7 @@ import { MentionTypeahead } from './MentionTypeahead';
 import {
   SlashCommandTypeahead,
   getVisibleSlashCommands,
-  orderSlashCommandsForDisplay,
+  resolveSlashCommandSelection,
   findSlashCommandDef,
   isChatAttachSlashCmd,
   normalizeSlashCmd,
@@ -1537,17 +1537,10 @@ export function Composer({
 
   // Keep selectedSlashCmd in sync when filtered list changes
   useEffect(() => {
-    if (filteredSlashCommands.length === 0) {
-      setSelectedSlashCmd((current) => (current === '' ? current : ''));
-      return;
-    }
-    const displayCommands = orderSlashCommandsForDisplay(filteredSlashCommands);
     setSelectedSlashCmd((current) =>
-      displayCommands.some((command) => command.cmd === current)
-        ? current
-        : displayCommands[0]!.cmd,
+      resolveSlashCommandSelection(slashCtx?.query ?? '', filteredSlashCommands, current),
     );
-  }, [filteredSlashCommandsSignature]);
+  }, [filteredSlashCommandsSignature, slashCtx?.query]);
 
   // Auto-grow the textarea up to MAX_HEIGHT, then enable internal scroll
   useEffect(() => {
