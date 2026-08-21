@@ -8,6 +8,9 @@ const BOUND_PROJECT_SCOPE =
   /\b(?:in|from|within)\s+the\s+(?:currently\s+)?bound\b[^\r\n]{0,160}\bproject\b/iu;
 const BOUND_PROJECT_FACT_LOOKUP =
   /\b(?:what|which|who|when|where|how\s+(?:many|long)|authoritative|custodian|retention|artifact)\b/iu;
+const STRUCTURED_PROJECT_CONTEXT_ID = /\bproject-context-vault-[0-9]{4,16}\b/iu;
+const AUTHORITATIVE_RELATIONSHIP_LOOKUP =
+  /\b(?:follow|trace|traverse)\b[^\r\n]{0,160}\b(?:depends_on|relationships?|hops?)\b|\bdepends_on\b[^\r\n]{0,160}\b(?:which|what|who|custodian|retention|artifact|reached)\b/iu;
 const MAX_DIRECT_CONTEXT_REQUEST_CHARS = 32_768;
 const UNSAFE_DIRECT_CONTEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const DIRECT_ADDRESS_ONLY = /\bvibespace_context\b[ \t]+address[ \t]+operation[ \t]+only\b/iu;
@@ -480,7 +483,10 @@ export function requestsReadOnlyContextTool(userText: string): boolean {
   if (/\bfiles\.read\b/i.test(userText) && /[A-Za-z]:[\\/]/.test(userText)) return false;
   return (
     (READ_OR_EVIDENCE_REQUEST.test(userText) && FILE_LIKE_SOURCE.test(userText)) ||
-    (BOUND_PROJECT_SCOPE.test(userText) && BOUND_PROJECT_FACT_LOOKUP.test(userText))
+    (BOUND_PROJECT_SCOPE.test(userText) && BOUND_PROJECT_FACT_LOOKUP.test(userText)) ||
+    (boundedDirectContextText(userText) &&
+      STRUCTURED_PROJECT_CONTEXT_ID.test(userText) &&
+      AUTHORITATIVE_RELATIONSHIP_LOOKUP.test(userText))
   );
 }
 

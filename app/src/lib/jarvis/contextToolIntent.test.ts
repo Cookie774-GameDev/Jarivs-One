@@ -540,6 +540,22 @@ describe('requestsReadOnlyContextTool', () => {
     ).toBe(true);
   });
 
+  it('routes an authoritative project Context relationship traversal to Context authority', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        'Starting from project-context-vault-0042, follow two authoritative depends_on hops. Which artifact is reached, who is its custodian, and what is its retention period?',
+      ),
+    ).toBe(true);
+  });
+
+  it('does not grant Context routing to a mutation that names a project Context record', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        'Change project-context-vault-0042 so depends_on points at project-context-vault-0099.',
+      ),
+    ).toBe(false);
+  });
+
   it('does not grant read-only Context routing to bound-project mutation requests', () => {
     expect(
       requestsReadOnlyContextTool(
