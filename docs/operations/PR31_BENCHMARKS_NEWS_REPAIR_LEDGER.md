@@ -122,6 +122,17 @@ Commit:
 - `a88c56ee86038e3db6053032f9805437c23d9f50` — comparison lane removal.
 - `87f7b9bb60d5529c50116cf288d6049366d3a33d` — client scheduler disabled.
 
+## 2026-08-22 — pagination and trusted-news refinement claim
+
+- Agent/task: `VS-CODEX-PR31-BENCHMARKS-NEWS-20260822` / `PR31-BENCHMARKS-TRUSTED-NEWS-REFINEMENT`.
+- Branch/base: `integration/UnifiedChungus-final` at `c81afbe4b939aff22f6a38f2f7b3c970514b834b`; upstream `origin/UnifiedChungus`; no merge, rebase, or cherry-pick in progress.
+- Preserved inherited state: another agent's append-only `docs/AGENT_COORDINATION_PR31.md` update plus runtime-created `.agent-coordination.lock/`, `.vibespace/`, and `context_map.json` remain excluded.
+- Regression boundary: the Artificial Analysis Worker implementation landed on 2026-08-14, and the endpoint was changed to the documented free endpoint in the 2026-08-20 preserved handoff. The endpoint is paginated, but ingestion fetches only page 1 and then labels that incomplete 197-row slice current/fresh. A direct authenticated read on 2026-08-22 returned 4 pages / 610 exact source rows / 597 scored rows; the missing pages contain the actual current leaders.
+- Fresh official comparison: the complete API pages sort to Claude Opus 5 max 63.1, Claude Opus 5 xhigh 62.5, Claude Fable 5 max/fallback 62.1, Claude Opus 5 high 61.5, GPT-5.6 Sol max 60.9, and Grok 4.6 high 60.9. The public official leaderboard independently presents the same rounded ordering. No values were inferred or rewritten.
+- News regression: the current public feed mixes ordinary GitHub release tags into normal AI headlines because enabled `github_releases` sources are clustered into the same event table and sorted only by publication time. There are zero enabled stable-ID YouTube sources, no separate repository-trend contract, and no creator-follow persistence or notification outbox.
+- Visual regression: the 2026-08-14 benchmark page replacement never adopted the warm CSS surface hooks created for the legacy page, leaving the ranking cards nearly full width and covering the right-side artwork.
+- Exact claim is recorded in the agent-scoped lock file. No production deployment or connected-service mutation is authorized or claimed.
+
 ## Shared backend foundations preserved
 
 Separate in-scope commits already landed on the shared branch and are treated as the base for the remaining Worker work:
@@ -132,3 +143,17 @@ Separate in-scope commits already landed on the shared branch and are treated as
 - `33a0f55c1d104e3c478e1b93b0cb2ac2aeca7b52` and `181a272ad8c945e4ca471ae40120f695525bbdb4` — fetch-safety tests/seam.
 
 These commits were preserved rather than duplicated or overwritten.
+
+## 2026-08-22 — implementation, verification, and product commit
+
+- Agent/task: `VS-CODEX-PR31-BENCHMARKS-NEWS-20260822` / `PR31-BENCHMARKS-TRUSTED-NEWS-REFINEMENT`.
+- Shared branch movement preserved: another agent advanced the branch from claimed base `c81afbe4b939aff22f6a38f2f7b3c970514b834b` to `6a203b5fe63f272c19d7c92571718ad94cca8c7e`; this task was revalidated against that HEAD without rewriting or staging the incoming work.
+- Product commit: `83b096f0` (`feat(intelligence): complete benchmarks and trusted news`), 23 scoped files only.
+- Benchmarks: Artificial Analysis ingestion now follows and validates every declared page, fails closed on incomplete/inconsistent pagination, promotes only complete datasets, and degrades last-known-good data after a newer failed refresh. The warm ranking page uses the existing left/center-left surface hooks and leaves the right artwork visible.
+- Trusted News: normal headlines exclude GitHub release feeds; five verified official YouTube feeds use stable channel IDs; eight approved repositories are refreshed through bounded GitHub API reads and returned in a separate measured-trend contract.
+- Creator alerts: additive D1 subscription/outbox tables use exact account/source keys and idempotent notification keys; authenticated GET/PUT/POST Worker routes preserve source identity; the app persists exact follows, rolls back failed optimistic changes, polls only while VibeSpace is open, locally deduplicates, and truthfully states that alerts are not OS push notifications.
+- Local Worker proof: additive migration `0005_trusted_news.sql` applied successfully to local D1 only. A scheduled local ingestion returned 597 scored benchmark rows from four source pages; rank 1 was Claude Opus 5 max at 63.1. Normal news returned zero GitHub-platform headlines and eight separately modeled repository records. No remote migration, deployment, production data, billing, Supabase, Stripe, or Cloudflare mutation occurred.
+- Fresh verification: focused app matrix PASS (6 files / 31 tests); focused Worker matrix PASS (6 files / 30 tests); Worker `tsc --noEmit` PASS; scoped `git diff --check` PASS; Vite production bundle PASS (4,921 modules, existing bundle-size/dynamic-import warnings only).
+- Full app typecheck remains blocked only by four inherited SiYuan test errors in `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; none is in this task's scope.
+- Native launch evidence: `npm run tauri:dev` started Vite successfully but the Rust dependency build failed in the external cached `futures_macro` crate. The existing native shell was launched against the verified live frontend and local Worker, but native visual inspection was stopped repeatedly by Escape and the user then explicitly prohibited Computer Use. Repository policy forbids substituting browser/Playwright for native acceptance, so native visual acceptance remains honestly unclaimed.
+- Remaining operational work: apply migration `0005` remotely, configure the Worker's Supabase publishable key, deploy the Worker, and perform the native Benchmarks/News visual and signed-in creator-follow acceptance in an allowed native QA session.
