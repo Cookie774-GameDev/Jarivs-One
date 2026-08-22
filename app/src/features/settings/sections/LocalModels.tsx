@@ -958,7 +958,7 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
 
       <Separator />
 
-      <section className="flex flex-col gap-3">
+      <section data-warm-surface="local-model-catalog" className="flex flex-col gap-3">
         <div>
           <h3 className="flex items-center gap-2 text-ui-strong text-foreground">
             <HardDriveDownload className="h-4 w-4 text-accent-copper" />

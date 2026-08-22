@@ -4,13 +4,16 @@ import {
   Bell,
   CalendarDays,
   CalendarRange,
+  CalendarX2,
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   MapPin,
+  Pencil,
   Plus,
   Repeat,
+  RotateCcw,
   Sparkles,
   Trash2,
 } from 'lucide-react';
@@ -31,7 +34,7 @@ import './sakura-schedule.css';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { selectionFromOption, selectionOptionId } from '@/lib/ai/modelSelection';
-import { askAssistantLabel, useAssistantPersonaName } from '@/lib/assistantPersona';
+import { useAssistantPersonaName } from '@/lib/assistantPersona';
 
 const LEGACY_SCHEDULE_TIMELINE_TRANSITION = Object.freeze({
   type: 'spring',
@@ -45,9 +48,17 @@ import { completeTask, useUpcomingTasks } from '@/features/tasks';
 import type { EventReminder, EventRow } from '@/types/event';
 import type { Task } from '@/types/task';
 import type { WorkspaceId } from '@/types/common';
-import { parseEventInput } from './parseEventInput';
 import { useJarvisScheduleEvents, useUpcomingEvents } from './hooks';
-import type { RecurrenceInstance } from './recurrence';
+import {
+  parseCustomRecurrence,
+  parseRecurrence,
+  recurrencePreview,
+  serializeCustomRecurrence,
+  serializeRecurrence,
+  type CustomRecurrenceRule,
+  type RecurrenceInstance,
+  type RecurrenceKind,
+} from './recurrence';
 import {
   defaultEventEndMs,
   defaultEventStartMs,
@@ -102,6 +113,7 @@ function createEmptyScheduleDraft(): ScheduleDraft {
     startInput: toLocalDateTimeInput(start),
     endInput: toLocalDateTimeInput(defaultEventEndMs(start)),
     allDay: false,
+    eventRecurrenceRule: undefined,
     description: '',
     reminderOffsets: [15],
     scheduleMode: 'event',
@@ -118,6 +130,7 @@ function cleanScheduleDraft(draft: ScheduleDraft): ScheduleDraft {
     quick: '',
     title: '',
     description: '',
+    eventRecurrenceRule: undefined,
   };
 }
 
@@ -140,6 +153,44 @@ const JARVIS_RECURRENCE_PRESETS: { value: JarvisScheduleRecurrence; label: strin
   { value: 'monthly', label: 'Monthly' },
   { value: 'custom_interval', label: 'Every…' },
 ];
+
+type EventRepeatChoice = RecurrenceKind | 'custom';
+
+const EVENT_RECURRENCE_PRESETS: { value: EventRepeatChoice; label: string }[] = [
+  { value: 'none', label: 'No repeat' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Custom' },
+];
+
+const CUSTOM_WEEKDAYS = [
+  { value: 1, short: 'M', label: 'Monday' },
+  { value: 2, short: 'T', label: 'Tuesday' },
+  { value: 3, short: 'W', label: 'Wednesday' },
+  { value: 4, short: 'T', label: 'Thursday' },
+  { value: 5, short: 'F', label: 'Friday' },
+  { value: 6, short: 'S', label: 'Saturday' },
+  { value: 7, short: 'S', label: 'Sunday' },
+] as const;
+
+function repeatChoiceForRule(rule?: string): EventRepeatChoice {
+  if (parseCustomRecurrence(rule)) return 'custom';
+  return parseRecurrence(rule);
+}
+
+function defaultCustomRecurrence(startInput: string): CustomRecurrenceRule {
+  const start = new Date(fromLocalDateTimeInput(startInput));
+  const weekday = start.getDay() === 0 ? 7 : start.getDay();
+  return {
+    frequency: 'weekly',
+    interval: 1,
+    weekdays: [weekday],
+    monthDay: start.getDate(),
+    month: start.getMonth() + 1,
+  };
+}
 
 function jarvisRecurrenceLabel(recurrence: JarvisScheduleRecurrence, intervalMs?: number): string {
   if (recurrence === 'custom_interval') {
@@ -341,7 +392,6 @@ function MiniCalendar({
 export function SchedulePage() {
   const reducedMotion = useReducedMotion();
   const personaName = useAssistantPersonaName();
-  const askLabel = askAssistantLabel(personaName);
   const timelineTransition = useThemeMotionTransition(LEGACY_SCHEDULE_TIMELINE_TRANSITION);
   const kernelSmokeBindingActive = React.useSyncExternalStore(
     subscribeKernelSmokeBinding,
@@ -393,11 +443,19 @@ export function SchedulePage() {
   );
   const draftWorkspaceRef = React.useRef<WorkspaceId | null>(workspaceId);
   const skipDraftPersistenceRef = React.useRef(false);
-  const [quick, setQuick] = React.useState(initialScheduleDraft.quick);
   const [title, setTitle] = React.useState(initialScheduleDraft.title);
   const [startInput, setStartInput] = React.useState(initialScheduleDraft.startInput);
   const [endInput, setEndInput] = React.useState(initialScheduleDraft.endInput);
   const [allDay, setAllDay] = React.useState(initialScheduleDraft.allDay);
+  const [eventRecurrenceRule, setEventRecurrenceRule] = React.useState<string | undefined>(
+    initialScheduleDraft.eventRecurrenceRule,
+  );
+  const [customRecurrence, setCustomRecurrence] = React.useState<CustomRecurrenceRule>(
+    () =>
+      parseCustomRecurrence(initialScheduleDraft.eventRecurrenceRule) ??
+      defaultCustomRecurrence(initialScheduleDraft.startInput),
+  );
+  const [editingEventId, setEditingEventId] = React.useState<EventRow['id'] | null>(null);
   const [description, setDescription] = React.useState(initialScheduleDraft.description);
   const [reminderOffsets, setReminderOffsets] = React.useState<number[]>([
     ...initialScheduleDraft.reminderOffsets,
@@ -472,11 +530,16 @@ export function SchedulePage() {
 
     const nextDraft = (workspaceId && readScheduleDraft(workspaceId)) || createEmptyScheduleDraft();
     cleanScheduleDraftRef.current = cleanScheduleDraft(nextDraft);
-    setQuick(nextDraft.quick);
     setTitle(nextDraft.title);
     setStartInput(nextDraft.startInput);
     setEndInput(nextDraft.endInput);
     setAllDay(nextDraft.allDay);
+    setEventRecurrenceRule(nextDraft.eventRecurrenceRule);
+    setCustomRecurrence(
+      parseCustomRecurrence(nextDraft.eventRecurrenceRule) ??
+        defaultCustomRecurrence(nextDraft.startInput),
+    );
+    setEditingEventId(null);
     setDescription(nextDraft.description);
     setReminderOffsets([...nextDraft.reminderOffsets]);
     setScheduleMode(nextDraft.scheduleMode);
@@ -496,11 +559,12 @@ export function SchedulePage() {
     if (!workspaceId) return;
     const draft: ScheduleDraft = {
       schemaVersion: 1,
-      quick,
+      quick: '',
       title,
       startInput,
       endInput,
       allDay,
+      eventRecurrenceRule,
       description,
       reminderOffsets,
       scheduleMode,
@@ -518,11 +582,11 @@ export function SchedulePage() {
     allDay,
     description,
     endInput,
+    eventRecurrenceRule,
     intervalAmount,
     intervalUnit,
     jarvisModelOptionId,
     jarvisRecurrence,
-    quick,
     reminderOffsets,
     scheduleMode,
     startInput,
@@ -594,19 +658,48 @@ export function SchedulePage() {
     [reducedMotion],
   );
 
-  const applyParse = React.useCallback((raw: string) => {
-    if (!raw.trim()) return;
-    const parsed = parseEventInput(raw);
-    setTitle(parsed.title);
-    setStartInput(toLocalDateTimeInput(parsed.start_at));
-    setEndInput(toLocalDateTimeInput(parsed.end_at));
-    setAllDay(parsed.all_day);
+  const updateCustomRecurrence = React.useCallback((patch: Partial<CustomRecurrenceRule>) => {
+    setCustomRecurrence((current) => {
+      const next = { ...current, ...patch };
+      setEventRecurrenceRule(serializeCustomRecurrence(next));
+      return next;
+    });
   }, []);
 
-  const handleQuickChange = (v: string) => {
-    setQuick(v);
-    if (v.trim().length > 2) applyParse(v);
-  };
+  const resetManualEditor = React.useCallback(() => {
+    const nextStart = defaultEventStartMs();
+    const nextStartInput = toLocalDateTimeInput(nextStart);
+    setTitle('');
+    setDescription('');
+    setStartInput(nextStartInput);
+    setEndInput(toLocalDateTimeInput(defaultEventEndMs(nextStart)));
+    setAllDay(false);
+    setEventRecurrenceRule(undefined);
+    setCustomRecurrence(defaultCustomRecurrence(nextStartInput));
+    setEditingEventId(null);
+  }, []);
+
+  const handleEditEvent = React.useCallback((event: EventRow) => {
+    if (isJarvisScheduleEvent(event)) return;
+    const nextStartInput = toLocalDateTimeInput(event.start_at);
+    setScheduleMode('event');
+    setEditingEventId(event.id);
+    setTitle(event.title);
+    setDescription(event.description ?? '');
+    setStartInput(nextStartInput);
+    setEndInput(toLocalDateTimeInput(event.end_at));
+    setAllDay(event.all_day);
+    setReminderOffsets(event.reminders?.map((reminder) => reminder.offset_min) ?? []);
+    setEventRecurrenceRule(event.recurrence_rule);
+    setCustomRecurrence(
+      parseCustomRecurrence(event.recurrence_rule) ?? defaultCustomRecurrence(nextStartInput),
+    );
+    requestAnimationFrame(() => {
+      const editor = document.getElementById('schedule-editor');
+      if (typeof editor?.scrollIntoView === 'function')
+        editor.scrollIntoView({ behavior: 'smooth' });
+    });
+  }, []);
 
   const handleSave = async () => {
     if (!workspaceId) {
@@ -653,8 +746,7 @@ export function SchedulePage() {
         }));
 
     if (jarvisAction) {
-      // Duplicate guard: repeated saves (or repeated natural-language parses)
-      // of the same action at the same time must not stack duplicate runs.
+      // Duplicate guard: repeated saves of the same action at the same time must not stack runs.
       const normalizedTitle = title.trim().toLowerCase();
       const duplicate = jarvisEvents.some(
         (event) =>
@@ -679,41 +771,57 @@ export function SchedulePage() {
         Object.values(useAgentStore.getState().agents),
       );
       const protectedJarvisId = protectedJarvis?.id ?? 'agent_jarvis';
-      await eventRepo.create(
-        jarvisAction
-          ? buildJarvisScheduleEventInput({
-              workspaceId,
-              createdBy: protectedJarvisId,
-              title: title.trim(),
-              prompt: description.trim() || title.trim(),
-              startAt: start,
-              durationMs: end - start,
-              recurrence: jarvisRecurrence,
-              ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-              modelSelection: selectedJarvisModel
-                ? selectionFromOption(
+      if (jarvisAction) {
+        await eventRepo.create(
+          buildJarvisScheduleEventInput({
+            workspaceId,
+            createdBy: protectedJarvisId,
+            title: title.trim(),
+            prompt: description.trim() || title.trim(),
+            startAt: start,
+            durationMs: end - start,
+            recurrence: jarvisRecurrence,
+            ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            modelSelection: selectedJarvisModel
+              ? selectionOptionId(chatModelSelection) === selectedJarvisModel.id
+                ? chatModelSelection
+                : selectionFromOption(
                     selectedJarvisModel.provider,
                     selectedJarvisModel.modelId,
                     selectedJarvisModel.connection,
                   )
-                : chatModelSelection,
-              agentId: protectedJarvisId,
-            })
-          : {
-              workspace_id: workspaceId,
-              title: title.trim(),
-              description: description.trim() || undefined,
-              start_at: start,
-              end_at: end,
-              all_day: allDay,
-              reminders,
-              source: 'manual',
-              created_by: localUserId ?? 'usr_local',
-            },
-      );
+              : chatModelSelection,
+            agentId: protectedJarvisId,
+          }),
+        );
+      } else {
+        const manualInput = {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          start_at: start,
+          end_at: end,
+          all_day: allDay,
+          recurrence_rule: eventRecurrenceRule,
+          reminders,
+        };
+        if (editingEventId) {
+          await eventRepo.update(editingEventId, manualInput);
+        } else {
+          await eventRepo.create({
+            workspace_id: workspaceId,
+            ...manualInput,
+            source: 'manual',
+            created_by: localUserId ?? 'usr_local',
+          });
+        }
+      }
       toast.success(
-        jarvisAction ? `${personaName} Action saved` : 'Event saved',
+        jarvisAction
+          ? `${personaName} Action saved`
+          : editingEventId
+            ? 'Event updated'
+            : 'Event saved',
         formatScheduleSuccess(
           jarvisAction
             ? `“${title.trim()}” will run ${
@@ -724,9 +832,6 @@ export function SchedulePage() {
             : `“${title.trim()}” is on your schedule.`,
         ),
       );
-      setQuick('');
-      setTitle('');
-      setDescription('');
       const nextStart = defaultEventStartMs();
       const nextStartInput = toLocalDateTimeInput(nextStart);
       const nextEndInput = toLocalDateTimeInput(defaultEventEndMs(nextStart));
@@ -737,6 +842,7 @@ export function SchedulePage() {
         startInput: nextStartInput,
         endInput: nextEndInput,
         allDay: false,
+        eventRecurrenceRule: undefined,
         description: '',
         reminderOffsets,
         scheduleMode,
@@ -746,9 +852,7 @@ export function SchedulePage() {
         jarvisModelOptionId,
       };
       clearScheduleDraft(workspaceId);
-      setStartInput(nextStartInput);
-      setEndInput(nextEndInput);
-      setAllDay(false);
+      resetManualEditor();
       setJarvisRecurrence('once');
       setIntervalAmount(2);
       setIntervalUnit('hours');
@@ -866,6 +970,22 @@ export function SchedulePage() {
       toast.success('Event removed', formatScheduleSuccess(`“${event.title}” is gone.`));
     } catch (err) {
       toast.error('Could not delete', err instanceof Error ? err.message : 'Try again.');
+    }
+  };
+
+  const handleScheduleStatus = async (event: EventRow, status: 'scheduled' | 'cancelled') => {
+    try {
+      await eventRepo.update(event.id, { status });
+      toast.success(
+        status === 'cancelled' ? 'Schedule cancelled' : 'Schedule reopened',
+        formatScheduleSuccess(
+          status === 'cancelled'
+            ? `“${event.title}” will no longer run.`
+            : `“${event.title}” is active again.`,
+        ),
+      );
+    } catch (err) {
+      toast.error('Could not update schedule', err instanceof Error ? err.message : 'Try again.');
     }
   };
 
@@ -1102,6 +1222,8 @@ export function SchedulePage() {
                           <EventTimelineRow
                             item={item}
                             onDelete={handleDeleteEvent}
+                            onEdit={handleEditEvent}
+                            onStatusChange={handleScheduleStatus}
                             onOpenJarvis={(event) => {
                               setTimelineView('jarvis');
                               setOpenJarvisEventId(String(event.id));
@@ -1120,6 +1242,7 @@ export function SchedulePage() {
         </section>
 
         <aside
+          id="schedule-editor"
           data-monochrome-surface="schedule-editor"
           data-sakura-surface="schedule-editor"
           className="rounded-xl border border-border bg-panel p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none"
@@ -1133,11 +1256,9 @@ export function SchedulePage() {
                 <Sparkles className="h-4 w-4 text-accent-cyan" />
               </div>
               <div>
-                <h2 className="font-display text-page-title text-foreground">
-                  {askLabel} to schedule
-                </h2>
+                <h2 className="font-display text-page-title text-foreground">Create a schedule</h2>
                 <p className="text-secondary text-muted-foreground">
-                  Natural-language planning stays local and editable before save.
+                  Add a clear title and time, then choose repeat, notes, and reminders.
                 </p>
               </div>
             </div>
@@ -1190,10 +1311,15 @@ export function SchedulePage() {
                             'hover:border-border-mid focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
                           )}
                         >
-                          <span className="min-w-0 truncate">
-                            {selectedJarvisModel
-                              ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}`
-                              : 'Choose a connected model'}
+                          <span className="flex min-w-0 items-center gap-2 truncate">
+                            {selectedJarvisModel ? (
+                              <ProviderFallbackMark provider={selectedJarvisModel.provider} />
+                            ) : null}
+                            <span className="truncate">
+                              {selectedJarvisModel
+                                ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}`
+                                : 'Choose a connected model'}
+                            </span>
                           </span>
                           <ChevronRight className="h-3.5 w-3.5 shrink-0 rotate-90 text-muted-foreground" />
                         </button>
@@ -1232,17 +1358,10 @@ export function SchedulePage() {
                                             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                                         )}
                                       >
-                                        <span
-                                          className={cn(
-                                            'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold',
-                                            selected
-                                              ? 'border-accent-violet/50 bg-accent-violet/20 text-foreground'
-                                              : 'border-border bg-background text-muted-foreground',
-                                          )}
-                                          aria-hidden
-                                        >
-                                          {getProviderDisplayName(option.provider).slice(0, 2)}
-                                        </span>
+                                        <ProviderFallbackMark
+                                          provider={option.provider}
+                                          selected={selected}
+                                        />
                                         <span className="min-w-0">
                                           <span className="block truncate font-medium text-foreground">
                                             {option.label}
@@ -1368,29 +1487,7 @@ export function SchedulePage() {
                 </p>
               </div>
             )}
-            {scheduleMode === 'event' ? (
-              <div>
-                <Label
-                  htmlFor="event-quick"
-                  className={cn(SECTION_TITLE_CLASS, 'flex items-center gap-1.5')}
-                >
-                  <Sparkles className="h-3.5 w-3.5 text-accent-cyan" /> Quick natural language
-                </Label>
-                <Input
-                  id="event-quick"
-                  value={quick}
-                  onChange={(e) => handleQuickChange(e.target.value)}
-                  placeholder="e.g. Work on this chat for your project at 2 a.m."
-                  className={PLACEHOLDER_INPUT_CLASS}
-                />
-                <p className={FIELD_HINT_CLASS}>
-                  Suggestion only — not saved content. Try: Friday 4pm, tomorrow 9:30, call me at
-                  2am.
-                </p>
-              </div>
-            ) : null}
-
-            <div>
+            <div data-warm-surface="schedule-field-group">
               <Label htmlFor="event-title" className={SECTION_TITLE_CLASS}>
                 {scheduleMode === 'jarvis' ? `${personaName} action title` : 'Title'}
               </Label>
@@ -1407,7 +1504,10 @@ export function SchedulePage() {
               />
             </div>
 
-            <div className="rounded-lg border border-border/80 bg-background/40 p-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
+            <div
+              data-warm-surface="schedule-field-group"
+              className="rounded-lg border border-border/80 bg-background/40 p-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background"
+            >
               <div className="mb-2 flex items-center justify-between gap-2">
                 <Label className={cn(SECTION_TITLE_CLASS, 'flex items-center gap-1.5')}>
                   <Clock className="h-3.5 w-3.5 text-accent-copper" /> When
@@ -1461,7 +1561,182 @@ export function SchedulePage() {
               </div>
             ) : null}
 
-            <div>
+            {scheduleMode === 'event' ? (
+              <div data-warm-surface="schedule-field-group">
+                <Label className={cn(SECTION_TITLE_CLASS, 'flex items-center gap-1.5')}>
+                  <Repeat className="h-3.5 w-3.5 text-accent-copper" /> Repeat
+                </Label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {EVENT_RECURRENCE_PRESETS.map((preset) => {
+                    const active = repeatChoiceForRule(eventRecurrenceRule) === preset.value;
+                    return (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => {
+                          if (preset.value === 'custom') {
+                            const next =
+                              parseCustomRecurrence(eventRecurrenceRule) ??
+                              defaultCustomRecurrence(startInput);
+                            setCustomRecurrence(next);
+                            setEventRecurrenceRule(serializeCustomRecurrence(next));
+                          } else {
+                            setEventRecurrenceRule(serializeRecurrence(preset.value));
+                          }
+                        }}
+                        className={cn(
+                          'rounded-md border px-2.5 py-1 text-metadata transition-colors',
+                          active
+                            ? 'border-accent-copper/60 bg-accent-copper/10 text-foreground'
+                            : 'border-border bg-background text-muted-foreground hover:border-border-mid',
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {repeatChoiceForRule(eventRecurrenceRule) === 'custom' ? (
+                  <div className="mt-2 grid gap-2 rounded-lg border border-border/70 bg-background/35 p-3">
+                    <div className="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-2">
+                      <label className="grid gap-1 text-metadata text-muted-foreground">
+                        Frequency
+                        <select
+                          aria-label="Repeat frequency"
+                          value={customRecurrence.frequency}
+                          onChange={(event) =>
+                            updateCustomRecurrence({
+                              frequency: event.target.value as CustomRecurrenceRule['frequency'],
+                            })
+                          }
+                          className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                        >
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                          <option value="yearly">Yearly</option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-metadata text-muted-foreground">
+                        Interval
+                        <Input
+                          aria-label="Repeat interval"
+                          type="number"
+                          min={1}
+                          max={999}
+                          value={customRecurrence.interval}
+                          onChange={(event) =>
+                            updateCustomRecurrence({
+                              interval: Math.min(999, Math.max(1, Number(event.target.value) || 1)),
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
+                    {customRecurrence.frequency === 'weekly' ? (
+                      <div>
+                        <span className="text-metadata text-muted-foreground">Weekdays</span>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {CUSTOM_WEEKDAYS.map((weekday) => {
+                            const selected =
+                              customRecurrence.weekdays?.includes(weekday.value) ?? false;
+                            return (
+                              <button
+                                key={weekday.value}
+                                type="button"
+                                aria-label={weekday.label}
+                                aria-pressed={selected}
+                                onClick={() => {
+                                  const current = customRecurrence.weekdays ?? [];
+                                  const next = selected
+                                    ? current.filter((day) => day !== weekday.value)
+                                    : [...current, weekday.value].sort(
+                                        (left, right) => left - right,
+                                      );
+                                  if (next.length > 0) updateCustomRecurrence({ weekdays: next });
+                                }}
+                                className={cn(
+                                  'h-8 w-8 rounded-md border text-metadata',
+                                  selected
+                                    ? 'border-accent-copper/60 bg-accent-copper/10 text-foreground'
+                                    : 'border-border bg-background text-muted-foreground',
+                                )}
+                              >
+                                {weekday.short}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    {customRecurrence.frequency === 'monthly' ||
+                    customRecurrence.frequency === 'yearly' ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {customRecurrence.frequency === 'yearly' ? (
+                          <label className="grid gap-1 text-metadata text-muted-foreground">
+                            Month
+                            <select
+                              aria-label="Repeat month"
+                              value={customRecurrence.month ?? 1}
+                              onChange={(event) =>
+                                updateCustomRecurrence({ month: Number(event.target.value) })
+                              }
+                              className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+                            >
+                              {Array.from({ length: 12 }, (_, index) => (
+                                <option key={index + 1} value={index + 1}>
+                                  {new Intl.DateTimeFormat(undefined, { month: 'long' }).format(
+                                    new Date(2024, index, 1),
+                                  )}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <label className="grid gap-1 text-metadata text-muted-foreground">
+                          Day of month
+                          <Input
+                            aria-label="Repeat month day"
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={customRecurrence.monthDay ?? 1}
+                            onChange={(event) =>
+                              updateCustomRecurrence({
+                                monthDay: Math.min(
+                                  31,
+                                  Math.max(1, Number(event.target.value) || 1),
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                    <label className="grid gap-1 text-metadata text-muted-foreground">
+                      Optional end date
+                      <Input
+                        aria-label="Repeat end date"
+                        type="date"
+                        value={customRecurrence.until ?? ''}
+                        onChange={(event) =>
+                          updateCustomRecurrence({ until: event.target.value || undefined })
+                        }
+                      />
+                    </label>
+                    <p className="text-metadata text-muted-foreground" aria-live="polite">
+                      {recurrencePreview(
+                        customRecurrence,
+                        fromLocalDateTimeInput(startInput) || Date.now(),
+                      )}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div data-warm-surface="schedule-field-group">
               <Label id="event-desc-label" htmlFor="event-desc" className={SECTION_TITLE_CLASS}>
                 {scheduleMode === 'jarvis' ? `${personaName} instruction` : 'Notes'}
               </Label>
@@ -1481,7 +1756,7 @@ export function SchedulePage() {
             </div>
 
             {scheduleMode === 'event' ? (
-              <div>
+              <div data-warm-surface="schedule-field-group">
                 <Label className={cn(SECTION_TITLE_CLASS, 'flex items-center gap-1.5')}>
                   <Bell className="h-3.5 w-3.5 text-accent-copper" /> Reminders
                 </Label>
@@ -1521,8 +1796,17 @@ export function SchedulePage() {
               className="mt-1 w-full"
             >
               <Plus className="mr-1 h-3.5 w-3.5" />{' '}
-              {scheduleMode === 'jarvis' ? `Save ${personaName} Action` : 'Save event'}
+              {scheduleMode === 'jarvis'
+                ? `Save ${personaName} Action`
+                : editingEventId
+                  ? 'Update event'
+                  : 'Save event'}
             </Button>
+            {scheduleMode === 'event' && editingEventId ? (
+              <Button type="button" variant="ghost" onClick={resetManualEditor}>
+                Cancel editing
+              </Button>
+            ) : null}
             {KERNEL_SMOKE_ENABLED && kernelSmokeBindingActive ? (
               <div className="grid grid-cols-2 gap-2" aria-label="Kernel schedule smoke fixtures">
                 <Button
@@ -1559,10 +1843,14 @@ export function SchedulePage() {
 function EventTimelineRow({
   item,
   onDelete,
+  onEdit,
+  onStatusChange,
   onOpenJarvis,
 }: {
   item: Extract<TimelineItem, { kind: 'event' }>;
   onDelete: (event: EventRow) => void;
+  onEdit: (event: EventRow) => void;
+  onStatusChange: (event: EventRow, status: 'scheduled' | 'cancelled') => void;
   onOpenJarvis?: (event: EventRow) => void;
 }) {
   const event = item.instance.event;
@@ -1618,6 +1906,11 @@ function EventTimelineRow({
               {item.instance.isRecurrence && (
                 <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Recurring" />
               )}
+              {event.status === 'cancelled' ? (
+                <Badge variant="outline" className="shrink-0 text-metadata">
+                  Cancelled
+                </Badge>
+              ) : null}
               {reminderCount > 0 && (
                 <span
                   className="inline-flex items-center gap-0.5 text-metadata text-muted-foreground"
@@ -1678,19 +1971,75 @@ function EventTimelineRow({
               </Button>
             )}
           </div>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => onDelete(event)}
-            aria-label={`Delete ${event.title}`}
-            className="opacity-0 transition-opacity group-hover:opacity-100"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {!jarvisSchedule ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => onEdit(event)}
+                  aria-label={`Edit ${event.title}`}
+                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() =>
+                    onStatusChange(event, event.status === 'cancelled' ? 'scheduled' : 'cancelled')
+                  }
+                  aria-label={`${event.status === 'cancelled' ? 'Reopen' : 'Cancel'} ${event.title}`}
+                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  {event.status === 'cancelled' ? (
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  ) : (
+                    <CalendarX2 className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => onDelete(event)}
+              aria-label={`Delete ${event.title}`}
+              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function ProviderFallbackMark({
+  provider,
+  selected = false,
+}: {
+  provider: Parameters<typeof getProviderDisplayName>[0];
+  selected?: boolean;
+}) {
+  const label = getProviderDisplayName(provider);
+  return (
+    <span
+      className={cn(
+        'flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold uppercase',
+        selected
+          ? 'border-accent-violet/50 bg-accent-violet/20 text-foreground'
+          : 'border-border bg-background text-muted-foreground',
+      )}
+      aria-label={`${label} provider`}
+      title={label}
+    >
+      {label.slice(0, 2)}
+    </span>
   );
 }
 

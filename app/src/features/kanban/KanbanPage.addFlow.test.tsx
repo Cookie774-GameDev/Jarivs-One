@@ -63,4 +63,17 @@ describe('KanbanPage add controls', () => {
     expect(screen.queryByText('Live workspace activity')).toBeNull();
     expect(container.querySelector('[data-kanban-checklist-grid="expanded"]')).not.toBeNull();
   });
+
+  it('marks warm inputs, cards, and empty states without changing creation behavior', () => {
+    const { container } = render(<KanbanPage />);
+
+    expect(container.querySelectorAll('[data-warm-surface="kanban-input"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-warm-surface="kanban-empty-copy"]')).toHaveLength(2);
+
+    fireEvent.change(screen.getByRole('textbox', { name: "New item for Today's to-do" }), {
+      target: { value: 'Warm card proof' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: "Add item to Today's to-do" }));
+    expect(container.querySelector('[data-warm-surface="kanban-card"]')).not.toBeNull();
+  });
 });

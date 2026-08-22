@@ -14,6 +14,7 @@ const draft: ScheduleDraft = {
   startInput: '2026-08-10T09:00',
   endInput: '2026-08-10T10:00',
   allDay: false,
+  eventRecurrenceRule: 'weekly',
   description: 'Prepare the release checklist.',
   reminderOffsets: [15, 60],
   scheduleMode: 'event',

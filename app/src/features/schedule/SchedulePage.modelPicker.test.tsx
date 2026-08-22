@@ -13,6 +13,7 @@ import { SchedulePage } from './SchedulePage';
 const {
   completeTaskMock,
   createEvent,
+  updateEvent,
   deleteEvent,
   accessibleModelsState,
   jarvisEventsState,
@@ -21,6 +22,7 @@ const {
 } = vi.hoisted(() => ({
   completeTaskMock: vi.fn(),
   createEvent: vi.fn(),
+  updateEvent: vi.fn(),
   deleteEvent: vi.fn(),
   accessibleModelsState: { current: null as object | null },
   jarvisEventsState: { rows: [] as unknown[] },
@@ -45,6 +47,7 @@ vi.mock('@/lib/db', async () => {
     ...actual,
     eventRepo: {
       create: createEvent,
+      update: updateEvent,
       delete: deleteEvent,
     },
   };
@@ -65,6 +68,8 @@ describe('SchedulePage Jarvis Action model picker', () => {
     window.localStorage.clear();
     createEvent.mockReset();
     createEvent.mockResolvedValue({});
+    updateEvent.mockReset();
+    updateEvent.mockResolvedValue({});
     deleteEvent.mockReset();
     deleteEvent.mockResolvedValue(undefined);
     completeTaskMock.mockReset();
@@ -330,6 +335,151 @@ describe('SchedulePage Jarvis Action model picker', () => {
     expect(success).toHaveBeenCalledWith(
       'Event saved',
       'Completed, sir. “Team sync” is on your schedule.',
+    );
+  });
+
+  it('keeps manual title entry isolated from removed live natural-language parsing', () => {
+    render(<SchedulePage />);
+
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Keep this exact title' },
+    });
+
+    expect(screen.queryByLabelText(/quick natural language/i)).toBeNull();
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe(
+      'Keep this exact title',
+    );
+  });
+
+  it('creates a manual custom recurrence with weekdays, end date, reminders, and preview', async () => {
+    render(<SchedulePage />);
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Planning cadence' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Custom$/i }));
+    fireEvent.change(screen.getByLabelText('Repeat interval'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Wednesday' }));
+    fireEvent.change(screen.getByLabelText('Repeat end date'), {
+      target: { value: '2026-12-31' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '1 hour before' }));
+
+    expect(screen.getByText(/Every 2 weeks/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Save event/i }));
+
+    await waitFor(() => expect(createEvent).toHaveBeenCalledOnce());
+    expect(createEvent.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Planning cadence',
+      recurrence_rule: expect.stringContaining('FREQ=WEEKLY'),
+      reminders: expect.arrayContaining([expect.objectContaining({ offset_min: 60 })]),
+    });
+    expect(createEvent.mock.calls[0]?.[0]?.recurrence_rule).toContain('BYDAY=');
+    expect(createEvent.mock.calls[0]?.[0]?.recurrence_rule).toContain('UNTIL=20261231');
+  });
+
+  it('reopens a saved manual event for editing and cancel leaves the event untouched', async () => {
+    const now = Date.now() + 60 * 60 * 1000;
+    const event = {
+      id: 'event_edit',
+      workspace_id: 'workspace_1',
+      title: 'Original title',
+      description: 'Original notes',
+      start_at: now,
+      end_at: now + 60 * 60 * 1000,
+      all_day: false,
+      timezone: 'UTC',
+      attendees: [],
+      source: 'manual',
+      recurrence_rule: 'weekly',
+      reminders: [{ offset_min: 15, channels: ['desktop', 'in_app'] }],
+      status: 'scheduled',
+      created_by: 'usr_local',
+      created_at: now,
+      updated_at: now,
+    } as unknown as EventRow;
+    upcomingEventsState.rows = [
+      {
+        event,
+        instanceStartMs: event.start_at,
+        instanceEndMs: event.end_at,
+        isRecurrence: false,
+      },
+    ];
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Original title' }));
+    expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Original title');
+    expect(screen.getByRole('button', { name: /^Weekly$/i }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Unsaved change' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }));
+    expect(updateEvent).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Original title' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Updated title' } });
+    fireEvent.click(screen.getByRole('button', { name: /Update event/i }));
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledOnce());
+    expect(updateEvent).toHaveBeenCalledWith(
+      'event_edit',
+      expect.objectContaining({
+        title: 'Updated title',
+        recurrence_rule: 'weekly',
+        reminders: [{ offset_min: 15, channels: ['desktop', 'in_app'] }],
+      }),
+    );
+  });
+
+  it('cancels and reopens a persisted manual schedule without deleting it', async () => {
+    const now = Date.now() + 60 * 60 * 1000;
+    const buildEvent = (status: EventRow['status']) =>
+      ({
+        id: 'event_status',
+        workspace_id: 'workspace_1',
+        title: 'Status lifecycle',
+        start_at: now,
+        end_at: now + 60 * 60 * 1000,
+        all_day: false,
+        timezone: 'UTC',
+        attendees: [],
+        source: 'manual',
+        reminders: [],
+        status,
+        created_by: 'usr_local',
+        created_at: now,
+        updated_at: now,
+      }) as unknown as EventRow;
+    const scheduled = buildEvent('scheduled');
+    upcomingEventsState.rows = [
+      {
+        event: scheduled,
+        instanceStartMs: scheduled.start_at,
+        instanceEndMs: scheduled.end_at,
+        isRecurrence: false,
+      },
+    ];
+    const view = render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Status lifecycle' }));
+    await waitFor(() =>
+      expect(updateEvent).toHaveBeenCalledWith('event_status', { status: 'cancelled' }),
+    );
+    expect(deleteEvent).not.toHaveBeenCalled();
+
+    updateEvent.mockClear();
+    const cancelled = buildEvent('cancelled');
+    upcomingEventsState.rows = [
+      {
+        event: cancelled,
+        instanceStartMs: cancelled.start_at,
+        instanceEndMs: cancelled.end_at,
+        isRecurrence: false,
+      },
+    ];
+    view.rerender(<SchedulePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen Status lifecycle' }));
+    await waitFor(() =>
+      expect(updateEvent).toHaveBeenCalledWith('event_status', { status: 'scheduled' }),
     );
   });
 

@@ -167,7 +167,7 @@ describe('LocalModels local agent runtime settings', () => {
   });
 
   it('shows exact resource guidance and never marks the requested model Recommended', () => {
-    render(<LocalModels active={false} />);
+    const { container } = render(<LocalModels active={false} />);
 
     expect(screen.getByText('Qwen3.5 4B')).toBeTruthy();
     expect(screen.getByText(/3.4 GB download · 8 GB system RAM recommended/)).toBeTruthy();
@@ -177,6 +177,7 @@ describe('LocalModels local agent runtime settings', () => {
       'https://ollama.com/library/qwen3.5:4b',
     );
     expect(screen.queryByText('Recommended')).toBeNull();
+    expect(container.querySelector('[data-warm-surface="local-model-catalog"]')).not.toBeNull();
   });
 
   it('establishes Ollama, pulls, and chat-verifies without forcing a default or offline mode', async () => {

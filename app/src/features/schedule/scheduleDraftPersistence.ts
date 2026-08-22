@@ -14,6 +14,8 @@ export interface ScheduleDraft {
   readonly startInput: string;
   readonly endInput: string;
   readonly allDay: boolean;
+  /** Existing short recurrence value or an RFC5545-compatible RRULE. */
+  readonly eventRecurrenceRule?: string;
   readonly description: string;
   readonly reminderOffsets: readonly number[];
   readonly scheduleMode: 'event' | 'jarvis';
@@ -50,6 +52,8 @@ function isScheduleDraft(value: unknown): value is ScheduleDraft {
     typeof candidate.endInput === 'string' &&
     DATE_TIME_INPUT_PATTERN.test(candidate.endInput) &&
     typeof candidate.allDay === 'boolean' &&
+    (candidate.eventRecurrenceRule === undefined ||
+      boundedString(candidate.eventRecurrenceRule, 1_000)) &&
     Array.isArray(candidate.reminderOffsets) &&
     candidate.reminderOffsets.length <= 16 &&
     candidate.reminderOffsets.every(
@@ -108,6 +112,7 @@ export function scheduleDraftsEqual(left: ScheduleDraft, right: ScheduleDraft): 
     left.startInput === right.startInput &&
     left.endInput === right.endInput &&
     left.allDay === right.allDay &&
+    left.eventRecurrenceRule === right.eventRecurrenceRule &&
     left.description === right.description &&
     left.scheduleMode === right.scheduleMode &&
     left.jarvisRecurrence === right.jarvisRecurrence &&

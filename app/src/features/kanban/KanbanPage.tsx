@@ -305,7 +305,7 @@ function ChecklistCard({
         </div>
       ) : null}
 
-      <div className="flex gap-1.5">
+      <div data-warm-surface="kanban-input" className="flex gap-1.5">
         <Input
           ref={inputRef}
           value={draft}
@@ -391,6 +391,7 @@ function ChecklistRow({
   const done = item.status === 'done';
   return (
     <motion.li
+      data-warm-surface="kanban-card"
       data-sakura-surface="kanban-card"
       data-sakura-state={done ? 'complete' : 'open'}
       layout={rowLayout}

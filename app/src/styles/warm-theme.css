@@ -294,7 +294,9 @@ html[data-theme='warm'] [data-vibespace-page='chat'] {
   background: var(--warm-canvas);
 }
 
-html[data-theme='warm'] [data-vibespace-page='chat'] > :not(.warm-chat-welcome):not(.token-boss-cinematic) {
+html[data-theme='warm']
+  [data-vibespace-page='chat']
+  > :not(.warm-chat-welcome):not(.token-boss-cinematic) {
   position: relative;
   z-index: 2;
 }
@@ -629,8 +631,22 @@ html[data-theme='warm'] [data-monochrome-route='kanban'] [data-monochrome-surfac
 html[data-theme='warm'] [data-monochrome-route='kanban'] .cozy-card {
   border: 1px solid var(--warm-border);
   border-radius: var(--warm-radius-card);
-  background: var(--warm-surface);
+  background: rgb(255 248 238 / 0.56);
   box-shadow: var(--warm-shadow-soft);
+  backdrop-filter: blur(16px) saturate(1.06);
+}
+
+html[data-theme='warm'] [data-monochrome-route='kanban'] [data-warm-surface='kanban-input'] input {
+  border-color: var(--warm-border-strong);
+  background: rgb(255 250 243 / 0.72);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.62);
+}
+
+html[data-theme='warm'] [data-monochrome-route='kanban'] [data-warm-surface='kanban-card'] {
+  border-color: var(--warm-border);
+  background: rgb(255 249 241 / 0.62);
+  box-shadow: 0 7px 18px rgb(91 55 33 / 0.055);
+  backdrop-filter: blur(10px) saturate(1.04);
 }
 
 html[data-theme='warm']
@@ -657,7 +673,7 @@ html[data-theme='warm']
   background:
     url('/assets/themes/warm/reference/kanban-checklist.png') center 34% / auto
       clamp(118px, 15vh, 146px) no-repeat,
-    var(--warm-surface);
+    rgb(255 248 238 / 0.56);
 }
 
 html[data-theme='warm']
@@ -666,7 +682,7 @@ html[data-theme='warm']
   background:
     url('/assets/themes/warm/reference/kanban-milestone.png') center 34% / auto
       clamp(118px, 15vh, 146px) no-repeat,
-    var(--warm-surface);
+    rgb(255 248 238 / 0.56);
 }
 
 html[data-theme='warm'] [data-monochrome-route='kanban'] [data-warm-surface='kanban-empty-copy'] {
@@ -933,6 +949,39 @@ html[data-theme='warm'] [data-monochrome-route='schedule'] [data-warm-action='sc
 
 html[data-theme='warm']
   [data-monochrome-route='schedule']
+  [data-warm-surface='schedule-field-group'] {
+  border-color: var(--warm-border);
+}
+
+html[data-theme='warm']
+  [data-monochrome-route='schedule']
+  [data-warm-surface='schedule-field-group']
+  :is(input, textarea, select) {
+  border-color: var(--warm-border-strong);
+  background-color: rgb(255 250 243 / 0.68);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.56);
+}
+
+html[data-theme='warm'] .mc7f-settings-modal [data-warm-surface='local-model-catalog'] {
+  padding: 16px;
+  border: 1px solid var(--warm-border);
+  border-radius: var(--warm-radius-card);
+  background: rgb(242 225 205 / 0.34);
+  box-shadow:
+    0 9px 25px rgb(102 65 39 / 0.045),
+    inset 0 1px rgb(255 255 255 / 0.5);
+  backdrop-filter: none;
+}
+
+html[data-theme='warm']
+  .mc7f-settings-modal
+  [data-warm-surface='local-model-catalog']
+  [class*='bg-panel'] {
+  background-color: rgb(249 236 220 / 0.58) !important;
+}
+
+html[data-theme='warm']
+  [data-monochrome-route='schedule']
   [data-warm-action='schedule-save']:hover {
   background: var(--warm-terracotta-deep) !important;
 }
@@ -1040,7 +1089,11 @@ html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-hud-bloom 
 html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-voice-title,
 html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-command-disclosure,
 html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-command-disclosure button,
-html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-command-disclosure button span:first-child {
+html[data-theme='warm']
+  [data-vibespace-owned-chrome='voice']
+  .jarvis-command-disclosure
+  button
+  span:first-child {
   color: #2a2119 !important;
 }
 
@@ -1048,7 +1101,10 @@ html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-voice-stat
   color: #5c3a14 !important;
 }
 
-html[data-theme='warm'] [data-vibespace-owned-chrome='voice'] .jarvis-voice-status > span:first-child {
+html[data-theme='warm']
+  [data-vibespace-owned-chrome='voice']
+  .jarvis-voice-status
+  > span:first-child {
   background: #5c3a14 !important;
   box-shadow: 0 0 6px rgb(92 58 20 / 0.4) !important;
 }
