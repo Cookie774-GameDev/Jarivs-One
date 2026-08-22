@@ -343,10 +343,55 @@ impl PetOverlayShowResult {
     }
 
     fn failed(reason: &'static str) -> Self {
+        Self::failed_after_create(false, reason)
+    }
+
+    fn failed_after_create(created: bool, reason: &'static str) -> Self {
         Self {
             mode: "native-overlay",
-            created: false,
+            created,
             visible: false,
+            topmost_applied: false,
+            renderer_ready: None,
+            reason: Some(reason),
+        }
+    }
+}
+
+/// The acknowledged outcome of opening the one native Pet Panel. As with the
+/// overlay contract, the native runtime proves only window lifecycle state,
+/// not that a renderer has painted the Chat, Terminal, or Activity surface.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PetPanelOpenResult {
+    pub mode: &'static str,
+    pub created: bool,
+    pub visible: bool,
+    pub focused: bool,
+    pub topmost_applied: bool,
+    pub renderer_ready: Option<bool>,
+    pub reason: Option<&'static str>,
+}
+
+impl PetPanelOpenResult {
+    fn visible_and_focused(created: bool) -> Self {
+        Self {
+            mode: "native-panel",
+            created,
+            visible: true,
+            focused: true,
+            topmost_applied: true,
+            renderer_ready: None,
+            reason: None,
+        }
+    }
+
+    fn failed(created: bool, reason: &'static str) -> Self {
+        Self {
+            mode: "native-panel",
+            created,
+            visible: false,
+            focused: false,
             topmost_applied: false,
             renderer_ready: None,
             reason: Some(reason),
@@ -1017,7 +1062,9 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
                 if app_for_show
                     .run_on_main_thread(move || {
                         let result = show_existing_pet_overlay(app_for_callback, x, y, created)
-                            .unwrap_or_else(PetOverlayShowResult::failed);
+                            .unwrap_or_else(|reason| {
+                                PetOverlayShowResult::failed_after_create(created, reason)
+                            });
                         let _ = callback_result_tx.send(result);
                     })
                     .is_err()
@@ -1339,18 +1386,33 @@ pub fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
 /// (`pet_is_panel_visible`), so a failed panel open cannot leave the
 /// user with neither sprite nor panel.
 #[tauri::command]
-pub async fn pet_open_or_focus_panel(
+pub fn pet_open_or_focus_panel(
     app: AppHandle,
     near_x: Option<f64>,
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
-) -> Result<(), String> {
-    let win = get_or_create_pet_panel(&app)?;
+) -> Result<PetPanelOpenResult, String> {
+    let created = app.get_webview_window(PET_MINI_PANEL_LABEL).is_none();
+    let win = match get_or_create_pet_panel(&app) {
+        Ok(win) => win,
+        Err(_) => return Ok(PetPanelOpenResult::failed(false, "window_create_failed")),
+    };
     let panel_mode = panel_mode.unwrap_or_default();
 
     let state = app.state::<PetWindowState>();
-    let mut open = state.panel_open.lock().map_err(|e| e.to_string())?;
-    let mut geo = state.geometry.lock().map_err(|e| e.to_string())?;
+    let mut open = match state.panel_open.lock() {
+        Ok(open) => open,
+        Err(_) => {
+            return Ok(PetPanelOpenResult::failed(
+                created,
+                "panel_state_unavailable",
+            ))
+        }
+    };
+    let mut geo = match state.geometry.lock() {
+        Ok(geo) => geo,
+        Err(_) => return Ok(PetPanelOpenResult::failed(created, "geometry_unavailable")),
+    };
 
     let w = geo.panel_w.unwrap_or(PANEL_DEFAULT_W);
     let h = geo.panel_h.unwrap_or(PANEL_DEFAULT_H);
@@ -1394,15 +1456,67 @@ pub async fn pet_open_or_focus_panel(
         recover_position(&app, None, None, w, h, geo.panel_monitor_name.as_deref())
     };
 
-    let _ = win.set_size(PhysicalSize::new(w as u32, h as u32));
-    let _ = win.set_min_size(Some(tauri::LogicalSize::new(PANEL_MIN_W, PANEL_MIN_H)));
-    let _ = win.set_position(PhysicalPosition::new(x as i32, y as i32));
-    let _ = win.set_always_on_top(panel_stays_on_top(panel_mode));
-    let _ = win.unminimize();
-    let _ = win.show();
+    if win.set_size(PhysicalSize::new(w as u32, h as u32)).is_err() {
+        return Ok(PetPanelOpenResult::failed(created, "size_failed"));
+    }
+    if win
+        .set_min_size(Some(tauri::LogicalSize::new(PANEL_MIN_W, PANEL_MIN_H)))
+        .is_err()
+    {
+        return Ok(PetPanelOpenResult::failed(created, "size_failed"));
+    }
+    if win
+        .set_position(PhysicalPosition::new(x as i32, y as i32))
+        .is_err()
+    {
+        return Ok(PetPanelOpenResult::failed(created, "position_failed"));
+    }
+    if win
+        .set_always_on_top(panel_stays_on_top(panel_mode))
+        .is_err()
+    {
+        return Ok(PetPanelOpenResult::failed(created, "topmost_failed"));
+    }
+    if win.unminimize().is_err() {
+        return Ok(PetPanelOpenResult::failed(created, "restore_failed"));
+    }
+    if win.show().is_err() {
+        return Ok(PetPanelOpenResult::failed(created, "show_failed"));
+    }
     pin_pet_window_topmost(&win, false);
     ensure_pet_topmost_watchdog(&app);
-    let _ = win.set_focus();
+    if win.set_focus().is_err() {
+        return Ok(PetPanelOpenResult::failed(created, "focus_failed"));
+    }
+
+    let visible = match win.is_visible() {
+        Ok(visible) => visible,
+        Err(_) => {
+            return Ok(PetPanelOpenResult::failed(
+                created,
+                "visibility_check_failed",
+            ))
+        }
+    };
+    let minimized = match win.is_minimized() {
+        Ok(minimized) => minimized,
+        Err(_) => {
+            return Ok(PetPanelOpenResult::failed(
+                created,
+                "visibility_check_failed",
+            ))
+        }
+    };
+    if !visible || minimized {
+        return Ok(PetPanelOpenResult::failed(created, "not_visible"));
+    }
+    let focused = match win.is_focused() {
+        Ok(focused) => focused,
+        Err(_) => return Ok(PetPanelOpenResult::failed(created, "focus_check_failed")),
+    };
+    if !focused {
+        return Ok(PetPanelOpenResult::failed(created, "not_focused"));
+    }
 
     geo.panel_x = Some(x);
     geo.panel_y = Some(y);
@@ -1419,7 +1533,7 @@ pub async fn pet_open_or_focus_panel(
     drop(geo);
 
     // Intentionally do not hide pet-overlay here — JS confirm-then-hide.
-    Ok(())
+    Ok(PetPanelOpenResult::visible_and_focused(created))
 }
 
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
@@ -1586,6 +1700,24 @@ mod tests {
         assert_eq!(serialized["topmostApplied"], false);
         assert_eq!(serialized["rendererReady"], serde_json::Value::Null);
         assert_eq!(serialized["reason"], "window_create_failed");
+    }
+
+    #[test]
+    fn panel_open_result_requires_visible_focused_native_window() {
+        let success = PetPanelOpenResult::visible_and_focused(false);
+        assert_eq!(success.mode, "native-panel");
+        assert!(!success.created);
+        assert!(success.visible);
+        assert!(success.focused);
+        assert!(success.topmost_applied);
+        assert_eq!(success.renderer_ready, None);
+
+        let failure = PetPanelOpenResult::failed(true, "focus_failed");
+        let serialized = serde_json::to_value(failure).expect("serializes safe result");
+        assert_eq!(serialized["created"], true);
+        assert_eq!(serialized["visible"], false);
+        assert_eq!(serialized["focused"], false);
+        assert_eq!(serialized["reason"], "focus_failed");
     }
 
     #[cfg(target_os = "windows")]

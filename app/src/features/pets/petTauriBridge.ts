@@ -44,6 +44,36 @@ export type PetOverlayShowResult = {
   reason: PetOverlayShowReason | null;
 };
 
+export type PetPanelOpenReason =
+  | 'focus_check_failed'
+  | 'focus_failed'
+  | 'geometry_unavailable'
+  | 'native_command_failed'
+  | 'native_result_invalid'
+  | 'native_unavailable'
+  | 'not_focused'
+  | 'not_visible'
+  | 'panel_state_unavailable'
+  | 'position_failed'
+  | 'restore_failed'
+  | 'show_failed'
+  | 'size_failed'
+  | 'topmost_failed'
+  | 'visibility_check_failed'
+  | 'visibility_timeout'
+  | 'window_create_failed';
+
+/** Native acknowledgement that the single Pet Panel is visible and focused. */
+export type PetPanelOpenResult = {
+  mode: 'native-panel';
+  created: boolean;
+  visible: boolean;
+  focused: boolean;
+  topmostApplied: boolean;
+  rendererReady: boolean | null;
+  reason: PetPanelOpenReason | null;
+};
+
 /** Shared-origin signal consumed by the already-mounted pet-overlay WebView. */
 export const PET_OVERLAY_SHOW_EPOCH_KEY = 'vibespace-pet-overlay-show-epoch';
 export const PET_OVERLAY_SHOW_EVENT = 'vibespace:pet-overlay-show';
@@ -107,6 +137,47 @@ function isPetOverlayShowResult(value: unknown): value is PetOverlayShowResult {
     result.mode === 'native-overlay' &&
     typeof result.created === 'boolean' &&
     typeof result.visible === 'boolean' &&
+    typeof result.topmostApplied === 'boolean' &&
+    (result.rendererReady === null || typeof result.rendererReady === 'boolean') &&
+    validReason
+  );
+}
+
+function failedPetPanelOpen(reason: PetPanelOpenReason): PetPanelOpenResult {
+  return {
+    mode: 'native-panel',
+    created: false,
+    visible: false,
+    focused: false,
+    topmostApplied: false,
+    rendererReady: null,
+    reason,
+  };
+}
+
+function isPetPanelOpenResult(value: unknown): value is PetPanelOpenResult {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as Partial<PetPanelOpenResult>;
+  const validReason =
+    result.reason === null ||
+    result.reason === 'focus_check_failed' ||
+    result.reason === 'focus_failed' ||
+    result.reason === 'geometry_unavailable' ||
+    result.reason === 'not_focused' ||
+    result.reason === 'not_visible' ||
+    result.reason === 'panel_state_unavailable' ||
+    result.reason === 'position_failed' ||
+    result.reason === 'restore_failed' ||
+    result.reason === 'show_failed' ||
+    result.reason === 'size_failed' ||
+    result.reason === 'topmost_failed' ||
+    result.reason === 'visibility_check_failed' ||
+    result.reason === 'window_create_failed';
+  return (
+    result.mode === 'native-panel' &&
+    typeof result.created === 'boolean' &&
+    typeof result.visible === 'boolean' &&
+    typeof result.focused === 'boolean' &&
     typeof result.topmostApplied === 'boolean' &&
     (result.rendererReady === null || typeof result.rendererReady === 'boolean') &&
     validReason
@@ -181,12 +252,22 @@ export async function openOrFocusPetPanel(
   nearX?: number,
   nearY?: number,
   panelMode: PetPanelMode = 'normal',
-): Promise<void> {
-  await invoke('pet_open_or_focus_panel', {
-    nearX: nearX ?? null,
-    nearY: nearY ?? null,
-    panelMode,
-  });
+): Promise<PetPanelOpenResult> {
+  if (!isTauriRuntime()) return failedPetPanelOpen('native_unavailable');
+  let response: unknown;
+  try {
+    const { invoke: inv } = await import('@tauri-apps/api/core');
+    response = await inv<unknown>('pet_open_or_focus_panel', {
+      nearX: nearX ?? null,
+      nearY: nearY ?? null,
+      panelMode,
+    });
+  } catch {
+    return failedPetPanelOpen('native_command_failed');
+  }
+  return isPetPanelOpenResult(response)
+    ? response
+    : failedPetPanelOpen('native_result_invalid');
 }
 
 /** Open/focus the mini panel without changing standalone pet visibility. */
@@ -228,8 +309,12 @@ export function readPetPanelOpenFlag(): boolean {
 export type OpenPetMiniPanelResult = {
   /** Tauri pet-mini-panel is visible and focused. */
   panelVisible: boolean;
-  /** Caller should mount/show the in-app PetMiniPanel fallback. */
+  /** Inline panel is allowed only in browser/non-Tauri mode. */
   useInlineFallback: boolean;
+  /** Whether the detached native overlay was confirmed visible after failure. */
+  overlayVisible: boolean;
+  /** Safe reason for a native-panel acknowledgement failure, if any. */
+  reason: PetPanelOpenReason | null;
   /** True when a concurrent open was coalesced into the in-flight promise. */
   coalesced: boolean;
 };
@@ -264,14 +349,27 @@ export async function openPetPanelSafely(
   return { panelVisible: result.panelVisible };
 }
 
+async function restoreDetachedOverlay(reason: PetPanelOpenReason): Promise<OpenPetMiniPanelResult> {
+  setPetPanelOpenFlag(false);
+  const overlay = await showPetOverlay();
+  return {
+    panelVisible: false,
+    useInlineFallback: false,
+    overlayVisible: overlay.mode === 'native-overlay' && overlay.visible,
+    reason,
+    coalesced: false,
+  };
+}
+
 /**
  * Canonical open path for Axo and Glitch.
  *
  * - Single-flight: concurrent clicks share one open promise (no duplicate panels).
  * - If pet-mini-panel already exists (hidden/minimized), show/unminimize/focus.
  * - Hide the standalone overlay once the panel is confirmed visible.
- * - On failure: signal inline fallback (in-app panel replaces the pet).
- * - Also dispatches PET_OPEN_PANEL_EVENT so the main window can mount in-app UI.
+ * - In Tauri, panel failure preserves/restores the detached overlay; it never
+ *   silently substitutes an inline Pet panel.
+ * - Browser / non-Tauri keeps the explicit in-app panel path.
  */
 export async function openOrFocusPetMiniPanel(
   nearX?: number,
@@ -284,28 +382,32 @@ export async function openOrFocusPetMiniPanel(
   }
 
   openPanelInFlight = (async (): Promise<OpenPetMiniPanelResult> => {
-    // Note: do NOT dispatch PET_OPEN_PANEL_EVENT here — PetHost listens for that
-    // event and would re-enter openPanel → infinite single-flight churn.
-    // Callers that need main-shell fallback should dispatch the event themselves
-    // (see notifyPetPanelOpenRequested).
-
     if (!isTauriRuntime()) {
       // Browser / non-Tauri: in-app panel only.
       setPetPanelOpenFlag(true);
-      return { panelVisible: false, useInlineFallback: true, coalesced: false };
+      return {
+        panelVisible: false,
+        useInlineFallback: true,
+        overlayVisible: false,
+        reason: 'native_unavailable',
+        coalesced: false,
+      };
     }
 
-    // Optimistic flag so the host hides the floating pet while the panel opens.
-    setPetPanelOpenFlag(true);
-
-    await openOrFocusPetPanel(nearX, nearY, panelMode);
+    let nativeResult = await openOrFocusPetPanel(nearX, nearY, panelMode);
+    if (!nativeResult.visible || !nativeResult.focused) {
+      return restoreDetachedOverlay(nativeResult.reason ?? 'not_visible');
+    }
     // First settle + retries (minimized restore can be slower than 180ms).
     await waitMs(120);
     let panelVisible = await pollPanelVisible(6, 90);
 
     if (!panelVisible) {
       // Second attempt: re-invoke show/focus in case the window was racing.
-      await openOrFocusPetPanel(nearX, nearY, panelMode);
+      nativeResult = await openOrFocusPetPanel(nearX, nearY, panelMode);
+      if (!nativeResult.visible || !nativeResult.focused) {
+        return restoreDetachedOverlay(nativeResult.reason ?? 'not_visible');
+      }
       await waitMs(150);
       panelVisible = await pollPanelVisible(4, 100);
     }
@@ -313,13 +415,16 @@ export async function openOrFocusPetMiniPanel(
     if (panelVisible) {
       setPetPanelOpenFlag(true);
       await hidePetOverlay().catch(() => undefined);
-      return { panelVisible: true, useInlineFallback: false, coalesced: false };
+      return {
+        panelVisible: true,
+        useInlineFallback: false,
+        overlayVisible: false,
+        reason: null,
+        coalesced: false,
+      };
     }
 
-    // Panel did not confirm — in-app fallback still replaces the floating pet.
-    setPetPanelOpenFlag(true);
-    await hidePetOverlay().catch(() => undefined);
-    return { panelVisible: false, useInlineFallback: true, coalesced: false };
+    return restoreDetachedOverlay('visibility_timeout');
   })();
 
   try {

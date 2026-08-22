@@ -17,6 +17,31 @@ function invokeCount(cmd: string): number {
   return invokeMock.mock.calls.filter((c) => c[0] === cmd).length;
 }
 
+function nativePanelOpenResult(overrides: Record<string, unknown> = {}) {
+  return {
+    mode: 'native-panel',
+    created: true,
+    visible: true,
+    focused: true,
+    topmostApplied: true,
+    rendererReady: null,
+    reason: null,
+    ...overrides,
+  };
+}
+
+function nativeOverlayShowResult(overrides: Record<string, unknown> = {}) {
+  return {
+    mode: 'native-overlay',
+    created: true,
+    visible: true,
+    topmostApplied: true,
+    rendererReady: null,
+    reason: null,
+    ...overrides,
+  };
+}
+
 describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
   beforeEach(() => {
     invokeMock.mockReset();
@@ -33,7 +58,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
 
   it('hides the overlay when the panel is confirmed visible', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'pet_open_or_focus_panel') return undefined;
+      if (cmd === 'pet_open_or_focus_panel') return nativePanelOpenResult();
       if (cmd === 'pet_is_panel_visible') return true;
       if (cmd === 'pet_hide_overlay') return undefined;
       if (cmd === 'pet_show_overlay') return undefined;
@@ -52,6 +77,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
 
   it('passes the validated panel window mode to the native open command', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pet_open_or_focus_panel') return nativePanelOpenResult();
       if (cmd === 'pet_is_panel_visible') return true;
       return undefined;
     });
@@ -69,6 +95,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
 
   it('opens as a normal window by default while preserving explicit topmost', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pet_open_or_focus_panel') return nativePanelOpenResult();
       if (cmd === 'pet_is_panel_visible') return true;
       return undefined;
     });
@@ -104,12 +131,17 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invokeMock).toHaveBeenCalledWith('pet_set_start_with_windows', { enabled: true });
   });
 
-  it('hides the overlay when falling back to the in-app panel', async () => {
+  it('restores the detached overlay instead of mounting an inline panel when Tauri panel open fails', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'pet_open_or_focus_panel') return undefined;
-      if (cmd === 'pet_is_panel_visible') return false;
-      if (cmd === 'pet_hide_overlay') return undefined;
-      if (cmd === 'pet_show_overlay') return undefined;
+      if (cmd === 'pet_open_or_focus_panel') {
+        return nativePanelOpenResult({
+          visible: false,
+          focused: false,
+          topmostApplied: false,
+          reason: 'show_failed',
+        });
+      }
+      if (cmd === 'pet_show_overlay') return nativeOverlayShowResult();
       return null;
     });
 
@@ -117,9 +149,12 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     const result = await openOrFocusPetMiniPanel();
 
     expect(result.panelVisible).toBe(false);
-    expect(result.useInlineFallback).toBe(true);
-    expect(invoked('pet_hide_overlay')).toBe(true);
-    expect(invoked('pet_show_overlay')).toBe(false);
+    expect(result.useInlineFallback).toBe(false);
+    expect(result.reason).toBe('show_failed');
+    expect(result.overlayVisible).toBe(true);
+    expect(invoked('pet_hide_overlay')).toBe(false);
+    expect(invoked('pet_show_overlay')).toBe(true);
+    expect(localStorage.getItem('vibespace-pet-panel-open')).toBeNull();
   });
 
   it('single-flight: concurrent opens share one open request', async () => {
@@ -128,7 +163,7 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
       if (cmd === 'pet_open_or_focus_panel') {
         openCalls += 1;
         await new Promise((r) => setTimeout(r, 80));
-        return undefined;
+        return nativePanelOpenResult();
       }
       if (cmd === 'pet_is_panel_visible') return true;
       if (cmd === 'pet_hide_overlay') return undefined;
@@ -149,31 +184,42 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invokeCount('pet_open_or_focus_panel')).toBeLessThanOrEqual(2);
   });
 
-  it('signals inline fallback when Tauri panel never becomes visible', async () => {
+  it('returns a typed native-command failure and restores the overlay when the panel invoke rejects', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'pet_open_or_focus_panel') return undefined;
-      if (cmd === 'pet_is_panel_visible') return false;
-      if (cmd === 'pet_show_overlay') return undefined;
+      if (cmd === 'pet_open_or_focus_panel') throw new Error('synthetic panel create failure');
+      if (cmd === 'pet_show_overlay') return nativeOverlayShowResult();
       return null;
     });
 
     const { openOrFocusPetMiniPanel } = await import('./petTauriBridge');
     const result = await openOrFocusPetMiniPanel();
     expect(result.panelVisible).toBe(false);
-    expect(result.useInlineFallback).toBe(true);
+    expect(result.useInlineFallback).toBe(false);
+    expect(result.reason).toBe('native_command_failed');
+    expect(result.overlayVisible).toBe(true);
+    expect(invoked('pet_hide_overlay')).toBe(false);
+    expect(invoked('pet_show_overlay')).toBe(true);
+  });
+
+  it('uses the inline panel only outside Tauri', async () => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
+
+    const { openOrFocusPetMiniPanel } = await import('./petTauriBridge');
+    const result = await openOrFocusPetMiniPanel();
+
+    expect(result).toMatchObject({
+      panelVisible: false,
+      useInlineFallback: true,
+      overlayVisible: false,
+      reason: 'native_unavailable',
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it('signals other Pet windows whenever the overlay is shown', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'pet_show_overlay') {
-        return {
-          mode: 'native-overlay',
-          created: true,
-          visible: true,
-          topmostApplied: true,
-          rendererReady: null,
-          reason: null,
-        };
+        return nativeOverlayShowResult();
       }
       return undefined;
     });

@@ -12,7 +12,6 @@ import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
   hidePetOverlay,
-  isPetOverlayVisible,
   isPetPanelVisible,
   isTauriRuntime,
   openOrFocusPetMiniPanel,
@@ -56,7 +55,7 @@ export function PetHost({
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
   const [claimed, setClaimed] = React.useState(!runtimeEffectsEnabled);
-  const [tauri, setTauri] = React.useState(false);
+  const [tauri, setTauri] = React.useState(() => isTauriRuntime());
   /** Tracks panel state for diagnostics and inline fallback selection. */
   const [hideSpriteForPanel, setHideSpriteForPanel] = React.useState(false);
   const [useInlineFallback, setUseInlineFallback] = React.useState(false);
@@ -102,19 +101,19 @@ export function PetHost({
       const open = e.newValue === '1';
       setHideSpriteForPanel(open);
       setPanelOpen(open);
-      // Overlay-window click may set the flag before Tauri panel is confirmed.
-      // Prefer showing in-app panel until pet-mini-panel is proven visible.
-      if (open) setUseInlineFallback(true);
+      // Browser mode deliberately owns the inline panel. In Tauri, a panel
+      // request stays native-only until its dedicated window acknowledges it.
+      if (open) setUseInlineFallback(!tauri);
     };
     window.addEventListener('storage', onStorage);
     // Seed from flag
     if (readPetPanelOpenFlag()) {
       setHideSpriteForPanel(true);
       setPanelOpen(true);
-      setUseInlineFallback(true);
+      setUseInlineFallback(!tauri);
     }
     return () => window.removeEventListener('storage', onStorage);
-  }, [claimed, runtimeEffectsEnabled]);
+  }, [claimed, runtimeEffectsEnabled, tauri]);
 
   // Poll Tauri panel visibility to reconcile the native and inline panel paths.
   React.useEffect(() => {
@@ -130,10 +129,12 @@ export function PetHost({
         // Real Tauri mini panel is up — drop in-app duplicate if it was a bridge.
         setUseInlineFallback(false);
       } else if (readPetPanelOpenFlag()) {
-        // Flag says open but Tauri panel is not visible → keep/show in-app panel.
-        setPanelOpen(true);
-        setHideSpriteForPanel(true);
-        setUseInlineFallback(true);
+        // A stale cross-window flag must never turn a failed native panel into
+        // an inline Tauri widget. Clear it so the detached overlay can recover.
+        setPetPanelOpenFlag(false);
+        setPanelOpen(false);
+        setHideSpriteForPanel(false);
+        setUseInlineFallback(false);
       }
     };
     void tick();
@@ -196,11 +197,11 @@ export function PetHost({
         }
         return;
       }
-      await showPetOverlay().catch((err) => console.warn('[pets] show overlay', err));
-      await new Promise((r) => setTimeout(r, 280));
+      await showPetOverlay();
       if (cancelled || shuttingDownRef.current) return;
-      const visible = await isPetOverlayVisible();
-      setUseInlineFallback(!visible);
+      // Tauri must remain a detached-overlay surface. A native show failure is
+      // represented by its typed bridge result, never by an inline substitute.
+      setUseInlineFallback(false);
     };
 
     void sync();
@@ -245,33 +246,35 @@ export function PetHost({
     if (openPanelBusyRef.current) return;
     openPanelBusyRef.current = true;
     try {
-      setPanelOpen(true);
-      setHideSpriteForPanel(true);
-      setPetPanelOpenFlag(true);
       if (tauri) {
         const result = await openOrFocusPetMiniPanel(undefined, undefined, panelMode).catch(
-          (err) => {
-            console.warn('[pets] open panel', err);
+          () => {
             return {
               panelVisible: false,
-              useInlineFallback: true,
+              useInlineFallback: false,
+              overlayVisible: false,
+              reason: 'native_command_failed' as const,
               coalesced: false,
             };
           },
         );
         if (result.panelVisible) {
           // Dedicated Tauri mini panel confirmed; hide the floating pet.
+          setPanelOpen(true);
           setHideSpriteForPanel(true);
           setUseInlineFallback(false);
         } else {
-          // CRITICAL: if pet-mini-panel did not show, mount in-app PetMiniPanel.
-          // Previously hideSpriteForPanel stayed true with no UI → "click does nothing".
-          setUseInlineFallback(true);
-          setHideSpriteForPanel(true);
-          setPanelOpen(true);
-          setPetPanelOpenFlag(true);
+          // The bridge keeps/restores the native overlay. Do not silently
+          // replace it with an inline Pet Panel in Tauri.
+          setUseInlineFallback(false);
+          setHideSpriteForPanel(false);
+          setPanelOpen(false);
+          setPetPanelOpenFlag(false);
         }
       } else {
+        setPanelOpen(true);
+        setHideSpriteForPanel(true);
+        setPetPanelOpenFlag(true);
         setUseInlineFallback(true);
       }
     } finally {
@@ -318,7 +321,7 @@ export function PetHost({
     panelVisible: false,
     shuttingDown,
   });
-  const showInlineSprite = showStandalone && (!tauri || useInlineFallback);
+  const showInlineSprite = showStandalone && !tauri;
 
   return (
     <div
@@ -355,8 +358,8 @@ export function PetHost({
           idleFunIntervalMs={idleFunIntervalMs}
         />
       )}
-      {/* Browser / inline fallback: in-app mini panel. Tauri primary path uses pet-mini-panel window. */}
-      {(!tauri || useInlineFallback) && (
+      {/* Browser-only: Tauri primary and failure paths use native windows. */}
+      {!tauri && (
         <PetMiniPanel
           open={panelOpen}
           onClose={closePanel}
