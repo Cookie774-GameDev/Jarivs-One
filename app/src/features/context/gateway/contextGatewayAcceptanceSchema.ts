@@ -3,6 +3,7 @@ import {
   DIRECT_GATEWAY_STAGE_NAMES,
 } from './contextGatewayAcceptanceMetrics';
 import type { ContextGatewayAcceptanceInput } from './contextGatewayAcceptanceSuite';
+import { CONTEXT_RETRIEVAL_STAGE_NAMES } from './contextGatewayRetrievalAcceptance';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -175,6 +176,8 @@ function retrievalReport(value: unknown, label: string): void {
       'retrievalMs',
       'candidateCount',
       'hydratedCount',
+      'stageTimingsMs',
+      'rlmSubqueryCount',
       'quality',
     ],
     label,
@@ -187,6 +190,12 @@ function retrievalReport(value: unknown, label: string): void {
   distribution(input.retrievalMs, `${label}.retrievalMs`, true);
   integerDistribution(input.candidateCount, `${label}.candidateCount`);
   integerDistribution(input.hydratedCount, `${label}.hydratedCount`);
+  const stages = record(input.stageTimingsMs, `${label}.stageTimingsMs`);
+  exactKeys(stages, CONTEXT_RETRIEVAL_STAGE_NAMES, `${label}.stageTimingsMs`);
+  for (const stage of CONTEXT_RETRIEVAL_STAGE_NAMES) {
+    distribution(stages[stage], `${label}.stageTimingsMs.${stage}`, true);
+  }
+  integerDistribution(input.rlmSubqueryCount, `${label}.rlmSubqueryCount`);
   const quality = record(input.quality, `${label}.quality`);
   const qualityFields = [
     'topResultAccuracy',

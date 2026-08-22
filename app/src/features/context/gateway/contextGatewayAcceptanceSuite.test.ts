@@ -61,6 +61,14 @@ const focusedReport: ContextRetrievalAcceptanceReport = {
   retrievalMs: { p50: 1_000, p95: 2_000, p99: 2_200, max: 2_300 },
   candidateCount: { p50: 8, p95: 8, p99: 8, max: 8 },
   hydratedCount: { p50: 5, p95: 5, p99: 5, max: 5 },
+  stageTimingsMs: {
+    siyuanReady: { p50: 100, p95: 100, p99: 100, max: 100 },
+    queueWait: { p50: 0, p95: 0, p99: 0, max: 0 },
+    search: { p50: 600, p95: 1_600, p99: 1_800, max: 1_900 },
+    evidenceHydration: { p50: 200, p95: 200, p99: 200, max: 200 },
+    validationHash: { p50: 100, p95: 100, p99: 100, max: 100 },
+  },
+  rlmSubqueryCount: { p50: 0, p95: 0, p99: 0, max: 0 },
   quality: {
     topResultAccuracy: 1,
     citationVerificationRate: 1,
@@ -72,6 +80,11 @@ const deepReport: ContextRetrievalAcceptanceReport = {
   ...focusedReport,
   route: 'deep',
   retrievalMs: { p50: 2_000, p95: 5_000, p99: 6_000, max: 7_000 },
+  stageTimingsMs: {
+    ...focusedReport.stageTimingsMs,
+    search: { p50: 1_600, p95: 4_600, p99: 5_600, max: 6_600 },
+  },
+  rlmSubqueryCount: { p50: 3, p95: 3, p99: 3, max: 3 },
 };
 
 function nativeProof(surfaceId: string): NativeSurfaceProof {
@@ -209,6 +222,22 @@ describe('evaluateContextGatewayAcceptance', () => {
     input.focusedReport = {
       ...focusedReport,
       quality: { ...focusedReport.quality, citationVerificationRate: 29 / 30 },
+    };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['retrieval:focused'],
+    });
+  });
+
+  it('fails a passed-looking retrieval report with malformed stage evidence', () => {
+    const input = completeInput();
+    input.focusedReport = {
+      ...focusedReport,
+      stageTimingsMs: {
+        ...focusedReport.stageTimingsMs,
+        search: { p50: -1, p95: 1_600, p99: 1_800, max: 1_900 },
+      },
     };
 
     expect(evaluateContextGatewayAcceptance(input)).toMatchObject({

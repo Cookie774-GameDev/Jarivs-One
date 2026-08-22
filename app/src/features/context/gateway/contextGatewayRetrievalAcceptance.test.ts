@@ -23,25 +23,37 @@ function samples(
   route: 'focused' | 'deep',
   overrides: Partial<ContextRetrievalSample> = {},
 ): ContextRetrievalSample[] {
-  return Array.from({ length: 30 }, (_, index) => ({
-    sampleId: `sample-${index}`,
-    receiptId: `receipt-${index}`,
-    harnessId: 'vibespace-chat',
-    corpusRevision: 'corpus-1',
-    scopeKey: 'account/workspace/project/worktree',
-    route,
-    warm: true,
-    executionIdentity: identity,
-    retrievalMs: route === 'focused' ? 1_000 + index : 2_000 + index,
-    candidateCount: 8,
-    hydratedCount: 5,
-    qualityCaseId: `case-${index}`,
-    qualityRubricRevision: 'quality-rubric-1',
-    topResultCorrect: true,
-    citationsVerified: true,
-    answerRubricPassed: true,
-    ...overrides,
-  }));
+  return Array.from({ length: 30 }, (_, index) => {
+    const retrievalMs =
+      overrides.retrievalMs ?? (route === 'focused' ? 1_000 + index : 2_000 + index);
+    return {
+      sampleId: `sample-${index}`,
+      receiptId: `receipt-${index}`,
+      harnessId: 'vibespace-chat',
+      corpusRevision: 'corpus-1',
+      scopeKey: 'account/workspace/project/worktree',
+      route,
+      warm: true,
+      executionIdentity: identity,
+      retrievalMs,
+      stageTimingsMs: overrides.stageTimingsMs ?? {
+        siyuanReady: 100,
+        queueWait: 0,
+        search: retrievalMs - 400,
+        evidenceHydration: 200,
+        validationHash: 100,
+      },
+      rlmSubqueryCount: route === 'deep' ? 3 : 0,
+      candidateCount: 8,
+      hydratedCount: 5,
+      qualityCaseId: `case-${index}`,
+      qualityRubricRevision: 'quality-rubric-1',
+      topResultCorrect: true,
+      citationsVerified: true,
+      answerRubricPassed: true,
+      ...overrides,
+    };
+  });
 }
 
 describe('buildContextRetrievalAcceptanceReport', () => {
@@ -51,6 +63,8 @@ describe('buildContextRetrievalAcceptanceReport', () => {
     expect(report).toMatchObject({ route: 'focused', sampleCount: 30, passed: true });
     expect(report.retrievalMs.p95).toBe(1_028);
     expect(report.retrievalMs.max).toBe(1_029);
+    expect(report.stageTimingsMs.search.p95).toBe(628);
+    expect(report.rlmSubqueryCount.max).toBe(0);
     expect(report.quality).toEqual({
       topResultAccuracy: 1,
       citationVerificationRate: 1,
@@ -84,7 +98,11 @@ describe('buildContextRetrievalAcceptanceReport', () => {
     expect(slowP95.failures).toEqual(['deep-p95']);
 
     const hardDeadline = samples('deep');
-    hardDeadline[29] = { ...hardDeadline[29], retrievalMs: 10_001 };
+    hardDeadline[29] = {
+      ...hardDeadline[29],
+      retrievalMs: 10_001,
+      stageTimingsMs: { ...hardDeadline[29].stageTimingsMs, search: 9_601 },
+    };
     const deadlineReport = buildContextRetrievalAcceptanceReport(hardDeadline);
     expect(deadlineReport.retrievalMs.p95).toBe(2_028);
     expect(deadlineReport.failures).toEqual(['deep-hard-deadline']);
@@ -98,6 +116,19 @@ describe('buildContextRetrievalAcceptanceReport', () => {
     ['negative candidates', samples('focused', { candidateCount: -1 })],
     ['fractional hydration', samples('focused', { hydratedCount: 1.5 })],
     ['over-hydration', samples('focused', { candidateCount: 2, hydratedCount: 3 })],
+    ['fractional subquery count', samples('deep', { rlmSubqueryCount: 1.5 })],
+    [
+      'unreconciled stages',
+      samples('focused', {
+        stageTimingsMs: {
+          siyuanReady: 100,
+          queueWait: 0,
+          search: 100,
+          evidenceHydration: 100,
+          validationHash: 100,
+        },
+      }),
+    ],
   ])('rejects %s instead of publishing an acceptance result', (_label, input) => {
     expect(() => buildContextRetrievalAcceptanceReport(input)).toThrow();
   });

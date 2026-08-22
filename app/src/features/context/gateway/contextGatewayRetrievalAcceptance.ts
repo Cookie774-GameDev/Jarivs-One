@@ -4,6 +4,14 @@ export const CONTEXT_RETRIEVAL_MINIMUM_RUNS = 30;
 export const FOCUSED_RETRIEVAL_P95_LIMIT_MS = 4_000;
 export const DEEP_RETRIEVAL_P95_LIMIT_MS = 8_000;
 export const DEEP_RETRIEVAL_HARD_DEADLINE_MS = 10_000;
+export const CONTEXT_RETRIEVAL_STAGE_NAMES = [
+  'siyuanReady',
+  'queueWait',
+  'search',
+  'evidenceHydration',
+  'validationHash',
+] as const;
+export type ContextRetrievalStageName = (typeof CONTEXT_RETRIEVAL_STAGE_NAMES)[number];
 
 export interface ContextRetrievalSample {
   sampleId: string;
@@ -15,6 +23,8 @@ export interface ContextRetrievalSample {
   warm: boolean;
   executionIdentity: Readonly<ExecutionIdentity>;
   retrievalMs: number;
+  stageTimingsMs: Readonly<Record<ContextRetrievalStageName, number>>;
+  rlmSubqueryCount: number;
   candidateCount: number;
   hydratedCount: number;
   qualityCaseId: string;
@@ -40,6 +50,13 @@ export interface ContextRetrievalAcceptanceReport {
   retrievalMs: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
   candidateCount: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
   hydratedCount: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
+  stageTimingsMs: Readonly<
+    Record<
+      ContextRetrievalStageName,
+      Readonly<{ p50: number; p95: number; p99: number; max: number }>
+    >
+  >;
+  rlmSubqueryCount: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
   quality: Readonly<{
     topResultAccuracy: number;
     citationVerificationRate: number;
@@ -127,6 +144,30 @@ function requireComparable(
     if (!Number.isFinite(sample.retrievalMs) || sample.retrievalMs < 0) {
       throw new Error('retrievalMs must be finite and non-negative');
     }
+    const stageKeys = Object.keys(sample.stageTimingsMs);
+    if (
+      stageKeys.length !== CONTEXT_RETRIEVAL_STAGE_NAMES.length ||
+      CONTEXT_RETRIEVAL_STAGE_NAMES.some((stage) => !stageKeys.includes(stage))
+    ) {
+      throw new Error('stageTimingsMs must contain exactly the approved retrieval stages');
+    }
+    let stageTotal = 0;
+    for (const stage of CONTEXT_RETRIEVAL_STAGE_NAMES) {
+      const timing = sample.stageTimingsMs[stage];
+      if (!Number.isFinite(timing) || timing < 0) {
+        throw new Error(`stageTimingsMs.${stage} must be finite and non-negative`);
+      }
+      stageTotal += timing;
+    }
+    if (Math.abs(stageTotal - sample.retrievalMs) > 0.001) {
+      throw new Error('stageTimingsMs must reconcile to retrievalMs');
+    }
+    if (!Number.isSafeInteger(sample.rlmSubqueryCount) || sample.rlmSubqueryCount < 0) {
+      throw new Error('rlmSubqueryCount must be a non-negative safe integer');
+    }
+    if (route === 'deep' && sample.rlmSubqueryCount < 1) {
+      throw new Error('deep retrieval requires at least one RLM subquery');
+    }
     for (const field of ['candidateCount', 'hydratedCount'] as const) {
       if (!Number.isSafeInteger(sample[field]) || sample[field] < 0) {
         throw new Error(`${field} must be a non-negative safe integer`);
@@ -185,6 +226,13 @@ export function buildContextRetrievalAcceptanceReport(
     retrievalMs,
     candidateCount: distribution(samples.map((sample) => sample.candidateCount)),
     hydratedCount: distribution(samples.map((sample) => sample.hydratedCount)),
+    stageTimingsMs: Object.fromEntries(
+      CONTEXT_RETRIEVAL_STAGE_NAMES.map((stage) => [
+        stage,
+        distribution(samples.map((sample) => sample.stageTimingsMs[stage])),
+      ]),
+    ) as ContextRetrievalAcceptanceReport['stageTimingsMs'],
+    rlmSubqueryCount: distribution(samples.map((sample) => sample.rlmSubqueryCount)),
     quality,
   };
 }

@@ -146,6 +146,14 @@ describe('parseContextGatewayAcceptanceInput', () => {
         retrievalMs: { p50: 1, p95: 2, p99: 3, max: 4 },
         candidateCount: { p50: 8, p95: 8, p99: 8, max: 8 },
         hydratedCount: { p50: 5, p95: 5, p99: 5, max: 5 },
+        stageTimingsMs: {
+          siyuanReady: { p50: 0, p95: 0, p99: 0, max: 0 },
+          queueWait: { p50: 0, p95: 0, p99: 0, max: 0 },
+          search: { p50: 1, p95: 2, p99: 3, max: 4 },
+          evidenceHydration: { p50: 0, p95: 0, p99: 0, max: 0 },
+          validationHash: { p50: 0, p95: 0, p99: 0, max: 0 },
+        },
+        rlmSubqueryCount: { p50: 0, p95: 0, p99: 0, max: 0 },
         quality: {
           topResultAccuracy: 1,
           citationVerificationRate: 1,

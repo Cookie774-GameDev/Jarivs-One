@@ -9,6 +9,7 @@ import {
 } from './contextGatewayAcceptanceMetrics';
 import {
   CONTEXT_RETRIEVAL_MINIMUM_RUNS,
+  CONTEXT_RETRIEVAL_STAGE_NAMES,
   DEEP_RETRIEVAL_HARD_DEADLINE_MS,
   DEEP_RETRIEVAL_P95_LIMIT_MS,
   FOCUSED_RETRIEVAL_P95_LIMIT_MS,
@@ -177,6 +178,17 @@ function retrievalReportPasses(
     !validDistribution(report.retrievalMs) ||
     !validDistribution(report.candidateCount) ||
     !validDistribution(report.hydratedCount) ||
+    !CONTEXT_RETRIEVAL_STAGE_NAMES.every((stage) =>
+      validDistribution(report.stageTimingsMs[stage]),
+    ) ||
+    !validDistribution(report.rlmSubqueryCount) ||
+    ![
+      report.rlmSubqueryCount.p50,
+      report.rlmSubqueryCount.p95,
+      report.rlmSubqueryCount.p99,
+      report.rlmSubqueryCount.max,
+    ].every((value) => Number.isSafeInteger(value) && value >= 0) ||
+    (route === 'deep' && report.rlmSubqueryCount.p50 < 1) ||
     report.quality.topResultAccuracy !== 1 ||
     report.quality.citationVerificationRate !== 1 ||
     report.quality.answerRubricPassRate !== 1

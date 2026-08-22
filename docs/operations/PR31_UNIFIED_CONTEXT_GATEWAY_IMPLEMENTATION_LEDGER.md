@@ -365,3 +365,9 @@
 - Every controlled direct baseline/Gateway pair now records provider acceptance, first output, first visible paint, and completion as separate monotonic timings. Comparable SLO samples must be completed without cancellation or retry, preventing recovery work from being disguised as a clean direct route.
 - Reports publish p50/p95/p99 lifecycle distributions separately for the baseline and Gateway run. The closure evaluator independently checks each distribution and cross-stage order at every percentile, so a hand-edited `passed` report cannot place visible paint before first output or completion before dispatch progress.
 - The exact-key JSON schema accepts only the four approved lifecycle timings for both sides and rejects extra/raw lifecycle fields. Two TDD RED cycles reproduced the absent calculator enforcement plus closure/schema bypasses before implementation; focused metrics/schema/closure verification passed 3 files / 45 tests.
+
+## 2026-08-22 — Reconciled retrieval-stage evidence checkpoint
+
+- Every focused/deep sample now records only the approved retrieval stages: SiYuan readiness, queue wait, search, evidence hydration, and validation/hash. Each stage must be finite/non-negative and its per-run sum must reconcile to total retrieval duration within one microsecond.
+- RLM subquery count must be a non-negative safe integer, and every deep run must prove at least one subquery. Reports publish p50/p95/p99/max for every stage and the subquery count alongside the existing latency, candidate/hydration, identity, and frozen-corpus quality evidence.
+- Closure independently rejects malformed stage/count distributions and deep reports without subquery proof; the exact-key schema rejects unknown stages and fractional counts. Two TDD RED cycles reproduced the absent calculator data plus closure/schema bypasses before implementation; focused retrieval/schema/closure verification passed 3 files / 44 tests.
