@@ -7,26 +7,16 @@ import { classifyStackTask, parseStackSlashCommand } from '@/lib/ai/stacks/class
 import { isHiveProductEnabled } from '@/lib/features/hiveProductGate';
 import { canRoutePromotedAdapter } from '@/features/model-foundry/adapterRegistry';
 import { getProviderDisplayName } from './providerRegistry';
-import {
-  getAccessibleModelOptions,
-  getAccessibleProviders,
-  type ModelOption,
-} from './models';
+import { getAccessibleModelOptions, getAccessibleProviders, type ModelOption } from './models';
 import { getModelLabelForProvider } from './providerModelCatalog';
 import { coerceToExposedPreset, stepsForPreset } from './stacks/presets';
 import { isProviderConnected, type ProviderConnectionContext } from './providerRegistry';
 import { agentUsesDefaultProvider } from './agentProviderOptions';
 import { describeVisionRequirement, selectionSupportsVision } from './vision';
-import type {
-  ConnectionMode,
-  ProviderCapabilities,
-  ProviderConnection,
-} from './adapters/types';
+import type { ConnectionMode, ProviderCapabilities, ProviderConnection } from './adapters/types';
 import { getProviderConnectionDescriptor } from './adapters/catalog';
-import {
-  isKernelSmokeBindingActive,
-  KERNEL_SMOKE_PROVIDER_ID,
-} from './providers/kernelSmoke';
+import { getDiscoveredConnectionModels } from './connectionCatalog';
+import { isKernelSmokeBindingActive, KERNEL_SMOKE_PROVIDER_ID } from './providers/kernelSmoke';
 import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 
 type ConnectedSingleSelection = {
@@ -110,7 +100,9 @@ function normalizeSingleConnection(raw: Record<string, unknown>): ConnectedSingl
   if (
     !connectionId ||
     !authSource ||
-    (connectionMode !== 'external-cli' && connectionMode !== 'native-api' && connectionMode !== 'local') ||
+    (connectionMode !== 'external-cli' &&
+      connectionMode !== 'native-api' &&
+      connectionMode !== 'local') ||
     !capabilities
   ) {
     return null;
@@ -118,9 +110,7 @@ function normalizeSingleConnection(raw: Record<string, unknown>): ConnectedSingl
   return { connectionId, connectionMode, authSource, capabilities };
 }
 
-export function normalizeChatModelSelection(
-  raw: unknown,
-): ChatModelSelection {
+export function normalizeChatModelSelection(raw: unknown): ChatModelSelection {
   if (!raw || typeof raw !== 'object') return EMPTY_CHAT_MODEL_SELECTION;
   const value = raw as Partial<ChatModelSelection> & Record<string, unknown>;
   if (value.mode === 'single') {
@@ -136,7 +126,13 @@ export function normalizeChatModelSelection(
   }
   if (value.mode === 'hive') {
     const hiveId = value.hiveId;
-    if (hiveId === 'fast' || hiveId === 'balanced' || hiveId === 'quality' || hiveId === 'ultra' || hiveId === 'custom') {
+    if (
+      hiveId === 'fast' ||
+      hiveId === 'balanced' ||
+      hiveId === 'quality' ||
+      hiveId === 'ultra' ||
+      hiveId === 'custom'
+    ) {
       const exposed = coerceToExposedPreset(hiveId);
       return exposed === 'off' ? EMPTY_CHAT_MODEL_SELECTION : { mode: 'hive', hiveId: exposed };
     }
@@ -178,11 +174,7 @@ export function resolveActiveStackPreset(
     return 'off';
   }
   if (stackSlash.preset) return coerceToExposedPreset(stackSlash.preset);
-  if (
-    selection.mode === 'hive' &&
-    selection.hiveId === 'custom' &&
-    isKernelSmokeBindingActive()
-  ) {
+  if (selection.mode === 'hive' && selection.hiveId === 'custom' && isKernelSmokeBindingActive()) {
     return 'custom';
   }
   if (selection.mode === 'hive') return coerceToExposedPreset(selection.hiveId);
@@ -265,10 +257,27 @@ export function isSingleModelAvailable(
   selection: Extract<ChatModelSelection, { mode: 'single' }>,
   ctx: ModelSelectionContext,
 ): boolean {
-  if (!getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(selection.providerId)) {
+  if (
+    !getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(
+      selection.providerId,
+    )
+  ) {
     return false;
   }
   return findAccessibleModel(selection.providerId, selection.modelId, ctx) !== null;
+}
+
+function isExactVerifiedConnectionModelAvailable(
+  selection: Extract<ChatModelSelection, { mode: 'single' }>,
+  connection: Readonly<ProviderConnection> | undefined,
+): boolean {
+  if (!connection) return false;
+  return getDiscoveredConnectionModels(connection.id).some(
+    (model) =>
+      model.id === selection.modelId &&
+      model.unverified !== true &&
+      model.source !== 'stale_fallback',
+  );
 }
 
 export function isHiveWorkflowReady(
@@ -282,14 +291,20 @@ export function isHiveWorkflowReady(
     hiveId === 'custom' &&
     isKernelSmokeBindingActive() &&
     steps.every(
-      (step) =>
-        step.provider === KERNEL_SMOKE_PROVIDER_ID && step.model === 'kernel-smoke-v1',
+      (step) => step.provider === KERNEL_SMOKE_PROVIDER_ID && step.model === 'kernel-smoke-v1',
     )
   ) {
     return true;
   }
   return steps.every((step) => {
-    if (!getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(step.provider)) {
+    if (
+      !getAccessibleProviders(
+        ctx.apiKeys,
+        ctx.offlineMode,
+        ctx.plan,
+        ctx.defaultLocalModel,
+      ).includes(step.provider)
+    ) {
       return false;
     }
     if (!isProviderConnected(step.provider, ctx)) return false;
@@ -302,7 +317,11 @@ export function validateChatModelSelection(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean; attachments?: { hasImages?: boolean; hasFiles?: boolean }; tools?: boolean },
+  options?: {
+    voice?: boolean;
+    attachments?: { hasImages?: boolean; hasFiles?: boolean };
+    tools?: boolean;
+  },
 ): ModelSelectionValidation {
   if (selection.mode === 'none') {
     return {
@@ -325,13 +344,17 @@ export function validateChatModelSelection(
         return { ok: false, message: `Provider connection is disabled: ${selection.connectionId}` };
       }
       if (exactConnection.providerId !== selection.providerId) {
-        return { ok: false, message: 'The selected connection does not match this model provider.' };
+        return {
+          ok: false,
+          message: 'The selected connection does not match this model provider.',
+        };
       }
     }
     if (
       exactConnection?.mode !== 'external-cli' &&
       !isAttestedKernelSmokeNativeSelection(selection, exactConnection, ctx) &&
-      !isSingleModelAvailable(selection, ctx)
+      !isSingleModelAvailable(selection, ctx) &&
+      !isExactVerifiedConnectionModelAvailable(selection, exactConnection)
     ) {
       const needsKey = !isProviderConnected(selection.providerId, ctx);
       if (needsKey) {
@@ -383,7 +406,11 @@ export function canSendModelRequest(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean; attachments?: { hasImages?: boolean; hasFiles?: boolean }; tools?: boolean },
+  options?: {
+    voice?: boolean;
+    attachments?: { hasImages?: boolean; hasFiles?: boolean };
+    tools?: boolean;
+  },
 ): boolean {
   return validateChatModelSelection(selection, ctx, customSteps, options).ok;
 }
@@ -428,10 +455,7 @@ export function selectionFromHive(hiveId: Exclude<StackPresetId, 'off'>): ChatMo
 }
 
 /** Apply the composer’s explicit single-model choice to Jarvis / default-provider agents. */
-export function applyChatModelSelectionToAgent(
-  agent: Agent,
-  selection: ChatModelSelection,
-): Agent {
+export function applyChatModelSelectionToAgent(agent: Agent, selection: ChatModelSelection): Agent {
   if (selection.mode !== 'single') return agent;
   if (
     !isProtectedJarvisAgent(agent) &&
@@ -465,7 +489,11 @@ export function validateSendModelAccess(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean; attachments?: { hasImages?: boolean; hasFiles?: boolean }; tools?: boolean },
+  options?: {
+    voice?: boolean;
+    attachments?: { hasImages?: boolean; hasFiles?: boolean };
+    tools?: boolean;
+  },
 ): ModelSelectionValidation {
   const gatedSelection = gateChatModelSelection(selection);
   // Ignore /hive|/stack slash overrides while the product is gated.

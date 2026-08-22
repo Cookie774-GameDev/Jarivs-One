@@ -21,6 +21,15 @@ import {
   KERNEL_SMOKE_PROVIDER_ID,
 } from './providers/kernelSmoke';
 import type { StackStepSpec } from './stacks/types';
+import {
+  resetDiscoveredConnectionModelsForTests,
+  setDiscoveredConnectionModels,
+} from './connectionCatalog';
+import {
+  GEMINI_API_CONNECTION,
+  GROQ_API_CONNECTION,
+  QWEN_API_CONNECTION,
+} from './adapters/nativeCatalog';
 
 const nativeCapabilities: ProviderCapabilities = {
   text: true,
@@ -56,6 +65,7 @@ const jarvis: Agent = {
 
 describe('modelSelection', () => {
   beforeEach(() => {
+    resetDiscoveredConnectionModelsForTests();
     try {
       localStorage.clear();
     } catch {
@@ -272,13 +282,21 @@ describe('modelSelection', () => {
   });
 
   it('allows send when a connected model is selected', () => {
+    setDiscoveredConnectionModels(GROQ_API_CONNECTION.id, [
+      {
+        id: 'llama-3.3-70b-versatile',
+        label: 'Llama 3.3 70B Versatile',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
     const ctx = {
       apiKeys: { groq: 'gsk_test' },
       offlineMode: false,
       plan: 'free' as const,
       defaultLocalModel: 'llama3.2',
     };
-    const selection = selectionFromOption('groq', 'llama-3.3-70b-versatile');
+    const selection = selectionFromOption('groq', 'llama-3.3-70b-versatile', GROQ_API_CONNECTION);
     const validation = validateChatModelSelection(selection, ctx, []);
     expect(validation.ok).toBe(true);
     const send = validateSendModelAccess('hello', selection, ctx, []);
@@ -286,13 +304,21 @@ describe('modelSelection', () => {
   });
 
   it('allows image attachments for vision-capable models', () => {
+    setDiscoveredConnectionModels(GEMINI_API_CONNECTION.id, [
+      {
+        id: 'gemini-2.5-flash',
+        label: 'Gemini 2.5 Flash',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
     const ctx = {
       apiKeys: { google: 'AIza_test' },
       offlineMode: false,
       plan: 'free' as const,
       defaultLocalModel: 'llama3.2',
     };
-    const selection = selectionFromOption('google', 'gemini-2.5-flash');
+    const selection = selectionFromOption('google', 'gemini-2.5-flash', GEMINI_API_CONNECTION);
     const send = validateSendModelAccess('describe this', selection, ctx, [], {
       attachments: { hasImages: true },
     });
@@ -300,21 +326,54 @@ describe('modelSelection', () => {
   });
 
   it('blocks image attachments for text-only models', () => {
+    setDiscoveredConnectionModels(GROQ_API_CONNECTION.id, [
+      {
+        id: 'llama-3.3-70b-versatile',
+        label: 'Llama 3.3 70B Versatile',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
     const ctx = {
       apiKeys: { groq: 'gsk_test' },
       offlineMode: false,
       plan: 'free' as const,
       defaultLocalModel: 'llama3.2',
     };
-    const selection = selectionFromOption('groq', 'llama-3.3-70b-versatile');
+    const selection = selectionFromOption('groq', 'llama-3.3-70b-versatile', GROQ_API_CONNECTION);
     const send = validateSendModelAccess('describe this', selection, ctx, [], {
       attachments: { hasImages: true },
     });
     expect(send.ok).toBe(false);
     if (!send.ok) {
-      expect(send.message).toContain('This model cannot process the attached image.');
-      expect(send.message).toMatch(/Choose .*vision-capable/i);
+      expect(send.message).toBe('The selected connection does not support image attachments.');
     }
+  });
+
+  it('rejects an unverified model row from the exact connection', () => {
+    setDiscoveredConnectionModels(QWEN_API_CONNECTION.id, [
+      {
+        id: 'deepseek-v3.2',
+        label: 'DeepSeek V3.2',
+        source: 'stale_fallback',
+        lastVerifiedAt: 1,
+        unverified: true,
+      },
+    ]);
+    const ctx = {
+      apiKeys: { qwen: 'sk-test' },
+      offlineMode: false,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2',
+    };
+
+    expect(
+      validateChatModelSelection(
+        selectionFromOption('qwen', 'deepseek-v3.2', QWEN_API_CONNECTION),
+        ctx,
+        [],
+      ),
+    ).toMatchObject({ ok: false, message: expect.stringMatching(/unavailable/i) });
   });
 
   it('allows local image attachments for vision-capable Ollama models', () => {
