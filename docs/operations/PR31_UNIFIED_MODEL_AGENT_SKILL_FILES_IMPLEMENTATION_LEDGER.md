@@ -16,3 +16,10 @@
 - Fresh focused verification: `npx vitest run src/features/jarvis-creator/contracts.test.ts src/features/jarvis-creator/handoff.test.ts src/features/jarvis-creator/skillPackage.test.ts src/features/chat/MessagePart.jarvisCreator.test.tsx` from `app/` — **22/22 tests passed**, exit 0 (2026-08-22 14:11 local).
 - Full typecheck: initiated twice; both runs were interrupted by incoming task/environment events before producing an exit result. The last completed earlier run showed first-slice compatibility omissions (now repaired) plus existing Context test strict-null errors in another active owner’s paths. A later clean full typecheck remains required before branch-level acceptance.
 - Native acceptance: not run for this slice. The required official VibeSpace native QA remains queued; no browser substitute is claimed.
+
+## 2026-08-22 — Slice 5 release
+
+- Commit: `2b80d5c769d83d0c3ddf0d7448b6c53ef22a3bc2` (`feat(jarvis): add reviewed creator proposals`), containing only the claimed creator contracts, creator tests, proposal UI, package preview builder/test, and this ledger.
+- Result: proposal review is additive and editor-only; it neither changes provider routing nor creates/installs a skill package. The existing custom-event handoff remains intact for the editor’s separate Save confirmation.
+- Verification carried with the commit: focused suite 22/22 passed, exit 0. Repository-wide typecheck is not recorded as passing because its two attempted runs were interrupted before a final exit; branch-level/native acceptance remains external to this completed slice.
+- Lock state: released only `VS-CODEX-ROOT-UNIFIED-MODEL-AGENT-SKILL-FILES-20260822`; all other active locks and worktree changes remain untouched.
