@@ -339,3 +339,9 @@
 - Ran the complete currently owned ADE, Context Gateway, Gateway acceptance, RLM, terminal bridge identity, terminal CLI/runtime/install/production, Context Pack, command palette, and terminal execution matrix together: 29 files / 254 tests passed.
 - A fresh direct Vite production bundle then succeeded across 4,927 transformed modules. Existing tree-sitter browser externalization/eval and large-chunk warnings remain warnings; no new build failure occurred.
 - Official native VibeSpace remained open throughout. This combined automated/build pass strengthens the owned implementation boundary but does not substitute for the still-missing full observed ADE dispatcher identity, current-source native backend acceptance, or required paired native/provider runs.
+
+## 2026-08-22 — Safe acceptance JSON schema checkpoint
+
+- Added a runtime exact-key schema before CLI evaluation. It bounds collections and strings; rejects controls, non-finite timing values, unknown failures/stages, and malformed nested reports; and refuses any unknown field at the build, direct-report, retrieval-report, native-proof, blocker, or top-level boundary.
+- TDD proved raw prompt, model-output, and credential fields were previously ignored by the typed evaluator and could remain in the JSON artifact. All three are now rejected before scoring, as are oversized arrays and unsafe control text. Fresh acceptance verification passed 4 files / 50 tests, and the incomplete CLI fixture still reports the exact missing matrix.
+- Full TypeScript verification reports no owned-file diagnostics and remains limited to the same four active, out-of-scope SiYuan test diagnostics.
