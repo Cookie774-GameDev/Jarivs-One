@@ -17,6 +17,7 @@ interface ContextGatewayDependencies {
   now(): number;
   createId(): string;
   cacheTtlMs?: number;
+  receiptTtlMs?: number;
   maxConcurrentPerScope?: number;
 }
 
@@ -65,10 +66,14 @@ interface ActiveRequest {
 
 interface ReceiptEvidence {
   requestId: string;
+  expiresAt: number;
   receipt: Readonly<ContextReceipt>;
   scope: Readonly<ContextScopeRevision>;
   evidence: ReadonlyMap<string, Readonly<ContextEvidence>>;
 }
+
+const DEFAULT_RECEIPT_TTL_MS = 15 * 60 * 1_000;
+const MAX_RECEIPT_TTL_MS = 60 * 60 * 1_000;
 
 function abortError(): DOMException {
   return new DOMException('VibeSpace Context Gateway request was cancelled.', 'AbortError');
@@ -115,6 +120,7 @@ export class ContextGateway {
   private readonly receiptEvidence = new Map<string, ReceiptEvidence>();
   private readonly scopeQueues = new Map<string, ScopeQueueState>();
   private readonly cacheTtlMs: number;
+  private readonly receiptTtlMs: number;
   private readonly maxConcurrentPerScope: number;
 
   constructor(
@@ -122,6 +128,10 @@ export class ContextGateway {
     private readonly dependencies: Readonly<ContextGatewayDependencies>,
   ) {
     this.cacheTtlMs = Math.max(0, dependencies.cacheTtlMs ?? 30_000);
+    this.receiptTtlMs = Math.min(
+      MAX_RECEIPT_TTL_MS,
+      Math.max(1, dependencies.receiptTtlMs ?? DEFAULT_RECEIPT_TTL_MS),
+    );
     this.maxConcurrentPerScope = Math.max(1, Math.floor(dependencies.maxConcurrentPerScope ?? 4));
   }
 
@@ -149,7 +159,9 @@ export class ContextGateway {
 
   async openEvidence(input: Readonly<OpenEvidenceRequest>): Promise<OpenEvidenceResult> {
     const record = this.receiptEvidence.get(input.receiptId);
-    if (!record) throw new Error('Context evidence receipt is missing or expired.');
+    if (!record || this.receiptExpired(input.receiptId, record)) {
+      throw new Error('Context evidence receipt is missing or expired.');
+    }
     if (!sameScope(record.scope, input.scope)) {
       throw new Error('Context evidence scope does not match the receipt scope.');
     }
@@ -162,7 +174,12 @@ export class ContextGateway {
     input: Readonly<VerifyContextReceiptRequest>,
   ): Readonly<ContextReceipt> | null {
     const record = this.receiptEvidence.get(input.receiptId);
-    if (!record || record.requestId !== input.requestId || !sameScope(record.scope, input.scope))
+    if (
+      !record ||
+      this.receiptExpired(input.receiptId, record) ||
+      record.requestId !== input.requestId ||
+      !sameScope(record.scope, input.scope)
+    )
       return null;
     const receipt = record.receipt;
     if (!receipt.required || receipt.safeFailure !== null) return null;
@@ -176,6 +193,19 @@ export class ContextGateway {
           : 0;
     const minimum = input.minimumRoute === 'deep' ? 2 : 1;
     return strength >= minimum ? receipt : null;
+  }
+
+  private receiptExpired(receiptId: string, record: Readonly<ReceiptEvidence>): boolean {
+    if (record.expiresAt > this.dependencies.now()) return false;
+    this.receiptEvidence.delete(receiptId);
+    return true;
+  }
+
+  private pruneExpiredReceipts(): void {
+    const now = this.dependencies.now();
+    for (const [receiptId, record] of this.receiptEvidence) {
+      if (record.expiresAt <= now) this.receiptEvidence.delete(receiptId);
+    }
   }
 
   private cacheKey(input: Readonly<ContextGatewayRequest>, route: string): string {
@@ -325,6 +355,7 @@ export class ContextGateway {
   private async execute(
     input: Readonly<ContextGatewayRequest>,
   ): Promise<Readonly<PreparedContextTurn>> {
+    this.pruneExpiredReceipts();
     const decisionStartedAt = this.dependencies.now();
     const available = this.backend.available();
     const decision = decideContextPolicy({ ...input, gatewayAvailable: available });
@@ -435,6 +466,7 @@ export class ContextGateway {
       );
       this.receiptEvidence.set(receipt.receiptId, {
         requestId: input.requestId,
+        expiresAt: this.dependencies.now() + this.receiptTtlMs,
         receipt,
         scope: receipt.scopeRevision,
         evidence: new Map(

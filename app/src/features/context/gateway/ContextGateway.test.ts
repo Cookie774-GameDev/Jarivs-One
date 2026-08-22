@@ -137,6 +137,33 @@ describe('ContextGateway', () => {
     ).toBeNull();
   });
 
+  it('expires required receipts and evidence handles after the bounded receipt lifetime', async () => {
+    let now = 100;
+    const gateway = new ContextGateway(backend(), {
+      now: () => now,
+      createId: () => 'receipt-expiring',
+      receiptTtlMs: 10,
+    });
+    const result = await gateway.ask(baseRequest);
+    now = 110;
+
+    expect(
+      gateway.verifyRequiredReceipt({
+        receiptId: result.receipt.receiptId,
+        requestId: baseRequest.requestId,
+        scope: baseRequest.scope,
+        minimumRoute: 'focused',
+      }),
+    ).toBeNull();
+    await expect(
+      gateway.openEvidence({
+        receiptId: result.receipt.receiptId,
+        handle: 'evidence-1',
+        scope: baseRequest.scope,
+      }),
+    ).rejects.toThrow('missing or expired');
+  });
+
   it('single-flights identical in-progress requests and reports the shared result', async () => {
     let release!: () => void;
     const port = backend();
