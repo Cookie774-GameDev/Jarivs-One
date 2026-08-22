@@ -20,3 +20,12 @@
 - Native manual matrix: **BLOCKED** for this uncommitted source revision. The currently running/built executable predates these changes; no browser/Playwright or computer-control result is being recorded as product proof. Previous Rust attempt initially hit paging-file error 1455; after memory pressure cleared, the focused Rust suite compiled and passed. Current C: free space observed after tests: approximately 10 GiB.
 - Defect queue: (1) Tauri-mode PetHost still has an inline fallback after separate visibility polling; reserved for Phase 2 under a new exact claim. (2) Panel command acknowledgements and cross-window ready protocol remain unmodified. (3) Pixi/asset fallback and native manual acceptance remain pending.
 - Next: make the narrow Phase 1 commit after final ownership/status verification; then release this exact source lock before claiming a non-overlapping Phase 2 slice.
+
+## 2026-08-22 14:24 CT — Phase 1 committed
+
+- Commit: `e6b736b6` — `fix(pets): acknowledge native overlay visibility`.
+- Committed owned files: `app/src-tauri/src/pets.rs`, `app/src/features/pets/petTauriBridge.ts`, `app/src/features/pets/petPanelOpen.test.ts`, and this ledger. No other dirty or staged file was included.
+- Final verification evidence before the commit: `npm exec vitest run src/features/pets/petPanelOpen.test.ts src/features/pets/petTauriBridge.test.ts --reporter=dot` → 12/12; `cargo test pets::tests --lib` → 24/24; `cargo fmt --check` → exit 0; owned-file `git diff --check` → exit 0. Rust emitted six pre-existing dead-code warnings outside this change.
+- Manual native evidence: **BLOCKED**. The official executable has not been rebuilt with `e6b736b6`, so there is intentionally no PASS claim for native desktop visibility, click, drag, panel, app-focus, or external-app rows.
+- Remaining risks: the full repository TypeScript check is red only in unowned SiYuan context test files (recorded above); topmost over normal desktop apps requires the required rebuilt-native matrix; true exclusive fullscreen and secure desktop remain expected platform limitations.
+- Lock release: `VS-CODEX-PET-OVERLAY-RESULTS-20260822` is released after this ledger entry is committed. The next Pet phase must create a new exact claim.
