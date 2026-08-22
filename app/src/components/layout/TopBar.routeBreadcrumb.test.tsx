@@ -64,18 +64,21 @@ describe('TopBar route breadcrumb', () => {
     render(<TopBar />);
 
     expect(
-      screen.getByRole('button', { name: 'Current route: Canvas. Open route switcher' }).textContent,
+      screen.getByRole('button', { name: 'Current route: Canvas. Open route switcher' })
+        .textContent,
     ).toBe('Canvas');
   });
 
   it.each([
     ['preview', 'Preview'],
     ['browser', 'Browser'],
+    ['ade', 'ChatGPT ADE'],
   ])('has a breadcrumb label for hidden route %s', (route, label) => {
     ui.route = route;
     render(<TopBar />);
     expect(
-      screen.getByRole('button', { name: `Current route: ${label}. Open route switcher` }).textContent,
+      screen.getByRole('button', { name: `Current route: ${label}. Open route switcher` })
+        .textContent,
     ).toBe(label);
   });
 });

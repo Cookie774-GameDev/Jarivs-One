@@ -381,6 +381,14 @@ export function NavPane() {
           />
           <RouteItem
             navOpen={navOpen}
+            label="ChatGPT ADE"
+            icon={<Bot className="h-3.5 w-3.5 text-muted-foreground" />}
+            target="ade"
+            route={route}
+            setRoute={setRoute}
+          />
+          <RouteItem
+            navOpen={navOpen}
             label="Agents"
             icon={<Bot className="h-3.5 w-3.5 text-muted-foreground" />}
             target="agents"

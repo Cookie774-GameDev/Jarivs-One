@@ -9,6 +9,7 @@ export const SAKURA_ROUTE_INTENSITY = Object.freeze({
   terminal: 'quiet',
   kanban: 'standard',
   schedule: 'standard',
+  ade: 'quiet',
   agents: 'standard',
   'model-foundry': 'quiet',
   'agent-detail': 'standard',

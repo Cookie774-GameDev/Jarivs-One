@@ -13,6 +13,7 @@ describe('Sakura route intensity', () => {
       workbench: 'standard',
       kanban: 'standard',
       schedule: 'standard',
+      ade: 'quiet',
       context: 'standard',
       canvas: 'quiet',
       preview: 'quiet',

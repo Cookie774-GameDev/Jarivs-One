@@ -7,6 +7,7 @@ export const APP_ROUTES = [
   'terminal',
   'kanban',
   'schedule',
+  'ade',
   'agents',
   'model-foundry',
   'agent-detail',

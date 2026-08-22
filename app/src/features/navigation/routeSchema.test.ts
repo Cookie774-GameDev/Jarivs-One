@@ -3,7 +3,7 @@ import { APP_ROUTES, createRouteHref, parseRouteLocation, type Route } from './r
 
 describe('routeSchema', () => {
   it('round-trips every application route through the canonical query', () => {
-    expect(APP_ROUTES).toHaveLength(19);
+    expect(APP_ROUTES).toHaveLength(20);
 
     for (const route of APP_ROUTES) {
       const href = createRouteHref(
@@ -57,7 +57,7 @@ describe('routeSchema', () => {
   });
 
   it('exports an exact Route union for route consumers', () => {
-    const route: Route = 'model-foundry';
-    expect(route).toBe('model-foundry');
+    const route: Route = 'ade';
+    expect(route).toBe('ade');
   });
 });

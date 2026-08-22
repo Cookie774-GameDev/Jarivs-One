@@ -78,6 +78,10 @@ const AgentsRoute = React.lazy(() =>
   import('@/features/agents').then((m) => ({ default: m.AgentManager })),
 );
 
+const ChatGptAdeRoute = React.lazy(() =>
+  import('@/features/ade/ChatGptAdePage').then((m) => ({ default: m.ChatGptAdePage })),
+);
+
 const ModelFoundryRoute = React.lazy(() =>
   import('@/features/model-foundry').then((m) => ({ default: m.BuildYourOwnAIPage })),
 );
@@ -217,6 +221,7 @@ const routeMap: Record<Route, React.LazyExoticComponent<React.ComponentType>> = 
   terminal: TerminalsPage,
   kanban: KanbanPage,
   schedule: SchedulePage,
+  ade: ChatGptAdeRoute,
   agents: AgentsRoute,
   'model-foundry': ModelFoundryRoute,
   'agent-detail': AgentDetailRoute,
