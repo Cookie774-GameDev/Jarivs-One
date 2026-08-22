@@ -62,6 +62,17 @@ export function ChatGptAdeRunStatusPanel({
         </p>
       ) : null}
 
+      {run.output !== null ? (
+        <div
+          aria-label="ChatGPT ADE output"
+          aria-live="polite"
+          className="mt-4 whitespace-pre-wrap rounded-xl border border-border/60 bg-background/45 px-3 py-3 text-sm"
+          role="log"
+        >
+          {run.output}
+        </div>
+      ) : null}
+
       {run.safeFailure ? (
         <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {run.safeFailure}

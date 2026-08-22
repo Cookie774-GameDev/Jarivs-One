@@ -27,6 +27,8 @@ export type ChatGptAdeSafeFailure =
   | 'context-scope-mismatch'
   | 'execution-identity-mismatch'
   | 'history-unavailable'
+  | 'dispatch-output-invalid'
+  | 'dispatch-output-mismatch'
   | 'dispatch-failed';
 
 export interface ChatGptAdeTerminalLinkRequest {
@@ -127,6 +129,7 @@ export interface ChatGptAdeDispatchRequest {
   scope: Readonly<ContextScopeRevision>;
   terminalLink: Readonly<ChatGptAdeTerminalProjection> | null;
   signal: AbortSignal;
+  onOutput(delta: string): void;
 }
 
 export interface ChatGptAdeDispatchResult {

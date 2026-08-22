@@ -410,4 +410,97 @@ describe('ChatGptAdeAdapter', () => {
     adapter.subscribe('ade-run-a', (snapshot) => replayed.push(snapshot.status))();
     expect(replayed).toEqual(['completed']);
   });
+
+  it('publishes bounded provider chunks in order and reconciles the exact final output', async () => {
+    const deps = dependencies();
+    deps.dispatch.mockImplementation(async (input) => {
+      input.onOutput('First ');
+      await Promise.resolve();
+      input.onOutput('second.');
+      return {
+        output: 'First second.',
+        observedExecutionIdentity: identity,
+        observedScope: scope,
+      };
+    });
+    const adapter = new ChatGptAdeAdapter(deps);
+    const snapshots: Array<Readonly<{ status: string; output: string | null }>> = [];
+    adapter.subscribe('ade-run-a', ({ status, output }) => snapshots.push({ status, output }));
+
+    const result = await adapter.run(request());
+
+    expect(result).toMatchObject({ status: 'completed', output: 'First second.' });
+    expect(snapshots).toEqual([
+      { status: 'preparing-context', output: null },
+      { status: 'dispatching', output: null },
+      { status: 'dispatching', output: 'First ' },
+      { status: 'dispatching', output: 'First second.' },
+      { status: 'completed', output: 'First second.' },
+    ]);
+    expect(deps.recordEvent).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects divergent final output and ignores late chunks after cancellation', async () => {
+    const mismatch = dependencies();
+    mismatch.dispatch.mockImplementation(async (input) => {
+      input.onOutput('Observed stream.');
+      return {
+        output: 'Different final result.',
+        observedExecutionIdentity: identity,
+        observedScope: scope,
+      };
+    });
+    const mismatchAdapter = new ChatGptAdeAdapter(mismatch);
+    await expect(mismatchAdapter.run(request())).resolves.toMatchObject({
+      status: 'failed',
+      output: null,
+      safeFailure: 'dispatch-output-mismatch',
+    });
+
+    const cancelled = dependencies();
+    let emitLate: ((delta: string) => void) | undefined;
+    cancelled.dispatch.mockImplementation(
+      (input) =>
+        new Promise((resolve) => {
+          emitLate = input.onOutput;
+          input.signal.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                output: '',
+                observedExecutionIdentity: identity,
+                observedScope: scope,
+              }),
+            { once: true },
+          );
+        }),
+    );
+    const cancelledAdapter = new ChatGptAdeAdapter(cancelled);
+    const pending = cancelledAdapter.run(request());
+    await vi.waitFor(() => expect(emitLate).toBeTypeOf('function'));
+    expect(cancelledAdapter.cancel('ade-run-a')).toBe(true);
+    expect(() => emitLate?.('must not appear')).not.toThrow();
+    await expect(pending).resolves.toMatchObject({ status: 'cancelled', output: null });
+    expect(cancelledAdapter.getRun('ade-run-a')?.output).toBeNull();
+  });
+
+  it('fails closed when streamed provider output exceeds the ADE presentation bound', async () => {
+    const deps = dependencies();
+    deps.dispatch.mockImplementation(async (input) => {
+      const oversized = 'x'.repeat(2 * 1024 * 1024 + 1);
+      input.onOutput(oversized);
+      return {
+        output: oversized,
+        observedExecutionIdentity: identity,
+        observedScope: scope,
+      };
+    });
+    const adapter = new ChatGptAdeAdapter(deps);
+
+    await expect(adapter.run(request())).resolves.toMatchObject({
+      status: 'failed',
+      output: null,
+      safeFailure: 'dispatch-output-invalid',
+    });
+  });
 });

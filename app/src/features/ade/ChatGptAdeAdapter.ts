@@ -21,6 +21,7 @@ import type {
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
 const MAX_INSTRUCTION_LENGTH = 128 * 1024;
+const MAX_OUTPUT_LENGTH = 2 * 1024 * 1024;
 const ACCESS_STRENGTH = Object.freeze({ read: 0, write: 1, full: 2 });
 const IDENTITY_KEYS = Object.freeze([
   'transportConnectionId',
@@ -110,6 +111,14 @@ function validInstruction(value: string): boolean {
     value.trim().length > 0 &&
     value.length <= MAX_INSTRUCTION_LENGTH &&
     !/[\u0000\u007f-\u009f]/u.test(value)
+  );
+}
+
+function validOutput(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length <= MAX_OUTPUT_LENGTH &&
+    !/[\u0000\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(value)
   );
 }
 
@@ -288,6 +297,7 @@ export class ChatGptAdeAdapter {
       } catch {
         return this.publish(snapshot, 'failed', 'history-unavailable');
       }
+      let streamInvalid = false;
       const result = await this.dependencies.dispatcher.dispatch(
         Object.freeze({
           runId: input.runId,
@@ -298,16 +308,45 @@ export class ChatGptAdeAdapter {
           scope: immutableScope(input.scope),
           terminalLink: linkedTerminal,
           signal: controller.signal,
+          onOutput: (delta: string) => {
+            if (!validOutput(delta)) {
+              streamInvalid = true;
+              return;
+            }
+            if (!delta) return;
+            const active = this.active.get(input.runId);
+            const current = this.snapshots.get(input.runId);
+            if (
+              active?.controller !== controller ||
+              controller.signal.aborted ||
+              current?.status !== 'dispatching'
+            ) {
+              return;
+            }
+            const output = `${current.output ?? ''}${delta}`;
+            if (!validOutput(output)) {
+              streamInvalid = true;
+              return;
+            }
+            this.publishOutput(current, output);
+          },
         }),
       );
       controller.signal.throwIfAborted();
+      const current = this.snapshots.get(input.runId) ?? snapshot;
+      if (streamInvalid || !validOutput(result.output)) {
+        return this.publish(current, 'failed', 'dispatch-output-invalid');
+      }
+      if (current.output !== null && current.output !== result.output) {
+        return this.publish(current, 'failed', 'dispatch-output-mismatch');
+      }
       if (!exactIdentity(input.executionIdentity, result.observedExecutionIdentity)) {
-        return this.publish(snapshot, 'failed', 'execution-identity-mismatch');
+        return this.publish(current, 'failed', 'execution-identity-mismatch');
       }
       if (!exactScope(input.scope, result.observedScope)) {
-        return this.publish(snapshot, 'failed', 'context-scope-mismatch');
+        return this.publish(current, 'failed', 'context-scope-mismatch');
       }
-      return this.publish(Object.freeze({ ...snapshot, output: result.output }), 'completed', null);
+      return this.publish(Object.freeze({ ...current, output: result.output }), 'completed', null);
     } catch (error) {
       if (
         controller.signal.aborted ||
@@ -449,6 +488,20 @@ export class ChatGptAdeAdapter {
         safeFailure,
       }),
     );
+    this.notifyRun(next);
+    return next;
+  }
+
+  private publishOutput(
+    current: Readonly<ChatGptAdeRunSnapshot>,
+    output: string,
+  ): Readonly<ChatGptAdeRunSnapshot> {
+    const next = Object.freeze({
+      ...current,
+      output,
+      updatedAt: new Date(this.dependencies.now()).toISOString(),
+    });
+    this.snapshots.set(next.runId, next);
     this.notifyRun(next);
     return next;
   }

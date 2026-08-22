@@ -69,6 +69,7 @@ describe('ChatGptAdeRunStatusPanel', () => {
     expect(screen.getByText('focused · ready')).toBeTruthy();
     expect(screen.getByText('context-map')).toBeTruthy();
     expect(screen.getByText(/Linked terminal terminal-session-a/u)).toBeTruthy();
+    expect(screen.getByRole('log', { name: 'ChatGPT ADE output' }).textContent).toBe('done');
     expect(container.querySelector('[data-warm-surface="chatgpt-ade-status"]')).not.toBeNull();
   });
 
