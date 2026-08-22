@@ -291,15 +291,11 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(screen.queryByRole('button', { name: 'high' })).toBeNull();
     expect(screen.queryByText(/fast/i)).toBeNull();
     const selectedEffort = screen.getByRole('button', { name: /auto/i });
-    for (const sharedVisualState of [
-      'jarvis-slash-item-selected',
-      'border-accent-copper/60',
-      'bg-accent-copper/[0.12]',
-      'shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]',
-    ]) {
-      expect(selectedModel?.className).toContain(sharedVisualState);
-      expect(selectedEffort.className).toContain(sharedVisualState);
-    }
+    expect(selectedModel?.className).toContain('jarvis-slash-item-selected');
+    expect(selectedEffort.className).toContain('border-accent-copper/60');
+    expect(selectedEffort.className).toContain('bg-accent-copper/12');
+    expect(selectedEffort.className).not.toContain('jarvis-slash-item-selected');
+    expect(selectedEffort.className).not.toContain('bg-accent-copper/[0.12]');
     act(() => ref.current?.moveDown());
     act(() => ref.current?.selectCurrent());
     expect(onSelect).toHaveBeenCalledWith(

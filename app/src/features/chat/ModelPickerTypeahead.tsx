@@ -336,9 +336,10 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   onMouseEnter={() => setEffortIndex(index)}
                   onClick={() => commitEffort(effort.label)}
                   className={cn(
-                    'mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-between border text-left capitalize transition-all duration-100',
-                    compact ? 'rounded-[8px] px-2 py-1.5' : 'rounded-[12px] px-3 py-2.5',
-                    index === effortIndex ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
+                    'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-[10px] border px-3 py-2 text-left capitalize transition-colors',
+                    index === effortIndex
+                      ? 'border-accent-copper/60 bg-accent-copper/12 text-foreground'
+                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
                   )}
                 >
                   <span>{effort.label}</span>
