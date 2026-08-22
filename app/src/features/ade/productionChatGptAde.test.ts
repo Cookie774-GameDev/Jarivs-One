@@ -6,13 +6,17 @@ import type {
   ExecutionIdentity,
   PreparedContextTurn,
 } from '@/features/context/gateway/contextGatewayContracts';
+import type { JarvisRun } from '@/lib/jarvis/contracts/execution';
 import {
   bindTerminalContextBridgeIdentity,
   mintTerminalContextBridgeIdentity,
   resetTerminalContextBridgeIdentitiesForTests,
   revokeTerminalContextBridgeIdentity,
 } from '@/features/terminals/terminalContextBridgeIdentity';
-import { createProductionChatGptAdeAdapter } from './productionChatGptAde';
+import {
+  createDurableProductionChatGptAdeRun,
+  createProductionChatGptAdeAdapter,
+} from './productionChatGptAde';
 
 const now = 1_725_000_000_000;
 const scope = Object.freeze({
@@ -32,6 +36,27 @@ const executionIdentity: Readonly<ExecutionIdentity> = Object.freeze({
   effort: 'max',
   fastVariant: 'fast',
   catalogRevision: 'catalog-a',
+});
+const jarvisRun: Readonly<JarvisRun> = Object.freeze({
+  id: 'ade-run-a',
+  accountId: scope.accountId,
+  workspaceId: scope.workspaceId,
+  projectId: scope.projectId,
+  source: 'chatgpt_ade',
+  status: 'queued',
+  agentId: 'chatgpt-ade',
+  identityVersion: 1,
+  profileRevisionId: 'profile-revision-a',
+  model: Object.freeze({
+    connectionId: executionIdentity.transportConnectionId,
+    providerId: executionIdentity.upstreamProviderId,
+    modelId: executionIdentity.upstreamModelId,
+    connectionMode: 'external-cli',
+    capabilities: Object.freeze({ tools: true }),
+    capturedAt: now,
+  }),
+  createdAt: now,
+  updatedAt: now,
 });
 
 function preparedTurn(): Readonly<PreparedContextTurn> {
@@ -58,6 +83,81 @@ function preparedTurn(): Readonly<PreparedContextTurn> {
 afterEach(() => resetTerminalContextBridgeIdentitiesForTests());
 
 describe('createProductionChatGptAdeAdapter', () => {
+  it('persists the exact run and running transition before provider dispatch', async () => {
+    const order: string[] = [];
+    let current = jarvisRun;
+    const runRepository = {
+      createIdempotent: vi.fn(async (run: JarvisRun) => {
+        order.push('seed');
+        return run;
+      }),
+      compareAndAppendTransitionEvent: vi.fn(async (input) => {
+        order.push(`history:${input.nextStatus}`);
+        current = Object.freeze({
+          ...current,
+          status: input.nextStatus,
+          updatedAt: input.updatedAt,
+          ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),
+        });
+        return {
+          applied: true as const,
+          run: current,
+          event: {
+            ...input.event,
+            runId: current.id,
+            seq: order.length,
+            type: 'run_state' as const,
+            status: input.nextStatus,
+          },
+        };
+      }),
+    };
+    const prepared = preparedTurn();
+    const gateway = {
+      prepareTurn: vi.fn(async () => prepared),
+      verifyRequiredReceipt: vi.fn(() => prepared.receipt),
+      cancel: vi.fn(),
+    };
+    const dispatch = vi.fn(async () => {
+      order.push('dispatch');
+      return {
+        output: 'done',
+        observedExecutionIdentity: executionIdentity,
+        observedScope: scope,
+      };
+    });
+    const durable = createDurableProductionChatGptAdeRun({
+      seed: jarvisRun,
+      runRepository,
+      gateway,
+      dispatcher: { dispatch, cancel: vi.fn() },
+      now: () => now,
+    });
+
+    const result = await durable.run({
+      runId: 'ade-run-a',
+      requestId: 'ade-request-a',
+      selectedHarness: 'chatgpt',
+      instruction: 'Write a safe change.',
+      taskKind: 'write',
+      access: 'write',
+      workingSet: 'incomplete',
+      scope,
+      executionIdentity,
+      performance: 'quality',
+      optionalEnrichmentEnabled: true,
+    });
+
+    expect(result.status).toBe('completed');
+    expect(order).toEqual([
+      'seed',
+      'history:compiling',
+      'history:running',
+      'dispatch',
+      'history:completed',
+    ]);
+  });
+
   it('reuses the app-minted terminal authority and the supplied shared Gateway', async () => {
     const minted = mintTerminalContextBridgeIdentity(
       {

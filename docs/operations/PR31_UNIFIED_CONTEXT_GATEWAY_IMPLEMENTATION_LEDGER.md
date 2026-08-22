@@ -229,3 +229,9 @@
 - Registered `chatgpt_ade` as an exact request/run surface in the existing contract validator and persisted row schema. Added a narrow lifecycle writer over the existing idempotent-run and compare-and-append repository methods: queued -> compiling -> running -> completed/failed/cancelled, with exact expected-state checks and replay-safe terminal handling.
 - Context receipt provenance is persisted only as an app-verified private `context_node` source reference. Fixed summaries never contain the receipt, terminal identity, evidence handles, prompts, or source content; queued inputs are detached from caller mutation and unsafe receipt identifiers fail closed.
 - Fresh ADE/Jarvis verification passed 6 files / 502 tests. Full project typecheck has no diagnostics in this owned change; it currently stops on the same four concurrently owned SiYuan test diagnostics (`siyuanRlmProduction.test.ts` once and `siyuanRlmRepository.test.ts` three times), which remain outside this lock.
+
+## 2026-08-22 — ADE production history binding checkpoint
+
+- Added a run-scoped production factory that binds the ADE adapter to the existing Jarvis run repository. It validates the durable account/workspace/project/connection/provider/model selection, persists the queued seed before context work, settles compiling/running history before provider dispatch, and settles the terminal transition before returning.
+- Lifecycle-storage failure now fails closed before provider dispatch as `history-unavailable`. Initial validation or terminal-authorization blocks correctly persist queued -> failed rather than creating a transition conflict.
+- Fresh ADE/Jarvis verification passed 6 files / 505 tests. Exact formatting passed; full typecheck again reports only the same four active, out-of-scope SiYuan test diagnostics and no owned-file diagnostics.

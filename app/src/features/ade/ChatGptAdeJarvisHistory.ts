@@ -51,7 +51,7 @@ function expectedStatuses(status: ChatGptAdeRunStatus): readonly JarvisRunStatus
     case 'completed':
       return ['running'];
     case 'blocked':
-      return ['compiling'];
+      return ['queued', 'compiling'];
     case 'failed':
     case 'cancelled':
       return ['compiling', 'running'];

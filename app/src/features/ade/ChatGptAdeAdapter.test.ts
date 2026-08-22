@@ -176,6 +176,19 @@ describe('ChatGptAdeAdapter', () => {
     expect(deps.dispatch).not.toHaveBeenCalled();
   });
 
+  it('fails closed before provider dispatch when lifecycle history cannot settle', async () => {
+    const deps = dependencies();
+    const flushEvents = vi.fn().mockRejectedValue(new Error('storage unavailable'));
+    const adapter = new ChatGptAdeAdapter({ ...deps, flushEvents });
+
+    const result = await adapter.run(request());
+
+    expect(result.status).toBe('failed');
+    expect(result.safeFailure).toBe('history-unavailable');
+    expect(flushEvents).toHaveBeenCalled();
+    expect(deps.dispatch).not.toHaveBeenCalled();
+  });
+
   it('rejects a completion whose observed provider/model identity differs from selection', async () => {
     const deps = dependencies();
     deps.dispatch.mockResolvedValue({

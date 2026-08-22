@@ -122,6 +122,27 @@ describe('ChatGptAdeJarvisHistory', () => {
     );
   });
 
+  it('persists an initial validation or terminal-authorization block from queued', async () => {
+    const repo = repository();
+    const history = new ChatGptAdeJarvisHistory(repo, seed);
+    history.recordEvent(
+      lifecycle('blocked', {
+        receiptId: null,
+        safeFailure: 'terminal-link-unauthorized',
+      }),
+    );
+
+    await history.flush();
+
+    expect(repo.compareAndAppendTransitionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedStatus: 'queued',
+        nextStatus: 'failed',
+        completedAt: 1_725_000_000_000,
+      }),
+    );
+  });
+
   it('detaches queued history from caller mutation and rejects unsafe receipt IDs', async () => {
     const repo = repository();
     const history = new ChatGptAdeJarvisHistory(repo, seed);

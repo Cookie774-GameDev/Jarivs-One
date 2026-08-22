@@ -3,18 +3,63 @@ import {
   authorizeTerminalContextBridgeIdentity,
   registerTerminalContextBridgeRequest,
 } from '@/features/terminals/terminalContextBridgeIdentity';
+import { jarvisRunRepo } from '@/lib/db/jarvisRepositories';
+import type { JarvisRun } from '@/lib/jarvis/contracts/execution';
 import {
   ChatGptAdeAdapter,
+  type ChatGptAdeRunListener,
   type ChatGptAdeDispatcher,
   type ChatGptAdeGateway,
 } from './ChatGptAdeAdapter';
-import type { ChatGptAdeAuthorizedTerminalLink, ChatGptAdeLifecycleEvent } from './adeContracts';
+import {
+  ChatGptAdeJarvisHistory,
+  type ChatGptAdeHistoryRunRepository,
+} from './ChatGptAdeJarvisHistory';
+import type {
+  ChatGptAdeAuthorizedTerminalLink,
+  ChatGptAdeLifecycleEvent,
+  ChatGptAdeRunRequest,
+  ChatGptAdeRunSnapshot,
+} from './adeContracts';
 
 export interface ProductionChatGptAdeDependencies {
   dispatcher: Readonly<ChatGptAdeDispatcher>;
   recordEvent(event: Readonly<ChatGptAdeLifecycleEvent>): void;
   now?(): number;
   gateway?: ChatGptAdeGateway;
+  flushEvents?(): Promise<void>;
+}
+
+export interface DurableProductionChatGptAdeRunDependencies {
+  seed: Readonly<JarvisRun>;
+  dispatcher: Readonly<ChatGptAdeDispatcher>;
+  now?(): number;
+  gateway?: ChatGptAdeGateway;
+  runRepository?: Readonly<ChatGptAdeHistoryRunRepository>;
+}
+
+export interface DurableProductionChatGptAdeRun {
+  run(input: Readonly<ChatGptAdeRunRequest>): Promise<Readonly<ChatGptAdeRunSnapshot>>;
+  cancel(): boolean;
+  getRun(): Readonly<ChatGptAdeRunSnapshot> | null;
+  subscribe(listener: ChatGptAdeRunListener): () => void;
+  flushHistory(): Promise<void>;
+}
+
+function requestMatchesSeed(
+  input: Readonly<ChatGptAdeRunRequest>,
+  seed: Readonly<JarvisRun>,
+): boolean {
+  return (
+    input.runId === seed.id &&
+    input.scope.accountId === seed.accountId &&
+    input.scope.workspaceId === seed.workspaceId &&
+    input.scope.projectId === seed.projectId &&
+    seed.source === 'chatgpt_ade' &&
+    seed.model.connectionId === input.executionIdentity.transportConnectionId &&
+    seed.model.providerId === input.executionIdentity.upstreamProviderId &&
+    seed.model.modelId === input.executionIdentity.upstreamModelId
+  );
 }
 
 /**
@@ -31,6 +76,7 @@ export function createProductionChatGptAdeAdapter(
     gateway: dependencies.gateway ?? productionContextGateway,
     dispatcher: dependencies.dispatcher,
     recordEvent: dependencies.recordEvent,
+    ...(dependencies.flushEvents ? { flushEvents: dependencies.flushEvents } : {}),
     now,
     registerTerminalCancellation: registerTerminalContextBridgeRequest,
     authorizeTerminal(input): Readonly<ChatGptAdeAuthorizedTerminalLink> | null {
@@ -48,5 +94,43 @@ export function createProductionChatGptAdeAdapter(
         runGeneration: authorized.runGeneration,
       });
     },
+  });
+}
+
+/**
+ * Binds one exact ADE run to the existing Jarvis run/event journal. The queued
+ * run is durable before context/provider work starts, and the running history
+ * transition is settled before provider dispatch.
+ */
+export function createDurableProductionChatGptAdeRun(
+  dependencies: Readonly<DurableProductionChatGptAdeRunDependencies>,
+): Readonly<DurableProductionChatGptAdeRun> {
+  const history = new ChatGptAdeJarvisHistory(
+    dependencies.runRepository ?? jarvisRunRepo,
+    dependencies.seed,
+  );
+  const adapter = createProductionChatGptAdeAdapter({
+    dispatcher: dependencies.dispatcher,
+    recordEvent: history.recordEvent,
+    flushEvents: () => history.flush(),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+    ...(dependencies.gateway ? { gateway: dependencies.gateway } : {}),
+  });
+
+  return Object.freeze({
+    async run(input: Readonly<ChatGptAdeRunRequest>) {
+      if (!requestMatchesSeed(input, dependencies.seed)) {
+        throw new TypeError('ade_run_seed_mismatch');
+      }
+      await history.flush();
+      const result = await adapter.run(input);
+      await history.flush();
+      return result;
+    },
+    cancel: () => adapter.cancel(dependencies.seed.id),
+    getRun: () => adapter.getRun(dependencies.seed.id),
+    subscribe: (listener: ChatGptAdeRunListener) =>
+      adapter.subscribe(dependencies.seed.id, listener),
+    flushHistory: () => history.flush(),
   });
 }

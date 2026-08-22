@@ -26,6 +26,7 @@ export type ChatGptAdeSafeFailure =
   | 'required-context-invalid'
   | 'context-scope-mismatch'
   | 'execution-identity-mismatch'
+  | 'history-unavailable'
   | 'dispatch-failed';
 
 export interface ChatGptAdeTerminalLinkRequest {

@@ -62,6 +62,7 @@ export interface ChatGptAdeAdapterDependencies {
     cancel: () => void,
   ): () => void;
   recordEvent(event: Readonly<ChatGptAdeLifecycleEvent>): void;
+  flushEvents?(): Promise<void>;
   now(): number;
 }
 
@@ -282,6 +283,11 @@ export class ChatGptAdeAdapter {
       }
 
       snapshot = this.publish(snapshot, 'dispatching', null);
+      try {
+        await this.dependencies.flushEvents?.();
+      } catch {
+        return this.publish(snapshot, 'failed', 'history-unavailable');
+      }
       const result = await this.dependencies.dispatcher.dispatch(
         Object.freeze({
           runId: input.runId,
