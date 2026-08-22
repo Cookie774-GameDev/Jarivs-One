@@ -56,3 +56,10 @@
 - Native model-selector verification showed truthful provider grouping, exact visible provider/model labels, and a separate atomic effort confirmation before selection. A local Ollama route and the registered Qwen API route were each surfaced under their real provider group; no prompt or inference was sent during this check.
 - Fresh focused model-catalog/routing verification: 5 files / 51 tests passed (`useAccessibleChatModels`, its smoke contract, `ModelPickerTypeahead`, `providerModelCatalog`, and `connectionDisclosure`). Vitest emitted one existing non-fatal React `act(...)` warning in the smoke test; all assertions passed.
 - Current-source terminal native manual acceptance remains blocked specifically by Windows Application Control. The terminal bridge retains 22/22 native contract evidence and is not represented as manually proven in the trusted older backend.
+
+## 2026-08-22 — Gateway warm-path microbenchmark checkpoint
+
+- A fresh in-process warm microbenchmark ran 10,000 direct `prepareTurn` calls after 100 warmups: p50 `0.0020 ms`, p95 `0.0039 ms`, p99 `0.0076 ms`, maximum `0.4335 ms`; every route was `direct` and retrieval was never called.
+- A separate 10,000-run focused cache-hit benchmark recorded p50 `0.0037 ms`, p95 `0.0105 ms`, p99 `0.0311 ms`, maximum `1.9170 ms`; the backend ran once for the warm miss and every measured request reported an exact cache hit.
+- A 100-request concurrent focused burst completed in `35.164 ms` wall time with one backend call, one `miss`, and 99 `shared` receipts, confirming live single-flight coalescing rather than duplicate retrieval.
+- These are isolated Gateway overhead measurements, not native/provider SLO acceptance. The required paired native 30-run route measurements remain pending because the current-source executable is blocked by Windows Application Control and the central Chat dispatch files remain under another active ownership lock.
