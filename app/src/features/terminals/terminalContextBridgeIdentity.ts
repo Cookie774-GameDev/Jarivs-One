@@ -31,6 +31,7 @@ const MAX_SCOPE_TEXT = 2_048;
 const DEFAULT_LIFETIME_MS = 60 * 60 * 1_000;
 const MAX_LIFETIME_MS = 4 * 60 * 60 * 1_000;
 const identities = new Map<string, TerminalContextBridgeIdentity>();
+const activeRequests = new Map<string, Map<string, () => void>>();
 
 function safeId(value: string): boolean {
   return SAFE_ID.test(value);
@@ -46,6 +47,42 @@ function safeScopeText(value: string): boolean {
 
 function defaultId(): string {
   return `terminal-context-${crypto.randomUUID()}`;
+}
+
+function cancelActiveRequests(identityId: string): void {
+  const requests = activeRequests.get(identityId);
+  if (!requests) return;
+  activeRequests.delete(identityId);
+  for (const cancel of requests.values()) {
+    try {
+      cancel();
+    } catch {
+      // Revocation remains authoritative even if a consumer cleanup callback fails.
+    }
+  }
+}
+
+export function registerTerminalContextBridgeRequest(
+  identityId: string,
+  requestId: string,
+  cancel: () => void,
+): () => void {
+  if (!identities.has(identityId) || !safeId(requestId) || typeof cancel !== 'function') {
+    throw new TypeError('terminal_context_request_invalid');
+  }
+  const requests = activeRequests.get(identityId) ?? new Map<string, () => void>();
+  if (requests.has(requestId)) throw new TypeError('terminal_context_request_conflict');
+  requests.set(requestId, cancel);
+  activeRequests.set(identityId, requests);
+  let completed = false;
+  return () => {
+    if (completed) return;
+    completed = true;
+    const current = activeRequests.get(identityId);
+    if (current?.get(requestId) !== cancel) return;
+    current.delete(requestId);
+    if (current.size === 0) activeRequests.delete(identityId);
+  };
 }
 
 export function mintTerminalContextBridgeIdentity(
@@ -124,6 +161,7 @@ export function authorizeTerminalContextBridgeIdentity(
   const identity = identities.get(scope.identityId);
   if (!identity) return null;
   if (identity.expiresAt < now) {
+    cancelActiveRequests(scope.identityId);
     identities.delete(scope.identityId);
     return null;
   }
@@ -136,9 +174,11 @@ export function authorizeTerminalContextBridgeIdentity(
 }
 
 export function revokeTerminalContextBridgeIdentity(identityId: string): void {
+  cancelActiveRequests(identityId);
   identities.delete(identityId);
 }
 
 export function resetTerminalContextBridgeIdentitiesForTests(): void {
+  for (const identityId of identities.keys()) cancelActiveRequests(identityId);
   identities.clear();
 }

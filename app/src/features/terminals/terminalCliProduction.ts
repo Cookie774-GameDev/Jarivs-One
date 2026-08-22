@@ -34,7 +34,10 @@ import {
   TerminalCliContextSourceError,
 } from './terminalCliContextSources';
 import { productionContextGateway } from '@/features/context/gateway/productionContextGateway';
-import { authorizeTerminalContextBridgeIdentity } from './terminalContextBridgeIdentity';
+import {
+  authorizeTerminalContextBridgeIdentity,
+  registerTerminalContextBridgeRequest,
+} from './terminalContextBridgeIdentity';
 
 const MAX_SEARCH_RESULTS = 50;
 
@@ -303,36 +306,43 @@ export function createProductionTerminalCliRuntimeDependencies(): TerminalCliRun
     now: Date.now,
     authorizeContextIdentity: authorizeTerminalContextBridgeIdentity,
     async askContext({ requestId, question, identity }) {
-      return productionContextGateway.ask({
-        requestId,
-        question,
-        scope: {
-          accountId: identity.accountId,
-          workspaceId: identity.workspaceId,
-          projectId: identity.projectId,
-          worktreeId: identity.worktreeId,
-          revision: identity.scopeRevision,
-        },
-        executionIdentity: {
-          transportConnectionId: 'vibespace-terminal-context',
-          transportAdapterId: 'terminal-local-ipc',
-          upstreamProviderId: 'local-context-gateway',
-          upstreamModelId: 'context-only',
-          providerQualifiedModelId: 'local-context-gateway/context-only',
-          authBillingRoute: 'local-only',
-          effort: 'not-applicable',
-          fastVariant: 'not-applicable',
-          catalogRevision: identity.scopeRevision,
-          observedProviderIdentity: 'local-context-gateway',
-        },
-        taskKind: 'answer',
-        access: identity.access,
-        workingSet: 'incomplete',
-        userIntent: { context: true },
-        performance: 'quality',
-        optionalEnrichmentEnabled: true,
-        activePaths: [identity.worktreeId],
+      const complete = registerTerminalContextBridgeRequest(identity.identityId, requestId, () => {
+        productionContextGateway.cancel(requestId);
       });
+      try {
+        return await productionContextGateway.ask({
+          requestId,
+          question,
+          scope: {
+            accountId: identity.accountId,
+            workspaceId: identity.workspaceId,
+            projectId: identity.projectId,
+            worktreeId: identity.worktreeId,
+            revision: identity.scopeRevision,
+          },
+          executionIdentity: {
+            transportConnectionId: 'vibespace-terminal-context',
+            transportAdapterId: 'terminal-local-ipc',
+            upstreamProviderId: 'local-context-gateway',
+            upstreamModelId: 'context-only',
+            providerQualifiedModelId: 'local-context-gateway/context-only',
+            authBillingRoute: 'local-only',
+            effort: 'not-applicable',
+            fastVariant: 'not-applicable',
+            catalogRevision: identity.scopeRevision,
+            observedProviderIdentity: 'local-context-gateway',
+          },
+          taskKind: 'answer',
+          access: identity.access,
+          workingSet: 'incomplete',
+          userIntent: { context: true },
+          performance: 'quality',
+          optionalEnrichmentEnabled: true,
+          activePaths: [identity.worktreeId],
+        });
+      } finally {
+        complete();
+      }
     },
     currentProject,
     resolveProject: accessibleProject,

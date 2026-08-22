@@ -104,3 +104,11 @@
 - Added the required provider-independent bridge instruction to every bounded managed-terminal Context Pack: use `vibespace-context ask "your question"` for cross-source, project-history, prior-decision, or unknown-context work; use normal filesystem tools for the current checkout; and report bridge unavailability instead of pretending evidence was retrieved.
 - The instruction grants no new authority, carries no model/provider ID or secret, requires no MCP/user configuration, and is delivered within the existing project-scoped, redacted, size-bounded pack shared by Codex, Claude, OpenCode, and other executable harnesses.
 - TDD red proved the instruction absent. Fresh focused verification passed 3/3; the adjacent pack/payload/delivery/identity/CLI matrix passed 5 files / 65 tests. Exact Prettier formatting passed after the green rerun.
+
+## 2026-08-22 — Terminal identity lifecycle cancellation checkpoint
+
+- Closed a terminal lifecycle race where revoking or expiring an already-authorized managed-terminal identity blocked future retrievals but did not cancel a Gateway request that was already in flight.
+- Active request registrations are now bound to the exact opaque terminal identity and request ID. Revocation, observed expiry, and test reset cancel every bound request before deleting authority; normal completion unregisters idempotently, duplicate request IDs fail closed, and cancellation callback failures cannot restore revoked authority.
+- The production terminal bridge registers immediately before the singleton Gateway ask and always unregisters in `finally`; identity cancellation delegates to the Gateway's existing request cancellation path, so late evidence cannot be returned by the managed terminal call.
+- TDD red reproduced the missing registration authority. Fresh focused verification passed 3 files / 16 tests; adjacent native-terminal UI verification passed 4 files / 45 tests; the broader owned Gateway/RLM/terminal matrix passed 12 files / 92 tests. The only test-environment notices were the existing non-fatal jsdom canvas messages.
+- Full app typecheck reached only the same four pre-existing diagnostics in actively owned SiYuan tests (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned file produced a diagnostic.

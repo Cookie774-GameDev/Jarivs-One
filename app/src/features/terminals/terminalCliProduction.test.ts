@@ -1,9 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ContextMapRecord } from '@/features/context';
 import {
+  createProductionTerminalCliRuntimeDependencies,
   resolvePersistedTerminalContextEntity,
   searchPersistedTerminalContext,
 } from './terminalCliProduction';
+import { productionContextGateway } from '@/features/context/gateway/productionContextGateway';
+import {
+  mintTerminalContextBridgeIdentity,
+  resetTerminalContextBridgeIdentitiesForTests,
+  revokeTerminalContextBridgeIdentity,
+} from './terminalContextBridgeIdentity';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetTerminalContextBridgeIdentitiesForTests();
+});
 
 function map(
   id: string,
@@ -97,5 +109,40 @@ describe('terminal CLI production Context projection', () => {
       mapId: 'map-a',
     });
     expect(resolvePersistedTerminalContextEntity(maps, 'SRC\\APP.TSX')).toBeNull();
+  });
+
+  it('cancels an in-flight Gateway ask when its terminal identity is revoked', async () => {
+    const identity = mintTerminalContextBridgeIdentity(
+      {
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        worktreeId: 'worktree-1',
+        paneId: 'pane-1',
+        access: 'read',
+      },
+      { now: () => 100, createId: () => 'terminal-run-1' },
+    );
+    let rejectAsk!: (error: DOMException) => void;
+    const ask = vi.spyOn(productionContextGateway, 'ask').mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectAsk = reject;
+        }),
+    );
+    const cancel = vi.spyOn(productionContextGateway, 'cancel').mockImplementation(() => {
+      rejectAsk(new DOMException('cancelled', 'AbortError'));
+    });
+    const pending = createProductionTerminalCliRuntimeDependencies().askContext({
+      requestId: 'request-1',
+      question: 'Find the prior decision.',
+      identity,
+    });
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledOnce());
+
+    revokeTerminalContextBridgeIdentity(identity.identityId);
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancel).toHaveBeenCalledWith('request-1');
   });
 });
