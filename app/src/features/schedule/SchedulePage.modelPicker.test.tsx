@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import { toast } from '@/components/ui/toast';
+import { OPENCODE_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
 import type { WorkspaceId } from '@/types/common';
 import type { EventRow } from '@/types/event';
 import type { Task } from '@/types/task';
@@ -13,6 +14,7 @@ const {
   completeTaskMock,
   createEvent,
   deleteEvent,
+  accessibleModelsState,
   jarvisEventsState,
   upcomingEventsState,
   upcomingTasksState,
@@ -20,10 +22,22 @@ const {
   completeTaskMock: vi.fn(),
   createEvent: vi.fn(),
   deleteEvent: vi.fn(),
+  accessibleModelsState: { current: null as object | null },
   jarvisEventsState: { rows: [] as unknown[] },
   upcomingEventsState: { rows: [] as RecurrenceInstance[] },
   upcomingTasksState: { rows: [] as Task[] },
 }));
+
+vi.mock('@/lib/ai/useAccessibleChatModels', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/ai/useAccessibleChatModels')>(
+    '@/lib/ai/useAccessibleChatModels',
+  );
+  return {
+    ...actual,
+    useAccessibleChatModels: () =>
+      accessibleModelsState.current ?? actual.useAccessibleChatModels(),
+  };
+});
 
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<typeof import('@/lib/db')>('@/lib/db');
@@ -55,6 +69,7 @@ describe('SchedulePage Jarvis Action model picker', () => {
     deleteEvent.mockResolvedValue(undefined);
     completeTaskMock.mockReset();
     completeTaskMock.mockResolvedValue(undefined);
+    accessibleModelsState.current = null;
     jarvisEventsState.rows = [];
     upcomingEventsState.rows = [];
     upcomingTasksState.rows = [];
@@ -182,7 +197,9 @@ describe('SchedulePage Jarvis Action model picker', () => {
     );
     consoleError.mockRestore();
     // Prefer non-Lite Flash when multiple Gemini 2.5 Flash options appear.
-    const flashOptions = screen.getAllByRole('option', { name: /Gemini 2\.5 Flash/i });
+    const flashOptions = screen.getAllByRole('button', {
+      name: /Select Gemini 2\.5 Flash/i,
+    });
     const nonLite = flashOptions.find((el) => !/Lite/i.test(el.textContent ?? ''));
     fireEvent.click(nonLite ?? flashOptions[0]!);
     fireEvent.change(screen.getByLabelText(/action title/i), {
@@ -205,6 +222,90 @@ describe('SchedulePage Jarvis Action model picker', () => {
       'Jarvis Action saved',
       'Completed, sir. “Review release notes” will run once while VibeSpace is open.',
     );
+  });
+
+  it('selects and persists an exact alternative route from one logical model row', async () => {
+    const baseRoute = {
+      id: 'opencode-cli:openai/gpt-5.6-sol',
+      provider: 'opencode',
+      modelId: 'openai/gpt-5.6-sol',
+      label: 'GPT-5.6 Sol',
+      connection: OPENCODE_CLI_CONNECTION,
+      connectionId: OPENCODE_CLI_CONNECTION.id,
+      available: true,
+    };
+    const fastRoute = {
+      ...baseRoute,
+      id: 'opencode-cli:openai/gpt-5.6-sol-fast',
+      modelId: 'openai/gpt-5.6-sol-fast',
+      label: 'GPT-5.6 Sol Fast',
+    };
+    const unavailableRoute = {
+      ...baseRoute,
+      id: 'opencode-cli:openai/gpt-5.6-sol-preview',
+      modelId: 'openai/gpt-5.6-sol-preview',
+      label: 'GPT-5.6 Sol Preview',
+      available: false,
+    };
+    accessibleModelsState.current = {
+      groups: [
+        {
+          id: 'opencode:openai-subscription',
+          provider: 'opencode',
+          label: 'OpenAI Subscription',
+          options: [
+            {
+              ...baseRoute,
+              alternativeRoutes: [baseRoute, fastRoute, unavailableRoute],
+            },
+          ],
+        },
+      ],
+      flatOptions: [baseRoute, fastRoute, unavailableRoute],
+      hasAny: true,
+      ollamaCount: 0,
+      refreshModels: vi.fn(),
+    };
+
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Jarvis Action$/i }));
+    fireEvent.click(screen.getByLabelText(/action model/i));
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Select GPT-5.6 Sol' })).toHaveLength(1);
+    const unavailable = screen.getByRole('button', { name: 'Use GPT-5.6 Sol Preview' });
+    expect((unavailable as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(unavailable);
+    expect(unavailable.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Use GPT-5.6 Sol Fast' }));
+    expect(screen.queryByRole('group', { name: 'Connected models' })).toBeNull();
+    fireEvent.click(screen.getByLabelText(/action model/i));
+    expect(
+      screen.getByRole('button', { name: 'Use GPT-5.6 Sol Fast' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    fireEvent.click(screen.getByLabelText(/action model/i));
+    fireEvent.change(screen.getByLabelText(/action title/i), {
+      target: { value: 'Review the Fast route' },
+    });
+    fireEvent.change(screen.getByLabelText(/instruction/i), {
+      target: { value: 'Verify the exact scheduled model route.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Save Jarvis Action/i }));
+
+    await waitFor(() => expect(createEvent).toHaveBeenCalledOnce());
+    const metadataId = createEvent.mock.calls[0]?.[0]?.source_ref?.context?.id;
+    expect(typeof metadataId).toBe('string');
+    const metadata = JSON.parse(String(metadataId).slice('jarvis_schedule:'.length)) as {
+      modelSelection?: Record<string, unknown>;
+    };
+    expect(metadata.modelSelection).toMatchObject({
+      mode: 'single',
+      providerId: 'opencode',
+      modelId: 'openai/gpt-5.6-sol-fast',
+      connectionId: 'opencode-cli',
+      connectionMode: OPENCODE_CLI_CONNECTION.mode,
+      authSource: OPENCODE_CLI_CONNECTION.authSource,
+    });
   });
 
   it('narrates a manual event only after persistence resolves', async () => {

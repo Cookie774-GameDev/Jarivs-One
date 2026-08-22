@@ -1202,7 +1202,7 @@ export function SchedulePage() {
                         align="start"
                         className="w-[min(22rem,calc(100vw-2rem))] max-h-72 overflow-y-auto p-2"
                       >
-                        <div className="space-y-3" role="listbox" aria-label="Connected models">
+                        <div className="space-y-3" role="group" aria-label="Connected models">
                           {jarvisModelGroupsAvailable.map((group) => (
                             <div key={group.id ?? `${group.provider}:${group.label}`}>
                               <div className="mb-1 px-1.5 text-metadata font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1210,49 +1210,83 @@ export function SchedulePage() {
                               </div>
                               <div className="space-y-0.5">
                                 {group.options.map((option) => {
-                                  const selected = option.id === jarvisModelOptionId;
+                                  const selected =
+                                    option.id === jarvisModelOptionId ||
+                                    option.alternativeRoutes?.some(
+                                      (route) => route.id === jarvisModelOptionId,
+                                    ) === true;
                                   return (
-                                    <button
-                                      key={option.id}
-                                      type="button"
-                                      role="option"
-                                      aria-selected={selected}
-                                      onClick={() => {
-                                        setJarvisModelOptionId(option.id);
-                                        setModelPickerOpen(false);
-                                      }}
-                                      className={cn(
-                                        'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-secondary transition-colors',
-                                        selected
-                                          ? 'bg-accent-violet/15 text-foreground ring-1 ring-accent-violet/40'
-                                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                                      )}
-                                    >
-                                      <span
+                                    <div key={option.id}>
+                                      <button
+                                        type="button"
+                                        aria-label={`Select ${option.label}`}
+                                        aria-pressed={selected}
+                                        onClick={() => {
+                                          setJarvisModelOptionId(option.id);
+                                          setModelPickerOpen(false);
+                                        }}
                                         className={cn(
-                                          'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold',
+                                          'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-secondary transition-colors',
                                           selected
-                                            ? 'border-accent-violet/50 bg-accent-violet/20 text-foreground'
-                                            : 'border-border bg-background text-muted-foreground',
+                                            ? 'bg-accent-violet/15 text-foreground ring-1 ring-accent-violet/40'
+                                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                                         )}
-                                        aria-hidden
                                       >
-                                        {getProviderDisplayName(option.provider).slice(0, 2)}
-                                      </span>
-                                      <span className="min-w-0">
-                                        <span className="block truncate font-medium text-foreground">
-                                          {option.label}
+                                        <span
+                                          className={cn(
+                                            'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded border text-[10px] font-bold',
+                                            selected
+                                              ? 'border-accent-violet/50 bg-accent-violet/20 text-foreground'
+                                              : 'border-border bg-background text-muted-foreground',
+                                          )}
+                                          aria-hidden
+                                        >
+                                          {getProviderDisplayName(option.provider).slice(0, 2)}
                                         </span>
-                                        <span className="block truncate text-metadata text-muted-foreground">
-                                          {option.modeLabel ??
-                                            getProviderDisplayName(option.provider)}
-                                          {option.authLabel ? ` · ${option.authLabel}` : ''}
+                                        <span className="min-w-0">
+                                          <span className="block truncate font-medium text-foreground">
+                                            {option.label}
+                                          </span>
+                                          <span className="block truncate text-metadata text-muted-foreground">
+                                            {option.modeLabel ??
+                                              getProviderDisplayName(option.provider)}
+                                            {option.authLabel ? ` · ${option.authLabel}` : ''}
+                                          </span>
                                         </span>
-                                      </span>
-                                      {selected ? (
-                                        <Check className="ml-auto mt-1 h-3.5 w-3.5 shrink-0 text-accent-violet" />
+                                        {selected ? (
+                                          <Check className="ml-auto mt-1 h-3.5 w-3.5 shrink-0 text-accent-violet" />
+                                        ) : null}
+                                      </button>
+                                      {option.alternativeRoutes &&
+                                      option.alternativeRoutes.length > 1 ? (
+                                        <div
+                                          role="group"
+                                          aria-label={`${option.label} routes`}
+                                          className="mx-3 mb-1 flex flex-wrap gap-1.5 px-2"
+                                        >
+                                          {option.alternativeRoutes.map((route) => (
+                                            <button
+                                              key={route.id}
+                                              type="button"
+                                              disabled={route.available === false}
+                                              aria-label={`Use ${route.label}`}
+                                              aria-pressed={route.id === jarvisModelOptionId}
+                                              onClick={() => {
+                                                setJarvisModelOptionId(route.id);
+                                                setModelPickerOpen(false);
+                                              }}
+                                              className={cn(
+                                                'rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55',
+                                                route.id === jarvisModelOptionId &&
+                                                  'border-accent-violet/60 text-accent-violet',
+                                              )}
+                                            >
+                                              {route.label}
+                                            </button>
+                                          ))}
+                                        </div>
                                       ) : null}
-                                    </button>
+                                    </div>
                                   );
                                 })}
                               </div>
