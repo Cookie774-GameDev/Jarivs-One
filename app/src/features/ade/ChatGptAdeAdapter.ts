@@ -191,8 +191,10 @@ export class ChatGptAdeAdapter {
   }
 
   async run(input: Readonly<ChatGptAdeRunRequest>): Promise<Readonly<ChatGptAdeRunSnapshot>> {
+    if (this.active.has(input.runId) || this.snapshots.has(input.runId)) {
+      throw new TypeError('ade_run_conflict');
+    }
     const initial = this.initialSnapshot(input);
-    if (this.active.has(input.runId)) throw new TypeError('ade_run_conflict');
     if (!this.validRequest(input)) {
       return this.publish(initial, 'blocked', 'invalid-run');
     }

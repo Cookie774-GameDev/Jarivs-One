@@ -361,4 +361,21 @@ describe('ChatGptAdeAdapter', () => {
     resolveDispatch({ output: 'late output', observedExecutionIdentity: identity });
     expect((await first).status).toBe('cancelled');
   });
+
+  it('never reuses a published run ID for a second context or model dispatch', async () => {
+    const deps = dependencies();
+    const adapter = new ChatGptAdeAdapter(deps);
+    expect((await adapter.run(request())).status).toBe('completed');
+
+    await expect(adapter.run(request({ requestId: 'ade-request-replay' }))).rejects.toThrow(
+      'ade_run_conflict',
+    );
+
+    expect(deps.prepareTurn).toHaveBeenCalledTimes(1);
+    expect(deps.dispatch).toHaveBeenCalledTimes(1);
+    expect(adapter.getRun('ade-run-a')).toMatchObject({
+      requestId: 'ade-request-a',
+      status: 'completed',
+    });
+  });
 });

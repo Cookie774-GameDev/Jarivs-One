@@ -203,3 +203,8 @@
 
 - The shared revision/query cache is now bounded to 256 distinct entries by default and hard-capped at 2,048 even when configured higher. Expired entries are pruned before turns and insertions; when full, the oldest distinct lookup is evicted before a new validated backend result is cached.
 - TDD red proved three distinct lookups remained resident despite a configured two-entry ceiling. Focused verification passed 18/18 and fresh adjacent Gateway/ADE/terminal verification passed 7 files / 48 tests. Full TypeScript verification passed with zero diagnostics.
+
+## 2026-08-22 — Immutable ADE run-identity checkpoint
+
+- Every published ADE run ID is now one-shot for the adapter lifetime, not merely unique while active. Completed, blocked, failed, and cancelled run IDs cannot be reused to overwrite their snapshot/history identity or trigger a second Context/provider dispatch under the same task identity.
+- TDD red proved a completed run ID could be replayed with a different request ID and dispatched twice. Fresh adjacent Gateway/ADE/terminal verification passed 7 files / 49 tests, including active-run collision and terminal cancellation coverage. Full TypeScript verification passed with zero diagnostics.
