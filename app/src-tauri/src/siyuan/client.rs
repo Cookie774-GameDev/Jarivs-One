@@ -460,6 +460,7 @@ impl HttpSiyuanTransport {
                 "page": 1,
                 "pageSize": limit,
                 "method": 0,
+                "searchHPath": false,
             }),
         )?;
         if data.blocks.len() > usize::from(limit) {
@@ -1180,6 +1181,7 @@ mod tests {
         assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
         assert!(request.starts_with("POST /api/search/fullTextSearchBlock HTTP/1.1"));
         assert!(request.contains("\"method\":0"));
+        assert!(request.contains("\"searchHPath\":false"));
         assert!(!request.contains("/api/query/sql"));
         assert!(!request.contains(token.as_str()));
         server.join().unwrap();

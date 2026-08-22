@@ -445,6 +445,7 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - Official native Test 1 remained at `@jarvis is gathering context` for more than twenty minutes. Sanitized OpenCode store metadata and loopback sockets prove no provider session, prompt, or SSE was created; the native OpenCode transport is not implicated.
 - Source audit found two linked acceptance defects: the natural authoritative-fact question scoped to the bound project is not classified for the real read-only `vibespace_context` tool, and protected-chat pre-dispatch assembly redundantly performs unbounded local Context-map knowledge retrieval. That old adapter does not query the active SiYuan vault that owns the frozen acceptance corpus.
 - Intent: classify bounded natural bound-project factual lookups as read-only Context-tool turns, skip redundant repository-prefetch/local-knowledge scans for those turns, preserve the original user question and exclusive read-only tool gate, and add exact regression coverage proving provider dispatch is reached with no automatic repository scan. No provider/model/effort or mutation authority is changed.
+
 ### 2026-08-21T03:20:48-05:00 — VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM / Test-1 provider-bound reasoning checkpoint
 
 - Branch / HEAD: `integration/UnifiedChungus-final` at `38bd1294a1084e59708047eaaa8b7c575f6393f0`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state observed.
@@ -702,3 +703,15 @@ This append-only continuation supplements `docs/AGENT_COORDINATION.md` for the a
 - App-scoped Playwright attached only to the running VibeSpace WebView; no page, browser, context, process, credential, provider, or ChatGPT action occurred. After waking VibeSpace from its own Ambient overlay, Schedule was opened and the local Jarvis Action model picker was inspected without saving an event or sending inference.
 - The live renderer exposed one labeled `Connected models` button group, zero listboxes, one `OpenAI Subscription` heading, exactly one logical `Select GPT-5.6 Sol` row, and three enabled exact Sol routes: direct OpenAI, OpenRouter, and Fast. The form was restored to Event mode; `Save event` was present, `Save Jarvis Action` and the model popover were absent, and no durable event was created.
 - Screenshot evidence: `D:\VibeSpace-Testing\SiYuan-Context-OpenCode-RLM-Feature-Testing\acceptance-evidence\native-schedule-model-routes-ee557670.png`, SHA-256 `FF087C478C08300861D3D0C138D0F35AA2452F15EE6DF6955581E241F309AD85`.
+
+## 2026-08-21 20:04 CDT — SiYuan content-only search claim
+
+- Agent/task: `VS-CODEX-ROOT-20260820-PR31-SIYUAN-OPENCODE-RLM` / `PR31-SIYUAN-CONTENT-ONLY-SEARCH`; branch/HEAD `integration/UnifiedChungus-final` at base `e1266ce517117c9d2c19bc59df801dddaff3a535`. Runtime-created `.agent-coordination.lock/`, `.vibespace/`, and `context_map.json` remain preserved and excluded.
+- The pinned v3.8.1 `/api/search/fullTextSearchBlock` API defaults `searchHPath` to true. VibeSpace's RLM search consumes authoritative block content only, so the default performs unnecessary hierarchy-path work in both the result and count queries for each exact identifier query. The current measured full-text p95 remains materially above the package target.
+- Exact controller scope: `app/src-tauri/src/siyuan/client.rs`, this append-only ledger, and the controller's own lock record. The isolated source-of-truth repair will add only the broker-owned `searchHPath: false` request field and a request-shape regression. The official authenticated endpoint, method 0, query/result/response bounds, search-only timeout, project generation, authoritative reread/hash, and SQL prohibition remain unchanged. Performance closure requires a separate identical-corpus benchmark and is not claimed from the source change alone.
+
+### Verification checkpoint
+
+- TDD RED reproduced the missing content-only request flag before production code changed. The native request now adds only `searchHPath: false`; the official endpoint, `method: 0`, authentication cookie, bounds, timeouts, project scope, response validation, and SQL prohibition are unchanged.
+- Independent pinned-runtime review approved the production change and confirmed that current broker consumers require authoritative content rather than path-only matches. Focused native client verification PASS `15/15`; `cargo fmt --check`, exact diff check, and the new Markdown section's Prettier check PASS. The historical append-only ledger remains intentionally unformatted outside this section.
+- This is a request-shape optimization, not a performance acceptance claim. The identical-corpus benchmark and the package's 100k/1M latency targets remain unclosed until measured.
