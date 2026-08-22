@@ -131,6 +131,23 @@ describe('evaluateContextGatewayAcceptance', () => {
     });
   });
 
+  it('revalidates passed-looking report measurements instead of trusting the flag', () => {
+    const input = completeInput();
+    input.directReports[0] = {
+      ...input.directReports[0],
+      report: { ...directReport, sampleCount: 29 },
+    };
+    input.focusedReport = {
+      ...focusedReport,
+      retrievalMs: { ...focusedReport.retrievalMs, p95: 4_001 },
+    };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['direct:chat', 'retrieval:focused'],
+    });
+  });
+
   it('keeps missing exact build or rollback evidence incomplete', () => {
     const input = completeInput();
     input.build = { ...input.build, runtimeGeneration: '' };

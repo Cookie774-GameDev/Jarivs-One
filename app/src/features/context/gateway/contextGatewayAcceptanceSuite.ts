@@ -1,5 +1,17 @@
-import type { DirectGatewayAcceptanceReport } from './contextGatewayAcceptanceMetrics';
-import type { ContextRetrievalAcceptanceReport } from './contextGatewayRetrievalAcceptance';
+import {
+  DIRECT_GATEWAY_MINIMUM_PAIRED_RUNS,
+  DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS,
+  DIRECT_GATEWAY_P99_ABSOLUTE_LIMIT_MS,
+  DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT,
+  type DirectGatewayAcceptanceReport,
+} from './contextGatewayAcceptanceMetrics';
+import {
+  CONTEXT_RETRIEVAL_MINIMUM_RUNS,
+  DEEP_RETRIEVAL_HARD_DEADLINE_MS,
+  DEEP_RETRIEVAL_P95_LIMIT_MS,
+  FOCUSED_RETRIEVAL_P95_LIMIT_MS,
+  type ContextRetrievalAcceptanceReport,
+} from './contextGatewayRetrievalAcceptance';
 
 export const REQUIRED_CONTEXT_GATEWAY_SURFACES = [
   'chat',
@@ -81,6 +93,57 @@ function requireKnownUniqueRows<T extends { surfaceId: string }>(
   return result;
 }
 
+function validDistribution(
+  distribution: Readonly<{ p50: number; p95: number; p99: number; max?: number }>,
+): boolean {
+  const max = distribution.max ?? distribution.p99;
+  return (
+    [distribution.p50, distribution.p95, distribution.p99, max].every(
+      (value) => Number.isFinite(value) && value >= 0,
+    ) &&
+    distribution.p50 <= distribution.p95 &&
+    distribution.p95 <= distribution.p99 &&
+    distribution.p99 <= max
+  );
+}
+
+function directReportPasses(report: Readonly<DirectGatewayAcceptanceReport>): boolean {
+  return (
+    report.passed &&
+    report.failures.length === 0 &&
+    report.sampleCount >= DIRECT_GATEWAY_MINIMUM_PAIRED_RUNS &&
+    validDistribution(report.baselineMs) &&
+    report.baselineMs.p50 > 0 &&
+    validDistribution(report.overheadMs) &&
+    validDistribution(report.overheadRatio) &&
+    report.overheadRatio.p95 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
+    report.overheadRatio.p99 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
+    report.overheadMs.p95 <= DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS &&
+    report.overheadMs.p99 <= DIRECT_GATEWAY_P99_ABSOLUTE_LIMIT_MS
+  );
+}
+
+function retrievalReportPasses(
+  report: Readonly<ContextRetrievalAcceptanceReport>,
+  route: 'focused' | 'deep',
+): boolean {
+  if (
+    report.route !== route ||
+    !report.passed ||
+    report.failures.length > 0 ||
+    report.sampleCount < CONTEXT_RETRIEVAL_MINIMUM_RUNS ||
+    !validDistribution(report.retrievalMs) ||
+    !validDistribution(report.candidateCount) ||
+    !validDistribution(report.hydratedCount)
+  ) {
+    return false;
+  }
+  return route === 'focused'
+    ? report.retrievalMs.p95 <= FOCUSED_RETRIEVAL_P95_LIMIT_MS
+    : report.retrievalMs.p95 <= DEEP_RETRIEVAL_P95_LIMIT_MS &&
+        report.retrievalMs.max <= DEEP_RETRIEVAL_HARD_DEADLINE_MS;
+}
+
 export function evaluateContextGatewayAcceptance(
   input: Readonly<ContextGatewayAcceptanceInput>,
 ): Readonly<ContextGatewayAcceptanceEvaluation> {
@@ -96,18 +159,22 @@ export function evaluateContextGatewayAcceptance(
   for (const surfaceId of REQUIRED_CONTEXT_GATEWAY_SURFACES) {
     const directRow = direct.get(surfaceId);
     if (!directRow) missing.push(`direct:${surfaceId}`);
-    else if (!directRow.report.passed) failures.push(`direct:${surfaceId}`);
+    else if (!directReportPasses(directRow.report)) failures.push(`direct:${surfaceId}`);
   }
 
   if (!input.focusedReport) missing.push('retrieval:focused');
   else if (input.focusedReport.route !== 'focused') {
     throw new Error('focusedReport must contain the focused route');
-  } else if (!input.focusedReport.passed) failures.push('retrieval:focused');
+  } else if (!retrievalReportPasses(input.focusedReport, 'focused')) {
+    failures.push('retrieval:focused');
+  }
 
   if (!input.deepReport) missing.push('retrieval:deep');
   else if (input.deepReport.route !== 'deep') {
     throw new Error('deepReport must contain the deep route');
-  } else if (!input.deepReport.passed) failures.push('retrieval:deep');
+  } else if (!retrievalReportPasses(input.deepReport, 'deep')) {
+    failures.push('retrieval:deep');
+  }
 
   for (const surfaceId of REQUIRED_CONTEXT_GATEWAY_SURFACES) {
     const proof = native.get(surfaceId);
