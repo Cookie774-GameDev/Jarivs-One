@@ -218,7 +218,14 @@ export type JarvisRunRow = {
   project_id?: string;
   chat_id?: string;
   parent_run_id?: string;
-  source: 'typed_chat' | 'voice' | 'schedule' | 'hive_final' | 'phone' | 'browser_chat';
+  source:
+    | 'typed_chat'
+    | 'voice'
+    | 'schedule'
+    | 'hive_final'
+    | 'phone'
+    | 'browser_chat'
+    | 'chatgpt_ade';
   status:
     | 'queued'
     | 'compiling'

@@ -1486,7 +1486,15 @@ describe('enum membership', () => {
   }[] = [
     {
       label: 'request surface',
-      values: ['typed_chat', 'voice', 'schedule', 'hive_final', 'phone', 'browser_chat'],
+      values: [
+        'typed_chat',
+        'voice',
+        'schedule',
+        'hive_final',
+        'phone',
+        'browser_chat',
+        'chatgpt_ade',
+      ],
       invalid: 'surface_unknown',
       input: validRequestEnvelope,
       validate: validateJarvisRequestEnvelope as Validator,

@@ -218,3 +218,14 @@
 
 - App-minted terminal/ADE link identities now expire at `expiresAt`, not one millisecond after it. Binding and authorization use the same closed boundary, and authorization at that boundary cancels every registered Gateway/ADE request before deleting authority.
 - TDD red reproduced both continued authorization and missing cancellation at the exact expiry timestamp. Fresh terminal/ADE verification passed 5 files / 33 tests, and full TypeScript verification passed with zero diagnostics.
+
+## 2026-08-22 — ADE durable Jarvis-history claim
+
+- Extended exact ownership at base `7e62e883` to the existing Jarvis request-surface enum/validator/schema plus new files under `app/src/features/ade/` only. Exact active-lock search found no overlap.
+- Target: register `chatgpt_ade` as a first-class existing Jarvis run/history source and provide a scope-safe lifecycle bridge to the existing run/event repositories without editing the locked Chat runtime, kernel, provider dispatcher, repository internals, or SiYuan code.
+
+## 2026-08-22 — ADE durable Jarvis-history implementation checkpoint
+
+- Registered `chatgpt_ade` as an exact request/run surface in the existing contract validator and persisted row schema. Added a narrow lifecycle writer over the existing idempotent-run and compare-and-append repository methods: queued -> compiling -> running -> completed/failed/cancelled, with exact expected-state checks and replay-safe terminal handling.
+- Context receipt provenance is persisted only as an app-verified private `context_node` source reference. Fixed summaries never contain the receipt, terminal identity, evidence handles, prompts, or source content; queued inputs are detached from caller mutation and unsafe receipt identifiers fail closed.
+- Fresh ADE/Jarvis verification passed 6 files / 502 tests. Full project typecheck has no diagnostics in this owned change; it currently stops on the same four concurrently owned SiYuan test diagnostics (`siyuanRlmProduction.test.ts` once and `siyuanRlmRepository.test.ts` three times), which remain outside this lock.

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   ContextReceipt,
+  ContextScopeRevision,
   ExecutionIdentity,
   PreparedContextTurn,
 } from '@/features/context/gateway/contextGatewayContracts';
@@ -187,12 +188,14 @@ describe('createProductionChatGptAdeAdapter', () => {
     let resolveDispatch!: (value: {
       output: string;
       observedExecutionIdentity: Readonly<ExecutionIdentity>;
+      observedScope: Readonly<ContextScopeRevision>;
     }) => void;
     const dispatch = vi.fn(
       () =>
         new Promise<{
           output: string;
           observedExecutionIdentity: Readonly<ExecutionIdentity>;
+          observedScope: Readonly<ContextScopeRevision>;
         }>((resolve) => {
           resolveDispatch = resolve;
         }),
@@ -225,7 +228,11 @@ describe('createProductionChatGptAdeAdapter', () => {
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
 
     revokeTerminalContextBridgeIdentity(minted.identityId);
-    resolveDispatch({ output: 'late output', observedExecutionIdentity: executionIdentity });
+    resolveDispatch({
+      output: 'late output',
+      observedExecutionIdentity: executionIdentity,
+      observedScope: scope,
+    });
     const result = await pending;
 
     expect(gateway.cancel).toHaveBeenCalledWith('ade-request-a');

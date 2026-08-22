@@ -15,7 +15,14 @@ export interface JarvisRequestEnvelope {
   chatId?: string;
   parentRunId?: string;
   agent: { id: string; slug: string; builtin: boolean };
-  surface: 'typed_chat' | 'voice' | 'schedule' | 'hive_final' | 'phone' | 'browser_chat';
+  surface:
+    | 'typed_chat'
+    | 'voice'
+    | 'schedule'
+    | 'hive_final'
+    | 'phone'
+    | 'browser_chat'
+    | 'chatgpt_ade';
   interactionMode: 'ask' | 'plan' | 'agent';
   responseModeHint?: JarvisResponseMode;
   userText: string;

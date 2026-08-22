@@ -48,6 +48,7 @@ const REQUEST_SURFACES = [
   'hive_final',
   'phone',
   'browser_chat',
+  'chatgpt_ade',
 ] as const;
 
 const INTERACTION_MODES = ['ask', 'plan', 'agent'] as const;
