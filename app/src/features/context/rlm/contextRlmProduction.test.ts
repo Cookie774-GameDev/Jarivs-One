@@ -70,6 +70,26 @@ describe('production Context/RLM adapter', () => {
     expect(value.evidenceCount).toBe(1);
     expect(value.promptBlock).toContain('Pointer: rlm-run-1-p1');
     expect(value.promptBlock).toContain(`Content hash: sha256:${'a'.repeat(64)}`);
+    expect(value.evidence).toEqual([expect.objectContaining({
+      handle: 'rlm-run-1-p1',
+      sourceId: 'source-1',
+      sourceRevision: 'source-v1',
+      text: expect.stringContaining('export const answer = 42;'),
+    })]);
+  });
+
+  it('honors the caller-authoritative exact route without independent broad routing', async () => {
+    const retrieveRepository = vi.fn(async () => result());
+    const value = await prepareProductionRlmContext({
+      accountId: 'account-1',
+      projectId: 'project-1',
+      question: 'Read src/example.ts exactly.',
+      requestedRoute: 'exact',
+      explicitEntityIds: ['entity-1'],
+      settings: { ...DEFAULT_CHAT_RUNTIME_SETTINGS, rlmEnabled: false },
+    }, dependencies(retrieveRepository));
+    expect(value.route).toBe('retrieval');
+    expect(retrieveRepository).toHaveBeenCalledTimes(1);
   });
 
   it('runs a bounded recursive investigation for whole-project root-cause work', async () => {

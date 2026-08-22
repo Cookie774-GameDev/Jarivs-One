@@ -30,12 +30,25 @@ const MAX_RLM_SUBQUERIES = 3;
 
 export interface ProductionRlmContextInput {
   accountId: string;
+  workspaceId?: string;
   projectId: string;
+  worktreeId?: string;
   question: string;
   settings: Readonly<ChatRuntimeSettings>;
   activePaths?: readonly string[];
   explicitEntityIds?: readonly string[];
+  requestedRoute?: 'direct' | 'exact' | 'focused' | 'deep';
   signal?: AbortSignal;
+}
+
+export interface ProductionRlmEvidence {
+  handle: string;
+  sourceId: string;
+  sourceRevision: string;
+  contentHash: string;
+  byteStart: string;
+  byteEnd: string;
+  text: string;
 }
 
 export interface ProductionRlmContextResult {
@@ -46,6 +59,7 @@ export interface ProductionRlmContextResult {
   maxDepth: number;
   truncated: boolean;
   trace: readonly RlmTraceEvent[];
+  evidence: readonly Readonly<ProductionRlmEvidence>[];
 }
 
 export interface ProductionRlmDependencies {
@@ -187,7 +201,9 @@ class RepositoryContextQueryService implements ContextQueryService {
     throwIfCancelled(input.signal ?? this.input.signal);
     if (
       input.scope.accountId !== this.scope.accountId ||
-      input.scope.projectId !== this.scope.projectId
+      input.scope.workspaceId !== this.scope.workspaceId ||
+      input.scope.projectId !== this.scope.projectId ||
+      input.scope.worktreeId !== this.scope.worktreeId
     ) {
       throw new Error('RLM_POINTER_INVALID: context query scope mismatch.');
     }
@@ -325,17 +341,26 @@ export async function prepareProductionRlmContext(
   throwIfCancelled(input.signal);
   const historical = historicalQuestion(question);
   const broad = broadQuestion(question);
-  const decision = decideContextRoute({
-    rlmEnabled: input.settings.rlmEnabled,
-    question,
-    activeFileTask: Boolean(input.activePaths?.length) && !historical && !broad,
-    answerPresentInCurrentTurn: false,
-    estimatedScopeBytes: broad ? 128 * 1024 * 1024 : historical ? 1 : 0,
-    sourceFamilies: broad || historical ? ['repository'] : [],
-    explicitHistoricalLookup: historical,
-    explicitWholeProjectRequest: broad,
-    performanceProfile: input.settings.performance,
-  });
+  const requestedRoute = input.requestedRoute;
+  const decision = requestedRoute
+    ? Object.freeze({
+        route: requestedRoute === 'direct'
+          ? 'direct' as const
+          : requestedRoute === 'deep'
+            ? 'rlm' as const
+            : 'retrieval' as const,
+      })
+    : decideContextRoute({
+        rlmEnabled: input.settings.rlmEnabled,
+        question,
+        activeFileTask: Boolean(input.activePaths?.length) && !historical && !broad,
+        answerPresentInCurrentTurn: false,
+        estimatedScopeBytes: broad ? 128 * 1024 * 1024 : historical ? 1 : 0,
+        sourceFamilies: broad || historical ? ['repository'] : [],
+        explicitHistoricalLookup: historical,
+        explicitWholeProjectRequest: broad,
+        performanceProfile: input.settings.performance,
+      });
   if (decision.route === 'direct') {
     return Object.freeze({
       route: 'direct',
@@ -345,12 +370,15 @@ export async function prepareProductionRlmContext(
       maxDepth: 0,
       truncated: false,
       trace: Object.freeze([]),
+      evidence: Object.freeze([]),
     });
   }
 
   const scope: ContextScope = Object.freeze({
     accountId: input.accountId,
+    workspaceId: input.workspaceId,
     projectId: input.projectId,
+    worktreeId: input.worktreeId,
   });
   const leaseId = dependencies.createId('rlm');
   const trace: RlmTraceEvent[] = [];
@@ -370,7 +398,7 @@ export async function prepareProductionRlmContext(
     question,
     scope,
     signals: {
-      enabled: input.settings.rlmEnabled,
+      enabled: requestedRoute ? requestedRoute !== 'direct' : input.settings.rlmEnabled,
       requestedRoute: decision.route,
       question,
       historicalLookup: historical,
@@ -390,5 +418,14 @@ export async function prepareProductionRlmContext(
     maxDepth: result.maxDepth,
     truncated: result.truncated,
     trace: Object.freeze(trace),
+    evidence: Object.freeze(result.answerSupport.map((span) => Object.freeze({
+      handle: span.pointer.pointerId,
+      sourceId: span.pointer.sourceId,
+      sourceRevision: span.pointer.sourceVersion,
+      contentHash: span.pointer.contentHash,
+      byteStart: span.pointer.byteStart,
+      byteEnd: span.pointer.byteEnd,
+      text: span.text,
+    }))),
   });
 }

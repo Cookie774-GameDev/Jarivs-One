@@ -9,6 +9,7 @@ const response = {
   maxDepth: 0,
   truncated: false,
   trace: [],
+  evidence: [],
 };
 
 describe('vibespace_context.query tool', () => {
