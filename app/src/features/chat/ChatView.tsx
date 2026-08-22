@@ -5,13 +5,14 @@ import { ChatThread } from './ChatThread';
 import { Composer } from './Composer';
 import { EmptyChat } from './EmptyChat';
 import { ensureActiveChat } from './chatLifecycle';
-import { cn } from '@/lib/utils';
+import { cn, isTauri } from '@/lib/utils';
 import {
   dispatchMediaAttach,
   getChatDragKind,
   getChatDropPayload,
   type ChatDropKind,
 } from './dropPayload';
+import { createNativeChatFileDropHandler } from './nativeFileDrop';
 import { OrigamiChatDecor } from './OrigamiChatDecor';
 import { MONOCHROME_CHAT_FIXTURE } from './monochromeFixture';
 import { TokenBossCinematic } from './token-boss/TokenBossCinematic';
@@ -50,6 +51,45 @@ export function ChatView() {
     };
     window.addEventListener('jarvis:chat:output', onOutput as EventListener);
     return () => window.removeEventListener('jarvis:chat:output', onOutput as EventListener);
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!isTauri || !activeChatId) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const handleNativeDrop = createNativeChatFileDropHandler({
+      devicePixelRatio: window.devicePixelRatio,
+      hitTest: (clientX, clientY) =>
+        document.elementFromPoint(clientX, clientY)?.closest('[data-vibespace-page="chat"]') !==
+        null,
+      onHoverChange: (hovering) => setDropKind(hovering ? 'os-files' : null),
+      onDropPaths: (paths) => {
+        for (const path of paths) {
+          window.dispatchEvent(
+            new CustomEvent('jarvis:file:attach', {
+              detail: { path, chatId: String(activeChatId) },
+            }),
+          );
+        }
+      },
+    });
+
+    void import('@tauri-apps/api/webview')
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((event) => handleNativeDrop(event.payload)),
+      )
+      .then((stopListening) => {
+        if (disposed) stopListening();
+        else unlisten = stopListening;
+      })
+      .catch(() => {
+        // Browser preview and unavailable native bridges keep the existing DOM drop path.
+      });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, [activeChatId]);
 
   useEffect(() => {

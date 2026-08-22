@@ -1,4 +1,5 @@
 import { db, openDb, resetDbOpenState } from '@/lib/db';
+import { isTauri } from '@/lib/utils';
 import {
   consumePendingStorageRepair,
   nativeStorageRepairDependencies,
@@ -61,6 +62,15 @@ export class StorageDoctorUnavailableError extends Error {
     super('Local chat storage needs repair. Nothing has been erased.');
     this.name = 'StorageDoctorUnavailableError';
   }
+}
+
+export async function prepareStorageRepairForRuntime(
+  nativeRuntime: boolean,
+  consume: () => Promise<PendingStorageRepair | null> = () =>
+    consumePendingStorageRepair(nativeStorageRepairDependencies),
+): Promise<PendingStorageRepair | null> {
+  if (!nativeRuntime) return null;
+  return consume();
 }
 
 function isBackingStoreOpenFailure(error: unknown): boolean {
@@ -202,7 +212,7 @@ export function createStorageDoctor(dependencies: StorageDoctorDependencies): St
 }
 
 export const storageDoctor = createStorageDoctor({
-  prepareRepair: () => consumePendingStorageRepair(nativeStorageRepairDependencies),
+  prepareRepair: () => prepareStorageRepairForRuntime(isTauri),
   async open() {
     await openDb();
   },

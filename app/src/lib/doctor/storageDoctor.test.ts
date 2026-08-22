@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { StorageDoctorUnavailableError, createStorageDoctor } from './storageDoctor';
+import {
+  StorageDoctorUnavailableError,
+  createStorageDoctor,
+  prepareStorageRepairForRuntime,
+} from './storageDoctor';
 
 function backingStoreError(): DOMException {
   return new DOMException(
@@ -190,5 +194,13 @@ describe('VibeSpace Doctor local chat storage', () => {
       attempts: 1,
     });
     expect(events).toEqual(['reset', 'apply', 'open', 'verify', 'complete']);
+  });
+
+  it('does not invoke the native receipt bridge in localhost browser mode', async () => {
+    const consume = vi.fn().mockResolvedValue(null);
+
+    await expect(prepareStorageRepairForRuntime(false, consume)).resolves.toBeNull();
+
+    expect(consume).not.toHaveBeenCalled();
   });
 });
