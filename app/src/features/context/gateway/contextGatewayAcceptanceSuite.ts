@@ -25,6 +25,10 @@ export type ContextGatewaySurfaceId = (typeof REQUIRED_CONTEXT_GATEWAY_SURFACES)
 
 export interface NativeSurfaceProof {
   surfaceId: string;
+  evidenceId: string;
+  recordedAt: string;
+  commitSha: string;
+  runtimeGeneration: string;
   officialDesktop: boolean;
   productionDispatcherBound: boolean;
   exactExecutionIdentityObserved: boolean;
@@ -150,12 +154,33 @@ export function evaluateContextGatewayAcceptance(
   const missing: string[] = [];
   const failures: string[] = [];
 
-  if (!/^[0-9a-f]{40}$/i.test(input.build.commitSha)) missing.push('build:commitSha');
+  const validBuildCommit = /^[0-9a-f]{40}$/i.test(input.build.commitSha);
+  const validRuntimeGeneration = input.build.runtimeGeneration.trim().length > 0;
+  if (!validBuildCommit) missing.push('build:commitSha');
   if (input.build.buildId.trim().length === 0) missing.push('build:buildId');
-  if (input.build.runtimeGeneration.trim().length === 0) missing.push('build:runtimeGeneration');
+  if (!validRuntimeGeneration) missing.push('build:runtimeGeneration');
 
   const direct = requireKnownUniqueRows(input.directReports, 'direct');
   const native = requireKnownUniqueRows(input.nativeProofs, 'native');
+  const nativeEvidenceIds = new Set<string>();
+  for (const proof of input.nativeProofs) {
+    if (proof.evidenceId.trim().length === 0)
+      throw new Error('native evidenceId must be non-empty');
+    if (nativeEvidenceIds.has(proof.evidenceId)) {
+      throw new Error(`duplicate native evidenceId: ${proof.evidenceId}`);
+    }
+    nativeEvidenceIds.add(proof.evidenceId);
+    const recordedAt = Date.parse(proof.recordedAt);
+    if (!Number.isFinite(recordedAt) || new Date(recordedAt).toISOString() !== proof.recordedAt) {
+      throw new Error(`native recordedAt must be a canonical ISO timestamp: ${proof.surfaceId}`);
+    }
+    if (!/^[0-9a-f]{40}$/i.test(proof.commitSha)) {
+      throw new Error(`native commitSha must be a full Git SHA: ${proof.surfaceId}`);
+    }
+    if (proof.runtimeGeneration.trim().length === 0) {
+      throw new Error(`native runtimeGeneration must be non-empty: ${proof.surfaceId}`);
+    }
+  }
   for (const surfaceId of REQUIRED_CONTEXT_GATEWAY_SURFACES) {
     const directRow = direct.get(surfaceId);
     if (!directRow) missing.push(`direct:${surfaceId}`);
@@ -181,6 +206,12 @@ export function evaluateContextGatewayAcceptance(
     if (!proof) {
       missing.push(`native:${surfaceId}`);
       continue;
+    }
+    if (
+      (validBuildCommit && proof.commitSha.toLowerCase() !== input.build.commitSha.toLowerCase()) ||
+      (validRuntimeGeneration && proof.runtimeGeneration !== input.build.runtimeGeneration)
+    ) {
+      failures.push(`native:${surfaceId}:buildBinding`);
     }
     for (const field of nativeProofFields) {
       if (!proof[field]) failures.push(`native:${surfaceId}:${field}`);

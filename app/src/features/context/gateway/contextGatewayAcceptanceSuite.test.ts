@@ -39,6 +39,10 @@ const deepReport: ContextRetrievalAcceptanceReport = {
 function nativeProof(surfaceId: string): NativeSurfaceProof {
   return {
     surfaceId,
+    evidenceId: `native-proof:${surfaceId}`,
+    recordedAt: '2026-08-22T12:00:00.000Z',
+    commitSha: '0123456789abcdef0123456789abcdef01234567',
+    runtimeGeneration: 'generation-42',
     officialDesktop: true,
     productionDispatcherBound: true,
     exactExecutionIdentityObserved: true,
@@ -100,6 +104,20 @@ describe('evaluateContextGatewayAcceptance', () => {
     expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
       status: 'failed',
       failures: ['native:ade:productionDispatcherBound'],
+    });
+  });
+
+  it('fails native proof captured from a different commit or runtime generation', () => {
+    const input = completeInput();
+    input.nativeProofs = input.nativeProofs.map((proof) =>
+      proof.surfaceId === 'ade'
+        ? { ...proof, commitSha: 'abcdef0123456789abcdef0123456789abcdef01' }
+        : proof,
+    );
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['native:ade:buildBinding'],
     });
   });
 
@@ -171,5 +189,12 @@ describe('evaluateContextGatewayAcceptance', () => {
     const malformed = completeInput();
     malformed.externalBlockers = [{ code: '', recovery: 'Reconnect.' }];
     expect(() => evaluateContextGatewayAcceptance(malformed)).toThrow('blocker code');
+
+    const duplicateEvidence = completeInput();
+    duplicateEvidence.nativeProofs[1] = {
+      ...duplicateEvidence.nativeProofs[1],
+      evidenceId: duplicateEvidence.nativeProofs[0].evidenceId,
+    };
+    expect(() => evaluateContextGatewayAcceptance(duplicateEvidence)).toThrow('native evidenceId');
   });
 });
