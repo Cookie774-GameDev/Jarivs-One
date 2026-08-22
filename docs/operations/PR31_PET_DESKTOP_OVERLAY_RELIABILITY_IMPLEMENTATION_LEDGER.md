@@ -110,3 +110,10 @@
 - Native evidence: **BLOCKED / not claimed**. The current desktop executable was built before this source slice; no process was stopped or replaced, and no prohibited computer-control/browser result is presented as desktop proof. The code can hot-reload through the shared Vite process, but user-observed confirmation of the Pet is still required before marking the runtime row PASS.
 - Remaining risk: if all three bounded native show retries fail, the native-only contract intentionally avoids a fake inline Pet; further diagnosis requires a current desktop native observation and its sanitized native failure category.
 - Lock release: `VS-CODEX-PET-OVERLAY-RECOVERY-20260822` is released immediately after this coordination entry is committed.
+
+## 2026-08-22 15:56 CT — verification correction
+
+- Correction: the earlier statement that `npm run typecheck` passed is retracted. The combined check had not exited when it was first observed.
+- Fresh completed result: focused Pet verification remains **5 files / 30 tests passed**. Full `npm run typecheck` completed with exit `1` only because of four unowned SiYuan test diagnostics: `src/features/context/siyuanRlmProduction.test.ts:110` and `src/features/context/siyuanRlmRepository.test.ts:215`, `:254`, `:271`. No Pet source/test diagnostic was reported.
+- Scope decision: these files are outside the committed Pet recovery slice and actively owned elsewhere, so they are documented rather than changed. This ledger-only correction preserves the original commit evidence `65947b3a` and `b7855a15` without rewriting history.
+- Lock release: `VS-CODEX-PET-LEDGER-CORRECTION-20260822` is released after this correction is committed.
