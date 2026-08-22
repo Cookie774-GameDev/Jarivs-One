@@ -124,7 +124,7 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli, 'auto');
   });
 
-  it('renders one logical model row while selecting an exact live alias route', () => {
+  it('renders one logical model row and keeps alternative routes internal', () => {
     const openCode = {
       ...connection('opencode-cli', 'external-cli'),
       adapterId: 'opencode-cli',
@@ -174,11 +174,12 @@ describe('ModelPickerTypeahead smoke transports', () => {
     );
 
     expect(screen.getAllByText('Qwen 3.7 Plus')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Use Qwen 3.7 Plus Fast' }));
-    expect(onSelect).not.toHaveBeenCalled();
     expect(screen.queryByRole('group', { name: 'Qwen 3.7 Plus routes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Codex \/ ChatGPT subscription/i })).toBeNull();
+    fireEvent.click(screen.getByText('Qwen 3.7 Plus'));
+    expect(onSelect).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /auto/i }));
-    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus-fast', openCode, 'auto');
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus', openCode, 'auto');
   });
 
   it('preserves an exact selected alias when keyboard activation repeats the current row', () => {
@@ -232,11 +233,7 @@ describe('ModelPickerTypeahead smoke transports', () => {
       />,
     );
 
-    expect(
-      screen
-        .getByRole('button', { name: 'Use GPT-5.6 Sol · OpenRouter' })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+    expect(screen.queryByRole('group', { name: 'GPT-5.6 Sol routes' })).toBeNull();
     act(() => ref.current?.selectCurrent());
     expect(onSelect).not.toHaveBeenCalled();
     act(() => ref.current?.selectCurrent());
@@ -282,6 +279,10 @@ describe('ModelPickerTypeahead smoke transports', () => {
       />,
     );
 
+    const selectedModel = document.querySelector(
+      '[data-value="opencode-cli:openrouter/openai/gpt-5.6-sol"]',
+    );
+    expect(selectedModel).not.toBeNull();
     act(() => ref.current?.selectCurrent());
     expect(onSelect).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /auto/i })).not.toBeNull();
@@ -289,6 +290,16 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(screen.queryByRole('button', { name: 'low' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'high' })).toBeNull();
     expect(screen.queryByText(/fast/i)).toBeNull();
+    const selectedEffort = screen.getByRole('button', { name: /auto/i });
+    for (const sharedVisualState of [
+      'jarvis-slash-item-selected',
+      'border-accent-copper/60',
+      'bg-accent-copper/[0.12]',
+      'shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]',
+    ]) {
+      expect(selectedModel?.className).toContain(sharedVisualState);
+      expect(selectedEffort.className).toContain(sharedVisualState);
+    }
     act(() => ref.current?.moveDown());
     act(() => ref.current?.selectCurrent());
     expect(onSelect).toHaveBeenCalledWith(
@@ -340,41 +351,51 @@ describe('ModelPickerTypeahead smoke transports', () => {
     const onSelect = vi.fn();
     const { unmount } = render(
       <ModelPickerTypeahead
-        groups={[{
-          provider: 'opencode' as never,
-          label: 'OpenCode Models',
-          options: [{
-            id: 'opencode-cli:openai/gpt-5.6-sol',
+        groups={[
+          {
             provider: 'opencode' as never,
-            modelId: 'openai/gpt-5.6-sol',
-            label: 'GPT-5.6 Sol',
-            connection: openCode,
-            variants: ['medium'],
-          }],
-        }]}
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-sol',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-5.6-sol',
+                label: 'GPT-5.6 Sol',
+                connection: openCode,
+                variants: ['medium'],
+              },
+            ],
+          },
+        ]}
         selectedId="opencode-cli:openai/gpt-5.6-sol"
         initialEffort="medium"
         onSelect={onSelect}
       />,
     );
     fireEvent.click(screen.getByText('GPT-5.6 Sol'));
-    expect(screen.getByRole('button', { name: 'medium' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'medium' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
 
     unmount();
     render(
       <ModelPickerTypeahead
-        groups={[{
-          provider: 'opencode' as never,
-          label: 'OpenCode Models',
-          options: [{
-            id: 'opencode-cli:openai/gpt-5.6-terra',
+        groups={[
+          {
             provider: 'opencode' as never,
-            modelId: 'openai/gpt-5.6-terra',
-            label: 'GPT-5.6 Terra',
-            connection: openCode,
-            variants: ['low'],
-          }],
-        }]}
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-terra',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-5.6-terra',
+                label: 'GPT-5.6 Terra',
+                connection: openCode,
+                variants: ['low'],
+              },
+            ],
+          },
+        ]}
         selectedId="opencode-cli:openai/gpt-5.6-terra"
         initialEffort="medium"
         onSelect={onSelect}
@@ -384,21 +405,131 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(screen.getByRole('button', { name: /auto/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('exposes an accessible user control for disabling automatic routing', () => {
-    const onAutomaticRoutingChange = vi.fn();
+  it('independently collapses and expands every provider heading', () => {
+    const onSelect = vi.fn();
     render(
       <ModelPickerTypeahead
-        groups={[]}
-        selectedId=""
-        onSelect={vi.fn()}
-        automaticRoutingEnabled
-        onAutomaticRoutingChange={onAutomaticRoutingChange}
+        groups={[
+          {
+            id: 'provider:openai',
+            provider: 'openai',
+            label: 'OpenAI',
+            options: [
+              {
+                id: 'openai-api:gpt-5.6',
+                provider: 'openai',
+                modelId: 'gpt-5.6',
+                label: 'GPT-5.6',
+                connection: connection('openai-api', 'native-api'),
+              },
+            ],
+          },
+          {
+            id: 'provider:alibaba',
+            provider: 'opencode' as never,
+            label: 'Alibaba',
+            options: [
+              {
+                id: 'opencode-cli:alibaba/qwen3.7-plus',
+                provider: 'opencode' as never,
+                modelId: 'alibaba/qwen3.7-plus',
+                label: 'Qwen 3.7 Plus',
+                connection: connection('opencode-cli', 'external-cli'),
+              },
+            ],
+          },
+        ]}
+        selectedId="openai-api:gpt-5.6"
+        onSelect={onSelect}
       />,
     );
 
-    const toggle = screen.getByRole('switch', { name: 'Automatic routing' });
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(toggle);
-    expect(onAutomaticRoutingChange).toHaveBeenCalledWith(false);
+    const openAiHeading = screen.getByRole('button', { name: 'Collapse OpenAI' });
+    const alibabaHeading = screen.getByRole('button', { name: 'Collapse Alibaba' });
+    expect(openAiHeading.getAttribute('aria-expanded')).toBe('true');
+    expect(alibabaHeading.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('GPT-5.6')).not.toBeNull();
+    expect(screen.getByText('Qwen 3.7 Plus')).not.toBeNull();
+
+    fireEvent.click(openAiHeading);
+    const collapsedOpenAiHeading = screen.getByRole('button', { name: 'Expand OpenAI' });
+    expect(collapsedOpenAiHeading.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      document
+        .getElementById(collapsedOpenAiHeading.getAttribute('aria-controls')!)
+        ?.hasAttribute('hidden'),
+    ).toBe(true);
+    expect(
+      document
+        .getElementById(alibabaHeading.getAttribute('aria-controls')!)
+        ?.hasAttribute('hidden'),
+    ).toBe(false);
+    expect(screen.getByText('Qwen 3.7 Plus')).not.toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand OpenAI' }));
+    expect(screen.getByRole('button', { name: 'Collapse OpenAI' })).not.toBeNull();
+    expect(screen.getByText('GPT-5.6')).not.toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('replaces automatic routing with search across providers, model names, and exact IDs', () => {
+    render(
+      <ModelPickerTypeahead
+        groups={[
+          {
+            id: 'provider:openai',
+            provider: 'openai',
+            label: 'OpenAI',
+            options: [
+              {
+                id: 'openai-api:gpt-5.6-sol',
+                provider: 'openai',
+                modelId: 'gpt-5.6-sol',
+                label: 'GPT-5.6 Sol',
+                connection: connection('openai-api', 'native-api'),
+              },
+            ],
+          },
+          {
+            id: 'provider:alibaba',
+            provider: 'opencode' as never,
+            label: 'Alibaba',
+            options: [
+              {
+                id: 'opencode-cli:alibaba/deepseek-v4-flash-0731',
+                provider: 'opencode' as never,
+                modelId: 'alibaba/deepseek-v4-flash-0731',
+                label: 'DeepSeek V4 Flash 0731',
+                connection: connection('opencode-cli', 'external-cli'),
+              },
+            ],
+          },
+        ]}
+        selectedId=""
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('switch', { name: 'Automatic routing' })).toBeNull();
+    const search = screen.getByRole('searchbox', { name: 'Search providers and models' });
+    const searchSurface = screen.getByRole('search');
+    expect(searchSurface.className).toContain('bg-transparent');
+    expect(searchSurface.className).not.toContain('bg-panel/90');
+
+    fireEvent.change(search, { target: { value: 'Alibaba' } });
+    expect(screen.getByText('DeepSeek V4 Flash 0731')).not.toBeNull();
+    expect(screen.queryByText('GPT-5.6 Sol')).toBeNull();
+
+    fireEvent.change(search, { target: { value: 'gpt-5.6-sol' } });
+    expect(screen.getByText('GPT-5.6 Sol')).not.toBeNull();
+    expect(screen.queryByText('DeepSeek V4 Flash 0731')).toBeNull();
+
+    fireEvent.change(search, { target: { value: 'Alibaba flash' } });
+    expect(screen.getByText('DeepSeek V4 Flash 0731')).not.toBeNull();
+    expect(screen.queryByText('GPT-5.6 Sol')).toBeNull();
+
+    fireEvent.change(search, { target: { value: 'missing model' } });
+    expect(screen.getByText('No matching models.')).not.toBeNull();
   });
 });

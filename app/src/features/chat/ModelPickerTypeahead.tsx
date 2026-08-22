@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useEffect,
+  useId,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -8,7 +9,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Cpu, Sparkles, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Cpu, Search, Sparkles, X, type LucideIcon } from 'lucide-react';
 import type { ProviderId } from '@/types';
 import { cn } from '@/lib/utils';
 import { HiveModelIcon } from '@/components/brand';
@@ -34,6 +35,31 @@ const PROVIDER_ICONS: Partial<Record<ProviderId, LucideIcon>> = {
   deepseek: Sparkles,
   mock: Sparkles,
 };
+
+const CATALOG_ROW_SELECTED_STATE =
+  'jarvis-slash-item-selected border-accent-copper/60 bg-accent-copper/[0.12] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]';
+const CATALOG_ROW_IDLE_STATE =
+  'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground';
+
+function searchableOptionText(option: ModelPickerOption): string {
+  return [
+    option.label,
+    option.modelId,
+    option.provider,
+    option.modeLabel,
+    option.authLabel,
+    option.connection?.displayName,
+    ...(option.alternativeRoutes ?? []).flatMap((route) => [
+      route.label,
+      route.modelId,
+      route.provider,
+      route.connection?.displayName,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLocaleLowerCase();
+}
 
 export interface ModelPickerTypeaheadProps {
   groups: ModelPickerGroup[];
@@ -78,21 +104,50 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       onHoverId,
       onSelect,
       onSelectHive,
-      automaticRoutingEnabled,
-      onAutomaticRoutingChange,
       compact = false,
     },
     ref,
   ) {
     const listRef = useRef<HTMLDivElement>(null);
+    const pickerId = useId();
     const reducedMotion = useReducedMotion();
     const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
     const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
     const panelScale = compact ? getLivePanelUiScale() : 1;
     const [pendingOption, setPendingOption] = useState<ModelPickerOption | null>(null);
     const [effortIndex, setEffortIndex] = useState(0);
+    const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
+    const [searchQuery, setSearchQuery] = useState('');
 
     const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
+    const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+    const searchTerms = useMemo(
+      () => normalizedSearchQuery.split(/\s+/).filter(Boolean),
+      [normalizedSearchQuery],
+    );
+    const filteredGroups = useMemo(() => {
+      if (searchTerms.length === 0) return groups;
+      return groups.flatMap((group) => {
+        const providerText = `${group.label} ${group.provider}`.toLocaleLowerCase();
+        const providerMatches = searchTerms.every((term) => providerText.includes(term));
+        const options = providerMatches
+          ? group.options
+          : group.options.filter((option) =>
+              searchTerms.every((term) =>
+                `${providerText} ${searchableOptionText(option)}`.includes(term),
+              ),
+            );
+        return options.length > 0 ? [{ ...group, options }] : [];
+      });
+    }, [groups, searchTerms]);
+    const visibleOptions = useMemo(
+      () =>
+        filteredGroups.flatMap((group) => {
+          const groupId = group.id ?? `${group.provider}:${group.label}`;
+          return collapsedGroupIds.has(groupId) ? [] : group.options;
+        }),
+      [collapsedGroupIds, filteredGroups],
+    );
     const exactOptions = useMemo(
       () => flatOptions.flatMap((option) => option.alternativeRoutes ?? [option]),
       [flatOptions],
@@ -107,11 +162,21 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
     // Navigation order: pinned Hive entry first (when available), then models.
     const navIds = useMemo(() => {
-      const usable = flatOptions
+      const usable = visibleOptions
         .filter((option) => option.available !== false)
         .map((option) => option.id);
-      return onSelectHive ? [HIVE_OPTION_ID, ...usable] : usable;
-    }, [flatOptions, onSelectHive]);
+      const hiveMatches = searchTerms.every((term) => `hive ensemble balanced`.includes(term));
+      return onSelectHive && hiveMatches ? [HIVE_OPTION_ID, ...usable] : usable;
+    }, [onSelectHive, searchTerms, visibleOptions]);
+
+    const toggleGroup = (groupId: string) => {
+      setCollapsedGroupIds((current) => {
+        const next = new Set(current);
+        if (next.has(groupId)) next.delete(groupId);
+        else next.add(groupId);
+        return next;
+      });
+    };
 
     const effortOptions = useMemo(
       () =>
@@ -271,10 +336,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   onMouseEnter={() => setEffortIndex(index)}
                   onClick={() => commitEffort(effort.label)}
                   className={cn(
-                    'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-[10px] border px-3 py-2 text-left capitalize transition-colors',
-                    index === effortIndex
-                      ? 'border-accent-copper/60 bg-accent-copper/12 text-foreground'
-                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
+                    'mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-between border text-left capitalize transition-all duration-100',
+                    compact ? 'rounded-[8px] px-2 py-1.5' : 'rounded-[12px] px-3 py-2.5',
+                    index === effortIndex ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
                   )}
                 >
                   <span>{effort.label}</span>
@@ -286,7 +350,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 </button>
               ))}
             </div>
-          ) : onSelectHive ? (
+          ) : onSelectHive &&
+            searchTerms.every((term) => `hive ensemble balanced`.includes(term)) ? (
             <div className="mb-1">
               <div className="px-4 pb-1 pt-0.5 text-[11px] uppercase tracking-[0.2em] text-accent-copper/70">
                 Featured
@@ -337,156 +402,162 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 </p>
               </div>
             )
+          ) : !pendingOption && filteredGroups.length === 0 ? (
+            <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+              No matching models.
+            </div>
           ) : !pendingOption ? (
-            groups.map((group) => {
+            filteredGroups.map((group, groupIndex) => {
               const GroupIcon = PROVIDER_ICONS[group.provider] ?? Sparkles;
+              const groupId = group.id ?? `${group.provider}:${group.label}`;
+              const isCollapsed = collapsedGroupIds.has(groupId);
+              const optionsId = `${pickerId}-provider-${groupIndex}`;
               return (
-                <div key={group.id ?? `${group.provider}:${group.label}`}>
-                  <div className="px-4 pb-1 pt-0.5 text-[11px] uppercase tracking-[0.2em] text-accent-copper/70">
-                    {group.label}
-                  </div>
-                  {group.options.map((option) => {
-                    const isSelected =
-                      selectedId === option.id ||
-                      option.alternativeRoutes?.some((route) => route.id === selectedId) === true;
-                    const isActive =
-                      (activeProvider === option.provider && activeModel === option.modelId) ||
-                      option.alternativeRoutes?.some(
-                        (route) =>
-                          activeProvider === route.provider && activeModel === route.modelId,
-                      ) === true;
+                <div key={groupId}>
+                  <button
+                    type="button"
+                    aria-expanded={!isCollapsed}
+                    aria-controls={optionsId}
+                    aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
+                    onClick={() => toggleGroup(groupId)}
+                    className="flex w-full items-center gap-2 px-4 pb-1 pt-0.5 text-left text-[11px] uppercase tracking-[0.2em] text-accent-copper/70 transition-colors hover:text-accent-copper focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent-copper/60"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={cn(
+                        'h-3.5 w-3.5 shrink-0 transition-transform',
+                        isCollapsed && '-rotate-90',
+                      )}
+                    />
+                  </button>
+                  <div id={optionsId} hidden={isCollapsed}>
+                    {group.options.map((option) => {
+                      const isSelected =
+                        selectedId === option.id ||
+                        option.alternativeRoutes?.some((route) => route.id === selectedId) === true;
+                      const isActive =
+                        (activeProvider === option.provider && activeModel === option.modelId) ||
+                        option.alternativeRoutes?.some(
+                          (route) =>
+                            activeProvider === route.provider && activeModel === route.modelId,
+                        ) === true;
 
-                    return (
-                      <div key={option.id}>
-                        <div
-                          data-value={option.id}
-                          data-sik-evidence={
-                            option.connection?.id === 'vibespace-kernel-smoke-native'
-                              ? SIK_CONTROL.modelTransportNative
-                              : option.connection?.id === 'vibespace-kernel-smoke-cli'
-                                ? SIK_CONTROL.modelTransportCli
-                                : undefined
-                          }
-                          onClick={() => option.available !== false && beginSelection(option)}
-                          onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
-                          aria-disabled={option.available === false}
-                          data-model-price={option.pricingStatus ?? 'unknown'}
-                          className={cn(
-                            'mx-2 flex cursor-pointer items-center border',
-                            compact
-                              ? 'gap-2 rounded-[8px] px-2 py-1.5'
-                              : 'gap-3 rounded-[12px] px-3 py-2.5',
-                            'transition-all duration-100',
-                            option.available === false && 'cursor-not-allowed opacity-55',
-                            isSelected
-                              ? 'jarvis-slash-item-selected border-accent-copper/60 bg-accent-copper/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]'
-                              : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
-                          )}
-                        >
-                          <GroupIcon
-                            className={cn(
-                              'shrink-0',
-                              compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-                              isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
-                            )}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <span
-                              className={cn(
-                                'block truncate font-medium text-foreground',
-                                compact ? 'text-[12px] leading-4' : 'text-[15px] leading-5',
-                              )}
-                            >
-                              {option.label}
-                            </span>
-                            <span
-                              className={cn(
-                                'block truncate text-muted-foreground',
-                                compact ? 'text-[10px] leading-3' : 'text-[11px] leading-4',
-                              )}
-                            >
-                              {option.modeLabel ?? option.modelId}
-                              {option.authLabel ? ` · ${option.authLabel}` : ''}
-                            </span>
-                          </div>
-                          {isActive && (
-                            <span className="shrink-0 text-[11px] font-medium text-accent-copper">
-                              active
-                            </span>
-                          )}
-                          {option.isFree && (
-                            <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
-                              Free
-                            </span>
-                          )}
-                          {isSelected && <span className="shrink-0 text-accent-copper">&gt;</span>}
-                        </div>
-                        {option.alternativeRoutes && option.alternativeRoutes.length > 1 ? (
+                      return (
+                        <div key={option.id}>
                           <div
-                            role="group"
-                            aria-label={`${option.label} routes`}
-                            className="mx-5 mb-1 flex flex-wrap gap-1.5 px-3"
+                            data-value={option.id}
+                            data-sik-evidence={
+                              option.connection?.id === 'vibespace-kernel-smoke-native'
+                                ? SIK_CONTROL.modelTransportNative
+                                : option.connection?.id === 'vibespace-kernel-smoke-cli'
+                                  ? SIK_CONTROL.modelTransportCli
+                                  : undefined
+                            }
+                            onClick={() => option.available !== false && beginSelection(option)}
+                            onMouseEnter={() =>
+                              option.available !== false && onHoverId?.(option.id)
+                            }
+                            aria-disabled={option.available === false}
+                            data-model-price={option.pricingStatus ?? 'unknown'}
+                            className={cn(
+                              'mx-2 flex cursor-pointer items-center border',
+                              compact
+                                ? 'gap-2 rounded-[8px] px-2 py-1.5'
+                                : 'gap-3 rounded-[12px] px-3 py-2.5',
+                              'transition-all duration-100',
+                              option.available === false && 'cursor-not-allowed opacity-55',
+                              isSelected ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
+                            )}
                           >
-                            {option.alternativeRoutes.map((route) => (
-                              <button
-                                key={route.id}
-                                type="button"
-                                data-value={route.id}
-                                disabled={route.available === false}
-                                aria-label={`Use ${route.label}`}
-                                aria-pressed={route.id === selectedId}
-                                onClick={() => beginSelection(route)}
+                            <GroupIcon
+                              className={cn(
+                                'shrink-0',
+                                compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                                isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
+                              )}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <span
                                 className={cn(
-                                  'rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground',
-                                  route.id === selectedId &&
-                                    'border-accent-copper/60 text-accent-copper',
+                                  'block truncate font-medium text-foreground',
+                                  compact ? 'text-[12px] leading-4' : 'text-[15px] leading-5',
                                 )}
                               >
-                                {route.label}
-                              </button>
-                            ))}
+                                {option.label}
+                              </span>
+                              <span
+                                className={cn(
+                                  'block truncate text-muted-foreground',
+                                  compact ? 'text-[10px] leading-3' : 'text-[11px] leading-4',
+                                )}
+                              >
+                                {option.modeLabel ?? option.modelId}
+                                {option.authLabel ? ` · ${option.authLabel}` : ''}
+                              </span>
+                            </div>
+                            {isActive && (
+                              <span className="shrink-0 text-[11px] font-medium text-accent-copper">
+                                active
+                              </span>
+                            )}
+                            {option.isFree && (
+                              <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                                Free
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="shrink-0 text-accent-copper">&gt;</span>
+                            )}
                           </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })
           ) : null}
         </div>
 
-        {!pendingOption &&
-        typeof automaticRoutingEnabled === 'boolean' &&
-        onAutomaticRoutingChange ? (
-          <button
-            type="button"
-            role="switch"
-            aria-label="Automatic routing"
-            aria-checked={automaticRoutingEnabled}
-            onClick={() => onAutomaticRoutingChange(!automaticRoutingEnabled)}
-            className="flex w-full items-center gap-3 border-t border-border bg-panel/90 px-4 py-2.5 text-left transition-colors hover:bg-muted/70"
+        {!pendingOption ? (
+          <div
+            role="search"
+            className={cn(
+              'flex items-center gap-2 border-t border-border/40 bg-transparent transition-colors focus-within:border-accent-copper/30',
+              compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5',
+            )}
           >
-            <span className="min-w-0 flex-1">
-              <span className="block text-[12px] font-medium text-foreground">
-                Automatic routing
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                Choose an eligible model per request
-              </span>
-            </span>
-            <span
+            <Search
               aria-hidden="true"
+              className={cn('shrink-0 text-muted-foreground', compact ? 'h-3 w-3' : 'h-4 w-4')}
+            />
+            <input
+              type="search"
+              value={searchQuery}
+              aria-label="Search providers and models"
+              placeholder="Search providers or models…"
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setSearchQuery(value);
+                if (value.trim()) setCollapsedGroupIds(new Set());
+              }}
               className={cn(
-                'rounded-full border px-2 py-0.5 text-[11px] font-medium',
-                automaticRoutingEnabled
-                  ? 'border-accent-copper/60 bg-accent-copper/12 text-accent-copper'
-                  : 'border-border text-muted-foreground',
+                'min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/70',
+                compact ? 'text-[10px]' : 'text-[12px]',
               )}
-            >
-              {automaticRoutingEnabled ? 'On' : 'Off'}
-            </span>
-          </button>
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                aria-label="Clear model search"
+                onClick={() => setSearchQuery('')}
+                className="rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+              >
+                <X aria-hidden="true" className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="flex items-center gap-3 border-t border-border bg-panel/90 px-4 py-2.5 text-[11px] text-muted-foreground">

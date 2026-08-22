@@ -45,3 +45,9 @@
 - Result: custom agents no longer expose editable route/effort controls, retain legacy route/effort fields on save, and offer only the approved Project/Workspace choices. This commit does not alter provider dispatch, the shared catalog, Context Gateway, or protected-JARVIS runtime behavior.
 - Verification carried with the commit: custom route-neutral integration suite **4/4 passed**; focused preservation/scope lifecycle test **1/1 selected passed**; staged diff check passed. The broad protected-JARVIS lifecycle failures and non-completing full typecheck are retained as explicit branch-level blockers, not waived.
 - Lock state: release only `VS-CODEX-ROOT-UNIFIED-CUSTOM-AGENT-SCOPE-20260822`; concurrent locks and shared dirty paths remain untouched.
+
+## 2026-08-22 — Released model-picker integration claim
+
+- Agent/task: `VS-CODEX-ROOT-PICKER-INTEGRATION-20260822` / `PR31-MODEL-PICKER-RELEASED-SLICE-INTEGRATION`.
+- User explicitly requested the visible effort UI be committed and shown in the official app. The source/test path set was previously released by the model-picker search, collapsible-heading, and route-UI owners, but remains uncommitted in the shared worktree.
+- Exact claimed integration scope: `ModelPickerTypeahead.tsx`, its smoke test, `useAccessibleChatModels.ts` and test, new `modelCatalogResponsePath.contract.test.ts`, this ledger, and this lock. Composer, `providerModelCatalog`, all active runtime/catalog/benchmark/news/context/native paths, credentials, inference, billing, and deployment remain excluded.

@@ -6,6 +6,7 @@ import {
   buildConnectionPickerGroups,
   buildLiveOpenCodePickerModels,
   buildModelPickerGroups,
+  connectionRouteProviderLabel,
   requestOpenCodeModelCatalogRefresh,
   useAccessibleChatModels,
 } from './useAccessibleChatModels';
@@ -33,6 +34,19 @@ const { invalidatePersistentModelCache, listPersistentOpenCodeModels } = vi.hois
   invalidatePersistentModelCache: vi.fn(),
   listPersistentOpenCodeModels: vi.fn(async (): Promise<readonly ProviderDiscoveredModel[]> => []),
 }));
+const { refreshConnectedProviderModelsMock } = vi.hoisted(() => ({
+  refreshConnectedProviderModelsMock: vi.fn(async () => []),
+}));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((accept, deny) => {
+    resolve = accept;
+    reject = deny;
+  });
+  return { promise, resolve, reject };
+}
 
 vi.mock('./adapters/autoDetectConnections', () => ({
   ensureExternalConnectionAutoDetection,
@@ -50,6 +64,11 @@ vi.mock('./adapters/opencodePersistent', () => ({
   },
 }));
 
+vi.mock('./providerModelCatalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./providerModelCatalog')>()),
+  refreshConnectedProviderModels: refreshConnectedProviderModelsMock,
+}));
+
 describe('useAccessibleChatModels', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -59,6 +78,8 @@ describe('useAccessibleChatModels', () => {
     isConnectionSessionChecked.mockReturnValue(false);
     listPersistentOpenCodeModels.mockReset();
     listPersistentOpenCodeModels.mockResolvedValue([]);
+    refreshConnectedProviderModelsMock.mockClear();
+    refreshConnectedProviderModelsMock.mockResolvedValue([]);
     requestOpenCodeModelCatalogRefresh();
     invalidatePersistentModelCache.mockClear();
     syncDiscoveredOllamaModels([]);
@@ -243,8 +264,8 @@ describe('useAccessibleChatModels', () => {
       'qwen/qwen3.7-plus-fast',
     ]);
     expect(groups[0]?.options[0]?.alternativeRoutes?.map((route) => route.label)).toEqual([
-      'Qwen 3.7 Plus · OpenCode Bridge · Qwen / Alibaba Cloud',
-      'Qwen 3.7 Plus · OpenCode Bridge · qwen-coding-plan',
+      'Qwen 3.7 Plus · Qwen Code subscription',
+      'Qwen 3.7 Plus · Qwen Code subscription',
       'Qwen 3.7 Plus Fast',
     ]);
   });
@@ -277,7 +298,7 @@ describe('useAccessibleChatModels', () => {
     ).toBe(true);
   });
 
-  it('nests only explicit OpenRouter alternatives under a direct OpenAI product seed', () => {
+  it('keeps OpenRouter products out of the OpenAI provider heading', () => {
     const groups = buildConnectionPickerGroups({
       connections: [OPENCODE_CLI_CONNECTION],
       modelsByProvider: {},
@@ -302,12 +323,14 @@ describe('useAccessibleChatModels', () => {
       },
     });
 
-    const subscription = groups.find((group) => group.id === 'opencode:openai-subscription');
+    const subscription = groups.find((group) => group.id === 'provider:openai');
     expect(subscription?.options).toHaveLength(1);
     expect(subscription?.options[0]?.alternativeRoutes?.map((route) => route.modelId)).toEqual([
       'openai/gpt-5.6-sol',
-      'openrouter/openai/gpt-5.6-sol',
       'openai/gpt-5.6-sol-fast',
+    ]);
+    expect(groups.find((group) => group.id === 'opencode:openrouter')?.options).toEqual([
+      expect.objectContaining({ modelId: 'openrouter/openai/gpt-5.6-sol' }),
     ]);
     const unknownRoutes = groups.find((group) => group.id === 'opencode:unknown')?.options;
     expect(unknownRoutes).toEqual([
@@ -344,7 +367,7 @@ describe('useAccessibleChatModels', () => {
     ]);
   });
 
-  it('shows each live OpenAI subscription model once without API or fast-alias leakage', async () => {
+  it('shows each live OpenAI subscription model once without unverified API or fast-alias leakage', async () => {
     isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
     listPersistentOpenCodeModels.mockResolvedValue([
       {
@@ -383,11 +406,10 @@ describe('useAccessibleChatModels', () => {
 
     await waitFor(() => {
       const subscription =
-        result.current.groups.find((group) => group.id === 'opencode:openai-subscription')
-          ?.options ?? [];
-      expect(
-        result.current.groups.find((group) => group.id === 'opencode:openai-subscription')?.label,
-      ).toBe('OpenAI Subscription');
+        result.current.groups.find((group) => group.id === 'provider:openai')?.options ?? [];
+      expect(result.current.groups.find((group) => group.id === 'provider:openai')?.label).toBe(
+        'OpenAI',
+      );
       expect(subscription.map((option) => option.modelId)).toEqual([
         'openai/gpt-5.3-codex-spark',
         'openai/gpt-5.4',
@@ -414,7 +436,6 @@ describe('useAccessibleChatModels', () => {
         'openai/gpt-5.6-luna',
         'openai/gpt-5.6-luna-fast',
         'openai/gpt-5.6-sol',
-        'openrouter/openai/gpt-5.6-sol',
         'openai/gpt-5.6-sol-fast',
         'openai/gpt-5.6-terra',
         'openai/gpt-5.6-terra-fast',
@@ -433,11 +454,14 @@ describe('useAccessibleChatModels', () => {
         result.current.flatOptions.some(
           (option) => option.connectionId === 'openai-api' && option.modelId === 'gpt-5.4-nano',
         ),
-      ).toBe(true);
+      ).toBe(false);
       expect(subscription.some((option) => option.modelId === 'gpt-5.4-nano')).toBe(false);
       expect(
-        result.current.groups.find((group) => group.id === 'opencode:openrouter')?.options,
-      ).toEqual([expect.objectContaining({ modelId: 'openrouter/openai/gpt-5.1' })]);
+        result.current.groups
+          .find((group) => group.id === 'opencode:openrouter')
+          ?.options.map((option) => option.modelId)
+          .sort(),
+      ).toEqual(['openrouter/openai/gpt-5.1', 'openrouter/openai/gpt-5.6-sol']);
       expect(result.current.groups.find((group) => group.id === 'opencode:qwen')?.options).toEqual([
         expect.objectContaining({
           modelId: 'qwen/qwen3.7-plus',
@@ -448,9 +472,9 @@ describe('useAccessibleChatModels', () => {
         }),
       ]);
       const openCodeRoutes = result.current.groups
-        .filter((group) => group.id?.startsWith('opencode:'))
         .flatMap((group) => group.options)
         .flatMap((option) => option.alternativeRoutes ?? [option])
+        .filter((option) => option.connectionId === 'opencode-cli')
         .map((option) => option.modelId);
       expect([...openCodeRoutes].sort()).toEqual(
         [
@@ -518,7 +542,7 @@ describe('useAccessibleChatModels', () => {
       ).toMatchObject({ connectionId: 'opencode-cli', available: true });
       expect(
         result.current.flatOptions.some((option) => option.connectionId === 'openai-codex'),
-      ).toBe(true);
+      ).toBe(false);
       expect(
         result.current.groups.some((group) => group.id === 'opencode:openai-subscription'),
       ).toBe(false);
@@ -533,7 +557,7 @@ describe('useAccessibleChatModels', () => {
     });
   });
 
-  it('clears prior live rows when a newer catalog generation rejects', async () => {
+  it('retains the same-account last verified rows when a catalog refresh rejects', async () => {
     isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
     let rejectRefresh!: (reason: Error) => void;
     const rejectedRefresh = new Promise<readonly ProviderDiscoveredModel[]>((_, reject) => {
@@ -565,18 +589,29 @@ describe('useAccessibleChatModels', () => {
         (option) =>
           option.connectionId === 'opencode-cli' && option.modelId === 'openai/gpt-5.6-sol',
       ),
-    ).toBe(false);
+    ).toBe(true);
 
     await act(async () => {
       rejectRefresh(new Error('catalog refresh failed'));
       await rejectedRefresh.catch(() => undefined);
     });
     await waitFor(() => {
-      const staleFallback = result.current.flatOptions.filter(
-        (option) => option.connectionId === 'openai-codex',
-      );
-      expect(staleFallback.length).toBeGreaterThan(0);
-      expect(staleFallback.every((option) => option.available === false)).toBe(true);
+      expect(
+        result.current.flatOptions.some((option) => option.connectionId === 'openai-codex'),
+      ).toBe(false);
+      expect(
+        result.current.flatOptions.some(
+          (option) =>
+            option.connectionId === 'opencode-cli' && option.modelId === 'openai/gpt-5.6-sol',
+        ),
+      ).toBe(true);
+    });
+
+    act(() => {
+      isConnectionSessionChecked.mockReturnValue(false);
+      window.dispatchEvent(new Event(AI_CONNECTION_STATE_EVENT));
+    });
+    await waitFor(() => {
       expect(
         result.current.flatOptions.some(
           (option) =>
@@ -584,6 +619,96 @@ describe('useAccessibleChatModels', () => {
         ),
       ).toBe(false);
     });
+  });
+
+  it('serializes forced OpenCode refreshes and rejects stale in-flight results', async () => {
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    const stale = deferred<readonly ProviderDiscoveredModel[]>();
+    const fresh = deferred<readonly ProviderDiscoveredModel[]>();
+    listPersistentOpenCodeModels
+      .mockImplementationOnce(() => stale.promise)
+      .mockImplementationOnce(() => fresh.promise);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
+    markConnectionSessionChecked(['opencode-cli']);
+
+    const { result } = renderHook(() => useAccessibleChatModels());
+    await waitFor(() => expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1));
+    act(() => {
+      requestOpenCodeModelCatalogRefresh();
+      requestOpenCodeModelCatalogRefresh();
+    });
+    await act(async () => Promise.resolve());
+    expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      stale.resolve([{ id: 'openai/stale-model', label: 'Stale Model' }]);
+      await stale.promise;
+    });
+    await waitFor(() => expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(2));
+    expect(
+      result.current.flatOptions.some((option) => option.modelId === 'openai/stale-model'),
+    ).toBe(false);
+
+    await act(async () => {
+      fresh.resolve([{ id: 'openai/fresh-model', label: 'Fresh Model' }]);
+      await fresh.promise;
+    });
+    await waitFor(() =>
+      expect(
+        result.current.flatOptions.find((option) => option.modelId === 'openai/fresh-model'),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true }),
+    );
+  });
+
+  it('refreshes an authenticated OpenCode catalog at five minutes, never earlier', async () => {
+    vi.useFakeTimers();
+    try {
+      isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+      listPersistentOpenCodeModels.mockResolvedValue([
+        { id: 'openai/gpt-live', label: 'GPT Live' },
+      ]);
+      writeConnectionMetadata({
+        'opencode-cli': {
+          installation: 'installed',
+          auth: 'authenticated',
+          lastCheckedAt: 1,
+        },
+      });
+      markConnectionSessionChecked(['opencode-cli']);
+
+      const { unmount } = renderHook(() => useAccessibleChatModels());
+      await act(async () => Promise.resolve());
+      expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1));
+      expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(2);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('runs the lightweight connected-provider refresh immediately and every five minutes', async () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = renderHook(() => useAccessibleChatModels());
+      await act(async () => Promise.resolve());
+      expect(refreshConnectedProviderModelsMock).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1));
+      expect(refreshConnectedProviderModelsMock).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(refreshConnectedProviderModelsMock).toHaveBeenCalledTimes(2);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not probe OpenCode models until current-session authentication is verified', async () => {
@@ -652,26 +777,87 @@ describe('useAccessibleChatModels', () => {
     ]);
   });
 
-  it('keeps exact connection auth and billing surfaces in separate groups', () => {
+  it('presents OpenAI API and Codex subscription under one OpenAI heading', () => {
     const groups = buildConnectionPickerGroups({
       connections: [CODEX_CLI_CONNECTION, OPENAI_API_CONNECTION],
-      modelsByProvider: { openai: [{ id: 'gpt-5', label: 'GPT-5' }] },
+      modelsByProvider: {},
+      modelsByConnection: {
+        'openai-codex': [{ id: 'gpt-5', label: 'GPT-5', source: 'provider-live' }],
+        'openai-api': [{ id: 'gpt-5', label: 'GPT-5', source: 'provider-live' }],
+      },
       stateByConnection: {
         'openai-codex': { available: true, auth: 'authenticated' },
-        'openai-api': { available: false, auth: 'unauthenticated' },
+        'openai-api': { available: true, auth: 'authenticated' },
+      },
+      credentialSavedByProvider: { openai: true },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ id: 'provider:openai', provider: 'openai', label: 'OpenAI' });
+    expect(groups[0]?.options).toHaveLength(1);
+    expect(groups[0]?.options[0]?.alternativeRoutes).toEqual([
+      expect.objectContaining({
+        connectionId: 'openai-codex',
+        modeLabel: 'Codex / ChatGPT subscription',
+      }),
+      expect.objectContaining({ connectionId: 'openai-api', modeLabel: 'OpenAI API' }),
+    ]);
+    expect(groups.flatMap((group) => group.options).map((option) => option.label)).not.toContain(
+      'OpenCode',
+    );
+  });
+
+  it('keeps live OpenCode rows under their exact upstream provider headings', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENCODE_CLI_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        'opencode-cli': [
+          { id: 'openai/gpt-live', label: 'GPT Live', source: 'opencode-live' },
+          { id: 'azure/phi-live', label: 'Phi Live', source: 'opencode-live' },
+          { id: 'moonshot/kimi-live', label: 'Kimi Live', source: 'opencode-live' },
+          { id: 'alibaba/qwen-live', label: 'Qwen Live', source: 'opencode-live' },
+        ],
+      },
+      stateByConnection: {
+        'opencode-cli': { available: true, auth: 'authenticated' },
       },
     });
-    expect(groups).toHaveLength(2);
-    expect(groups.map((group) => [group.id, group.label])).toEqual([
-      ['connection:openai-codex', 'Codex CLI'],
-      ['connection:openai-api', 'OpenAI API'],
+
+    expect(groups.map((group) => group.label)).toEqual([
+      'OpenAI',
+      'Azure Models',
+      'Moonshot Models',
+      'Alibaba Models',
     ]);
-    expect(groups[0]?.options[0]?.modeLabel).toBe('Subscription bridge · External agent');
-    expect(groups[1]?.options[0]).toMatchObject({
-      modeLabel: 'Native Jarvis Chat · API billed',
-      available: false,
-      authLabel: 'Sign in required',
-    });
+    expect(groups.find((group) => group.label === 'OpenAI')?.options).toEqual([
+      expect.objectContaining({
+        modelId: 'openai/gpt-live',
+        modeLabel: 'Codex / ChatGPT subscription',
+      }),
+    ]);
+    expect(groups.find((group) => group.label === 'Azure Models')?.options).toEqual([
+      expect.objectContaining({ modelId: 'azure/phi-live', modeLabel: 'Azure subscription' }),
+    ]);
+    expect(groups.find((group) => group.label === 'Moonshot Models')?.options).toEqual([
+      expect.objectContaining({
+        modelId: 'moonshot/kimi-live',
+        modeLabel: 'Moonshot provider connection',
+      }),
+    ]);
+    expect(groups.find((group) => group.label === 'Alibaba Models')?.options).toEqual([
+      expect.objectContaining({
+        modelId: 'alibaba/qwen-live',
+        modeLabel: 'Alibaba provider connection',
+      }),
+    ]);
+    expect(
+      groups
+        .flatMap((group) => group.options)
+        .flatMap((option) => [option.label, option.modeLabel]),
+    ).not.toEqual(expect.arrayContaining([expect.stringContaining('OpenCode')]));
+    expect(connectionRouteProviderLabel(OPENCODE_CLI_CONNECTION, 'alibaba/qwen-live')).toBe(
+      'Alibaba',
+    );
   });
 
   it('uses the connection-specific Codex subscription catalog instead of OpenAI API models', () => {
@@ -689,7 +875,9 @@ describe('useAccessibleChatModels', () => {
         'openai-api': { available: true, auth: 'authenticated' },
       },
     });
-    const options = groups.flatMap((group) => group.options);
+    const options = groups
+      .flatMap((group) => group.options)
+      .flatMap((option) => option.alternativeRoutes ?? [option]);
 
     expect(
       options
@@ -699,7 +887,8 @@ describe('useAccessibleChatModels', () => {
     expect(
       options
         .filter((option) => option.connectionId === 'openai-api')
-        .map((option) => option.modelId),
+        .map((option) => option.modelId)
+        .sort(),
     ).toEqual(['gpt-4o', 'gpt-5.6-sol']);
   });
 
@@ -753,7 +942,7 @@ describe('useAccessibleChatModels', () => {
     ]);
   });
 
-  it('keeps stale static subscription fallback visible but disabled without live authority', async () => {
+  it('omits stale external fallback rows until a live authenticated catalog exists', async () => {
     writeConnectionPickerStates({
       'openai-codex': { available: true, auth: 'authenticated' },
     });
@@ -763,11 +952,12 @@ describe('useAccessibleChatModels', () => {
     await waitFor(() => {
       expect(ensureExternalConnectionAutoDetection).toHaveBeenCalledOnce();
     });
-    expect(
-      result.current.flatOptions
-        .filter((option) => option.connectionId === 'openai-codex')
-        .every((option) => option.available === false),
-    ).toBe(true);
+    expect(result.current.flatOptions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ connectionId: 'openai-codex' }),
+        expect.objectContaining({ connectionId: 'opencode-cli' }),
+      ]),
+    );
 
     isConnectionSessionChecked.mockReturnValue(true);
     act(() => {
@@ -778,14 +968,11 @@ describe('useAccessibleChatModels', () => {
         },
       });
     });
-    const codexOptions = result.current.flatOptions.filter(
-      (option) => option.connectionId === 'openai-codex',
-    );
-    expect(codexOptions.every((option) => option.available === false)).toBe(true);
-    expect(codexOptions.every((option) => option.catalogSource === 'connection-static')).toBe(true);
-    expect(codexOptions.every((option) => option.authLabel === 'Unavailable')).toBe(true);
-    expect(codexOptions.map((option) => option.modelId).sort()).toEqual(
-      (CONNECTION_MODEL_OPTIONS['openai-codex'] ?? []).map((option) => option.id).sort(),
+    expect(result.current.flatOptions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ connectionId: 'openai-codex' }),
+        expect.objectContaining({ connectionId: 'opencode-cli' }),
+      ]),
     );
   });
 
