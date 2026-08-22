@@ -49,9 +49,6 @@ async function getAccessToken(): Promise<string | null> {
   }
 }
 
-/** Temporary unlock so download/apply can be tested without subscription. */
-const DEV_UNLOCK_ALL_WALLPAPERS = true;
-
 export function WallpaperLibrary({
   onApplyWallpaper,
 }: {
@@ -79,17 +76,12 @@ export function WallpaperLibrary({
         seedCatalog: CATALOG_SEED,
       });
       // Merge local plan / admin when offline seed path has no access payload.
-      // DEV unlock forces full catalog for testing downloads/apply.
-      if (result.source !== 'network' || isAdmin || DEV_UNLOCK_ALL_WALLPAPERS) {
+      if (result.source !== 'network' || isAdmin) {
         result.access = {
           ...result.access,
           plan: String(plan ?? result.access.plan ?? 'free'),
-          is_admin: result.access.is_admin || isAdmin || DEV_UNLOCK_ALL_WALLPAPERS,
-          mode:
-            DEV_UNLOCK_ALL_WALLPAPERS || isAdmin || result.access.is_admin
-              ? 'full_catalog'
-              : result.access.mode,
-          status: DEV_UNLOCK_ALL_WALLPAPERS ? 'active' : result.access.status,
+          is_admin: result.access.is_admin || isAdmin,
+          mode: isAdmin || result.access.is_admin ? 'full_catalog' : result.access.mode,
         };
       }
       setCatalog(result);
@@ -124,7 +116,7 @@ export function WallpaperLibrary({
       is_admin: false,
       orbit_wallpaper_ids: [] as string[],
     };
-    if (DEV_UNLOCK_ALL_WALLPAPERS || isAdmin || base.is_admin) {
+    if (isAdmin || base.is_admin) {
       return {
         ...base,
         is_admin: true,
@@ -151,12 +143,6 @@ export function WallpaperLibrary({
   });
 
   const accessBanner = () => {
-    if (DEV_UNLOCK_ALL_WALLPAPERS) {
-      return {
-        title: 'Test unlock',
-        body: 'All wallpapers unlocked for download/apply testing (temporary).',
-      };
-    }
     if (access.is_admin || access.mode === 'full_catalog') {
       return access.is_admin
         ? { title: 'Admin Access', body: 'All wallpapers unlocked' }
@@ -222,10 +208,10 @@ export function WallpaperLibrary({
   };
 
   /** Download the FULL master MP4 — never the tiny 1s catalog preview. */
-  const download = async (wallpaper: CatalogWallpaper) => {
+  const download = async (wallpaper: CatalogWallpaper): Promise<boolean> => {
     if (!clientMayDownloadWallpaper({ wallpaperId: wallpaper.id, access })) {
       toast.warning('Not entitled', 'Redeem an Orbit slot or upgrade to Nova.');
-      return;
+      return false;
     }
     setBusyId(wallpaper.id);
     try {
@@ -238,33 +224,43 @@ export function WallpaperLibrary({
           functionsBaseUrl: base,
           wallpaperId: wallpaper.id,
         });
-        if (grant.ok && grant.download_url) {
-          toast.info('Downloading full wallpaper…', wallpaper.name);
-          const res = await fetch(grant.download_url);
-          if (res.ok) {
-            const blob = await res.blob();
-            if (blob.size >= 500_000) {
-              const url = await storeDownloadedWallpaper({
-                wallpaperId: wallpaper.id,
-                slug: grant.slug ?? wallpaper.slug,
-                version: wallpaper.version,
-                sha256: grant.sha256 ?? '',
-                blob,
-                fullQuality: true,
-              });
-              rememberLocal(wallpaper.id, url);
-              toast.success(
-                'Downloaded full wallpaper',
-                `${wallpaper.name} · ${Math.round(blob.size / (1024 * 1024))} MB`,
-              );
-              return;
-            }
-            toast.warning('Server file too small', 'Trying local full master instead…');
-          }
+        if (!grant.ok || !grant.download_url) {
+          const reason =
+            grant.reason === 'not_entitled'
+              ? 'Your current wallpaper entitlement does not include this wallpaper.'
+              : grant.reason === 'wallpaper_not_found'
+                ? 'This wallpaper is missing from the cloud catalog.'
+                : 'The wallpaper cloud service could not authorize this download.';
+          throw new Error(reason);
         }
+
+        toast.info('Downloading full wallpaper…', wallpaper.name);
+        const res = await fetch(grant.download_url);
+        if (!res.ok) {
+          throw new Error(`The cloud master download failed (HTTP ${res.status}).`);
+        }
+        const blob = await res.blob();
+        if (blob.size < 500_000) {
+          throw new Error('The cloud master is incomplete or invalid.');
+        }
+        const url = await storeDownloadedWallpaper({
+          wallpaperId: wallpaper.id,
+          slug: grant.slug ?? wallpaper.slug,
+          version: wallpaper.version,
+          sha256: grant.sha256 ?? '',
+          blob,
+          fullQuality: true,
+        });
+        rememberLocal(wallpaper.id, url);
+        toast.success(
+          'Downloaded full wallpaper',
+          `${wallpaper.name} · ${Math.round(blob.size / (1024 * 1024))} MB`,
+        );
+        return true;
       }
 
-      // 2) Local full masters from Downloads/VibeSpace-WallpAPPERS → app data cache.
+      // Offline/development compatibility only. A configured cloud failure must never
+      // be hidden by an unrelated local-master lookup.
       if (isTauri) {
         toast.info('Importing full master…', 'Copying the complete MP4 (max quality)');
         const cached = await invoke<{
@@ -281,7 +277,7 @@ export function WallpaperLibrary({
             'Full master missing',
             'Could not find a full-quality MP4 for this wallpaper.',
           );
-          return;
+          return false;
         }
         const url = await storeFullMasterPath({
           wallpaperId: wallpaper.id,
@@ -296,18 +292,20 @@ export function WallpaperLibrary({
           'Downloaded full wallpaper',
           `${wallpaper.name} · ${Math.round(cached.size_bytes / (1024 * 1024))} MB`,
         );
-        return;
+        return true;
       }
 
       toast.warning(
         'Full download needs desktop',
         'Open the VibeSpace desktop app to import full-quality masters.',
       );
+      return false;
     } catch (e) {
       toast.warning(
         'Download failed',
         e instanceof Error ? e.message : 'Could not import full master',
       );
+      return false;
     } finally {
       setBusyId(null);
     }
@@ -329,7 +327,8 @@ export function WallpaperLibrary({
     const full = await isFullQualityCached(wallpaper.id);
     if (!local || !full) {
       toast.info('Getting full quality…', 'Downloading the complete wallpaper first');
-      await download(wallpaper);
+      const downloaded = await download(wallpaper);
+      if (!downloaded) return;
       local = objectUrlsRef.current[wallpaper.id];
     }
     if (!local) {

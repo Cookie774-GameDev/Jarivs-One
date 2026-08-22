@@ -1,12 +1,5 @@
-import type {
-  CatalogWallpaper,
-  WallpaperAccessState,
-  WallpaperCatalogResponse,
-} from './types';
-import {
-  WALLPAPER_CATALOG_CACHE_KEY,
-  WALLPAPER_ENTITLEMENT_CACHE_KEY,
-} from './types';
+import type { CatalogWallpaper, WallpaperAccessState, WallpaperCatalogResponse } from './types';
+import { WALLPAPER_CATALOG_CACHE_KEY, WALLPAPER_ENTITLEMENT_CACHE_KEY } from './types';
 import {
   canApplyWallpaper,
   canRequestDownload,
@@ -20,6 +13,26 @@ export type CatalogLoadResult = {
   source: 'network' | 'cache' | 'bundled-seed';
   fetchedAt: string;
 };
+
+export type WallpaperDownloadGrant = {
+  ok: boolean;
+  reason?: string;
+  download_url?: string;
+  expires_in_seconds?: number;
+  sha256?: string;
+  size_bytes?: number;
+  slug?: string;
+};
+
+export class WallpaperCloudDownloadError extends Error {
+  readonly code: 'network_error' | 'service_unavailable' | 'invalid_response';
+
+  constructor(code: WallpaperCloudDownloadError['code'], message: string) {
+    super(message);
+    this.name = 'WallpaperCloudDownloadError';
+    this.code = code;
+  }
+}
 
 const EMPTY_ACCESS: WallpaperAccessState = {
   mode: 'none',
@@ -144,32 +157,51 @@ export async function requestWallpaperDownloadUrl(input: {
   accessToken: string;
   functionsBaseUrl: string;
   wallpaperId: string;
-}): Promise<{
-  ok: boolean;
-  reason?: string;
-  download_url?: string;
-  expires_in_seconds?: number;
-  sha256?: string;
-  size_bytes?: number;
-  slug?: string;
-}> {
-  const res = await fetch(`${input.functionsBaseUrl.replace(/\/$/, '')}/wallpaper-download-url`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${input.accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ wallpaper_id: input.wallpaperId }),
-  });
-  return (await res.json()) as {
-    ok: boolean;
-    reason?: string;
-    download_url?: string;
-    expires_in_seconds?: number;
-    sha256?: string;
-    size_bytes?: number;
-    slug?: string;
-  };
+}): Promise<WallpaperDownloadGrant> {
+  let res: Response;
+  try {
+    res = await fetch(`${input.functionsBaseUrl.replace(/\/$/, '')}/wallpaper-download-url`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ wallpaper_id: input.wallpaperId }),
+    });
+  } catch {
+    throw new WallpaperCloudDownloadError(
+      'network_error',
+      'Could not reach the wallpaper cloud service. Check your connection and try again.',
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new WallpaperCloudDownloadError(
+      'invalid_response',
+      'The wallpaper cloud service returned an invalid response.',
+    );
+  }
+
+  if (!res.ok) {
+    throw new WallpaperCloudDownloadError(
+      'service_unavailable',
+      res.status === 404
+        ? 'Wallpaper cloud download service is unavailable for this build.'
+        : 'Wallpaper cloud download service rejected the request. Please try again.',
+    );
+  }
+
+  if (!body || typeof body !== 'object' || typeof (body as { ok?: unknown }).ok !== 'boolean') {
+    throw new WallpaperCloudDownloadError(
+      'invalid_response',
+      'The wallpaper cloud service returned an invalid response.',
+    );
+  }
+
+  return body as WallpaperDownloadGrant;
 }
 
 /**

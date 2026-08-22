@@ -4,6 +4,8 @@ import {
   clientMayDownloadWallpaper,
   loadWallpaperCatalog,
   readCachedCatalog,
+  requestWallpaperDownloadUrl,
+  WallpaperCloudDownloadError,
   writeCachedCatalog,
 } from './catalogClient';
 import { WALLPAPER_CATALOG_CACHE_KEY } from './types';
@@ -83,9 +85,12 @@ describe('wallpaper catalog client', () => {
       source: 'cache',
       fetchedAt: '2026-07-13T00:00:00.000Z',
     });
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('offline');
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('offline');
+      }),
+    );
 
     const result = await loadWallpaperCatalog({
       accessToken: 'tok',
@@ -105,9 +110,7 @@ describe('wallpaper catalog client', () => {
       is_admin: false,
       orbit_wallpaper_ids: [sample.id],
     };
-    expect(
-      clientMayDownloadWallpaper({ wallpaperId: sample.id, access: orbitAccess }),
-    ).toBe(true);
+    expect(clientMayDownloadWallpaper({ wallpaperId: sample.id, access: orbitAccess })).toBe(true);
     expect(
       clientMayDownloadWallpaper({
         wallpaperId: '22222222-2222-2222-2222-222222222222',
@@ -147,5 +150,67 @@ describe('wallpaper catalog client', () => {
       }),
     ).toBe(false);
   });
-});
 
+  it('reports an undeployed cloud download service instead of hiding its 404', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ message: 'Function not found' }),
+      })),
+    );
+
+    await expect(
+      requestWallpaperDownloadUrl({
+        accessToken: 'tok',
+        functionsBaseUrl: 'https://example.functions.supabase.co',
+        wallpaperId: sample.id,
+      }),
+    ).rejects.toMatchObject({
+      name: 'WallpaperCloudDownloadError',
+      code: 'service_unavailable',
+      message: 'Wallpaper cloud download service is unavailable for this build.',
+    } satisfies Partial<WallpaperCloudDownloadError>);
+  });
+
+  it('preserves a sanitized entitlement rejection from the download authority', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: false, reason: 'not_entitled' }),
+      })),
+    );
+
+    await expect(
+      requestWallpaperDownloadUrl({
+        accessToken: 'tok',
+        functionsBaseUrl: 'https://example.functions.supabase.co',
+        wallpaperId: sample.id,
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'not_entitled' });
+  });
+
+  it('fails closed when the cloud authority returns malformed JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError('invalid json');
+        },
+      })),
+    );
+
+    await expect(
+      requestWallpaperDownloadUrl({
+        accessToken: 'tok',
+        functionsBaseUrl: 'https://example.functions.supabase.co',
+        wallpaperId: sample.id,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_response' });
+  });
+});
