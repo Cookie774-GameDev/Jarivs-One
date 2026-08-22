@@ -73,6 +73,19 @@ const runtime = vi.hoisted(() => ({
   start: vi.fn((_bindings: { getAgentForChat: (chatId: string) => Promise<unknown> }) => vi.fn()),
 }));
 
+const doctorBoundary = vi.hoisted(() => ({
+  run: vi.fn(
+    async (): Promise<
+      | { code: 'healthy'; attempts: 1 }
+      | {
+          code: 'needs_user_repair';
+          attempts: number;
+          diagnosticCode: 'indexeddb_backing_store_open_failed';
+        }
+    > => ({ code: 'healthy', attempts: 1 }),
+  ),
+}));
+
 const kernelHost = vi.hoisted(() => ({
   openLiveEvidenceAccount: vi.fn(async (accountId: string) =>
     Object.freeze({
@@ -205,6 +218,16 @@ vi.mock('@/lib/jarvis/persistenceCoordinator', () => ({
   createJarvisPersistenceCoordinator: persistence.create,
 }));
 
+vi.mock('@/lib/doctor/storageDoctor', () => ({
+  runStorageDoctor: doctorBoundary.run,
+  isStorageDoctorUnavailableError: () => false,
+}));
+
+vi.mock('@/features/doctor/StorageDoctorNotice', () => ({
+  StorageDoctorHost: () => null,
+  useStorageDoctorSnapshot: () => ({ kind: 'healthy' as const }),
+}));
+
 vi.mock('@/lib/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db')>();
   return {
@@ -305,6 +328,8 @@ describe('App JARVIS persistence coordinator mount', { timeout: 20_000 }, () => 
     accountListeners.reset();
     bootStorage.openDb.mockReset();
     bootStorage.openDb.mockResolvedValue(bootStorage.db);
+    doctorBoundary.run.mockReset();
+    doctorBoundary.run.mockResolvedValue({ code: 'healthy', attempts: 1 });
     bootStorage.listAgents.mockReset();
     bootStorage.listAgents.mockResolvedValue([]);
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => null);
@@ -359,7 +384,7 @@ describe('App JARVIS persistence coordinator mount', { timeout: 20_000 }, () => 
     const mounted = render(<App />);
     const instance = await mountedInstance();
 
-    expect(bootStorage.openDb.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(doctorBoundary.run.mock.invocationCallOrder[0]).toBeLessThan(
       persistence.create.mock.invocationCallOrder[0]!,
     );
     expect(instance.input.db).toBe(bootStorage.db);
@@ -472,7 +497,11 @@ describe('App JARVIS persistence coordinator mount', { timeout: 20_000 }, () => 
   });
 
   it('starts no coordinator or account writes when database open fails', async () => {
-    bootStorage.openDb.mockRejectedValueOnce(new Error('database unavailable'));
+    doctorBoundary.run.mockResolvedValueOnce({
+      code: 'needs_user_repair',
+      attempts: 4,
+      diagnosticCode: 'indexeddb_backing_store_open_failed',
+    });
 
     render(<App />);
     await waitFor(() => expect(runtime.start).toHaveBeenCalledOnce());

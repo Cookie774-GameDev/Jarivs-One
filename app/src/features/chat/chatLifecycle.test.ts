@@ -1,11 +1,43 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const { requireHealthyLocalChatStorage, runLocalChatStorageOperation } = vi.hoisted(() => ({
+  requireHealthyLocalChatStorage: vi.fn(async () => undefined),
+  runLocalChatStorageOperation: vi.fn(async <T>(operation: () => Promise<T>) => operation()),
+}));
+
+vi.mock('@/lib/doctor/storageDoctor', () => ({
+  requireHealthyLocalChatStorage,
+  runLocalChatStorageOperation,
+}));
+
 import {
   deriveChatTitle,
+  ensureActiveChat,
   formatBranchChatTitle,
   isDefaultChatTitle,
   messagesThroughBranchPoint,
 } from './chatLifecycle';
 import type { Message, MessageId } from '@/types';
+
+beforeEach(() => {
+  requireHealthyLocalChatStorage.mockReset();
+  requireHealthyLocalChatStorage.mockResolvedValue(undefined);
+  runLocalChatStorageOperation.mockReset();
+  runLocalChatStorageOperation.mockImplementation(async <T>(operation: () => Promise<T>) =>
+    operation(),
+  );
+});
+
+describe('chat storage gate', () => {
+  it('stops forced chat creation before any persistence work when Doctor blocks storage', async () => {
+    runLocalChatStorageOperation.mockRejectedValueOnce(
+      new Error('Local chat storage needs repair. Nothing has been erased.'),
+    );
+
+    await expect(ensureActiveChat({ forceNew: true })).rejects.toThrow(
+      'Local chat storage needs repair',
+    );
+  });
+});
 
 describe('isDefaultChatTitle', () => {
   it('recognises placeholder titles', () => {
@@ -41,9 +73,30 @@ describe('formatBranchChatTitle', () => {
 
 describe('messagesThroughBranchPoint', () => {
   const messages = [
-    { id: 'msg_a' as MessageId, chat_id: 'cht_1' as never, role: 'user', parts: [], created_at: 1, updated_at: 1 },
-    { id: 'msg_b' as MessageId, chat_id: 'cht_1' as never, role: 'assistant', parts: [], created_at: 2, updated_at: 2 },
-    { id: 'msg_c' as MessageId, chat_id: 'cht_1' as never, role: 'user', parts: [], created_at: 3, updated_at: 3 },
+    {
+      id: 'msg_a' as MessageId,
+      chat_id: 'cht_1' as never,
+      role: 'user',
+      parts: [],
+      created_at: 1,
+      updated_at: 1,
+    },
+    {
+      id: 'msg_b' as MessageId,
+      chat_id: 'cht_1' as never,
+      role: 'assistant',
+      parts: [],
+      created_at: 2,
+      updated_at: 2,
+    },
+    {
+      id: 'msg_c' as MessageId,
+      chat_id: 'cht_1' as never,
+      role: 'user',
+      parts: [],
+      created_at: 3,
+      updated_at: 3,
+    },
   ] satisfies Message[];
 
   it('returns history through the selected message', () => {

@@ -8,6 +8,7 @@ import { Onboarding } from '@/features/onboarding';
 import { RequireModelAccess } from './RequireModelAccess';
 import { kernelSmokeProvider, subscribeKernelSmokeBinding } from '@/lib/ai/providers/kernelSmoke';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { requireHealthyLocalChatStorage } from '@/lib/doctor/storageDoctor';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -79,6 +80,8 @@ export function AuthGate({ children }: AuthGateProps) {
     let cancelled = false;
     (async () => {
       try {
+        await requireHealthyLocalChatStorage();
+        if (cancelled) return;
         // @ts-ignore - module owned by another subagent, may not exist yet
         const mod: { seedIfEmpty?: () => Promise<void> | void } = await import('@/lib/db/seed');
         if (cancelled) return;

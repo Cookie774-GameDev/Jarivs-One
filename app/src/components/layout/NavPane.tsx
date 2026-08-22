@@ -39,6 +39,9 @@ import { SidebarFilesTree } from '@/features/files/SidebarFilesTree';
 import { openOrFocusWorkbenchWindow } from '@/features/workbench/window';
 import { useWorkbenchStore } from '@/features/workbench/store';
 import { chatPinPatch, isChatPinned, sortChatsForDisplay } from '@/features/chat/chatPin';
+import { ensureActiveChat } from '@/features/chat/chatLifecycle';
+import { useStorageDoctorSnapshot } from '@/features/doctor/StorageDoctorNotice';
+import { isStorageDoctorUnavailableError } from '@/lib/doctor/storageDoctor';
 import {
   ChatListActivityIndicator,
   mergeChatActivityEvents,
@@ -86,6 +89,8 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
  * of silently no-oping.
  */
 export function NavPane() {
+  const storageHealth = useStorageDoctorSnapshot();
+  const chatCreationBlocked = storageHealth.kind !== 'healthy';
   const themeLayoutTransition = useThemeLayoutTransition(LEGACY_NAV_PANE_TRANSITION);
   const kernelSmokeBindingActive = React.useSyncExternalStore(
     subscribeKernelSmokeBinding,
@@ -197,20 +202,13 @@ export function NavPane() {
       toast.warning('Still loading', 'Workspace is initializing — try again in a sec.');
       return;
     }
-    const existing = chats?.length ?? 0;
-    const title = `New chat ${existing + 1}`;
     try {
-      const chat = await chatRepo.create({
-        workspace_id: workspaceId,
-        project_id: projectId ?? undefined,
-        title,
-        mode: 'chat',
-        active_agent_ids: [],
-      });
-      setActiveChat(chat.id);
-      setChatMode('chat');
-      setRoute('chat');
+      const chatId = await ensureActiveChat({ forceNew: true });
+      if (!chatId) {
+        toast.warning('Still loading', 'Workspace is initializing — try again in a sec.');
+      }
     } catch (err) {
+      if (isStorageDoctorUnavailableError(err)) return;
       toast.error('Could not create chat', err instanceof Error ? err.message : 'Try again.');
     }
   };
@@ -514,6 +512,9 @@ export function NavPane() {
                   void onCreateChat();
                 }}
                 aria-label="Create chat"
+                aria-describedby={
+                  chatCreationBlocked ? 'vibespace-storage-doctor-status' : undefined
+                }
               >
                 <Plus className="h-3.5 w-3.5" />
               </Button>

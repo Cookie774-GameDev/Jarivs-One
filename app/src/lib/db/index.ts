@@ -214,9 +214,23 @@ let _openPromise: Promise<JarvisDexie> | null = null;
  */
 export function openDb(): Promise<JarvisDexie> {
   if (!_openPromise) {
-    _openPromise = db.open().then(() => db);
+    const attempt = db.open().then(() => db);
+    const guarded = attempt.catch((error: unknown) => {
+      if (_openPromise === guarded) {
+        db.close();
+        _openPromise = null;
+      }
+      throw error;
+    });
+    _openPromise = guarded;
   }
   return _openPromise;
+}
+
+/** Clear only the process-local open attempt so VibeSpace can retry the same durable store. */
+export function resetDbOpenState(): void {
+  db.close();
+  _openPromise = null;
 }
 
 /**
@@ -224,8 +238,7 @@ export function openDb(): Promise<JarvisDexie> {
  * Mostly useful for tests; production code rarely calls this.
  */
 export async function closeDb(): Promise<void> {
-  if (db.isOpen()) db.close();
-  _openPromise = null;
+  resetDbOpenState();
 }
 
 export { DB_NAME, DB_VERSION } from './schema';

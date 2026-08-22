@@ -9,6 +9,8 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { WorkspaceId } from '@/types';
 import type { WorkbenchPanel } from './types';
+import { useStorageDoctorSnapshot } from '@/features/doctor/StorageDoctorNotice';
+import { isStorageDoctorUnavailableError } from '@/lib/doctor/storageDoctor';
 
 interface JarvisPanelProps {
   panel: WorkbenchPanel;
@@ -19,6 +21,8 @@ interface JarvisPanelProps {
  * Real VibeSpace chat surface inside Workbench with chat picker + new-chat control.
  */
 export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
+  const storageHealth = useStorageDoctorSnapshot();
+  const chatCreationBlocked = storageHealth.kind !== 'healthy';
   const activeChatId = useUIStore((state) => state.activeChatId);
   const setActiveChat = useUIStore((state) => state.setActiveChat);
   const workspaceId = useAuthStore((state) => state.workspaceId) as WorkspaceId | null;
@@ -101,7 +105,9 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
       setStatusIfChanged('ready');
       toast.success('New chat', 'Ready in Workbench Jarvis');
     } catch (err) {
-      toast.error('Could not create chat', err instanceof Error ? err.message : 'Try again.');
+      if (!isStorageDoctorUnavailableError(err)) {
+        toast.error('Could not create chat', err instanceof Error ? err.message : 'Try again.');
+      }
       setFailed(true);
       setStatusIfChanged('error');
     } finally {
@@ -140,7 +146,8 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
           className="workbench-jarvis-new-chat"
           aria-label="New chat"
           title="New chat"
-          disabled={creating || !workspaceId}
+          disabled={creating || !workspaceId || chatCreationBlocked}
+          aria-describedby={chatCreationBlocked ? 'vibespace-storage-doctor-status' : undefined}
           onClick={() => void createNewChat()}
         >
           <Plus aria-hidden="true" strokeWidth={2.25} />
@@ -165,6 +172,8 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
             type="button"
             className="workbench-jarvis-new-chat workbench-jarvis-new-chat--lg"
             aria-label="New chat"
+            disabled={chatCreationBlocked}
+            aria-describedby={chatCreationBlocked ? 'vibespace-storage-doctor-status' : undefined}
             onClick={() => void createNewChat()}
           >
             <Plus aria-hidden="true" strokeWidth={2.25} />

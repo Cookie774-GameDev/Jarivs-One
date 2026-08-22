@@ -2,6 +2,14 @@ import * as React from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { requireHealthyLocalChatStorage, seedIfEmpty } = vi.hoisted(() => ({
+  requireHealthyLocalChatStorage: vi.fn(async () => undefined),
+  seedIfEmpty: vi.fn(async () => undefined),
+}));
+
+vi.mock('@/lib/doctor/storageDoctor', () => ({ requireHealthyLocalChatStorage }));
+vi.mock('@/lib/db/seed', () => ({ seedIfEmpty }));
+
 vi.mock('@/lib/ai/models', () => ({
   useOllamaModelOptions: () => [],
 }));
@@ -44,6 +52,10 @@ const binding = Object.freeze({
 
 describe('AuthGate kernel smoke entry', () => {
   beforeEach(() => {
+    requireHealthyLocalChatStorage.mockReset();
+    requireHealthyLocalChatStorage.mockResolvedValue(undefined);
+    seedIfEmpty.mockReset();
+    seedIfEmpty.mockResolvedValue(undefined);
     vi.mocked(bootstrapOllamaConnection).mockClear();
     clearKernelSmokeBinding();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
@@ -132,5 +144,20 @@ describe('AuthGate kernel smoke entry', () => {
 
     expect(screen.getByTestId('onboarding')).toBeTruthy();
     expect(screen.queryByTestId('workspace')).toBeNull();
+  });
+
+  it('does not seed through a database state Doctor has not verified', async () => {
+    requireHealthyLocalChatStorage.mockRejectedValueOnce(
+      new Error('Local chat storage needs repair'),
+    );
+
+    render(
+      <AuthGate>
+        <div data-testid="workspace" />
+      </AuthGate>,
+    );
+    await act(async () => Promise.resolve());
+
+    expect(seedIfEmpty).not.toHaveBeenCalled();
   });
 });

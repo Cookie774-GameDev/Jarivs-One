@@ -9,6 +9,10 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
 import type { AccountIdentity } from '@/lib/accountIdentity';
+import {
+  requireHealthyLocalChatStorage,
+  runLocalChatStorageOperation,
+} from '@/lib/doctor/storageDoctor';
 
 export function isDefaultChatTitle(title: string | null | undefined): boolean {
   const t = (title ?? '').trim();
@@ -61,6 +65,7 @@ export interface CreateChatInScopeOptions {
 }
 
 export async function createChatInScope(options: CreateChatInScopeOptions): Promise<ChatId | null> {
+  await requireHealthyLocalChatStorage();
   const ownerMatchesAccount =
     options.accountSource === 'supabase'
       ? options.syncOwner.state === 'cloud' && options.syncOwner.userId === options.accountId
@@ -103,50 +108,52 @@ let ensureInflight: Promise<ChatId | null> | null = null;
 async function ensureActiveChatInternal(
   options: EnsureActiveChatOptions = {},
 ): Promise<ChatId | null> {
-  const ui = useUIStore.getState();
-  const auth = useAuthStore.getState();
-  const navigate = options.navigateToChat !== false;
+  return runLocalChatStorageOperation(async () => {
+    const ui = useUIStore.getState();
+    const auth = useAuthStore.getState();
+    const navigate = options.navigateToChat !== false;
 
-  if (ui.activeChatId && !options.forceNew) {
-    const existing = await chatRepo.getById(ui.activeChatId as ChatId);
-    if (existing) return ui.activeChatId as ChatId;
-  }
+    if (ui.activeChatId && !options.forceNew) {
+      const existing = await chatRepo.getById(ui.activeChatId as ChatId);
+      if (existing) return ui.activeChatId as ChatId;
+    }
 
-  if (!auth.workspaceId) return null;
+    if (!auth.workspaceId) return null;
 
-  const projectId = auth.projectId;
-  const rows = await db.chats.where('workspace_id').equals(auth.workspaceId).toArray();
-  const scoped = projectId
-    ? rows.filter((c) => c.project_id === projectId)
-    : rows.filter((c) => !c.project_id);
+    const projectId = auth.projectId;
+    const rows = await db.chats.where('workspace_id').equals(auth.workspaceId).toArray();
+    const scoped = projectId
+      ? rows.filter((c) => c.project_id === projectId)
+      : rows.filter((c) => !c.project_id);
 
-  if (!options.forceNew && scoped.length > 0) {
-    const recent = scoped.sort((a, b) => b.updated_at - a.updated_at)[0]!;
-    ui.setActiveChat(recent.id);
+    if (!options.forceNew && scoped.length > 0) {
+      const recent = scoped.sort((a, b) => b.updated_at - a.updated_at)[0]!;
+      ui.setActiveChat(recent.id);
+      if (navigate) {
+        ui.setRoute('chat');
+        ui.setChatMode('chat');
+      }
+      return recent.id;
+    }
+
+    const hintedTitle = options.titleHint ? deriveChatTitle(options.titleHint) : '';
+    const title = options.title?.trim() || hintedTitle || `New chat ${scoped.length + 1}`;
+
+    const chat = await chatRepo.create({
+      workspace_id: auth.workspaceId,
+      project_id: projectId ?? undefined,
+      title,
+      mode: 'chat',
+      active_agent_ids: [],
+    });
+
+    ui.setActiveChat(chat.id);
     if (navigate) {
       ui.setRoute('chat');
       ui.setChatMode('chat');
     }
-    return recent.id;
-  }
-
-  const hintedTitle = options.titleHint ? deriveChatTitle(options.titleHint) : '';
-  const title = options.title?.trim() || hintedTitle || `New chat ${scoped.length + 1}`;
-
-  const chat = await chatRepo.create({
-    workspace_id: auth.workspaceId,
-    project_id: projectId ?? undefined,
-    title,
-    mode: 'chat',
-    active_agent_ids: [],
+    return chat.id;
   });
-
-  ui.setActiveChat(chat.id);
-  if (navigate) {
-    ui.setRoute('chat');
-    ui.setChatMode('chat');
-  }
-  return chat.id;
 }
 
 /** Ensure the workspace has an active chat (reuse recent or create). */
@@ -184,6 +191,7 @@ export async function branchChatFromMessage(args: {
   messageId: MessageId;
   navigateToChat?: boolean;
 }): Promise<ChatId> {
+  await requireHealthyLocalChatStorage();
   const source = await chatRepo.getById(args.chatId);
   if (!source) throw new Error('Source chat not found');
 

@@ -108,6 +108,8 @@ import { useJarvisTaskRunStore, type JarvisTaskRun } from '@/features/jarvis-run
 import { privateAccountDirectory } from '@/features/jarvis-memory/accountStorage';
 import type { ChatActivityEvent } from '@/features/chat/activity/types';
 import { messageRepo, agentRepo, chatRepo, openDb, db, memoryEvidenceRepo } from '@/lib/db';
+import { isStorageDoctorUnavailableError, runStorageDoctor } from '@/lib/doctor/storageDoctor';
+import { StorageDoctorHost } from '@/features/doctor/StorageDoctorNotice';
 import {
   jarvisApprovalRepo,
   jarvisArtifactRepo,
@@ -1159,10 +1161,11 @@ function useBoot() {
       let databaseOpened = false;
       if (plan.persistenceEnabled) {
         try {
-          await withTimeout(openDb(), 10_000, 'openDb');
-          databaseOpened = true;
+          const storageHealth = await runStorageDoctor();
+          databaseOpened =
+            storageHealth.code === 'healthy' || storageHealth.code === 'recovered_after_retry';
         } catch {
-          /* degraded */
+          // VibeSpace Doctor owns the durable, redacted degraded-state presentation.
         }
       }
 
@@ -2252,6 +2255,7 @@ function WorkspaceRoot() {
           toast.warning('Still loading', 'Workspace is initializing — try again in a sec.');
         }
       } catch (err) {
+        if (isStorageDoctorUnavailableError(err)) return;
         toast.error('Could not create chat', err instanceof Error ? err.message : 'Try again.');
       }
     };
@@ -2288,6 +2292,7 @@ function WorkspaceRoot() {
       {plan.isOrdinary ? <FullscreenHost /> : null}
       {plan.idleEnabled ? <IdleDetectionHost /> : null}
       <NavigationHistoryBoundary />
+      {plan.persistenceEnabled ? <StorageDoctorHost /> : null}
       <AppShell>
         <ActiveCanvas />
       </AppShell>
