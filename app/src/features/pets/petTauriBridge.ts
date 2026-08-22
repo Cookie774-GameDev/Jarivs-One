@@ -13,6 +13,37 @@ export function isTauriRuntime(): boolean {
 
 export type PetPanelMode = 'follow-pet' | 'always-on-top' | 'normal';
 
+export type PetOverlayShowReason =
+  | 'geometry_unavailable'
+  | 'main_thread_unavailable'
+  | 'native_callback_lost'
+  | 'native_command_failed'
+  | 'native_result_invalid'
+  | 'native_task_failed'
+  | 'native_unavailable'
+  | 'not_visible'
+  | 'position_failed'
+  | 'show_failed'
+  | 'size_failed'
+  | 'topmost_failed'
+  | 'visibility_check_failed'
+  | 'visibility_timeout'
+  | 'window_create_failed'
+  | 'window_missing';
+
+/**
+ * A native acknowledgement of the detached Pet overlay lifecycle. `rendererReady`
+ * is intentionally nullable: window APIs cannot truthfully prove a Pixi paint.
+ */
+export type PetOverlayShowResult = {
+  mode: 'app-only' | 'native-overlay';
+  created: boolean;
+  visible: boolean;
+  topmostApplied: boolean;
+  rendererReady: boolean | null;
+  reason: PetOverlayShowReason | null;
+};
+
 /** Shared-origin signal consumed by the already-mounted pet-overlay WebView. */
 export const PET_OVERLAY_SHOW_EPOCH_KEY = 'vibespace-pet-overlay-show-epoch';
 export const PET_OVERLAY_SHOW_EVENT = 'vibespace:pet-overlay-show';
@@ -43,13 +74,74 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   }
 }
 
-let overlayShowInFlight: Promise<void> | null = null;
+function failedOverlayShow(reason: PetOverlayShowReason): PetOverlayShowResult {
+  return {
+    mode: 'native-overlay',
+    created: false,
+    visible: false,
+    topmostApplied: false,
+    rendererReady: null,
+    reason,
+  };
+}
 
-export async function showPetOverlay(): Promise<void> {
+function isPetOverlayShowResult(value: unknown): value is PetOverlayShowResult {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as Partial<PetOverlayShowResult>;
+  const validReason =
+    result.reason === null ||
+    result.reason === 'geometry_unavailable' ||
+    result.reason === 'main_thread_unavailable' ||
+    result.reason === 'native_callback_lost' ||
+    result.reason === 'native_task_failed' ||
+    result.reason === 'not_visible' ||
+    result.reason === 'position_failed' ||
+    result.reason === 'show_failed' ||
+    result.reason === 'size_failed' ||
+    result.reason === 'topmost_failed' ||
+    result.reason === 'visibility_check_failed' ||
+    result.reason === 'visibility_timeout' ||
+    result.reason === 'window_create_failed' ||
+    result.reason === 'window_missing';
+  return (
+    result.mode === 'native-overlay' &&
+    typeof result.created === 'boolean' &&
+    typeof result.visible === 'boolean' &&
+    typeof result.topmostApplied === 'boolean' &&
+    (result.rendererReady === null || typeof result.rendererReady === 'boolean') &&
+    validReason
+  );
+}
+
+let overlayShowInFlight: Promise<PetOverlayShowResult> | null = null;
+
+export async function showPetOverlay(): Promise<PetOverlayShowResult> {
   if (overlayShowInFlight) return overlayShowInFlight;
   overlayShowInFlight = (async () => {
-    await invoke('pet_show_overlay');
-    signalPetOverlayShown();
+    if (!isTauriRuntime()) {
+      return {
+        ...failedOverlayShow('native_unavailable'),
+        mode: 'app-only' as const,
+      };
+    }
+
+    let response: unknown;
+    try {
+      const { invoke: inv } = await import('@tauri-apps/api/core');
+      response = await inv<unknown>('pet_show_overlay');
+    } catch {
+      return failedOverlayShow('native_command_failed');
+    }
+
+    if (!isPetOverlayShowResult(response)) {
+      return failedOverlayShow('native_result_invalid');
+    }
+    const result = response;
+
+    if (result.mode === 'native-overlay' && result.visible) {
+      signalPetOverlayShown();
+    }
+    return result;
   })().finally(() => {
     overlayShowInFlight = null;
   });

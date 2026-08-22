@@ -164,7 +164,19 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
   });
 
   it('signals other Pet windows whenever the overlay is shown', async () => {
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pet_show_overlay') {
+        return {
+          mode: 'native-overlay',
+          created: true,
+          visible: true,
+          topmostApplied: true,
+          rendererReady: null,
+          reason: null,
+        };
+      }
+      return undefined;
+    });
     const onShow = vi.fn();
     window.addEventListener('vibespace:pet-overlay-show', onShow);
 
@@ -174,6 +186,42 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invoked('pet_show_overlay')).toBe(true);
     expect(localStorage.getItem('vibespace-pet-overlay-show-epoch')).toBeTruthy();
     expect(onShow).toHaveBeenCalledTimes(1);
+    window.removeEventListener('vibespace:pet-overlay-show', onShow);
+  });
+
+  it('returns a typed failure and does not announce an overlay that native creation rejected', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('synthetic native overlay creation failure'));
+    const onShow = vi.fn();
+    window.addEventListener('vibespace:pet-overlay-show', onShow);
+
+    const { showPetOverlay } = await import('./petTauriBridge');
+    const result = await showPetOverlay();
+
+    expect(result).toMatchObject({
+      mode: 'native-overlay',
+      created: false,
+      visible: false,
+      topmostApplied: false,
+      reason: 'native_command_failed',
+    });
+    expect(onShow).not.toHaveBeenCalled();
+    window.removeEventListener('vibespace:pet-overlay-show', onShow);
+  });
+
+  it('fails closed when native returns an invalid overlay result', async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+    const onShow = vi.fn();
+    window.addEventListener('vibespace:pet-overlay-show', onShow);
+
+    const { showPetOverlay } = await import('./petTauriBridge');
+    const result = await showPetOverlay();
+
+    expect(result).toMatchObject({
+      mode: 'native-overlay',
+      visible: false,
+      reason: 'native_result_invalid',
+    });
+    expect(onShow).not.toHaveBeenCalled();
     window.removeEventListener('vibespace:pet-overlay-show', onShow);
   });
 });

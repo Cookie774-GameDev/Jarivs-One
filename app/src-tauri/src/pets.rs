@@ -9,17 +9,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
-
-static LAST_OVERLAY_SHOW_MS: AtomicU64 = AtomicU64::new(0);
-const OVERLAY_SHOW_DEBOUNCE_MS: u64 = 500;
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+use std::time::Duration;
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -36,6 +26,7 @@ const PANEL_MIN_H: f64 = 360.0;
 const MAIN_NAV_EXCLUSION_LOGICAL_W: f64 = 240.0;
 const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
+const OVERLAY_SHOW_RESULT_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
@@ -313,6 +304,54 @@ pub struct PetWindowState {
     pub panel_open: Mutex<bool>,
     pub reconstrain_generation: AtomicU64,
     pub topmost_watchdog_started: AtomicBool,
+}
+
+/// The acknowledged outcome of asking the native runtime to show the detached
+/// Pet overlay. This is deliberately distinct from a renderer-ready signal:
+/// native code can prove window creation/visibility, but cannot prove that the
+/// WebView has painted the Pixi scene.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PetOverlayShowResult {
+    /// `native-overlay` is the only successful Tauri mode. The UI must not
+    /// silently reinterpret a failure as an inline overlay.
+    pub mode: &'static str,
+    /// Whether this request created the native window (rather than reusing it).
+    pub created: bool,
+    /// Read back after `show`; false means callers must treat the request as a
+    /// failed acknowledgement rather than a usable desktop overlay.
+    pub visible: bool,
+    /// The Tauri topmost request completed. Absolute z-order is still subject
+    /// to Windows platform limitations and has a separate native acceptance row.
+    pub topmost_applied: bool,
+    /// Native window code cannot truthfully observe renderer readiness.
+    pub renderer_ready: Option<bool>,
+    /// Stable, safe failure category. Never contains WebView, OS, or GPU text.
+    pub reason: Option<&'static str>,
+}
+
+impl PetOverlayShowResult {
+    fn visible(created: bool) -> Self {
+        Self {
+            mode: "native-overlay",
+            created,
+            visible: true,
+            topmost_applied: true,
+            renderer_ready: None,
+            reason: None,
+        }
+    }
+
+    fn failed(reason: &'static str) -> Self {
+        Self {
+            mode: "native-overlay",
+            created: false,
+            visible: false,
+            topmost_applied: false,
+            renderer_ready: None,
+            reason: Some(reason),
+        }
+    }
 }
 
 fn geometry_path(app: &AppHandle) -> Option<PathBuf> {
@@ -922,89 +961,123 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
 
 /// Show the pet overlay (create visibility). Single instance by label.
 #[tauri::command]
-pub async fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
-    let now = now_ms();
-    let last = LAST_OVERLAY_SHOW_MS.load(Ordering::Relaxed);
-    if now.saturating_sub(last) < OVERLAY_SHOW_DEBOUNCE_MS {
-        return Ok(());
-    }
-    LAST_OVERLAY_SHOW_MS.store(now, Ordering::Relaxed);
-
+pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_show_overlay invoked");
 
-    let state = app.state::<PetWindowState>();
-    let mut geo = state.geometry.lock().map_err(|e| e.to_string())?;
-    let (recovered_x, recovered_y) = recover_position(
-        &app,
-        geo.overlay_x,
-        geo.overlay_y,
-        OVERLAY_SIZE as f64,
-        OVERLAY_SIZE as f64,
-        geo.overlay_monitor_name.as_deref(),
-    );
-    let (x, y) = constrain_overlay_position(
-        &app,
-        recovered_x,
-        recovered_y,
-        geo.overlay_monitor_name.as_deref(),
-    );
-    geo.overlay_x = Some(x);
-    geo.overlay_y = Some(y);
-    save_geometry(&app, &geo);
-    drop(geo);
+    let (x, y) = {
+        let state = app.state::<PetWindowState>();
+        let mut geo = match state.geometry.lock() {
+            Ok(geo) => geo,
+            Err(_) => return Ok(PetOverlayShowResult::failed("geometry_unavailable")),
+        };
+        let (recovered_x, recovered_y) = recover_position(
+            &app,
+            geo.overlay_x,
+            geo.overlay_y,
+            OVERLAY_SIZE as f64,
+            OVERLAY_SIZE as f64,
+            geo.overlay_monitor_name.as_deref(),
+        );
+        let (x, y) = constrain_overlay_position(
+            &app,
+            recovered_x,
+            recovered_y,
+            geo.overlay_monitor_name.as_deref(),
+        );
+        geo.overlay_x = Some(x);
+        geo.overlay_y = Some(y);
+        save_geometry(&app, &geo);
+        (x, y)
+    };
 
+    let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
     let app_for_create = app.clone();
-    app.run_on_main_thread(move || {
-        if let Err(err) = get_or_create_pet_overlay(&app_for_create) {
-            eprintln!("[pets] failed to create pet-overlay: {err}");
-            return;
-        }
+    let create_result_tx = result_tx.clone();
+    if app
+        .run_on_main_thread(move || {
+            let created = app_for_create
+                .get_webview_window(PET_OVERLAY_LABEL)
+                .is_none();
+            if get_or_create_pet_overlay(&app_for_create).is_err() {
+                let _ = create_result_tx.send(PetOverlayShowResult::failed("window_create_failed"));
+                return;
+            }
 
-        // Let the WebView creation message return to the event loop before
-        // applying window operations. Calling set_position/show immediately
-        // after build() can race WebView2 and produce "failed to receive
-        // message from webview" on Windows.
-        let app_for_show = app_for_create.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(80));
-            let app_for_callback = app_for_show.clone();
-            let _ = app_for_show.run_on_main_thread(move || {
-                if let Err(err) = show_existing_pet_overlay(app_for_callback.clone(), x, y) {
-                    eprintln!("[pets] failed to show pet-overlay: {err}");
+            // Let the WebView creation message return to the event loop before
+            // applying window operations. Calling set_position/show immediately
+            // after build() can race WebView2 and produce "failed to receive
+            // message from webview" on Windows.
+            let app_for_show = app_for_create.clone();
+            let show_result_tx = create_result_tx.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(80));
+                let app_for_callback = app_for_show.clone();
+                let callback_result_tx = show_result_tx.clone();
+                if app_for_show
+                    .run_on_main_thread(move || {
+                        let result = show_existing_pet_overlay(app_for_callback, x, y, created)
+                            .unwrap_or_else(PetOverlayShowResult::failed);
+                        let _ = callback_result_tx.send(result);
+                    })
+                    .is_err()
+                {
+                    let _ = show_result_tx
+                        .send(PetOverlayShowResult::failed("main_thread_unavailable"));
                 }
             });
-        });
-    })
-    .map_err(|e| format!("failed to schedule pet-overlay creation: {e}"))?;
+        })
+        .is_err()
+    {
+        return Ok(PetOverlayShowResult::failed("main_thread_unavailable"));
+    }
 
-    Ok(())
+    match tauri::async_runtime::spawn_blocking(move || {
+        result_rx.recv_timeout(OVERLAY_SHOW_RESULT_TIMEOUT)
+    })
+    .await
+    {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(std::sync::mpsc::RecvTimeoutError::Timeout)) => {
+            Ok(PetOverlayShowResult::failed("visibility_timeout"))
+        }
+        Ok(Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) => {
+            Ok(PetOverlayShowResult::failed("native_callback_lost"))
+        }
+        Err(_) => Ok(PetOverlayShowResult::failed("native_task_failed")),
+    }
 }
 
-fn show_existing_pet_overlay(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+fn show_existing_pet_overlay(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    created: bool,
+) -> Result<PetOverlayShowResult, &'static str> {
     let win = app
         .get_webview_window(PET_OVERLAY_LABEL)
-        .ok_or_else(|| "pet-overlay window missing after creation".to_string())?;
+        .ok_or("window_missing")?;
     let overlay_size = PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE);
     win.set_position(PhysicalPosition::new(x as i32, y as i32))
-        .map_err(|e| format!("failed to position pet-overlay: {e}"))?;
+        .map_err(|_| "position_failed")?;
     win.set_min_size(Some(overlay_size))
-        .map_err(|e| format!("failed to set pet-overlay min size: {e}"))?;
+        .map_err(|_| "size_failed")?;
     win.set_max_size(Some(overlay_size))
-        .map_err(|e| format!("failed to set pet-overlay max size: {e}"))?;
-    win.set_size(overlay_size)
-        .map_err(|e| format!("failed to size pet-overlay: {e}"))?;
+        .map_err(|_| "size_failed")?;
+    win.set_size(overlay_size).map_err(|_| "size_failed")?;
+    win.set_always_on_top(true).map_err(|_| "topmost_failed")?;
     pin_pet_window_topmost(&win, true);
-    win.show()
-        .map_err(|e| format!("failed to show pet-overlay: {e}"))?;
+    win.show().map_err(|_| "show_failed")?;
     // Windows/WebView2 can report a tiny transparent host HWND on first show.
     // Re-assert the exact pet surface size after visibility is applied.
-    win.set_size(overlay_size)
-        .map_err(|e| format!("failed to confirm pet-overlay size: {e}"))?;
+    win.set_size(overlay_size).map_err(|_| "size_failed")?;
     // Second topmost pass — some hosts drop Z-order during the first show.
     pin_pet_window_topmost(&win, true);
     ensure_pet_topmost_watchdog(&app);
-    Ok(())
+    if !win.is_visible().map_err(|_| "visibility_check_failed")? {
+        return Err("not_visible");
+    }
+    Ok(PetOverlayShowResult::visible(created))
 }
 
 /// Hide the pet overlay without destroying the webview (no duplicate on re-show).
@@ -1496,6 +1569,23 @@ mod tests {
         assert!(!should_pin_pet_window(true, true));
         assert!(!should_pin_pet_window(false, false));
         assert!(!should_pin_pet_window(false, true));
+    }
+
+    #[test]
+    fn overlay_show_result_is_typed_and_does_not_claim_renderer_readiness() {
+        let success = PetOverlayShowResult::visible(true);
+        assert_eq!(success.mode, "native-overlay");
+        assert!(success.created);
+        assert!(success.visible);
+        assert!(success.topmost_applied);
+        assert_eq!(success.renderer_ready, None);
+        assert_eq!(success.reason, None);
+
+        let failure = PetOverlayShowResult::failed("window_create_failed");
+        let serialized = serde_json::to_value(failure).expect("serializes safe result");
+        assert_eq!(serialized["topmostApplied"], false);
+        assert_eq!(serialized["rendererReady"], serde_json::Value::Null);
+        assert_eq!(serialized["reason"], "window_create_failed");
     }
 
     #[cfg(target_os = "windows")]
