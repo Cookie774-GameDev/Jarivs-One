@@ -4,10 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetFileWorkspaceForTests } from './fileWorkspaceStore';
 
-const { deleteProjectFileMock, renameProjectFileMock } = vi.hoisted(() => ({
+const { createTextFileMock, deleteProjectFileMock, renameProjectFileMock, writeTextFileMock } =
+  vi.hoisted(() => ({
+    createTextFileMock: vi.fn(),
   deleteProjectFileMock: vi.fn(),
   renameProjectFileMock: vi.fn(),
-}));
+    writeTextFileMock: vi.fn(),
+  }));
 
 const fileContents = new Map([
   ['C:\\project\\one.ts', 'const one = 1;'],
@@ -50,8 +53,8 @@ vi.mock('@/lib/fs', () => ({
       ? { ok: false, error: { code: 'NOT_FOUND', message: 'Missing' } }
       : { ok: true, path, content };
   }),
-  writeTextFile: vi.fn(async () => ({ ok: true })),
-  createTextFile: vi.fn(async () => ({ ok: true })),
+  writeTextFile: writeTextFileMock,
+  createTextFile: createTextFileMock,
   renameProjectFile: renameProjectFileMock,
   deleteProjectFile: deleteProjectFileMock,
   describeFsError: (error: { message?: string }) => error.message ?? 'File error',
@@ -85,6 +88,16 @@ describe('FilesPage workspace flow', () => {
     deleteProjectFileMock.mockReset();
     deleteProjectFileMock.mockImplementation(async (path: string) => {
       fileContents.delete(path);
+      return { ok: true, path };
+    });
+    createTextFileMock.mockReset();
+    createTextFileMock.mockImplementation(async (path: string) => {
+      fileContents.set(path, '');
+      return { ok: true, path };
+    });
+    writeTextFileMock.mockReset();
+    writeTextFileMock.mockImplementation(async (path: string, content: string) => {
+      fileContents.set(path, content);
       return { ok: true, path };
     });
   });
@@ -198,5 +211,37 @@ describe('FilesPage workspace flow', () => {
     expect(fileContents.has('C:\\project\\one.ts')).toBe(true);
     expect(fileContents.has('C:\\project\\two.ts')).toBe(true);
     prompt.mockRestore();
+  });
+
+  it('creates a selected file format, opens it for typing, and saves from the editor', async () => {
+    render(<FilesPage />);
+    fireEvent.change(screen.getByLabelText('Project folder path'), {
+      target: { value: 'C:\\project' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }));
+
+    fireEvent.change(await screen.findByLabelText('New file format'), {
+      target: { value: 'md' },
+    });
+    fireEvent.change(screen.getByLabelText('New file name'), {
+      target: { value: 'project-notes' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Markdown file' }));
+
+    await waitFor(() =>
+      expect(createTextFileMock).toHaveBeenCalledWith('C:\\project\\project-notes.md', {
+        root: 'C:\\project',
+      }),
+    );
+    const editor = await screen.findByLabelText('File contents');
+    fireEvent.change(editor, { target: { value: '# Project notes' } });
+    fireEvent.click(screen.getByRole('button', { name: /Save/i }));
+    await waitFor(() =>
+      expect(writeTextFileMock).toHaveBeenCalledWith(
+        'C:\\project\\project-notes.md',
+        '# Project notes',
+        { root: 'C:\\project' },
+      ),
+    );
   });
 });

@@ -604,8 +604,8 @@ export function ComposerStt() {
 
             <p className="text-metadata text-muted-foreground">
               First local transcription installs a small Python environment with faster-whisper
-              (~1–2 min one-time). If a downloadable model is missing, dictation falls back to
-              system speech.
+              (~1–2 min one-time). The selected local model must be installed before dictation can
+              start; VibeSpace will not silently switch engines.
             </p>
           </section>
         </>

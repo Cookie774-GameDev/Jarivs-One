@@ -86,6 +86,24 @@ function workspaceFilePathKey(path: string): string {
 
 const MAX_TREE_CHILDREN = 500;
 
+const NEW_FILE_FORMATS = [
+  { value: 'md', label: 'Markdown' },
+  { value: 'txt', label: 'Text' },
+  { value: 'json', label: 'JSON' },
+  { value: 'ts', label: 'TypeScript' },
+  { value: 'js', label: 'JavaScript' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+type NewFileFormat = (typeof NEW_FILE_FORMATS)[number]['value'];
+
+function resolveNewFileName(name: string, format: NewFileFormat): string {
+  const trimmed = name.trim();
+  if (!trimmed || format === 'other') return trimmed;
+  const suffix = `.${format}`;
+  return trimmed.toLocaleLowerCase('en-US').endsWith(suffix) ? trimmed : `${trimmed}${suffix}`;
+}
+
 interface TreeNodeProps {
   entry: FsEntry;
   depth: number;
@@ -225,6 +243,7 @@ export function FilesPage() {
   const [entries, setEntries] = React.useState<FsEntry[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [newFileName, setNewFileName] = React.useState('');
+  const [newFileFormat, setNewFileFormat] = React.useState<NewFileFormat>('md');
   const [fileActionBusy, setFileActionBusy] = React.useState(false);
   const [miniBusyPath, setMiniBusyPath] = React.useState<string | null>(null);
   const [selPopup, setSelPopup] = React.useState<{
@@ -353,7 +372,7 @@ export function FilesPage() {
   };
 
   const createFile = async () => {
-    const name = newFileName.trim();
+    const name = resolveNewFileName(newFileName, newFileFormat);
     if (!name || !currentDir) return;
     const path = joinPath(currentDir, name);
     const result = await createTextFile(path, { root: rootDir });
@@ -630,7 +649,7 @@ export function FilesPage() {
             <FolderOpen className="h-4 w-4 text-accent-copper" />
             <div className="text-ui-strong text-foreground">Project Files</div>
           </div>
-          <div className="flex gap-1.5">
+          <div className="grid grid-cols-[minmax(0,1fr)_98px_32px] gap-1.5">
             <Input
               value={rootDraft}
               onChange={(e) => setRootDraft(e.target.value)}
@@ -704,16 +723,29 @@ export function FilesPage() {
                 if (e.key === 'Enter') void createFile();
               }}
               aria-label="New file name"
-              placeholder="new-file.ts"
-              className="font-mono text-metadata"
+              placeholder={newFileFormat === 'other' ? 'name.ext' : 'new-file'}
+              className="bg-background/90 font-mono text-metadata shadow-inner"
               disabled={!currentDir}
             />
+            <select
+              aria-label="New file format"
+              value={newFileFormat}
+              onChange={(event) => setNewFileFormat(event.target.value as NewFileFormat)}
+              disabled={!currentDir}
+              className="h-8 rounded-md border border-input bg-background/90 px-2 text-metadata text-foreground shadow-inner outline-none transition-colors focus:border-accent-copper/60 focus:ring-1 focus:ring-accent-copper/35 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {NEW_FILE_FORMATS.map((format) => (
+                <option key={format.value} value={format.value}>
+                  {format.label}
+                </option>
+              ))}
+            </select>
             <Button
               size="sm"
               variant="ghost"
               onClick={() => void createFile()}
               disabled={!currentDir || !newFileName.trim()}
-              aria-label="Create file"
+              aria-label={`Create ${NEW_FILE_FORMATS.find((format) => format.value === newFileFormat)?.label ?? 'Other'} file`}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
@@ -861,7 +893,7 @@ export function FilesPage() {
           </div>
         </div>
 
-        <div className="relative flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <div className="relative flex min-h-0 flex-1 flex-col gap-2 bg-[radial-gradient(circle_at_top,hsl(var(--accent-copper)/0.055),transparent_42%)] p-3">
           <Textarea
             data-sakura-content="file-editor"
             ref={editorRef}
@@ -878,7 +910,7 @@ export function FilesPage() {
             placeholder="Open a text/code file to edit it here."
             disabled={!selectedPath}
             spellCheck={false}
-            className="min-h-0 flex-1 resize-none font-mono text-sm leading-5"
+            className="min-h-0 flex-1 resize-none border-border/80 bg-background/95 font-mono text-sm leading-6 text-foreground caret-accent-copper shadow-inner ring-1 ring-border/50 transition-[border-color,box-shadow,background-color] focus-visible:border-accent-copper/50 focus-visible:bg-background focus-visible:ring-accent-copper/30"
           />
 
           {/* Compact selection toolbar — Files page only */}

@@ -75,6 +75,14 @@ describe('ComposerStt settings', () => {
     });
   });
 
+  it('does not promise a silent system fallback for the selected local engine', () => {
+    render(<ComposerStt />);
+    fireEvent.click(screen.getByRole('radio', { name: /^Local/i }));
+
+    expect(screen.queryByText(/falls back to system speech/i)).toBeNull();
+    expect(screen.getByText(/selected local model must be installed/i)).toBeTruthy();
+  });
+
   it('exposes the shared Deepgram credential and accessible, non-logo model selection', async () => {
     render(<ComposerStt />);
     fireEvent.click(screen.getByRole('radio', { name: /Deepgram/i }));
