@@ -11,17 +11,20 @@ import {
 } from './contracts';
 
 describe('jarvis creator contracts', () => {
-  it('builds a two-question agent prompt with a strict JSON return contract', () => {
+  it('builds a five-question agent discovery prompt with a strict proposal return contract', () => {
     const prompt = buildJarvisCreatorPrompt('agent', {
       currentName: 'Existing Agent',
       currentDescription: 'Existing description',
     });
 
     expect(prompt).toContain('Create an agent with Jarvis');
-    expect(prompt.match(/^\d\./gm)).toHaveLength(2);
+    expect(prompt.match(/^\d\./gm)).toHaveLength(5);
     expect(prompt).toContain('Current agent: Existing Agent');
     expect(prompt).toContain('What do you want this agent to do?');
-    expect(prompt).toContain('How should it behave in detail');
+    expect(prompt).toContain('What inputs, tools, folders, and external services are in scope?');
+    expect(prompt).toContain('What must the agent never do, and what needs approval?');
+    expect(prompt).toContain('What form should the result take, and how will it be checked?');
+    expect(prompt).toContain('What project or workspace scope is appropriate?');
     expect(prompt).toContain('temperature');
     expect(prompt).toContain('written responses');
     expect(prompt).toContain('return an apply-ready draft immediately');
@@ -29,19 +32,24 @@ describe('jarvis creator contracts', () => {
     expect(prompt).toContain('production-style');
     expect(prompt).toContain('concrete');
     expect(prompt).toContain('```json');
+    expect(prompt).toContain('proposal');
+    expect(prompt).toContain('Do not create anything until the user explicitly applies the proposal');
   });
 
-  it('builds a two-question skill prompt with a strict JSON return contract', () => {
+  it('builds a five-question skill discovery prompt with a strict proposal return contract', () => {
     const prompt = buildJarvisCreatorPrompt('skill', {
       currentName: 'Custom Skill',
       currentDescription: 'Existing skill description',
     });
 
     expect(prompt).toContain('Create a skill with Jarvis');
-    expect(prompt.match(/^\d\./gm)).toHaveLength(2);
+    expect(prompt.match(/^\d\./gm)).toHaveLength(5);
     expect(prompt).toContain('Current skill: Custom Skill');
     expect(prompt).toContain('What do you want this skill to do?');
-    expect(prompt).toContain('How should it behave in detail');
+    expect(prompt).toContain('What inputs, tools, folders, and external services are in scope?');
+    expect(prompt).toContain('What must the skill never do, and what needs approval?');
+    expect(prompt).toContain('What form should the result take, and how will it be checked?');
+    expect(prompt).toContain('What project or workspace scope is appropriate?');
     expect(prompt).toContain('written responses');
     expect(prompt).toContain('return an apply-ready draft immediately');
     expect(prompt).toContain('role, mission, behavior rules, boundaries, tools, output style, quality bar, and avoid-list');
@@ -49,21 +57,30 @@ describe('jarvis creator contracts', () => {
     expect(prompt).toContain('concrete');
     expect(prompt).toContain('systemPromptAddendum');
     expect(prompt).toContain('```json');
+    expect(prompt).toContain('proposal');
+    expect(prompt).toContain('Do not create anything until the user explicitly applies the proposal');
   });
 
-  it('builds Cursor-style written-response creator question blocks', () => {
+  it('builds focused discovery question blocks before a creator can draft an artifact', () => {
     const agentBlock = buildJarvisCreatorQuestionBlock('agent');
     const skillBlock = buildJarvisCreatorQuestionBlock('skill');
 
     expect(agentBlock.id).toBe('jarvis_creator_agent');
     expect(skillBlock.id).toBe('jarvis_creator_skill');
-    expect(agentBlock.questions).toHaveLength(2);
-    expect(skillBlock.questions).toHaveLength(2);
+    expect(agentBlock.questions).toHaveLength(5);
+    expect(skillBlock.questions).toHaveLength(5);
     expect(agentBlock.questions[0]).toMatchObject({
-      id: 'goal',
+      id: 'goal_audience',
       type: 'text',
     });
-    expect(agentBlock.questions[1]).toMatchObject({ id: 'rules_boundaries', type: 'text' });
+    expect(agentBlock.questions.map((question) => question.id)).toEqual([
+      'goal_audience',
+      'scope_inputs_tools',
+      'boundaries_approvals',
+      'output_verification',
+      'project_memory_scope',
+    ]);
+    expect(agentBlock.questions.every((question) => question.required)).toBe(true);
     expect(skillBlock.questions.every((question) => question.type === 'text')).toBe(true);
   });
 
@@ -77,6 +94,15 @@ describe('jarvis creator contracts', () => {
         capabilities: ['planning', 'writing'],
         tools_allowed: ['files'],
         temperature: 1.15,
+        proposal: {
+          purpose: 'Plan product launches.',
+          triggers: ['launch planning'],
+          permitted: ['files'],
+          approvals: ['Ask before changing files.'],
+          inputs: ['project brief'],
+          outputs: ['launch plan'],
+          verification: ['Check milestones are complete.'],
+        },
       }),
       '```',
     ].join('\n'));
@@ -86,6 +112,10 @@ describe('jarvis creator contracts', () => {
     expect(result.draft.name).toBe('Launch Planner');
     expect(result.draft.capabilities).toEqual(['planning', 'writing']);
     expect(result.draft.temperature).toBe(1.15);
+    expect(result.draft.proposal).toMatchObject({
+      purpose: 'Plan product launches.',
+      approvals: ['Ask before changing files.'],
+    });
   });
 
   it('parses a valid skill draft from a Jarvis JSON block', () => {
@@ -98,6 +128,15 @@ describe('jarvis creator contracts', () => {
         systemPromptAddendum: 'Rewrite with concise production polish.',
         body: '## Use\n\nUse this when copy feels rough.',
         emoji: '✦',
+        proposal: {
+          purpose: 'Polish copy without changing meaning.',
+          triggers: ['rough copy'],
+          permitted: ['files'],
+          approvals: ['Do not publish automatically.'],
+          inputs: ['draft copy'],
+          outputs: ['polished copy'],
+          verification: ['Preserve facts and links.'],
+        },
       }),
       '```',
     ].join('\n'));
@@ -106,6 +145,7 @@ describe('jarvis creator contracts', () => {
     if (!result.ok) throw new Error(result.error);
     expect(result.draft.title).toBe('Polish Writer');
     expect(result.draft.systemPromptAddendum).toContain('production polish');
+    expect(result.draft.proposal?.verification).toEqual(['Preserve facts and links.']);
   });
 
   it('converts creator-style markdown into a skill draft fallback', () => {

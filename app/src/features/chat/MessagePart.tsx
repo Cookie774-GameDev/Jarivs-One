@@ -12,8 +12,11 @@ import {
   parseLooseJarvisCreatorSkillDraft,
   parseJarvisCreatorDraft,
   normalizeJarvisCreatorSkillDraft,
+  type JarvisCreatorAgentDraft,
   type JarvisCreatorKind,
+  type JarvisCreatorSkillDraft,
 } from '@/features/jarvis-creator/contracts';
+import { buildVibeSpaceSkillPackage } from '@/features/jarvis-creator/skillPackage';
 import { QuestionBlockCard } from '@/features/jarvis-interaction/QuestionBlockCard';
 import { PlanReviewCard } from '@/features/jarvis-interaction/PlanReviewCard';
 import { PermissionRequestCard } from '@/features/jarvis-interaction/PermissionRequestCard';
@@ -116,76 +119,127 @@ function ActiveChatCommandMessage({ text }: { text: string }) {
   );
 }
 
+type CreatorProposalDraft = JarvisCreatorAgentDraft | JarvisCreatorSkillDraft;
+
+function ProposalRows({
+  label,
+  entries,
+  empty,
+}: {
+  label: string;
+  entries: string[];
+  empty: string;
+}) {
+  return (
+    <div>
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 text-metadata text-foreground/90">
+        {entries.length > 0 ? entries.join(' · ') : empty}
+      </dd>
+    </div>
+  );
+}
+
+function CreatorProposalCard({
+  kind,
+  draft,
+  onApply,
+}: {
+  kind: JarvisCreatorKind;
+  draft: CreatorProposalDraft;
+  onApply: () => void;
+}) {
+  const proposal = draft.proposal ?? {
+    purpose: draft.description,
+    triggers: [],
+    permitted: 'tools_allowed' in draft ? draft.tools_allowed : draft.tools,
+    approvals: ['Ask for confirmation before actions outside the editor.'],
+    inputs: [],
+    outputs: [kind === 'agent' ? 'A configured custom agent draft.' : 'A VibeSpace skill-package preview.'],
+    verification: ['Review the draft with the user before saving.'],
+  };
+  let packagePreview: ReturnType<typeof buildVibeSpaceSkillPackage> | null = null;
+  if (kind === 'skill') {
+    try {
+      packagePreview = buildVibeSpaceSkillPackage(draft as JarvisCreatorSkillDraft);
+    } catch {
+      // A malformed model title should never prevent the user from reviewing
+      // or safely applying the editable draft.
+      packagePreview = null;
+    }
+  }
+  const noun = kind === 'agent' ? 'agent' : 'skill';
+
+  return (
+    <section
+      aria-label={`${noun} proposal`}
+      className="mt-2 max-w-xl rounded-lg border border-accent-copper/35 bg-accent-copper/5 p-3"
+    >
+      <h3 className="text-body font-semibold text-foreground">Proposal</h3>
+      <p className="mt-1 text-metadata text-foreground/85">{proposal.purpose}</p>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+        <ProposalRows label="Triggers" entries={proposal.triggers} empty="On the reviewed request" />
+        <ProposalRows label="Inputs" entries={proposal.inputs} empty="Ask for minimum needed context" />
+        <ProposalRows label="Allowed scope" entries={proposal.permitted} empty="No tools approved by default" />
+        <ProposalRows label="Approval boundaries" entries={proposal.approvals} empty="Ask before actions outside the editor" />
+        <ProposalRows label="Outputs" entries={proposal.outputs} empty="Use the agreed result format" />
+        <ProposalRows label="Verification" entries={proposal.verification} empty="Review with the user before saving" />
+      </dl>
+      {packagePreview ? (
+        <div className="mt-3 rounded-md border border-border/70 bg-background/55 p-2 text-metadata text-foreground/85">
+          <p className="font-medium">VibeSpace skill package preview</p>
+          <ul className="mt-0.5 flex flex-wrap gap-x-2 text-muted-foreground" aria-label="Package preview files">
+            {packagePreview.files.map((file) => (
+              <li key={file.path}>{file.path.split('/').slice(-1)[0]}</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-muted-foreground">VibeSpace-authored preview; no package is written or installed yet.</p>
+        </div>
+      ) : null}
+      <p className="mt-3 text-metadata text-muted-foreground">
+        Apply this proposal only fills the editor. Save confirms and creates the {noun}.
+      </p>
+      <button
+        type="button"
+        aria-label={`Review and apply proposal to ${noun} — Push to ${noun}`}
+        className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper"
+        onClick={onApply}
+      >
+        Review &amp; apply proposal
+      </button>
+    </section>
+  );
+}
+
 function CreatorDraftApply({ text, kind }: { text: string; kind?: JarvisCreatorKind }) {
   if (!kind) return null;
 
   if (kind === 'agent') {
-    const agent = parseJarvisCreatorDraft('agent', text);
-    if (agent.ok) {
-      return (
-        <button
-          type="button"
-          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
-          onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: agent.draft }))}
-        >
-          Push to agent
-        </button>
-      );
-    }
-    const looseAgent = parseLooseJarvisCreatorAgentDraft(text);
-    if (looseAgent.ok) {
-      return (
-        <button
-          type="button"
-          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
-          onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: looseAgent.draft }))}
-        >
-          Push to agent
-        </button>
-      );
-    }
-    return null;
+    const parsed = parseJarvisCreatorDraft('agent', text);
+    const resolved = parsed.ok ? parsed : parseLooseJarvisCreatorAgentDraft(text);
+    if (!resolved.ok) return null;
+    const draft = resolved.draft;
+    return (
+      <CreatorProposalCard
+        kind="agent"
+        draft={draft}
+        onApply={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: draft }))}
+      />
+    );
   }
 
-  const skill = parseJarvisCreatorDraft('skill', text);
-  if (skill.ok) {
-    const normalized = normalizeJarvisCreatorSkillDraft(skill.draft);
-    if (normalized) {
-      return (
-        <button
-          type="button"
-          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
-          onClick={() =>
-            window.dispatchEvent(
-              new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: normalized }),
-            )
-          }
-        >
-          Push to skill
-        </button>
-      );
-    }
-  }
-  const looseSkill = parseLooseJarvisCreatorSkillDraft(text);
-  if (looseSkill.ok) {
-    const normalized = normalizeJarvisCreatorSkillDraft(looseSkill.draft);
-    if (normalized) {
-      return (
-        <button
-          type="button"
-          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
-          onClick={() =>
-            window.dispatchEvent(
-              new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: normalized }),
-            )
-          }
-        >
-          Push to skill
-        </button>
-      );
-    }
-  }
-  return null;
+  const parsed = parseJarvisCreatorDraft('skill', text);
+  const resolved = parsed.ok ? parsed : parseLooseJarvisCreatorSkillDraft(text);
+  if (!resolved.ok) return null;
+  const draft = normalizeJarvisCreatorSkillDraft(resolved.draft);
+  if (!draft) return null;
+  return (
+    <CreatorProposalCard
+      kind="skill"
+      draft={draft}
+      onApply={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: draft }))}
+    />
+  );
 }
 
 export interface MessagePartProps {

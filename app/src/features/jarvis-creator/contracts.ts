@@ -20,6 +20,21 @@ export interface JarvisCreatorAgentDraft {
   capabilities: AgentCapability[];
   tools_allowed: ToolAllowlist;
   temperature: number;
+  proposal?: JarvisCreatorProposal;
+}
+
+/**
+ * A reviewable plan. It has no execution authority: applying a proposal only
+ * fills an editor, and the editor's Save action remains the confirmation.
+ */
+export interface JarvisCreatorProposal {
+  purpose: string;
+  triggers: string[];
+  permitted: string[];
+  approvals: string[];
+  inputs: string[];
+  outputs: string[];
+  verification: string[];
 }
 
 export interface JarvisCreatorSkillDraft {
@@ -29,6 +44,7 @@ export interface JarvisCreatorSkillDraft {
   systemPromptAddendum: string;
   body: string;
   emoji?: string;
+  proposal?: JarvisCreatorProposal;
 }
 
 export type JarvisCreatorDraft<K extends JarvisCreatorKind = JarvisCreatorKind> =
@@ -43,50 +59,52 @@ export interface JarvisCreatorPromptContext {
   currentDescription?: string;
 }
 
+const CREATOR_QUESTION_IDS = [
+  'goal_audience',
+  'scope_inputs_tools',
+  'boundaries_approvals',
+  'output_verification',
+  'project_memory_scope',
+] as const;
+
+const questionsForKind = (kind: JarvisCreatorKind): string[] => {
+  const subject = kind === 'agent' ? 'agent' : 'skill';
+  const initial = kind === 'agent'
+    ? 'What do you want this agent to do? Name the outcome and target audience.'
+    : 'What do you want this skill to do? Name the outcome and target audience.';
+  return [
+    initial,
+    'What inputs, tools, folders, and external services are in scope?',
+    `What must the ${subject} never do, and what needs approval?`,
+    'What form should the result take, and how will it be checked?',
+    'What project or workspace scope is appropriate? What context may be remembered?',
+  ];
+};
+
 export function buildJarvisCreatorQuestionBlock(kind: JarvisCreatorKind): JarvisQuestionBlock {
   const isAgent = kind === 'agent';
+  const prompts = questionsForKind(kind);
   return {
     id: `jarvis_creator_${kind}`,
     title: isAgent ? 'Make This Agent With Jarvis' : 'Make This Skill With Jarvis',
-    description: 'Answer two quick prompts. Jarvis will draft the title, description, prompt, rules, and settings; then you still click Save.',
+    description: 'Answer five focused questions. Jarvis will show a proposal for review; applying it only fills the editor, and Save remains required.',
     status: 'pending',
-    questions: [
-      {
-        id: 'goal',
-        prompt: isAgent
-          ? 'What do you want this agent to do?'
-          : 'What do you want this skill to do?',
-        type: 'text',
-        required: true,
-        placeholder: isAgent ? 'Example: Review React code and suggest safe fixes.' : 'Example: Turn rough notes into polished release notes.',
-      },
-      {
-        id: 'rules_boundaries',
-        prompt: isAgent
-          ? 'How should it behave in detail? Include rules, tools, boundaries, tone, and do-not-dos.'
-          : 'How should it behave in detail? Include examples, boundaries, tone, and do-not-dos.',
-        type: 'text',
-        required: true,
-        placeholder: 'Be concise, avoid secrets, ask before risky actions...',
-      },
-    ],
+    questions: prompts.map((prompt, index) => ({
+      id: CREATOR_QUESTION_IDS[index]!,
+      prompt,
+      type: 'text' as const,
+      required: true,
+      placeholder: index === 0
+        ? (isAgent ? 'Example: Review React code and suggest safe fixes.' : 'Example: Turn rough notes into polished release notes.')
+        : 'Give focused, concrete constraints…',
+    })),
   };
 }
-
-const AGENT_QUESTIONS = [
-  'What do you want this agent to do?',
-  'How should it behave in detail? Include rules, tools, boundaries, tone, and do-not-dos.',
-];
-
-const SKILL_QUESTIONS = [
-  'What do you want this skill to do?',
-  'How should it behave in detail? Include examples, boundaries, tone, and do-not-dos.',
-];
 
 export function buildJarvisCreatorPrompt(kind: JarvisCreatorKind, context: JarvisCreatorPromptContext = {}): string {
   const isAgent = kind === 'agent';
   const title = isAgent ? 'Create an agent with Jarvis' : 'Create a skill with Jarvis';
-  const questions = isAgent ? AGENT_QUESTIONS : SKILL_QUESTIONS;
+  const questions = questionsForKind(kind);
   const contextLabel = isAgent ? 'Current agent' : 'Current skill';
   const contextLines = context.currentName
     ? [
@@ -99,8 +117,8 @@ export function buildJarvisCreatorPrompt(kind: JarvisCreatorKind, context: Jarvi
     title,
     '',
     ...contextLines,
-    `Jarvis is already configured for this ${isAgent ? 'agent' : 'skill'} editor. This is a quick two-question setup with written responses only.`,
-    'Use the two answers to draft production-style fields that feel like a focused expert wrote them, not a shallow template.',
+    `Jarvis is already configured for this ${isAgent ? 'agent' : 'skill'} editor. This is a focused five-question setup with written responses only.`,
+    'Use the five answers to draft production-style fields that feel like a focused expert wrote them, not a shallow template.',
     'Make every draft structured, detailed, concrete, and directly usable from the editor.',
     'The prompt/instructions must cover role, mission, behavior rules, boundaries, tools, output style, quality bar, and avoid-list.',
     isAgent
@@ -111,7 +129,7 @@ export function buildJarvisCreatorPrompt(kind: JarvisCreatorKind, context: Jarvi
     ...questions.map((question, index) => `${index + 1}. ${question}`),
     '',
     'After the user answers, turn the answers into polished draft fields for this editor.',
-    'Once the two answers are present, return an apply-ready draft immediately so the UI can show a button to push it into the editor.',
+    'Once all five answers are present, return an apply-ready draft immediately with a reviewable proposal so the UI can show a review button.',
     isAgent
       ? 'Return agent fields: name, description, system_prompt, capabilities, tools_allowed, and temperature. Pick a useful temperature from 0.0 to 2.0: lower for precise agents, higher for creative agents.'
       : [
@@ -125,8 +143,9 @@ export function buildJarvisCreatorPrompt(kind: JarvisCreatorKind, context: Jarvi
           'Do NOT put the whole plan into systemPromptAddendum only. Fill title, description, systemPromptAddendum, and body separately.',
         ].join('\n'),
     'Avoid weak prompts: generic assistant language, one-line system prompts, unspecified tools, missing boundaries, fake certainty, and filler bullets.',
+    'Include a proposal object with purpose (string), triggers (string[]), permitted (string[]), approvals (string[]), inputs (string[]), outputs (string[]), and verification (string[]).',
     'Reply with ONLY a fenced ```json block for apply-ready drafts (no long essay outside JSON). The user can still ask for changes before clicking Save.',
-    'The user must still click Save in the editor. Applying the draft only fills the visible fields.',
+    'Do not create anything until the user explicitly applies the proposal. Applying the draft only fills the visible fields; Save remains a separate confirmation.',
   ].join('\n');
 }
 
@@ -145,6 +164,45 @@ function asStringArray(value: unknown): string[] {
   return value.map(asString).filter(Boolean);
 }
 
+function proposalText(value: unknown, fallback: string): string {
+  const normalized = asString(value).replace(/\s+/g, ' ').slice(0, 280);
+  return normalized || fallback;
+}
+
+function proposalList(value: unknown, fallback: string[] = []): string[] {
+  const values = asStringArray(value).map((item) => item.slice(0, 180)).slice(0, 8);
+  return values.length > 0 ? values : fallback;
+}
+
+function defaultProposal(params: {
+  purpose: string;
+  permitted?: string[];
+  outputs?: string[];
+}): JarvisCreatorProposal {
+  return {
+    purpose: proposalText(params.purpose, 'Clarify the requested outcome.'),
+    triggers: [],
+    permitted: params.permitted ?? [],
+    approvals: ['Ask for confirmation before actions outside the editor.'],
+    inputs: [],
+    outputs: params.outputs ?? [],
+    verification: ['Review the draft with the user before saving.'],
+  };
+}
+
+function parseProposal(value: unknown, fallback: JarvisCreatorProposal): JarvisCreatorProposal {
+  if (!isRecord(value)) return fallback;
+  return {
+    purpose: proposalText(value.purpose, fallback.purpose),
+    triggers: proposalList(value.triggers, fallback.triggers),
+    permitted: proposalList(value.permitted, fallback.permitted),
+    approvals: proposalList(value.approvals, fallback.approvals),
+    inputs: proposalList(value.inputs, fallback.inputs),
+    outputs: proposalList(value.outputs, fallback.outputs),
+    verification: proposalList(value.verification, fallback.verification),
+  };
+}
+
 function asTemperature(value: unknown): number {
   const raw = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0.7;
   if (!Number.isFinite(raw)) return 0.7;
@@ -157,13 +215,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseAgentDraft(value: unknown): JarvisCreatorParseResult<'agent'> {
   if (!isRecord(value)) return { ok: false, error: 'Jarvis returned JSON, but it was not an object.' };
+  const toolsAllowed = asStringArray(value.tools_allowed);
   const draft: JarvisCreatorAgentDraft = {
     name: asString(value.name),
     description: asString(value.description),
     system_prompt: asString(value.system_prompt),
     capabilities: asStringArray(value.capabilities) as AgentCapability[],
-    tools_allowed: asStringArray(value.tools_allowed),
+    tools_allowed: toolsAllowed,
     temperature: asTemperature(value.temperature),
+    proposal: parseProposal(value.proposal, defaultProposal({
+      purpose: asString(value.description),
+      permitted: toolsAllowed,
+      outputs: ['A configured custom agent draft.'],
+    })),
   };
   if (!draft.name || !draft.description || !draft.system_prompt) {
     return { ok: false, error: 'Jarvis JSON is missing name, description, or system_prompt.' };
@@ -209,6 +273,11 @@ function parseSkillDraft(value: unknown): JarvisCreatorParseResult<'skill'> {
     systemPromptAddendum,
     body: body || systemPromptAddendum,
     emoji: asString(value.emoji) || undefined,
+    proposal: parseProposal(value.proposal, defaultProposal({
+      purpose: description,
+      permitted: tools,
+      outputs: ['A VibeSpace skill-package preview.'],
+    })),
   };
   if (!draft.title || !draft.description || !draft.systemPromptAddendum) {
     return { ok: false, error: 'Jarvis JSON is missing title, description, or systemPromptAddendum.' };
@@ -357,6 +426,10 @@ export function parseLooseJarvisCreatorAgentDraft(text: string): JarvisCreatorPa
     capabilities: ['reasoning'],
     tools_allowed: [],
     temperature: 0.4,
+    proposal: defaultProposal({
+      purpose: stripMarkdown(descriptionSource).slice(0, 180),
+      outputs: ['A configured custom agent draft.'],
+    }),
   };
   return { ok: true, draft };
 }
@@ -444,6 +517,11 @@ export function parseLooseJarvisCreatorSkillDraft(text: string): JarvisCreatorPa
     systemPromptAddendum,
     body,
     emoji: '✨',
+    proposal: defaultProposal({
+      purpose: description,
+      permitted: tools,
+      outputs: ['A VibeSpace skill-package preview.'],
+    }),
   };
   return { ok: true, draft };
 }
@@ -498,5 +576,10 @@ export function normalizeJarvisCreatorSkillDraft(
     systemPromptAddendum,
     body,
     emoji: asString(draft.emoji) || '✨',
+    proposal: parseProposal(draft.proposal, defaultProposal({
+      purpose: description,
+      permitted: tools,
+      outputs: ['A VibeSpace skill-package preview.'],
+    })),
   };
 }

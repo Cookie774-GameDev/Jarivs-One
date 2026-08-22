@@ -1,0 +1,18 @@
+# PR31 Unified Model, Agent, Skill, Files — Implementation Ledger
+
+## 2026-08-22 — Slice 0 ownership map and Slice 5 claim
+
+- Agent/task: `VS-CODEX-ROOT-UNIFIED-MODEL-AGENT-SKILL-FILES-20260822` / `PR31-UNIFIED-MODEL-AGENT-SKILL-FILES-SLICE5`.
+- Branch/base: `integration/UnifiedChungus-final` at `9eb64ab8`; upstream `origin/UnifiedChungus`; no merge, rebase, or cherry-pick in progress. The shared worktree contains concurrent dirty work, which is preserved and excluded.
+- Ownership map: live model catalog/refresh is locked by `VS-CODEX-OPENCODE-RELIABILITY-20260822`; Composer/model-picker UI remains concurrent shared work; runtime/Context/Gateway and Schedule picker paths have active owners; native filesystem/Doctor paths are separately locked. No competing selector, provider route, effort, attachment, native filesystem, or Context implementation is authorized in this slice.
+- Independent owner chosen: Jarvis creator contracts/handoff, a new VibeSpace-owned skill-package builder, and the existing creator-only proposal action in `MessagePart`, with their focused tests. The slice will ask the required discovery questions, parse an explicit proposal, keep creation behind an explicit apply plus editor Save confirmation, and preview a project-specific package containing `SKILL.md`, a VibeSpace guide, and `provenance.json`.
+- Provenance boundary: local `.superpowers`/Codex skill material was audited read-only. No `obra/superpowers` repository content, installer, telemetry, or dependency is imported or run. Any future upstream integration requires a separately pinned, attributed, licensed review.
+
+## 2026-08-22 — Slice 5 implementation and verification checkpoint
+
+- Agent/task: `VS-CODEX-ROOT-UNIFIED-MODEL-AGENT-SKILL-FILES-20260822` / `PR31-UNIFIED-MODEL-AGENT-SKILL-FILES-SLICE5`.
+- Commit parent: `f9f2151f441bf4758df1a13905efac06e1664c33` on `integration/UnifiedChungus-final`; concurrent uncommitted paths remain excluded.
+- Owned implementation: `contracts.ts` now asks five required discovery questions and parses a reviewable proposal with safe fallback data; `MessagePart.tsx` renders that proposal and dispatches the existing apply event only after an explicit button click; the new `skillPackage.ts` creates a deterministic in-memory preview (`SKILL.md`, VibeSpace authoring guide, `provenance.json`) without writing, installing, importing, or attributing upstream material. Existing editor callers may still create pre-proposal drafts; package/render fallbacks remain conservative.
+- Fresh focused verification: `npx vitest run src/features/jarvis-creator/contracts.test.ts src/features/jarvis-creator/handoff.test.ts src/features/jarvis-creator/skillPackage.test.ts src/features/chat/MessagePart.jarvisCreator.test.tsx` from `app/` — **22/22 tests passed**, exit 0 (2026-08-22 14:11 local).
+- Full typecheck: initiated twice; both runs were interrupted by incoming task/environment events before producing an exit result. The last completed earlier run showed first-slice compatibility omissions (now repaired) plus existing Context test strict-null errors in another active owner’s paths. A later clean full typecheck remains required before branch-level acceptance.
+- Native acceptance: not run for this slice. The required official VibeSpace native QA remains queued; no browser substitute is claimed.

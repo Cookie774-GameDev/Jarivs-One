@@ -32,7 +32,9 @@ describe('MessagePart Jarvis creator draft actions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Push to agent/i }));
+    expect(screen.getByText('Proposal')).toBeTruthy();
+    expect(screen.getByText(/Apply this proposal only fills the editor/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Review and apply proposal to agent/i }));
 
     expect(listener).toHaveBeenCalledOnce();
     expect(listener.mock.calls[0]?.[0]).toMatchObject({ detail: { name: 'Launch Planner' } });
@@ -63,7 +65,9 @@ describe('MessagePart Jarvis creator draft actions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Push to skill/i }));
+    expect(screen.getByText('VibeSpace skill package preview')).toBeTruthy();
+    expect(screen.getByText('provenance.json')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Review and apply proposal to skill/i }));
 
     expect(listener).toHaveBeenCalledOnce();
     expect(listener.mock.calls[0]?.[0]).toMatchObject({ detail: { title: 'Polish Writer' } });

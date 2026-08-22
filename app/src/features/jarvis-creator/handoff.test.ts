@@ -42,10 +42,13 @@ describe('createJarvisCreatorChat', () => {
             id: 'jarvis_creator_agent',
             status: 'pending',
             description: expect.stringContaining('Editing agent: Existing Agent'),
-            questions: [
-              expect.objectContaining({ id: 'goal', type: 'text' }),
-              expect.objectContaining({ id: 'rules_boundaries', type: 'text' }),
-            ],
+            questions: expect.arrayContaining([
+              expect.objectContaining({ id: 'goal_audience', type: 'text' }),
+              expect.objectContaining({ id: 'scope_inputs_tools', type: 'text' }),
+              expect.objectContaining({ id: 'boundaries_approvals', type: 'text' }),
+              expect.objectContaining({ id: 'output_verification', type: 'text' }),
+              expect.objectContaining({ id: 'project_memory_scope', type: 'text' }),
+            ]),
           }),
         }),
       ],
