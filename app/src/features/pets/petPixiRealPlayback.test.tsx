@@ -3,6 +3,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const playerState = vi.hoisted(() => ({
+  failLoads: 0,
   instances: [] as Array<{
     disposed: boolean;
     initialized: boolean;
@@ -53,6 +54,10 @@ vi.mock('./pixiAtlasPlayer', () => {
     async load() {
       this.loadCalls += 1;
       await Promise.resolve();
+      if (playerState.failLoads > 0) {
+        playerState.failLoads -= 1;
+        throw new Error('synthetic atlas failure');
+      }
     }
 
     isPlaybackReady() {
@@ -139,6 +144,7 @@ import { publishPetRuntimeEvent, resetPetRuntimeEventDedupeForTests } from './pe
 describe('PetOverlay StrictMode player lifecycle', () => {
   afterEach(() => {
     playerState.instances.length = 0;
+    playerState.failLoads = 0;
     vi.mocked(setPetOverlayPosition).mockClear();
     vi.mocked(snapPetOverlayToEdge).mockClear();
     resetPetRuntimeEventDedupeForTests();
@@ -160,6 +166,28 @@ describe('PetOverlay StrictMode player lifecycle', () => {
     });
     expect(playerState.instances.every((player) => player.setAnimationCalls === 0)).toBe(true);
 
+    view.unmount();
+  });
+
+  it('falls back to the bundled static portrait when enabled Pixi atlas loading fails', async () => {
+    playerState.failLoads = 1;
+    const view = render(<PetOverlay tauriWindowMode />);
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+
+    const staticFrame = await waitFor(() => {
+      const frame = view.container.querySelector(
+        '[data-pet-static-frame="true"]',
+      ) as HTMLImageElement | null;
+      expect(frame).toBeTruthy();
+      return frame as HTMLImageElement;
+    });
+    expect(overlay.getAttribute('data-pet-renderer')).toBe('static-fallback');
+    expect(overlay.getAttribute('data-pet-render-ready')).toBe('false');
+
+    fireEvent.load(staticFrame);
+    await waitFor(() => {
+      expect(overlay.getAttribute('data-pet-render-ready')).toBe('true');
+    });
     view.unmount();
   });
 

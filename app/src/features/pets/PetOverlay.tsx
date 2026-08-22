@@ -130,6 +130,7 @@ export function PetOverlay({
 
   const [animLabel, setAnimLabel] = React.useState<PetAnimId>('welcome');
   const [renderReady, setRenderReady] = React.useState(false);
+  const [pixiFallback, setPixiFallback] = React.useState(false);
   const [systemReducedMotion, setSystemReducedMotion] = React.useState(false);
   const [runtimeReaction, setRuntimeReaction] = React.useState<PetReactionId>('idle');
   const [pos, setPos] = React.useState({ left: 24, top: 120 });
@@ -192,6 +193,7 @@ export function PetOverlay({
   );
   const reducedMotion = motionPolicy.reducedMotion;
   const staticPreview = PET_CHARACTERS[resolvePetCharacterId(characterId)].preview;
+  const usingStaticFallback = !motionPolicy.animationsEnabled || pixiFallback;
   const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
   const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
   const debugMode =
@@ -248,7 +250,8 @@ export function PetOverlay({
       const animKey = `${charId}:${resolved}`;
       const def = getAnimDef(resolved, charId);
       if (!def) {
-        console.warn('[pets] missing anim def', resolved, charId);
+        setRenderReady(false);
+        setPixiFallback(true);
         return;
       }
 
@@ -262,37 +265,38 @@ export function PetOverlay({
         playerRef.current === player &&
         !player.isDestroyed;
 
-      if (!initOnce.current) {
-        await player.init(host, {
-          displaySize: DISPLAY,
-          resolution: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
-          backgroundAlpha: 0,
-        });
-        if (!isCurrentRequest()) return;
-        initOnce.current = true;
-      }
-
-      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-      const scaleSel = PixiAtlasPlayer.selectAtlasScale(def, dpr);
-      // characterId + anim + scale path — never share Axo/Glitch cache entries.
-      const cacheKey = `${charId}:${resolved}:${scaleSel.atlasPath}`;
-      let urls = animCache.current.get(cacheKey);
-      if (!urls) {
-        urls = resolveAtlasUrls(def, charId, scaleSel.atlasPath);
-        animCache.current.set(cacheKey, urls);
-      }
-
-      const playbackKey = `${charId}:${resolved}:${scaleSel.scale}:${urls.jsonUrl}:${urls.imageUrl}:v1`;
-      if (currentAnim.current === animKey && player.isPlaybackReady(playbackKey, urls.jsonUrl)) {
-        const fps = petPlaybackFps(resolved, def.fps, reducedMotion);
-        player.setPlaybackFps(fps);
-        if (motionPolicy.animationsEnabled) player.resume();
-        else player.pause();
-        setRenderReady(true);
-        return;
-      }
-
       try {
+        if (!initOnce.current) {
+          await player.init(host, {
+            displaySize: DISPLAY,
+            resolution: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+            backgroundAlpha: 0,
+          });
+          if (!isCurrentRequest()) return;
+          initOnce.current = true;
+        }
+
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+        const scaleSel = PixiAtlasPlayer.selectAtlasScale(def, dpr);
+        // characterId + anim + scale path — never share Axo/Glitch cache entries.
+        const cacheKey = `${charId}:${resolved}:${scaleSel.atlasPath}`;
+        let urls = animCache.current.get(cacheKey);
+        if (!urls) {
+          urls = resolveAtlasUrls(def, charId, scaleSel.atlasPath);
+          animCache.current.set(cacheKey, urls);
+        }
+
+        const playbackKey = `${charId}:${resolved}:${scaleSel.scale}:${urls.jsonUrl}:${urls.imageUrl}:v1`;
+        if (currentAnim.current === animKey && player.isPlaybackReady(playbackKey, urls.jsonUrl)) {
+          const fps = petPlaybackFps(resolved, def.fps, reducedMotion);
+          player.setPlaybackFps(fps);
+          if (motionPolicy.animationsEnabled) player.resume();
+          else player.pause();
+          setPixiFallback(false);
+          setRenderReady(true);
+          return;
+        }
+
         // load() keeps previous texture until new atlas is ready (no blink).
         await player.load(urls.jsonUrl, urls.imageUrl);
         if (!isCurrentRequest()) return;
@@ -323,10 +327,14 @@ export function PetOverlay({
           },
         );
         if (!motionPolicy.animationsEnabled) player.pause();
+        setPixiFallback(false);
         setRenderReady(true);
-      } catch (err) {
-        console.warn('[pets] pixi atlas load failed', resolved, charId, err);
-        currentAnim.current = null;
+      } catch {
+        if (isCurrentRequest()) {
+          currentAnim.current = null;
+          setRenderReady(false);
+          setPixiFallback(true);
+        }
       }
     },
     [motionPolicy.animationsEnabled, reducedMotion, setState],
@@ -337,6 +345,7 @@ export function PetOverlay({
 
   React.useEffect(() => {
     setRenderReady(false);
+    setPixiFallback(false);
   }, [characterId, motionPolicy.animationsEnabled]);
 
   React.useEffect(() => {
@@ -959,7 +968,9 @@ export function PetOverlay({
         data-pet-render-ready={renderReady ? 'true' : 'false'}
         data-pet-reaction={runtimeReaction}
         data-pet-show-diag={showDiagnostics ? 'true' : 'false'}
-        data-pet-renderer={motionPolicy.animationsEnabled ? 'pixi' : 'static-image'}
+        data-pet-renderer={
+          pixiFallback ? 'static-fallback' : motionPolicy.animationsEnabled ? 'pixi' : 'static-image'
+        }
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
@@ -972,7 +983,7 @@ export function PetOverlay({
       >
         <div
           ref={hostRef}
-          className="pet-canvas-container block w-full h-full"
+          className="pet-canvas-container relative block w-full h-full"
           style={{
             width: DISPLAY,
             height: DISPLAY,
@@ -983,13 +994,13 @@ export function PetOverlay({
             boxShadow: 'none',
           }}
         >
-          {!motionPolicy.animationsEnabled ? (
+          {usingStaticFallback ? (
             <img
               src={staticPreview}
               alt=""
               aria-hidden="true"
               data-pet-static-frame="true"
-              className="block h-full w-full object-contain"
+              className="absolute inset-0 block h-full w-full object-contain"
               style={{ imageRendering: 'pixelated' }}
               onLoad={() => setRenderReady(true)}
               onError={() => setRenderReady(false)}

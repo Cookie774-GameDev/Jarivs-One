@@ -56,3 +56,18 @@
 - Evidence: focused Pet suite 15/15, native Pet suite 25/25, Cargo formatting and owned diff checks passed. Full TypeScript check remains blocked by the same four unowned SiYuan diagnostics only. Native desktop/manual rows remain **BLOCKED** because the official application has not been rebuilt/relaunched from `2219b115`.
 - Known risks: overlay hide still has no typed outcome; native lifecycle success cannot claim renderer/session readiness; no observed exact-commit panel UI, cross-app z-order, click, drag, or session-survival result yet.
 - Lock release: `VS-CODEX-PET-PANEL-ACK-20260822` is released after this ledger entry is committed. The next slice requires a new exact non-overlapping claim.
+
+## 2026-08-22 14:42 CT — Phase 3 claim: Pixi static-frame fallback
+
+- Agent/task: `VS-CODEX-PET-PIXI-FALLBACK-20260822` / `PR31-PET-PIXI-STATIC-FALLBACK`; base `5dc6e7deae61b517735601d415598dc8304b63da` on `integration/UnifiedChungus-final`.
+- Exact claim: `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/petPixiRealPlayback.test.tsx`, and this ledger. No active lock overlaps this slice.
+- Reproduced source boundary: `PixiAtlasPlayer` has context-loss cleanup/recovery and `PetOverlay` already owns a bundled transparent static preview, but enabled-animation `playAnim` failure only logs and leaves render readiness false; the static preview is rendered only when animation is intentionally off. That can produce a blank Pet while the native overlay remains clickable.
+- Hypothesis: a local failed-render state can render the existing static preview with no opaque background, permit existing hard recovery to retry Pixi, and retain no new assets or renderer instances.
+
+## 2026-08-22 14:40 CT — Phase 3 checkpoint: static Pixi fallback verified
+
+- Owned change: `PetOverlay` now treats missing animation definitions and current-generation Pixi init/load failures as a static-frame fallback condition. The existing bundled character preview is absolutely overlaid within the transparent canvas host, preserving its size/alpha and preventing a failed Pixi canvas from pushing the image out of view. A successful cached or fresh Pixi animation clears the fallback; character/motion changes reset it so normal recovery can retry.
+- TDD: RED test made the mocked enabled Pixi atlas load reject and observed no `data-pet-static-frame`; green test observes `data-pet-renderer="static-fallback"`, then its image load restores render readiness. The implementation deliberately does not claim an asset-loaded fallback when the static image itself errors.
+- Verification: `npm exec vitest run src/features/pets/petPixiRealPlayback.test.tsx src/features/pets/PetOverlayWindow.test.tsx src/features/pets/PetHost.nativePanel.test.tsx src/features/pets/petPanelOpen.test.ts --reporter=dot` → 4 files / 28 tests passed. Full `npm run typecheck` remains exit 1 only at the four unowned SiYuan test diagnostics already listed. No native/Cargo source changed in this slice.
+- Native manual matrix: **BLOCKED** — no rebuilt official executable of this source revision has been launched; test DOM output is not desktop-product proof.
+- Remaining queue: typed overlay-hide acknowledgement, native panel/manual focus verification, exact Chat/Terminal/Activity close-reopen survival, and external-app topmost/click/drag checks remain pending.
