@@ -1,4 +1,9 @@
-import { readBenchmarkApi, runBenchmarkIngestion } from './benchmarkPipeline';
+import {
+  benchmarkDatasetCompleteness,
+  readBenchmarkApi,
+  resolveBenchmarkFreshness,
+  runBenchmarkIngestion,
+} from './benchmarkPipeline';
 import { NEWS_SOURCES } from './newsSources';
 import { readNewsApi, readSourcesApi, runNewsIngestion } from './newsPipeline';
 import { handleNewsNotifications, handleNewsSubscriptions } from './newsSubscriptions';
@@ -36,6 +41,13 @@ function parseJson(value: string): unknown {
   } catch {
     return null;
   }
+}
+
+function jsonRecord(value: string): Record<string, unknown> {
+  const parsed = parseJson(value);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
 }
 
 async function latestRun(
@@ -107,7 +119,7 @@ async function healthPayload(env: Env): Promise<Record<string, unknown>> {
            ORDER BY status ASC`,
     ).all<SourceHealthCount>(),
     env.DB.prepare(
-      `SELECT d.id, d.source_observed_at, d.ingested_at, d.row_count, c.promoted_at
+      `SELECT d.id, d.source_observed_at, d.ingested_at, d.row_count, d.metadata_json, c.promoted_at
            FROM benchmark_current_v2 c
            JOIN benchmark_datasets_v2 d ON d.id = c.dataset_id
            WHERE c.singleton = 1 AND d.status = 'current'
@@ -117,6 +129,7 @@ async function healthPayload(env: Env): Promise<Record<string, unknown>> {
       source_observed_at: string;
       ingested_at: string;
       row_count: number;
+      metadata_json: string;
       promoted_at: string;
     }>(),
     env.DB.prepare(
@@ -128,10 +141,32 @@ async function healthPayload(env: Env): Promise<Record<string, unknown>> {
 
   const slaMinutes = Number.parseInt(env.FRESHNESS_SLA_MINUTES ?? '120', 10) || 120;
   const newsFreshness = freshnessFromTimestamp(newsUsable?.completed_at, Date.now(), slaMinutes);
-  const benchmarkFreshness = freshnessFromTimestamp(
+  const benchmarkCompleteness = benchmarkCurrent
+    ? benchmarkDatasetCompleteness(benchmarkCurrent.metadata_json, benchmarkCurrent.row_count)
+    : null;
+  const benchmarkRunMetadata = benchmarkLatest ? jsonRecord(benchmarkLatest.metadata_json) : {};
+  const benchmarkPagination =
+    benchmarkRunMetadata.pagination &&
+    typeof benchmarkRunMetadata.pagination === 'object' &&
+    !Array.isArray(benchmarkRunMetadata.pagination)
+      ? (benchmarkRunMetadata.pagination as Record<string, unknown>)
+      : undefined;
+  const benchmarkFreshness = resolveBenchmarkFreshness(
     benchmarkCurrent?.promoted_at ?? benchmarkUsable?.completed_at,
+    benchmarkLatest
+      ? {
+          status: benchmarkLatest.status,
+          completedAt: benchmarkLatest.completed_at,
+          ...(typeof benchmarkRunMetadata.datasetId === 'string'
+            ? { datasetId: benchmarkRunMetadata.datasetId }
+            : {}),
+          ...(benchmarkPagination ? { pagination: benchmarkPagination } : {}),
+        }
+      : null,
     Date.now(),
     slaMinutes,
+    benchmarkCompleteness,
+    benchmarkCurrent?.id,
   );
   const sourceCounts = Object.fromEntries(
     healthCounts.results.map((entry) => [entry.status, Number(entry.count)]),
@@ -187,6 +222,7 @@ async function healthPayload(env: Env): Promise<Record<string, unknown>> {
             ingestedAt: benchmarkCurrent.ingested_at,
             promotedAt: benchmarkCurrent.promoted_at,
             rowCount: benchmarkCurrent.row_count,
+            completeness: benchmarkCompleteness,
           }
         : null,
       sourceCapability: env.AA_API_KEY?.trim() ? 'configured' : 'unavailable',
@@ -199,7 +235,11 @@ function headOnly(request: Request, response: Response): Response {
   return new Response(null, { status: response.status, headers: response.headers });
 }
 
-async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function routeRequest(
+  request: Request,
+  env: Env,
+  ctx: Pick<ExecutionContext, 'waitUntil'>,
+): Promise<Response> {
   if (request.method === 'OPTIONS') return optionsResponse();
   const url = new URL(request.url);
   if (url.pathname === '/api/news/subscriptions') {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  benchmarkDatasetCompleteness,
+  completeArtificialAnalysisPages,
   mergeArtificialAnalysisPages,
   parseArtificialAnalysisPayload,
   resolveBenchmarkFreshness,
@@ -80,6 +82,32 @@ describe('Artificial Analysis benchmark ingestion', () => {
     expect(merged.data).toHaveLength(20);
   });
 
+  it('records a complete four-page receipt before accepting a full source observation', () => {
+    const page = (current: number) => ({
+      tier: 'free',
+      intelligence_index_version: 4.1,
+      pagination: {
+        page: current,
+        page_size: 10,
+        total_pages: 4,
+        total_items: 40,
+        has_more: current < 4,
+      },
+      data: Array.from({ length: 10 }, (_, index) => model((current - 1) * 10 + index)),
+    });
+    const complete = completeArtificialAnalysisPages([page(1), page(2), page(3), page(4)]);
+    expect(complete.pagination).toEqual({
+      mode: 'page',
+      expectedPages: 4,
+      receivedPages: 4,
+      pageSize: 10,
+      receivedSourceRows: 40,
+      expectedSourceRows: 40,
+      complete: true,
+    });
+    expect(complete.payload.data).toHaveLength(40);
+  });
+
   it('fails closed when an Artificial Analysis page is missing or inconsistent', () => {
     const first = {
       tier: 'free',
@@ -98,6 +126,89 @@ describe('Artificial Analysis benchmark ingestion', () => {
         },
       ]),
     ).toThrow(/version changed/i);
+  });
+
+  it('fails closed for duplicate pages, a partial middle page, or an inconsistent declared total', () => {
+    const page = (current: number, dataLength = 10, totalItems = 20) => ({
+      tier: 'free',
+      intelligence_index_version: 4.1,
+      pagination: {
+        page: current,
+        page_size: 10,
+        total_pages: 2,
+        total_items: totalItems,
+        has_more: current < 2,
+      },
+      data: Array.from({ length: dataLength }, (_, index) => model((current - 1) * 10 + index)),
+    });
+    expect(() => completeArtificialAnalysisPages([page(1), page(1)])).toThrow(/exactly once/i);
+    expect(() => completeArtificialAnalysisPages([page(1, 9), page(2)])).toThrow(
+      /partial non-final page/i,
+    );
+    expect(() => completeArtificialAnalysisPages([page(1), page(2, 9)])).toThrow(
+      /declared total/i,
+    );
+  });
+
+  it('rejects an Arena/Wu Long-shaped source before it can be relabeled as Intelligence Index', () => {
+    expect(() =>
+      completeArtificialAnalysisPages([
+        {
+          tier: 'arena',
+          intelligence_index_version: 4.1,
+          pagination: { page: 1, page_size: 10, total_pages: 1, has_more: false },
+          data: Array.from({ length: 10 }, (_, index) => model(index)),
+        },
+      ]),
+    ).toThrow(/only the documented Artificial Analysis free model endpoint/i);
+  });
+
+  it('treats a dataset without an exact page receipt as unverified, never fresh', () => {
+    const unverified = benchmarkDatasetCompleteness('{"api":"v2","validated":true}', 197);
+    expect(unverified).toMatchObject({ state: 'unverified' });
+    expect(
+      resolveBenchmarkFreshness(
+        '2026-08-22T01:00:00Z',
+        { status: 'success', completedAt: '2026-08-22T01:01:00Z' },
+        Date.parse('2026-08-22T01:15:00Z'),
+        120,
+        unverified,
+        'dataset-incomplete',
+      ),
+    ).toMatchObject({ state: 'degraded' });
+
+    const complete = benchmarkDatasetCompleteness(
+      JSON.stringify({
+        validated: true,
+        scoredRows: 40,
+        pagination: {
+          mode: 'page',
+          expectedPages: 4,
+          receivedPages: 4,
+          pageSize: 10,
+          receivedSourceRows: 40,
+          expectedSourceRows: 40,
+          complete: true,
+        },
+      }),
+      40,
+    );
+    expect(complete).toMatchObject({ state: 'complete' });
+    expect(
+      resolveBenchmarkFreshness(
+        '2026-08-22T01:00:00Z',
+        {
+          status: 'success',
+          completedAt: '2026-08-22T01:01:00Z',
+          datasetId: 'dataset-complete',
+          pagination: { complete: true },
+        },
+        Date.parse('2026-08-22T01:15:00Z'),
+        120,
+        complete,
+        'dataset-complete',
+      ),
+    ).toMatchObject({ state: 'fresh' });
   });
 
   it('normalizes the supported source scale and exact row metadata', async () => {

@@ -52,6 +52,17 @@ export interface ParsedBenchmarkDataset {
   rows: BenchmarkModelRowV2[];
   checksum: string;
   skippedRows: number;
+  pagination: BenchmarkPagination;
+}
+
+export interface BenchmarkPagination {
+  mode: 'page';
+  expectedPages: number;
+  receivedPages: number;
+  pageSize: number;
+  receivedSourceRows: number;
+  expectedSourceRows?: number;
+  complete: true;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -148,6 +159,7 @@ interface ArtificialAnalysisPage {
   page: number;
   pageSize: number;
   totalPages: number;
+  totalItems?: number;
   hasMore: boolean;
   data: unknown[];
   raw: UnknownRecord;
@@ -161,6 +173,7 @@ function artificialAnalysisPage(payload: unknown): ArtificialAnalysisPage {
   const page = numberValue([pagination], ['page']);
   const pageSize = numberValue([pagination], ['page_size']);
   const totalPages = numberValue([pagination], ['total_pages']);
+  const totalItems = numberValue([pagination], ['total_items', 'total_count', 'total_results']);
   const hasMore = pagination?.has_more;
   if (
     !root ||
@@ -173,6 +186,8 @@ function artificialAnalysisPage(payload: unknown): ArtificialAnalysisPage {
     (pageSize ?? 0) < 1 ||
     (totalPages ?? 0) < 1 ||
     (totalPages ?? 0) > 10 ||
+    (totalItems !== undefined &&
+      (!Number.isInteger(totalItems) || totalItems < 1 || totalItems > 10_000)) ||
     typeof hasMore !== 'boolean'
   ) {
     throw new PipelineError(
@@ -186,14 +201,22 @@ function artificialAnalysisPage(payload: unknown): ArtificialAnalysisPage {
     page: page!,
     pageSize: pageSize!,
     totalPages: totalPages!,
+    ...(totalItems === undefined ? {} : { totalItems }),
     hasMore,
     data: modelArray(root),
     raw: root,
   };
 }
 
-/** Combines only a complete, internally consistent official API page set. */
-export function mergeArtificialAnalysisPages(payloads: readonly unknown[]): UnknownRecord {
+export interface CompleteArtificialAnalysisPages {
+  payload: UnknownRecord;
+  pagination: BenchmarkPagination;
+}
+
+/** Validates and combines only a complete, internally consistent official API page set. */
+export function completeArtificialAnalysisPages(
+  payloads: readonly unknown[],
+): CompleteArtificialAnalysisPages {
   if (!payloads.length) {
     throw new PipelineError(
       'AA_PAGINATION_INCOMPLETE',
@@ -202,6 +225,12 @@ export function mergeArtificialAnalysisPages(payloads: readonly unknown[]): Unkn
   }
   const pages = payloads.map(artificialAnalysisPage).sort((left, right) => left.page - right.page);
   const expected = pages[0]!;
+  if (expected.tier !== 'free') {
+    throw new PipelineError(
+      'AA_SOURCE_IDENTITY_INVALID',
+      'Only the documented Artificial Analysis free model endpoint may feed this leaderboard.',
+    );
+  }
   if (pages.length !== expected.totalPages) {
     throw new PipelineError(
       'AA_PAGINATION_INCOMPLETE',
@@ -214,6 +243,18 @@ export function mergeArtificialAnalysisPages(payloads: readonly unknown[]): Unkn
       throw new PipelineError(
         'AA_PAGINATION_INCOMPLETE',
         'Artificial Analysis did not return every declared page exactly once.',
+      );
+    }
+    if (page.pageSize !== expected.pageSize) {
+      throw new PipelineError(
+        'AA_PAGE_SIZE_CHANGED',
+        'Artificial Analysis page size changed during one refresh.',
+      );
+    }
+    if (page.totalItems !== expected.totalItems) {
+      throw new PipelineError(
+        'AA_TOTAL_CHANGED',
+        'Artificial Analysis total source-row count changed during one refresh.',
       );
     }
     if (page.tier !== expected.tier) {
@@ -231,18 +272,52 @@ export function mergeArtificialAnalysisPages(payloads: readonly unknown[]): Unkn
         'Artificial Analysis pagination continuation metadata was inconsistent.',
       );
     }
+    if (page.data.length === 0 || page.data.length > page.pageSize) {
+      throw new PipelineError(
+        'AA_PAGE_CARDINALITY_INVALID',
+        'Artificial Analysis returned an empty or oversized page.',
+      );
+    }
+    if (page.page < page.totalPages && page.data.length !== page.pageSize) {
+      throw new PipelineError(
+        'AA_PAGE_CARDINALITY_INVALID',
+        'Artificial Analysis returned a partial non-final page.',
+      );
+    }
   }
   const data = pages.flatMap((page) => page.data);
+  if (expected.totalItems !== undefined && data.length !== expected.totalItems) {
+    throw new PipelineError(
+      'AA_TOTAL_MISMATCH',
+      'Artificial Analysis received source rows did not match the declared total.',
+    );
+  }
   return {
-    ...expected.raw,
-    data,
+    payload: {
+      ...expected.raw,
+      data,
+      pagination: {
+        page: 1,
+        page_size: data.length,
+        total_pages: 1,
+        has_more: false,
+      },
+    },
     pagination: {
-      page: 1,
-      page_size: data.length,
-      total_pages: 1,
-      has_more: false,
+      mode: 'page',
+      expectedPages: expected.totalPages,
+      receivedPages: pages.length,
+      pageSize: expected.pageSize,
+      receivedSourceRows: data.length,
+      ...(expected.totalItems === undefined ? {} : { expectedSourceRows: expected.totalItems }),
+      complete: true,
     },
   };
+}
+
+/** Compatibility helper for pure parser callers. Ingestion must keep the returned metadata. */
+export function mergeArtificialAnalysisPages(payloads: readonly unknown[]): UnknownRecord {
+  return completeArtificialAnalysisPages(payloads).payload;
 }
 
 function nestedVariants(model: UnknownRecord): UnknownRecord[] {
@@ -502,6 +577,7 @@ export function validateBenchmarkRows(rows: readonly BenchmarkModelRowV2[]): voi
 export async function parseArtificialAnalysisPayload(
   payload: unknown,
   observedAt = nowIso(),
+  pagination?: BenchmarkPagination,
 ): Promise<ParsedBenchmarkDataset> {
   const root = record(payload);
   const flattened: Array<Omit<BenchmarkModelRowV2, 'rank'> & { explicitRank?: number }> = [];
@@ -606,6 +682,14 @@ export async function parseArtificialAnalysisPayload(
     rows,
     checksum,
     skippedRows,
+    pagination: pagination ?? {
+      mode: 'page',
+      expectedPages: 1,
+      receivedPages: 1,
+      pageSize: modelArray(payload).length,
+      receivedSourceRows: modelArray(payload).length,
+      complete: true,
+    },
   };
 }
 
@@ -639,7 +723,13 @@ async function promoteDataset(
         ingestedAt,
         dataset.rows.length,
         dataset.checksum,
-        JSON.stringify({ api: 'v2', validated: true }),
+        JSON.stringify({
+          api: 'v2',
+          validated: true,
+          pagination: dataset.pagination,
+          scoredRows: dataset.rows.length,
+          skippedRows: dataset.skippedRows,
+        }),
       ),
     db.prepare('DELETE FROM benchmark_rows_v2 WHERE dataset_id = ?').bind(datasetId),
   ];
@@ -773,8 +863,12 @@ export async function runBenchmarkIngestion(
     const remainingPayloads = await Promise.all(
       Array.from({ length: firstPage.totalPages - 1 }, (_, index) => fetchPage(index + 2)),
     );
-    const payload = mergeArtificialAnalysisPages([firstPayload, ...remainingPayloads]);
-    const dataset = await parseArtificialAnalysisPayload(payload, nowIso());
+    const completePages = completeArtificialAnalysisPages([firstPayload, ...remainingPayloads]);
+    const dataset = await parseArtificialAnalysisPayload(
+      completePages.payload,
+      nowIso(),
+      completePages.pagination,
+    );
     const datasetId = await promoteDataset(env.DB, dataset, nowIso());
     result = {
       pipeline,
@@ -789,7 +883,7 @@ export async function runBenchmarkIngestion(
         checksum: dataset.checksum,
         sourceObservedAt: dataset.sourceObservedAt,
         methodologyVersion: dataset.methodologyVersion,
-        sourcePages: firstPage.totalPages,
+        pagination: dataset.pagination,
         skippedRows: dataset.skippedRows,
         topRow: dataset.rows[0]
           ? {
@@ -827,7 +921,104 @@ interface DatasetRow {
   ingested_at: string;
   row_count: number;
   checksum: string | null;
+  metadata_json: string;
   promoted_at: string;
+}
+
+interface LatestBenchmarkRunRow {
+  status: string;
+  completed_at: string | null;
+  metadata_json: string;
+  error_json: string;
+}
+
+export interface BenchmarkDatasetCompleteness {
+  state: 'complete' | 'unverified';
+  pagination?: BenchmarkPagination;
+  reason?: string;
+}
+
+function jsonRecord(value: string): UnknownRecord {
+  try {
+    return record(JSON.parse(value)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function jsonArray(value: string): unknown[] {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function pageInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+export function benchmarkDatasetCompleteness(
+  metadataJson: string,
+  rowCount: number,
+): BenchmarkDatasetCompleteness {
+  const metadata = jsonRecord(metadataJson);
+  const pagination = record(metadata.pagination);
+  const expectedPages = pageInteger(pagination?.expectedPages);
+  const receivedPages = pageInteger(pagination?.receivedPages);
+  const pageSize = pageInteger(pagination?.pageSize);
+  const receivedSourceRows = pageInteger(pagination?.receivedSourceRows);
+  const expectedSourceRows = pageInteger(pagination?.expectedSourceRows);
+  const scoredRows = pageInteger(metadata.scoredRows);
+  if (
+    metadata.validated === true &&
+    pagination?.mode === 'page' &&
+    pagination?.complete === true &&
+    expectedPages !== undefined &&
+    expectedPages >= 1 &&
+    receivedPages === expectedPages &&
+    pageSize !== undefined &&
+    pageSize >= 1 &&
+    receivedSourceRows !== undefined &&
+    receivedSourceRows >= rowCount &&
+    (expectedSourceRows === undefined || expectedSourceRows === receivedSourceRows) &&
+    scoredRows === rowCount
+  ) {
+    return {
+      state: 'complete',
+      pagination: {
+        mode: 'page',
+        expectedPages,
+        receivedPages,
+        pageSize,
+        receivedSourceRows,
+        ...(expectedSourceRows === undefined ? {} : { expectedSourceRows }),
+        complete: true,
+      },
+    };
+  }
+  return {
+    state: 'unverified',
+    reason: 'The current dataset has no complete validated Artificial Analysis page-set receipt.',
+  };
+}
+
+function publicBenchmarkRun(row: LatestBenchmarkRunRow | null): Record<string, unknown> | null {
+  if (!row) return null;
+  const metadata = jsonRecord(row.metadata_json);
+  const errors = jsonArray(row.error_json)
+    .map(record)
+    .map((entry) => (typeof entry?.code === 'string' ? entry.code : null))
+    .filter((code): code is string => Boolean(code))
+    .slice(0, 3);
+  return {
+    status: row.status,
+    completedAt: row.completed_at,
+    datasetId: typeof metadata.datasetId === 'string' ? metadata.datasetId : undefined,
+    pagination: record(metadata.pagination) ?? undefined,
+    errorCodes: errors,
+  };
 }
 
 interface StoredBenchmarkRow {
@@ -853,11 +1044,41 @@ interface StoredBenchmarkRow {
 
 export function resolveBenchmarkFreshness(
   promotedAt: string | null | undefined,
-  latestRun: { status: string; completedAt: string | null } | null,
+  latestRun: {
+    status: string;
+    completedAt: string | null;
+    datasetId?: string;
+    pagination?: UnknownRecord;
+  } | null,
   now = Date.now(),
   slaMinutes = 120,
+  completeness: BenchmarkDatasetCompleteness | null = null,
+  datasetId?: string,
 ): ReturnType<typeof freshnessFromTimestamp> {
   const freshness = freshnessFromTimestamp(promotedAt, now, slaMinutes);
+  if (completeness && completeness.state !== 'complete') {
+    return {
+      state: freshness.state === 'fresh' ? 'degraded' : freshness.state,
+      ...(freshness.ageMs === undefined ? {} : { ageMs: freshness.ageMs }),
+      warning:
+        completeness?.reason ??
+        'The current dataset has not proved complete Artificial Analysis pagination.',
+    };
+  }
+  const completeRunMissing =
+    completeness?.state === 'complete' &&
+    (!latestRun ||
+      latestRun.status !== 'success' ||
+      !latestRun.completedAt ||
+      (datasetId !== undefined && latestRun.datasetId !== datasetId) ||
+      latestRun.pagination?.complete !== true);
+  if (completeRunMissing) {
+    return {
+      state: freshness.state === 'fresh' ? 'degraded' : freshness.state,
+      ...(freshness.ageMs === undefined ? {} : { ageMs: freshness.ageMs }),
+      warning: 'The latest official-source refresh is not a complete validated dataset.',
+    };
+  }
   if (
     latestRun?.status === 'failed' &&
     latestRun.completedAt &&
@@ -883,10 +1104,10 @@ export async function readBenchmarkApi(env: Env): Promise<Record<string, unknown
        LIMIT 1`,
     ).first<DatasetRow>(),
     env.DB.prepare(
-      `SELECT status, completed_at FROM intelligence_pipeline_runs
+      `SELECT status, completed_at, metadata_json, error_json FROM intelligence_pipeline_runs
        WHERE pipeline = 'benchmarks-hourly' AND completed_at IS NOT NULL
        ORDER BY completed_at DESC, id DESC LIMIT 1`,
-    ).first<{ status: string; completed_at: string | null }>(),
+    ).first<LatestBenchmarkRunRow>(),
   ]);
   const generatedAt = nowIso();
   if (!dataset) {
@@ -903,14 +1124,31 @@ export async function readBenchmarkApi(env: Env): Promise<Record<string, unknown
     .bind(dataset.id)
     .all<StoredBenchmarkRow>();
   const slaMinutes = Number.parseInt(env.FRESHNESS_SLA_MINUTES ?? '120', 10) || 120;
+  const completeness = benchmarkDatasetCompleteness(dataset.metadata_json, dataset.row_count);
+  const publicLatestRun = publicBenchmarkRun(latestRun);
   return {
     generatedAt,
     freshness: resolveBenchmarkFreshness(
       dataset.promoted_at,
-      latestRun ? { status: latestRun.status, completedAt: latestRun.completed_at } : null,
+      publicLatestRun
+        ? {
+            status: String(publicLatestRun.status),
+            completedAt:
+              typeof publicLatestRun.completedAt === 'string' ? publicLatestRun.completedAt : null,
+            ...(typeof publicLatestRun.datasetId === 'string'
+              ? { datasetId: publicLatestRun.datasetId }
+              : {}),
+            ...(record(publicLatestRun.pagination)
+              ? { pagination: record(publicLatestRun.pagination)! }
+              : {}),
+          }
+        : null,
       Date.now(),
       slaMinutes,
+      completeness,
+      dataset.id,
     ),
+    latestRun: publicLatestRun,
     dataset: {
       source: 'Artificial Analysis',
       metric: ARTIFICIAL_ANALYSIS_METRIC,
@@ -920,6 +1158,7 @@ export async function readBenchmarkApi(env: Env): Promise<Record<string, unknown
       ingestedAt: dataset.ingested_at,
       rowCount: dataset.row_count,
       checksum: dataset.checksum ?? undefined,
+      completeness,
     },
     rows: stored.results.map((row) => ({
       id: row.row_id,

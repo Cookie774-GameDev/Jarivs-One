@@ -157,3 +157,32 @@ These commits were preserved rather than duplicated or overwritten.
 - Full app typecheck remains blocked only by four inherited SiYuan test errors in `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; none is in this task's scope.
 - Native launch evidence: `npm run tauri:dev` started Vite successfully but the Rust dependency build failed in the external cached `futures_macro` crate. The existing native shell was launched against the verified live frontend and local Worker, but native visual inspection was stopped repeatedly by Escape and the user then explicitly prohibited Computer Use. Repository policy forbids substituting browser/Playwright for native acceptance, so native visual acceptance remains honestly unclaimed.
 - Remaining operational work: apply migration `0005` remotely, configure the Worker's Supabase publishable key, deploy the Worker, and perform the native Benchmarks/News visual and signed-in creator-follow acceptance in an allowed native QA session.
+
+## 2026-08-22 — live completeness audit and repair claim
+
+- Agent/task: `VS-CODEX-ROOT-BENCHMARK-TRUTH-20260822` / `PR31-BENCHMARK-TRUTH-AND-CLIENT-REPAIR`.
+- Branch/base: `integration/UnifiedChungus-final` at `49d246aa0fe075d1c72515aa8b686fc5e043a29b`; upstream `origin/UnifiedChungus`; no merge, rebase, or cherry-pick in progress.
+- Read-only Cloudflare evidence: the active 100% deployment is `b1698a3b-86e8-4504-b7a0-1468ac974307`, deployed `2026-08-20T00:23:49Z`; local pagination product commit `83b096f0` is dated `2026-08-22T00:10:53-05:00`, so it is not deployed. The deployed Worker has the Artificial Analysis endpoint but no pagination-completeness code signal.
+- Remote D1 current dataset is `aa-20260822160755-ccc8597773823561`, promoted at `2026-08-22T16:07:55.619Z`, with 197 rows and rank 1 `Claude Opus 5 (Adaptive Reasoning, Xhigh Effort)` at `62.5`. Its successful hourly run recorded no source-page count. The reference source observation shows a larger 616-model surface and a 63 top value, proving the green client `Fresh` state describes recent ingestion rather than complete current truth.
+- Remote `AA_API_KEY` is configured by name only; its value was not read. Remote cron remains `7 * * * *`. No Worker/D1/Supabase/Stripe mutation or deployment is claimed.
+- Exact repair scope is recorded in the agent-scoped lock. Shared model-picker/Schedule implementation is excluded because its files have active exclusive ownership; only its inventory/audit may be reported in this task.
+
+## 2026-08-22 — completeness repair checkpoint and non-deploy runbook
+
+- Agent/task: `VS-CODEX-ROOT-BENCHMARK-TRUTH-20260822` / `PR31-BENCHMARK-TRUTH-AND-CLIENT-REPAIR`.
+- Changed only the claimed benchmark/UI files. The Worker now records and validates an exact Artificial Analysis pagination receipt (expected/received pages, source-row totals, page size, and completion) before it can promote a dataset. Missing pages, duplicate/cursor pages, partial intermediate pages, inconsistent totals, invalid source identity, duplicate variants, malformed source data, and rank/score invariant failures fail closed; the prior complete dataset remains the last known good state and reports degraded/stale rather than fresh.
+- `/api/benchmarks` and `/health` now surface the source/metric timestamps, exact row count, completeness receipt, and latest run status/error codes. Fresh requires both an in-SLA successful matching run and a complete validated receipt. The app parser and badge independently downgrade old no-receipt payloads to `Degraded`, and refresh continues to refetch the backend rather than ingesting a desktop snapshot.
+- Removed the stale `free.ts` Worker entry/test and `BENCHMARK_SOURCE_URL` config. The live route and Inspector now use the typed Artificial Analysis backend only. The old Wu Long client module remains on disk solely for bounded historical rollback but is not exported from the benchmark feature or reachable from the live route.
+- Focused proof, freshly rerun: Worker `vitest` 22/22 PASS plus `tsc --noEmit` PASS; app benchmark `vitest` 12/12 PASS; `git diff --check` PASS. Full app `npm run build` is blocked by four inherited Context/RLM type errors: `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; these files are outside this claim and were not edited.
+- Shared picker inventory only (no write ownership): Chat is canonical `useAccessibleChatModels` + `ModelPickerTypeahead`; Schedule has a bespoke popover and an ambiguous legacy `provider:model` fallback; Voice can fall back to first provider/model match across connections; Agent Manager uses static provider/model selects and persists no connection id; Terminal and Nightly Second Brain consume the shared catalog but render independent selection behavior. Active locks prevent a safe cross-surface adapter implementation in this task.
+
+### Prepared operational runbook — do not execute without explicit authorization
+
+1. Confirm the Worker `AA_API_KEY` secret exists by name only; never print or replace its value.
+2. Inspect remote D1 migration history. This repair adds no migration; apply only any reviewed missing additive migrations from `0001`–`0005`, never a destructive schema action.
+3. Deploy the reviewed exact Worker revision only after its commit/review boundary is established. Do not substitute a workstation bundle or an unrelated branch.
+4. Allow one scheduled/manual backend refresh, then query `/health`, `/api/benchmarks`, and D1. Require a complete receipt, expected pages equal received pages, the stored row count equal the validated scored count, and a successful matching latest run before calling the result fresh.
+5. At the same Artificial Analysis observation time, compare every top-10 rank, provider, exact evaluated variant/effort, and score; any mismatch leaves the last known-good dataset degraded and blocks acceptance.
+6. In an authorized native Tauri session only, compare the Benchmarks badge/data with the source and exercise Chat and Create Schedule → Jarvis Action side by side after the picker owners land their work. Do not create durable schedules during that QA.
+
+- No commit, deploy, D1 migration, secret read/write, Supabase mutation, Stripe mutation, or native acceptance is claimed by this checkpoint.
