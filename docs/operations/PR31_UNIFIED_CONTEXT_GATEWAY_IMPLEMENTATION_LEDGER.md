@@ -48,3 +48,11 @@
 - Full app typecheck reached only the same four pre-existing diagnostics in active SiYuan tests: `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no owned Gateway/terminal file produced a diagnostic.
 - Exact Prettier check, exact Rustfmt check, and owned diff whitespace check passed. Native in-app acceptance remains pending until the current-source Tauri shell is started without closing ChatGPT/Codex.
 - Reversible implementation commit: `72eca44e` (`feat(context): add managed terminal gateway bridge`), containing only the owned terminal/Gateway bridge slice and this ledger checkpoint.
+
+## 2026-08-22 — Native shell and model-selector checkpoint
+
+- `npm run tauri:dev` completed the current-source native build with the isolated D: Cargo target, but Windows Application Control rejected execution of that newly built hash with OS error 4551. Copying the byte-identical binary into the trusted workspace did not bypass the policy; no security policy was weakened.
+- The existing trusted native `jarvis.exe` shell was started against the current live Vite frontend. ChatGPT/Codex remained open and untouched. This provides current-frontend native UI evidence but does not count as manual acceptance of the newly compiled terminal backend.
+- Native model-selector verification showed truthful provider grouping, exact visible provider/model labels, and a separate atomic effort confirmation before selection. A local Ollama route and the registered Qwen API route were each surfaced under their real provider group; no prompt or inference was sent during this check.
+- Fresh focused model-catalog/routing verification: 5 files / 51 tests passed (`useAccessibleChatModels`, its smoke contract, `ModelPickerTypeahead`, `providerModelCatalog`, and `connectionDisclosure`). Vitest emitted one existing non-fatal React `act(...)` warning in the smoke test; all assertions passed.
+- Current-source terminal native manual acceptance remains blocked specifically by Windows Application Control. The terminal bridge retains 22/22 native contract evidence and is not represented as manually proven in the trusted older backend.
