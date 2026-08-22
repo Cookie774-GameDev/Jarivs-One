@@ -98,3 +98,9 @@
 - Candidate/hydration counts now flow through the production Gateway adapter into `ContextReceipt.stageTimingsMs`, alongside retrieval duration, queue wait, child calls, and depth. The focused contract proves seven ranked candidates result in exactly five hydrated evidence items.
 - TDD red showed both telemetry fields absent from the production result and shared receipt. Fresh focused verification passed 3 files / 10 tests; the broader owned Gateway/RLM/terminal matrix passed 12 files / 100 tests. Exact formatting passed.
 - Full typecheck reached only the same four pre-existing diagnostics in actively owned SiYuan tests (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned file produced a diagnostic.
+
+## 2026-08-22 — Managed terminal Context instruction checkpoint
+
+- Added the required provider-independent bridge instruction to every bounded managed-terminal Context Pack: use `vibespace-context ask "your question"` for cross-source, project-history, prior-decision, or unknown-context work; use normal filesystem tools for the current checkout; and report bridge unavailability instead of pretending evidence was retrieved.
+- The instruction grants no new authority, carries no model/provider ID or secret, requires no MCP/user configuration, and is delivered within the existing project-scoped, redacted, size-bounded pack shared by Codex, Claude, OpenCode, and other executable harnesses.
+- TDD red proved the instruction absent. Fresh focused verification passed 3/3; the adjacent pack/payload/delivery/identity/CLI matrix passed 5 files / 65 tests. Exact Prettier formatting passed after the green rerun.
