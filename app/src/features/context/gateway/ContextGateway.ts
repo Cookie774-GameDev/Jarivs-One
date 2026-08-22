@@ -356,6 +356,36 @@ export class ContextGateway {
     }
   }
 
+  private awaitFlightForConsumer(
+    flight: Readonly<InflightResult>,
+    signal: AbortSignal,
+  ): Promise<Readonly<QueuedBackendResult>> {
+    if (signal.aborted) return Promise.reject(abortError());
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (
+        handler: (
+          value: Readonly<QueuedBackendResult> | PromiseLike<Readonly<QueuedBackendResult>>,
+        ) => void,
+        value: Readonly<QueuedBackendResult>,
+      ) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        handler(value);
+      };
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      };
+      const onAbort = () => fail(abortError());
+      signal.addEventListener('abort', onAbort, { once: true });
+      flight.promise.then((value) => finish(resolve, value), fail);
+    });
+  }
+
   private receipt(
     input: Readonly<ContextGatewayRequest>,
     decision: ReturnType<typeof decideContextPolicy>,
@@ -478,7 +508,7 @@ export class ContextGateway {
           flight = { controller: flightController, consumers: new Set([input.requestId]), promise };
           this.inflight.set(key, flight);
         }
-        const queued = await flight.promise;
+        const queued = await this.awaitFlightForConsumer(flight, controller.signal);
         backendResult = queued.result;
         queueDepthAtStart = queued.queueDepthAtStart;
         queueWaitMs = queued.queueWaitMs;

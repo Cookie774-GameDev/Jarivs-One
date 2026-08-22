@@ -34,25 +34,29 @@ const baseRequest: ContextGatewayRequest = Object.freeze({
   optionalEnrichmentEnabled: true,
 });
 
+function backendResult() {
+  return {
+    promptBlock: 'bounded evidence',
+    sourceRevisions: [{ sourceId: 'source-1', revision: 'source-v1' }],
+    evidence: [
+      {
+        handle: 'evidence-1',
+        sourceId: 'source-1',
+        sourceRevision: 'source-v1',
+        contentHash: `sha256:${'a'.repeat(64)}`,
+        byteStart: '0',
+        byteEnd: '24',
+        text: 'the bounded source text',
+      },
+    ],
+    stageTimingsMs: { search: 12, validation: 3 },
+  } as const;
+}
+
 function backend(): ContextGatewayBackend {
   return {
     available: () => true,
-    ask: vi.fn(async () => ({
-      promptBlock: 'bounded evidence',
-      sourceRevisions: [{ sourceId: 'source-1', revision: 'source-v1' }],
-      evidence: [
-        {
-          handle: 'evidence-1',
-          sourceId: 'source-1',
-          sourceRevision: 'source-v1',
-          contentHash: `sha256:${'a'.repeat(64)}`,
-          byteStart: '0',
-          byteEnd: '24',
-          text: 'the bounded source text',
-        },
-      ],
-      stageTimingsMs: { search: 12, validation: 3 },
-    })),
+    ask: vi.fn(async () => backendResult()),
   };
 }
 
@@ -370,6 +374,41 @@ describe('ContextGateway', () => {
     release();
     await expect(first).resolves.toMatchObject({ receipt: { queueDepthAtStart: 0 } });
     expect(port.ask).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a cancelled shared consumer immediately without aborting the live consumer', async () => {
+    let release!: () => void;
+    const port = backend();
+    vi.mocked(port.ask).mockImplementationOnce(
+      async () =>
+        new Promise((resolve) => {
+          release = () => resolve(backendResult());
+        }),
+    );
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: (() => {
+        let id = 0;
+        return () => `receipt-shared-cancel-${++id}`;
+      })(),
+    });
+    const cancelled = gateway.ask({ ...baseRequest, requestId: 'turn-cancelled' });
+    const live = gateway.ask({ ...baseRequest, requestId: 'turn-live' });
+    await vi.waitFor(() => expect(port.ask).toHaveBeenCalledTimes(1));
+
+    gateway.cancel('turn-cancelled');
+    const cancelledQuickly = await Promise.race([
+      cancelled.then(
+        () => false,
+        (error) => error instanceof DOMException && error.name === 'AbortError',
+      ),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 50)),
+    ]);
+
+    expect(cancelledQuickly).toBe(true);
+    expect(vi.mocked(port.ask).mock.calls[0]?.[0].signal.aborted).toBe(false);
+    release();
+    await expect(live).resolves.toMatchObject({ receipt: { cacheStatus: 'shared' } });
   });
 
   it('does not share concurrency limits across project scopes', async () => {
