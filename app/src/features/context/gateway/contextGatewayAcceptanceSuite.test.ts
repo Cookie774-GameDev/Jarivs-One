@@ -23,6 +23,18 @@ const directReport: DirectGatewayAcceptanceReport = {
     dispatch: { p50: 60, p95: 80, p99: 90 },
     adeAdapter: { p50: 0, p95: 0, p99: 0 },
   },
+  resources: {
+    baseline: {
+      cpuPercent: { p50: 10, p95: 12, p99: 14 },
+      workingSetMiB: { p50: 480, p95: 490, p99: 500 },
+      processCount: { p50: 6, p95: 6, p99: 6 },
+    },
+    gateway: {
+      cpuPercent: { p50: 12, p95: 14, p99: 16 },
+      workingSetMiB: { p50: 500, p95: 510, p99: 520 },
+      processCount: { p50: 7, p95: 7, p99: 7 },
+    },
+  },
   relativeBudgetsMs: { p95: 220, p99: 240 },
   effectiveBudgetsMs: { p95: 150, p99: 240 },
 };
@@ -200,6 +212,28 @@ describe('evaluateContextGatewayAcceptance', () => {
         gatewayStageTimingsMs: {
           ...directReport.gatewayStageTimingsMs,
           routeDecision: { p50: 20, p95: -1, p99: 20 },
+        },
+      },
+    };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['direct:chat'],
+    });
+  });
+
+  it('rejects a passed-looking direct report with malformed resource evidence', () => {
+    const input = completeInput();
+    input.directReports[0] = {
+      ...input.directReports[0],
+      report: {
+        ...directReport,
+        resources: {
+          ...directReport.resources,
+          gateway: {
+            ...directReport.resources.gateway,
+            processCount: { p50: 7, p95: 7.5, p99: 8 },
+          },
         },
       },
     };

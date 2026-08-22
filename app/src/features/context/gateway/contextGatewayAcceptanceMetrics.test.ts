@@ -34,6 +34,8 @@ function pairs(overrides: Partial<DirectGatewayPair> = {}): DirectGatewayPair[] 
       warm: true,
       baselineExecutionIdentity: identity,
       gatewayExecutionIdentity: identity,
+      baselineResourceMetrics: { cpuPercent: 12, workingSetMiB: 480, processCount: 6 },
+      gatewayResourceMetrics: { cpuPercent: 14, workingSetMiB: 500, processCount: 7 },
       baselineMs: 1_000 + index,
       ...overrides,
       gatewayOverheadMs,
@@ -57,6 +59,8 @@ describe('buildDirectGatewayAcceptanceReport', () => {
     expect(report.overheadMs.p95).toBe(128);
     expect(report.overheadMs.p99).toBe(129);
     expect(report.gatewayStageTimingsMs.routeDecision.p95).toBe(128);
+    expect(report.resources.gateway.workingSetMiB.p95).toBe(500);
+    expect(report.resources.baseline.processCount.p99).toBe(6);
     expect(report.relativeBudgetsMs.p95).toBeCloseTo(205.6);
     expect(report.relativeBudgetsMs.p99).toBeCloseTo(205.8);
     expect(report.effectiveBudgetsMs.p95).toBe(150);
@@ -107,6 +111,18 @@ describe('buildDirectGatewayAcceptanceReport', () => {
     ['zero baselines', pairs({ baselineMs: 0 })],
     ['negative overhead', pairs({ gatewayOverheadMs: -1 })],
     ['non-finite timings', pairs({ gatewayOverheadMs: Number.NaN })],
+    [
+      'negative baseline CPU',
+      pairs({ baselineResourceMetrics: { cpuPercent: -1, workingSetMiB: 480, processCount: 6 } }),
+    ],
+    [
+      'zero Gateway memory',
+      pairs({ gatewayResourceMetrics: { cpuPercent: 14, workingSetMiB: 0, processCount: 7 } }),
+    ],
+    [
+      'fractional process count',
+      pairs({ gatewayResourceMetrics: { cpuPercent: 14, workingSetMiB: 500, processCount: 7.5 } }),
+    ],
   ])('rejects %s rather than publishing an acceptance result', (_label, samples) => {
     expect(() => buildDirectGatewayAcceptanceReport(samples)).toThrow();
   });

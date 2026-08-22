@@ -105,6 +105,7 @@ function directReport(value: unknown, label: string): void {
       'overheadMs',
       'overheadRatio',
       'gatewayStageTimingsMs',
+      'resources',
       'relativeBudgetsMs',
       'effectiveBudgetsMs',
     ],
@@ -120,6 +121,26 @@ function directReport(value: unknown, label: string): void {
   exactKeys(stages, DIRECT_GATEWAY_STAGE_NAMES, `${label}.gatewayStageTimingsMs`);
   for (const stage of DIRECT_GATEWAY_STAGE_NAMES) {
     distribution(stages[stage], `${label}.gatewayStageTimingsMs.${stage}`);
+  }
+  const resources = record(input.resources, `${label}.resources`);
+  exactKeys(resources, ['baseline', 'gateway'], `${label}.resources`);
+  for (const side of ['baseline', 'gateway'] as const) {
+    const metrics = record(resources[side], `${label}.resources.${side}`);
+    exactKeys(
+      metrics,
+      ['cpuPercent', 'workingSetMiB', 'processCount'],
+      `${label}.resources.${side}`,
+    );
+    distribution(metrics.cpuPercent, `${label}.resources.${side}.cpuPercent`);
+    distribution(metrics.workingSetMiB, `${label}.resources.${side}.workingSetMiB`);
+    const processCount = record(metrics.processCount, `${label}.resources.${side}.processCount`);
+    exactKeys(processCount, ['p50', 'p95', 'p99'], `${label}.resources.${side}.processCount`);
+    for (const percentile of ['p50', 'p95', 'p99'] as const) {
+      safeInteger(
+        processCount[percentile],
+        `${label}.resources.${side}.processCount.${percentile}`,
+      );
+    }
   }
   for (const field of ['relativeBudgetsMs', 'effectiveBudgetsMs'] as const) {
     const budgets = record(input[field], `${label}.${field}`);

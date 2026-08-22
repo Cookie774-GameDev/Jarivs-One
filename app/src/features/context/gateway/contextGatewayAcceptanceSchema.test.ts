@@ -100,6 +100,18 @@ describe('parseContextGatewayAcceptanceInput', () => {
                 dispatch: { p50: 0, p95: 0, p99: 0 },
                 adeAdapter: { p50: 0, p95: 0, p99: 0 },
               },
+              resources: {
+                baseline: {
+                  cpuPercent: { p50: 10, p95: 10, p99: 10 },
+                  workingSetMiB: { p50: 480, p95: 480, p99: 480 },
+                  processCount: { p50: 6, p95: 6, p99: 6 },
+                },
+                gateway: {
+                  cpuPercent: { p50: 12, p95: 12, p99: 12 },
+                  workingSetMiB: { p50: 500, p95: 500, p99: 500 },
+                  processCount: { p50: 7, p95: 7, p99: 7 },
+                },
+              },
               relativeBudgetsMs: { p95: 0.2, p99: 0.2 },
               effectiveBudgetsMs: { p95: 0.2, p99: 0.2 },
             },

@@ -113,6 +113,18 @@ function validDistribution(
 }
 
 function directReportPasses(report: Readonly<DirectGatewayAcceptanceReport>): boolean {
+  const resourcesPass = (side: 'baseline' | 'gateway'): boolean => {
+    const metrics = report.resources[side];
+    return (
+      validDistribution(metrics.cpuPercent) &&
+      validDistribution(metrics.workingSetMiB) &&
+      metrics.workingSetMiB.p50 > 0 &&
+      validDistribution(metrics.processCount) &&
+      [metrics.processCount.p50, metrics.processCount.p95, metrics.processCount.p99].every(
+        (value) => Number.isSafeInteger(value) && value > 0,
+      )
+    );
+  };
   return (
     report.passed &&
     report.failures.length === 0 &&
@@ -124,6 +136,8 @@ function directReportPasses(report: Readonly<DirectGatewayAcceptanceReport>): bo
     DIRECT_GATEWAY_STAGE_NAMES.every((stage) =>
       validDistribution(report.gatewayStageTimingsMs[stage]),
     ) &&
+    resourcesPass('baseline') &&
+    resourcesPass('gateway') &&
     report.overheadRatio.p95 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
     report.overheadRatio.p99 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
     report.overheadMs.p95 <= DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS &&

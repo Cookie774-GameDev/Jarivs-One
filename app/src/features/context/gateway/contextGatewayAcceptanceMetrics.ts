@@ -14,6 +14,11 @@ export const DIRECT_GATEWAY_STAGE_NAMES = [
 
 export type DirectGatewayStageName = (typeof DIRECT_GATEWAY_STAGE_NAMES)[number];
 export type DirectGatewayStageTimings = Readonly<Record<DirectGatewayStageName, number>>;
+export interface DirectGatewayResourceMetrics {
+  cpuPercent: number;
+  workingSetMiB: number;
+  processCount: number;
+}
 
 export interface DirectGatewayPair {
   pairId: string;
@@ -27,6 +32,8 @@ export interface DirectGatewayPair {
   warm: boolean;
   baselineExecutionIdentity: Readonly<ExecutionIdentity>;
   gatewayExecutionIdentity: Readonly<ExecutionIdentity>;
+  baselineResourceMetrics: Readonly<DirectGatewayResourceMetrics>;
+  gatewayResourceMetrics: Readonly<DirectGatewayResourceMetrics>;
   gatewayStageTimingsMs: DirectGatewayStageTimings;
   /** Comparable same-harness/provider time with the VibeSpace Gateway boundary removed. */
   baselineMs: number;
@@ -49,6 +56,17 @@ export interface DirectGatewayAcceptanceReport {
   overheadRatio: Readonly<{ p50: number; p95: number; p99: number }>;
   gatewayStageTimingsMs: Readonly<
     Record<DirectGatewayStageName, Readonly<{ p50: number; p95: number; p99: number }>>
+  >;
+  resources: Readonly<
+    Record<
+      'baseline' | 'gateway',
+      Readonly<
+        Record<
+          keyof DirectGatewayResourceMetrics,
+          Readonly<{ p50: number; p95: number; p99: number }>
+        >
+      >
+    >
   >;
   relativeBudgetsMs: Readonly<{ p95: number; p99: number }>;
   effectiveBudgetsMs: Readonly<{ p95: number; p99: number }>;
@@ -91,6 +109,21 @@ function distribution(values: readonly number[]): { p50: number; p95: number; p9
     p95: nearestRank(sorted, 0.95),
     p99: nearestRank(sorted, 0.99),
   };
+}
+
+function validateResourceMetrics(
+  value: Readonly<DirectGatewayResourceMetrics>,
+  label: string,
+): void {
+  if (!Number.isFinite(value.cpuPercent) || value.cpuPercent < 0) {
+    throw new Error(`${label}.cpuPercent must be finite and non-negative`);
+  }
+  if (!Number.isFinite(value.workingSetMiB) || value.workingSetMiB <= 0) {
+    throw new Error(`${label}.workingSetMiB must be finite and greater than zero`);
+  }
+  if (!Number.isSafeInteger(value.processCount) || value.processCount <= 0) {
+    throw new Error(`${label}.processCount must be a positive safe integer`);
+  }
 }
 
 function requireUnique(
@@ -138,6 +171,8 @@ function requireComparable(pairs: readonly Readonly<DirectGatewayPair>[]): void 
     if (!Number.isFinite(pair.gatewayOverheadMs) || pair.gatewayOverheadMs < 0) {
       throw new Error('gatewayOverheadMs must be finite and non-negative');
     }
+    validateResourceMetrics(pair.baselineResourceMetrics, 'baselineResourceMetrics');
+    validateResourceMetrics(pair.gatewayResourceMetrics, 'gatewayResourceMetrics');
     const stageKeys = Object.keys(pair.gatewayStageTimingsMs);
     if (
       stageKeys.length !== DIRECT_GATEWAY_STAGE_NAMES.length ||
@@ -197,6 +232,16 @@ export function buildDirectGatewayAcceptanceReport(
     p99: Math.min(relativeBudgetsMs.p99, DIRECT_GATEWAY_P99_ABSOLUTE_LIMIT_MS),
   };
   const failures: DirectGatewayAcceptanceFailure[] = [];
+  const resourceFields = ['cpuPercent', 'workingSetMiB', 'processCount'] as const;
+  const resourceDistributions = (
+    field: 'baselineResourceMetrics' | 'gatewayResourceMetrics',
+  ): DirectGatewayAcceptanceReport['resources']['baseline'] =>
+    Object.fromEntries(
+      resourceFields.map((metric) => [
+        metric,
+        distribution(pairs.map((pair) => pair[field][metric])),
+      ]),
+    ) as DirectGatewayAcceptanceReport['resources']['baseline'];
 
   if (overheadRatio.p95 > DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT) {
     failures.push('p95-relative');
@@ -220,6 +265,10 @@ export function buildDirectGatewayAcceptanceReport(
         distribution(pairs.map((pair) => pair.gatewayStageTimingsMs[stage])),
       ]),
     ) as DirectGatewayAcceptanceReport['gatewayStageTimingsMs'],
+    resources: {
+      baseline: resourceDistributions('baselineResourceMetrics'),
+      gateway: resourceDistributions('gatewayResourceMetrics'),
+    },
     relativeBudgetsMs,
     effectiveBudgetsMs,
   };
