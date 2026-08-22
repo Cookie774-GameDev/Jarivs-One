@@ -51,6 +51,13 @@ function finite(value: unknown, label: string): number {
   return value;
 }
 
+function safeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`${label} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
 function boundedArray(value: unknown, label: string, maxLength = 1_000): unknown[] {
   if (!Array.isArray(value) || value.length > maxLength) {
     throw new TypeError(`${label} must be a bounded array`);
@@ -63,6 +70,13 @@ function distribution(value: unknown, label: string, includeMax = false): void {
   const keys = includeMax ? ['p50', 'p95', 'p99', 'max'] : ['p50', 'p95', 'p99'];
   exactKeys(input, keys, label);
   for (const key of keys) finite(input[key], `${label}.${key}`);
+}
+
+function integerDistribution(value: unknown, label: string): void {
+  const input = record(value, label);
+  const keys = ['p50', 'p95', 'p99', 'max'] as const;
+  exactKeys(input, keys, label);
+  for (const key of keys) safeInteger(input[key], `${label}.${key}`);
 }
 
 function failureList(value: unknown, allowed: ReadonlySet<string>, label: string): void {
@@ -89,7 +103,7 @@ function directReport(value: unknown, label: string): void {
     ],
     label,
   );
-  finite(input.sampleCount, `${label}.sampleCount`);
+  safeInteger(input.sampleCount, `${label}.sampleCount`);
   bool(input.passed, `${label}.passed`);
   failureList(input.failures, DIRECT_FAILURES, `${label}.failures`);
   distribution(input.baselineMs, `${label}.baselineMs`);
@@ -125,12 +139,12 @@ function retrievalReport(value: unknown, label: string): void {
   );
   const route = safeString(input.route, `${label}.route`, 16);
   if (route !== 'focused' && route !== 'deep') throw new TypeError(`${label}.route is invalid`);
-  finite(input.sampleCount, `${label}.sampleCount`);
+  safeInteger(input.sampleCount, `${label}.sampleCount`);
   bool(input.passed, `${label}.passed`);
   failureList(input.failures, RETRIEVAL_FAILURES, `${label}.failures`);
   distribution(input.retrievalMs, `${label}.retrievalMs`, true);
-  distribution(input.candidateCount, `${label}.candidateCount`, true);
-  distribution(input.hydratedCount, `${label}.hydratedCount`, true);
+  integerDistribution(input.candidateCount, `${label}.candidateCount`);
+  integerDistribution(input.hydratedCount, `${label}.hydratedCount`);
 }
 
 export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatewayAcceptanceInput {

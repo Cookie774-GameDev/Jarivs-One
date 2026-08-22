@@ -78,4 +78,34 @@ describe('parseContextGatewayAcceptanceInput', () => {
       }),
     ).toThrow('bounded array');
   });
+
+  it('rejects fractional run counts before they can satisfy a minimum', () => {
+    expect(() =>
+      parseContextGatewayAcceptanceInput({
+        ...incompleteEnvelope(),
+        directReports: [
+          {
+            surfaceId: 'chat',
+            report: {
+              sampleCount: 30.5,
+              passed: true,
+              failures: [],
+              baselineMs: { p50: 1, p95: 1, p99: 1 },
+              overheadMs: { p50: 0, p95: 0, p99: 0 },
+              overheadRatio: { p50: 0, p95: 0, p99: 0 },
+              gatewayStageTimingsMs: {
+                contextPack: { p50: 0, p95: 0, p99: 0 },
+                routeDecision: { p50: 0, p95: 0, p99: 0 },
+                queueWait: { p50: 0, p95: 0, p99: 0 },
+                dispatch: { p50: 0, p95: 0, p99: 0 },
+                adeAdapter: { p50: 0, p95: 0, p99: 0 },
+              },
+              relativeBudgetsMs: { p95: 0.2, p99: 0.2 },
+              effectiveBudgetsMs: { p95: 0.2, p99: 0.2 },
+            },
+          },
+        ],
+      }),
+    ).toThrow('safe integer');
+  });
 });
