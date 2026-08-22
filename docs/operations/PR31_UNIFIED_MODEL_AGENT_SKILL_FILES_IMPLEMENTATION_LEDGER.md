@@ -38,3 +38,10 @@
 - Fresh focused verification: `npx vitest run src/features/agents/AgentManager.jarvisCreator.test.tsx --reporter=verbose` — **4/4 passed**, exit 0; `npx vitest run src/features/agents/AgentManager.test.tsx -t "tracks skills, tools, capabilities, scope, toggles, and advanced fields for a custom agent" --reporter=verbose` — **1/1 selected passed**, exit 0 (2026-08-22 local).
 - Broader test evidence: the full `AgentManager.test.tsx` run reached the new custom-agent test successfully but reported protected-JARVIS profile lifecycle failures because that protected built-in's stored route is rejected by existing live-catalog validation before its profile save. This occurs in the pre-existing built-in/provider-validation path, outside this slice's claimed custom-editor boundary; no runtime/catalog change was made here.
 - Typecheck: `npm run typecheck` was started twice in `app/`, but this environment ended output at the 30-second command boundary before an exit result. It is therefore not claimed as passing. Native QA was not run; no browser substitute is claimed.
+
+## 2026-08-22 — Slice 4 release
+
+- Commit: `76eaebe1` (`feat(agents): make custom routes runtime-resolved`), limited to the claimed custom-agent editor, its two focused test files, and this ledger.
+- Result: custom agents no longer expose editable route/effort controls, retain legacy route/effort fields on save, and offer only the approved Project/Workspace choices. This commit does not alter provider dispatch, the shared catalog, Context Gateway, or protected-JARVIS runtime behavior.
+- Verification carried with the commit: custom route-neutral integration suite **4/4 passed**; focused preservation/scope lifecycle test **1/1 selected passed**; staged diff check passed. The broad protected-JARVIS lifecycle failures and non-completing full typecheck are retained as explicit branch-level blockers, not waived.
+- Lock state: release only `VS-CODEX-ROOT-UNIFIED-CUSTOM-AGENT-SCOPE-20260822`; concurrent locks and shared dirty paths remain untouched.
