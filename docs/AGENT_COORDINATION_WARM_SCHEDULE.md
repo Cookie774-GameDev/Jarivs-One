@@ -16,3 +16,10 @@
 - Fresh focused verification passed: 11 test files / 44 tests. `git diff --check` passed for the owned manifest. Full `npm run typecheck` and `npm run build` remain blocked only by four pre-existing, concurrently owned SiYuan test diagnostics in `siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`.
 - Official native VibeSpace was opened on the Warm Kanban route and its accessibility tree confirmed the real Kanban/task/milestone controls. The user stopped Windows Computer Use with Escape before screenshots and the requested native Schedule/Local Models lifecycle could be completed; no broader native verification is claimed.
 - Exact product commit is the next action. Unrelated Chat/model-catalog, SiYuan, `.vibespace/`, `context_map.json`, the legacy owner lock, and `docs/AGENT_COORDINATION_PR31.md` remain excluded and preserved.
+
+## 2026-08-21 22:36 CDT — committed handoff
+
+- Product commit: `9186f88c` (`feat(schedule): polish warm planning surfaces`) on `integration/UnifiedChungus-final`; base `a194bd29338f5c38df8f7467ddc3995295c31175`.
+- Exact commit manifest: 13 owned files covering Kanban source/test, Schedule source/model-picker test/recurrence source+test/draft persistence source+test, Local Models source/runtime test, warm-theme CSS/contract test, and this ledger. Commit shortstat: 1,011 insertions, 122 deletions.
+- Fresh pre-commit verification: focused/adjacent matrix passed 11 files / 44 tests; staged `git diff --check` passed. Full typecheck/build remain blocked only by the four documented concurrent SiYuan test diagnostics. Native Schedule/Local Models manual acceptance remains pending because the user stopped Windows Computer Use.
+- All unrelated dirty files remain unstaged and preserved. The exact product write scope is released at `9186f88c`; only this final append-only coordination record follows.
