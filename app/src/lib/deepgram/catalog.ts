@@ -29,8 +29,7 @@ export interface DeepgramSttOption {
 
 export const DEEPGRAM_PRICE_LAST_UPDATED = DEEPGRAM_PRICING_META.lastUpdated;
 export const DEEPGRAM_PRICE_SOURCE = DEEPGRAM_PRICING_META.sourceUrl;
-export const DEEPGRAM_MODEL_SOURCE =
-  'https://developers.deepgram.com/docs/models-languages-overview/';
+export const DEEPGRAM_MODEL_SOURCE = 'https://developers.deepgram.com/docs/model';
 const NOVA_2_STREAMING_PER_MINUTE = 0.35 / 60;
 
 export const DEEPGRAM_STT_OPTIONS: readonly DeepgramSttOption[] = Object.freeze([
@@ -44,9 +43,9 @@ export const DEEPGRAM_STT_OPTIONS: readonly DeepgramSttOption[] = Object.freeze(
     streaming: true,
     priceUsdPerMinute: 0.0048,
     languages: 'English and supported monolingual languages',
-    useCase: 'Best general-purpose quality at the lowest current public streaming price.',
+    useCase: 'General-purpose streaming transcription in the selected supported language.',
     qualityEvidence:
-      'Deepgram-published benchmark: 6.84% median streaming WER on 2,703 files / 81.69 hours across nine English domains.',
+      'Deepgram documents Nova-3 as a general-purpose speech-to-text model available through v1/listen.',
     qualityCaveat:
       'Provider benchmark, not a promised accuracy rate. Accent, language, microphone, noise, and domain vocabulary materially change results.',
   },
@@ -60,10 +59,10 @@ export const DEEPGRAM_STT_OPTIONS: readonly DeepgramSttOption[] = Object.freeze(
     streaming: true,
     priceUsdPerMinute: NOVA_2_STREAMING_PER_MINUTE,
     languages: 'Broad legacy language coverage',
-    useCase:
-      'Compatibility choice for filler words or languages/features not yet covered by Nova-3.',
-    qualityEvidence: 'Deepgram documents Nova-2 as the compatibility model behind Nova-3.',
-    qualityCaveat: 'No current comparable app-wide WER is published for this exact VibeSpace flow.',
+    useCase: 'Compatibility option for workflows that explicitly need the Nova-2 runtime.',
+    qualityEvidence: 'This option preserves a v1/listen Nova-2 compatibility runtime.',
+    qualityCaveat:
+      'Compare language and feature support with the current Deepgram documentation before choosing it; no VibeSpace-wide accuracy ranking is claimed.',
   },
   {
     id: 'nova-3-multi',
@@ -75,9 +74,8 @@ export const DEEPGRAM_STT_OPTIONS: readonly DeepgramSttOption[] = Object.freeze(
     streaming: true,
     priceUsdPerMinute: 0.0058,
     languages: 'Automatic multilingual/code-switching support',
-    useCase: 'Meetings or dictation that may switch languages.',
-    qualityEvidence:
-      'Deepgram identifies Nova-3 Multilingual as its highest-accuracy multilingual model.',
+    useCase: 'Streaming transcription where the selected multilingual runtime is appropriate.',
+    qualityEvidence: 'Deepgram documents the multilingual Nova-3 runtime on v1/listen.',
     qualityCaveat: 'Language mix and domain audio can differ from provider evaluation data.',
   },
   {
@@ -89,9 +87,11 @@ export const DEEPGRAM_STT_OPTIONS: readonly DeepgramSttOption[] = Object.freeze(
     streaming: true,
     priceUsdPerMinute: 0.0065,
     languages: 'English (all accents)',
-    useCase: 'Interactive voice with model-native turn detection and interruption handling.',
-    qualityEvidence: 'Deepgram documents Flux as delivering Nova-3-level conversational accuracy.',
-    qualityCaveat: 'No directly comparable public WER is shown for this exact preset.',
+    useCase: 'Conversational voice-agent flows with Flux turn events and end-of-turn handling.',
+    qualityEvidence:
+      'Deepgram documents Flux as a conversational speech-to-text model on v2/listen.',
+    qualityCaveat:
+      'Turn timing is not a latency guarantee; network, audio, and provider settings affect observed responsiveness.',
   },
   {
     id: 'flux-multi',
@@ -102,9 +102,11 @@ export const DEEPGRAM_STT_OPTIONS: readonly DeepgramSttOption[] = Object.freeze(
     streaming: true,
     priceUsdPerMinute: 0.0078,
     languages: '10-language conversational model',
-    useCase: 'Multilingual voice-agent conversations with model-native turn detection.',
-    qualityEvidence: 'Deepgram documents multilingual Flux with Nova-3-level accuracy.',
-    qualityCaveat: 'No directly comparable public WER is shown for this exact preset.',
+    useCase: 'Multilingual conversational flows with Flux turn events and end-of-turn handling.',
+    qualityEvidence:
+      'Deepgram documents the multilingual Flux runtime as a v2/listen conversational model.',
+    qualityCaveat:
+      'Turn timing is not a latency guarantee; validate supported languages and live behavior against current provider documentation.',
   },
 ]);
 

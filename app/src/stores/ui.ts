@@ -232,6 +232,8 @@ export interface UIState {
   composerStt: boolean;
   /** True while composer toolbar dictation is active (chat mic or top-bar mic). Transient. */
   composerSttListening: boolean;
+  /** Register Ctrl+Space natively to open the VibeSpace mini dictation module. */
+  globalDictationEnabled: boolean;
   /** Global default font size for newly spawned or unscaled terminal panes. */
   defaultTerminalFontSize: number;
 
@@ -322,6 +324,7 @@ export interface UIState {
   setNewsPanelOpen: (v: boolean) => void;
   setComposerStt: (v: boolean) => void;
   setComposerSttListening: (v: boolean) => void;
+  setGlobalDictationEnabled: (v: boolean) => void;
   setDefaultTerminalFontSize: (v: number) => void;
   setNotificationMaster: (v: boolean) => void;
   setDoneNotification: (key: DoneNotificationKey, enabled: boolean) => void;
@@ -373,6 +376,7 @@ const defaults: Pick<
   | 'newsPanelOpen'
   | 'composerStt'
   | 'composerSttListening'
+  | 'globalDictationEnabled'
   | 'defaultTerminalFontSize'
   | 'notificationMaster'
   | 'doneNotifications'
@@ -420,6 +424,7 @@ const defaults: Pick<
   newsPanelOpen: false,
   composerStt: true,
   composerSttListening: false,
+  globalDictationEnabled: true,
   defaultTerminalFontSize: 9,
   notificationMaster: false,
   doneNotifications: createDefaultDoneNotifications(),
@@ -640,6 +645,7 @@ export const useUIStore = create<UIState>()(
       setNewsPanelOpen: (v) => set({ newsPanelOpen: v }),
       setComposerStt: (v) => set({ composerStt: v }),
       setComposerSttListening: (v) => set({ composerSttListening: v }),
+      setGlobalDictationEnabled: (v) => set({ globalDictationEnabled: v }),
       setDefaultTerminalFontSize: (v) =>
         set({ defaultTerminalFontSize: Math.max(1, Math.min(100, v)) }),
       setNotificationMaster: (v) => set({ notificationMaster: v }),
@@ -705,6 +711,7 @@ export const useUIStore = create<UIState>()(
         ambientAlwaysPlay: s.ambientAlwaysPlay,
         clockFormat: s.clockFormat,
         composerStt: s.composerStt,
+        globalDictationEnabled: s.globalDictationEnabled,
         defaultTerminalFontSize: s.defaultTerminalFontSize,
         notificationMaster: s.notificationMaster,
         doneNotifications: s.doneNotifications,

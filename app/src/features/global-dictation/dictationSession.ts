@@ -1,33 +1,24 @@
 /**
  * VibeSpace global dictation session — shared STT pipeline.
  *
- * The Ctrl+Space overlay transcribes through the SAME speech-to-text engines
- * and configuration as VibeSpace chat / composer STT. Resolution order:
- *
- *   1. Local faster-whisper — when it is the configured composer STT
- *      provider and the model is installed (same as the composer path).
- *   2. Web Speech — the built-in engine VibeSpace chat uses by default.
- *   3. Deepgram streaming — when a Deepgram voice key is configured.
- *   4. Groq Whisper — when a Groq key is configured.
- *
- * If none of those engines is available, the session fails with a clear
- * VibeSpace fix path. Global dictation NEVER routes through the OS default
- * dictation (Windows Win+H) — that is intentionally not a fallback here.
+ * The Ctrl+Space overlay uses the saved speech-to-text provider and the same
+ * Deepgram option as composer settings. It opens exactly one of local
+ * faster-whisper, built-in system speech, or Deepgram streaming; it never
+ * substitutes another available provider or invokes Windows Win+H.
  *
  * Privacy: audio goes only to the engine listed above that the user's own
  * settings selected (local engines keep it on device). Nothing is stored.
  */
 
-import { useAuthStore } from '@/stores/auth';
 import { isTauri } from '@/lib/utils';
 import { getDeepgramVoiceKey } from '@/lib/security/voiceKeys';
+import { getDeepgramSttOption, readDeepgramSttOption } from '@/lib/deepgram';
 import { VoiceService } from '@/features/voice/VoiceService';
 import {
   getComposerSttProvider,
   getFasterWhisperModel,
   startBatchAudioRecorder,
   transcribeFasterWhisper,
-  transcribeGroq,
   type FasterWhisperRecorder,
 } from '@/features/composer-stt/composerSttService';
 import { FasterWhisperManager } from '@/features/composer-stt/fasterWhisperManager';
@@ -39,7 +30,7 @@ import {
   NO_DICTATION_ENGINE_REASON,
 } from './dictationFailures';
 
-export type DictationEngineId = 'faster-whisper' | 'web-speech' | 'deepgram' | 'groq';
+export type DictationEngineId = 'faster-whisper' | 'web-speech' | 'deepgram';
 
 export interface GlobalDictationSession {
   engine: DictationEngineId;
@@ -55,14 +46,16 @@ export interface GlobalDictationSession {
 
 export const NO_ENGINE_MESSAGE = NO_DICTATION_ENGINE_REASON;
 
+let activeSessionToken: symbol | null = null;
+
 function micAvailable(): boolean {
-  return typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function';
+  return (
+    typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function'
+  );
 }
 
 async function fasterWhisperReady(): Promise<boolean> {
-  if (!isTauri) return false;
-  if (getComposerSttProvider() !== 'faster-whisper') return false;
-  if (!micAvailable() || !getAudioContextCtor()) return false;
+  if (!isTauri || !getAudioContextCtor()) return false;
   try {
     return await FasterWhisperManager.checkInstalled(getFasterWhisperModel());
   } catch {
@@ -170,58 +163,105 @@ function createWebSpeechSession(events: DictationEvents): GlobalDictationSession
 }
 
 /**
- * Open a dictation session on the first available shared-pipeline engine.
- * Throws with a clear fix path when nothing is available.
+ * Open exactly the engine selected in Settings. A process-wide token prevents
+ * two destinations from opening competing microphone sessions.
  */
-export async function createGlobalDictationSession(
+export async function createSelectedSttSession(
   events: DictationEvents = {},
 ): Promise<GlobalDictationSession> {
-  // 1. Configured local model — identical to the composer's provider choice.
-  if (await fasterWhisperReady()) {
-    const model = getFasterWhisperModel();
-    return createBatchSession(
-      'faster-whisper',
-      `Local faster-whisper (${model})`,
-      (blob) => transcribeFasterWhisper(blob, model),
-      events,
-    );
-  }
-
-  // 2. Built-in Web Speech — the default VibeSpace chat STT engine.
-  if (VoiceService.isSupported()) {
-    try {
-      return createWebSpeechSession(events);
-    } catch {
-      // Recognition constructor exists but refused to start - try cloud engines.
-    }
-  }
-
-  // 3. Deepgram streaming — same key used by VibeSpace voice features.
-  if (micAvailable() && (await getDeepgramVoiceKey())) {
-    const session = await createDeepgramDictationSession(events);
-    return {
-      engine: 'deepgram',
-      engineLabel: 'Deepgram (streaming)',
-      streaming: true,
-      stop: async () => session.stop(),
-      cancel: () => session.stop(),
-      getFinalText: () => session.getFinalText(),
-    };
-  }
-
-  // 4. Groq Whisper — same key used by the composer's cloud fallback.
-  const groqKey = useAuthStore.getState().apiKeys.groq;
-  if (micAvailable() && groqKey && getAudioContextCtor()) {
-    return createBatchSession(
-      'groq',
-      'Groq Whisper',
-      (blob) => transcribeGroq(blob, groqKey),
-      events,
-    );
-  }
-
   if (!micAvailable()) {
-    throw new Error('Microphone capture is not available in this runtime. Check your microphone permission for VibeSpace.');
+    throw new Error(
+      'Microphone capture is not available in this runtime. Check your microphone permission for VibeSpace.',
+    );
   }
-  throw new Error(NO_ENGINE_MESSAGE);
+  if (activeSessionToken) {
+    throw new Error(
+      'Another VibeSpace dictation session is already using the microphone. Stop it, then try again.',
+    );
+  }
+
+  const token = Symbol('selected-stt-session');
+  activeSessionToken = token;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (activeSessionToken === token) activeSessionToken = null;
+  };
+  const scopedEvents: DictationEvents = {
+    ...events,
+    onClose: () => {
+      release();
+      events.onClose?.();
+    },
+  };
+  const withRelease = (session: GlobalDictationSession): GlobalDictationSession => ({
+    ...session,
+    stop: async () => {
+      try {
+        await session.stop();
+      } finally {
+        release();
+      }
+    },
+    cancel: () => {
+      try {
+        session.cancel();
+      } finally {
+        release();
+      }
+    },
+  });
+
+  try {
+    const provider = getComposerSttProvider();
+    if (provider === 'faster-whisper') {
+      const model = getFasterWhisperModel();
+      if (!(await fasterWhisperReady())) {
+        throw new Error(
+          `The selected local faster-whisper model (${model}) is not ready. Install or repair it in Settings → Speech to Text, then retry.`,
+        );
+      }
+      return withRelease(
+        await createBatchSession(
+          'faster-whisper',
+          `Local faster-whisper (${model})`,
+          (blob) => transcribeFasterWhisper(blob, model),
+          scopedEvents,
+        ),
+      );
+    }
+
+    if (provider === 'deepgram') {
+      const optionId = readDeepgramSttOption();
+      const option = getDeepgramSttOption(optionId);
+      if (!(await getDeepgramVoiceKey())) {
+        throw new Error(
+          `The selected Deepgram model ${option.label} (${option.runtimeModel}, ${option.endpointVersion}/listen) needs a connected Deepgram key. Connect it in Settings → Speech to Text, then retry.`,
+        );
+      }
+      const session = await createDeepgramDictationSession(scopedEvents, optionId);
+      return withRelease({
+        engine: 'deepgram',
+        engineLabel: `Deepgram · ${option.label} (${option.runtimeModel}, ${option.endpointVersion}/listen)`,
+        streaming: true,
+        stop: async () => session.stop(),
+        cancel: () => session.stop(),
+        getFinalText: () => session.getFinalText(),
+      });
+    }
+
+    if (!VoiceService.isSupported()) {
+      throw new Error(
+        `The selected built-in system speech engine is unavailable in this window. ${NO_ENGINE_MESSAGE}`,
+      );
+    }
+    return withRelease(createWebSpeechSession(scopedEvents));
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
+
+/** Backwards-compatible name for the Ctrl+Space mini-module. */
+export const createGlobalDictationSession = createSelectedSttSession;

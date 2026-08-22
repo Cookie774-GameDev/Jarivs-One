@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
     ),
   },
   composer: {
-    provider: 'system' as 'system' | 'faster-whisper',
+    provider: 'system' as 'system' | 'faster-whisper' | 'deepgram',
     model: 'small',
     startBatchAudioRecorder: vi.fn(async () => ({
       captureWav: () => new Blob(['x'], { type: 'audio/wav' }),
@@ -163,25 +163,35 @@ describe('createGlobalDictationSession engine resolution', () => {
     session.cancel();
   });
 
-  it('uses Deepgram streaming when a voice key is configured', async () => {
+  it('uses the selected Deepgram streaming session before Web Speech', async () => {
+    mocks.composer.provider = 'deepgram';
     mocks.deepgramKey.value = 'dg_key';
+    mocks.voiceService.isSupported.mockReturnValue(true);
 
     const session = await createGlobalDictationSession();
 
     expect(session.engine).toBe('deepgram');
     expect(mocks.deepgramSession).toHaveBeenCalled();
+    expect(mocks.voiceService.startListening).not.toHaveBeenCalled();
     expect(session.getFinalText()).toBe('deepgram text');
+    await session.stop();
   });
 
-  it('uses Groq Whisper when only a Groq key is configured', async () => {
-    useAuthStore.setState({ apiKeys: { groq: 'gsk_test' } });
+  it('does not silently downgrade a selected Deepgram model when its key is missing', async () => {
+    mocks.composer.provider = 'deepgram';
+    mocks.voiceService.isSupported.mockReturnValue(true);
 
-    const session = await createGlobalDictationSession();
+    await expect(createGlobalDictationSession()).rejects.toThrow(/selected Deepgram/i);
+    expect(mocks.voiceService.startListening).not.toHaveBeenCalled();
+    expect(mocks.composer.transcribeGroq).not.toHaveBeenCalled();
+  });
 
-    expect(session.engine).toBe('groq');
-    await session.stop();
-    expect(mocks.composer.transcribeGroq).toHaveBeenCalled();
-    expect(session.getFinalText()).toBe('groq text');
+  it('does not silently downgrade a selected local faster-whisper model', async () => {
+    mocks.composer.provider = 'faster-whisper';
+    mocks.voiceService.isSupported.mockReturnValue(true);
+
+    await expect(createGlobalDictationSession()).rejects.toThrow(/selected local faster-whisper/i);
+    expect(mocks.voiceService.startListening).not.toHaveBeenCalled();
   });
 
   it('fails with a clear fix path (and an explicit no-Win+H statement) when no engine exists', async () => {

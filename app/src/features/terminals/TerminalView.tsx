@@ -87,7 +87,10 @@ import { shouldSendTerminalResize, type TerminalGridSize } from './terminalGeome
 import { applyTerminalFollowScroll, terminalUserHasScrolled } from './terminalViewport';
 import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
 import { startSttVolumeMeter, stopSttVolumeMeter } from '@/features/composer-stt/sttVolume';
-import { VoiceService } from '@/features/voice/VoiceService';
+import {
+  createSelectedSttSession,
+  type SelectedSttSession,
+} from '@/features/composer-stt/selectedSttSession';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import {
@@ -662,6 +665,7 @@ export function TerminalView({
   const exitFiredRef = useRef(false);
   const focusedRef = useRef(false);
   const dictatingRef = useRef(false);
+  const dictationSessionRef = useRef<SelectedSttSession | null>(null);
   const ignoreClearsUntilRef = useRef<number>(0);
   const suppressOutputUntilRef = useRef<number>(0);
   const lastResizeSentRef = useRef<TerminalGridSize | null>(null);
@@ -2249,54 +2253,79 @@ export function TerminalView({
     dictatingRef.current = dictating;
     if (dictating) {
       setComposerSttListening(true);
-    } else if (!VoiceService.isListening()) {
+    } else {
       setComposerSttListening(false);
     }
   }, [dictating, setComposerSttListening]);
 
   useEffect(() => {
-    return () => {
-      if (dictatingRef.current) VoiceService.stopListening();
+    const cancelDictation = () => {
+      const session = dictationSessionRef.current;
+      dictationSessionRef.current = null;
+      dictatingRef.current = false;
+      session?.cancel();
+      setDictating(false);
     };
-  }, []);
-
-  useEffect(() => {
-    const onStop = () => {
-      if (dictatingRef.current) {
-        VoiceService.stopListening();
-        setDictating(false);
-      }
+    const stopDictation = () => {
+      const session = dictationSessionRef.current;
+      dictationSessionRef.current = null;
+      dictatingRef.current = false;
+      if (session) void session.stop();
+      setDictating(false);
     };
-    window.addEventListener(COMPOSER_STT_STOP_EVENT, onStop);
-    return () => window.removeEventListener(COMPOSER_STT_STOP_EVENT, onStop);
-  }, []);
-
-  useEffect(() => {
+    const onStop = () => cancelDictation();
     const onGlobalSttToggle = (event: Event) => {
       if (!focusedRef.current) return;
       event.preventDefault?.();
       if (dictatingRef.current) {
-        VoiceService.stopListening();
-        setDictating(false);
+        stopDictation();
         return;
       }
-      if (!VoiceService.isSupported()) {
-        toast.warning('Voice unsupported', formatTerminalVoiceFailure('unsupported'));
-        return;
-      }
-      try {
-        if (VoiceService.isListening() || VoiceService.wantsListening()) {
-          VoiceService.interruptListening();
-        }
-        VoiceService.startListening();
-        setDictating(true);
-      } catch {
-        toast.error('Voice error', formatTerminalVoiceFailure('startup'));
-        setDictating(false);
-      }
+      dictatingRef.current = true;
+      setDictating(true);
+      let createdSession: SelectedSttSession | null = null;
+      void createSelectedSttSession({
+        onFinal: (text) => {
+          const sid = sessionRef.current;
+          const spoken = text.trim();
+          if (!sid || !spoken) return;
+          void invoke('terminal_write', { sessionId: sid, data: `${spoken} ` });
+        },
+        onError: (message) => {
+          dictationSessionRef.current = null;
+          dictatingRef.current = false;
+          setDictating(false);
+          toast.error('Terminal dictation', message);
+        },
+        onClose: () => {
+          if (createdSession && dictationSessionRef.current === createdSession) {
+            dictationSessionRef.current = null;
+            dictatingRef.current = false;
+            setDictating(false);
+          }
+        },
+      })
+        .then((session) => {
+          createdSession = session;
+          if (!dictatingRef.current) {
+            session.cancel();
+            return;
+          }
+          dictationSessionRef.current = session;
+        })
+        .catch(() => {
+          dictatingRef.current = false;
+          setDictating(false);
+          toast.error('Voice error', formatTerminalVoiceFailure('startup'));
+        });
     };
+    window.addEventListener(COMPOSER_STT_STOP_EVENT, onStop);
     window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
-    return () => window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
+    return () => {
+      window.removeEventListener(COMPOSER_STT_STOP_EVENT, onStop);
+      window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
+      cancelDictation();
+    };
   }, []);
 
   useEffect(() => {
@@ -2306,38 +2335,6 @@ export function TerminalView({
     }
     void startSttVolumeMeter();
     return () => stopSttVolumeMeter();
-  }, [dictating]);
-
-  useEffect(() => {
-    if (!dictating) return;
-    const offFinal = VoiceService.on('voice:final', ({ text }) => {
-      const sid = sessionRef.current;
-      const spoken = text.trim();
-      if (!sid || !spoken) return;
-      void invoke('terminal_write', {
-        sessionId: sid,
-        data: `${spoken} `,
-      });
-    });
-    const offError = VoiceService.on('voice:error', ({ kind, message }) => {
-      setDictating(false);
-      if (kind !== 'no_speech' && kind !== 'aborted') {
-        toast.error('Voice error', message);
-      }
-    });
-    const offEnd = VoiceService.on('voice:end', () => {
-      if (!VoiceService.isListening()) setDictating(false);
-    });
-    const offTimeout = VoiceService.on('voice:timeout', ({ reason }) => {
-      setDictating(false);
-      toast.info('Speech-to-text stopped', reason);
-    });
-    return () => {
-      offFinal();
-      offError();
-      offEnd();
-      offTimeout();
-    };
   }, [dictating]);
 
   const handleKill = async () => {

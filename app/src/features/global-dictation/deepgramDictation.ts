@@ -117,7 +117,9 @@ export async function createDeepgramDictationSession(
       events.onLevel?.(Math.min(1, parsed.transcript.length / 48));
       if (parsed.kind === 'final') {
         lastFinal = `${lastFinal} ${parsed.transcript}`.trim();
-        events.onFinal?.(lastFinal);
+        // Destinations commit one finalized utterance at a time. The complete
+        // accumulated transcript remains available through getFinalText().
+        events.onFinal?.(parsed.transcript);
       } else {
         events.onPartial?.(parsed.transcript);
       }

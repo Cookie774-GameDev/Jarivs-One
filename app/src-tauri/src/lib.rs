@@ -39,7 +39,7 @@
 //! New commands should be small and pure; heavy logic belongs in the Node
 //! runtime sidecar so we keep the Rust core boring and stable.
 
-use std::time::Duration;
+use std::{sync::Mutex, time::Duration};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -116,21 +116,63 @@ struct GlobalDictationShortcutConfig {
     opens_overlay: bool,
 }
 
+struct GlobalDictationShortcutState {
+    enabled: Mutex<bool>,
+}
+
+impl Default for GlobalDictationShortcutState {
+    fn default() -> Self {
+        // The renderer owns the persisted user preference and explicitly
+        // registers the shortcut after it has loaded. Starting disabled avoids
+        // a startup window where a saved-off shortcut could still fire.
+        Self {
+            enabled: Mutex::new(false),
+        }
+    }
+}
+
 /// Ctrl+Space global dictation.
 ///
-/// `opens_overlay: true`: outside VibeSpace the shortcut opens the VibeSpace
-/// dictation overlay; when the app itself is focused, `dictation_route`
-/// directs the press to the in-app composer STT instead (no floating
-/// overlay on top of the app). Both paths use the same speech-to-text
-/// pipeline as VibeSpace chat (local faster-whisper / Web Speech / Deepgram
-/// / Groq per Settings). VibeSpace never routes dictation through the OS
-/// default dictation (Windows Win+H).
+/// Ctrl+Space always opens the one compact VibeSpace dictation module. It
+/// never routes through OS dictation (Windows Win+H), including when the
+/// VibeSpace main window is already focused.
 fn global_dictation_shortcut_config() -> GlobalDictationShortcutConfig {
     GlobalDictationShortcutConfig {
         modifiers: Some(Modifiers::CONTROL),
         code: Code::Space,
         opens_overlay: true,
     }
+}
+
+fn global_dictation_shortcut() -> Shortcut {
+    let config = global_dictation_shortcut_config();
+    Shortcut::new(config.modifiers, config.code)
+}
+
+#[tauri::command]
+fn set_global_dictation_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let state = app.state::<GlobalDictationShortcutState>();
+    let mut current = state
+        .enabled
+        .lock()
+        .map_err(|_| "Global dictation shortcut state is unavailable.".to_string())?;
+    if *current == enabled {
+        return Ok(());
+    }
+
+    let shortcut = global_dictation_shortcut();
+    if enabled {
+        app.global_shortcut().register(shortcut).map_err(|_| {
+            "VibeSpace could not register Ctrl+Space. Check whether another app is using it."
+                .to_string()
+        })?;
+    } else {
+        app.global_shortcut()
+            .unregister(shortcut)
+            .map_err(|_| "VibeSpace could not unregister Ctrl+Space safely.".to_string())?;
+    }
+    *current = enabled;
+    Ok(())
 }
 
 fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
@@ -263,39 +305,33 @@ fn show_dictation_window(app: &tauri::AppHandle) {
     }
 }
 
-/// Where a Ctrl+Space press should route.
+/// Ctrl+Space has one route regardless of foreground focus.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum DictationRoute {
-    /// VibeSpace itself is focused: dictate into the focused in-app input
-    /// (composer STT pipeline) - no floating overlay on top of the app.
-    InApp,
-    /// Another application is focused: open the small VibeSpace overlay
-    /// that transcribes and pastes into that app.
+    /// The compact VibeSpace module transcribes and only pastes after confirm.
     Overlay,
 }
 
-/// Focus-aware dictation routing. Never returns a Win+H / OS-dictation path.
-fn dictation_route(main_window_focused: bool) -> DictationRoute {
-    if main_window_focused {
-        DictationRoute::InApp
-    } else {
-        DictationRoute::Overlay
-    }
+/// Never returns a Win+H / OS-dictation path.
+fn dictation_route(_main_window_focused: bool) -> DictationRoute {
+    DictationRoute::Overlay
 }
 
 fn handle_global_dictation_shortcut(app: &tauri::AppHandle) {
+    let enabled = app
+        .state::<GlobalDictationShortcutState>()
+        .enabled
+        .lock()
+        .map(|state| *state)
+        .unwrap_or(false);
+    if !enabled {
+        return;
+    }
     let main_focused = app
         .get_window("main")
         .and_then(|window| window.is_focused().ok())
         .unwrap_or(false);
     match dictation_route(main_focused) {
-        DictationRoute::InApp => {
-            if let Some(window) = app.get_window("main") {
-                // The frontend routes this to composer STT for the focused
-                // in-app input - same pipeline, no separate overlay UI.
-                let _ = window.emit("jarvis:global-dictation-in-app", ());
-            }
-        }
         DictationRoute::Overlay => show_dictation_window(app),
     }
 }
@@ -384,9 +420,8 @@ fn run_ordinary(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        // Ctrl+Space: focus-aware VibeSpace dictation.
-                        // In-app -> composer STT; outside -> small overlay.
-                        // Never routes through OS dictation (Win+H).
+                        // Ctrl+Space always opens the compact VibeSpace
+                        // module; never OS dictation (Win+H).
                         handle_global_dictation_shortcut(app);
                     }
                 })
@@ -403,6 +438,7 @@ fn run_ordinary(
         .manage(pets::PetWindowState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
         .manage(siyuan::SiyuanRuntimeState::default())
+        .manage(GlobalDictationShortcutState::default())
         .manage(runtime_context)
         .setup(|app| {
             match app.path().app_data_dir() {
@@ -521,15 +557,6 @@ fn run_ordinary(
                     _ => {}
                 })
                 .build(app)?;
-
-            let dictation_shortcut_config = global_dictation_shortcut_config();
-            let dictation_shortcut = Shortcut::new(
-                dictation_shortcut_config.modifiers,
-                dictation_shortcut_config.code,
-            );
-            if let Err(err) = app.global_shortcut().register(dictation_shortcut) {
-                eprintln!("[dictation] failed to register Ctrl+Space: {err}");
-            }
 
             if renderer_recovery_restart {
                 println!("[renderer-watchdog] recovery restart; skipping cold-start intro");
@@ -705,6 +732,7 @@ fn run_ordinary(
             credentials::credential_delete,
             dictation::dictation_paste_text,
             dictation::trigger_os_dictation,
+            set_global_dictation_enabled,
             faster_whisper::faster_whisper_model_path,
             faster_whisper::faster_whisper_check_installed,
             faster_whisper::faster_whisper_status,
@@ -1344,11 +1372,10 @@ wallpaper_master::wallpaper_full_cache_path";
     }
 
     #[test]
-    fn dictation_routes_in_app_when_vibespace_is_focused_and_overlay_otherwise() {
-        // Inside VibeSpace: no floating overlay - the press goes to the
-        // focused in-app input via composer STT.
-        assert_eq!(dictation_route(true), DictationRoute::InApp);
-        // Outside VibeSpace: the small overlay handles transcribe + paste.
+    fn dictation_routes_to_the_same_overlay_when_vibespace_is_focused_or_unfocused() {
+        // Focus no longer changes the destination: Ctrl+Space always opens
+        // the compact module that handles transcribe + confirm/paste.
+        assert_eq!(dictation_route(true), DictationRoute::Overlay);
         assert_eq!(dictation_route(false), DictationRoute::Overlay);
     }
 }

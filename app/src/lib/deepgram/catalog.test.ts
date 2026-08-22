@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEEPGRAM_STT_OPTIONS,
+  DEEPGRAM_MODEL_SOURCE,
   calculateDeepgramCost,
   deepgramHoursForBudget,
   deepgramListenUrl,
@@ -19,6 +20,16 @@ describe('Deepgram STT catalog', () => {
     ]);
     expect(DEEPGRAM_STT_OPTIONS).toHaveLength(5);
     expect(DEEPGRAM_STT_OPTIONS.every((option) => option.streaming)).toBe(true);
+  });
+
+  it('links model claims to the official Deepgram model documentation', () => {
+    expect(DEEPGRAM_MODEL_SOURCE).toBe('https://developers.deepgram.com/docs/model');
+    expect(DEEPGRAM_STT_OPTIONS.find((option) => option.id === 'flux-en')?.endpointVersion).toBe(
+      'v2',
+    );
+    expect(
+      DEEPGRAM_STT_OPTIONS.find((option) => option.id === 'nova-3-mono')?.endpointVersion,
+    ).toBe('v1');
   });
 
   it('calculates literal minute costs and $10 duration with stable rounding', () => {

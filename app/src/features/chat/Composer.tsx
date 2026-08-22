@@ -71,8 +71,6 @@ export function getAppearanceCommandHelp(): string {
   return `Available appearances: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /appearance to choose.`;
 }
 import {
-  cleanupAudioRecorder,
-  encodeWav,
   COMPOSER_STT_STOP_EVENT,
   COMPOSER_STT_TOGGLE_EVENT,
   FasterWhisperManager,
@@ -81,16 +79,12 @@ import {
   getFasterWhisperModel,
   isSystemSttAvailable,
   startBatchAudioRecorder,
-  STT_INACTIVITY_MS,
-  STT_ACTIVITY_RMS,
   sttVolumeRef,
   setSttVolumeLevel,
   resetSttVolume,
   startSttVolumeMeter,
   stopSttVolumeMeter,
   transcribeFasterWhisper,
-  transcribeGroq as transcribeGroqApi,
-  triggerWindowsNativeDictation,
   resolveComposerSttTextarea,
   type FasterWhisperRecorder,
 } from '@/features/composer-stt';
@@ -857,14 +851,6 @@ export function Composer({
   }, []);
   const optionPickerRef = useRef<SlashCommandOptionPickerRef>(null);
   const themePickerRef = useRef<ThemeSlashPickerRef>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const wavChunksRef = useRef<Float32Array[]>([]);
-  const audioSilenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastAudioActivityRef = useRef(0);
-
   const clearSttFinalizeTimer = useCallback(() => {
     if (sttFinalizeTimerRef.current) {
       clearTimeout(sttFinalizeTimerRef.current);
@@ -1398,43 +1384,6 @@ export function Composer({
       optionPickerOptions.some((o) => o.id === current) ? current : optionPickerOptions[0]!.id,
     );
   }, [optionPickerSignature]);
-
-  const clearAudioSilenceTimer = () => {
-    if (audioSilenceTimerRef.current) clearInterval(audioSilenceTimerRef.current);
-    audioSilenceTimerRef.current = null;
-  };
-
-  const stopGroqSttWithoutTranscribing = (
-    message = 'Speech-to-text stopped after 30 seconds without voice activity.',
-  ) => {
-    clearAudioSilenceTimer();
-    stopSttVolumeMeter();
-    batchRecorderRef.current?.stop();
-    batchRecorderRef.current = null;
-    const context = audioContextRef.current;
-    const chunks = wavChunksRef.current;
-    cleanupAudioRecorder(
-      audioProcessorRef.current,
-      audioSourceRef.current,
-      audioContextRef.current,
-      mediaStreamRef.current,
-    );
-    audioProcessorRef.current = null;
-    audioSourceRef.current = null;
-    audioContextRef.current = null;
-    mediaStreamRef.current = null;
-    wavChunksRef.current = [];
-    setSttListening(false);
-    setSttInterim('');
-    if (chunks.length > 0 && context) {
-      void transcribeGroq(
-        encodeWav(chunks, context.sampleRate),
-        useAuthStore.getState().apiKeys.groq ?? '',
-      );
-      return;
-    }
-    toast.info('Speech-to-text stopped', message);
-  };
 
   useEffect(() => {
     const onAsk = (e: Event) => {
@@ -4359,7 +4308,10 @@ export function Composer({
           setSttAwaitingFinal(false);
           sttSnapshotRef.current = null;
           VoiceService.setInactivityTimeoutMs(180_000);
-          await trySystemSttFallbacks();
+          toast.warning(
+            'Voice unsupported',
+            'The selected built-in system speech engine could not start. Check microphone permission or choose a different engine in Settings → Speech to Text.',
+          );
           return;
         }
         setSttListening(true);
@@ -4375,35 +4327,9 @@ export function Composer({
       }
       return;
     }
-    await trySystemSttFallbacks();
-  };
-
-  const trySystemSttFallbacks = async () => {
-    // VibeSpace engines first: Groq Whisper is part of the shared STT pipeline.
-    const groqKey = useAuthStore.getState().apiKeys.groq;
-    if (
-      groqKey &&
-      typeof navigator.mediaDevices?.getUserMedia === 'function' &&
-      getAudioContextCtor()
-    ) {
-      void startGroqStt(groqKey);
-      return;
-    }
-    // Explicit last resort for the COMPOSER only (never global dictation):
-    // OS voice typing, clearly labeled as an OS fallback.
-    if (isTauri) {
-      const triggered = await triggerWindowsNativeDictation();
-      if (triggered) {
-        toast.info(
-          'OS voice typing (fallback)',
-          'No VibeSpace speech engine is configured, so Windows voice typing will type into the composer. Add a Groq key or a local model in Settings → Speech to Text to use VibeSpace STT.',
-        );
-        return;
-      }
-    }
     toast.warning(
       'Voice unsupported',
-      'Free built-in speech recognition is not available. Add a Groq key or download a local model in Settings → Speech to Text.',
+      'The selected built-in system speech engine is unavailable in this window. Check microphone permission or choose a different engine in Settings → Speech to Text.',
     );
   };
 
@@ -4415,12 +4341,10 @@ export function Composer({
         'Local model missing',
         `Download the ${modelId} model in Settings → Speech to Text, or switch to system dictation.`,
       );
-      void startSystemStt();
       return;
     }
     if (typeof navigator.mediaDevices?.getUserMedia !== 'function' || !getAudioContextCtor()) {
       toast.warning('Microphone unavailable', formatComposerVoiceFailure('local_capture'));
-      void startSystemStt();
       return;
     }
     try {
@@ -4438,7 +4362,6 @@ export function Composer({
       setSttListening(false);
       setSttInterim('');
       toast.error('Voice error', formatComposerVoiceFailure('local_capture'));
-      void startSystemStt();
     }
   };
 
@@ -4453,7 +4376,6 @@ export function Composer({
   };
 
   const stopBatchStt = async (fromInactivity = false) => {
-    clearAudioSilenceTimer();
     stopSttVolumeMeter();
     const recorder = batchRecorderRef.current;
     batchRecorderRef.current = null;
@@ -4481,91 +4403,10 @@ export function Composer({
     } catch {
       if (gen !== transcribeGenRef.current) return;
       toast.error('Local transcription failed', formatComposerVoiceFailure('local_transcription'));
-      void startSystemStt();
     } finally {
       if (gen === transcribeGenRef.current) {
         setSttTranscribing(false);
         setSttInterim('');
-      }
-    }
-  };
-
-  const startGroqStt = async (apiKey: string) => {
-    try {
-      setSttInterim('Listening with Groq Whisper...');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
-      wavChunksRef.current = [];
-      const AudioCtor = getAudioContextCtor();
-      if (!AudioCtor) throw new Error('Audio recording is not available in this runtime.');
-      const context = new AudioCtor();
-      const source = context.createMediaStreamSource(stream);
-      // Use smaller buffer for lower latency — 2048 samples at 44.1kHz ≈ 46ms
-      // instead of 4096 samples at ~92ms. Shorter buffers mean faster activity
-      // detection and smoother waveform updates.
-      const processor = context.createScriptProcessor(2048, 1, 1);
-      audioContextRef.current = context;
-      audioSourceRef.current = source;
-      audioProcessorRef.current = processor;
-      lastAudioActivityRef.current = Date.now();
-      processor.onaudioprocess = (event) => {
-        const channel = event.inputBuffer.getChannelData(0);
-        let sum = 0;
-        for (let i = 0; i < channel.length; i += 1) {
-          const sample = channel[i] ?? 0;
-          sum += sample * sample;
-        }
-        const rms = Math.sqrt(sum / Math.max(1, channel.length));
-        if (rms > STT_ACTIVITY_RMS) {
-          lastAudioActivityRef.current = Date.now();
-        }
-        setSttVolumeLevel(Math.min(1, rms * 8));
-        wavChunksRef.current.push(new Float32Array(channel));
-      };
-      source.connect(processor);
-      processor.connect(context.destination);
-      clearAudioSilenceTimer();
-      audioSilenceTimerRef.current = setInterval(() => {
-        if (Date.now() - lastAudioActivityRef.current >= STT_INACTIVITY_MS) {
-          stopGroqSttWithoutTranscribing();
-        }
-      }, 1000);
-      setSttListening(true);
-    } catch {
-      clearAudioSilenceTimer();
-      cleanupAudioRecorder(
-        audioProcessorRef.current,
-        audioSourceRef.current,
-        audioContextRef.current,
-        mediaStreamRef.current,
-      );
-      audioProcessorRef.current = null;
-      audioSourceRef.current = null;
-      audioContextRef.current = null;
-      mediaStreamRef.current = null;
-      setSttListening(false);
-      setSttInterim('');
-      toast.error('Voice error', formatComposerVoiceFailure('groq_capture'));
-    }
-  };
-
-  const transcribeGroq = async (blob: Blob, apiKey: string) => {
-    if (blob.size === 0 || !apiKey) return;
-    const gen = transcribeGenRef.current;
-    setSttTranscribing(true);
-    setSttInterim('Transcribing…');
-    try {
-      const finalText = await transcribeGroqApi(blob, apiKey);
-      if (gen !== transcribeGenRef.current) return;
-      appendTranscript(finalText);
-    } catch {
-      if (gen !== transcribeGenRef.current) return;
-      toast.error('Groq transcription failed', formatComposerVoiceFailure('groq_transcription'));
-    } finally {
-      if (gen === transcribeGenRef.current) {
-        setSttTranscribing(false);
-        setSttInterim('');
-        requestAnimationFrame(() => textareaRef.current?.focus());
       }
     }
   };
@@ -4598,35 +4439,7 @@ export function Composer({
     }
     setSttListening(false);
     setSttInterim('');
-    clearAudioSilenceTimer();
     stopSttVolumeMeter();
-    if (audioContextRef.current || audioProcessorRef.current || audioSourceRef.current) {
-      const context = audioContextRef.current;
-      const chunks = wavChunksRef.current;
-      cleanupAudioRecorder(
-        audioProcessorRef.current,
-        audioSourceRef.current,
-        context,
-        mediaStreamRef.current,
-      );
-      audioProcessorRef.current = null;
-      audioSourceRef.current = null;
-      audioContextRef.current = null;
-      mediaStreamRef.current = null;
-      wavChunksRef.current = [];
-      if (chunks.length > 0 && context) {
-        void transcribeGroq(
-          encodeWav(chunks, context.sampleRate),
-          useAuthStore.getState().apiKeys.groq ?? '',
-        );
-      } else {
-        setSttTranscribing(false);
-        toast.warning('No speech captured', 'Try again and speak for at least one second.');
-      }
-      return;
-    }
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
     setSttAwaitingFinal(true);
     clearSttFinalizeTimer();
     sttFinalizeTimerRef.current = setTimeout(() => {
@@ -4655,14 +4468,7 @@ export function Composer({
       deepgramSessionRef.current?.stop();
       deepgramSessionRef.current = null;
       if (sttListening || sttAwaitingFinal) VoiceService.stopListening();
-      clearAudioSilenceTimer();
       stopSttVolumeMeter();
-      cleanupAudioRecorder(
-        audioProcessorRef.current,
-        audioSourceRef.current,
-        audioContextRef.current,
-        mediaStreamRef.current,
-      );
     };
   }, [clearSttFinalizeTimer, sttAwaitingFinal, sttListening]);
 

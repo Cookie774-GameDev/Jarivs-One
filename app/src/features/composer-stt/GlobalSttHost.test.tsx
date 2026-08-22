@@ -1,30 +1,19 @@
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalSttHost } from './GlobalSttHost';
-import {
-  COMPOSER_STT_TOGGLE_EVENT,
-  GLOBAL_DICTATION_IN_APP_EVENT,
-  requestComposerSttToggle,
-} from './composerSttService';
+import { COMPOSER_STT_TOGGLE_EVENT, requestComposerSttToggle } from './composerSttService';
 import { rememberSttEditableFromFocus, resetSttFocusMemoryForTests } from './insertText';
 
-const voiceMocks = vi.hoisted(() => {
-  const handlers = new Map<string, (payload: unknown) => void>();
-  return {
-    handlers,
-    startListening: vi.fn(() => true),
-    stopListening: vi.fn(),
-    isSupported: vi.fn(() => true),
-    isListening: vi.fn(() => false),
-    wantsListening: vi.fn(() => false),
-    setInactivityTimeoutMs: vi.fn(),
-    interruptListening: vi.fn(),
-    onVoice: vi.fn((event: string, handler: (payload: unknown) => void) => {
-      handlers.set(event, handler);
-      return () => handlers.delete(event);
-    }),
-  };
-});
+const selectedSessionMocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  events: new Map<string, (payload: unknown) => void>(),
+  stop: vi.fn(async () => undefined),
+  cancel: vi.fn(),
+}));
+
+vi.mock('./selectedSttSession', () => ({
+  createSelectedSttSession: selectedSessionMocks.create,
+}));
 
 const setComposerSttListening = vi.hoisted(() => vi.fn());
 const toastMocks = vi.hoisted(() => ({
@@ -33,28 +22,17 @@ const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
-vi.mock('@/features/voice/VoiceService', () => ({
-  VoiceService: {
-    startListening: voiceMocks.startListening,
-    stopListening: voiceMocks.stopListening,
-    isSupported: voiceMocks.isSupported,
-    isListening: voiceMocks.isListening,
-    wantsListening: voiceMocks.wantsListening,
-    setInactivityTimeoutMs: voiceMocks.setInactivityTimeoutMs,
-    interruptListening: voiceMocks.interruptListening,
-    on: voiceMocks.onVoice,
-  },
-}));
-
 vi.mock('@/stores/ui', () => ({
   useUIStore: (
     selector: (state: {
       composerStt: boolean;
+      globalDictationEnabled: boolean;
       setComposerSttListening: typeof setComposerSttListening;
     }) => unknown,
   ) =>
     selector({
       composerStt: true,
+      globalDictationEnabled: true,
       setComposerSttListening,
     }),
 }));
@@ -66,21 +44,30 @@ vi.mock('@/components/ui/toast', () => ({
 describe('GlobalSttHost', () => {
   beforeEach(() => {
     resetSttFocusMemoryForTests();
-    voiceMocks.handlers.clear();
-    voiceMocks.startListening.mockReset().mockReturnValue(true);
-    voiceMocks.stopListening.mockClear();
-    voiceMocks.isSupported.mockReset().mockReturnValue(true);
-    voiceMocks.isListening.mockReset().mockReturnValue(false);
-    voiceMocks.wantsListening.mockReset().mockReturnValue(false);
-    voiceMocks.interruptListening.mockClear();
-    voiceMocks.onVoice.mockClear();
+    selectedSessionMocks.events.clear();
+    selectedSessionMocks.stop.mockClear();
+    selectedSessionMocks.cancel.mockClear();
     setComposerSttListening.mockClear();
     toastMocks.info.mockClear();
     toastMocks.warning.mockClear();
     toastMocks.error.mockClear();
+    selectedSessionMocks.create.mockReset().mockImplementation(async (events) => {
+      selectedSessionMocks.events.set('partial', events.onPartial);
+      selectedSessionMocks.events.set('final', events.onFinal);
+      selectedSessionMocks.events.set('error', events.onError);
+      selectedSessionMocks.events.set('close', events.onClose);
+      return {
+        engine: 'web-speech',
+        engineLabel: 'Built-in speech recognition',
+        streaming: true,
+        stop: selectedSessionMocks.stop,
+        cancel: selectedSessionMocks.cancel,
+        getFinalText: () => '',
+      };
+    });
   });
 
-  it('starts dictation for the last focused global field after toolbar mic steals focus', () => {
+  it('starts the shared selected session for the last focused global field after toolbar mic steals focus', async () => {
     render(<GlobalSttHost />);
 
     const field = document.createElement('textarea');
@@ -93,16 +80,16 @@ describe('GlobalSttHost', () => {
     document.body.appendChild(micButton);
     micButton.focus();
 
-    requestComposerSttToggle('toolbar');
+    act(() => requestComposerSttToggle('toolbar'));
 
-    expect(voiceMocks.startListening).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(selectedSessionMocks.create).toHaveBeenCalledOnce());
     expect(setComposerSttListening).toHaveBeenCalledWith(true);
 
     field.remove();
     micButton.remove();
   });
 
-  it('preempts an active Jarvis voice listener when toolbar dictation starts', () => {
+  it('uses the shared selected session for a system selection instead of direct VoiceService access', async () => {
     render(<GlobalSttHost />);
 
     const field = document.createElement('textarea');
@@ -111,18 +98,15 @@ describe('GlobalSttHost', () => {
     field.focus();
     rememberSttEditableFromFocus(field);
 
-    voiceMocks.isListening.mockReturnValue(true);
+    act(() => requestComposerSttToggle('toolbar'));
 
-    requestComposerSttToggle('toolbar');
-
-    expect(voiceMocks.interruptListening).toHaveBeenCalledTimes(1);
-    expect(voiceMocks.startListening).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(selectedSessionMocks.create).toHaveBeenCalledOnce());
     expect(setComposerSttListening).toHaveBeenCalledWith(true);
 
     field.remove();
   });
 
-  it('routes the in-app Ctrl+Space event to composer STT instead of any overlay', () => {
+  it('does not route the native Ctrl+Space overlay event into an in-app field', () => {
     render(<GlobalSttHost />);
 
     const field = document.createElement('textarea');
@@ -131,22 +115,37 @@ describe('GlobalSttHost', () => {
     field.focus();
     rememberSttEditableFromFocus(field);
 
-    // Observe the relayed composer toggle event with its source.
-    const toggles: string[] = [];
-    const onToggle = (event: Event) =>
-      toggles.push(String((event as CustomEvent<{ source?: string }>).detail?.source));
-    window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
+    window.dispatchEvent(new CustomEvent('jarvis:global-dictation-toggle'));
 
-    // The Rust global-shortcut handler emits this when VibeSpace is focused.
-    window.dispatchEvent(new CustomEvent(GLOBAL_DICTATION_IN_APP_EVENT));
+    expect(selectedSessionMocks.create).not.toHaveBeenCalled();
+    field.remove();
+  });
 
-    expect(toggles).toEqual(['hotkey']);
-    // The in-app path starts the SAME shared STT engine for the focused
-    // field - no separate dictation window is involved.
-    expect(voiceMocks.startListening).toHaveBeenCalledTimes(1);
-    expect(setComposerSttListening).toHaveBeenCalledWith(true);
+  it('uses the selected Deepgram session for a generic field without starting Web Speech', async () => {
+    let events: { onFinal?: (text: string) => void } | undefined;
+    const stop = vi.fn(async () => undefined);
+    selectedSessionMocks.create.mockImplementation(async (nextEvents) => {
+      events = nextEvents;
+      return {
+        engine: 'deepgram',
+        engineLabel: 'Deepgram · Nova-3 Monolingual (nova-3, v1/listen)',
+        streaming: true,
+        stop,
+        cancel: vi.fn(),
+        getFinalText: () => '',
+      };
+    });
+    render(<GlobalSttHost />);
+    const field = document.createElement('textarea');
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
 
-    window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
+    act(() => requestComposerSttToggle('toolbar'));
+    await waitFor(() => expect(selectedSessionMocks.create).toHaveBeenCalledOnce());
+
+    act(() => events?.onFinal?.('Deepgram text'));
+    expect(field.value).toContain('Deepgram text');
     field.remove();
   });
 
@@ -161,31 +160,30 @@ describe('GlobalSttHost', () => {
       new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source: 'toolbar' } }),
     );
 
-    expect(voiceMocks.startListening).not.toHaveBeenCalled();
+    expect(selectedSessionMocks.create).not.toHaveBeenCalled();
 
     micButton.remove();
   });
 
-  it('does not interrupt Jarvis voice when toolbar dictation has no target field', () => {
+  it('does not open a selected session when toolbar dictation has no target field', () => {
     render(<GlobalSttHost />);
 
     const micButton = document.createElement('button');
     document.body.appendChild(micButton);
     micButton.focus();
-    voiceMocks.isListening.mockReturnValue(true);
-
     window.dispatchEvent(
       new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source: 'toolbar' } }),
     );
 
-    expect(voiceMocks.interruptListening).not.toHaveBeenCalled();
-    expect(voiceMocks.startListening).not.toHaveBeenCalled();
+    expect(selectedSessionMocks.create).not.toHaveBeenCalled();
 
     micButton.remove();
   });
 
-  it('uses precise shared narration when global speech recognition is unsupported', () => {
-    voiceMocks.isSupported.mockReturnValueOnce(false);
+  it('does not expose a selected-engine startup failure detail', async () => {
+    selectedSessionMocks.create.mockRejectedValueOnce(
+      new Error('synthetic selected-engine implementation detail'),
+    );
     render(<GlobalSttHost />);
     const field = document.createElement('textarea');
     document.body.appendChild(field);
@@ -194,59 +192,10 @@ describe('GlobalSttHost', () => {
 
     try {
       act(() => requestComposerSttToggle('toolbar'));
-
-      expect(toastMocks.warning).toHaveBeenCalledWith(
-        'Voice unsupported',
-        'The action failed, sir. Action: Global speech recognition availability. Cause: Speech-to-text is not available in this runtime.',
-      );
-      expect(voiceMocks.startListening).not.toHaveBeenCalled();
-    } finally {
-      field.remove();
-    }
-  });
-
-  it('uses precise shared narration when global speech recognition returns false', () => {
-    voiceMocks.startListening.mockReturnValueOnce(false);
-    render(<GlobalSttHost />);
-    const field = document.createElement('textarea');
-    document.body.appendChild(field);
-    field.focus();
-    rememberSttEditableFromFocus(field);
-
-    try {
-      act(() => requestComposerSttToggle('toolbar'));
-
-      expect(toastMocks.warning).toHaveBeenCalledWith(
-        'Voice unsupported',
-        'The action failed, sir. Action: Global speech recognition startup. Cause: Voice-to-text could not start for the focused field. Check microphone access, then try again.',
-      );
-      expect(setComposerSttListening).not.toHaveBeenCalledWith(true);
-    } finally {
-      field.remove();
-    }
-  });
-
-  it('does not expose a thrown global speech-recognition startup detail', () => {
-    voiceMocks.startListening.mockImplementationOnce(() => {
-      throw new Error('synthetic global startup implementation detail');
-    });
-    render(<GlobalSttHost />);
-    const field = document.createElement('textarea');
-    document.body.appendChild(field);
-    field.focus();
-    rememberSttEditableFromFocus(field);
-
-    try {
-      act(() => requestComposerSttToggle('toolbar'));
-
-      expect(toastMocks.error).toHaveBeenCalledWith(
-        'Voice error',
-        'The action failed, sir. Action: Global speech recognition startup. Cause: Voice-to-text could not start for the focused field. Check microphone access, then try again.',
-      );
+      await waitFor(() => expect(toastMocks.error).toHaveBeenCalledWith('Dictation error', expect.any(String)));
       expect(toastMocks.error.mock.calls[0]?.[1]).not.toContain(
-        'synthetic global startup implementation detail',
+        'synthetic selected-engine implementation detail',
       );
-      expect(setComposerSttListening).not.toHaveBeenCalledWith(true);
     } finally {
       field.remove();
     }
@@ -260,10 +209,10 @@ describe('GlobalSttHost', () => {
     rememberSttEditableFromFocus(field);
 
     act(() => requestComposerSttToggle('toolbar'));
-    await waitFor(() => expect(voiceMocks.handlers.has('voice:final')).toBe(true));
+    await waitFor(() => expect(selectedSessionMocks.events.has('final')).toBe(true));
     field.remove();
 
-    act(() => voiceMocks.handlers.get('voice:final')?.({ text: 'detached target text' }));
+    act(() => selectedSessionMocks.events.get('final')?.('detached target text'));
 
     expect(toastMocks.warning).toHaveBeenCalledWith(
       'Dictation',
@@ -281,17 +230,13 @@ describe('GlobalSttHost', () => {
 
     try {
       act(() => requestComposerSttToggle('toolbar'));
-      await waitFor(() => expect(voiceMocks.handlers.has('voice:final')).toBe(true));
+      await waitFor(() => expect(selectedSessionMocks.events.has('final')).toBe(true));
 
-      // Continuous free system STT stays armed after the first phrase.
-      voiceMocks.isListening.mockReturnValue(true);
-      voiceMocks.wantsListening.mockReturnValue(true);
-
-      act(() => voiceMocks.handlers.get('voice:final')?.({ text: 'hello' }));
+      act(() => selectedSessionMocks.events.get('final')?.('hello'));
       expect(field.value).toContain('hello');
       expect(toastMocks.warning).not.toHaveBeenCalled();
 
-      act(() => voiceMocks.handlers.get('voice:final')?.({ text: 'world' }));
+      act(() => selectedSessionMocks.events.get('final')?.('world'));
       expect(field.value).toMatch(/hello/i);
       expect(field.value).toMatch(/world/i);
       expect(toastMocks.warning).not.toHaveBeenCalledWith(
@@ -317,9 +262,9 @@ describe('GlobalSttHost', () => {
 
     try {
       act(() => requestComposerSttToggle('toolbar'));
-      await waitFor(() => expect(voiceMocks.handlers.has('voice:final')).toBe(true));
+      await waitFor(() => expect(selectedSessionMocks.events.has('final')).toBe(true));
 
-      act(() => voiceMocks.handlers.get('voice:final')?.({ text: 'rejected target text' }));
+      act(() => selectedSessionMocks.events.get('final')?.('rejected target text'));
 
       expect(toastMocks.warning).toHaveBeenCalledWith(
         'Dictation',

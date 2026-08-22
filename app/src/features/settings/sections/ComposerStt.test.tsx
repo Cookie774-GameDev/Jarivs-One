@@ -75,7 +75,7 @@ describe('ComposerStt settings', () => {
     });
   });
 
-  it('exposes the shared Deepgram credential and five verified STT choices', async () => {
+  it('exposes the shared Deepgram credential and accessible, non-logo model selection', async () => {
     render(<ComposerStt />);
     fireEvent.click(screen.getByRole('radio', { name: /Deepgram/i }));
     expect(useAuthStore.getState().composerSttProvider).toBe('deepgram');
@@ -85,9 +85,12 @@ describe('ComposerStt settings', () => {
     expect(screen.getAllByText('Nova-3 Multilingual').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Flux English').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Flux Multilingual').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('deepgram-model-mark')).toHaveLength(5);
-    expect(screen.getByRole('img', { name: 'Nova-3 Monolingual model' })).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'Flux English model' })).toBeTruthy();
+    expect(screen.queryAllByTestId('deepgram-model-mark')).toHaveLength(0);
+    expect(screen.getAllByRole('img', { name: 'Deepgram' }).length).toBeGreaterThan(0);
+    const selected = screen.getByRole('radio', { name: /Nova-3 Monolingual.*selected/i });
+    expect(selected.getAttribute('aria-checked')).toBe('true');
+    expect(selected.textContent).toContain('Selected');
+    expect(selected.className).toContain('border-accent-copper');
     expect(screen.getByText(/Prices verified 2026-08-02/i)).toBeTruthy();
   });
 

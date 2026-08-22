@@ -20,7 +20,7 @@ import { openSystemSpeechSettings } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
 import type { ComposerSttProvider, FasterWhisperModelId } from '@/types/common';
 import { DeepgramCredentialCard } from '../components/DeepgramCredentialCard';
-import { DeepgramBrandMark, DeepgramModelMark } from '../components/DeepgramBrandMark';
+import { DeepgramBrandMark } from '../components/DeepgramBrandMark';
 import {
   DEEPGRAM_MODEL_SOURCE,
   DEEPGRAM_PRICE_LAST_UPDATED,
@@ -261,11 +261,13 @@ export function ComposerStt() {
 
             <section aria-label="Deepgram speech-to-text models" className="space-y-3">
               <div>
-                <Label className="text-sm font-medium text-foreground">Streaming model</Label>
+                <Label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <DeepgramBrandMark className="h-5 w-5 rounded-md" /> Streaming model
+                </Label>
                 <p className="text-metadata text-muted-foreground">
-                  Five verified choices. Price does not imply accuracy: Nova-3 is Deepgram's
-                  highest-performing general-purpose ASR and is also its cheapest current public
-                  streaming rate.
+                  Cataloged against Deepgram’s official model documentation. Each option shows its
+                  exact runtime ID and endpoint; quality and latency depend on language, audio,
+                  network, and the provider’s evolving service.
                 </p>
               </div>
               <div className="grid gap-2" role="radiogroup" aria-label="Deepgram STT model">
@@ -277,35 +279,46 @@ export function ComposerStt() {
                       type="button"
                       role="radio"
                       aria-checked={selected}
+                      aria-label={`${option.label}, ${option.runtimeModel}, ${option.endpointVersion}/listen${selected ? ', selected' : ''}`}
                       onClick={() => {
                         setDeepgramOptionId(option.id);
                         setCalculatorOptionId(option.id);
                         writeDeepgramSttOption(option.id);
                       }}
                       className={cn(
-                        'rounded-xl border p-3 text-left transition-colors',
+                        'rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper focus-visible:ring-offset-2',
                         selected
-                          ? 'border-accent-cyan/60 bg-accent-cyan/5'
+                          ? 'border-2 border-accent-copper bg-accent-copper/8 shadow-[inset_0_0_0_1px_hsl(var(--accent-copper)/0.45)] [html[data-theme=monochrome]_&]:border-foreground [html[data-theme=monochrome]_&]:shadow-[inset_0_0_0_1px_currentColor]'
                           : 'border-border/80 bg-panel/60 hover:bg-elevated/70',
                       )}
                     >
-                      <span className="flex items-start gap-3">
-                        <DeepgramModelMark id={option.id} label={option.label} />
+                      <span className="flex min-w-0 items-start justify-between gap-2">
                         <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="flex flex-wrap items-center gap-2">
                             <span className="font-semibold text-foreground">{option.label}</span>
-                            <span className="font-mono text-xs text-foreground">
-                              ${option.priceUsdPerMinute.toFixed(4)}/min
-                            </span>
+                            <Badge variant="outline" className="font-mono text-[10px]">
+                              {option.runtimeModel}
+                            </Badge>
+                            <Badge variant="outline" className="font-mono text-[10px]">
+                              {option.endpointVersion}/listen
+                            </Badge>
+                            {selected ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-accent-copper [html[data-theme=monochrome]_&]:text-foreground">
+                                <Check aria-hidden="true" className="h-3.5 w-3.5" /> Selected
+                              </span>
+                            ) : null}
                           </span>
                           <span className="mt-1 block text-metadata text-muted-foreground">
                             {option.useCase}
                           </span>
                         </span>
+                        <span className="shrink-0 font-mono text-xs text-foreground">
+                          ${option.priceUsdPerMinute.toFixed(4)}/min
+                        </span>
                       </span>
                       <span className="mt-1 block text-metadata text-muted-foreground">
-                        $10 ≈ {deepgramHoursForBudget(option.id)} continuous hours ·{' '}
-                        {option.languages}
+                        Streaming · {option.languages} · $10 ≈ {deepgramHoursForBudget(option.id)}{' '}
+                        continuous hours
                       </span>
                       <span className="mt-2 block text-metadata text-foreground">
                         Quality evidence: {option.qualityEvidence}

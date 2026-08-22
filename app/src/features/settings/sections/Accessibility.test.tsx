@@ -37,13 +37,13 @@ function installMotionPreference(initial: boolean) {
 
 describe('Accessibility settings', () => {
   beforeEach(() => {
-    useUIStore.setState({ composerStt: true });
+    useUIStore.setState({ composerStt: true, globalDictationEnabled: true });
   });
 
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
-    useUIStore.setState({ composerStt: true });
+    useUIStore.setState({ composerStt: true, globalDictationEnabled: true });
   });
 
   it('groups every existing accessibility feature into named, scannable regions', () => {
@@ -54,7 +54,9 @@ describe('Accessibility settings', () => {
     expect(
       within(speech).getByRole('switch', { name: 'Voice-to-text in the composer' }),
     ).toBeTruthy();
-    expect(within(speech).getByText('VibeSpace global dictation')).toBeTruthy();
+    expect(
+      within(speech).getByRole('switch', { name: 'Global dictation with Ctrl+Space' }),
+    ).toBeTruthy();
 
     const comfort = screen.getByRole('region', { name: 'Visual comfort and focus' });
     expect(within(comfort).getByText('Reduced motion')).toBeTruthy();
@@ -76,6 +78,16 @@ describe('Accessibility settings', () => {
     fireEvent.keyDown(control, { key: ' ' });
     fireEvent.click(control);
     expect(useUIStore.getState().composerStt).toBe(false);
+  });
+
+  it('persists a distinct global Ctrl+Space registration preference', () => {
+    installMotionPreference(false);
+    render(<Accessibility />);
+
+    const control = screen.getByRole('switch', { name: 'Global dictation with Ctrl+Space' });
+    expect(control.getAttribute('aria-describedby')).toBe('global-dictation-enabled-description');
+    fireEvent.click(control);
+    expect(useUIStore.getState().globalDictationEnabled).toBe(false);
   });
 
   it('announces operating-system reduced-motion changes without requiring a reload', () => {

@@ -1,15 +1,16 @@
 import * as React from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
-import { VoiceService } from '@/features/voice/VoiceService';
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import { useUIStore } from '@/stores/ui';
 import {
   COMPOSER_STT_STOP_EVENT,
   COMPOSER_STT_TOGGLE_EVENT,
-  GLOBAL_DICTATION_IN_APP_EVENT,
   requestComposerSttToggle,
   type ComposerSttToggleSource,
 } from './composerSttService';
+import { createSelectedSttSession, type SelectedSttSession } from './selectedSttSession';
 import {
   insertTextIntoEditable,
   isGlobalSttEditable,
@@ -27,13 +28,6 @@ import {
 import { startSttVolumeMeter, stopSttVolumeMeter } from './sttVolume';
 
 const FINALIZE_GRACE_MS = 2_500;
-/** Free/default system STT: 3 minutes of no speech before timeout. */
-const DEFAULT_INACTIVITY_MS = 180_000;
-const GLOBAL_STT_UNSUPPORTED_FAILURE = formatJarvisVerifiedNarration({
-  kind: 'failure',
-  actionLabel: 'Global speech recognition availability',
-  reason: 'Speech-to-text is not available in this runtime',
-}).text;
 const GLOBAL_STT_START_FAILURE = formatJarvisVerifiedNarration({
   kind: 'failure',
   actionLabel: 'Global speech recognition startup',
@@ -63,9 +57,12 @@ function isTextInputField(el: HTMLElement): el is HTMLInputElement | HTMLTextAre
 export function GlobalSttHost() {
   const composerSttEnabled = useUIStore((s) => s.composerStt);
   const setComposerSttListening = useUIStore((s) => s.setComposerSttListening);
+  const globalDictationEnabled = useUIStore((s) => s.globalDictationEnabled);
   const [listening, setListening] = React.useState(false);
   const targetRef = React.useRef<HTMLElement | null>(null);
   const snapshotRef = React.useRef<SttFieldSnapshot | null>(null);
+  const selectedSessionRef = React.useRef<SelectedSttSession | null>(null);
+  const sessionGenerationRef = React.useRef(0);
   const finalizeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const awaitingFinalRef = React.useRef(false);
 
@@ -94,12 +91,10 @@ export function GlobalSttHost() {
       setListening(false);
       setComposerSttListening(false);
       stopSttVolumeMeter();
-      VoiceService.setInactivityTimeoutMs(DEFAULT_INACTIVITY_MS);
-      try {
-        VoiceService.stopListening();
-      } catch {
-        // Engine may already be torn down.
-      }
+      const selectedSession = selectedSessionRef.current;
+      selectedSessionRef.current = null;
+      sessionGenerationRef.current += 1;
+      selectedSession?.cancel();
     },
     [clearFinalizeTimer, revertPreview, setComposerSttListening],
   );
@@ -110,21 +105,29 @@ export function GlobalSttHost() {
     setComposerSttListening(false);
     stopSttVolumeMeter();
     awaitingFinalRef.current = true;
-    try {
-      VoiceService.stopListening();
-    } catch {
-      awaitingFinalRef.current = false;
-      revertPreview();
-      targetRef.current = null;
-      snapshotRef.current = null;
+    const selectedSession = selectedSessionRef.current;
+    if (selectedSession) {
+      selectedSessionRef.current = null;
+      void selectedSession.stop().finally(() => {
+        if (!awaitingFinalRef.current) return;
+        clearFinalizeTimer();
+        finalizeTimerRef.current = setTimeout(() => {
+          awaitingFinalRef.current = false;
+          revertPreview();
+          targetRef.current = null;
+        }, FINALIZE_GRACE_MS);
+      });
       return;
     }
+    // Session startup is async for every selected engine. A quick second
+    // toggle cancels a still-pending startup instead of letting it acquire
+    // the microphone after the user has stopped dictating.
+    sessionGenerationRef.current += 1;
+    awaitingFinalRef.current = false;
     clearFinalizeTimer();
-    finalizeTimerRef.current = setTimeout(() => {
-      awaitingFinalRef.current = false;
-      revertPreview();
-      targetRef.current = null;
-    }, FINALIZE_GRACE_MS);
+    revertPreview();
+    targetRef.current = null;
+    snapshotRef.current = null;
   }, [clearFinalizeTimer, listening, revertPreview, setComposerSttListening]);
 
   const start = React.useCallback(
@@ -132,36 +135,87 @@ export function GlobalSttHost() {
       const focused = target ?? resolveGlobalSttEditable();
       if (!focused || !isGlobalSttEditable(focused)) return;
 
-      if (!VoiceService.isSupported()) {
-        toast.warning('Voice unsupported', GLOBAL_STT_UNSUPPORTED_FAILURE);
-        return;
-      }
-      try {
-        snapshotRef.current = isTextInputField(focused) ? captureSttFieldSnapshot(focused) : null;
-        VoiceService.setInactivityTimeoutMs(DEFAULT_INACTIVITY_MS);
-        const started = VoiceService.startListening();
-        if (!started) {
-          snapshotRef.current = null;
-          toast.warning('Voice unsupported', GLOBAL_STT_START_FAILURE);
+      const insertFinal = (spoken: string) => {
+        const trimmed = spoken.trim();
+        if (!trimmed) return;
+        const field = targetRef.current;
+        if (!field || !document.contains(field) || !isGlobalSttEditable(field)) {
+          toast.warning('Dictation', GLOBAL_STT_TARGET_UNAVAILABLE_FAILURE);
           return;
         }
-        focused.focus();
-        targetRef.current = focused;
-        setListening(true);
-        setComposerSttListening(true);
-        void startSttVolumeMeter();
-      } catch {
-        snapshotRef.current = null;
-        targetRef.current = null;
-        setListening(false);
-        setComposerSttListening(false);
-        toast.error('Voice error', GLOBAL_STT_START_FAILURE);
-      }
+        if (isTextInputField(field)) {
+          const snapshot = snapshotRef.current ?? captureSttFieldSnapshot(field);
+          if (!commitSttInField(field, snapshot, trimmed)) return;
+          snapshotRef.current = captureSttFieldSnapshot(field);
+        } else if (!insertTextIntoEditable(field, trimmed)) {
+          toast.warning('Dictation', GLOBAL_STT_INSERTION_REJECTED_FAILURE);
+          return;
+        }
+        awaitingFinalRef.current = false;
+        clearFinalizeTimer();
+        rememberSttEditableFromFocus(field);
+      };
+
+      // The same selected-engine session is used for every generic field,
+      // including built-in system speech. No field may silently substitute
+      // the browser engine for a selected Deepgram or local session.
+      const generation = ++sessionGenerationRef.current;
+      snapshotRef.current = isTextInputField(focused) ? captureSttFieldSnapshot(focused) : null;
+      focused.focus();
+      targetRef.current = focused;
+      setListening(true);
+      setComposerSttListening(true);
+      void startSttVolumeMeter();
+      void createSelectedSttSession({
+        onPartial: (partial) => {
+          const field = targetRef.current;
+          if (!field || !isTextInputField(field)) return;
+          const snapshot = snapshotRef.current ?? captureSttFieldSnapshot(field);
+          snapshotRef.current = snapshot;
+          previewSttInField(field, snapshot, partial);
+        },
+        onFinal: insertFinal,
+        onError: (message) => {
+          endSession(true);
+          toast.error('Dictation error', message);
+        },
+        onClose: () => {
+          if (!awaitingFinalRef.current) {
+            setListening(false);
+            setComposerSttListening(false);
+            stopSttVolumeMeter();
+          }
+        },
+      })
+        .then((session) => {
+          if (sessionGenerationRef.current !== generation) {
+            session.cancel();
+            return;
+          }
+          selectedSessionRef.current = session;
+        })
+        .catch(() => {
+          if (sessionGenerationRef.current !== generation) return;
+          snapshotRef.current = null;
+          targetRef.current = null;
+          setListening(false);
+          setComposerSttListening(false);
+          toast.error('Dictation error', GLOBAL_STT_START_FAILURE);
+        });
     },
-    [setComposerSttListening],
+    [clearFinalizeTimer, endSession, setComposerSttListening],
   );
 
   React.useEffect(() => mountSttFocusTracking(), []);
+
+  // The switch is persisted in React, but registration itself is native. Keep
+  // the OS shortcut in sync on startup and every preference change.
+  React.useEffect(() => {
+    if (!isTauri) return;
+    void invoke('set_global_dictation_enabled', { enabled: globalDictationEnabled }).catch(() => {
+      // The web preview has no native global shortcut; the setting stays saved.
+    });
+  }, [globalDictationEnabled]);
 
   React.useEffect(() => {
     const onStop = () => {
@@ -170,104 +224,6 @@ export function GlobalSttHost() {
     window.addEventListener(COMPOSER_STT_STOP_EVENT, onStop);
     return () => window.removeEventListener(COMPOSER_STT_STOP_EVENT, onStop);
   }, [listening, stop]);
-
-  React.useEffect(() => {
-    if (!listening && !awaitingFinalRef.current) return;
-
-    /** Prefer the locked session field; recover from focus memory if it remounted. */
-    const resolveSessionTarget = (): HTMLElement | null => {
-      const current = targetRef.current;
-      if (current && document.contains(current) && isGlobalSttEditable(current)) {
-        return current;
-      }
-      const recovered = resolveGlobalSttEditable(current);
-      if (recovered && document.contains(recovered) && isGlobalSttEditable(recovered)) {
-        targetRef.current = recovered;
-        if (isTextInputField(recovered)) {
-          snapshotRef.current = captureSttFieldSnapshot(recovered);
-        } else {
-          snapshotRef.current = null;
-        }
-        rememberSttEditableFromFocus(recovered);
-        return recovered;
-      }
-      return null;
-    };
-
-    const insertAtTarget = (spoken: string) => {
-      const trimmed = spoken.trim();
-      if (!trimmed) return;
-      const target = resolveSessionTarget();
-      if (!target) {
-        toast.warning('Dictation', GLOBAL_STT_TARGET_UNAVAILABLE_FAILURE);
-        return;
-      }
-      if (isTextInputField(target)) {
-        const snapshot = snapshotRef.current ?? captureSttFieldSnapshot(target);
-        if (!commitSttInField(target, snapshot, trimmed)) return;
-        // Continuous free STT: keep the same field and refresh caret snapshot
-        // so the next utterance inserts after this one (do not drop target).
-        snapshotRef.current = captureSttFieldSnapshot(target);
-      } else if (!insertTextIntoEditable(target, trimmed)) {
-        toast.warning('Dictation', GLOBAL_STT_INSERTION_REJECTED_FAILURE);
-        return;
-      }
-      awaitingFinalRef.current = false;
-      clearFinalizeTimer();
-      targetRef.current = target;
-      rememberSttEditableFromFocus(target);
-    };
-
-    const offPartial = VoiceService.on('voice:partial', ({ text: partial }) => {
-      const target = resolveSessionTarget();
-      if (!target || !isTextInputField(target)) return;
-      const snapshot = snapshotRef.current ?? captureSttFieldSnapshot(target);
-      snapshotRef.current = snapshot;
-      previewSttInField(target, snapshot, partial);
-    });
-
-    const offFinal = VoiceService.on('voice:final', ({ text }) => {
-      insertAtTarget(text);
-      if (!VoiceService.isListening() && !VoiceService.wantsListening()) {
-        setListening(false);
-        setComposerSttListening(false);
-        stopSttVolumeMeter();
-        // Session truly over — release the field lock.
-        targetRef.current = null;
-        snapshotRef.current = null;
-      }
-    });
-
-    const offError = VoiceService.on('voice:error', ({ kind, message }) => {
-      endSession(kind === 'aborted');
-      if (kind !== 'no_speech' && kind !== 'aborted') {
-        toast.error('Voice error', message);
-      }
-    });
-
-    const offEnd = VoiceService.on('voice:end', () => {
-      if (!VoiceService.isListening() && !VoiceService.wantsListening()) {
-        if (!awaitingFinalRef.current) {
-          setListening(false);
-          setComposerSttListening(false);
-          stopSttVolumeMeter();
-        }
-      }
-    });
-
-    const offTimeout = VoiceService.on('voice:timeout', ({ reason }) => {
-      endSession(true);
-      toast.info('Speech-to-text stopped', reason);
-    });
-
-    return () => {
-      offPartial();
-      offFinal();
-      offError();
-      offEnd();
-      offTimeout();
-    };
-  }, [clearFinalizeTimer, endSession, listening, setComposerSttListening]);
 
   React.useEffect(() => {
     const onToggle = (event: Event) => {
@@ -291,11 +247,6 @@ export function GlobalSttHost() {
         return;
       }
 
-      if (VoiceService.isListening() || VoiceService.wantsListening()) {
-        if (!fromToolbar) return;
-        VoiceService.interruptListening();
-      }
-
       event.preventDefault?.();
       start(target);
     };
@@ -303,31 +254,6 @@ export function GlobalSttHost() {
     window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
     return () => window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
   }, [composerSttEnabled, listening, start, stop]);
-
-  // Ctrl+Space while VibeSpace itself is focused: the Rust global-shortcut
-  // handler emits this instead of opening the floating overlay, so the press
-  // becomes normal in-app voice-to-text for the focused input. A same-named
-  // window CustomEvent covers web preview and tests.
-  React.useEffect(() => {
-    const relay = () => requestComposerSttToggle('hotkey');
-    let unlistenTauri: (() => void) | undefined;
-    let cancelled = false;
-    void import('@tauri-apps/api/event')
-      .then(({ listen }) => listen(GLOBAL_DICTATION_IN_APP_EVENT, relay))
-      .then((off) => {
-        if (cancelled) off();
-        else unlistenTauri = off;
-      })
-      .catch(() => {
-        /* Browser preview - the window event below still works. */
-      });
-    window.addEventListener(GLOBAL_DICTATION_IN_APP_EVENT, relay);
-    return () => {
-      cancelled = true;
-      unlistenTauri?.();
-      window.removeEventListener(GLOBAL_DICTATION_IN_APP_EVENT, relay);
-    };
-  }, []);
 
   React.useEffect(
     () => () => {

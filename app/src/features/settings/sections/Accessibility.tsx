@@ -79,6 +79,8 @@ function InfoCard({ icon: Icon, title, description, accent = 'cyan', trailing }:
 export function Accessibility() {
   const composerStt = useUIStore((state) => state.composerStt);
   const setComposerStt = useUIStore((state) => state.setComposerStt);
+  const globalDictationEnabled = useUIStore((state) => state.globalDictationEnabled);
+  const setGlobalDictationEnabled = useUIStore((state) => state.setGlobalDictationEnabled);
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -140,19 +142,38 @@ export function Accessibility() {
             </div>
           </div>
 
-          <InfoCard
-            icon={Mic}
-            accent="copper"
-            title="VibeSpace global dictation"
-            description={
-              <>
-                Press <span className="kbd">{renderHotkey(HOTKEYS.GLOBAL_DICTATION)}</span> to
-                dictate into the focused field. Outside VibeSpace, the desktop app opens its compact
-                transcription overlay and pastes only after transcription completes. Provider order
-                still follows Settings → Speech to Text.
-              </>
-            }
-          />
+          <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-background/45 p-3.5">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted/55 text-accent-copper">
+              <Mic aria-hidden="true" className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label
+                    htmlFor="global-dictation-enabled"
+                    className="text-sm font-semibold leading-5 text-foreground"
+                  >
+                    Global dictation with Ctrl+Space
+                  </Label>
+                  <p
+                    id="global-dictation-enabled-description"
+                    className="mt-1 text-sm leading-5 text-muted-foreground"
+                  >
+                    Registers <span className="kbd">{renderHotkey(HOTKEYS.GLOBAL_DICTATION)}</span>{' '}
+                    natively. It always opens one compact VibeSpace dictation module, whether
+                    VibeSpace or another app is focused. Paste happens only after you confirm.
+                  </p>
+                </div>
+                <Switch
+                  id="global-dictation-enabled"
+                  aria-describedby="global-dictation-enabled-description"
+                  checked={globalDictationEnabled}
+                  onCheckedChange={(value) => setGlobalDictationEnabled(Boolean(value))}
+                  className="mt-0.5 shrink-0 focus-visible:ring-2 focus-visible:ring-accent-copper focus-visible:ring-offset-2"
+                />
+              </div>
+            </div>
+          </div>
         </SectionGroup>
 
         <SectionGroup

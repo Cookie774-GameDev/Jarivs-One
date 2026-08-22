@@ -115,7 +115,7 @@ describe('TerminalView canonical execution truth', () => {
     );
   });
 
-  it('routes the terminal dictation startup catch through the closed formatter', () => {
+  it('routes terminal dictation through the selected STT session and writes only the focused session', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
       'utf8',
@@ -126,16 +126,20 @@ describe('TerminalView canonical execution truth', () => {
 
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
+    expect(source).toContain("from '@/features/composer-stt/selectedSttSession';");
+    expect(startupBlock).toContain('createSelectedSttSession({');
+    expect(startupBlock).not.toContain('VoiceService.startListening');
+    expect(startupBlock).not.toContain('VoiceService.on');
+    expect(startupBlock).toContain('const sid = sessionRef.current;');
     expect(startupBlock).toContain(
-      "toast.warning('Voice unsupported', formatTerminalVoiceFailure('unsupported'));",
+      "invoke('terminal_write', { sessionId: sid, data: `${spoken} ` });",
     );
     expect(startupBlock).toContain(
       "toast.error('Voice error', formatTerminalVoiceFailure('startup'));",
     );
     expect(startupBlock).toContain('setDictating(false);');
-    expect(startupBlock).toContain('} catch {');
+    expect(startupBlock).toContain('.catch(() => {');
     expect(startupBlock).not.toMatch(/catch\s*\(\s*(?:err|error)\b/i);
-    expect(startupBlock).not.toContain('.message');
   });
 
   it('latches early output for the exact spawned session and exposes shell readiness', async () => {
