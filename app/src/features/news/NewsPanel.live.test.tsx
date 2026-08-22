@@ -2,14 +2,27 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({ fetchLiveNews: vi.fn() }));
+const subscriptions = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  set: vi.fn(),
+  notifications: vi.fn(),
+  acknowledge: vi.fn(),
+}));
 vi.mock('./newsApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./newsApi')>()),
   fetchLiveNews: api.fetchLiveNews,
   configuredNewsApiUrl: () => 'https://news.example',
 }));
 vi.mock('@/lib/tauri', () => ({ openExternal: vi.fn(async () => undefined) }));
+vi.mock('./creatorSubscriptions', () => ({
+  fetchCreatorSubscriptions: subscriptions.fetch,
+  setCreatorSubscription: subscriptions.set,
+  fetchCreatorNotifications: subscriptions.notifications,
+  acknowledgeCreatorNotifications: subscriptions.acknowledge,
+}));
 
 import { NewsPanel } from './NewsPanel';
+import { useAuthStore } from '@/stores/auth';
 
 const now = new Date(2026, 7, 14, 19, 0, 0);
 const todayTimestamp = new Date(2026, 7, 14, 18, 42, 11).toISOString();
@@ -29,6 +42,7 @@ function liveResponse(overrides: Record<string, unknown> = {}) {
         publishedAt: todayTimestamp,
         source: 'Example AI',
         platform: 'official',
+        sourceId: 'example-ai-news',
         verification: 'official' as const,
         company: 'Example AI',
         category: 'model-release',
@@ -48,6 +62,11 @@ describe('NewsPanel live cards', () => {
   beforeEach(() => {
     api.fetchLiveNews.mockReset();
     api.fetchLiveNews.mockResolvedValue(liveResponse());
+    subscriptions.fetch.mockReset().mockResolvedValue([]);
+    subscriptions.set.mockReset().mockResolvedValue(undefined);
+    subscriptions.notifications.mockReset().mockResolvedValue([]);
+    subscriptions.acknowledge.mockReset().mockResolvedValue(undefined);
+    useAuthStore.setState({ cloudSession: null });
   });
 
   it('renders a live image, full timestamp, and local Today count', async () => {
@@ -121,5 +140,64 @@ describe('NewsPanel live cards', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh AI news' }));
     expect(await screen.findByText(/Keeping the last live results/i)).toBeTruthy();
     expect(screen.getByText('Official model launch')).toBeTruthy();
+  });
+
+  it('renders repository trends in a separate GitHub section', async () => {
+    api.fetchLiveNews.mockResolvedValue(
+      liveResponse({
+        repositories: [
+          {
+            id: 'repository:ollama',
+            title: 'ollama/ollama',
+            summary: 'Run open models locally.',
+            url: 'https://github.com/ollama/ollama',
+            publishedAt: todayTimestamp,
+            source: 'GitHub',
+            sourceId: 'repository:ollama',
+            platform: 'github',
+            verification: 'official',
+            category: 'repository-trend',
+            kind: 'github',
+            imageUrl: '',
+            imageCredit: '',
+            credit: 'Repository metadata · GitHub API',
+            mediaType: 'none',
+            tags: ['GitHub'],
+            repository: {
+              stars: 150000,
+              starDelta: 42,
+              forks: 12000,
+              openIssues: 1000,
+              language: 'Go',
+              pushedAt: todayTimestamp,
+              trendSignal: '+42 stars since last check',
+            },
+          },
+        ],
+      }),
+    );
+    render(<NewsPanel open onOpenChange={vi.fn()} now={now} runtimeEffectsEnabled />);
+    fireEvent.click(await screen.findByRole('button', { name: 'GitHub' }));
+    expect(screen.getByText('Trending GitHub repositories')).toBeTruthy();
+    expect(screen.getByText('ollama/ollama')).toBeTruthy();
+    expect(screen.getByText('+42 stars since last check')).toBeTruthy();
+  });
+
+  it('rolls an optimistic creator follow back when persistence fails', async () => {
+    useAuthStore.setState({
+      cloudSession: { user_id: 'account-a', email: 'a@example.com', expires_at: 1 },
+    });
+    subscriptions.set.mockRejectedValueOnce(new Error('save failed'));
+    render(<NewsPanel open onOpenChange={vi.fn()} now={now} runtimeEffectsEnabled />);
+    await waitFor(() => expect(subscriptions.fetch).toHaveBeenCalledTimes(1));
+    const bell = await screen.findByRole('button', { name: 'Follow Example AI' });
+    fireEvent.click(bell);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Follow Example AI' }).getAttribute('aria-pressed'),
+      ).toBe('false'),
+    );
+    expect(subscriptions.set).toHaveBeenCalledWith('https://news.example', 'example-ai-news', true);
+    expect(await screen.findByText(/save failed/i)).toBeTruthy();
   });
 });

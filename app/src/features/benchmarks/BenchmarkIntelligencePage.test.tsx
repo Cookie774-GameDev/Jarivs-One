@@ -69,11 +69,28 @@ describe('BenchmarkIntelligencePage', () => {
   });
 
   it('renders Artificial Analysis and excludes the removed comparison/valuation UI', async () => {
-    render(<BenchmarkIntelligencePage />);
+    const { container } = render(<BenchmarkIntelligencePage />);
     expect((await screen.findAllByText('Claude Opus 5 (Max Effort)')).length).toBe(2);
     expect(screen.getAllByText('Artificial Analysis').length).toBeGreaterThan(0);
     expect(screen.queryByText(/New model comparison/i)).toBeNull();
     expect(screen.queryByText(/Official provider valuations/i)).toBeNull();
+    expect(container.querySelector('[data-warm-surface="benchmarks-chart"]')).toBeTruthy();
+    expect(container.querySelector('[data-warm-surface="benchmarks-filters"]')).toBeTruthy();
+    expect(container.querySelector('[data-monochrome-surface="benchmarks-table"]')).toBeTruthy();
+    expect(container.querySelector('[data-warm-region="benchmarks-table-scroll"]')).toBeTruthy();
+  });
+
+  it('never presents cached or failed data as fresh', async () => {
+    api.fetchBenchmarkLeaderboard.mockResolvedValueOnce({
+      generatedAt: '2026-08-14T23:08:00.000Z',
+      freshness: { state: 'failed' },
+      dataset: null,
+      rows: [],
+      fromCache: false,
+    });
+    render(<BenchmarkIntelligencePage />);
+    expect(await screen.findByText('Unavailable')).toBeTruthy();
+    expect(screen.queryByText(/^Fresh$/u)).toBeNull();
   });
 
   it('sorts by exact-row input price and output speed', async () => {
@@ -81,16 +98,16 @@ describe('BenchmarkIntelligencePage', () => {
     await screen.findAllByText('Claude Opus 5 (Max Effort)');
     const sort = screen.getByLabelText('Sort');
     fireEvent.change(sort, { target: { value: 'inputPrice' } });
-    const modelCells = screen.getAllByRole('cell').filter((cell) =>
-      /Claude Opus 5|GPT-5.6 Sol/.test(cell.textContent ?? ''),
-    );
+    const modelCells = screen
+      .getAllByRole('cell')
+      .filter((cell) => /Claude Opus 5|GPT-5.6 Sol/.test(cell.textContent ?? ''));
     expect(modelCells[0]?.textContent).toContain('GPT-5.6 Sol');
 
     fireEvent.change(sort, { target: { value: 'speed' } });
     await waitFor(() => {
-      const cells = screen.getAllByRole('cell').filter((cell) =>
-        /Claude Opus 5|GPT-5.6 Sol/.test(cell.textContent ?? ''),
-      );
+      const cells = screen
+        .getAllByRole('cell')
+        .filter((cell) => /Claude Opus 5|GPT-5.6 Sol/.test(cell.textContent ?? ''));
       expect(cells[0]?.textContent).toContain('GPT-5.6 Sol');
     });
   });

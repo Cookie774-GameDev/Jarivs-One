@@ -1,6 +1,7 @@
 import { readBenchmarkApi, runBenchmarkIngestion } from './benchmarkPipeline';
 import { NEWS_SOURCES } from './newsSources';
 import { readNewsApi, readSourcesApi, runNewsIngestion } from './newsPipeline';
+import { handleNewsNotifications, handleNewsSubscriptions } from './newsSubscriptions';
 import {
   freshnessFromTimestamp,
   jsonResponse,
@@ -37,16 +38,18 @@ function parseJson(value: string): unknown {
   }
 }
 
-async function latestRun(env: Env, pipeline: LatestRunRow['pipeline']): Promise<LatestRunRow | null> {
-  return env.DB
-    .prepare(
-      `SELECT pipeline, completed_at, status, fetched_count, stored_count,
+async function latestRun(
+  env: Env,
+  pipeline: LatestRunRow['pipeline'],
+): Promise<LatestRunRow | null> {
+  return env.DB.prepare(
+    `SELECT pipeline, completed_at, status, fetched_count, stored_count,
               succeeded_sources, failed_sources, duration_ms, metadata_json, error_json
        FROM intelligence_pipeline_runs
        WHERE pipeline = ? AND completed_at IS NOT NULL
        ORDER BY completed_at DESC, id DESC
        LIMIT 1`,
-    )
+  )
     .bind(pipeline)
     .first<LatestRunRow>();
 }
@@ -55,15 +58,14 @@ async function latestUsableRun(
   env: Env,
   pipeline: LatestRunRow['pipeline'],
 ): Promise<LatestRunRow | null> {
-  return env.DB
-    .prepare(
-      `SELECT pipeline, completed_at, status, fetched_count, stored_count,
+  return env.DB.prepare(
+    `SELECT pipeline, completed_at, status, fetched_count, stored_count,
               succeeded_sources, failed_sources, duration_ms, metadata_json, error_json
        FROM intelligence_pipeline_runs
        WHERE pipeline = ? AND completed_at IS NOT NULL AND status IN ('success', 'partial')
        ORDER BY completed_at DESC, id DESC
        LIMIT 1`,
-    )
+  )
     .bind(pipeline)
     .first<LatestRunRow>();
 }
@@ -85,43 +87,44 @@ function publicRun(row: LatestRunRow | null): Record<string, unknown> | null {
 }
 
 async function healthPayload(env: Env): Promise<Record<string, unknown>> {
-  const [newsLatest, benchmarkLatest, newsUsable, benchmarkUsable, healthCounts, benchmarkCurrent, newsStats] =
-    await Promise.all([
-      latestRun(env, 'news-hourly'),
-      latestRun(env, 'benchmarks-hourly'),
-      latestUsableRun(env, 'news-hourly'),
-      latestUsableRun(env, 'benchmarks-hourly'),
-      env.DB
-        .prepare(
-          `SELECT status, COUNT(*) AS count
+  const [
+    newsLatest,
+    benchmarkLatest,
+    newsUsable,
+    benchmarkUsable,
+    healthCounts,
+    benchmarkCurrent,
+    newsStats,
+  ] = await Promise.all([
+    latestRun(env, 'news-hourly'),
+    latestRun(env, 'benchmarks-hourly'),
+    latestUsableRun(env, 'news-hourly'),
+    latestUsableRun(env, 'benchmarks-hourly'),
+    env.DB.prepare(
+      `SELECT status, COUNT(*) AS count
            FROM intelligence_news_source_health
            GROUP BY status
            ORDER BY status ASC`,
-        )
-        .all<SourceHealthCount>(),
-      env.DB
-        .prepare(
-          `SELECT d.id, d.source_observed_at, d.ingested_at, d.row_count, c.promoted_at
+    ).all<SourceHealthCount>(),
+    env.DB.prepare(
+      `SELECT d.id, d.source_observed_at, d.ingested_at, d.row_count, c.promoted_at
            FROM benchmark_current_v2 c
            JOIN benchmark_datasets_v2 d ON d.id = c.dataset_id
            WHERE c.singleton = 1 AND d.status = 'current'
            LIMIT 1`,
-        )
-        .first<{
-          id: string;
-          source_observed_at: string;
-          ingested_at: string;
-          row_count: number;
-          promoted_at: string;
-        }>(),
-      env.DB
-        .prepare(
-          `SELECT COUNT(*) AS item_count, MAX(published_at) AS newest_item_at,
+    ).first<{
+      id: string;
+      source_observed_at: string;
+      ingested_at: string;
+      row_count: number;
+      promoted_at: string;
+    }>(),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS item_count, MAX(published_at) AS newest_item_at,
                   MAX(updated_at) AS last_write_at
            FROM intelligence_news_events`,
-        )
-        .first<{ item_count: number; newest_item_at: string | null; last_write_at: string | null }>(),
-    ]);
+    ).first<{ item_count: number; newest_item_at: string | null; last_write_at: string | null }>(),
+  ]);
 
   const slaMinutes = Number.parseInt(env.FRESHNESS_SLA_MINUTES ?? '120', 10) || 120;
   const newsFreshness = freshnessFromTimestamp(newsUsable?.completed_at, Date.now(), slaMinutes);
@@ -198,10 +201,22 @@ function headOnly(request: Request, response: Response): Response {
 
 async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   if (request.method === 'OPTIONS') return optionsResponse();
+  const url = new URL(request.url);
+  if (url.pathname === '/api/news/subscriptions') {
+    if (request.method !== 'GET' && request.method !== 'PUT') {
+      return jsonResponse({ error: 'METHOD_NOT_ALLOWED' }, 405, { allow: 'GET, PUT, OPTIONS' });
+    }
+    return handleNewsSubscriptions(request, env);
+  }
+  if (url.pathname === '/api/news/notifications') {
+    if (request.method !== 'GET' && request.method !== 'POST') {
+      return jsonResponse({ error: 'METHOD_NOT_ALLOWED' }, 405, { allow: 'GET, POST, OPTIONS' });
+    }
+    return handleNewsNotifications(request, env);
+  }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return jsonResponse({ error: 'METHOD_NOT_ALLOWED' }, 405, { allow: 'GET, HEAD, OPTIONS' });
   }
-  const url = new URL(request.url);
   let response: Response;
   switch (url.pathname) {
     case '/':
@@ -209,7 +224,14 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
         service: 'VibeSpace AI Intelligence',
         freeOnly: true,
         schedule: '7 * * * *',
-        endpoints: ['/api/news', '/api/benchmarks', '/api/sources', '/health'],
+        endpoints: [
+          '/api/news',
+          '/api/news/subscriptions',
+          '/api/news/notifications',
+          '/api/benchmarks',
+          '/api/sources',
+          '/health',
+        ],
       });
       break;
     case '/api/news':

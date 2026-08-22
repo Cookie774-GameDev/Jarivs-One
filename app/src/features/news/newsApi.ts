@@ -3,6 +3,7 @@ import type { NewsItem, NewsKind } from './newsCatalog';
 export type LiveMediaType = 'image' | 'video' | 'none';
 
 export interface LiveNewsItem extends NewsItem {
+  sourceId?: string;
   platform: string;
   verification: 'official' | 'confirmed';
   company?: string;
@@ -10,7 +11,16 @@ export interface LiveNewsItem extends NewsItem {
   videoUrl?: string;
   mediaType: LiveMediaType;
   mediaSource?: string;
-  sourceReferences?: Array<{ name: string; url: string; platform?: string }>;
+  sourceReferences?: Array<{ sourceId?: string; name: string; url: string; platform?: string }>;
+  repository?: {
+    stars: number;
+    starDelta: number;
+    forks: number;
+    openIssues: number;
+    language?: string;
+    pushedAt: string;
+    trendSignal: string;
+  };
 }
 
 export interface LiveNewsResponse {
@@ -23,6 +33,7 @@ export interface LiveNewsResponse {
     warning?: string;
   };
   items: LiveNewsItem[];
+  repositories?: LiveNewsItem[];
 }
 
 type FetchLike = typeof fetch;
@@ -105,6 +116,7 @@ function parseSourceReferences(value: unknown): LiveNewsItem['sourceReferences']
     if (!name || !url) return [];
     return [
       {
+        ...(typeof record.sourceId === 'string' ? { sourceId: record.sourceId } : {}),
         name,
         url,
         ...(typeof record.platform === 'string' ? { platform: record.platform } : {}),
@@ -133,6 +145,71 @@ function youtubeIdForUrl(value: string | undefined): string | undefined {
 function kindForItem(category: string, mediaType: LiveMediaType, youtubeId?: string): NewsKind {
   if (mediaType === 'video' || youtubeId) return 'youtube';
   return /model|release|launch/i.test(category) ? 'model_drop' : 'ai_news';
+}
+
+function requiredCount(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error('AI news response is malformed.');
+  }
+  return value;
+}
+
+function parseRepositories(value: unknown): LiveNewsItem[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('AI news response is malformed.');
+  return value.map((entry) => {
+    const repository = asRecord(entry);
+    const id = requiredString(repository, 'id');
+    const fullName = requiredString(repository, 'fullName');
+    const url = safeHttpsUrl(repository.url);
+    if (!url || new URL(url).hostname !== 'github.com')
+      throw new Error('AI news response is malformed.');
+    const stars = requiredCount(repository, 'stars');
+    const starDelta = repository.starDelta;
+    if (typeof starDelta !== 'number' || !Number.isSafeInteger(starDelta)) {
+      throw new Error('AI news response is malformed.');
+    }
+    const forks = requiredCount(repository, 'forks');
+    const openIssues = requiredCount(repository, 'openIssues');
+    const pushedAt = requiredIsoTimestamp(repository, 'pushedAt');
+    const observedAt = requiredIsoTimestamp(repository, 'observedAt');
+    const trendSignal =
+      starDelta > 0
+        ? `+${starDelta.toLocaleString()} stars since last check`
+        : starDelta < 0
+          ? `${starDelta.toLocaleString()} stars since last check`
+          : 'Stars unchanged since last check';
+    return {
+      id: `repository:${id}`,
+      title: fullName,
+      summary: plainText(requiredString(repository, 'description')),
+      kind: 'github' as const,
+      publishedAt: observedAt,
+      url,
+      imageUrl: '',
+      imageCredit: '',
+      source: 'GitHub',
+      sourceId: `repository:${id}`,
+      platform: 'github',
+      verification: 'official' as const,
+      category: 'repository-trend',
+      mediaType: 'none' as const,
+      credit: 'Repository metadata · GitHub API',
+      tags: ['GitHub', 'repository'],
+      repository: {
+        stars,
+        starDelta,
+        forks,
+        openIssues,
+        ...(optionalString(repository, 'language')
+          ? { language: optionalString(repository, 'language') }
+          : {}),
+        pushedAt,
+        trendSignal,
+      },
+    };
+  });
 }
 
 function plainText(value: string): string {
@@ -204,6 +281,9 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
     const platform = nestedSource
       ? requiredString(nestedSource, 'platform')
       : requiredString(item, 'sourcePlatform');
+    const sourceId = nestedSource
+      ? optionalString(nestedSource, 'id')
+      : optionalString(item, 'sourceId');
     const verification = requiredString(item, 'verification');
     if (verification !== 'official' && verification !== 'confirmed') {
       throw new Error('AI news response is malformed.');
@@ -229,7 +309,9 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
     const mediaSource = optionalString(item, 'mediaSource', 'media_source');
     const company = optionalString(item, 'company');
     const modelNames = readStringArray(item.modelNames ?? item.model_names);
-    const tags = [...new Set([platform, verification, category, company, ...modelNames].filter(Boolean))] as string[];
+    const tags = [
+      ...new Set([platform, verification, category, company, ...modelNames].filter(Boolean)),
+    ] as string[];
     const sourceReferences = parseSourceReferences(item.sourceReferences ?? item.source_references);
 
     return {
@@ -239,6 +321,7 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
       url: sourceUrl,
       publishedAt: requiredIsoTimestamp(item, 'publishedAt'),
       source,
+      ...(sourceId ? { sourceId } : {}),
       platform,
       verification,
       ...(company ? { company } : {}),
@@ -269,6 +352,7 @@ export function parseNewsResponse(payload: unknown): LiveNewsResponse {
     ...(lastCompletedAt ? { lastCompletedAt } : {}),
     freshness: parseFreshness(root.freshness),
     items,
+    repositories: parseRepositories(root.repositories),
   };
 }
 

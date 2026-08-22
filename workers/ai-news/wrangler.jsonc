@@ -19,6 +19,7 @@
     },
   ],
   "vars": {
+    "SUPABASE_URL": "https://tipeobvisjqvpbzcpckh.supabase.co",
     "BENCHMARK_SOURCE_URL": "https://api.wulong.dev/arena-ai-leaderboards/v1/leaderboard?name=text",
     "CORS_ORIGIN": "*",
     "MAX_ITEMS_PER_RUN": "30",

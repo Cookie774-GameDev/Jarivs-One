@@ -109,8 +109,9 @@ function fullTime(value: string | undefined): string {
 
 function statusLabel(result: BenchmarkFetchResult | null): string {
   if (!result) return 'Loading';
-  if (result.fromCache) return 'Cached · stale';
-  return result.freshness.state;
+  if (result.fromCache || ['degraded', 'stale'].includes(result.freshness.state)) return 'Stale';
+  if (['failed', 'never'].includes(result.freshness.state)) return 'Unavailable';
+  return 'Fresh';
 }
 
 export function BenchmarkIntelligencePage() {
@@ -163,7 +164,9 @@ export function BenchmarkIntelligencePage() {
   );
   const efforts = React.useMemo(
     () =>
-      [...new Set((result?.rows ?? []).map((row) => row.effort).filter(Boolean) as string[])].sort(),
+      [
+        ...new Set((result?.rows ?? []).map((row) => row.effort).filter(Boolean) as string[]),
+      ].sort(),
     [result],
   );
 
@@ -217,8 +220,14 @@ export function BenchmarkIntelligencePage() {
         />
       </div>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8" data-warm-surface="benchmarks-content">
-        <header className="flex flex-wrap items-start justify-between gap-4" data-warm-surface="benchmarks-header">
+      <main
+        className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-8"
+        data-warm-surface="benchmarks-content"
+      >
+        <header
+          className="flex flex-wrap items-start justify-between gap-4"
+          data-warm-surface="benchmarks-header"
+        >
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2 text-metadata uppercase tracking-wider text-muted-foreground">
               <span
@@ -267,23 +276,36 @@ export function BenchmarkIntelligencePage() {
         </header>
 
         {result?.freshness.warning ? (
-          <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground">
+          <div
+            className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground"
+            data-warm-surface="benchmarks-warning"
+          >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <span>{result.freshness.warning}</span>
           </div>
         ) : null}
         {error ? (
-          <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-foreground">
+          <div
+            className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-foreground"
+            data-warm-surface="benchmarks-warning"
+          >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <span>{error} No old Arena/Elo dataset will be relabeled as Intelligence Index.</span>
           </div>
         ) : null}
 
-        <section className="cozy-card rounded-2xl border border-border bg-paper p-5 shadow-soft">
+        <section
+          className="cozy-card rounded-2xl border border-border bg-paper p-5 shadow-soft"
+          data-warm-surface="benchmarks-chart"
+        >
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-xl font-semibold text-foreground">Top intelligence</h2>
-              <p className="text-metadata text-muted-foreground">Chart and table use the same D1 dataset.</p>
+              <h2 className="font-display text-xl font-semibold text-foreground">
+                Top intelligence
+              </h2>
+              <p className="text-metadata text-muted-foreground">
+                Chart and table use the same D1 dataset.
+              </p>
             </div>
             <span className="text-metadata text-muted-foreground">
               {filteredRows.length} of {result?.rows.length ?? 0} rows
@@ -292,7 +314,10 @@ export function BenchmarkIntelligencePage() {
           {chartRows.length ? (
             <div className="space-y-2" aria-label="Artificial Analysis Intelligence Index chart">
               {chartRows.map((row) => (
-                <div key={row.id} className="grid grid-cols-[minmax(130px,240px)_1fr_3rem] items-center gap-3">
+                <div
+                  key={row.id}
+                  className="grid grid-cols-[minmax(130px,240px)_1fr_3rem] items-center gap-3"
+                >
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-foreground">{row.model}</div>
                     <div className="truncate text-[11px] text-muted-foreground">{row.provider}</div>
@@ -311,12 +336,17 @@ export function BenchmarkIntelligencePage() {
             </div>
           ) : (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              {loading ? 'Loading the current D1 dataset…' : 'No validated benchmark dataset is available.'}
+              {loading
+                ? 'Loading the current D1 dataset…'
+                : 'No validated benchmark dataset is available.'}
             </p>
           )}
         </section>
 
-        <section className="cozy-card rounded-2xl border border-border bg-paper p-5 shadow-soft">
+        <section
+          className="cozy-card rounded-2xl border border-border bg-paper p-5 shadow-soft"
+          data-warm-surface="benchmarks-filters"
+        >
           <div className="grid gap-3 md:grid-cols-4">
             <label className="space-y-1 text-metadata text-muted-foreground">
               <span>Provider</span>
@@ -327,7 +357,9 @@ export function BenchmarkIntelligencePage() {
               >
                 <option value="all">All providers</option>
                 {providers.map((value) => (
-                  <option key={value} value={value}>{value}</option>
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </label>
@@ -352,7 +384,9 @@ export function BenchmarkIntelligencePage() {
               >
                 <option value="all">All effort variants</option>
                 {efforts.map((value) => (
-                  <option key={value} value={value}>{value}</option>
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </label>
@@ -364,18 +398,33 @@ export function BenchmarkIntelligencePage() {
                 className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
               >
                 {SORT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
                 ))}
               </select>
             </label>
           </div>
 
           <p className="mt-3 text-[11px] text-muted-foreground">
-            Blended token price is a VibeSpace-derived 3:1 input/output average: (3 × input + output) ÷ 4.
-            Intelligence per dollar is derived only when Artificial Analysis supplies cost per task for the exact row.
+            Blended token price is a VibeSpace-derived 3:1 input/output average: (3 × input +
+            output) ÷ 4. Intelligence per dollar is derived only when Artificial Analysis supplies
+            cost per task for the exact row.
           </p>
+        </section>
 
-          <div className="mt-4 overflow-x-auto">
+        <section
+          className="cozy-card rounded-2xl border border-border bg-paper p-5 shadow-soft"
+          data-monochrome-surface="benchmarks-table"
+          data-sakura-surface="benchmarks-table"
+          data-warm-table-mode="compact-scroll"
+        >
+          <div
+            className="overflow-x-auto"
+            data-warm-region="benchmarks-table-scroll"
+            tabIndex={0}
+            aria-label="Scrollable Artificial Analysis benchmark table"
+          >
             <table className="w-full min-w-[1280px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -395,7 +444,10 @@ export function BenchmarkIntelligencePage() {
               </thead>
               <tbody>
                 {filteredRows.map((row) => (
-                  <tr key={row.id} className="border-b border-border/60 align-top hover:bg-muted/30">
+                  <tr
+                    key={row.id}
+                    className="border-b border-border/60 align-top hover:bg-muted/30"
+                  >
                     <td className="px-2 py-3 font-mono text-muted-foreground">#{row.rank}</td>
                     <td className="px-2 py-3">
                       <div className="font-medium text-foreground">{row.model}</div>
@@ -408,14 +460,30 @@ export function BenchmarkIntelligencePage() {
                     <td className="px-2 py-3 text-right font-mono text-base font-semibold text-foreground">
                       {row.intelligenceIndex}
                     </td>
-                    <td className="px-2 py-3 text-right font-mono">{money(row.costPerTaskUsd, 4)}</td>
-                    <td className="px-2 py-3 text-right font-mono">{money(row.inputPricePer1MTokensUsd)}</td>
-                    <td className="px-2 py-3 text-right font-mono">{money(row.outputPricePer1MTokensUsd)}</td>
-                    <td className="px-2 py-3 text-right font-mono">{money(blendedTokenPrice(row))}</td>
-                    <td className="px-2 py-3 text-right font-mono">{decimal(intelligencePerDollar(row))}</td>
-                    <td className="px-2 py-3 text-right font-mono">{decimal(row.outputTokensPerSecond, ' t/s')}</td>
-                    <td className="px-2 py-3 text-right font-mono">{decimal(row.timeToFirstTokenSeconds, ' s')}</td>
-                    <td className="px-2 py-3 text-right font-mono">{compactNumber(row.contextWindowTokens)}</td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {money(row.costPerTaskUsd, 4)}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {money(row.inputPricePer1MTokensUsd)}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {money(row.outputPricePer1MTokensUsd)}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {money(blendedTokenPrice(row))}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {decimal(intelligencePerDollar(row))}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {decimal(row.outputTokensPerSecond, ' t/s')}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {decimal(row.timeToFirstTokenSeconds, ' s')}
+                    </td>
+                    <td className="px-2 py-3 text-right font-mono">
+                      {compactNumber(row.contextWindowTokens)}
+                    </td>
                     <td className="px-2 py-3">
                       {row.openWeights == null ? '—' : row.openWeights ? 'Open' : 'Proprietary'}
                     </td>

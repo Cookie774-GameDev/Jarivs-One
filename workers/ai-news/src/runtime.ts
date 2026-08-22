@@ -8,6 +8,8 @@ export interface Env {
   NEWS_MEDIA_ENRICHMENT_LIMIT?: string;
   NEWS_RETENTION_DAYS?: string;
   FRESHNESS_SLA_MINUTES?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_PUBLISHABLE_KEY?: string;
 }
 
 export type PipelineName = 'news-hourly' | 'benchmarks-hourly';
@@ -66,8 +68,8 @@ export class PipelineError extends Error {
 const DEFAULT_RETRY_STATUSES = [408, 425, 429, 500, 502, 503, 504] as const;
 const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, HEAD, OPTIONS',
-  'access-control-allow-headers': 'content-type, accept',
+  'access-control-allow-methods': 'GET, HEAD, PUT, POST, OPTIONS',
+  'access-control-allow-headers': 'content-type, accept, authorization',
   'access-control-max-age': '86400',
 };
 
@@ -94,10 +96,17 @@ export function runKeyFor(pipeline: PipelineName, scheduledAt: string): string {
   return `${pipeline}:${scheduledAt.slice(0, 13)}`;
 }
 
-export function jsonResponse(payload: unknown, status = 200, extraHeaders: HeadersInit = {}): Response {
+export function jsonResponse(
+  payload: unknown,
+  status = 200,
+  extraHeaders: HeadersInit = {},
+): Response {
   const headers = new Headers(extraHeaders);
   headers.set('content-type', 'application/json; charset=utf-8');
-  headers.set('cache-control', status >= 400 ? 'no-store' : 'public, max-age=60, stale-while-revalidate=300');
+  headers.set(
+    'cache-control',
+    status >= 400 ? 'no-store' : 'public, max-age=60, stale-while-revalidate=300',
+  );
   for (const [key, value] of Object.entries(CORS_HEADERS)) headers.set(key, value);
   return new Response(JSON.stringify(payload), { status, headers });
 }
@@ -215,7 +224,10 @@ function sleep(milliseconds: number): Promise<void> {
 async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
   const declaredLength = Number.parseInt(response.headers.get('content-length') ?? '', 10);
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
-    throw new PipelineError('SOURCE_TOO_LARGE', 'Remote response exceeded the configured byte limit.');
+    throw new PipelineError(
+      'SOURCE_TOO_LARGE',
+      'Remote response exceeded the configured byte limit.',
+    );
   }
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader();
@@ -229,7 +241,10 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<Ui
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel('response too large');
-        throw new PipelineError('SOURCE_TOO_LARGE', 'Remote response exceeded the configured byte limit.');
+        throw new PipelineError(
+          'SOURCE_TOO_LARGE',
+          'Remote response exceeded the configured byte limit.',
+        );
       }
       chunks.push(value);
     }
@@ -256,7 +271,8 @@ export async function boundedFetch(
   const retries = options.retries ?? 1;
   const retryStatuses = options.retryStatuses ?? DEFAULT_RETRY_STATUSES;
   const initial = safeHttpsUrl(initialUrl);
-  if (!initial) throw new PipelineError('SOURCE_URL_INVALID', 'Only credential-free HTTPS URLs are allowed.');
+  if (!initial)
+    throw new PipelineError('SOURCE_URL_INVALID', 'Only credential-free HTTPS URLs are allowed.');
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -269,7 +285,11 @@ export async function boundedFetch(
         let response: Response;
         try {
           const headers = new Headers(options.headers);
-          headers.set('accept', options.accept ?? 'application/rss+xml, application/atom+xml, application/json, text/xml;q=0.9, text/html;q=0.7');
+          headers.set(
+            'accept',
+            options.accept ??
+              'application/rss+xml, application/atom+xml, application/json, text/xml;q=0.9, text/html;q=0.7',
+          );
           headers.set('user-agent', 'VibeSpace-AI-Intelligence/2.0 (+https://vibespaceos.com)');
           response = await fetch(currentUrl, {
             method: options.method ?? 'GET',
@@ -283,12 +303,17 @@ export async function boundedFetch(
 
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           if (redirects >= maxRedirects) {
-            throw new PipelineError('SOURCE_REDIRECT_LIMIT', 'Remote source exceeded the redirect limit.');
+            throw new PipelineError(
+              'SOURCE_REDIRECT_LIMIT',
+              'Remote source exceeded the redirect limit.',
+            );
           }
           const location = response.headers.get('location');
-          if (!location) throw new PipelineError('SOURCE_REDIRECT_INVALID', 'Redirect omitted a location.');
+          if (!location)
+            throw new PipelineError('SOURCE_REDIRECT_INVALID', 'Redirect omitted a location.');
           const redirected = safeHttpsUrl(new URL(location, currentUrl).toString());
-          if (!redirected) throw new PipelineError('SOURCE_REDIRECT_INVALID', 'Redirect left HTTPS.');
+          if (!redirected)
+            throw new PipelineError('SOURCE_REDIRECT_INVALID', 'Redirect left HTTPS.');
           currentUrl = redirected;
           redirects += 1;
           continue;
@@ -321,7 +346,9 @@ export async function boundedFetch(
     } catch (error) {
       lastError = error;
       const retryable =
-        error instanceof PipelineError ? error.retryable : error instanceof TypeError || error instanceof DOMException;
+        error instanceof PipelineError
+          ? error.retryable
+          : error instanceof TypeError || error instanceof DOMException;
       if (!retryable || attempt >= retries) break;
       await sleep(250 * 2 ** attempt);
     }
@@ -435,10 +462,7 @@ export async function completePipelineRun(
   ]);
 }
 
-export async function recordSkippedLease(
-  db: D1Database,
-  pipeline: PipelineName,
-): Promise<void> {
+export async function recordSkippedLease(db: D1Database, pipeline: PipelineName): Promise<void> {
   await db
     .prepare(
       `UPDATE intelligence_pipeline_leases
@@ -453,14 +477,27 @@ export function freshnessFromTimestamp(
   timestamp: string | null | undefined,
   now = Date.now(),
   slaMinutes = 120,
-): { state: 'fresh' | 'degraded' | 'stale' | 'failed' | 'never'; ageMs?: number; warning?: string } {
+): {
+  state: 'fresh' | 'degraded' | 'stale' | 'failed' | 'never';
+  ageMs?: number;
+  warning?: string;
+} {
   if (!timestamp) return { state: 'never', warning: 'No completed ingestion run is available.' };
   const observed = Date.parse(timestamp);
-  if (!Number.isFinite(observed)) return { state: 'failed', warning: 'Stored freshness timestamp is invalid.' };
+  if (!Number.isFinite(observed))
+    return { state: 'failed', warning: 'Stored freshness timestamp is invalid.' };
   const ageMs = Math.max(0, now - observed);
   if (ageMs <= slaMinutes * 60_000) return { state: 'fresh', ageMs };
   if (ageMs <= slaMinutes * 2 * 60_000) {
-    return { state: 'degraded', ageMs, warning: 'The latest dataset is outside the preferred freshness window.' };
+    return {
+      state: 'degraded',
+      ageMs,
+      warning: 'The latest dataset is outside the preferred freshness window.',
+    };
   }
-  return { state: 'stale', ageMs, warning: 'The latest dataset is stale; last-known-good data is retained.' };
+  return {
+    state: 'stale',
+    ageMs,
+    warning: 'The latest dataset is stale; last-known-good data is retained.',
+  };
 }

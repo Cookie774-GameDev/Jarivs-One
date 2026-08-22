@@ -15,7 +15,8 @@ import {
   type PipelineRunResult,
 } from './runtime';
 
-export const ARTIFICIAL_ANALYSIS_API_URL = 'https://artificialanalysis.ai/api/v2/language/models/free';
+export const ARTIFICIAL_ANALYSIS_API_URL =
+  'https://artificialanalysis.ai/api/v2/language/models/free';
 export const ARTIFICIAL_ANALYSIS_SOURCE_URL = 'https://artificialanalysis.ai/leaderboards/models';
 export const ARTIFICIAL_ANALYSIS_METRIC = 'Artificial Analysis Intelligence Index' as const;
 
@@ -96,7 +97,8 @@ function text(values: readonly unknown[], paths: readonly string[]): string | un
 
 function numberValue(values: readonly unknown[], paths: readonly string[]): number | undefined {
   const value = firstValue(values, paths);
-  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  const parsed =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
@@ -125,12 +127,122 @@ function timestamp(value: unknown, fallback: string): string {
 function modelArray(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
   const root = record(payload);
-  if (!root) throw new PipelineError('AA_PAYLOAD_MALFORMED', 'Artificial Analysis returned a non-object payload.');
+  if (!root)
+    throw new PipelineError(
+      'AA_PAYLOAD_MALFORMED',
+      'Artificial Analysis returned a non-object payload.',
+    );
   for (const path of ['data', 'models', 'results', 'data.models', 'data.data', 'response.data']) {
     const value = readPath(root, path);
     if (Array.isArray(value)) return value;
   }
-  throw new PipelineError('AA_PAYLOAD_MALFORMED', 'Artificial Analysis payload did not contain a model array.');
+  throw new PipelineError(
+    'AA_PAYLOAD_MALFORMED',
+    'Artificial Analysis payload did not contain a model array.',
+  );
+}
+
+interface ArtificialAnalysisPage {
+  tier: string;
+  intelligenceIndexVersion: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasMore: boolean;
+  data: unknown[];
+  raw: UnknownRecord;
+}
+
+function artificialAnalysisPage(payload: unknown): ArtificialAnalysisPage {
+  const root = record(payload);
+  const pagination = record(root?.pagination);
+  const tier = typeof root?.tier === 'string' ? root.tier.trim() : '';
+  const intelligenceIndexVersion = numberValue([root], ['intelligence_index_version']);
+  const page = numberValue([pagination], ['page']);
+  const pageSize = numberValue([pagination], ['page_size']);
+  const totalPages = numberValue([pagination], ['total_pages']);
+  const hasMore = pagination?.has_more;
+  if (
+    !root ||
+    !tier ||
+    intelligenceIndexVersion === undefined ||
+    !Number.isInteger(page) ||
+    !Number.isInteger(pageSize) ||
+    !Number.isInteger(totalPages) ||
+    (page ?? 0) < 1 ||
+    (pageSize ?? 0) < 1 ||
+    (totalPages ?? 0) < 1 ||
+    (totalPages ?? 0) > 10 ||
+    typeof hasMore !== 'boolean'
+  ) {
+    throw new PipelineError(
+      'AA_PAGINATION_MALFORMED',
+      'Artificial Analysis returned malformed pagination metadata.',
+    );
+  }
+  return {
+    tier,
+    intelligenceIndexVersion,
+    page: page!,
+    pageSize: pageSize!,
+    totalPages: totalPages!,
+    hasMore,
+    data: modelArray(root),
+    raw: root,
+  };
+}
+
+/** Combines only a complete, internally consistent official API page set. */
+export function mergeArtificialAnalysisPages(payloads: readonly unknown[]): UnknownRecord {
+  if (!payloads.length) {
+    throw new PipelineError(
+      'AA_PAGINATION_INCOMPLETE',
+      'Artificial Analysis did not return any pages.',
+    );
+  }
+  const pages = payloads.map(artificialAnalysisPage).sort((left, right) => left.page - right.page);
+  const expected = pages[0]!;
+  if (pages.length !== expected.totalPages) {
+    throw new PipelineError(
+      'AA_PAGINATION_INCOMPLETE',
+      'Artificial Analysis did not return every declared page.',
+    );
+  }
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = pages[index]!;
+    if (page.page !== index + 1 || page.totalPages !== expected.totalPages) {
+      throw new PipelineError(
+        'AA_PAGINATION_INCOMPLETE',
+        'Artificial Analysis did not return every declared page exactly once.',
+      );
+    }
+    if (page.tier !== expected.tier) {
+      throw new PipelineError('AA_TIER_CHANGED', 'Artificial Analysis tier changed between pages.');
+    }
+    if (page.intelligenceIndexVersion !== expected.intelligenceIndexVersion) {
+      throw new PipelineError(
+        'AA_VERSION_CHANGED',
+        'Artificial Analysis Intelligence Index version changed between pages.',
+      );
+    }
+    if (page.hasMore !== page.page < page.totalPages) {
+      throw new PipelineError(
+        'AA_PAGINATION_MALFORMED',
+        'Artificial Analysis pagination continuation metadata was inconsistent.',
+      );
+    }
+  }
+  const data = pages.flatMap((page) => page.data);
+  return {
+    ...expected.raw,
+    data,
+    pagination: {
+      page: 1,
+      page_size: data.length,
+      total_pages: 1,
+      has_more: false,
+    },
+  };
 }
 
 function nestedVariants(model: UnknownRecord): UnknownRecord[] {
@@ -145,9 +257,10 @@ function nestedVariants(model: UnknownRecord): UnknownRecord[] {
 }
 
 function effortFromName(modelName: string): string | undefined {
-  const match = /(?:^|[,(\s])(?:reasoning\s+)?(max|xhigh|high|medium|low|min)(?:\s+effort)?(?:[),\s]|$)/i.exec(
-    modelName,
-  );
+  const match =
+    /(?:^|[,(\s])(?:reasoning\s+)?(max|xhigh|high|medium|low|min)(?:\s+effort)?(?:[),\s]|$)/i.exec(
+      modelName,
+    );
   return match?.[1]?.toLowerCase();
 }
 
@@ -160,7 +273,10 @@ function slug(value: string): string {
     .slice(0, 140);
 }
 
-function rowFrom(sourceModel: UnknownRecord, variant: UnknownRecord): Omit<BenchmarkModelRowV2, 'rank'> {
+function rowFrom(
+  sourceModel: UnknownRecord,
+  variant: UnknownRecord,
+): Omit<BenchmarkModelRowV2, 'rank'> {
   const values = variant === sourceModel ? [sourceModel] : [variant, sourceModel];
   const provider = text(values, [
     'provider.name',
@@ -192,7 +308,10 @@ function rowFrom(sourceModel: UnknownRecord, variant: UnknownRecord): Omit<Bench
     'metrics.intelligence_index',
   ]);
   if (!provider || !model || intelligenceIndex === undefined) {
-    throw new PipelineError('AA_ROW_MISSING_REQUIRED_FIELD', 'Artificial Analysis row omitted provider, model, or Intelligence Index.');
+    throw new PipelineError(
+      'AA_ROW_MISSING_REQUIRED_FIELD',
+      'Artificial Analysis row omitted provider, model, or Intelligence Index.',
+    );
   }
   if (intelligenceIndex < 0 || intelligenceIndex >= 200) {
     throw new PipelineError(
@@ -211,14 +330,19 @@ function rowFrom(sourceModel: UnknownRecord, variant: UnknownRecord): Omit<Bench
     'reasoning.mode',
   ]);
   const effort =
-    text(values, ['effort', 'reasoning_effort', 'reasoning.effort', 'configuration.effort'])?.toLowerCase() ??
-    effortFromName(`${model} ${variantLabel ?? ''}`);
+    text(values, [
+      'effort',
+      'reasoning_effort',
+      'reasoning.effort',
+      'configuration.effort',
+    ])?.toLowerCase() ?? effortFromName(`${model} ${variantLabel ?? ''}`);
   const sourceId = text(values, ['id', 'model_id', 'slug', 'uuid']);
   const id = [provider, model, variantLabel ?? '', effort ?? '', sourceId ?? '']
     .map(slug)
     .filter(Boolean)
     .join('|');
-  if (!id) throw new PipelineError('AA_ROW_ID_INVALID', 'Artificial Analysis row identity was empty.');
+  if (!id)
+    throw new PipelineError('AA_ROW_ID_INVALID', 'Artificial Analysis row identity was empty.');
 
   const inputPricePer1MTokensUsd = nonNegative(values, [
     'pricing.price_1m_input_tokens',
@@ -313,8 +437,11 @@ function median(values: readonly number[]): number {
 }
 
 export function validateBenchmarkRows(rows: readonly BenchmarkModelRowV2[]): void {
-  if (rows.length < 10 || rows.length > 500) {
-    throw new PipelineError('AA_ROW_COUNT_ANOMALY', `Artificial Analysis returned ${rows.length} usable rows.`);
+  if (rows.length < 10 || rows.length > 1_000) {
+    throw new PipelineError(
+      'AA_ROW_COUNT_ANOMALY',
+      `Artificial Analysis returned ${rows.length} usable rows.`,
+    );
   }
   const ids = new Set<string>();
   const ranks = new Set<number>();
@@ -322,27 +449,52 @@ export function validateBenchmarkRows(rows: readonly BenchmarkModelRowV2[]): voi
   let priorScore = Number.POSITIVE_INFINITY;
   for (const row of rows) {
     if (!row.id || !row.provider || !row.model || !Number.isFinite(row.intelligenceIndex)) {
-      throw new PipelineError('AA_ROW_MISSING_REQUIRED_FIELD', 'A benchmark row failed required-field validation.');
+      throw new PipelineError(
+        'AA_ROW_MISSING_REQUIRED_FIELD',
+        'A benchmark row failed required-field validation.',
+      );
     }
     if (row.intelligenceIndex < 0 || row.intelligenceIndex >= 200) {
-      throw new PipelineError('AA_SCALE_ANOMALY', 'Arena/Elo-style values cannot be promoted as Intelligence Index.');
+      throw new PipelineError(
+        'AA_SCALE_ANOMALY',
+        'Arena/Elo-style values cannot be promoted as Intelligence Index.',
+      );
     }
-    if (ids.has(row.id)) throw new PipelineError('AA_DUPLICATE_VARIANT', `Duplicate exact variant identity: ${row.id}`);
-    if (ranks.has(row.rank)) throw new PipelineError('AA_DUPLICATE_RANK', `Duplicate rank: ${row.rank}`);
+    if (ids.has(row.id))
+      throw new PipelineError(
+        'AA_DUPLICATE_VARIANT',
+        `Duplicate exact variant identity: ${row.id}`,
+      );
+    if (ranks.has(row.rank))
+      throw new PipelineError('AA_DUPLICATE_RANK', `Duplicate rank: ${row.rank}`);
     ids.add(row.id);
     ranks.add(row.rank);
     providers.add(row.provider);
     if (row.intelligenceIndex > priorScore) {
-      throw new PipelineError('AA_RANK_ORDER_ANOMALY', 'Intelligence scores increased after a lower rank.');
+      throw new PipelineError(
+        'AA_RANK_ORDER_ANOMALY',
+        'Intelligence scores increased after a lower rank.',
+      );
     }
     priorScore = row.intelligenceIndex;
   }
-  if (providers.size < 2) throw new PipelineError('AA_PROVIDER_ANOMALY', 'Artificial Analysis payload contained fewer than two providers.');
+  if (providers.size < 2)
+    throw new PipelineError(
+      'AA_PROVIDER_ANOMALY',
+      'Artificial Analysis payload contained fewer than two providers.',
+    );
   const scoreMedian = median(rows.map((row) => row.intelligenceIndex));
-  if (scoreMedian >= 150) throw new PipelineError('AA_SCALE_ANOMALY', 'Median score resembles Arena/Elo rather than Intelligence Index.');
+  if (scoreMedian >= 150)
+    throw new PipelineError(
+      'AA_SCALE_ANOMALY',
+      'Median score resembles Arena/Elo rather than Intelligence Index.',
+    );
   for (let index = 0; index < rows.length; index += 1) {
     if (rows[index]?.rank !== index + 1) {
-      throw new PipelineError('AA_RANK_GAP', 'Artificial Analysis ranks are not contiguous after normalization.');
+      throw new PipelineError(
+        'AA_RANK_GAP',
+        'Artificial Analysis ranks are not contiguous after normalization.',
+      );
     }
   }
 }
@@ -356,14 +508,23 @@ export async function parseArtificialAnalysisPayload(
   let skippedRows = 0;
   for (const rawModel of modelArray(payload)) {
     const sourceModel = record(rawModel);
-    if (!sourceModel) throw new PipelineError('AA_ROW_MALFORMED', 'Artificial Analysis model row was not an object.');
+    if (!sourceModel)
+      throw new PipelineError(
+        'AA_ROW_MALFORMED',
+        'Artificial Analysis model row was not an object.',
+      );
     for (const variant of nestedVariants(sourceModel)) {
       try {
         const normalized = rowFrom(sourceModel, variant);
-        const explicitRank = numberValue([variant, sourceModel], ['rank', 'ranking', 'intelligence_rank']);
+        const explicitRank = numberValue(
+          [variant, sourceModel],
+          ['rank', 'ranking', 'intelligence_rank'],
+        );
         flattened.push({
           ...normalized,
-          ...(explicitRank && Number.isInteger(explicitRank) && explicitRank >= 1 ? { explicitRank } : {}),
+          ...(explicitRank && Number.isInteger(explicitRank) && explicitRank >= 1
+            ? { explicitRank }
+            : {}),
         });
       } catch (error) {
         if (error instanceof PipelineError && error.code === 'AA_ROW_MISSING_REQUIRED_FIELD') {
@@ -375,7 +536,8 @@ export async function parseArtificialAnalysisPayload(
     }
   }
 
-  const allExplicit = flattened.length > 0 && flattened.every((row) => row.explicitRank !== undefined);
+  const allExplicit =
+    flattened.length > 0 && flattened.every((row) => row.explicitRank !== undefined);
   flattened.sort((left, right) => {
     if (allExplicit) return (left.explicitRank ?? 0) - (right.explicitRank ?? 0);
     return (
@@ -385,32 +547,40 @@ export async function parseArtificialAnalysisPayload(
       (left.effort ?? '').localeCompare(right.effort ?? '')
     );
   });
-  const rows: BenchmarkModelRowV2[] = flattened.map(({ explicitRank: _explicitRank, ...row }, index) => ({
-    ...row,
-    rank: index + 1,
-  }));
+  const rows: BenchmarkModelRowV2[] = flattened.map(
+    ({ explicitRank: _explicitRank, ...row }, index) => ({
+      ...row,
+      rank: index + 1,
+    }),
+  );
   validateBenchmarkRows(rows);
 
   const sourceObservedAt = timestamp(
-    firstValue([root], [
-      'last_updated',
-      'updated_at',
-      'generated_at',
-      'data_updated_at',
-      'metadata.updated_at',
-      'meta.updated_at',
-    ]),
+    firstValue(
+      [root],
+      [
+        'last_updated',
+        'updated_at',
+        'generated_at',
+        'data_updated_at',
+        'metadata.updated_at',
+        'meta.updated_at',
+      ],
+    ),
     observedAt,
   );
   const methodologyVersion =
-    text([root], [
-      'methodology_version',
-      'methodology.version',
-      'metadata.methodology_version',
-      'meta.methodology_version',
-      'intelligence_index_version',
-      'version',
-    ]) ?? 'not-exposed-by-api-v2';
+    text(
+      [root],
+      [
+        'methodology_version',
+        'methodology.version',
+        'metadata.methodology_version',
+        'meta.methodology_version',
+        'intelligence_index_version',
+        'version',
+      ],
+    ) ?? 'not-exposed-by-api-v2';
   const checksum = await sha256(
     stableJson(
       rows.map((row) => ({
@@ -513,7 +683,9 @@ async function promoteDataset(
   }
   statements.push(
     db
-      .prepare("UPDATE benchmark_datasets_v2 SET status = 'superseded' WHERE status = 'current' AND id <> ?")
+      .prepare(
+        "UPDATE benchmark_datasets_v2 SET status = 'superseded' WHERE status = 'current' AND id <> ?",
+      )
       .bind(datasetId),
     db.prepare("UPDATE benchmark_datasets_v2 SET status = 'current' WHERE id = ?").bind(datasetId),
     db
@@ -573,23 +745,35 @@ export async function runBenchmarkIngestion(
         'Artificial Analysis API access is not configured. The last-known-good dataset remains current.',
       );
     }
-    const fetched = await boundedFetch(ARTIFICIAL_ANALYSIS_API_URL, {
-      headers: { 'x-api-key': env.AA_API_KEY.trim() },
-      accept: 'application/json',
-      timeoutMs: 10_000,
-      maxBytes: 4_000_000,
-      maxRedirects: 2,
-      retries: 1,
-    });
-    if (/text\/html/i.test(fetched.contentType) || /^\s*</.test(fetched.text)) {
-      throw new PipelineError('AA_HTML_RESPONSE', 'Artificial Analysis returned HTML instead of model data.');
-    }
-    let payload: unknown;
-    try {
-      payload = JSON.parse(fetched.text);
-    } catch {
-      throw new PipelineError('AA_JSON_INVALID', 'Artificial Analysis returned invalid JSON.');
-    }
+    const fetchPage = async (page: number): Promise<unknown> => {
+      const url = new URL(ARTIFICIAL_ANALYSIS_API_URL);
+      url.searchParams.set('page', String(page));
+      const fetched = await boundedFetch(url.toString(), {
+        headers: { 'x-api-key': env.AA_API_KEY!.trim() },
+        accept: 'application/json',
+        timeoutMs: 10_000,
+        maxBytes: 4_000_000,
+        maxRedirects: 2,
+        retries: 1,
+      });
+      if (/text\/html/i.test(fetched.contentType) || /^\s*</.test(fetched.text)) {
+        throw new PipelineError(
+          'AA_HTML_RESPONSE',
+          'Artificial Analysis returned HTML instead of model data.',
+        );
+      }
+      try {
+        return JSON.parse(fetched.text);
+      } catch {
+        throw new PipelineError('AA_JSON_INVALID', 'Artificial Analysis returned invalid JSON.');
+      }
+    };
+    const firstPayload = await fetchPage(1);
+    const firstPage = artificialAnalysisPage(firstPayload);
+    const remainingPayloads = await Promise.all(
+      Array.from({ length: firstPage.totalPages - 1 }, (_, index) => fetchPage(index + 2)),
+    );
+    const payload = mergeArtificialAnalysisPages([firstPayload, ...remainingPayloads]);
     const dataset = await parseArtificialAnalysisPayload(payload, nowIso());
     const datasetId = await promoteDataset(env.DB, dataset, nowIso());
     result = {
@@ -605,6 +789,7 @@ export async function runBenchmarkIngestion(
         checksum: dataset.checksum,
         sourceObservedAt: dataset.sourceObservedAt,
         methodologyVersion: dataset.methodologyVersion,
+        sourcePages: firstPage.totalPages,
         skippedRows: dataset.skippedRows,
         topRow: dataset.rows[0]
           ? {
@@ -666,16 +851,43 @@ interface StoredBenchmarkRow {
   release_date: string | null;
 }
 
+export function resolveBenchmarkFreshness(
+  promotedAt: string | null | undefined,
+  latestRun: { status: string; completedAt: string | null } | null,
+  now = Date.now(),
+  slaMinutes = 120,
+): ReturnType<typeof freshnessFromTimestamp> {
+  const freshness = freshnessFromTimestamp(promotedAt, now, slaMinutes);
+  if (
+    latestRun?.status === 'failed' &&
+    latestRun.completedAt &&
+    promotedAt &&
+    Date.parse(latestRun.completedAt) > Date.parse(promotedAt)
+  ) {
+    return {
+      state: freshness.state === 'fresh' ? 'degraded' : freshness.state,
+      ...(freshness.ageMs === undefined ? {} : { ageMs: freshness.ageMs }),
+      warning: 'The latest official-source refresh failed. Showing the last verified dataset.',
+    };
+  }
+  return freshness;
+}
+
 export async function readBenchmarkApi(env: Env): Promise<Record<string, unknown>> {
-  const dataset = await env.DB
-    .prepare(
+  const [dataset, latestRun] = await Promise.all([
+    env.DB.prepare(
       `SELECT d.*, c.promoted_at
        FROM benchmark_current_v2 c
        JOIN benchmark_datasets_v2 d ON d.id = c.dataset_id
        WHERE c.singleton = 1 AND d.status = 'current'
        LIMIT 1`,
-    )
-    .first<DatasetRow>();
+    ).first<DatasetRow>(),
+    env.DB.prepare(
+      `SELECT status, completed_at FROM intelligence_pipeline_runs
+       WHERE pipeline = 'benchmarks-hourly' AND completed_at IS NOT NULL
+       ORDER BY completed_at DESC, id DESC LIMIT 1`,
+    ).first<{ status: string; completed_at: string | null }>(),
+  ]);
   const generatedAt = nowIso();
   if (!dataset) {
     return {
@@ -685,14 +897,20 @@ export async function readBenchmarkApi(env: Env): Promise<Record<string, unknown
       rows: [],
     };
   }
-  const stored = await env.DB
-    .prepare('SELECT * FROM benchmark_rows_v2 WHERE dataset_id = ? ORDER BY rank ASC')
+  const stored = await env.DB.prepare(
+    'SELECT * FROM benchmark_rows_v2 WHERE dataset_id = ? ORDER BY rank ASC',
+  )
     .bind(dataset.id)
     .all<StoredBenchmarkRow>();
   const slaMinutes = Number.parseInt(env.FRESHNESS_SLA_MINUTES ?? '120', 10) || 120;
   return {
     generatedAt,
-    freshness: freshnessFromTimestamp(dataset.promoted_at, Date.now(), slaMinutes),
+    freshness: resolveBenchmarkFreshness(
+      dataset.promoted_at,
+      latestRun ? { status: latestRun.status, completedAt: latestRun.completed_at } : null,
+      Date.now(),
+      slaMinutes,
+    ),
     dataset: {
       source: 'Artificial Analysis',
       metric: ARTIFICIAL_ANALYSIS_METRIC,

@@ -60,6 +60,25 @@ const x = (
   tags: ['x'],
 });
 
+const youtube = (
+  id: string,
+  company: string,
+  channelId: string,
+  handle: string,
+  priority: number,
+): NewsSourceDefinition => ({
+  id,
+  company,
+  priority,
+  enabled: true,
+  sourceType: 'youtube_feed',
+  endpoint: `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`,
+  officialSite: `https://www.youtube.com/@${handle}`,
+  verification: 'official',
+  rotationGroup: 0,
+  tags: ['video', 'official-channel'],
+});
+
 const unavailableSite = (
   id: string,
   company: string,
@@ -169,28 +188,39 @@ export const NEWS_SOURCES: readonly NewsSourceDefinition[] = [
     rotationGroup: 0,
     tags: ['open-models', 'research', 'developer-tools'],
   },
+  youtube('openai-youtube', 'OpenAI', 'UCXZCJLdBC09xxGZ6gcdrc6A', 'OpenAI', 98),
+  youtube('anthropic-youtube', 'Anthropic', 'UCrDwWp7EBBv4NwvScIpBDOA', 'anthropic-ai', 98),
+  youtube(
+    'google-deepmind-youtube',
+    'Google DeepMind',
+    'UCP7jMXSY2xbc3KCAE0MHQ-A',
+    'GoogleDeepMind',
+    97,
+  ),
+  youtube('microsoft-ai-youtube', 'Microsoft AI', 'UCOSvlnAJdUVcflzZfclqleA', 'MicrosoftAI', 95),
+  youtube(
+    'nvidia-developer-youtube',
+    'NVIDIA Developer',
+    'UCBHcMCGaiJhv-ESTcWGJPcw',
+    'NVIDIADeveloper',
+    95,
+  ),
   release('openai-python-releases', 'OpenAI', 'openai/openai-python', 93, 1, ['sdk']),
   release('openai-node-releases', 'OpenAI', 'openai/openai-node', 92, 2, ['sdk']),
   release('anthropic-claude-code-releases', 'Anthropic', 'anthropics/claude-code', 96, 1, [
     'coding-agent',
   ]),
-  release('google-python-genai-releases', 'Google AI', 'googleapis/python-genai', 92, 2, [
-    'sdk',
-  ]),
+  release('google-python-genai-releases', 'Google AI', 'googleapis/python-genai', 92, 2, ['sdk']),
   release('google-js-genai-releases', 'Google AI', 'googleapis/js-genai', 91, 3, ['sdk']),
   release('meta-llama-models-releases', 'Meta AI', 'meta-llama/llama-models', 91, 1, [
     'open-models',
   ]),
   release('mistral-python-releases', 'Mistral AI', 'mistralai/client-python', 90, 2, ['sdk']),
-  release('deepseek-v3-releases', 'DeepSeek', 'deepseek-ai/DeepSeek-V3', 90, 3, [
-    'open-models',
-  ]),
+  release('deepseek-v3-releases', 'DeepSeek', 'deepseek-ai/DeepSeek-V3', 90, 3, ['open-models']),
   release('qwen3-releases', 'Alibaba Qwen', 'QwenLM/Qwen3', 90, 1, ['open-models']),
   release('kimi-k2-releases', 'Moonshot AI', 'MoonshotAI/Kimi-K2', 89, 2, ['open-models']),
   release('glm4-releases', 'Zhipu AI', 'THUDM/GLM-4', 88, 3, ['open-models']),
-  release('minimax-text-releases', 'MiniMax', 'MiniMax-AI/MiniMax-Text-01', 87, 1, [
-    'open-models',
-  ]),
+  release('minimax-text-releases', 'MiniMax', 'MiniMax-AI/MiniMax-Text-01', 87, 1, ['open-models']),
   release('cohere-python-releases', 'Cohere', 'cohere-ai/cohere-python', 87, 2, ['sdk']),
   release('ai21-python-releases', 'AI21 Labs', 'AI21Labs/ai21-python', 85, 3, ['sdk']),
   release('transformers-releases', 'Hugging Face', 'huggingface/transformers', 94, 1, [
@@ -198,14 +228,10 @@ export const NEWS_SOURCES: readonly NewsSourceDefinition[] = [
     'developer-tools',
   ]),
   release('groq-python-releases', 'Groq', 'groq/groq-python', 88, 2, ['inference', 'sdk']),
-  release(
-    'cerebras-cloud-sdk-releases',
-    'Cerebras',
-    'Cerebras/cerebras-cloud-sdk-python',
-    86,
-    3,
-    ['inference', 'sdk'],
-  ),
+  release('cerebras-cloud-sdk-releases', 'Cerebras', 'Cerebras/cerebras-cloud-sdk-python', 86, 3, [
+    'inference',
+    'sdk',
+  ]),
   release('together-python-releases', 'Together AI', 'togethercomputer/together-python', 86, 1, [
     'inference',
     'sdk',
@@ -220,24 +246,27 @@ export const NEWS_SOURCES: readonly NewsSourceDefinition[] = [
     'agents',
     'developer-tools',
   ]),
-  release('llamaindex-releases', 'LlamaIndex', 'run-llama/llama_index', 88, 3, [
-    'rag',
-    'agents',
-  ]),
+  release('llamaindex-releases', 'LlamaIndex', 'run-llama/llama_index', 88, 3, ['rag', 'agents']),
   release('aider-releases', 'Aider', 'Aider-AI/aider', 87, 1, ['coding-agent']),
   release('continue-releases', 'Continue', 'continuedev/continue', 87, 2, ['coding-agent']),
-  release('mcp-spec-releases', 'Model Context Protocol', 'modelcontextprotocol/specification', 93, 3, [
-    'mcp',
-  ]),
-  release('mcp-typescript-sdk-releases', 'Model Context Protocol', 'modelcontextprotocol/typescript-sdk', 91, 1, [
-    'mcp',
-    'sdk',
-  ]),
+  release(
+    'mcp-spec-releases',
+    'Model Context Protocol',
+    'modelcontextprotocol/specification',
+    93,
+    3,
+    ['mcp'],
+  ),
+  release(
+    'mcp-typescript-sdk-releases',
+    'Model Context Protocol',
+    'modelcontextprotocol/typescript-sdk',
+    91,
+    1,
+    ['mcp', 'sdk'],
+  ),
   release('vllm-releases', 'vLLM', 'vllm-project/vllm', 89, 2, ['inference', 'open-source']),
-  release('llamacpp-releases', 'llama.cpp', 'ggml-org/llama.cpp', 89, 3, [
-    'local-ai',
-    'inference',
-  ]),
+  release('llamacpp-releases', 'llama.cpp', 'ggml-org/llama.cpp', 89, 3, ['local-ai', 'inference']),
   release('sglang-releases', 'SGLang', 'sgl-project/sglang', 86, 1, ['inference']),
   release('litellm-releases', 'LiteLLM', 'BerriAI/litellm', 86, 2, ['gateway', 'developer-tools']),
   release('crewai-releases', 'CrewAI', 'crewAIInc/crewAI', 84, 3, ['agents']),
@@ -247,10 +276,14 @@ export const NEWS_SOURCES: readonly NewsSourceDefinition[] = [
     'audio',
     'sdk',
   ]),
-  release('stability-generative-models-releases', 'Stability AI', 'Stability-AI/generative-models', 82, 1, [
-    'image',
-    'open-models',
-  ]),
+  release(
+    'stability-generative-models-releases',
+    'Stability AI',
+    'Stability-AI/generative-models',
+    82,
+    1,
+    ['image', 'open-models'],
+  ),
   release('google-gemma-releases', 'Google AI', 'google-deepmind/gemma', 88, 2, ['open-models']),
 
   x('openai-x', 'OpenAI', 'OpenAI', 100, 0),
@@ -416,7 +449,8 @@ export function validateNewsSourceRegistry(
   }
 
   for (const source of sources) {
-    if (!/^[a-z0-9][a-z0-9-]{2,79}$/.test(source.id)) errors.push(`Invalid source id: ${source.id}`);
+    if (!/^[a-z0-9][a-z0-9-]{2,79}$/.test(source.id))
+      errors.push(`Invalid source id: ${source.id}`);
     if (ids.has(source.id)) errors.push(`Duplicate source id: ${source.id}`);
     ids.add(source.id);
     if (!source.company.trim()) errors.push(`Missing company for ${source.id}`);
@@ -491,21 +525,35 @@ export function selectNewsSourcesForRun(
   const hour = new Date(scheduledAt).toISOString().slice(0, 13);
   const enabled = sources.filter((source) => source.enabled);
   const core = enabled
-    .filter((source) => source.sourceType !== 'x' && source.priority >= 94)
+    .filter(
+      (source) =>
+        source.sourceType !== 'x' &&
+        source.sourceType !== 'github_releases' &&
+        source.priority >= 94,
+    )
     .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
   const rotatingFeeds = enabled
-    .filter((source) => source.sourceType !== 'x' && source.priority < 94)
+    .filter(
+      (source) =>
+        source.sourceType !== 'x' &&
+        source.sourceType !== 'github_releases' &&
+        source.priority < 94,
+    )
     .sort((left, right) => {
       const leftOrder = hash32(`${hour}:${left.rotationGroup}:${left.id}`);
       const rightOrder = hash32(`${hour}:${right.rotationGroup}:${right.id}`);
-      return leftOrder - rightOrder || right.priority - left.priority || left.id.localeCompare(right.id);
+      return (
+        leftOrder - rightOrder || right.priority - left.priority || left.id.localeCompare(right.id)
+      );
     });
   const xSources = enabled
     .filter((source) => source.sourceType === 'x')
     .sort((left, right) => {
       const leftOrder = hash32(`${hour}:x:${left.rotationGroup}:${left.id}`);
       const rightOrder = hash32(`${hour}:x:${right.rotationGroup}:${right.id}`);
-      return leftOrder - rightOrder || right.priority - left.priority || left.id.localeCompare(right.id);
+      return (
+        leftOrder - rightOrder || right.priority - left.priority || left.id.localeCompare(right.id)
+      );
     })
     .slice(0, Math.max(0, maxX));
 

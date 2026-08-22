@@ -24,7 +24,20 @@ describe('AI news source registry', () => {
     expect(first).toEqual(repeated);
     expect(first.length).toBeLessThanOrEqual(24);
     expect(first.filter((source) => source.sourceType === 'x').length).toBeLessThanOrEqual(2);
+    expect(first.some((source) => source.sourceType === 'github_releases')).toBe(false);
     expect(new Set(first.map((source) => source.id)).size).toBe(first.length);
+  });
+
+  it('uses five to ten approved YouTube feeds with stable channel IDs', () => {
+    const channels = NEWS_SOURCES.filter((source) => source.sourceType === 'youtube_feed');
+    expect(channels.length).toBeGreaterThanOrEqual(5);
+    expect(channels.length).toBeLessThanOrEqual(10);
+    for (const channel of channels) {
+      expect(channel.endpoint).toMatch(
+        /^https:\/\/www\.youtube\.com\/feeds\/videos\.xml\?channel_id=UC[A-Za-z0-9_-]{22}$/u,
+      );
+      expect(channel.officialSite).toMatch(/^https:\/\/www\.youtube\.com\/@/u);
+    }
   });
 
   it('rotates long-tail sources across clock hours while retaining core feeds', () => {

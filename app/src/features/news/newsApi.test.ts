@@ -25,6 +25,32 @@ function responsePayload(item: Record<string, unknown> = baseItem) {
 }
 
 describe('live AI news API adapter', () => {
+  it('parses repository metadata into a separate measured GitHub trend section', () => {
+    const parsed = parseNewsResponse({
+      ...responsePayload(),
+      repositories: [
+        {
+          id: 'ollama',
+          fullName: 'ollama/ollama',
+          url: 'https://github.com/ollama/ollama',
+          description: 'Run open models locally.',
+          stars: 150000,
+          starDelta: 42,
+          forks: 12000,
+          openIssues: 1000,
+          language: 'Go',
+          pushedAt: '2026-08-14T18:40:00Z',
+          observedAt: '2026-08-14T18:45:00Z',
+        },
+      ],
+    });
+    expect(parsed.repositories?.[0]).toMatchObject({
+      kind: 'github',
+      title: 'ollama/ollama',
+      repository: { stars: 150000, starDelta: 42, trendSignal: '+42 stars since last check' },
+    });
+  });
+
   it('preserves full publication time and consumes real image metadata', () => {
     const parsed = parseNewsResponse(
       responsePayload({
@@ -115,11 +141,12 @@ describe('live AI news API adapter', () => {
   });
 
   it('uses the configured origin and bounded request path', async () => {
-    const fetcher = vi.fn(async (_input: RequestInfo | URL) =>
-      new Response(JSON.stringify(responsePayload()), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetcher = vi.fn(
+      async (_input: RequestInfo | URL) =>
+        new Response(JSON.stringify(responsePayload()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     );
     const parsed = await fetchLiveNews('https://news.example', { fetcher, timeoutMs: 1000 });
     expect(parsed.items).toHaveLength(1);

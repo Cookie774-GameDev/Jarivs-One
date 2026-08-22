@@ -9,7 +9,7 @@
  * and never phones home for headlines.
  */
 
-export type NewsKind = 'model_drop' | 'ai_news' | 'youtube';
+export type NewsKind = 'model_drop' | 'ai_news' | 'youtube' | 'github';
 
 export type NewsSectionId = 'today' | 'last_week' | 'more';
 
@@ -38,19 +38,14 @@ export interface NewsItem {
   tags?: string[];
 }
 
-export const NEWS_KIND_META: Record<
-  NewsKind,
-  { label: string; short: string }
-> = {
+export const NEWS_KIND_META: Record<NewsKind, { label: string; short: string }> = {
   model_drop: { label: 'Model drop', short: 'Models' },
   ai_news: { label: 'AI news', short: 'News' },
   youtube: { label: 'YouTube', short: 'Video' },
+  github: { label: 'GitHub repository', short: 'GitHub' },
 };
 
-export const NEWS_SECTION_META: Record<
-  NewsSectionId,
-  { label: string; description: string }
-> = {
+export const NEWS_SECTION_META: Record<NewsSectionId, { label: string; description: string }> = {
   today: {
     label: 'Today',
     description: 'Headlines from today',

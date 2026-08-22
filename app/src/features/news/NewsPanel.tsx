@@ -13,6 +13,8 @@ import * as React from 'react';
 import './sakura-news.css';
 import {
   AlertTriangle,
+  Bell,
+  BellRing,
   ExternalLink,
   Newspaper,
   Play,
@@ -21,10 +23,14 @@ import {
   X,
   Cpu,
   Radio,
+  Github,
+  Star,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { openExternal } from '@/lib/tauri';
+import { toast } from '@/components/ui/toast';
+import { useAuthStore } from '@/stores/auth';
 import {
   NEWS_KIND_META,
   NEWS_SECTION_META,
@@ -39,6 +45,12 @@ import {
   type LiveNewsItem,
   type LiveNewsResponse,
 } from './newsApi';
+import {
+  acknowledgeCreatorNotifications,
+  fetchCreatorNotifications,
+  fetchCreatorSubscriptions,
+  setCreatorSubscription,
+} from './creatorSubscriptions';
 
 export interface NewsPanelProps {
   open: boolean;
@@ -55,12 +67,14 @@ const KIND_FILTERS: ReadonlyArray<{ id: KindFilter; label: string }> = [
   { id: 'model_drop', label: NEWS_KIND_META.model_drop.short },
   { id: 'ai_news', label: NEWS_KIND_META.ai_news.short },
   { id: 'youtube', label: NEWS_KIND_META.youtube.short },
+  { id: 'github', label: NEWS_KIND_META.github.short },
 ];
 
 const SECTIONS: readonly NewsSectionId[] = ['today', 'last_week', 'more'];
 const NEWS_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 function KindIcon({ kind, className }: { kind: NewsKind; className?: string }) {
+  if (kind === 'github') return <Github className={className} />;
   if (kind === 'youtube') return <Play className={className} />;
   if (kind === 'model_drop') return <Cpu className={className} />;
   return <Radio className={className} />;
@@ -69,9 +83,17 @@ function KindIcon({ kind, className }: { kind: NewsKind; className?: string }) {
 function NewsCard({
   item,
   runtimeEffectsEnabled,
+  followed,
+  followPending,
+  canFollow,
+  onToggleFollow,
 }: {
   item: NewsItem | LiveNewsItem;
   runtimeEffectsEnabled: boolean;
+  followed: boolean;
+  followPending: boolean;
+  canFollow: boolean;
+  onToggleFollow: () => void;
 }) {
   const [imgFailed, setImgFailed] = React.useState(false);
 
@@ -83,10 +105,31 @@ function NewsCard({
   return (
     <article
       className={cn(
-        'group overflow-hidden rounded-xl border border-border bg-paper',
+        'group relative overflow-hidden rounded-xl border border-border bg-paper',
         'shadow-soft transition-colors hover:border-accent-copper/40',
       )}
     >
+      {'sourceId' in item && item.sourceId && item.kind !== 'github' ? (
+        <button
+          type="button"
+          className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-panel/95 text-foreground shadow-soft disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={`${followed ? 'Unfollow' : 'Follow'} ${item.source}`}
+          aria-pressed={followed}
+          disabled={!canFollow || followPending}
+          title={
+            canFollow
+              ? 'Alert me to new items while VibeSpace is open'
+              : 'Sign in with cloud sync to follow creators'
+          }
+          onClick={onToggleFollow}
+        >
+          {followed ? (
+            <BellRing className="h-4 w-4 text-accent-copper" />
+          ) : (
+            <Bell className="h-4 w-4" />
+          )}
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={open}
@@ -168,6 +211,16 @@ function NewsCard({
               ) : null}
             </div>
           ) : null}
+          {'repository' in item && item.repository ? (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-[10px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                <Star className="h-3 w-3" /> {item.repository.stars.toLocaleString()}
+              </span>
+              <span>{item.repository.trendSignal}</span>
+              <span>{item.repository.forks.toLocaleString()} forks</span>
+              {item.repository.language ? <span>{item.repository.language}</span> : null}
+            </div>
+          ) : null}
           <p className="text-[10px] leading-snug text-muted-foreground/80 [html[data-theme=monochrome]_&]:text-muted-foreground">
             Credit: {item.credit}
             {item.imageCredit ? ` · Image: ${item.imageCredit}` : null}
@@ -189,6 +242,10 @@ export function NewsPanel({
   const [live, setLive] = React.useState<LiveNewsResponse | null>(null);
   const [liveError, setLiveError] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [following, setFollowing] = React.useState<Set<string>>(() => new Set());
+  const [followPending, setFollowPending] = React.useState<Set<string>>(() => new Set());
+  const [subscriptionError, setSubscriptionError] = React.useState<string | null>(null);
+  const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id.trim() ?? '');
   const endpoint = React.useMemo(configuredNewsApiUrl, []);
 
   const refresh = React.useCallback(async () => {
@@ -198,6 +255,29 @@ export function NewsPanel({
       const response = await fetchLiveNews(endpoint);
       setLive(response);
       setLiveError(null);
+      if (cloudAccountId) {
+        try {
+          const notifications = await fetchCreatorNotifications(endpoint);
+          const seenKey = `vibespace-news-notifications:v1:${cloudAccountId}`;
+          const seen = new Set<string>(
+            JSON.parse(window.localStorage.getItem(seenKey) ?? '[]') as string[],
+          );
+          for (const notification of notifications) {
+            const key = String(notification.id);
+            if (!seen.has(key)) {
+              seen.add(key);
+              toast.info(`New from ${notification.company}`, notification.title);
+            }
+          }
+          window.localStorage.setItem(seenKey, JSON.stringify([...seen].slice(-500)));
+          await acknowledgeCreatorNotifications(
+            endpoint,
+            notifications.map((notification) => notification.id),
+          );
+        } catch {
+          // Headline refresh remains independent from authenticated creator alerts.
+        }
+      }
     } catch (error) {
       setLiveError(
         error instanceof Error ? error.message : 'Live news is temporarily unavailable.',
@@ -205,7 +285,67 @@ export function NewsPanel({
     } finally {
       setRefreshing(false);
     }
-  }, [endpoint, runtimeEffectsEnabled]);
+  }, [cloudAccountId, endpoint, runtimeEffectsEnabled]);
+
+  React.useEffect(() => {
+    if (!open || !endpoint || !cloudAccountId || !runtimeEffectsEnabled) {
+      setFollowing(new Set());
+      return;
+    }
+    setSubscriptionError(null);
+    let cancelled = false;
+    void fetchCreatorSubscriptions(endpoint)
+      .then((sourceIds) => {
+        if (!cancelled) {
+          setFollowing(new Set(sourceIds));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setSubscriptionError(
+            error instanceof Error ? error.message : 'Creator alerts are unavailable.',
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudAccountId, endpoint, open, runtimeEffectsEnabled]);
+
+  const toggleFollow = React.useCallback(
+    async (sourceId: string) => {
+      if (!endpoint || !cloudAccountId || followPending.has(sourceId)) return;
+      const wasFollowing = following.has(sourceId);
+      const nextFollowing = !wasFollowing;
+      setFollowing((current) => {
+        const next = new Set(current);
+        if (nextFollowing) next.add(sourceId);
+        else next.delete(sourceId);
+        return next;
+      });
+      setFollowPending((current) => new Set(current).add(sourceId));
+      try {
+        await setCreatorSubscription(endpoint, sourceId, nextFollowing);
+        setSubscriptionError(null);
+      } catch (error) {
+        setFollowing((current) => {
+          const next = new Set(current);
+          if (wasFollowing) next.add(sourceId);
+          else next.delete(sourceId);
+          return next;
+        });
+        setSubscriptionError(
+          error instanceof Error ? error.message : 'Creator alert change was not saved.',
+        );
+      } finally {
+        setFollowPending((current) => {
+          const next = new Set(current);
+          next.delete(sourceId);
+          return next;
+        });
+      }
+    },
+    [cloudAccountId, endpoint, followPending, following],
+  );
 
   // Reset to Today whenever the panel opens.
   React.useEffect(() => {
@@ -259,10 +399,12 @@ export function NewsPanel({
     : offlineCounts;
   const items = React.useMemo(
     () =>
-      liveBySection
-        ? liveBySection[section].filter((item) => kind === 'all' || item.kind === kind)
-        : getNewsFeed(section, feedOptions),
-    [feedOptions, kind, liveBySection, section],
+      kind === 'github'
+        ? (live?.repositories ?? [])
+        : liveBySection
+          ? liveBySection[section].filter((item) => kind === 'all' || item.kind === kind)
+          : getNewsFeed(section, feedOptions),
+    [feedOptions, kind, live?.repositories, liveBySection, section],
   );
 
   if (!open) return null;
@@ -329,44 +471,50 @@ export function NewsPanel({
           </div>
 
           {/* Section tabs */}
-          <div
-            role="tablist"
-            aria-label="News time range"
-            className="mt-3 flex gap-1 rounded-lg border border-border bg-paper p-0.5"
-          >
-            {SECTIONS.map((id) => {
-              const active = section === id;
-              const meta = NEWS_SECTION_META[id];
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  aria-label={`${meta.label} ${counts[id]}`}
-                  onClick={() => setSection(id)}
-                  className={cn(
-                    'flex-1 rounded-md px-2 py-1.5 text-metadata font-medium transition-colors',
-                    active
-                      ? 'bg-accent-copper/15 text-accent-copper'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {meta.label}
-                  <span
+          {kind !== 'github' ? (
+            <div
+              role="tablist"
+              aria-label="News time range"
+              className="mt-3 flex gap-1 rounded-lg border border-border bg-paper p-0.5"
+            >
+              {SECTIONS.map((id) => {
+                const active = section === id;
+                const meta = NEWS_SECTION_META[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    aria-label={`${meta.label} ${counts[id]}`}
+                    onClick={() => setSection(id)}
                     className={cn(
-                      'ml-1 tabular-nums',
+                      'flex-1 rounded-md px-2 py-1.5 text-metadata font-medium transition-colors',
                       active
-                        ? 'text-accent-copper/80 [html[data-theme=monochrome]_&]:text-accent-copper'
-                        : 'text-muted-foreground/70 [html[data-theme=monochrome]_&]:text-muted-foreground',
+                        ? 'bg-accent-copper/15 text-accent-copper'
+                        : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
-                    {counts[id]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    {meta.label}
+                    <span
+                      className={cn(
+                        'ml-1 tabular-nums',
+                        active
+                          ? 'text-accent-copper/80 [html[data-theme=monochrome]_&]:text-accent-copper'
+                          : 'text-muted-foreground/70 [html[data-theme=monochrome]_&]:text-muted-foreground',
+                      )}
+                    >
+                      {counts[id]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-3 text-metadata font-medium text-foreground">
+              Trending GitHub repositories
+            </p>
+          )}
 
           {/* Kind chips */}
           <div className="mt-2 flex flex-wrap gap-1">
@@ -393,19 +541,21 @@ export function NewsPanel({
 
         {/* Feed */}
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          {liveError ? (
+          {liveError || subscriptionError ? (
             <div className="mb-2 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-2 text-metadata text-foreground">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
               <span>
-                {liveError}{' '}
-                {live
+                {liveError ?? subscriptionError}{' '}
+                {liveError && live
                   ? 'Keeping the last live results.'
                   : 'Showing the credited offline feed.'}
               </span>
             </div>
           ) : null}
           <p className="mb-2 px-1 text-metadata text-muted-foreground">
-            {NEWS_SECTION_META[section].description}
+            {kind === 'github'
+              ? 'Approved AI repositories ranked by measured star change, then total stars.'
+              : NEWS_SECTION_META[section].description}
           </p>
           {items.length === 0 ? (
             <div
@@ -414,23 +564,42 @@ export function NewsPanel({
             >
               <Newspaper className="h-7 w-7 text-muted-foreground/50 [html[data-theme=monochrome]_&]:text-muted-foreground" />
               <p className="text-secondary text-muted-foreground">
-                Nothing in {NEWS_SECTION_META[section].label.toLowerCase()} yet.
+                {kind === 'github'
+                  ? 'No repository trend snapshot is available yet.'
+                  : `Nothing in ${NEWS_SECTION_META[section].label.toLowerCase()} yet.`}
               </p>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSection(section === 'today' ? 'last_week' : 'more')}
+                onClick={() =>
+                  kind === 'github'
+                    ? setKind('all')
+                    : setSection(section === 'today' ? 'last_week' : 'more')
+                }
               >
-                Browse other sections
+                {kind === 'github' ? 'Back to headlines' : 'Browse other sections'}
               </Button>
             </div>
           ) : (
             <ul className="flex flex-col gap-3">
-              {items.map((item) => (
-                <li key={item.id}>
-                  <NewsCard item={item} runtimeEffectsEnabled={runtimeEffectsEnabled} />
-                </li>
-              ))}
+              {items.map((item) => {
+                const sourceId =
+                  'sourceId' in item && typeof item.sourceId === 'string' ? item.sourceId : '';
+                return (
+                  <li key={item.id}>
+                    <NewsCard
+                      item={item}
+                      runtimeEffectsEnabled={runtimeEffectsEnabled}
+                      followed={Boolean(sourceId && following.has(sourceId))}
+                      followPending={Boolean(sourceId && followPending.has(sourceId))}
+                      canFollow={Boolean(cloudAccountId)}
+                      onToggleFollow={() => {
+                        if (sourceId) void toggleFollow(sourceId);
+                      }}
+                    />
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -445,6 +614,9 @@ export function NewsPanel({
             {live
               ? `Free-only feed · Last ingestion ${formatNewsDate(live.lastCompletedAt ?? live.generatedAt ?? new Date().toISOString())}.`
               : 'Curated offline snapshot. Stories open in your browser and retain original-publisher credits.'}
+            {cloudAccountId
+              ? ' Creator alerts are checked while VibeSpace is open; they are not OS push notifications.'
+              : ''}
           </p>
         </footer>
       </aside>

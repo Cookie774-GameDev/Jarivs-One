@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseArtificialAnalysisPayload, validateBenchmarkRows } from './benchmarkPipeline';
+import {
+  mergeArtificialAnalysisPages,
+  parseArtificialAnalysisPayload,
+  resolveBenchmarkFreshness,
+  validateBenchmarkRows,
+} from './benchmarkPipeline';
 
 function model(index: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +35,71 @@ function validPayload(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Artificial Analysis benchmark ingestion', () => {
+  it('degrades last-known-good data after a newer refresh failure', () => {
+    expect(
+      resolveBenchmarkFreshness(
+        '2026-08-22T01:00:00Z',
+        { status: 'failed', completedAt: '2026-08-22T02:00:00Z' },
+        Date.parse('2026-08-22T02:15:00Z'),
+        120,
+      ),
+    ).toMatchObject({ state: 'degraded', warning: expect.stringMatching(/refresh failed/i) });
+  });
+
+  it('requires and combines every declared API page before ranking', () => {
+    const page = (current: number, total: number, data: unknown[]) => ({
+      tier: 'free',
+      intelligence_index_version: 4.1,
+      pagination: {
+        page: current,
+        page_size: 10,
+        total_pages: total,
+        has_more: current < total,
+      },
+      data,
+    });
+    const merged = mergeArtificialAnalysisPages([
+      page(
+        1,
+        2,
+        Array.from({ length: 10 }, (_, index) => model(index + 10)),
+      ),
+      page(
+        2,
+        2,
+        Array.from({ length: 10 }, (_, index) => model(index)),
+      ),
+    ]);
+
+    expect(merged.pagination).toEqual({
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+      has_more: false,
+    });
+    expect(merged.data).toHaveLength(20);
+  });
+
+  it('fails closed when an Artificial Analysis page is missing or inconsistent', () => {
+    const first = {
+      tier: 'free',
+      intelligence_index_version: 4.1,
+      pagination: { page: 1, page_size: 10, total_pages: 2, has_more: true },
+      data: Array.from({ length: 10 }, (_, index) => model(index)),
+    };
+    expect(() => mergeArtificialAnalysisPages([first])).toThrow(/every declared page/i);
+    expect(() =>
+      mergeArtificialAnalysisPages([
+        first,
+        {
+          ...first,
+          intelligence_index_version: 4.2,
+          pagination: { page: 2, page_size: 10, total_pages: 2, has_more: false },
+        },
+      ]),
+    ).toThrow(/version changed/i);
+  });
+
   it('normalizes the supported source scale and exact row metadata', async () => {
     const dataset = await parseArtificialAnalysisPayload(validPayload());
     expect(dataset.source).toBe('Artificial Analysis');
@@ -46,7 +116,6 @@ describe('Artificial Analysis benchmark ingestion', () => {
       timeToFirstTokenSeconds: 0.5,
     });
   });
-
 
   it('accepts the current free-tier language model envelope and cost path', async () => {
     const data = Array.from({ length: 10 }, (_, index) => ({
@@ -69,12 +138,15 @@ describe('Artificial Analysis benchmark ingestion', () => {
       },
       release_date: '2026-08-01',
     }));
-    const dataset = await parseArtificialAnalysisPayload({
-      tier: 'free',
-      intelligence_index_version: 4.1,
-      pagination: { page: 1, page_size: 200, total_pages: 1, has_more: false },
-      data,
-    }, '2026-08-20T00:00:00Z');
+    const dataset = await parseArtificialAnalysisPayload(
+      {
+        tier: 'free',
+        intelligence_index_version: 4.1,
+        pagination: { page: 1, page_size: 200, total_pages: 1, has_more: false },
+        data,
+      },
+      '2026-08-20T00:00:00Z',
+    );
     expect(dataset.methodologyVersion).toBe('4.1');
     expect(dataset.rows[0]).toMatchObject({
       provider: 'Provider A',
@@ -86,10 +158,14 @@ describe('Artificial Analysis benchmark ingestion', () => {
     });
   });
 
-
   it('skips current API rows without a usable Intelligence Index', async () => {
     const data = [
-      { id: 'unscored', name: 'Unscored Model', model_creator: { name: 'Provider C' }, evaluations: { artificial_analysis_intelligence_index: null } },
+      {
+        id: 'unscored',
+        name: 'Unscored Model',
+        model_creator: { name: 'Provider C' },
+        evaluations: { artificial_analysis_intelligence_index: null },
+      },
       ...Array.from({ length: 10 }, (_, index) => ({
         id: `scored-${index}`,
         name: `Scored Model ${index}`,
@@ -146,7 +222,9 @@ describe('Artificial Analysis benchmark ingestion', () => {
     await expect(parseArtificialAnalysisPayload({ data: 'not-an-array' })).rejects.toMatchObject({
       code: 'AA_PAYLOAD_MALFORMED',
     });
-    await expect(parseArtificialAnalysisPayload('<html>upstream error</html>')).rejects.toMatchObject({
+    await expect(
+      parseArtificialAnalysisPayload('<html>upstream error</html>'),
+    ).rejects.toMatchObject({
       code: 'AA_PAYLOAD_MALFORMED',
     });
   });
