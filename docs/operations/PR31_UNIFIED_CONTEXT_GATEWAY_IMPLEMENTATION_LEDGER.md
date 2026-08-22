@@ -91,3 +91,10 @@
 - TDD red reproduced 2 failures in 19 focused selection tests. Fresh adjacent verification passed 8 files / 76 tests, covering exact connection identity, current discovery, unverified rejection, attachment capability gating, picker behavior, provider catalog, and connection disclosure. The known non-fatal React `act(...)` warning remains in the smoke fixture.
 - Full typecheck reached only the same four pre-existing actively owned SiYuan test diagnostics (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned-file diagnostic was emitted.
 - Current-frontend native rerun still rejected the saved Qwen `deepseek-v3.2` selection. This is expected fail-closed behavior for the legacy selection currently persisted without exact connection metadata; no provider connection was inferred and no model was substituted. The picker exposed explicit atomic reselection, but an unintended QVQ Max draft was cancelled before Apply, leaving the saved route unchanged. End-to-end provider inference therefore remains unclaimed.
+
+## 2026-08-22 — Ranked candidate/hydration telemetry checkpoint
+
+- Added safe Phase 4 telemetry for total ranked repository candidates and actually opened evidence items. Direct routes record zero/zero; focused and deep routes aggregate counts within their request and expose only numbers, never queries, paths, source text, or credentials.
+- Candidate/hydration counts now flow through the production Gateway adapter into `ContextReceipt.stageTimingsMs`, alongside retrieval duration, queue wait, child calls, and depth. The focused contract proves seven ranked candidates result in exactly five hydrated evidence items.
+- TDD red showed both telemetry fields absent from the production result and shared receipt. Fresh focused verification passed 3 files / 10 tests; the broader owned Gateway/RLM/terminal matrix passed 12 files / 100 tests. Exact formatting passed.
+- Full typecheck reached only the same four pre-existing diagnostics in actively owned SiYuan tests (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned file produced a diagnostic.

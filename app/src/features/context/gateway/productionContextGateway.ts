@@ -28,10 +28,14 @@ const DEFAULT_DEPENDENCIES: Readonly<ProductionContextGatewayDependencies> = Obj
   },
 });
 
-function sourceRevisions(result: Readonly<ProductionRlmContextResult>): readonly Readonly<ContextSourceRevision>[] {
+function sourceRevisions(
+  result: Readonly<ProductionRlmContextResult>,
+): readonly Readonly<ContextSourceRevision>[] {
   const revisions = new Map<string, string>();
   for (const evidence of result.evidence) revisions.set(evidence.sourceId, evidence.sourceRevision);
-  return Object.freeze([...revisions].map(([sourceId, revision]) => Object.freeze({ sourceId, revision })));
+  return Object.freeze(
+    [...revisions].map(([sourceId, revision]) => Object.freeze({ sourceId, revision })),
+  );
 }
 
 function productionBackend(
@@ -66,6 +70,8 @@ function productionBackend(
         evidence: Object.freeze(result.evidence.map((item) => Object.freeze({ ...item }))),
         stageTimingsMs: Object.freeze({
           retrieval: Math.max(0, dependencies.now() - startedAt),
+          candidateCount: result.candidateCount,
+          hydratedCount: result.hydratedCount,
           childCalls: result.childCalls,
           maxDepth: result.maxDepth,
         }),

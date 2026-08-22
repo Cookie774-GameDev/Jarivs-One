@@ -3,14 +3,15 @@ import { DEFAULT_CHAT_RUNTIME_SETTINGS } from '@/features/chat/runtime/chatRunti
 import type { RepositoryRetrievalResult } from '@/features/context/repositoryRetrieval';
 import { prepareProductionRlmContext } from './contextRlmProduction';
 
-function result(path = 'src/example.ts'): RepositoryRetrievalResult {
+function result(path = 'src/example.ts', count = 1): RepositoryRetrievalResult {
   return {
     mapId: 'map-1',
     repositoryRevision: 'repo-v1',
     structuralRevision: 1,
-    items: [
-      {
-        path,
+    items: Array.from({ length: count }, (_, index) => {
+      const suffix = index + 1;
+      return {
+        path: count === 1 ? path : `${path}.${suffix}`,
         language: 'typescript',
         representation: 'full',
         content: 'export const answer = 42;',
@@ -19,9 +20,9 @@ function result(path = 'src/example.ts'): RepositoryRetrievalResult {
         symbols: [],
         evidence: {
           mapId: 'map-1',
-          entityId: 'entity-1',
-          sourceId: 'source-1',
-          provenanceId: 'provenance-1',
+          entityId: `entity-${suffix}`,
+          sourceId: `source-${suffix}`,
+          provenanceId: `provenance-${suffix}`,
           sourceRevision: 'source-v1',
           repositoryRevision: 'repo-v1',
           contentHash: `sha256:${'a'.repeat(64)}`,
@@ -29,8 +30,8 @@ function result(path = 'src/example.ts'): RepositoryRetrievalResult {
           parserId: 'tree-sitter',
           parserVersion: '1',
         },
-      },
-    ],
+      };
+    }),
     relationships: [],
     exclusions: [],
     totalTokens: 8,
@@ -48,58 +49,91 @@ const dependencies = (retrieveRepository = vi.fn(async () => result())) => ({
 describe('production Context/RLM adapter', () => {
   it('keeps ordinary current-turn work direct with no repository read', async () => {
     const retrieveRepository = vi.fn(async () => result());
-    const value = await prepareProductionRlmContext({
-      accountId: 'account-1',
-      projectId: 'project-1',
-      question: 'Rename this local variable.',
-      settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
-    }, dependencies(retrieveRepository));
+    const value = await prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'Rename this local variable.',
+        settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+      },
+      dependencies(retrieveRepository),
+    );
     expect(value.route).toBe('direct');
     expect(value.promptBlock).toBe('');
     expect(retrieveRepository).not.toHaveBeenCalled();
   });
 
   it('uses bounded retrieval and publishes exact visible pointer provenance', async () => {
-    const value = await prepareProductionRlmContext({
-      accountId: 'account-1',
-      projectId: 'project-1',
-      question: 'What was the previous decision in the project?',
-      settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
-    }, dependencies());
+    const value = await prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'What was the previous decision in the project?',
+        settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+      },
+      dependencies(),
+    );
     expect(value.route).toBe('retrieval');
     expect(value.evidenceCount).toBe(1);
     expect(value.promptBlock).toContain('Pointer: rlm-run-1-p1');
     expect(value.promptBlock).toContain(`Content hash: sha256:${'a'.repeat(64)}`);
-    expect(value.evidence).toEqual([expect.objectContaining({
-      handle: 'rlm-run-1-p1',
-      sourceId: 'source-1',
-      sourceRevision: 'source-v1',
-      text: expect.stringContaining('export const answer = 42;'),
-    })]);
+    expect(value.evidence).toEqual([
+      expect.objectContaining({
+        handle: 'rlm-run-1-p1',
+        sourceId: 'source-1',
+        sourceRevision: 'source-v1',
+        text: expect.stringContaining('export const answer = 42;'),
+      }),
+    ]);
+  });
+
+  it('reports all ranked candidates while hydrating only the focused top five', async () => {
+    const value = await prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'What was the previous project decision?',
+        settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+      },
+      dependencies(vi.fn(async () => result('src/candidate.ts', 7))),
+    );
+
+    expect(value).toMatchObject({
+      route: 'retrieval',
+      candidateCount: 7,
+      hydratedCount: 5,
+      evidenceCount: 5,
+    });
   });
 
   it('honors the caller-authoritative exact route without independent broad routing', async () => {
     const retrieveRepository = vi.fn(async () => result());
-    const value = await prepareProductionRlmContext({
-      accountId: 'account-1',
-      projectId: 'project-1',
-      question: 'Read src/example.ts exactly.',
-      requestedRoute: 'exact',
-      explicitEntityIds: ['entity-1'],
-      settings: { ...DEFAULT_CHAT_RUNTIME_SETTINGS, rlmEnabled: false },
-    }, dependencies(retrieveRepository));
+    const value = await prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'Read src/example.ts exactly.',
+        requestedRoute: 'exact',
+        explicitEntityIds: ['entity-1'],
+        settings: { ...DEFAULT_CHAT_RUNTIME_SETTINGS, rlmEnabled: false },
+      },
+      dependencies(retrieveRepository),
+    );
     expect(value.route).toBe('retrieval');
     expect(retrieveRepository).toHaveBeenCalledTimes(1);
   });
 
   it('runs a bounded recursive investigation for whole-project root-cause work', async () => {
     const retrieveRepository = vi.fn(async () => result());
-    const value = await prepareProductionRlmContext({
-      accountId: 'account-1',
-      projectId: 'project-1',
-      question: 'Check the entire project archive and explain the root cause across all files.',
-      settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
-    }, dependencies(retrieveRepository));
+    const value = await prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'Check the entire project archive and explain the root cause across all files.',
+        settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+      },
+      dependencies(retrieveRepository),
+    );
     expect(value.route).toBe('rlm');
     expect(value.childCalls).toBeGreaterThan(0);
     expect(value.maxDepth).toBe(1);
@@ -108,12 +142,15 @@ describe('production Context/RLM adapter', () => {
 
   it('honors /rlm off without hidden retrieval', async () => {
     const retrieveRepository = vi.fn(async () => result());
-    const value = await prepareProductionRlmContext({
-      accountId: 'account-1',
-      projectId: 'project-1',
-      question: 'Search the entire project history.',
-      settings: { ...DEFAULT_CHAT_RUNTIME_SETTINGS, rlmEnabled: false },
-    }, dependencies(retrieveRepository));
+    const value = await prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'Search the entire project history.',
+        settings: { ...DEFAULT_CHAT_RUNTIME_SETTINGS, rlmEnabled: false },
+      },
+      dependencies(retrieveRepository),
+    );
     expect(value.route).toBe('direct');
     expect(retrieveRepository).not.toHaveBeenCalled();
   });
@@ -121,12 +158,17 @@ describe('production Context/RLM adapter', () => {
   it('propagates cancellation before retrieval', async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(prepareProductionRlmContext({
-      accountId: 'account-1',
-      projectId: 'project-1',
-      question: 'Search the archive.',
-      settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
-      signal: controller.signal,
-    }, dependencies())).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(
+      prepareProductionRlmContext(
+        {
+          accountId: 'account-1',
+          projectId: 'project-1',
+          question: 'Search the archive.',
+          settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+          signal: controller.signal,
+        },
+        dependencies(),
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

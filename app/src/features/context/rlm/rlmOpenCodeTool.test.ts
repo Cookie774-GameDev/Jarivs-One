@@ -5,6 +5,8 @@ const response = {
   route: 'retrieval' as const,
   promptBlock: 'bounded evidence',
   evidenceCount: 1,
+  candidateCount: 1,
+  hydratedCount: 1,
   childCalls: 0,
   maxDepth: 0,
   truncated: false,

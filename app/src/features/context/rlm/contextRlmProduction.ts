@@ -54,6 +54,8 @@ export interface ProductionRlmEvidence {
 export interface ProductionRlmContextResult {
   route: 'direct' | 'retrieval' | 'rlm';
   promptBlock: string;
+  candidateCount: number;
+  hydratedCount: number;
   evidenceCount: number;
   childCalls: number;
   maxDepth: number;
@@ -95,7 +97,9 @@ function truncateUtf8(value: string, maxBytes: number): { text: string; truncate
   const encoded = new TextEncoder().encode(value);
   if (encoded.byteLength <= maxBytes) return { text: value, truncated: false };
   return {
-    text: new TextDecoder('utf-8', { fatal: false }).decode(encoded.slice(0, Math.max(0, maxBytes))),
+    text: new TextDecoder('utf-8', { fatal: false }).decode(
+      encoded.slice(0, Math.max(0, maxBytes)),
+    ),
     truncated: true,
   };
 }
@@ -138,7 +142,9 @@ class RepositoryContextQueryService implements ContextQueryService {
   private authority: ContextPointerAuthority | undefined;
   private repositoryGeneration: string | undefined;
   private readonly evidenceByPointer = new Map<string, StoredEvidence>();
+  private readonly hydratedPointers = new Set<string>();
   private pointerSequence = 0;
+  private candidateCount = 0;
 
   constructor(
     private readonly input: Readonly<ProductionRlmContextInput>,
@@ -147,6 +153,13 @@ class RepositoryContextQueryService implements ContextQueryService {
     private readonly leaseId: string,
     private readonly route: 'retrieval' | 'rlm',
   ) {}
+
+  telemetry(): Readonly<{ candidateCount: number; hydratedCount: number }> {
+    return Object.freeze({
+      candidateCount: this.candidateCount,
+      hydratedCount: this.hydratedPointers.size,
+    });
+  }
 
   private ensureAuthority(repositoryGeneration: string): ContextPointerAuthority {
     if (this.repositoryGeneration && this.repositoryGeneration !== repositoryGeneration) {
@@ -162,7 +175,10 @@ class RepositoryContextQueryService implements ContextQueryService {
     return this.authority;
   }
 
-  private issue(item: Readonly<RepositoryRetrievalItem>, result: Readonly<RepositoryRetrievalResult>): StoredEvidence | null {
+  private issue(
+    item: Readonly<RepositoryRetrievalItem>,
+    result: Readonly<RepositoryRetrievalResult>,
+  ): StoredEvidence | null {
     const sourceLength = utf8Bytes(item.content);
     if (sourceLength <= 0) return null;
     const authority = this.ensureAuthority(result.repositoryRevision);
@@ -216,6 +232,7 @@ class RepositoryContextQueryService implements ContextQueryService {
       explicitEntityIds: this.input.explicitEntityIds,
     });
     throwIfCancelled(input.signal ?? this.input.signal);
+    this.candidateCount += result.items.length;
     const hits: ContextSearchHit[] = [];
     for (const item of result.items.slice(0, Math.min(MAX_VISIBLE_HITS, input.limit))) {
       const stored = this.issue(item, result);
@@ -252,13 +269,12 @@ class RepositoryContextQueryService implements ContextQueryService {
     });
     const formatted = formatRepositoryRetrievalItem(stored.item);
     const bounded = truncateUtf8(formatted, Math.max(1_024, input.maxBytes));
+    this.hydratedPointers.add(input.pointer.pointerId);
     return Object.freeze({ pointer: validated, text: bounded.text, truncated: bounded.truncated });
   }
 }
 
-function investigationWorker(
-  service: RepositoryContextQueryService,
-): RlmInvestigationWorker {
+function investigationWorker(service: RepositoryContextQueryService): RlmInvestigationWorker {
   return Object.freeze({
     async investigate(input: RlmInvestigationInput) {
       const queries = subqueries(input.question).slice(0, Math.max(1, input.maxSubcalls));
@@ -344,11 +360,12 @@ export async function prepareProductionRlmContext(
   const requestedRoute = input.requestedRoute;
   const decision = requestedRoute
     ? Object.freeze({
-        route: requestedRoute === 'direct'
-          ? 'direct' as const
-          : requestedRoute === 'deep'
-            ? 'rlm' as const
-            : 'retrieval' as const,
+        route:
+          requestedRoute === 'direct'
+            ? ('direct' as const)
+            : requestedRoute === 'deep'
+              ? ('rlm' as const)
+              : ('retrieval' as const),
       })
     : decideContextRoute({
         rlmEnabled: input.settings.rlmEnabled,
@@ -365,6 +382,8 @@ export async function prepareProductionRlmContext(
     return Object.freeze({
       route: 'direct',
       promptBlock: '',
+      candidateCount: 0,
+      hydratedCount: 0,
       evidenceCount: 0,
       childCalls: 0,
       maxDepth: 0,
@@ -410,22 +429,29 @@ export async function prepareProductionRlmContext(
     signal: input.signal,
   });
   throwIfCancelled(input.signal);
+  const telemetry = service.telemetry();
   return Object.freeze({
     route: result.route,
     promptBlock: formatPromptBlock(result.route, result.answerSupport, result.unresolved),
+    candidateCount: telemetry.candidateCount,
+    hydratedCount: telemetry.hydratedCount,
     evidenceCount: result.answerSupport.length,
     childCalls: result.childCalls,
     maxDepth: result.maxDepth,
     truncated: result.truncated,
     trace: Object.freeze(trace),
-    evidence: Object.freeze(result.answerSupport.map((span) => Object.freeze({
-      handle: span.pointer.pointerId,
-      sourceId: span.pointer.sourceId,
-      sourceRevision: span.pointer.sourceVersion,
-      contentHash: span.pointer.contentHash,
-      byteStart: span.pointer.byteStart,
-      byteEnd: span.pointer.byteEnd,
-      text: span.text,
-    }))),
+    evidence: Object.freeze(
+      result.answerSupport.map((span) =>
+        Object.freeze({
+          handle: span.pointer.pointerId,
+          sourceId: span.pointer.sourceId,
+          sourceRevision: span.pointer.sourceVersion,
+          contentHash: span.pointer.contentHash,
+          byteStart: span.pointer.byteStart,
+          byteEnd: span.pointer.byteEnd,
+          text: span.text,
+        }),
+      ),
+    ),
   });
 }
