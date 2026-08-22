@@ -383,3 +383,9 @@
 - Final acceptance can no longer pass on free-form rollback notes alone. It additionally requires build-bound proof that the old internal route remains available only for rollback, shadow provider dispatch is disabled, user data is preserved, and the managed runtime pointer is restorable.
 - Rollback proof carries an exact commit SHA and runtime generation and must match the evaluated build. Every false invariant is reported separately; absent proof remains `incomplete`, while a cross-build or failed invariant is `failed`.
 - The exact-key JSON schema accepts only this safe boolean/build metadata and rejects extra fields such as output content. TDD RED reproduced notes-only acceptance, shadow-dispatch acceptance, cross-build acceptance, and schema rejection of the legitimate proof before implementation; focused closure/schema verification passed 2 files / 24 tests.
+
+## 2026-08-22 — Required release/native-check checkpoint
+
+- Release-manifest verification passed all 45 security and publication tests, including Authenticode, path-identity, mutation, interruption, rollback, and recovery cases.
+- `cargo check --manifest-path app/src-tauri/Cargo.toml` reached native dependency compilation but failed when `time` attempted to load the newly compiled `time_macros` proc-macro (`E0463`). A package-only verbose check compiled `time-macros 0.2.32` successfully and produced the DLL, but a full retry still could not load it. This is consistent with the already-recorded Windows Application Control rejection of newly compiled native hashes; no Rust source diagnostic was emitted.
+- No Windows security setting was changed, no trusted running VibeSpace process was closed, and the native check is not claimed as passing. Official current-source native acceptance therefore remains unavailable while the trusted existing VibeSpace app continues running.
