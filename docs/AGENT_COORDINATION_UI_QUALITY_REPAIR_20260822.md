@@ -40,3 +40,11 @@
 - Playwright Local only: on `http://localhost:5173`, the Pet was visible; click opened the Pet Panel; the live connected Ollama model picker opened; choosing a model displayed the new transparent effort surface with a glyph and catalog-selected state; Escape closed it and preserved `Local Models · llama3.2:latest`.
 - Full TypeScript check reached only the four known separately-owned SiYuan diagnostics at `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no diagnostic points to this scope.
 - Native caveat: per the user's latest instruction, no native-app or desktop-wide control was used. Browser Playwright cannot prove Win32 app-over-app topmost; the native boundary is covered here by its focused renderer/bridge contracts.
+
+## 2026-08-22 — Final owned-scope checkpoint
+
+- Product commits: `c4d83348` (`Files` creation/editor + dictation selection truth) and `b9e18417` (Pet supervision + effort visuals).
+- Dictation matrix rerun after localhost reproduction: 6 focused files / 45 tests passed across global overlay, generic in-app fields, composer selected-engine contract, top-bar controls, and settings. The seventh requested path was not collected as a separate file by Vitest; no failing suite was hidden.
+- Localhost result: the toolbar microphone with no active field visibly explains `Focus a text field`; the composer speech-recognition button was exercised, but actual audio transcription is not claimed because Playwright cannot supply/validate a real microphone sample in this run.
+- Remaining external/owned blockers: browser startup still logs the separately-owned VibeSpace Doctor Tauri invoke error; branch typecheck still has exactly four separately-owned SiYuan test diagnostics. Neither was edited or folded into these commits.
+- Final action: rerun exact owned tests and diff/status audit, release only this agent lock.
