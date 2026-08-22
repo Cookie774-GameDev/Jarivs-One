@@ -148,12 +148,12 @@ describe('TerminalCommandPalette', () => {
     const onInstallCli = vi.fn().mockResolvedValue({
       installed: true,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
     });
     const onUninstallCli = vi.fn().mockResolvedValue({
       installed: false,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
     });
     const installedShellIntegration = {
       available: true,
@@ -194,7 +194,7 @@ describe('TerminalCommandPalette', () => {
     fireEvent.click(screen.getByRole('option', { name: /Help/i }));
     expect(screen.getByText(/optional.*marked, removable block/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Install terminal commands' }));
-    expect(await screen.findByText(/Installed vibespace and vs/i)).toBeTruthy();
+    expect(await screen.findByText(/Installed vibespace, vs, and vibespace-context/i)).toBeTruthy();
     expect(onInstallCli).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove terminal commands' }));

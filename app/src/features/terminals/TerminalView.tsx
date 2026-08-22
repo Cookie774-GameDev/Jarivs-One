@@ -151,6 +151,11 @@ import {
   TERMINAL_VIBESPACE_PALETTE_EVENT,
 } from './terminalSlashIntegration';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
+import {
+  bindTerminalContextBridgeIdentity,
+  mintTerminalContextBridgeIdentity,
+  revokeTerminalContextBridgeIdentity,
+} from './terminalContextBridgeIdentity';
 import { prepareUpgradedPromptInsert } from './terminalPromptUpgrade';
 import {
   applyTerminalTheme,
@@ -1006,6 +1011,7 @@ export function TerminalView({
     let restartConfirmationHandled = false;
     let startupRestoreMode = false;
     let sshSession = isSshSessionCommand(startupCommand);
+    let contextBridgeIdentityId: string | null = null;
     const webglDispose = createWebglDisposeTracker();
     let webglLease: TerminalWebglLease | null = null;
     let onResourcePressure: (() => void) | null = null;
@@ -1022,6 +1028,10 @@ export function TerminalView({
       enqueueTerminalChunks(payload.data);
     });
     const exitLatch = createTerminalExitLatch((payload) => {
+      if (contextBridgeIdentityId) {
+        revokeTerminalContextBridgeIdentity(contextBridgeIdentityId);
+        contextBridgeIdentityId = null;
+      }
       if (exitFiredRef.current) return;
       exitFiredRef.current = true;
       const notifyParent = () => onExitRef.current?.(payload.code);
@@ -1628,6 +1638,20 @@ export function TerminalView({
           }
 
           setInitializationPhase('kernel_terminal_phase_native_spawn');
+          if (terminalAccountId && terminalWorkspaceId && projectId && paneId && cwd) {
+            try {
+              contextBridgeIdentityId = mintTerminalContextBridgeIdentity({
+                accountId: terminalAccountId,
+                workspaceId: terminalWorkspaceId,
+                projectId,
+                worktreeId: cwd,
+                paneId,
+                access: 'read',
+              }).identityId;
+            } catch {
+              contextBridgeIdentityId = null;
+            }
+          }
           const spawnEnv = {
             ...(slugAtSpawn
               ? buildAgentSpawnEnv({
@@ -1639,6 +1663,9 @@ export function TerminalView({
                 })
               : {}),
             ...(paneId ? { VIBESPACE_PANE_ID: paneId } : {}),
+            ...(contextBridgeIdentityId
+              ? { VIBESPACE_CONTEXT_RUN_IDENTITY: contextBridgeIdentityId }
+              : {}),
           };
           let spawnCancellationToken = canonicalTerminalSpawnToken(executionId);
           if (executionId && hasCanonicalTerminalExecution(executionId)) {
@@ -1667,6 +1694,19 @@ export function TerminalView({
             env: Object.keys(spawnEnv).length > 0 ? spawnEnv : undefined,
           });
           sid = result.sessionId;
+          if (
+            contextBridgeIdentityId &&
+            (!paneId ||
+              !projectId ||
+              !bindTerminalContextBridgeIdentity(contextBridgeIdentityId, {
+                terminalSessionId: sid,
+                paneId,
+                projectId,
+              }))
+          ) {
+            revokeTerminalContextBridgeIdentity(contextBridgeIdentityId);
+            contextBridgeIdentityId = null;
+          }
           processAttachment = {
             accountId: terminalAccountId,
             projectId: projectId ?? null,
@@ -1807,6 +1847,10 @@ export function TerminalView({
           }
         }
       } catch (err) {
+        if (contextBridgeIdentityId) {
+          revokeTerminalContextBridgeIdentity(contextBridgeIdentityId);
+          contextBridgeIdentityId = null;
+        }
         await settleTerminalInitializationFailure({
           executionId,
           sessionId: sid,
@@ -1819,6 +1863,10 @@ export function TerminalView({
       }
 
       if (!cancelled && !viewSessionBound) {
+        if (contextBridgeIdentityId) {
+          revokeTerminalContextBridgeIdentity(contextBridgeIdentityId);
+          contextBridgeIdentityId = null;
+        }
         await settleTerminalInitializationFailure({
           executionId,
           sessionId: sid,

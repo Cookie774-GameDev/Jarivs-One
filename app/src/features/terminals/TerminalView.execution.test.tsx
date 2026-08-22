@@ -471,8 +471,12 @@ describe('TerminalView canonical execution truth', () => {
     const childSpawn = backend.indexOf('.spawn_command(builder)');
 
     expect(frontend).toContain('VIBESPACE_PANE_ID');
+    expect(frontend).toContain('VIBESPACE_CONTEXT_RUN_IDENTITY');
+    expect(frontend).toContain('mintTerminalContextBridgeIdentity({');
+    expect(frontend).toContain('bindTerminalContextBridgeIdentity(');
     expect(backend).toContain('builder.env("VIBESPACE_TERMINAL_SESSION_ID", &session_id);');
     expect(backend).toContain('builder.env("VIBESPACE_PROJECT_ID", project_id);');
+    expect(backend).toContain('terminal_cli_state.private_bin_dir()');
     expect(sessionCreation).toBeGreaterThan(0);
     expect(childSpawn).toBeGreaterThan(sessionCreation);
   });

@@ -8,6 +8,8 @@ import {
   updateTerminalContextSession,
   type TerminalContextScope,
 } from './terminalContextSessionStore';
+import type { PreparedContextTurn } from '@/features/context/gateway/contextGatewayContracts';
+import type { TerminalContextBridgeIdentity } from './terminalContextBridgeIdentity';
 
 export type TerminalCliFrontendRequest = Readonly<{
   protocolVersion: 1;
@@ -15,6 +17,7 @@ export type TerminalCliFrontendRequest = Readonly<{
   terminalSessionId: string | null;
   paneId: string | null;
   projectId: string | null;
+  runIdentity: string | null;
   method: TerminalLocalIpcMethod;
   params: Readonly<Record<string, unknown>>;
 }>;
@@ -28,6 +31,7 @@ export type TerminalCliRuntimeCode =
   | 'permission_denied'
   | 'not_found'
   | 'conflict'
+  | 'context_unavailable'
   | 'internal_error';
 
 export type TerminalCliRuntimeResponse = Readonly<{
@@ -120,6 +124,21 @@ export interface TerminalCliRuntimeDependencies {
     mapId: string,
   ): Promise<Readonly<{ id: string; name: string }>>;
   addDailyNoteText(projectId: string | null, mapId: string, text: string): Promise<unknown>;
+  authorizeContextIdentity(
+    input: Readonly<{
+      identityId: string;
+      terminalSessionId: string | null;
+      paneId: string | null;
+      projectId: string | null;
+    }>,
+  ): TerminalContextBridgeIdentity | null;
+  askContext(
+    input: Readonly<{
+      requestId: string;
+      question: string;
+      identity: TerminalContextBridgeIdentity;
+    }>,
+  ): Promise<Readonly<PreparedContextTurn>>;
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
@@ -214,6 +233,7 @@ export function parseTerminalCliFrontendRequest(input: unknown): TerminalCliFron
     'terminalSessionId',
     'paneId',
     'projectId',
+    'runIdentity',
     'method',
     'params',
   ]);
@@ -232,6 +252,7 @@ export function parseTerminalCliFrontendRequest(input: unknown): TerminalCliFron
     : null;
   const paneId = keys.includes('paneId') ? descriptorValue(input, 'paneId') : null;
   const projectId = keys.includes('projectId') ? descriptorValue(input, 'projectId') : null;
+  const runIdentity = keys.includes('runIdentity') ? descriptorValue(input, 'runIdentity') : null;
   if (
     protocolVersion !== 1 ||
     !safeId(requestId) ||
@@ -239,7 +260,8 @@ export function parseTerminalCliFrontendRequest(input: unknown): TerminalCliFron
     !TERMINAL_LOCAL_IPC_METHODS.includes(method as TerminalLocalIpcMethod) ||
     (terminalSessionId !== null && !safeId(terminalSessionId)) ||
     (paneId !== null && !safeId(paneId)) ||
-    (projectId !== null && !safeId(projectId))
+    (projectId !== null && !safeId(projectId)) ||
+    (runIdentity !== null && !safeId(runIdentity))
   ) {
     throw new Error('Invalid terminal CLI frontend request');
   }
@@ -251,6 +273,7 @@ export function parseTerminalCliFrontendRequest(input: unknown): TerminalCliFron
     terminalSessionId,
     paneId,
     projectId,
+    runIdentity,
     method: method as TerminalLocalIpcMethod,
     params,
   });
@@ -447,6 +470,52 @@ export function createTerminalCliRuntime(dependencies: TerminalCliRuntimeDepende
               results,
             },
           );
+        }
+        case 'context.ask': {
+          const question = stringParam(request, 'question');
+          if (!request.runIdentity) {
+            throw new TerminalCliRuntimeError(
+              'permission_denied',
+              'This terminal does not have a current VibeSpace Context run identity.',
+            );
+          }
+          const identity = dependencies.authorizeContextIdentity({
+            identityId: request.runIdentity,
+            terminalSessionId: request.terminalSessionId,
+            paneId: request.paneId,
+            projectId,
+          });
+          if (!identity || identity.workspaceId !== project?.workspaceId) {
+            throw new TerminalCliRuntimeError(
+              'permission_denied',
+              'The VibeSpace Context run identity is expired or outside this terminal scope.',
+            );
+          }
+          let prepared: Readonly<PreparedContextTurn>;
+          try {
+            prepared = await dependencies.askContext({
+              requestId: request.requestId,
+              question,
+              identity,
+            });
+          } catch {
+            throw new TerminalCliRuntimeError(
+              'context_unavailable',
+              'Required VibeSpace Context is currently unavailable.',
+            );
+          }
+          const answer = prepared.promptBlock.slice(0, 14_000);
+          if (!answer) {
+            throw new TerminalCliRuntimeError(
+              'context_unavailable',
+              'Required VibeSpace Context returned no authorized evidence.',
+            );
+          }
+          return ok(request, 'VibeSpace Context ready.', {
+            answer,
+            truncated: answer.length < prepared.promptBlock.length,
+            receipt: prepared.receipt,
+          });
         }
         case 'context.open': {
           const target = stringParam(request, 'target');

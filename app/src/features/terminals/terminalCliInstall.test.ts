@@ -22,19 +22,19 @@ describe('terminal CLI install controls', () => {
     vi.mocked(invoke).mockResolvedValueOnce({
       installed: false,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
     });
     await expect(readTerminalCliInstallStatus()).resolves.toEqual({
       installed: false,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
     });
     expect(invoke).toHaveBeenCalledWith('terminal_cli_install_status');
 
     vi.mocked(invoke).mockResolvedValueOnce({
       installed: true,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
     });
     await expect(installTerminalCli()).resolves.toMatchObject({ installed: true });
     expect(invoke).toHaveBeenCalledWith('terminal_cli_install');
@@ -42,7 +42,7 @@ describe('terminal CLI install controls', () => {
     vi.mocked(invoke).mockResolvedValueOnce({
       installed: false,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
     });
     await expect(uninstallTerminalCli()).resolves.toMatchObject({ installed: false });
     expect(invoke).toHaveBeenCalledWith('terminal_cli_uninstall');
@@ -52,7 +52,7 @@ describe('terminal CLI install controls', () => {
     vi.mocked(invoke).mockResolvedValue({
       installed: true,
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
-      commandNames: ['vibespace', 'vs'],
+      commandNames: ['vibespace', 'vs', 'vibespace-context'],
       token: 'must-not-cross-the-bridge',
     });
     await expect(readTerminalCliInstallStatus()).rejects.toThrow(/install status/i);

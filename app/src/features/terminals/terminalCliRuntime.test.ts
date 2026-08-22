@@ -16,6 +16,7 @@ function request(method: string, params: Record<string, unknown> = {}) {
     terminalSessionId: 'tty-a',
     paneId: 'pane-a',
     projectId: 'project-a',
+    runIdentity: null,
     method,
     params,
   };
@@ -99,6 +100,56 @@ function dependencies(): TerminalCliRuntimeDependencies {
     linkNotes: vi.fn(async (_projectId, _mapId, source, target) => ({ source, target })),
     openDailyNote: vi.fn(async () => ({ id: 'daily-1', name: '2026-07-26' })),
     addDailyNoteText: vi.fn(async (_projectId, _mapId, text) => ({ id: 'daily-1', text })),
+    authorizeContextIdentity: vi.fn(() => ({
+      version: 1 as const,
+      identityId: 'terminal-run-1',
+      accountId: 'account-1',
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+      worktreeId: 'C:\\VibeSpace',
+      paneId: 'pane-a',
+      terminalSessionId: 'tty-a',
+      access: 'full' as const,
+      runGeneration: 0,
+      scopeRevision: 'terminal-run-1:0',
+      issuedAt: 100,
+      expiresAt: 3_600_100,
+    })),
+    askContext: vi.fn(async () => ({
+      promptBlock: '## cited terminal evidence',
+      receipt: {
+        receiptId: 'receipt-1',
+        policyVersion: 'vibespace-context-policy-v1' as const,
+        route: 'focused' as const,
+        decision: 'required-focused' as const,
+        required: true,
+        decisionReasons: ['explicit-context' as const],
+        scopeRevision: {
+          accountId: 'account-1',
+          workspaceId: 'workspace-a',
+          projectId: 'project-a',
+          worktreeId: 'C:\\VibeSpace',
+          revision: 'terminal-run-1:0',
+        },
+        sourceRevisions: [{ sourceId: 'source-1', revision: 'source-v1' }],
+        evidenceHandles: ['pointer-1'],
+        cacheStatus: 'miss' as const,
+        stageTimingsMs: { retrieval: 12 },
+        cancellationGeneration: 0,
+        safeFailure: null,
+        executionIdentity: {
+          transportConnectionId: 'vibespace-terminal-context',
+          transportAdapterId: 'terminal-local-ipc',
+          upstreamProviderId: 'local-context-gateway',
+          upstreamModelId: 'context-only',
+          providerQualifiedModelId: 'local-context-gateway/context-only',
+          authBillingRoute: 'local-only',
+          effort: 'not-applicable',
+          fastVariant: 'not-applicable',
+          catalogRevision: 'terminal-run-1:0',
+        },
+      },
+    })),
   };
 }
 
@@ -123,6 +174,51 @@ describe('terminal CLI frontend runtime', () => {
     expect(() =>
       parseTerminalCliFrontendRequest({ ...request('context.current'), protocolVersion: 2 }),
     ).toThrow(/frontend request/i);
+  });
+
+  it('executes one scoped high-level context ask and returns its safe receipt', async () => {
+    const deps = dependencies();
+    const runtime = createTerminalCliRuntime(deps);
+    const response = await runtime.execute(
+      parseTerminalCliFrontendRequest({
+        ...request('context.ask', { question: 'What was the prior decision?' }),
+        runIdentity: 'terminal-run-1',
+      }),
+    );
+    expect(deps.authorizeContextIdentity).toHaveBeenCalledWith({
+      identityId: 'terminal-run-1',
+      terminalSessionId: 'tty-a',
+      paneId: 'pane-a',
+      projectId: 'project-a',
+    });
+    expect(deps.askContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'request-context-ask',
+        question: 'What was the prior decision?',
+      }),
+    );
+    expect(response).toMatchObject({
+      ok: true,
+      data: {
+        answer: '## cited terminal evidence',
+        receipt: { receiptId: 'receipt-1', route: 'focused', required: true },
+      },
+    });
+  });
+
+  it('fails closed before retrieval without a valid scoped run identity', async () => {
+    const deps = dependencies();
+    vi.mocked(deps.authorizeContextIdentity).mockReturnValue(null);
+    const runtime = createTerminalCliRuntime(deps);
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest({
+          ...request('context.ask', { question: 'Search history.' }),
+          runIdentity: 'terminal-run-forged',
+        }),
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'permission_denied' });
+    expect(deps.askContext).not.toHaveBeenCalled();
   });
 
   it('lists, selects, attaches, reports, and clears terminal-scoped context', async () => {

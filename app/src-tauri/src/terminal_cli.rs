@@ -24,6 +24,7 @@ const MAX_SHELL_PROFILE_BYTES: u64 = 1_048_576;
 const TERMINAL_SESSION_ENV: &str = "VIBESPACE_TERMINAL_SESSION_ID";
 const TERMINAL_PANE_ENV: &str = "VIBESPACE_PANE_ID";
 const TERMINAL_PROJECT_ENV: &str = "VIBESPACE_PROJECT_ID";
+const TERMINAL_RUN_IDENTITY_ENV: &str = "VIBESPACE_CONTEXT_RUN_IDENTITY";
 const MAX_WIRE_BYTES: u64 = 65_536;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
 const LONG_RUNNING_RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -184,7 +185,7 @@ fn take_test_effect_events() -> Vec<&'static str> {
 
 pub fn terminal_cli_response_timeout(method: &str) -> Duration {
     match method {
-        "context.create" | "context.refresh" => LONG_RUNNING_RESPONSE_TIMEOUT,
+        "context.create" | "context.refresh" | "context.ask" => LONG_RUNNING_RESPONSE_TIMEOUT,
         _ => RESPONSE_TIMEOUT,
     }
 }
@@ -201,6 +202,7 @@ const METHODS: &[&str] = &[
     "context.sources",
     "context.status",
     "context.create",
+    "context.ask",
     "skills.list",
     "skills.active",
     "skills.use",
@@ -234,6 +236,7 @@ const RESPONSE_CODES: &[&str] = &[
     "not_found",
     "conflict",
     "internal_error",
+    "context_unavailable",
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -257,6 +260,8 @@ pub struct TerminalCliRequest {
     pub pane_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_identity: Option<String>,
     pub method: String,
     pub params: Value,
 }
@@ -266,6 +271,7 @@ pub struct TerminalCliRequestScope {
     pub terminal_session_id: Option<String>,
     pub pane_id: Option<String>,
     pub project_id: Option<String>,
+    pub run_identity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -304,6 +310,8 @@ struct TerminalCliFrontendRequest {
     pane_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     project_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_identity: Option<String>,
     method: String,
     params: Value,
 }
@@ -313,7 +321,7 @@ struct TerminalCliFrontendRequest {
 pub struct TerminalCliInstallStatus {
     installed: bool,
     bin_dir: String,
-    command_names: [&'static str; 2],
+    command_names: [&'static str; 3],
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -370,7 +378,14 @@ struct TerminalShellProfileTarget {
 #[derive(Default)]
 pub struct TerminalCliState {
     endpoint_path: Mutex<Option<PathBuf>>,
+    private_bin_dir: Mutex<Option<PathBuf>>,
     pending: Arc<Mutex<HashMap<String, SyncSender<TerminalCliResponse>>>>,
+}
+
+impl TerminalCliState {
+    pub fn private_bin_dir(&self) -> Option<PathBuf> {
+        self.private_bin_dir.lock().ok()?.clone()
+    }
 }
 
 #[derive(Clone)]
@@ -465,6 +480,7 @@ fn parse_context(args: &[String]) -> Result<(String, Value), String> {
         "list" | "current" | "clear" | "sources" | "status" => no_values(rest, &method)?,
         "use" => closed_params([("map", one_value(rest, &method)?)]),
         "search" => closed_params([("query", one_value(rest, &method)?)]),
+        "ask" => closed_params([("question", one_value(rest, &method)?)]),
         "open" => closed_params([("target", one_value(rest, &method)?)]),
         "refresh" => {
             if rest.len() > 1 {
@@ -620,6 +636,10 @@ pub fn parse_terminal_cli_args(args: &[String]) -> Result<TerminalCliInvocation,
     let (method, params) = match command {
         "status" | "help" => (command.to_string(), no_values(rest, command)?),
         "context" => parse_context(rest)?,
+        "ask" => (
+            "context.ask".into(),
+            closed_params([("question", one_value(rest, "context.ask")?)]),
+        ),
         "skills" => parse_named_family(
             "skills",
             rest,
@@ -746,6 +766,7 @@ fn terminal_cli_scope_from_environment() -> Result<TerminalCliRequestScope, Stri
         terminal_session_id: optional_scope_environment(TERMINAL_SESSION_ENV)?,
         pane_id: optional_scope_environment(TERMINAL_PANE_ENV)?,
         project_id: optional_scope_environment(TERMINAL_PROJECT_ENV)?,
+        run_identity: optional_scope_environment(TERMINAL_RUN_IDENTITY_ENV)?,
     })
 }
 
@@ -762,6 +783,7 @@ pub fn build_scoped_terminal_cli_request(
         terminal_session_id: scope.terminal_session_id,
         pane_id: scope.pane_id,
         project_id: scope.project_id,
+        run_identity: scope.run_identity,
         method: invocation.method.clone(),
         params: invocation.params.clone(),
     };
@@ -804,6 +826,8 @@ fn valid_method_params(method: &str, params: &Value) -> bool {
         }
         "context.search" => exact_object(params, &["query"])
             .is_some_and(|values| bounded_string(values.get("query"))),
+        "context.ask" => exact_object(params, &["question"])
+            .is_some_and(|values| bounded_string(values.get("question"))),
         "context.open" => exact_object(params, &["target"])
             .is_some_and(|values| bounded_string(values.get("target"))),
         "context.attach" => exact_object(params, &["entity", "mode"]).is_some_and(|values| {
@@ -886,6 +910,11 @@ pub fn terminal_cli_request_error_code(
             .project_id
             .as_deref()
             .is_some_and(|value| !safe_atom(value))
+        || request
+            .run_identity
+            .as_deref()
+            .is_some_and(|value| !safe_atom(value))
+        || (request.method == "context.ask" && request.run_identity.is_none())
         || !METHODS.contains(&request.method.as_str())
         || !valid_json(&request.params, 0)
         || !valid_method_params(&request.method, &request.params)
@@ -922,11 +951,17 @@ pub fn render_terminal_cli_response(
     if json_output {
         return serde_json::to_string(response).map_err(|error| format!("serialize: {error}"));
     }
+    let plain = response
+        .data
+        .as_ref()
+        .and_then(|data| data.get("answer"))
+        .and_then(Value::as_str)
+        .unwrap_or(&response.message);
     if color {
         let color_code = if response.ok { "32" } else { "31" };
-        return Ok(format!("\u{1b}[{color_code}m{}\u{1b}[0m", response.message));
+        return Ok(format!("\u{1b}[{color_code}m{plain}\u{1b}[0m"));
     }
-    Ok(response.message.clone())
+    Ok(plain.to_string())
 }
 
 fn shell_quote(value: &Path) -> Result<String, String> {
@@ -1518,7 +1553,7 @@ fn handle_connection(
                 &request.request_id,
                 true,
                 "ok",
-                "Commands: context, skills, agent, note, daily, project, status, help.",
+                "Commands: vibespace-context ask, context, skills, agent, note, daily, project, status, help.",
                 Some(json!({ "methods": METHODS })),
             ),
         );
@@ -1550,6 +1585,7 @@ fn handle_connection(
         terminal_session_id: request.terminal_session_id,
         pane_id: request.pane_id,
         project_id: request.project_id,
+        run_identity: request.run_identity,
         method: request.method,
         params: request.params,
     };
@@ -1612,6 +1648,21 @@ pub fn start_terminal_cli_server(
             keyring_account: KEYRING_ACCOUNT.into(),
         },
     )?;
+    let private_bin_dir = endpoint_path
+        .parent()
+        .ok_or_else(|| "terminal CLI endpoint directory unavailable".to_string())?
+        .join("bin");
+    let executable =
+        std::env::current_exe().map_err(|error| format!("current executable: {error}"))?;
+    let content = expected_shim(&executable, &endpoint_path)?;
+    create_terminal_cli_bin_directory(&private_bin_dir)?;
+    let private_paths = terminal_cli_names().map(|name| private_bin_dir.join(name));
+    replace_managed_terminal_cli_aliases(&private_paths, &content)?;
+    *state
+        .private_bin_dir
+        .lock()
+        .map_err(|_| "terminal CLI private bin state unavailable".to_string())? =
+        Some(private_bin_dir);
     *state
         .endpoint_path
         .lock()
@@ -1822,23 +1873,31 @@ pub fn run_terminal_cli(args: &[String]) -> i32 {
     }
 }
 
-fn terminal_cli_paths() -> Result<(PathBuf, [&'static str; 2]), String> {
+fn terminal_cli_names() -> [&'static str; 3] {
+    #[cfg(target_os = "windows")]
+    {
+        ["vibespace.cmd", "vs.cmd", "vibespace-context.cmd"]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        ["vibespace", "vs", "vibespace-context"]
+    }
+}
+
+fn terminal_cli_paths() -> Result<(PathBuf, [&'static str; 3]), String> {
     #[cfg(target_os = "windows")]
     {
         let home = std::env::var_os("USERPROFILE")
             .map(PathBuf::from)
             .ok_or_else(|| "USERPROFILE is unavailable".to_string())?;
-        return Ok((
-            home.join(".jarvis").join("bin"),
-            ["vibespace.cmd", "vs.cmd"],
-        ));
+        return Ok((home.join(".jarvis").join("bin"), terminal_cli_names()));
     }
     #[cfg(not(target_os = "windows"))]
     {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .ok_or_else(|| "HOME is unavailable".to_string())?;
-        Ok((home.join(".jarvis").join("bin"), ["vibespace", "vs"]))
+        Ok((home.join(".jarvis").join("bin"), terminal_cli_names()))
     }
 }
 
@@ -2226,7 +2285,7 @@ fn cli_install_status(state: &TerminalCliState) -> Result<TerminalCliInstallStat
     Ok(TerminalCliInstallStatus {
         installed,
         bin_dir: bin_dir.to_string_lossy().into_owned(),
-        command_names: ["vibespace", "vs"],
+        command_names: ["vibespace", "vs", "vibespace-context"],
     })
 }
 

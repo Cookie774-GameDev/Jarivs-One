@@ -34,6 +34,7 @@ export const TERMINAL_LOCAL_IPC_METHODS = Object.freeze([
   'context.use',
   'context.clear',
   'context.search',
+  'context.ask',
   'context.open',
   'context.attach',
   'context.refresh',
@@ -69,6 +70,7 @@ export type TerminalLocalIpcRequest = Readonly<{
   protocolVersion: 1;
   requestId: string;
   nonce: string;
+  runIdentity?: string;
   method: TerminalLocalIpcMethod;
   params: Readonly<Record<string, unknown>>;
 }>;
@@ -85,6 +87,7 @@ export type TerminalCliResponse = Readonly<{
     | 'permission_denied'
     | 'not_found'
     | 'conflict'
+    | 'context_unavailable'
     | 'internal_error';
   message: string;
 }>;
@@ -109,6 +112,7 @@ const CLI_RESPONSE_CODES = new Set<TerminalCliResponse['code']>([
   'permission_denied',
   'not_found',
   'conflict',
+  'context_unavailable',
   'internal_error',
 ]);
 
@@ -359,19 +363,22 @@ function cloneJsonValue(value: unknown, depth: number): unknown {
 }
 
 export function parseTerminalLocalIpcRequest(input: unknown): TerminalLocalIpcRequest {
-  const record = readClosedRecord(input, [
-    'protocolVersion',
-    'requestId',
-    'nonce',
-    'method',
-    'params',
-  ]);
+  const record =
+    readClosedRecord(input, [
+      'protocolVersion',
+      'requestId',
+      'nonce',
+      'runIdentity',
+      'method',
+      'params',
+    ]) ?? readClosedRecord(input, ['protocolVersion', 'requestId', 'nonce', 'method', 'params']);
   if (
     !record ||
     record.protocolVersion !== 1 ||
     !safeId(record.requestId) ||
     typeof record.nonce !== 'string' ||
     !SAFE_NONCE.test(record.nonce) ||
+    (record.runIdentity !== undefined && !safeId(record.runIdentity)) ||
     typeof record.method !== 'string' ||
     !TERMINAL_LOCAL_IPC_METHODS.includes(record.method as TerminalLocalIpcMethod)
   ) {
@@ -389,6 +396,7 @@ export function parseTerminalLocalIpcRequest(input: unknown): TerminalLocalIpcRe
     protocolVersion: 1,
     requestId: record.requestId,
     nonce: record.nonce,
+    ...(typeof record.runIdentity === 'string' ? { runIdentity: record.runIdentity } : {}),
     method: record.method as TerminalLocalIpcMethod,
     params,
   });

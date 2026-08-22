@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 export type TerminalCliInstallStatus = Readonly<{
   installed: boolean;
   binDir: string;
-  commandNames: readonly ['vibespace', 'vs'];
+  commandNames: readonly ['vibespace', 'vs', 'vibespace-context'];
 }>;
 
 export type TerminalShellKind = 'powershell' | 'bash' | 'zsh' | 'fish';
@@ -70,16 +70,17 @@ function parseInstallStatus(value: unknown): TerminalCliInstallStatus {
     !commandNames ||
     !('value' in commandNames) ||
     !Array.isArray(commandNames.value) ||
-    commandNames.value.length !== 2 ||
+    commandNames.value.length !== 3 ||
     commandNames.value[0] !== 'vibespace' ||
-    commandNames.value[1] !== 'vs'
+    commandNames.value[1] !== 'vs' ||
+    commandNames.value[2] !== 'vibespace-context'
   ) {
     throw new Error('Invalid terminal CLI install status');
   }
   return Object.freeze({
     installed: installed.value,
     binDir: binDir.value,
-    commandNames: Object.freeze(['vibespace', 'vs'] as const),
+    commandNames: Object.freeze(['vibespace', 'vs', 'vibespace-context'] as const),
   });
 }
 

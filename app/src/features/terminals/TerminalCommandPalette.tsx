@@ -455,7 +455,10 @@ export function TerminalCommandPalette({
             Scope · project {projectId ?? 'none'} · session {sessionId ?? 'none'}
             {agentSlug ? ` · agent ${agentSlug}` : ''}
           </p>
-          <label className="mt-3 block text-metadata text-muted-foreground" htmlFor="terminal-upgrade-draft">
+          <label
+            className="mt-3 block text-metadata text-muted-foreground"
+            htmlFor="terminal-upgrade-draft"
+          >
             Draft from this terminal
           </label>
           <textarea
@@ -653,7 +656,7 @@ export function TerminalCommandPalette({
                     void updateTerminalSetup(
                       onInstallCli,
                       (status) =>
-                        `Installed vibespace and vs in ${status.binDir}. Open a new terminal if PATH has not refreshed.`,
+                        `Installed vibespace, vs, and vibespace-context in ${status.binDir}. Open a new terminal if PATH has not refreshed.`,
                     )
                   }
                   className="rounded-md border border-accent-copper/60 bg-accent-copper/10 px-3 py-2 text-secondary text-accent-copper disabled:cursor-wait disabled:opacity-60"

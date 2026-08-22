@@ -48,6 +48,32 @@ fn parses_portable_commands_into_closed_authenticated_requests() {
 }
 
 #[test]
+fn parses_context_ask_from_the_dedicated_alias_and_context_family() {
+    for args in [
+        vec![
+            "--endpoint".into(),
+            "/tmp/vibespace-endpoint.json".into(),
+            "ask".into(),
+            "Which file owns model routing?".into(),
+        ],
+        vec![
+            "--endpoint".into(),
+            "/tmp/vibespace-endpoint.json".into(),
+            "context".into(),
+            "ask".into(),
+            "Which file owns model routing?".into(),
+        ],
+    ] {
+        let invocation = parse_terminal_cli_args(&args).expect("context ask");
+        assert_eq!(invocation.method, "context.ask");
+        assert_eq!(
+            invocation.params,
+            json!({ "question": "Which file owns model routing?" })
+        );
+    }
+}
+
+#[test]
 fn allows_bounded_long_running_context_source_operations_without_delaying_normal_commands() {
     assert_eq!(
         terminal_cli_response_timeout("context.create"),
@@ -55,6 +81,10 @@ fn allows_bounded_long_running_context_source_operations_without_delaying_normal
     );
     assert_eq!(
         terminal_cli_response_timeout("context.refresh"),
+        std::time::Duration::from_secs(120)
+    );
+    assert_eq!(
+        terminal_cli_response_timeout("context.ask"),
         std::time::Duration::from_secs(120)
     );
     assert_eq!(
@@ -133,6 +163,7 @@ fn validates_closed_method_specific_request_schemas() {
         terminal_session_id: None,
         pane_id: None,
         project_id: None,
+        run_identity: None,
         method: "context.attach".into(),
         params: json!({ "entity": "entity-1", "mode": "one_turn" }),
     };
@@ -158,6 +189,7 @@ fn validates_closed_method_specific_request_schemas() {
         terminal_session_id: None,
         pane_id: None,
         project_id: None,
+        run_identity: None,
         method: "context.create".into(),
         params: json!({ "sourceKind": "folder", "source": "/safe", "ref": "main" }),
     };
@@ -173,6 +205,7 @@ fn distinguishes_authenticated_version_errors_from_authentication_and_schema_err
         terminal_session_id: None,
         pane_id: None,
         project_id: None,
+        run_identity: None,
         method: "status".into(),
         params: json!({}),
     };
@@ -219,6 +252,7 @@ fn carries_bounded_terminal_scope_without_exposing_it_in_command_params() {
             terminal_session_id: Some("tty-session-1".into()),
             pane_id: Some("pane-1".into()),
             project_id: Some("project-1".into()),
+            run_identity: Some("ctxrun_exact-1".into()),
         },
     )
     .expect("scoped request");
@@ -228,6 +262,7 @@ fn carries_bounded_terminal_scope_without_exposing_it_in_command_params() {
     );
     assert_eq!(request.pane_id.as_deref(), Some("pane-1"));
     assert_eq!(request.project_id.as_deref(), Some("project-1"));
+    assert_eq!(request.run_identity.as_deref(), Some("ctxrun_exact-1"));
     assert_eq!(request.params, json!({}));
     assert!(validate_terminal_cli_request(&request, NONCE).is_ok());
 
@@ -239,6 +274,48 @@ fn carries_bounded_terminal_scope_without_exposing_it_in_command_params() {
         terminal_cli_request_error_code(&malformed, NONCE),
         Some("invalid_request")
     );
+}
+
+#[test]
+fn rejects_context_ask_without_a_bounded_question_or_valid_run_identity() {
+    let invocation = parse_terminal_cli_args(&[
+        "--endpoint".into(),
+        "/tmp/vibespace-endpoint.json".into(),
+        "ask".into(),
+        "Where is the provider selected?".into(),
+    ])
+    .expect("context ask");
+    let request = build_scoped_terminal_cli_request(
+        &invocation,
+        NONCE,
+        "request-ask",
+        TerminalCliRequestScope {
+            terminal_session_id: Some("tty-session-1".into()),
+            pane_id: Some("pane-1".into()),
+            project_id: Some("project-1".into()),
+            run_identity: Some("ctxrun_exact-1".into()),
+        },
+    )
+    .expect("scoped ask");
+    assert!(validate_terminal_cli_request(&request, NONCE).is_ok());
+
+    let malformed_question = TerminalCliRequest {
+        params: json!({ "question": "" }),
+        ..request.clone()
+    };
+    assert!(validate_terminal_cli_request(&malformed_question, NONCE).is_err());
+
+    let missing_identity = TerminalCliRequest {
+        run_identity: None,
+        ..request.clone()
+    };
+    assert!(validate_terminal_cli_request(&missing_identity, NONCE).is_err());
+
+    let forged_identity = TerminalCliRequest {
+        run_identity: Some("bad identity".into()),
+        ..request
+    };
+    assert!(validate_terminal_cli_request(&forged_identity, NONCE).is_err());
 }
 
 #[test]
@@ -304,6 +381,24 @@ fn renders_safe_text_and_json_without_control_characters() {
     assert!(render_terminal_cli_response(&unsafe_response, false, true).is_err());
     unsafe_response.message = "unsafe\u{009b}31m".into();
     assert!(render_terminal_cli_response(&unsafe_response, false, true).is_err());
+}
+
+#[test]
+fn renders_a_bounded_context_answer_for_plain_terminal_output() {
+    let response = TerminalCliResponse {
+        request_id: "request-context".into(),
+        ok: true,
+        code: "ok".into(),
+        message: "Context answer ready.".into(),
+        data: Some(json!({
+            "answer": "The provider is preserved by the registered model selection.",
+            "receipt": { "route": "focused" }
+        })),
+    };
+    assert_eq!(
+        render_terminal_cli_response(&response, false, false).expect("plain answer"),
+        "The provider is preserved by the registered model selection."
+    );
 }
 
 #[test]

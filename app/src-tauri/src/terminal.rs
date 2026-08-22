@@ -970,6 +970,7 @@ fn decode_terminal_bytes(pending_utf8: &mut Vec<u8>, chunk: &[u8]) -> Option<Str
 #[tauri::command]
 pub async fn terminal_spawn(
     state: State<'_, TerminalState>,
+    terminal_cli_state: State<'_, crate::terminal_cli::TerminalCliState>,
     app: AppHandle,
     command: Option<String>,
     startup_command: Option<String>,
@@ -1067,10 +1068,26 @@ pub async fn terminal_spawn(
     if !resolved_cwd.is_empty() {
         builder.cwd(&resolved_cwd);
     }
-    if let Some(env_map) = env {
+    if let Some(env_map) = env.as_ref() {
         for (k, v) in env_map {
             builder.env(k, v);
         }
+    }
+    if let Some(private_bin_dir) = terminal_cli_state.private_bin_dir() {
+        let requested_path = env.as_ref().and_then(|values| {
+            values
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+                .map(|(_, value)| std::ffi::OsString::from(value))
+        });
+        let inherited_path = requested_path.or_else(|| std::env::var_os("PATH"));
+        let mut paths = vec![private_bin_dir];
+        if let Some(current) = inherited_path {
+            paths.extend(std::env::split_paths(&current));
+        }
+        let managed_path = std::env::join_paths(paths)
+            .map_err(|_| "terminal: managed CLI PATH could not be represented".to_string())?;
+        builder.env("PATH", managed_path);
     }
     builder.env("VIBESPACE_TERMINAL_SESSION_ID", &session_id);
     if let Some(project_id) = &project_id {
