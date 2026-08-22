@@ -371,3 +371,9 @@
 - Every focused/deep sample now records only the approved retrieval stages: SiYuan readiness, queue wait, search, evidence hydration, and validation/hash. Each stage must be finite/non-negative and its per-run sum must reconcile to total retrieval duration within one microsecond.
 - RLM subquery count must be a non-negative safe integer, and every deep run must prove at least one subquery. Reports publish p50/p95/p99/max for every stage and the subquery count alongside the existing latency, candidate/hydration, identity, and frozen-corpus quality evidence.
 - Closure independently rejects malformed stage/count distributions and deep reports without subquery proof; the exact-key schema rejects unknown stages and fractional counts. Two TDD RED cycles reproduced the absent calculator data plus closure/schema bypasses before implementation; focused retrieval/schema/closure verification passed 3 files / 44 tests.
+
+## 2026-08-22 — Fresh broad ADE/Gateway/RLM/terminal verification
+
+- Ran the complete ADE, Context Gateway, Context RLM, and terminal feature directories together after the quality/resource/lifecycle/retrieval-stage acceptance additions: 84 files / 726 tests passed with zero failures.
+- The root production command reached only the same four actively owned SiYuan test nullability diagnostics and emitted no owned-file diagnostic. A direct Vite production bundle then completed across 4,927 transformed modules in 40.85 seconds; existing tree-sitter externalization/eval, mixed-import, and large-chunk notices remained warnings.
+- This is fresh automated and bundle evidence only. It does not substitute for current-source native backend execution, paired provider runs, the still-unbound complete observed ADE dispatcher identity, or official native acceptance.
