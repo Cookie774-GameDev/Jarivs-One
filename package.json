@@ -19,6 +19,7 @@
     "test:full:sharded": "node scripts/run-vitest-shards.mjs",
     "verify:pr31-oss": "node scripts/pr31-oss-bundle.mjs",
     "verify:pr31-opencode-rlm": "node scripts/verify-pr31-opencode-rlm-integration.mjs",
+    "verify:context-gateway-acceptance": "vite-node scripts/context-gateway-acceptance.ts",
     "prepare:siyuan-runtime": "node scripts/prepare-siyuan-runtime.mjs",
     "test:siyuan-runtime-prepare": "node --test scripts/prepare-siyuan-runtime.test.mjs",
     "pr31:live-watch": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pr31-live-watch.ps1",

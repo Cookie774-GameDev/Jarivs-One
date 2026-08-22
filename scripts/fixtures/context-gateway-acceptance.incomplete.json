@@ -1,0 +1,13 @@
+{
+  "build": {
+    "commitSha": "",
+    "buildId": "",
+    "runtimeGeneration": ""
+  },
+  "directReports": [],
+  "nativeProofs": [],
+  "featureParityPassed": true,
+  "concurrentScopeIsolationPassed": true,
+  "rollbackNotes": "",
+  "externalBlockers": []
+}

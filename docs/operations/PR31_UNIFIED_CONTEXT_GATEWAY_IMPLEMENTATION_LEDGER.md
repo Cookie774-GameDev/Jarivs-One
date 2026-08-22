@@ -321,3 +321,9 @@
 - A fresh exact-tag health check kept transport identity truthful and completed for both `llama3.2:latest` and `qwen2.5:1.5b-instruct-q4_K_M`. Llama returned the correct `391` for `23 * 17`; Qwen returned an incorrect `401`. This is preserved as a real model-quality failure and is not rewritten as a routing/system pass.
 - The established Qwen control prompt still returned the correct `323` for `17 * 19`, and Qwen emitted the exact structured `multiply(a=23,b=17)` tool call without calculating directly. These controls show the installed tag, transport completion, observed identity, and tool schema remain healthy while raw arithmetic quality is not universally reliable.
 - Official native VibeSpace remained open and responsive (PID 18556, approximately 51.8 MB working set) after the checks. No app-selected model, provider, connection, effort/Fast state, or saved setting changed.
+
+## 2026-08-22 — Runnable Context Gateway acceptance evaluator checkpoint
+
+- Added `npm run verify:context-gateway-acceptance -- <local-evidence.json>` so native/CI evidence can execute the same fail-closed evaluator rather than copying its logic into an ad hoc report. The command emits only the sanitized evaluation (`passed`, `failed`, `incomplete`, or `blocked-external`) and never echoes malformed evidence, parse errors, prompts, model output, credentials, or input contents.
+- A repository fixture intentionally exercises the truthful incomplete state and lists every missing Chat/ADE/Codex/Claude/OpenCode, retrieval, native, build, and rollback gate with no false failures. Pass exits zero; every non-pass or invalid input exits nonzero, while the JSON status preserves the exact non-pass category.
+- Manual CLI verification covered the incomplete fixture, missing argument usage, and an invalid JSON-shaped evidence file. The invalid case returned only the fixed safe error message.
