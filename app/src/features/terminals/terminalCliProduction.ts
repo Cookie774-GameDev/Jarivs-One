@@ -344,6 +344,9 @@ export function createProductionTerminalCliRuntimeDependencies(): TerminalCliRun
         complete();
       }
     },
+    verifyContextReceipt(input) {
+      return Boolean(productionContextGateway.verifyRequiredReceipt(input));
+    },
     currentProject,
     resolveProject: accessibleProject,
     async switchProject(projectId) {

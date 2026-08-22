@@ -139,6 +139,20 @@ export interface TerminalCliRuntimeDependencies {
       identity: TerminalContextBridgeIdentity;
     }>,
   ): Promise<Readonly<PreparedContextTurn>>;
+  verifyContextReceipt(
+    input: Readonly<{
+      receiptId: string;
+      requestId: string;
+      scope: Readonly<{
+        accountId: string;
+        workspaceId: string;
+        projectId: string;
+        worktreeId: string;
+        revision: string;
+      }>;
+      minimumRoute: 'focused' | 'deep';
+    }>,
+  ): boolean;
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
@@ -323,6 +337,35 @@ function contextChanged(message: string): string {
   return `${message} ${CONTEXT_RELOAD_NOTICE}`;
 }
 
+function exactTerminalContextReceipt(
+  prepared: Readonly<PreparedContextTurn>,
+  identity: Readonly<TerminalContextBridgeIdentity>,
+): boolean {
+  const receipt = prepared.receipt;
+  const scope = receipt.scopeRevision;
+  const execution = receipt.executionIdentity;
+  return (
+    receipt.required &&
+    receipt.safeFailure === null &&
+    receipt.route !== 'direct' &&
+    scope.accountId === identity.accountId &&
+    scope.workspaceId === identity.workspaceId &&
+    scope.projectId === identity.projectId &&
+    scope.worktreeId === identity.worktreeId &&
+    scope.revision === identity.scopeRevision &&
+    execution.transportConnectionId === 'vibespace-terminal-context' &&
+    execution.transportAdapterId === 'terminal-local-ipc' &&
+    execution.upstreamProviderId === 'local-context-gateway' &&
+    execution.upstreamModelId === 'context-only' &&
+    execution.providerQualifiedModelId === 'local-context-gateway/context-only' &&
+    execution.authBillingRoute === 'local-only' &&
+    execution.effort === 'not-applicable' &&
+    execution.fastVariant === 'not-applicable' &&
+    execution.catalogRevision === identity.scopeRevision &&
+    execution.observedProviderIdentity === 'local-context-gateway'
+  );
+}
+
 function fail(
   request: TerminalCliFrontendRequest,
   code: Exclude<TerminalCliRuntimeCode, 'ok'>,
@@ -502,6 +545,27 @@ export function createTerminalCliRuntime(dependencies: TerminalCliRuntimeDepende
             throw new TerminalCliRuntimeError(
               'context_unavailable',
               'Required VibeSpace Context is currently unavailable.',
+            );
+          }
+          const receiptScope = {
+            accountId: identity.accountId,
+            workspaceId: identity.workspaceId,
+            projectId: identity.projectId,
+            worktreeId: identity.worktreeId,
+            revision: identity.scopeRevision,
+          } as const;
+          const verified =
+            exactTerminalContextReceipt(prepared, identity) &&
+            dependencies.verifyContextReceipt({
+              receiptId: prepared.receipt.receiptId,
+              requestId: request.requestId,
+              scope: receiptScope,
+              minimumRoute: prepared.receipt.route === 'deep' ? 'deep' : 'focused',
+            });
+          if (!verified) {
+            throw new TerminalCliRuntimeError(
+              'context_unavailable',
+              'Required VibeSpace Context receipt verification failed.',
             );
           }
           const answer = prepared.promptBlock.slice(0, 14_000);

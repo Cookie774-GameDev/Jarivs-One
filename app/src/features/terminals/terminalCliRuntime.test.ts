@@ -148,9 +148,11 @@ function dependencies(): TerminalCliRuntimeDependencies {
           effort: 'not-applicable',
           fastVariant: 'not-applicable',
           catalogRevision: 'terminal-run-1:0',
+          observedProviderIdentity: 'local-context-gateway',
         },
       },
     })),
+    verifyContextReceipt: vi.fn(() => true),
   };
 }
 
@@ -198,6 +200,18 @@ describe('terminal CLI frontend runtime', () => {
         question: 'What was the prior decision?',
       }),
     );
+    expect(deps.verifyContextReceipt).toHaveBeenCalledWith({
+      receiptId: 'receipt-1',
+      requestId: 'request-context-ask',
+      scope: {
+        accountId: 'account-1',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+        worktreeId: 'C:\\VibeSpace',
+        revision: 'terminal-run-1:0',
+      },
+      minimumRoute: 'focused',
+    });
     expect(response).toMatchObject({
       ok: true,
       data: {
@@ -205,6 +219,89 @@ describe('terminal CLI frontend runtime', () => {
         receipt: { receiptId: 'receipt-1', route: 'focused', required: true },
       },
     });
+  });
+
+  it('fails closed when retrieval returns a receipt outside the authorized terminal scope', async () => {
+    const deps = dependencies();
+    const prepared = await deps.askContext({
+      requestId: 'fixture-request',
+      question: 'fixture',
+      identity: deps.authorizeContextIdentity({
+        identityId: 'terminal-run-1',
+        terminalSessionId: 'tty-a',
+        paneId: 'pane-a',
+        projectId: 'project-a',
+      })!,
+    });
+    vi.mocked(deps.askContext).mockResolvedValue({
+      ...prepared,
+      receipt: {
+        ...prepared.receipt,
+        scopeRevision: { ...prepared.receipt.scopeRevision, worktreeId: 'C:\\Other' },
+      },
+    });
+    const runtime = createTerminalCliRuntime(deps);
+
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest({
+          ...request('context.ask', { question: 'Search history.' }),
+          runIdentity: 'terminal-run-1',
+        }),
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'context_unavailable' });
+    expect(deps.verifyContextReceipt).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the Gateway no longer verifies the required terminal receipt', async () => {
+    const deps = dependencies();
+    vi.mocked(deps.verifyContextReceipt).mockReturnValue(false);
+    const runtime = createTerminalCliRuntime(deps);
+
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest({
+          ...request('context.ask', { question: 'Search history.' }),
+          runIdentity: 'terminal-run-1',
+        }),
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'context_unavailable' });
+  });
+
+  it('never releases an optional direct receipt from the managed context command', async () => {
+    const deps = dependencies();
+    const prepared = await deps.askContext({
+      requestId: 'fixture-request',
+      question: 'fixture',
+      identity: deps.authorizeContextIdentity({
+        identityId: 'terminal-run-1',
+        terminalSessionId: 'tty-a',
+        paneId: 'pane-a',
+        projectId: 'project-a',
+      })!,
+    });
+    vi.mocked(deps.askContext).mockResolvedValue({
+      ...prepared,
+      receipt: {
+        ...prepared.receipt,
+        route: 'direct',
+        decision: 'optional-direct',
+        required: false,
+        sourceRevisions: [],
+        evidenceHandles: [],
+      },
+    });
+    const runtime = createTerminalCliRuntime(deps);
+
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest({
+          ...request('context.ask', { question: 'Search history.' }),
+          runIdentity: 'terminal-run-1',
+        }),
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'context_unavailable' });
+    expect(deps.verifyContextReceipt).not.toHaveBeenCalled();
   });
 
   it('fails closed before retrieval without a valid scoped run identity', async () => {

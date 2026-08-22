@@ -187,3 +187,9 @@
 
 - The shared Gateway now rejects backend results before caching or receipt issuance when an evidence handle is duplicated or an evidence item is not bound to an exact issued source ID/revision pair. This prevents last-write-wins handle replacement and stale-source evidence from receiving scoped open authority.
 - TDD red proved two different evidence records with one handle previously collapsed into the receipt map. Focused regressions also cover mismatched source revisions. Fresh focused/adjacent verification passed 7 files / 46 tests across Gateway, ADE, production policy, and terminal revocation; the full TypeScript project check remained clean.
+
+## 2026-08-22 — Managed-terminal required-receipt gate checkpoint
+
+- `vibespace-context ask` now independently checks that retrieval returned a required, current, non-failed receipt bound to the exact app-minted account/workspace/project/worktree/revision and the fixed local Context Gateway execution identity. It then asks the shared Gateway to verify the exact receipt/request/scope/minimum-route authority before releasing the bounded evidence block.
+- Cross-worktree, optional/direct, stale, cancelled, expired, insufficient-route, or otherwise unverifiable receipts fail closed as `context_unavailable`; no evidence prompt block is returned. The production runtime uses the singleton Gateway verifier rather than a terminal-specific cache or policy.
+- TDD red proved a wrong-worktree receipt was returned successfully before the fix. Fresh terminal/Gateway verification passed 4 files / 35 tests, including explicit optional-direct rejection. The broader owned Gateway/RLM/terminal matrix passed 12 files / 113 tests; the only notices were the known non-fatal jsdom canvas messages. The full TypeScript project check passed with zero diagnostics.
