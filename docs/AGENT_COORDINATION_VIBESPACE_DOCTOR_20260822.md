@@ -47,3 +47,9 @@
 - The full TypeScript project check is blocked only by four unrelated active SiYuan test diagnostics in `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no Doctor diagnostic remains. Executing `cargo test --test storage_doctor_repair` is blocked before test execution by insufficient C: drive space (`os error 112`); the same test target compiles successfully under `cargo check`.
 - Native destructive-flow UI automation was intentionally not performed: the user prohibited computer-wide control, and the repair contract requires immediate explicit human confirmation before touching real app data. No real user storage was repaired, restored, or deleted during verification.
 - Next action: stage only the exact Doctor-owned manifest, run the staged secret/diff audit, commit, and release only `VS-CODEX-VIBESPACE-DOCTOR-FULL-20260822` ownership.
+
+## 2026-08-22 — final commit and release
+
+- Commit: `07ecf18902b6858a8530a8577fea468089a4c815` (`fix: complete backup-first VibeSpace Doctor repair`), based on `9eb64ab8e560d6132aa38d4f6854427c8204d7c3`.
+- Staged manifest contained only the eleven Doctor-owned implementation, test, bootstrap, native-entry, and coordination files. `gitleaks protect --staged --redact --verbose` reported no leaks; staged `git diff --check` passed.
+- Final branch: `integration/UnifiedChungus-final`. Remaining worktree changes belong to other active tasks and were preserved. Doctor ownership is released after this append-only record is folded into the same commit.
