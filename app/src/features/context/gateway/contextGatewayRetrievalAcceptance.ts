@@ -52,9 +52,7 @@ function identityKey(identity: Readonly<ExecutionIdentity>): string {
   return JSON.stringify(
     identityFields.map((field) => {
       const value = identity[field];
-      if (field !== 'observedProviderIdentity' || value !== undefined) {
-        requireNonEmpty(value ?? '', `executionIdentity.${field}`);
-      }
+      requireNonEmpty(value ?? '', `executionIdentity.${field}`);
       return value ?? null;
     }),
   );

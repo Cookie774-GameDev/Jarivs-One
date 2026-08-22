@@ -59,9 +59,7 @@ function requireNonEmpty(value: string, field: string): void {
 function executionIdentityKey(identity: Readonly<ExecutionIdentity>): string {
   const values = identityFields.map((field) => {
     const value = identity[field];
-    if (field !== 'observedProviderIdentity' || value !== undefined) {
-      requireNonEmpty(value ?? '', `executionIdentity.${field}`);
-    }
+    requireNonEmpty(value ?? '', `executionIdentity.${field}`);
     return value ?? null;
   });
   return JSON.stringify(values);

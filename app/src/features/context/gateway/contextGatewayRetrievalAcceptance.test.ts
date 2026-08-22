@@ -108,4 +108,14 @@ describe('buildContextRetrievalAcceptanceReport', () => {
     };
     expect(() => buildContextRetrievalAcceptanceReport(input)).toThrow('executionIdentity');
   });
+
+  it('rejects acceptance evidence without an observed provider identity', () => {
+    expect(() =>
+      buildContextRetrievalAcceptanceReport(
+        samples('focused', {
+          executionIdentity: { ...identity, observedProviderIdentity: undefined },
+        }),
+      ),
+    ).toThrow('observedProviderIdentity');
+  });
 });

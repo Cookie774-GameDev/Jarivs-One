@@ -122,4 +122,12 @@ describe('buildDirectGatewayAcceptanceReport', () => {
 
     expect(() => buildDirectGatewayAcceptanceReport(samples)).toThrow('executionIdentity');
   });
+
+  it('rejects acceptance evidence without an observed provider identity', () => {
+    expect(() =>
+      buildDirectGatewayAcceptanceReport(
+        pairs({ executionIdentity: { ...identity, observedProviderIdentity: undefined } }),
+      ),
+    ).toThrow('observedProviderIdentity');
+  });
 });
