@@ -37,6 +37,16 @@ function connection(id: string, mode: ProviderConnection['mode']): ProviderConne
 }
 
 describe('ModelPickerTypeahead smoke transports', () => {
+  it('mounts the native catalog visibly without waiting for a background animation frame', () => {
+    const { container } = render(
+      <ModelPickerTypeahead groups={[]} selectedId="" onSelect={vi.fn()} />,
+    );
+
+    const surface = container.querySelector<HTMLElement>('.jarvis-slash-dropdown');
+    expect(surface).not.toBeNull();
+    expect(surface?.style.opacity).not.toBe('0');
+  });
+
   it('shows truthful live free pricing without disabling selection', () => {
     const openCode = connection('opencode-cli', 'external-cli');
     const onSelect = vi.fn();
@@ -334,7 +344,41 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(document.querySelector('[data-effort-icon="ultra"]')).not.toBeNull();
     const ultra = screen.getByRole('button', { name: /ultra/i });
     expect(ultra.querySelector('[data-ultra-roots="true"]')).not.toBeNull();
+    expect(ultra.querySelector('[data-ultra-sigil="true"]')).not.toBeNull();
     expect(ultra.className).toContain('vibespace-effort-row');
+    expect(ultra).toBe(document.querySelector('[data-effort-level]:last-child'));
+  });
+
+  it('shows every Luna effort except Ultra, with Max at the bottom', () => {
+    render(
+      <ModelPickerTypeahead
+        groups={[
+          {
+            provider: 'openai',
+            label: 'OpenAI',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-luna',
+                provider: 'openai',
+                modelId: 'openai/gpt-5.6-luna',
+                label: 'GPT-5.6 Luna',
+                connection: connection('opencode-cli', 'external-cli'),
+                variants: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openai/gpt-5.6-luna"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('GPT-5.6 Luna'));
+    const labels = Array.from(document.querySelectorAll('[data-effort-level]')).map((node) =>
+      node.getAttribute('data-effort-level'),
+    );
+    expect(labels).toEqual(['auto', 'minimal', 'low', 'medium', 'high', 'max']);
+    expect(screen.queryByRole('button', { name: /ultra/i })).toBeNull();
   });
 
   it('cancels a pending model without changing the committed selection', () => {
@@ -472,10 +516,14 @@ describe('ModelPickerTypeahead smoke transports', () => {
     );
 
     const openAiHeading = screen.getByRole('button', { name: 'Collapse OpenAI' });
-    const alibabaHeading = screen.getByRole('button', { name: 'Collapse Alibaba' });
+    const alibabaHeading = screen.getByRole('button', { name: 'Expand Alibaba' });
     expect(openAiHeading.getAttribute('aria-expanded')).toBe('true');
-    expect(alibabaHeading.getAttribute('aria-expanded')).toBe('true');
+    expect(alibabaHeading.getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByText('GPT-5.6')).not.toBeNull();
+    expect(screen.queryByText('Qwen 3.7 Plus')).toBeNull();
+
+    fireEvent.click(alibabaHeading);
+    const expandedAlibabaHeading = screen.getByRole('button', { name: 'Collapse Alibaba' });
     expect(screen.getByText('Qwen 3.7 Plus')).not.toBeNull();
 
     fireEvent.click(openAiHeading);
@@ -488,7 +536,7 @@ describe('ModelPickerTypeahead smoke transports', () => {
     ).toBe(true);
     expect(
       document
-        .getElementById(alibabaHeading.getAttribute('aria-controls')!)
+        .getElementById(expandedAlibabaHeading.getAttribute('aria-controls')!)
         ?.hasAttribute('hidden'),
     ).toBe(false);
     expect(screen.getByText('Qwen 3.7 Plus')).not.toBeNull();

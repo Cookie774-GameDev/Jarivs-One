@@ -17,8 +17,9 @@ describe('model-specific variants and fast mode', () => {
   });
 
   it('rejects unsupported stale effort rather than silently downgrading', () => {
-    expect(() => resolveEffortVariant('gpt-5.3-codex-spark', 'max', [{ id: 'medium' }]))
-      .toThrow(VariantNotAvailableError);
+    expect(() => resolveEffortVariant('gpt-5.3-codex-spark', 'max', [{ id: 'medium' }])).toThrow(
+      VariantNotAvailableError,
+    );
   });
 
   it('filters effort autocomplete to the exact selected model', () => {
@@ -31,11 +32,13 @@ describe('model-specific variants and fast mode', () => {
   });
 
   it('prefers the exact Fast service tier and preserves model identity', () => {
-    expect(resolveFastMode(true, {
-      connectionId: 'opencode-cli',
-      modelId: 'openai/gpt-5.6-sol',
-      serviceTiers: ['priority'],
-    })).toEqual({
+    expect(
+      resolveFastMode(true, {
+        connectionId: 'opencode-cli',
+        modelId: 'openai/gpt-5.6-sol',
+        serviceTiers: ['priority'],
+      }),
+    ).toEqual({
       enabled: true,
       supported: true,
       transport: 'service-tier',
@@ -45,32 +48,59 @@ describe('model-specific variants and fast mode', () => {
   });
 
   it('uses native OpenCode fast or a live fast variant only when exposed', () => {
-    expect(resolveFastMode(true, {
-      connectionId: 'openai-codex',
-      modelId: 'gpt-5.6-sol',
-      supportsOpenCodeFastMode: true,
-    })).toMatchObject({
+    expect(
+      resolveFastMode(true, {
+        connectionId: 'openai-codex',
+        modelId: 'gpt-5.6-sol',
+        supportsOpenCodeFastMode: true,
+      }),
+    ).toMatchObject({
       transport: 'opencode-native',
       openCodeFastMode: true,
     });
-    expect(resolveFastMode(true, {
-      connectionId: 'opencode-cli',
-      modelId: 'openai/gpt-5.6-terra',
-      variants: [{ id: 'fast' }],
-    })).toMatchObject({
+    expect(
+      resolveFastMode(true, {
+        connectionId: 'opencode-cli',
+        modelId: 'openai/gpt-5.6-terra',
+        variants: [{ id: 'fast' }],
+      }),
+    ).toMatchObject({
       transport: 'variant',
       upstreamVariant: 'fast',
     });
-    expect(resolveFastMode(true, {
-      connectionId: 'opencode-cli',
-      modelId: 'openai/gpt-5.6-sol',
-    })).toMatchObject({ supported: false, transport: 'off' });
+    expect(
+      resolveFastMode(true, {
+        connectionId: 'opencode-cli',
+        modelId: 'openai/gpt-5.6-sol',
+      }),
+    ).toMatchObject({ supported: false, transport: 'off' });
+  });
+
+  it('keeps Ultra last and excludes it from the exact GPT-5.6 Luna route', () => {
+    const all = ['none', 'low', 'medium', 'high', 'xhigh', 'max'].map((id) => ({ id }));
+    expect(
+      listEffortOptions(all, 'openai/gpt-5.6-sol')
+        .filter((item) => item.available)
+        .map((item) => item.label),
+    ).toEqual(['auto', 'minimal', 'low', 'medium', 'high', 'max', 'ultra']);
+    expect(
+      listEffortOptions(all, 'openrouter/openai/gpt-5.6-luna')
+        .filter((item) => item.available)
+        .map((item) => item.label),
+    ).toEqual(['auto', 'minimal', 'low', 'medium', 'high', 'max']);
+    expect(() => resolveEffortVariant('openai/gpt-5.6-luna', 'ultra', all)).toThrow(
+      VariantNotAvailableError,
+    );
   });
 
   it('rejects Fast metadata on API, aggregator, and non-Codex routes', () => {
     for (const metadata of [
       { connectionId: 'openai-api', modelId: 'gpt-5.6-sol', serviceTiers: ['fast'] },
-      { connectionId: 'opencode-cli', modelId: 'openrouter/openai/gpt-5.6-sol', serviceTiers: ['fast'] },
+      {
+        connectionId: 'opencode-cli',
+        modelId: 'openrouter/openai/gpt-5.6-sol',
+        serviceTiers: ['fast'],
+      },
       { connectionId: 'opencode-cli', modelId: 'qwen/qwen3.8-max', variants: [{ id: 'fast' }] },
     ]) {
       expect(resolveFastMode(true, metadata)).toMatchObject({ supported: false, transport: 'off' });

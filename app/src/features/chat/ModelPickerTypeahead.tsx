@@ -75,8 +75,28 @@ function UltraRoots() {
     >
       <path d="M0 4 C42 4 38 23 92 24 C116 24 123 16 150 24" />
       <path d="M0 44 C34 44 48 28 94 28 C121 28 125 31 150 24" />
+      <path d="M0 18 C31 18 47 12 69 26 C91 40 116 31 150 24" />
+      <path d="M19 0 C31 12 50 38 79 33 C105 29 119 22 150 24" />
       <path d="M300 4 C258 4 262 23 208 24 C184 24 177 16 150 24" />
       <path d="M300 44 C266 44 252 28 206 28 C179 28 175 31 150 24" />
+      <path d="M300 18 C269 18 253 12 231 26 C209 40 184 31 150 24" />
+      <path d="M281 0 C269 12 250 38 221 33 C195 29 181 22 150 24" />
+    </svg>
+  );
+}
+
+function UltraSigil() {
+  return (
+    <svg
+      data-ultra-sigil="true"
+      aria-hidden="true"
+      viewBox="0 0 28 28"
+      className="vibespace-ultra-sigil h-5 w-5"
+    >
+      <circle className="vibespace-ultra-sigil-ring" cx="14" cy="14" r="9.5" />
+      <path className="vibespace-ultra-sigil-rays" d="M14 1.5v5M14 21.5v5M1.5 14h5M21.5 14h5" />
+      <path className="vibespace-ultra-sigil-core" d="M14 7.5 17.2 14 14 20.5 10.8 14Z" />
+      <circle className="vibespace-ultra-sigil-star" cx="14" cy="14" r="1.7" />
     </svg>
   );
 }
@@ -156,7 +176,20 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     const panelScale = compact ? getLivePanelUiScale() : 1;
     const [pendingOption, setPendingOption] = useState<ModelPickerOption | null>(null);
     const [effortIndex, setEffortIndex] = useState(0);
-    const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
+    const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
+      () =>
+        new Set(
+          groups
+            .filter((group) =>
+              group.options.some(
+                (option) =>
+                  option.id === selectedId ||
+                  option.alternativeRoutes?.some((route) => route.id === selectedId),
+              ),
+            )
+            .map((group) => group.id ?? `${group.provider}:${group.label}`),
+        ),
+    );
     const [searchQuery, setSearchQuery] = useState('');
 
     const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
@@ -184,9 +217,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       () =>
         filteredGroups.flatMap((group) => {
           const groupId = group.id ?? `${group.provider}:${group.label}`;
-          return collapsedGroupIds.has(groupId) ? [] : group.options;
+          return searchTerms.length === 0 && !expandedGroupIds.has(groupId) ? [] : group.options;
         }),
-      [collapsedGroupIds, filteredGroups],
+      [expandedGroupIds, filteredGroups, searchTerms.length],
     );
     const exactOptions = useMemo(
       () => flatOptions.flatMap((option) => option.alternativeRoutes ?? [option]),
@@ -210,7 +243,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     }, [onSelectHive, searchTerms, visibleOptions]);
 
     const toggleGroup = (groupId: string) => {
-      setCollapsedGroupIds((current) => {
+      setExpandedGroupIds((current) => {
         const next = new Set(current);
         if (next.has(groupId)) next.delete(groupId);
         else next.add(groupId);
@@ -218,20 +251,40 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       });
     };
 
+    useEffect(() => {
+      const selectedGroup = groups.find((group) =>
+        group.options.some(
+          (option) =>
+            option.id === selectedId ||
+            option.alternativeRoutes?.some((route) => route.id === selectedId),
+        ),
+      );
+      if (!selectedGroup) return;
+      const groupId = selectedGroup.id ?? `${selectedGroup.provider}:${selectedGroup.label}`;
+      setExpandedGroupIds((current) => {
+        if (current.has(groupId)) return current;
+        const next = new Set(current);
+        next.add(groupId);
+        return next;
+      });
+    }, [groups, selectedId]);
+
     const effortOptions = useMemo(
       () =>
-        listEffortOptions((pendingOption?.variants ?? []).map((id) => ({ id }))).filter(
-          (option) => option.available,
-        ),
+        listEffortOptions(
+          (pendingOption?.variants ?? []).map((id) => ({ id })),
+          pendingOption?.modelId,
+        ).filter((option) => option.available),
       [pendingOption],
     );
 
     const beginSelection = (option: ModelPickerOption) => {
       if (option.available === false) return;
       setPendingOption(option);
-      const supported = listEffortOptions((option.variants ?? []).map((id) => ({ id }))).filter(
-        (candidate) => candidate.available,
-      );
+      const supported = listEffortOptions(
+        (option.variants ?? []).map((id) => ({ id })),
+        option.modelId,
+      ).filter((candidate) => candidate.available);
       const savedIndex = supported.findIndex((candidate) => candidate.label === initialEffort);
       setEffortIndex(savedIndex >= 0 ? savedIndex : 0);
     };
@@ -305,6 +358,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     return (
       <motion.div
         {...dropdownMotion}
+        initial={false}
         data-pet-scaled-picker={compact ? 'true' : undefined}
         className={cn(
           'jarvis-slash-dropdown overflow-hidden rounded-[14px] border border-border-mid/80',
@@ -396,7 +450,11 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                             : 'border-border/70 bg-background/35 text-muted-foreground',
                         )}
                       >
-                        <EffortIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                        {effort.label === 'ultra' ? (
+                          <UltraSigil />
+                        ) : (
+                          <EffortIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                        )}
                       </span>
                       <span className="relative z-[1] min-w-0 flex-1 font-medium">
                         {effort.label}
@@ -471,7 +529,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
             filteredGroups.map((group, groupIndex) => {
               const GroupIcon = PROVIDER_ICONS[group.provider] ?? Sparkles;
               const groupId = group.id ?? `${group.provider}:${group.label}`;
-              const isCollapsed = collapsedGroupIds.has(groupId);
+              const isCollapsed = searchTerms.length === 0 && !expandedGroupIds.has(groupId);
               const optionsId = `${pickerId}-provider-${groupIndex}`;
               return (
                 <div key={groupId}>
@@ -493,87 +551,91 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                     />
                   </button>
                   <div id={optionsId} hidden={isCollapsed}>
-                    {group.options.map((option) => {
-                      const isSelected =
-                        selectedId === option.id ||
-                        option.alternativeRoutes?.some((route) => route.id === selectedId) === true;
-                      const isActive =
-                        (activeProvider === option.provider && activeModel === option.modelId) ||
-                        option.alternativeRoutes?.some(
-                          (route) =>
-                            activeProvider === route.provider && activeModel === route.modelId,
-                        ) === true;
+                    {!isCollapsed
+                      ? group.options.map((option) => {
+                          const isSelected =
+                            selectedId === option.id ||
+                            option.alternativeRoutes?.some((route) => route.id === selectedId) ===
+                              true;
+                          const isActive =
+                            (activeProvider === option.provider &&
+                              activeModel === option.modelId) ||
+                            option.alternativeRoutes?.some(
+                              (route) =>
+                                activeProvider === route.provider && activeModel === route.modelId,
+                            ) === true;
 
-                      return (
-                        <div key={option.id}>
-                          <div
-                            data-value={option.id}
-                            data-sik-evidence={
-                              option.connection?.id === 'vibespace-kernel-smoke-native'
-                                ? SIK_CONTROL.modelTransportNative
-                                : option.connection?.id === 'vibespace-kernel-smoke-cli'
-                                  ? SIK_CONTROL.modelTransportCli
-                                  : undefined
-                            }
-                            onClick={() => option.available !== false && beginSelection(option)}
-                            onMouseEnter={() =>
-                              option.available !== false && onHoverId?.(option.id)
-                            }
-                            aria-disabled={option.available === false}
-                            data-model-price={option.pricingStatus ?? 'unknown'}
-                            className={cn(
-                              'mx-2 flex cursor-pointer items-center border',
-                              compact
-                                ? 'gap-2 rounded-[8px] px-2 py-1.5'
-                                : 'gap-3 rounded-[12px] px-3 py-2.5',
-                              'transition-all duration-100',
-                              option.available === false && 'cursor-not-allowed opacity-55',
-                              isSelected ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
-                            )}
-                          >
-                            <GroupIcon
-                              className={cn(
-                                'shrink-0',
-                                compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
-                                isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
-                              )}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <span
+                          return (
+                            <div key={option.id}>
+                              <div
+                                data-value={option.id}
+                                data-sik-evidence={
+                                  option.connection?.id === 'vibespace-kernel-smoke-native'
+                                    ? SIK_CONTROL.modelTransportNative
+                                    : option.connection?.id === 'vibespace-kernel-smoke-cli'
+                                      ? SIK_CONTROL.modelTransportCli
+                                      : undefined
+                                }
+                                onClick={() => option.available !== false && beginSelection(option)}
+                                onMouseEnter={() =>
+                                  option.available !== false && onHoverId?.(option.id)
+                                }
+                                aria-disabled={option.available === false}
+                                data-model-price={option.pricingStatus ?? 'unknown'}
                                 className={cn(
-                                  'block truncate font-medium text-foreground',
-                                  compact ? 'text-[12px] leading-4' : 'text-[15px] leading-5',
+                                  'mx-2 flex cursor-pointer items-center border',
+                                  compact
+                                    ? 'gap-2 rounded-[8px] px-2 py-1.5'
+                                    : 'gap-3 rounded-[12px] px-3 py-2.5',
+                                  'transition-all duration-100',
+                                  option.available === false && 'cursor-not-allowed opacity-55',
+                                  isSelected ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
                                 )}
                               >
-                                {option.label}
-                              </span>
-                              <span
-                                className={cn(
-                                  'block truncate text-muted-foreground',
-                                  compact ? 'text-[10px] leading-3' : 'text-[11px] leading-4',
+                                <GroupIcon
+                                  className={cn(
+                                    'shrink-0',
+                                    compact ? 'h-3.5 w-3.5' : 'h-4 w-4',
+                                    isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
+                                  )}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <span
+                                    className={cn(
+                                      'block truncate font-medium text-foreground',
+                                      compact ? 'text-[12px] leading-4' : 'text-[15px] leading-5',
+                                    )}
+                                  >
+                                    {option.label}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      'block truncate text-muted-foreground',
+                                      compact ? 'text-[10px] leading-3' : 'text-[11px] leading-4',
+                                    )}
+                                  >
+                                    {option.modeLabel ?? option.modelId}
+                                    {option.authLabel ? ` · ${option.authLabel}` : ''}
+                                  </span>
+                                </div>
+                                {isActive && (
+                                  <span className="shrink-0 text-[11px] font-medium text-accent-copper">
+                                    active
+                                  </span>
                                 )}
-                              >
-                                {option.modeLabel ?? option.modelId}
-                                {option.authLabel ? ` · ${option.authLabel}` : ''}
-                              </span>
+                                {option.isFree && (
+                                  <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                                    Free
+                                  </span>
+                                )}
+                                {isSelected && (
+                                  <span className="shrink-0 text-accent-copper">&gt;</span>
+                                )}
+                              </div>
                             </div>
-                            {isActive && (
-                              <span className="shrink-0 text-[11px] font-medium text-accent-copper">
-                                active
-                              </span>
-                            )}
-                            {option.isFree && (
-                              <span className="shrink-0 rounded-full border border-emerald-400/45 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
-                                Free
-                              </span>
-                            )}
-                            {isSelected && (
-                              <span className="shrink-0 text-accent-copper">&gt;</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                          );
+                        })
+                      : null}
                   </div>
                 </div>
               );
@@ -601,7 +663,6 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
               onChange={(event) => {
                 const value = event.currentTarget.value;
                 setSearchQuery(value);
-                if (value.trim()) setCollapsedGroupIds(new Set());
               }}
               className={cn(
                 'min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-muted-foreground/70',

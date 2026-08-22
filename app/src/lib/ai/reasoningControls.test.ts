@@ -102,7 +102,13 @@ describe('reasoning controls', () => {
   it('preserves Luna Max for the exact OpenRouter OpenAI route on OpenCode', () => {
     const luna = selection('opencode', 'openrouter/openai/gpt-5.6-luna', 'opencode-cli');
     for (const liveVariants of [undefined, []] as const) {
-      expect(getReasoningCapabilities(luna, liveVariants).supportedEfforts).toContain('max');
+      expect(getReasoningCapabilities(luna, liveVariants).supportedEfforts).toEqual([
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'max',
+      ]);
       expect(
         resolveReasoningPolicy({
           selection: luna,
@@ -110,6 +116,13 @@ describe('reasoning controls', () => {
           liveVariants,
         }).providerOptions,
       ).toEqual({ reasoning_effort: 'max' });
+      expect(() =>
+        resolveReasoningPolicy({
+          selection: luna,
+          preference: { mode: 'normal', effortOverride: 'ultra' },
+          liveVariants,
+        }),
+      ).toThrowError(/unsupported/);
     }
 
     for (const unrelated of [

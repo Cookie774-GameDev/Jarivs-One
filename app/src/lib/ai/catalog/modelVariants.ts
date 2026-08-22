@@ -51,6 +51,15 @@ function normalize(value: string): string {
   return value.trim().toLocaleLowerCase('en-US');
 }
 
+function isExactGpt56Luna(modelId: string): boolean {
+  const normalized = normalize(modelId);
+  return (
+    normalized === 'gpt-5.6-luna' ||
+    normalized === 'openai/gpt-5.6-luna' ||
+    normalized === 'openrouter/openai/gpt-5.6-luna'
+  );
+}
+
 export function variantReasoningEffort(
   variant: Readonly<LiveVariant>,
 ): UpstreamReasoningEffort | undefined {
@@ -66,20 +75,28 @@ export function isFastVariant(variant: Readonly<LiveVariant>): boolean {
 }
 
 export function isCombinedVariant(variant: Readonly<LiveVariant>): boolean {
-  return variant.kind === 'combined' || (isFastVariant(variant) && Boolean(variantReasoningEffort(variant)));
+  return (
+    variant.kind === 'combined' ||
+    (isFastVariant(variant) && Boolean(variantReasoningEffort(variant)))
+  );
 }
 
-export function listEffortOptions(variants: readonly LiveVariant[]): EffortOption[] {
+export function listEffortOptions(variants: readonly LiveVariant[], modelId = ''): EffortOption[] {
   const options: EffortOption[] = [{ label: 'auto', available: true }];
-  for (const label of ['minimal', 'low', 'medium', 'high', 'ultra', 'max'] as const) {
+  for (const label of ['minimal', 'low', 'medium', 'high', 'max', 'ultra'] as const) {
     const efforts = EFFORT_CANDIDATES[label];
-    const matched = variants.find((variant) => {
-      const effort = variantReasoningEffort(variant);
-      return effort !== undefined && efforts.includes(effort) && !isFastVariant(variant);
-    });
+    const matched =
+      label === 'ultra' && isExactGpt56Luna(modelId)
+        ? undefined
+        : variants.find((variant) => {
+            const effort = variantReasoningEffort(variant);
+            return effort !== undefined && efforts.includes(effort) && !isFastVariant(variant);
+          });
     options.push({
       label,
-      ...(matched ? { upstreamVariant: matched.id, upstreamEffort: variantReasoningEffort(matched) } : {}),
+      ...(matched
+        ? { upstreamVariant: matched.id, upstreamEffort: variantReasoningEffort(matched) }
+        : {}),
       available: Boolean(matched),
       ...(!matched ? { explanation: 'Not exposed by the selected live model connection.' } : {}),
     });
@@ -94,9 +111,15 @@ export function resolveEffortVariant(
   variants: readonly LiveVariant[],
 ): string | undefined {
   if (requested === 'auto') return undefined;
-  const option = listEffortOptions(variants).find((candidate) => candidate.label === requested);
+  const option = listEffortOptions(variants, modelId).find(
+    (candidate) => candidate.label === requested,
+  );
   if (!option?.available || !option.upstreamVariant) {
-    throw new VariantNotAvailableError(requested, modelId, variants.map((variant) => variant.id));
+    throw new VariantNotAvailableError(
+      requested,
+      modelId,
+      variants.map((variant) => variant.id),
+    );
   }
   return option.upstreamVariant;
 }
@@ -107,9 +130,15 @@ export function resolveEffortValue(
   variants: readonly LiveVariant[],
 ): UpstreamReasoningEffort | undefined {
   if (requested === 'auto') return undefined;
-  const option = listEffortOptions(variants).find((candidate) => candidate.label === requested);
+  const option = listEffortOptions(variants, modelId).find(
+    (candidate) => candidate.label === requested,
+  );
   if (!option?.available || !option.upstreamEffort) {
-    throw new VariantNotAvailableError(requested, modelId, variants.map((variant) => variant.id));
+    throw new VariantNotAvailableError(
+      requested,
+      modelId,
+      variants.map((variant) => variant.id),
+    );
   }
   return option.upstreamEffort;
 }
@@ -148,14 +177,18 @@ export function resolveFastMode(
 ): FastResolution {
   const connectionId = normalize(metadata.connectionId);
   const modelId = normalize(metadata.modelId);
-  const codexModelId = connectionId === 'opencode-cli'
-    ? (/^openai\/[^/]+$/u.test(modelId) ? modelId.slice('openai/'.length) : '')
-    : connectionId === 'openai-codex' && !modelId.includes('/')
-      ? modelId
-      : '';
-  const eligibleCodexModel = /^(?:gpt-5\.2|gpt-5\.3-codex(?:-spark)?|gpt-5\.4(?:-mini)?|gpt-5\.5|gpt-5\.6(?:-(?:sol|terra|luna))?)$/u.test(
-    codexModelId,
-  );
+  const codexModelId =
+    connectionId === 'opencode-cli'
+      ? /^openai\/[^/]+$/u.test(modelId)
+        ? modelId.slice('openai/'.length)
+        : ''
+      : connectionId === 'openai-codex' && !modelId.includes('/')
+        ? modelId
+        : '';
+  const eligibleCodexModel =
+    /^(?:gpt-5\.2|gpt-5\.3-codex(?:-spark)?|gpt-5\.4(?:-mini)?|gpt-5\.5|gpt-5\.6(?:-(?:sol|terra|luna))?)$/u.test(
+      codexModelId,
+    );
   if (!enabled) {
     return {
       enabled: false,
@@ -186,9 +219,10 @@ export function resolveFastMode(
       usageWarningRequired: true,
     };
   }
-  const variant = (metadata.variants ?? []).find(
-    (candidate) => isFastVariant(candidate) && !isCombinedVariant(candidate),
-  ) ?? (metadata.variants ?? []).find(isFastVariant);
+  const variant =
+    (metadata.variants ?? []).find(
+      (candidate) => isFastVariant(candidate) && !isCombinedVariant(candidate),
+    ) ?? (metadata.variants ?? []).find(isFastVariant);
   if (variant) {
     return {
       enabled: true,

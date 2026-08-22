@@ -106,6 +106,14 @@ function staticReasoningCapabilities(selection: ReasoningSelection): ReasoningCa
     };
   }
 
+  if (provider === 'openai' && model === 'gpt-5.6-luna') {
+    return {
+      supportedEfforts: ['minimal', 'low', 'medium', 'high', 'max'],
+      providerOptionKey: 'reasoning_effort',
+      wireEffort: (effort) => (effort === 'minimal' ? 'none' : effort),
+    };
+  }
+
   if (provider === 'openai' && /^gpt-5(?:\.|$)/.test(model)) {
     const openCodeSurface = connection.includes('opencode') || connection.includes('codex');
     const codexSurface = connection.includes('codex') || model.includes('-sol');
