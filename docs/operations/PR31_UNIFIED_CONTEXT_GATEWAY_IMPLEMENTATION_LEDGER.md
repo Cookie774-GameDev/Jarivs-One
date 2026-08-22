@@ -171,3 +171,8 @@
 
 - External caller abort now enters the Gateway's authoritative `cancel(requestId)` path instead of aborting only the local consumer controller. The consumer is removed from its single-flight set, cancellation generation advances, and the backend flight is aborted immediately when no live consumer remains; shared work continues only for other live consumers.
 - TDD red proved the sole-consumer backend signal remained live after the caller aborted. Fresh focused/adjacent verification passed 7 files / 43 tests across Gateway policy/production, ADE cancellation, terminal identity revocation, expiry, collisions, and external abort. Full typecheck again reached only the four actively owned SiYuan-test diagnostics with no owned-file error.
+
+## 2026-08-22 — Cancelled evidence-authority checkpoint
+
+- Closing or cancelling a Gateway request now revokes its already-issued evidence authority as well as its required-receipt dispatch authority. `openEvidence` compares the current request generation with the immutable receipt generation, removes a revoked receipt record, and fails without returning source text.
+- TDD red proved a cancelled completed request still opened its evidence handle before the fix. Fresh focused/adjacent verification passed 7 files / 43 tests across Gateway policy/production, ADE receipt enforcement and cancellation, terminal identity revocation, expiry, collisions, and external abort. Full TypeScript project verification passed with zero diagnostics.

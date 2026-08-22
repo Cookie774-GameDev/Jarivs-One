@@ -176,6 +176,10 @@ export class ContextGateway {
     if (!record || this.receiptExpired(input.receiptId, record)) {
       throw new Error('Context evidence receipt is missing or expired.');
     }
+    if ((this.generations.get(record.requestId) ?? 0) !== record.receipt.cancellationGeneration) {
+      this.receiptEvidence.delete(input.receiptId);
+      throw new Error('Context evidence receipt was revoked.');
+    }
     if (!sameScope(record.scope, input.scope)) {
       throw new Error('Context evidence scope does not match the receipt scope.');
     }

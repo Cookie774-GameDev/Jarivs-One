@@ -135,6 +135,13 @@ describe('ContextGateway', () => {
         minimumRoute: 'focused',
       }),
     ).toBeNull();
+    await expect(
+      gateway.openEvidence({
+        receiptId: result.receipt.receiptId,
+        handle: 'evidence-1',
+        scope: baseRequest.scope,
+      }),
+    ).rejects.toThrow('revoked');
   });
 
   it('expires required receipts and evidence handles after the bounded receipt lifetime', async () => {
