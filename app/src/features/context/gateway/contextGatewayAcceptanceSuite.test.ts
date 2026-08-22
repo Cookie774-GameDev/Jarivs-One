@@ -35,6 +35,11 @@ const focusedReport: ContextRetrievalAcceptanceReport = {
   retrievalMs: { p50: 1_000, p95: 2_000, p99: 2_200, max: 2_300 },
   candidateCount: { p50: 8, p95: 8, p99: 8, max: 8 },
   hydratedCount: { p50: 5, p95: 5, p99: 5, max: 5 },
+  quality: {
+    topResultAccuracy: 1,
+    citationVerificationRate: 1,
+    answerRubricPassRate: 1,
+  },
 };
 
 const deepReport: ContextRetrievalAcceptanceReport = {
@@ -170,6 +175,19 @@ describe('evaluateContextGatewayAcceptance', () => {
     expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
       status: 'failed',
       failures: ['direct:chat', 'retrieval:focused'],
+    });
+  });
+
+  it('fails a passed-looking retrieval report with incomplete quality proof', () => {
+    const input = completeInput();
+    input.focusedReport = {
+      ...focusedReport,
+      quality: { ...focusedReport.quality, citationVerificationRate: 29 / 30 },
+    };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['retrieval:focused'],
     });
   });
 

@@ -142,7 +142,10 @@ function retrievalReportPasses(
     report.sampleCount < CONTEXT_RETRIEVAL_MINIMUM_RUNS ||
     !validDistribution(report.retrievalMs) ||
     !validDistribution(report.candidateCount) ||
-    !validDistribution(report.hydratedCount)
+    !validDistribution(report.hydratedCount) ||
+    report.quality.topResultAccuracy !== 1 ||
+    report.quality.citationVerificationRate !== 1 ||
+    report.quality.answerRubricPassRate !== 1
   ) {
     return false;
   }

@@ -17,9 +17,20 @@ export interface ContextRetrievalSample {
   retrievalMs: number;
   candidateCount: number;
   hydratedCount: number;
+  qualityCaseId: string;
+  qualityRubricRevision: string;
+  topResultCorrect: boolean;
+  citationsVerified: boolean;
+  answerRubricPassed: boolean;
 }
 
-export type ContextRetrievalAcceptanceFailure = 'focused-p95' | 'deep-p95' | 'deep-hard-deadline';
+export type ContextRetrievalAcceptanceFailure =
+  | 'focused-p95'
+  | 'deep-p95'
+  | 'deep-hard-deadline'
+  | 'top-result-accuracy'
+  | 'citation-verification'
+  | 'answer-rubric';
 
 export interface ContextRetrievalAcceptanceReport {
   route: 'focused' | 'deep';
@@ -29,6 +40,11 @@ export interface ContextRetrievalAcceptanceReport {
   retrievalMs: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
   candidateCount: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
   hydratedCount: Readonly<{ p50: number; p95: number; p99: number; max: number }>;
+  quality: Readonly<{
+    topResultAccuracy: number;
+    citationVerificationRate: number;
+    answerRubricPassRate: number;
+  }>;
 }
 
 const identityFields: readonly (keyof ExecutionIdentity)[] = [
@@ -71,7 +87,7 @@ function distribution(values: readonly number[]): {
 
 function requireUnique(
   samples: readonly Readonly<ContextRetrievalSample>[],
-  field: 'sampleId' | 'receiptId',
+  field: 'sampleId' | 'receiptId' | 'qualityCaseId',
 ): void {
   const seen = new Set<string>();
   for (const sample of samples) {
@@ -89,13 +105,19 @@ function requireComparable(
   }
   requireUnique(samples, 'sampleId');
   requireUnique(samples, 'receiptId');
+  requireUnique(samples, 'qualityCaseId');
 
   const first = samples[0];
   if (first.route !== 'focused' && first.route !== 'deep') {
     throw new Error('route must be focused or deep');
   }
   const route = first.route;
-  const comparableFields = ['harnessId', 'corpusRevision', 'scopeKey'] as const;
+  const comparableFields = [
+    'harnessId',
+    'corpusRevision',
+    'scopeKey',
+    'qualityRubricRevision',
+  ] as const;
   for (const field of comparableFields) requireNonEmpty(first[field], field);
   const expectedIdentity = identityKey(first.executionIdentity);
 
@@ -112,6 +134,9 @@ function requireComparable(
     }
     if (sample.hydratedCount > sample.candidateCount) {
       throw new Error('hydratedCount cannot exceed candidateCount');
+    }
+    for (const field of ['topResultCorrect', 'citationsVerified', 'answerRubricPassed'] as const) {
+      if (typeof sample[field] !== 'boolean') throw new Error(`${field} must be boolean`);
     }
     for (const field of comparableFields) {
       requireNonEmpty(sample[field], field);
@@ -131,6 +156,13 @@ export function buildContextRetrievalAcceptanceReport(
   const route = requireComparable(samples);
   const retrievalMs = distribution(samples.map((sample) => sample.retrievalMs));
   const failures: ContextRetrievalAcceptanceFailure[] = [];
+  const rate = (field: 'topResultCorrect' | 'citationsVerified' | 'answerRubricPassed'): number =>
+    samples.filter((sample) => sample[field]).length / samples.length;
+  const quality = {
+    topResultAccuracy: rate('topResultCorrect'),
+    citationVerificationRate: rate('citationsVerified'),
+    answerRubricPassRate: rate('answerRubricPassed'),
+  };
 
   if (route === 'focused' && retrievalMs.p95 > FOCUSED_RETRIEVAL_P95_LIMIT_MS) {
     failures.push('focused-p95');
@@ -141,6 +173,9 @@ export function buildContextRetrievalAcceptanceReport(
   if (route === 'deep' && retrievalMs.max > DEEP_RETRIEVAL_HARD_DEADLINE_MS) {
     failures.push('deep-hard-deadline');
   }
+  if (quality.topResultAccuracy < 1) failures.push('top-result-accuracy');
+  if (quality.citationVerificationRate < 1) failures.push('citation-verification');
+  if (quality.answerRubricPassRate < 1) failures.push('answer-rubric');
 
   return {
     route,
@@ -150,5 +185,6 @@ export function buildContextRetrievalAcceptanceReport(
     retrievalMs,
     candidateCount: distribution(samples.map((sample) => sample.candidateCount)),
     hydratedCount: distribution(samples.map((sample) => sample.hydratedCount)),
+    quality,
   };
 }

@@ -35,6 +35,11 @@ function samples(
     retrievalMs: route === 'focused' ? 1_000 + index : 2_000 + index,
     candidateCount: 8,
     hydratedCount: 5,
+    qualityCaseId: `case-${index}`,
+    qualityRubricRevision: 'quality-rubric-1',
+    topResultCorrect: true,
+    citationsVerified: true,
+    answerRubricPassed: true,
     ...overrides,
   }));
 }
@@ -46,7 +51,23 @@ describe('buildContextRetrievalAcceptanceReport', () => {
     expect(report).toMatchObject({ route: 'focused', sampleCount: 30, passed: true });
     expect(report.retrievalMs.p95).toBe(1_028);
     expect(report.retrievalMs.max).toBe(1_029);
+    expect(report.quality).toEqual({
+      topResultAccuracy: 1,
+      citationVerificationRate: 1,
+      answerRubricPassRate: 1,
+    });
     expect(report.failures).toEqual([]);
+  });
+
+  it.each([
+    ['incorrect top result', { topResultCorrect: false }, 'top-result-accuracy'],
+    ['unverified citations', { citationsVerified: false }, 'citation-verification'],
+    ['failed answer rubric', { answerRubricPassed: false }, 'answer-rubric'],
+  ] as const)('fails quality acceptance for %s', (_label, override, failure) => {
+    const report = buildContextRetrievalAcceptanceReport(samples('focused', override));
+
+    expect(report.passed).toBe(false);
+    expect(report.failures).toContain(failure);
   });
 
   it('fails a focused p95 above four seconds', () => {
@@ -82,7 +103,7 @@ describe('buildContextRetrievalAcceptanceReport', () => {
   });
 
   it('rejects duplicate sample or receipt identities', () => {
-    for (const field of ['sampleId', 'receiptId'] as const) {
+    for (const field of ['sampleId', 'receiptId', 'qualityCaseId'] as const) {
       const input = samples('focused');
       input[1] = { ...input[1], [field]: input[0][field] };
       expect(() => buildContextRetrievalAcceptanceReport(input)).toThrow(field);
@@ -107,6 +128,12 @@ describe('buildContextRetrievalAcceptanceReport', () => {
       executionIdentity: { ...identity, effort: 'high' },
     };
     expect(() => buildContextRetrievalAcceptanceReport(input)).toThrow('executionIdentity');
+  });
+
+  it('rejects mixed quality rubric revisions', () => {
+    const input = samples('focused');
+    input[29] = { ...input[29], qualityRubricRevision: 'quality-rubric-2' };
+    expect(() => buildContextRetrievalAcceptanceReport(input)).toThrow('qualityRubricRevision');
   });
 
   it('rejects acceptance evidence without an observed provider identity', () => {

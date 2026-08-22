@@ -108,4 +108,46 @@ describe('parseContextGatewayAcceptanceInput', () => {
       }),
     ).toThrow('safe integer');
   });
+
+  it('accepts bounded retrieval quality rates without raw corpus content', () => {
+    const input = {
+      ...incompleteEnvelope(),
+      focusedReport: {
+        route: 'focused',
+        sampleCount: 30,
+        passed: true,
+        failures: [],
+        retrievalMs: { p50: 1, p95: 2, p99: 3, max: 4 },
+        candidateCount: { p50: 8, p95: 8, p99: 8, max: 8 },
+        hydratedCount: { p50: 5, p95: 5, p99: 5, max: 5 },
+        quality: {
+          topResultAccuracy: 1,
+          citationVerificationRate: 1,
+          answerRubricPassRate: 1,
+        },
+      },
+    };
+
+    expect(parseContextGatewayAcceptanceInput(input)).toEqual(input);
+
+    expect(() =>
+      parseContextGatewayAcceptanceInput({
+        ...input,
+        focusedReport: {
+          ...input.focusedReport,
+          quality: { ...input.focusedReport.quality, topResultAccuracy: 1.01 },
+        },
+      }),
+    ).toThrow('must be a rate');
+
+    expect(() =>
+      parseContextGatewayAcceptanceInput({
+        ...input,
+        focusedReport: {
+          ...input.focusedReport,
+          quality: { ...input.focusedReport.quality, output: 'private answer' },
+        },
+      }),
+    ).toThrow('unknown field');
+  });
 });

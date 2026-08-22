@@ -4,7 +4,14 @@ import type { ContextGatewayAcceptanceInput } from './contextGatewayAcceptanceSu
 type JsonRecord = Record<string, unknown>;
 
 const DIRECT_FAILURES = new Set(['p95-relative', 'p95-absolute', 'p99-relative', 'p99-absolute']);
-const RETRIEVAL_FAILURES = new Set(['focused-p95', 'deep-p95', 'deep-hard-deadline']);
+const RETRIEVAL_FAILURES = new Set([
+  'focused-p95',
+  'deep-p95',
+  'deep-hard-deadline',
+  'top-result-accuracy',
+  'citation-verification',
+  'answer-rubric',
+]);
 
 function record(value: unknown, label: string): JsonRecord {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -134,6 +141,7 @@ function retrievalReport(value: unknown, label: string): void {
       'retrievalMs',
       'candidateCount',
       'hydratedCount',
+      'quality',
     ],
     label,
   );
@@ -145,6 +153,17 @@ function retrievalReport(value: unknown, label: string): void {
   distribution(input.retrievalMs, `${label}.retrievalMs`, true);
   integerDistribution(input.candidateCount, `${label}.candidateCount`);
   integerDistribution(input.hydratedCount, `${label}.hydratedCount`);
+  const quality = record(input.quality, `${label}.quality`);
+  const qualityFields = [
+    'topResultAccuracy',
+    'citationVerificationRate',
+    'answerRubricPassRate',
+  ] as const;
+  exactKeys(quality, qualityFields, `${label}.quality`);
+  for (const field of qualityFields) {
+    const rate = finite(quality[field], `${label}.quality.${field}`);
+    if (rate < 0 || rate > 1) throw new TypeError(`${label}.quality.${field} must be a rate`);
+  }
 }
 
 export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatewayAcceptanceInput {

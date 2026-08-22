@@ -347,3 +347,9 @@
 - Full TypeScript verification reports no owned-file diagnostics and remains limited to the same four active, out-of-scope SiYuan test diagnostics.
 - Follow-up TDD proved raw JSON accepted fractional run/candidate counts. Sample counts and candidate/hydration distributions now require non-negative safe integers, preventing values such as `30.5` from satisfying a minimum-run gate. Fresh schema/closure verification passes 2 files / 15 tests.
 - Closure now independently revalidates every approved local-stage distribution rather than trusting the aggregate report. TDD proved a passed-looking report could carry a negative/descending stage percentile; fresh schema/metrics/closure verification passes 3 files / 35 tests.
+
+## 2026-08-22 — Frozen-corpus retrieval quality acceptance checkpoint
+
+- Retrieval samples now bind to unique opaque quality-case IDs and one fixed rubric revision in addition to the existing corpus revision, scope, harness, route, and observed execution identity. The evidence contract carries no prompt, answer, citation text, source path, or source identifier.
+- Each focused/deep run records only whether the expected top result was correct, its citations were independently verified, and the frozen answer rubric passed. Acceptance reports publish aggregate rates and fail unless all three rates are exactly 100%; latency alone can no longer pass a quality-regressed route.
+- The closure evaluator independently revalidates those rates instead of trusting a report's `passed` flag. The exact-key JSON schema bounds every rate to `[0,1]` and recognizes only the three approved quality failures. TDD RED reproduced six calculator gaps plus closure/schema bypasses before implementation; the fresh combined retrieval/schema/closure matrix passed 3 files / 39 tests. Full TypeScript verification reports no owned-file diagnostics and remains limited to the same four active, out-of-scope SiYuan test diagnostics.
