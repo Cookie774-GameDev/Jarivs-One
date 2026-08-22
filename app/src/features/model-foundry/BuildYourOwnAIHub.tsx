@@ -108,6 +108,7 @@ export function BuildYourOwnAIHub({
   const [error, setError] = React.useState('');
   const [installedModels, setInstalledModels] = React.useState<string[]>([]);
   const [ollamaReady, setOllamaReady] = React.useState(false);
+  const [transcriptionReady, setTranscriptionReady] = React.useState(false);
   const [downloadProgress, setDownloadProgress] = React.useState<number | null>(null);
   const downloadAbortRef = React.useRef<AbortController | null>(null);
   const [trainingCatalog, setTrainingCatalog] = React.useState<VerifiedTrainingModel[]>(
@@ -122,7 +123,18 @@ export function BuildYourOwnAIHub({
 
   React.useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     void detectHardware().then(setHardware);
+    void import('@tauri-apps/api/core')
+      .then(({ invoke }) =>
+        invoke<{ ready: boolean }>('faster_whisper_status', { model: 'base' }),
+      )
+      .then((status) => {
+        if (!cancelled) setTranscriptionReady(status.ready === true);
+      })
+      .catch(() => {
+        if (!cancelled) setTranscriptionReady(false);
+      });
     if (verifiedTrainingModels) {
       setTrainingCatalog(verifiedTrainingModels.slice());
     } else {
@@ -136,7 +148,6 @@ export function BuildYourOwnAIHub({
           );
         });
     }
-    let cancelled = false;
     void import('@/lib/ai/ollamaBootstrap')
       .then(({ bootstrapOllamaConnection }) => bootstrapOllamaConnection({ force: true }))
       .then(async (result) => {
@@ -271,7 +282,9 @@ export function BuildYourOwnAIHub({
     if (!files) return;
     setSources((current) => [
       ...current,
-      ...Array.from(files).map((file) => classifySource(file.name, method, false)),
+      ...Array.from(files).map((file) =>
+        classifySource(file.name, method, false, undefined, { transcriptionReady }),
+      ),
     ]);
   };
 
@@ -287,7 +300,9 @@ export function BuildYourOwnAIHub({
       setSources((current) => [
         ...current,
         ...paths.map((path) =>
-          classifySource(path.split(/[\\/]/).pop() ?? path, method, false, path),
+          classifySource(path.split(/[\\/]/).pop() ?? path, method, false, path, {
+            transcriptionReady,
+          }),
         ),
       ]);
     } catch {

@@ -341,6 +341,7 @@ export function classifySource(
   method: TrainingMethod,
   multimodal: boolean,
   path?: string,
+  processors: { transcriptionReady?: boolean } = {},
 ): ClassifiedSource {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   const kind = extensions[ext];
@@ -367,7 +368,11 @@ export function classifySource(
     'rs',
     'docx',
   ].includes(ext);
-  if (!hasVerifiedTextExtractor) {
+  const hasVerifiedTranscription =
+    method === 'knowledge' &&
+    processors.transcriptionReady === true &&
+    (kind === 'audio' || kind === 'video');
+  if (!hasVerifiedTextExtractor && !hasVerifiedTranscription) {
     const explanation =
       kind === 'document'
         ? 'A verified local document extractor for this format is not installed. Convert it to TXT or Markdown; it will not be processed or uploaded as-is.'
@@ -386,6 +391,18 @@ export function classifySource(
       kind,
       use: 'unsupported',
       explanation,
+    };
+  }
+  if (kind === 'audio' || kind === 'video') {
+    return {
+      name,
+      path,
+      kind,
+      use: 'retrieval',
+      explanation:
+        kind === 'audio'
+          ? 'The installed verified local speech model will transcribe this recording into reviewed retrieval text. The original stays unchanged.'
+          : 'Only the audio track will be transcribed into retrieval text. Video frames are not understood or used by this text model.',
     };
   }
   if (kind === 'dataset') {

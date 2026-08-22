@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -578,6 +579,14 @@ fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
                     | "py"
                     | "rs"
                     | "docx"
+                    | "wav"
+                    | "mp3"
+                    | "m4a"
+                    | "flac"
+                    | "mp4"
+                    | "mov"
+                    | "webm"
+                    | "mkv"
             ) {
                 return Err(format!(
                     "{} requires a verified extractor or transcription backend that is not currently available.",
@@ -724,6 +733,40 @@ fn prepare_source_text(source: &Path, bytes: &[u8]) -> Result<(String, String), 
             ));
         }
         return Ok((prepared, extension));
+    }
+    if matches!(
+        extension.as_str(),
+        "wav" | "mp3" | "m4a" | "flac" | "mp4" | "mov" | "webm" | "mkv"
+    ) {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        let transcript = crate::faster_whisper::faster_whisper_transcribe("base".into(), encoded)
+            .map_err(|error| {
+            format!(
+                "{} requires the installed verified local speech model: {error}",
+                source.display()
+            )
+        })?;
+        if transcript.trim().is_empty() {
+            return Err(format!(
+                "{} produced no reviewable local transcript.",
+                source.display()
+            ));
+        }
+        if contains_high_confidence_secret(&transcript) {
+            return Err(format!(
+                "{} produced a transcript containing a high-confidence credential or private-key pattern. Redact and review it before training.",
+                source.display()
+            ));
+        }
+        let media_label = if matches!(extension.as_str(), "mp4" | "mov" | "webm" | "mkv") {
+            "Video audio-track transcript"
+        } else {
+            "Audio transcript"
+        };
+        return Ok((
+            format!("{media_label}\n\n{}", transcript.trim()),
+            format!("{extension}-transcript"),
+        ));
     }
     let decoded = std::str::from_utf8(bytes)
         .map_err(|_| format!("{} is not valid UTF-8 text.", source.display()))?

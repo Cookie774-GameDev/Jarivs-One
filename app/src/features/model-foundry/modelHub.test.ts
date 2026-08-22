@@ -234,6 +234,25 @@ describe('model foundry domain', () => {
     expect(audio.explanation).toContain('transcription');
     expect(video).toMatchObject({ kind: 'video', use: 'unsupported' });
     expect(video.explanation).toContain('frame');
+    expect(
+      classifySource('recording.mp3', 'knowledge', false, 'C:\\recording.mp3', {
+        transcriptionReady: true,
+      }),
+    ).toMatchObject({ kind: 'audio', use: 'retrieval' });
+    expect(
+      classifySource('demo.mp4', 'knowledge', false, 'C:\\demo.mp4', {
+        transcriptionReady: true,
+      }),
+    ).toMatchObject({
+      kind: 'video',
+      use: 'retrieval',
+      explanation: expect.stringMatching(/audio track|frames/i),
+    });
+    expect(
+      classifySource('recording.mp3', 'lora', false, 'C:\\recording.mp3', {
+        transcriptionReady: true,
+      }).use,
+    ).toBe('unsupported');
     expect(classifySource('notes.md', 'knowledge', false).use).toBe('retrieval');
   });
 
