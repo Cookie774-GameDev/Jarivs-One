@@ -2,6 +2,8 @@
 // The webview is still our visible UI; we don't need a parent terminal.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod storage_doctor;
+
 #[cfg(target_os = "windows")]
 fn attach_parent_console_for_cli() {
     #[link(name = "Kernel32")]
@@ -21,6 +23,9 @@ fn main() {
         #[cfg(target_os = "windows")]
         attach_parent_console_for_cli();
         std::process::exit(jarvis_lib::terminal_cli::run_terminal_cli(&arguments[1..]));
+    }
+    if let Err(error) = storage_doctor::process_pending_before_webview() {
+        eprintln!("[storage-doctor] pre-WebView repair stopped safely: {error}");
     }
     jarvis_lib::run();
 }

@@ -69,4 +69,71 @@ describe('StorageDoctorNotice', () => {
     expect(screen.getByText(/storage_unrecognized_failure/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /repair local storage/i })).toBeNull();
   });
+
+  it('requires a second explicit confirmation before scheduling backup and restart', async () => {
+    const doctor = createStorageDoctor({
+      open: vi.fn().mockRejectedValue(backingStoreError()),
+      reset: vi.fn(),
+      verify: vi.fn(),
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
+    await doctor.run();
+    const scheduleRepair = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <StorageDoctorNotice
+        doctor={doctor}
+        repairActions={{
+          scheduleRepair,
+          scheduleRestore: vi.fn(),
+          listBackups: vi.fn().mockResolvedValue([]),
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /repair local storage/i }));
+    expect(scheduleRepair).not.toHaveBeenCalled();
+    expect(screen.getByText(/first create a local backup/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /back up and restart vibespace/i }));
+    await waitFor(() => expect(scheduleRepair).toHaveBeenCalledWith({ confirmed: true }));
+  });
+
+  it('discovers the newest retained backup and requires confirmation before restore', async () => {
+    const doctor = createStorageDoctor({
+      open: vi.fn().mockRejectedValue(backingStoreError()),
+      reset: vi.fn(),
+      verify: vi.fn(),
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
+    await doctor.run();
+    const scheduleRestore = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <StorageDoctorNotice
+        doctor={doctor}
+        repairActions={{
+          scheduleRepair: vi.fn(),
+          scheduleRestore,
+          listBackups: vi.fn().mockResolvedValue([
+            {
+              backupId: '1777000000000-123e4567-e89b-42d3-a456-426614174000',
+              createdAtMs: 1_777_000_000_000,
+            },
+          ]),
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /restore retained backup/i })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /restore retained backup/i }));
+    expect(scheduleRestore).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm restore and restart/i }));
+    await waitFor(() =>
+      expect(scheduleRestore).toHaveBeenCalledWith({
+        confirmed: true,
+        backupId: '1777000000000-123e4567-e89b-42d3-a456-426614174000',
+      }),
+    );
+  });
 });

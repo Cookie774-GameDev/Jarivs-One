@@ -1,4 +1,9 @@
 import { db, openDb, resetDbOpenState } from '@/lib/db';
+import {
+  consumePendingStorageRepair,
+  nativeStorageRepairDependencies,
+  type PendingStorageRepair,
+} from './nativeStorageRepair';
 
 const RETRY_DELAYS_MS = [0, 250, 750] as const;
 const BACKING_STORE_DIAGNOSTIC = 'indexeddb_backing_store_open_failed' as const;
@@ -20,6 +25,7 @@ export type StorageDoctorSnapshot =
 
 export type StorageDoctorResult =
   | { readonly code: 'healthy'; readonly attempts: 1 }
+  | { readonly code: 'recovered_after_repair'; readonly attempts: 1 }
   | { readonly code: 'recovered_after_retry'; readonly attempts: number }
   | {
       readonly code: 'needs_user_repair';
@@ -33,6 +39,7 @@ export type StorageDoctorResult =
     };
 
 export interface StorageDoctorDependencies {
+  readonly prepareRepair?: () => Promise<Pick<PendingStorageRepair, 'apply' | 'complete'> | null>;
   readonly open: () => Promise<void>;
   readonly reset: () => void;
   readonly verify: () => Promise<void>;
@@ -80,6 +87,14 @@ export function createStorageDoctor(dependencies: StorageDoctorDependencies): St
 
   const execute = async (): Promise<StorageDoctorResult> => {
     publish({ kind: 'checking' });
+    let pendingRepair: Pick<PendingStorageRepair, 'apply' | 'complete'> | null = null;
+    if (dependencies.prepareRepair) {
+      pendingRepair = await dependencies.prepareRepair();
+      if (pendingRepair) {
+        dependencies.reset();
+        await pendingRepair.apply(deleteIndexedDatabase);
+      }
+    }
     for (let attemptIndex = 0; attemptIndex <= RETRY_DELAYS_MS.length; attemptIndex += 1) {
       const attempts = attemptIndex + 1;
       if (attemptIndex > 0) {
@@ -90,10 +105,13 @@ export function createStorageDoctor(dependencies: StorageDoctorDependencies): St
       try {
         await dependencies.open();
         await dependencies.verify();
+        if (pendingRepair) await pendingRepair.complete();
         publish({ kind: 'healthy' });
-        return attemptIndex === 0
-          ? { code: 'healthy', attempts: 1 }
-          : { code: 'recovered_after_retry', attempts };
+        return pendingRepair
+          ? { code: 'recovered_after_repair', attempts: 1 }
+          : attemptIndex === 0
+            ? { code: 'healthy', attempts: 1 }
+            : { code: 'recovered_after_retry', attempts };
       } catch (error) {
         if (!isBackingStoreOpenFailure(error)) {
           publish({
@@ -142,13 +160,21 @@ export function createStorageDoctor(dependencies: StorageDoctorDependencies): St
     run,
     async requireHealthy() {
       const result = await run();
-      if (result.code !== 'healthy' && result.code !== 'recovered_after_retry') {
+      if (
+        result.code !== 'healthy' &&
+        result.code !== 'recovered_after_retry' &&
+        result.code !== 'recovered_after_repair'
+      ) {
         throw new StorageDoctorUnavailableError();
       }
     },
     async runStorageOperation<T>(operation: () => Promise<T>): Promise<T> {
       const result = await run();
-      if (result.code !== 'healthy' && result.code !== 'recovered_after_retry') {
+      if (
+        result.code !== 'healthy' &&
+        result.code !== 'recovered_after_retry' &&
+        result.code !== 'recovered_after_repair'
+      ) {
         throw new StorageDoctorUnavailableError();
       }
       try {
@@ -158,7 +184,11 @@ export function createStorageDoctor(dependencies: StorageDoctorDependencies): St
       }
 
       const recovery = await run({ force: true });
-      if (recovery.code !== 'healthy' && recovery.code !== 'recovered_after_retry') {
+      if (
+        recovery.code !== 'healthy' &&
+        recovery.code !== 'recovered_after_retry' &&
+        recovery.code !== 'recovered_after_repair'
+      ) {
         throw new StorageDoctorUnavailableError();
       }
       try {
@@ -172,6 +202,7 @@ export function createStorageDoctor(dependencies: StorageDoctorDependencies): St
 }
 
 export const storageDoctor = createStorageDoctor({
+  prepareRepair: () => consumePendingStorageRepair(nativeStorageRepairDependencies),
   async open() {
     await openDb();
   },
@@ -183,6 +214,15 @@ export const storageDoctor = createStorageDoctor({
     return new Promise((resolve) => setTimeout(resolve, delayMs));
   },
 });
+
+function deleteIndexedDatabase(databaseName: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(databaseName);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error('storage_repair_delete_failed'));
+    request.onblocked = () => reject(new Error('storage_repair_delete_blocked'));
+  });
+}
 
 export function runStorageDoctor(options?: {
   readonly force?: boolean;

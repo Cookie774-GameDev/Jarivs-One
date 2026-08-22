@@ -163,4 +163,32 @@ describe('VibeSpace Doctor local chat storage', () => {
     expect(operation).toHaveBeenCalledTimes(2);
     expect(doctor.getSnapshot().kind).toBe('healthy');
   });
+
+  it('applies a native backup receipt before opening and completes it only after verification', async () => {
+    const events: string[] = [];
+    const doctor = createStorageDoctor({
+      prepareRepair: vi.fn().mockResolvedValue({
+        async apply() {
+          events.push('apply');
+        },
+        async complete() {
+          events.push('complete');
+        },
+      }),
+      open: vi.fn(async () => {
+        events.push('open');
+      }),
+      reset: vi.fn(() => events.push('reset')),
+      verify: vi.fn(async () => {
+        events.push('verify');
+      }),
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(doctor.run()).resolves.toEqual({
+      code: 'recovered_after_repair',
+      attempts: 1,
+    });
+    expect(events).toEqual(['reset', 'apply', 'open', 'verify', 'complete']);
+  });
 });

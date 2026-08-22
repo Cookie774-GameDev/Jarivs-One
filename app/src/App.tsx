@@ -1163,7 +1163,9 @@ function useBoot() {
         try {
           const storageHealth = await runStorageDoctor();
           databaseOpened =
-            storageHealth.code === 'healthy' || storageHealth.code === 'recovered_after_retry';
+            storageHealth.code === 'healthy' ||
+            storageHealth.code === 'recovered_after_retry' ||
+            storageHealth.code === 'recovered_after_repair';
         } catch {
           // VibeSpace Doctor owns the durable, redacted degraded-state presentation.
         }

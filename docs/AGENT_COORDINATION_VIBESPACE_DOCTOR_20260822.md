@@ -26,3 +26,24 @@
 - Full TypeScript project check remains blocked only by four unrelated active SiYuan test diagnostics in `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no owned Doctor file produced a compiler diagnostic.
 - Native validation was limited to the single returned `ai.jarvis.desktop` / `VibeSpace` window. Healthy startup showed no repair notice and the app created `New chat 2` successfully. No desktop-wide automation, browser control, corruption, deletion, or durable repair was performed.
 - Next action: run the final focused post-edit check, stage only the exact owned manifest, commit, and release only this agent's lock.
+
+## 2026-08-22 — full backup-first repair claimed
+
+- Agent/task: `VS-CODEX-VIBESPACE-DOCTOR-FULL-20260822` / `PR31-VIBESPACE-DOCTOR-BACKUP-FIRST-SLICE2`, based on Doctor Slice 1 commit `358b7545`.
+- Native lifecycle proof: desktop `main.rs` executes before `jarvis_lib::run()` constructs the Tauri runtime and configured WebViews. The durable marker processor is therefore isolated there and does not overlap the actively locked shared `lib.rs`.
+- Exact design: explicit UI confirmation writes a strict, bounded marker inside the Tauri-resolved local app-data Doctor directory and requests relaunch. Before WebView startup, native code resolves LocalAppData through the Windows Known Folder API, validates the VibeSpace identifier/origin/database allowlist, creates and verifies a same-volume backup of only the active origin IndexedDB container, and writes a redacted receipt. The restarted renderer consumes that receipt by logically deleting only `jarvis-v1`, rebuilding it, and requiring Doctor verification before chat creation is enabled.
+- Backups are retained. Restore discovery/action uses the same confirmed restart marker and validates the selected backup plus manifest before any replacement. No broad WebView profile, cookies, files, projects, provider state, credentials, or other agents' scope is touched.
+- Next action: TDD RED for strict marker/backup ordering, failure preservation, consent gating, receipt consumption, and restore discovery before implementation.
+
+## 2026-08-22 — exact bootstrap scope extension
+
+- Added the currently clean `app/src/App.tsx` and new native integration test to the exact lock after the RED receipt test established a new `recovered_after_repair` result that bootstrap must recognize before starting persistence coordination. No active lock overlaps either path; no other App behavior is in scope.
+
+## 2026-08-22 — full repair implementation and verification checkpoint
+
+- Implemented the confirmed, backup-first native repair lifecycle: strict bounded request markers; pre-WebView LocalAppData resolution; exact VibeSpace origin allowlisting; checksum-verified retained backups; redacted failure receipts; logical replacement of only `jarvis-v1`; post-restart Doctor verification before New Chat is enabled; and validated restore with a retained pre-restore backup and rollback attempt.
+- The physical Chromium IndexedDB container can hold adjacent VibeSpace IndexedDB databases. Repair backs up that exact app-origin container and deletes only the logical `jarvis-v1` database after restart. Restore intentionally restores the full verified origin IndexedDB snapshot; the confirmation UI now discloses that adjacent app-local IndexedDB data is included. No broad WebView profile, cookies, credentials, provider state, files, or projects are deleted.
+- Fresh renderer verification: `4` focused files / `28` tests passed. Prettier, `cargo fmt --check`, and scoped `git diff --check` passed. `cargo check --bin jarvis` and `cargo check --test storage_doctor_repair` passed. Direct Vite production bundling passed with existing bundle-size/dynamic-import warnings.
+- The full TypeScript project check is blocked only by four unrelated active SiYuan test diagnostics in `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no Doctor diagnostic remains. Executing `cargo test --test storage_doctor_repair` is blocked before test execution by insufficient C: drive space (`os error 112`); the same test target compiles successfully under `cargo check`.
+- Native destructive-flow UI automation was intentionally not performed: the user prohibited computer-wide control, and the repair contract requires immediate explicit human confirmation before touching real app data. No real user storage was repaired, restored, or deleted during verification.
+- Next action: stage only the exact Doctor-owned manifest, run the staged secret/diff audit, commit, and release only `VS-CODEX-VIBESPACE-DOCTOR-FULL-20260822` ownership.
