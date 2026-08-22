@@ -26,3 +26,9 @@
 - Repair: every refresh now asks the native supervisor for its current opaque connection first. A valid existing connection is adopted immediately; absent, changed, invalid, or failed status still falls through to the existing detection and health-gated startup path.
 - Official native proof: a fresh runtime-manager module inside the real Tauri WebView (`jarvis.exe` PID 26192, official `ai.jarvis.desktop` profile) adopted system OpenCode 1.18.21 in 19 ms. The single VibeSpace-owned `opencode.exe serve` PID remained 37596 before and after; no second service process or update flow was created.
 - Verification: focused OpenCode runtime manager 27/27; combined Doctor/Composer/storage/OpenCode matrix 68/68; full app TypeScript typecheck passed.
+
+## 2026-08-22 — listener-registration startup gate removed
+
+- Root cause: runtime activation awaited native lifecycle-listener registration before consulting the already health-gated supervisor connection. A delayed Tauri/WebView listener import could therefore leave Chat on “Checking OpenCode Harness…” even though the managed server was ready.
+- Repair: activation now adopts or starts the supervised connection first. Lifecycle event registration remains supplemental and cannot overwrite a ready snapshot if it is delayed or fails.
+- Verification: `npm exec vitest run -- src/lib/harness/runtimeManager.test.ts` — 1 file, 28 tests passed, including a pending-listener regression that proves readiness is published without waiting for registration.

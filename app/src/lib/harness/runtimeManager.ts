@@ -322,6 +322,14 @@ export function createHarnessRuntimeManager(
       await refresh();
       return;
     }
+    // Native event registration can be delayed by WebView/Tauri startup. It is
+    // supplemental lifecycle telemetry, not a prerequisite for adopting the
+    // supervisor's already health-gated private server connection. Resolve
+    // readiness first so a slow event import can never gate Chat.
+    if (snapshot.kind !== 'ready' || !connection) {
+      await refresh(generation);
+    }
+    if (!lifecycleIsCurrent(generation)) return;
     try {
       const stop = await native.listen((event) => handleEvent(event, generation));
       if (!lifecycleIsCurrent(generation)) {
@@ -329,11 +337,8 @@ export function createHarnessRuntimeManager(
         return;
       }
       unlisten = stop;
-      if (snapshot.kind !== 'ready' || !connection) {
-        await refresh(generation);
-      }
     } catch (error) {
-      if (lifecycleIsCurrent(generation)) {
+      if (lifecycleIsCurrent(generation) && (snapshot.kind !== 'ready' || !connection)) {
         publish({
           kind: 'failed',
           recoverable: true,

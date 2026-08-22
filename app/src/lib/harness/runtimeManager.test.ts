@@ -61,6 +61,29 @@ async function settle(): Promise<void> {
 }
 
 describe('harness runtime manager', () => {
+  it('becomes ready while native event-listener registration is still pending', async () => {
+    const listenerRegistration = deferred<() => void>();
+    const native = adapter({
+      serverStatus: vi.fn().mockResolvedValue(readyConnection),
+      listen: vi.fn(() => listenerRegistration.promise),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    const unsubscribe = manager.subscribe(() => undefined);
+    await settle();
+
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+    });
+    expect(native.serverStatus).toHaveBeenCalledTimes(1);
+    expect(native.detect).not.toHaveBeenCalled();
+
+    unsubscribe();
+    listenerRegistration.resolve(() => undefined);
+  });
+
   it('adopts an already supervised server before slow install detection on a cold refresh', async () => {
     const native = adapter({
       serverStatus: vi.fn().mockResolvedValue(readyConnection),
@@ -87,6 +110,7 @@ describe('harness runtime manager', () => {
     expect(native.detect).not.toHaveBeenCalled();
     expect(manager.getSnapshot()).toEqual({ kind: 'checking' });
     const unsubscribe = manager.subscribe(() => {});
+    await settle();
     await settle();
 
     expect(native.listen).toHaveBeenCalledTimes(1);
@@ -560,9 +584,11 @@ describe('harness runtime manager', () => {
     const first = manager.subscribe(() => {});
     const second = manager.subscribe(() => {});
     await settle();
+    await settle();
     first();
     expect(unlisten).not.toHaveBeenCalled();
     second();
+    await settle();
     await settle();
     expect(unlisten).toHaveBeenCalledTimes(1);
 
