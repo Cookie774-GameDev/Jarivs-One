@@ -272,6 +272,9 @@ export class ChatGptAdeAdapter {
       if (!exactIdentity(input.executionIdentity, result.observedExecutionIdentity)) {
         return this.publish(snapshot, 'failed', 'execution-identity-mismatch');
       }
+      if (!exactScope(input.scope, result.observedScope)) {
+        return this.publish(snapshot, 'failed', 'context-scope-mismatch');
+      }
       return this.publish(Object.freeze({ ...snapshot, output: result.output }), 'completed', null);
     } catch (error) {
       if (

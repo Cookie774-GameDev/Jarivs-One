@@ -95,6 +95,7 @@ function dependencies(
   const dispatch = vi.fn(async () => ({
     output: 'Completed safely.',
     observedExecutionIdentity: identity,
+    observedScope: scope,
   }));
   const cancelDispatch = vi.fn();
   const authorizeTerminal = vi.fn(() => null);
@@ -180,6 +181,7 @@ describe('ChatGptAdeAdapter', () => {
     deps.dispatch.mockResolvedValue({
       output: 'wrong route',
       observedExecutionIdentity: { ...identity, upstreamModelId: 'gpt-5.6-sol' },
+      observedScope: scope,
     });
     const adapter = new ChatGptAdeAdapter(deps);
 
@@ -187,6 +189,22 @@ describe('ChatGptAdeAdapter', () => {
 
     expect(result.status).toBe('failed');
     expect(result.safeFailure).toBe('execution-identity-mismatch');
+    expect(result.output).toBeNull();
+  });
+
+  it('rejects a completion observed outside the selected project/worktree revision', async () => {
+    const deps = dependencies();
+    deps.dispatch.mockResolvedValue({
+      output: 'wrong scope',
+      observedExecutionIdentity: identity,
+      observedScope: { ...scope, worktreeId: 'worktree-other' },
+    });
+    const adapter = new ChatGptAdeAdapter(deps);
+
+    const result = await adapter.run(request());
+
+    expect(result.status).toBe('failed');
+    expect(result.safeFailure).toBe('context-scope-mismatch');
     expect(result.output).toBeNull();
   });
 

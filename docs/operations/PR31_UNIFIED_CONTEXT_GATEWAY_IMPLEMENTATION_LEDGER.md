@@ -176,3 +176,9 @@
 
 - Closing or cancelling a Gateway request now revokes its already-issued evidence authority as well as its required-receipt dispatch authority. `openEvidence` compares the current request generation with the immutable receipt generation, removes a revoked receipt record, and fails without returning source text.
 - TDD red proved a cancelled completed request still opened its evidence handle before the fix. Fresh focused/adjacent verification passed 7 files / 43 tests across Gateway policy/production, ADE receipt enforcement and cancellation, terminal identity revocation, expiry, collisions, and external abort. Full TypeScript project verification passed with zero diagnostics.
+
+## 2026-08-22 — ADE completion-scope checkpoint
+
+- The ADE dispatcher completion contract now requires the actually observed account/workspace/project/worktree revision as well as the actually observed provider/model/effort/Fast identity. A completion from any different scope fails closed, drops its output, and records the existing safe `context-scope-mismatch` lifecycle result.
+- TDD red proved a wrong-worktree completion was previously accepted. Fresh focused/adjacent verification passed 7 files / 44 tests across ADE lifecycle, exact completion identity/scope, shared Gateway policy, terminal linking/revocation, and cancellation. Full TypeScript project verification passed with zero diagnostics.
+- Fresh app-scoped native inspection kept VibeSpace open on Local Models, confirmed Ollama 0.21.0 ready with both registered exact model IDs, and the in-app `llama3.2:latest` compatibility probe completed as `Agent ready` with a safe structured tool-call roundtrip. This supplements, rather than replaces, the earlier 55-minute alternating two-model endurance evidence.

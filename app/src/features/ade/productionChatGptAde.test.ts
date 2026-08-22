@@ -83,6 +83,7 @@ describe('createProductionChatGptAdeAdapter', () => {
     const dispatch = vi.fn(async () => ({
       output: 'done',
       observedExecutionIdentity: executionIdentity,
+      observedScope: scope,
     }));
     const adapter = createProductionChatGptAdeAdapter({
       gateway,

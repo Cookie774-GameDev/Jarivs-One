@@ -131,4 +131,5 @@ export interface ChatGptAdeDispatchRequest {
 export interface ChatGptAdeDispatchResult {
   output: string;
   observedExecutionIdentity: Readonly<ExecutionIdentity>;
+  observedScope: Readonly<ContextScopeRevision>;
 }
