@@ -51,3 +51,10 @@
 - Agent/task: `VS-CODEX-ROOT-PICKER-INTEGRATION-20260822` / `PR31-MODEL-PICKER-RELEASED-SLICE-INTEGRATION`.
 - User explicitly requested the visible effort UI be committed and shown in the official app. The source/test path set was previously released by the model-picker search, collapsible-heading, and route-UI owners, but remains uncommitted in the shared worktree.
 - Exact claimed integration scope: `ModelPickerTypeahead.tsx`, its smoke test, `useAccessibleChatModels.ts` and test, new `modelCatalogResponsePath.contract.test.ts`, this ledger, and this lock. Composer, `providerModelCatalog`, all active runtime/catalog/benchmark/news/context/native paths, credentials, inference, billing, and deployment remain excluded.
+
+## 2026-08-22 — Model-picker integration and styling correction release
+
+- Integrated user-requested released picker work in `0e3e776c` (`feat(chat): polish model and effort picker`) after fresh focused verification: **44/44** picker/catalog tests passed. The commit is limited to the released picker, catalog-refresh hook, exact response-path contract test, and this ledger; no Composer, provider dispatch, credential, inference, benchmark, or deployment file was staged.
+- The user then rejected the stronger shared model-row appearance for effort cards. `6dba34f8` (`revert(chat): soften effort picker styling`) restores only the prior, subtler effort row appearance. Search, collapsible provider headings, availability/route truth, model-row styling, and atomic selection are unchanged. Fresh picker smoke verification: **9/9 passed**; exact diff checks passed.
+- Official current-source native build now starts past the prior Application Control failure but is still compiling while an older VibeSpace instance owns the visible app window. Native visual acceptance of the current commit is therefore not claimed.
+- Lock state: release only `VS-CODEX-ROOT-PICKER-INTEGRATION-20260822`; concurrent locks and dirty files remain untouched.
