@@ -252,3 +252,17 @@
 
 - The durable history boundary now verifies an `applied` repository result proves the exact ADE run/account/source, requested next status and timestamp, forced run-state event, and original idempotency key before advancing in-memory authority. A forged or inconsistent success result fails closed as a transition conflict.
 - TDD RED proved the injected repository result was previously trusted. Fresh ADE/Jarvis verification passed 6 files / 511 tests; the broader exact model-routing matrix also passed 8 files / 92 tests with no selection substitution.
+
+## 2026-08-22 — One-hour exact local-model verification
+
+- Ran a fresh corrected 60-minute alternating health sequence from `2026-08-22T05:41:20.0067645-05:00` through `2026-08-22T06:41:24.0179889-05:00` against the literal installed Ollama tags `llama3.2:latest` and `qwen2.5:1.5b-instruct-q4_K_M`. All 143/143 requests returned the requested exact model identity and an authoritative completed response; there were zero transport errors, timeouts, completion mismatches, or identity substitutions. An initial shortened-Qwen-tag calibration was rejected with 404, stopped, and excluded before this corrected run began.
+- Final independent correctness checks returned exactly `323` for `17 * 19` on both models. Both models also emitted the exact structured `multiply(a=7,b=8)` tool call instead of answering directly. These checks passed before and after the endurance interval.
+- Official native VibeSpace `jarvis.exe` PID 18556 remained open and responsive throughout. The final snapshot reported 40.6 MB working set; Ollama used two responsive processes and 729.8 MB combined working set. No app, model, connection, routing, Fast/Deep, escalation, or saved-selection setting was changed.
+- Fresh supporting evidence in this interval: ADE/Jarvis 6 files / 511 tests; Jarvis repositories 81/81; database migrations/mappers 44/44; Gateway/RLM/terminal 16 files / 130 tests; warm Schedule/Kanban/Milestones/Local Models 24 files / 141 tests; exact model routing 8 files / 92 tests; and a successful Vite production bundle across 4,926 modules.
+
+### Remaining definition-of-done gates (truthful audit)
+
+- Central VibeSpace Chat still has no direct call to the shared production Context Gateway in `runtime.ts`; that exact file and related kernel/router authority remain actively owned elsewhere and were not edited here.
+- The ADE core, UI-safe status projection, durable history, policy gate, cancellation, and terminal linkage exist, but no real dispatcher currently proves the complete connection/provider/model/effort/Fast/auth route and no ADE task-composer/navigation registration or official native ADE acceptance exists. Per the merge plan, full ADE remains `NOT IMPLEMENTED` rather than being inferred from Browser Chat or unit tests.
+- Current-source native terminal acceptance remains blocked by Windows Application Control error 4551 on freshly compiled executables/helpers. The trusted existing native shell and the previously passing native terminal contract suite do not convert that OS-policy block into a current-source native pass.
+- Thirty paired same-harness/provider direct-baseline runs, all supported terminal-harness native isolation tests, and the final packaged-runtime acceptance report remain required before the merge plan can be called complete.
