@@ -1,4 +1,7 @@
-import { performancePolicy, type PerformanceProfile } from '@/features/chat/runtime/performanceProfile';
+import {
+  performancePolicy,
+  type PerformanceProfile,
+} from '@/features/chat/runtime/performanceProfile';
 import type { ContextPointer, ContextScope } from './pointerAuthority';
 import { decideRlmRoute, type RlmRouteSignals } from './routeDecision';
 
@@ -133,7 +136,9 @@ export class RlmCoordinator {
           0,
         );
         if (totalBytes > policy.maxEvidenceBytes) {
-          throw new Error('RLM_BUDGET_EXHAUSTED: worker returned evidence above the approved byte budget.');
+          throw new Error(
+            'RLM_BUDGET_EXHAUSTED: worker returned evidence above the approved byte budget.',
+          );
         }
         this.trace?.record({
           type: 'worker',
@@ -170,28 +175,51 @@ export class RlmCoordinator {
     this.trace?.record({ type: 'search', detail: { hitCount: hits.length } });
 
     const maxBytes = boundedPerHit(policy.maxEvidenceBytes, hits.length);
+    const opened = new Array<Readonly<{ span: EvidenceSpan; bytes: number }> | undefined>(
+      hits.length,
+    );
+    let nextHitIndex = 0;
+    const openWorker = async (): Promise<void> => {
+      while (true) {
+        throwIfCancelled(input.signal);
+        const index = nextHitIndex++;
+        const hit = hits[index];
+        if (!hit) return;
+        const span = await this.context.open({
+          pointer: hit.pointer,
+          scope: input.scope,
+          maxBytes,
+          signal: input.signal,
+        });
+        throwIfCancelled(input.signal);
+        const bytes = new TextEncoder().encode(span.text).byteLength;
+        if (bytes > maxBytes) {
+          throw new Error('RLM_BUDGET_EXHAUSTED: context.open exceeded its evidence allocation.');
+        }
+        opened[index] = Object.freeze({ span, bytes });
+      }
+    };
+    const workerCount = Math.min(hits.length, Math.max(1, policy.maxConcurrentChildren));
+    await Promise.all(Array.from({ length: workerCount }, () => openWorker()));
+    throwIfCancelled(input.signal);
+
     const evidence: EvidenceSpan[] = [];
     let openedBytes = 0;
-    for (const hit of hits) {
-      throwIfCancelled(input.signal);
-      const remaining = policy.maxEvidenceBytes - openedBytes;
-      if (remaining <= 0) break;
-      const span = await this.context.open({
-        pointer: hit.pointer,
-        scope: input.scope,
-        maxBytes: Math.min(maxBytes, remaining),
-        signal: input.signal,
-      });
-      const bytes = new TextEncoder().encode(span.text).byteLength;
-      if (bytes > remaining) {
-        throw new Error('RLM_BUDGET_EXHAUSTED: context.open exceeded the remaining evidence budget.');
-      }
-      openedBytes += bytes;
-      evidence.push(span);
+    for (const item of opened) {
+      if (!item) continue;
+      openedBytes += item.bytes;
+      evidence.push(item.span);
       this.trace?.record({
         type: 'open',
-        detail: { pointerId: span.pointer.pointerId, bytes, truncated: span.truncated },
+        detail: {
+          pointerId: item.span.pointer.pointerId,
+          bytes: item.bytes,
+          truncated: item.span.truncated,
+        },
       });
+    }
+    if (openedBytes > policy.maxEvidenceBytes) {
+      throw new Error('RLM_BUDGET_EXHAUSTED: context.open exceeded the evidence budget.');
     }
 
     this.trace?.record({

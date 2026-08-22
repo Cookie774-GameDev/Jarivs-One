@@ -112,3 +112,15 @@
 - The production terminal bridge registers immediately before the singleton Gateway ask and always unregisters in `finally`; identity cancellation delegates to the Gateway's existing request cancellation path, so late evidence cannot be returned by the managed terminal call.
 - TDD red reproduced the missing registration authority. Fresh focused verification passed 3 files / 16 tests; adjacent native-terminal UI verification passed 4 files / 45 tests; the broader owned Gateway/RLM/terminal matrix passed 12 files / 92 tests. The only test-environment notices were the existing non-fatal jsdom canvas messages.
 - Full app typecheck reached only the same four pre-existing diagnostics in actively owned SiYuan tests (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned file produced a diagnostic.
+
+## 2026-08-22 — Bounded evidence-open claim
+
+- Claimed only `RlmCoordinator.ts` and a new focused test after an exact active-lock search found no overlap.
+- Intent: replace sequential hydration of the already-ranked top-five retrieval hits with a small cancellation-safe concurrent worker pool while preserving deterministic evidence order and the exact aggregate byte ceiling. Source ranking, SiYuan adapters, shared Chat dispatch, and provider behavior remain outside this claim.
+
+## 2026-08-22 — Bounded ranked evidence-open checkpoint
+
+- Replaced serial retrieval-route hydration with a two-worker pool bounded by the existing performance policy. Only the already-ranked top-five hits are opened; result and trace order remain rank-stable even when later opens finish first.
+- Every open receives an equal deterministic byte allocation, each result is checked against its allocation, the aggregate is checked against the route ceiling, and cancellation is checked before dispatch, after each open, and before returning. A cancelled request rejects late evidence rather than publishing it.
+- TDD red reproduced the bottleneck with one active open where two were required. Focused verification passed 2 files / 10 tests, including bounded concurrency, order, late-cancel rejection, and byte-ceiling failure. The broader owned Gateway/RLM/terminal matrix passed 13 files / 95 tests; only the existing non-fatal jsdom canvas notices were emitted.
+- Full app typecheck reaches only the same four pre-existing diagnostics in actively owned SiYuan tests (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned file produces a diagnostic.
