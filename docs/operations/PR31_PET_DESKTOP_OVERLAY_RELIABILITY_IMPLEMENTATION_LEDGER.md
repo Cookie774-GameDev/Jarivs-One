@@ -71,3 +71,10 @@
 - Verification: `npm exec vitest run src/features/pets/petPixiRealPlayback.test.tsx src/features/pets/PetOverlayWindow.test.tsx src/features/pets/PetHost.nativePanel.test.tsx src/features/pets/petPanelOpen.test.ts --reporter=dot` → 4 files / 28 tests passed. Full `npm run typecheck` remains exit 1 only at the four unowned SiYuan test diagnostics already listed. No native/Cargo source changed in this slice.
 - Native manual matrix: **BLOCKED** — no rebuilt official executable of this source revision has been launched; test DOM output is not desktop-product proof.
 - Remaining queue: typed overlay-hide acknowledgement, native panel/manual focus verification, exact Chat/Terminal/Activity close-reopen survival, and external-app topmost/click/drag checks remain pending.
+
+## 2026-08-22 14:41 CT — Phase 3 committed
+
+- Commit: `383944c5` — `fix(pets): show static frame after pixi failure`.
+- Committed owned files: `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/petPixiRealPlayback.test.tsx`, and this ledger. No unrelated dirty file was staged.
+- Evidence: focused/adjacent Pet renderer suite 28/28; owned diff check passed. Full typecheck remains blocked only by the four unowned SiYuan test diagnostics. Native/manual rows are still **BLOCKED**; no desktop-app result is asserted.
+- Lock release: `VS-CODEX-PET-PIXI-FALLBACK-20260822` is released after this ledger entry is committed.
