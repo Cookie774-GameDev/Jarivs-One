@@ -85,3 +85,19 @@
 - Attempted normal native launch: `npm run tauri:dev` exited 1 before Cargo compilation because Vite port `5173` is already owned. The existing shared Vite process started at 14:12:27 CT; its shared Cargo process started at 14:29:25 CT. Restarting, killing, or replacing either would disrupt another agent's work and is out of scope.
 - Official native acceptance matrix status for the current Pet commits: desktop overlay, click, drag, native panel Chat/Terminals/Activity, minimize/close/reopen survival, topmost over browser/windowed game, focus/no-focus-theft, and failure rows are all **BLOCKED**. No computer-control or browser/Playwright result has been substituted for these rows.
 - Required next authority/state: a current-tip native executable launched through the shared Vite process or an explicitly authorized isolated build/run that does not interrupt it, followed by app-only manual interaction. Until then, the completed evidence is limited to committed focused code tests and native Rust unit tests.
+
+## 2026-08-22 15:02 CT — reported-missing-Pet recovery claim
+
+- Agent/task: `VS-CODEX-PET-OVERLAY-RECOVERY-20260822` / `PR31-PET-OVERLAY-MISSING-RECOVERY`; base `9bf69a28cb177fa481b0be6088128fd02d132002` on `integration/UnifiedChungus-final`, upstream `origin/UnifiedChungus`.
+- Exact claim: `app/src/features/pets/PetHost.tsx`, `app/src/features/pets/PetHost.nativePanel.test.tsx`, `app/src/features/pets/PetHost.overlayRecovery.test.tsx`, and this ledger. No active lock overlaps the source/test slice.
+- Reported reproduction: user reports that the Pet is not visible. The shared Vite/Cargo desktop process is kept untouched; its executable was created before the current Pet source tip, so it is not evidence for or against this change.
+- Root-cause boundary: after the native-only Tauri change, `PetHost` calls `showPetOverlay()` once and ignores its typed failure result. A short-lived native creation/show race can therefore leave the Pet absent until an unrelated state change repeats the effect. The repair must make a bounded retry only while the Pet should be visible; it must never fall back inline in Tauri.
+- Next: add a focused regression test first, implement the bounded recovery, then run the owned and adjacent Pet suites.
+
+## 2026-08-22 15:05 CT — reported-missing-Pet recovery verified
+
+- Change: `PetHost` now retries a failed typed native overlay show after 250 ms, 1 s, and 3 s only while the detached overlay should remain visible. A visible acknowledgement stops retries. Effect cleanup cancels a queued retry, so disabling, unmounting, shutdown, or a later visibility state cannot resurrect the Pet.
+- TDD: the new `PetHost.overlayRecovery.test.tsx` failed before the change because one failed native show resulted in exactly one call; it now proves one transient failure is retried and a queued retry is cancelled on unmount. This preserves the existing native-only Tauri contract—no inline Pet or panel is introduced.
+- Verification: `npm exec vitest run src/features/pets/PetHost.overlayRecovery.test.tsx src/features/pets/PetHost.nativePanel.test.tsx src/features/pets/petPanelOpen.test.ts src/features/pets/PetOverlayWindow.test.tsx src/features/pets/petPixiRealPlayback.test.tsx --reporter=dot` → **5 files / 30 tests passed**. `npm run typecheck` → **passed**. Exact-file Prettier check and `git diff --check` → **passed**.
+- Native acceptance: **NOT CLAIMED**. The shared desktop executable predates this source slice and the user has prohibited computer-control UI interaction. The shared Vite/Cargo process remains untouched. A current-source desktop observation is still needed to mark the reported Pet-visible row as passed.
+- Next: commit this exact source/test/ledger slice, then record its SHA and release only `VS-CODEX-PET-OVERLAY-RECOVERY-20260822`.

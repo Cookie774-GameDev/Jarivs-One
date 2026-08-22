@@ -29,6 +29,11 @@ import { installPetSettingsStorageSync, usePetSettingsStore } from './petSetting
 import { getLivePixiApplicationCount } from './pixiAtlasPlayer';
 import { installPetDevPerfGlobal } from './petDevPerf';
 
+// WebView2 can reject the first detached-window show while its host is still
+// attaching. Retrying a few times is enough to recover that startup race
+// without turning the Pet into a noisy background loop or a Tauri inline UI.
+const PET_OVERLAY_SHOW_RETRY_DELAYS_MS = [250, 1_000, 3_000] as const;
+
 export interface PetHostProps {
   enabled?: boolean;
   reducedMotion?: boolean;
@@ -174,6 +179,18 @@ export function PetHost({
   React.useEffect(() => {
     if (!runtimeEffectsEnabled || !claimed || !tauri) return;
     let cancelled = false;
+    let retryAttempt = 0;
+    let retryTimer: number | undefined;
+
+    const scheduleRetry = () => {
+      const delay = PET_OVERLAY_SHOW_RETRY_DELAYS_MS[retryAttempt];
+      if (cancelled || delay === undefined) return;
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void sync();
+      }, delay);
+    };
 
     const sync = async () => {
       if (shuttingDownRef.current) {
@@ -197,8 +214,12 @@ export function PetHost({
         }
         return;
       }
-      await showPetOverlay();
+      const result = await showPetOverlay().catch(() => null);
       if (cancelled || shuttingDownRef.current) return;
+      if (!result?.visible) {
+        scheduleRetry();
+        return;
+      }
       // Tauri must remain a detached-overlay surface. A native show failure is
       // represented by its typed bridge result, never by an inline substitute.
       setUseInlineFallback(false);
@@ -207,6 +228,7 @@ export function PetHost({
     void sync();
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
   }, [
     claimed,
@@ -247,17 +269,15 @@ export function PetHost({
     openPanelBusyRef.current = true;
     try {
       if (tauri) {
-        const result = await openOrFocusPetMiniPanel(undefined, undefined, panelMode).catch(
-          () => {
-            return {
-              panelVisible: false,
-              useInlineFallback: false,
-              overlayVisible: false,
-              reason: 'native_command_failed' as const,
-              coalesced: false,
-            };
-          },
-        );
+        const result = await openOrFocusPetMiniPanel(undefined, undefined, panelMode).catch(() => {
+          return {
+            panelVisible: false,
+            useInlineFallback: false,
+            overlayVisible: false,
+            reason: 'native_command_failed' as const,
+            coalesced: false,
+          };
+        });
         if (result.panelVisible) {
           // Dedicated Tauri mini panel confirmed; hide the floating pet.
           setPanelOpen(true);
