@@ -70,6 +70,12 @@ interface ActiveAdeRun {
   controller: AbortController;
 }
 
+export type ChatGptAdeRunListener = (snapshot: Readonly<ChatGptAdeRunSnapshot>) => void;
+
+function terminalRunStatus(status: ChatGptAdeRunStatus): boolean {
+  return ['completed', 'failed', 'blocked', 'cancelled'].includes(status);
+}
+
 function immutableIdentity(identity: Readonly<ExecutionIdentity>): Readonly<ExecutionIdentity> {
   return Object.freeze({ ...identity });
 }
@@ -172,11 +178,29 @@ function terminalMatches(
 export class ChatGptAdeAdapter {
   private readonly active = new Map<string, ActiveAdeRun>();
   private readonly snapshots = new Map<string, Readonly<ChatGptAdeRunSnapshot>>();
+  private readonly listeners = new Map<string, Set<ChatGptAdeRunListener>>();
 
   constructor(private readonly dependencies: Readonly<ChatGptAdeAdapterDependencies>) {}
 
   getRun(runId: string): Readonly<ChatGptAdeRunSnapshot> | null {
     return this.snapshots.get(runId) ?? null;
+  }
+
+  subscribe(runId: string, listener: ChatGptAdeRunListener): () => void {
+    if (!SAFE_ID.test(runId) || typeof listener !== 'function') {
+      throw new TypeError('ade_run_subscription_invalid');
+    }
+    const current = this.snapshots.get(runId);
+    if (current) this.notifyListener(listener, current);
+    if (current && terminalRunStatus(current.status)) return () => {};
+    const listeners = this.listeners.get(runId) ?? new Set<ChatGptAdeRunListener>();
+    listeners.add(listener);
+    this.listeners.set(runId, listeners);
+    return () => {
+      const activeListeners = this.listeners.get(runId);
+      activeListeners?.delete(listener);
+      if (activeListeners?.size === 0) this.listeners.delete(runId);
+    };
   }
 
   cancel(runId: string): boolean {
@@ -398,7 +422,7 @@ export class ChatGptAdeAdapter {
       return current;
     }
     const at = new Date(this.dependencies.now()).toISOString();
-    const terminalStatus = ['completed', 'failed', 'blocked', 'cancelled'].includes(status);
+    const terminalStatus = terminalRunStatus(status);
     const next = Object.freeze({
       ...current,
       status,
@@ -419,6 +443,26 @@ export class ChatGptAdeAdapter {
         safeFailure,
       }),
     );
+    this.notifyRun(next);
     return next;
+  }
+
+  private notifyRun(snapshot: Readonly<ChatGptAdeRunSnapshot>): void {
+    const listeners = this.listeners.get(snapshot.runId);
+    if (listeners) {
+      for (const listener of [...listeners]) this.notifyListener(listener, snapshot);
+    }
+    if (terminalRunStatus(snapshot.status)) this.listeners.delete(snapshot.runId);
+  }
+
+  private notifyListener(
+    listener: ChatGptAdeRunListener,
+    snapshot: Readonly<ChatGptAdeRunSnapshot>,
+  ): void {
+    try {
+      listener(snapshot);
+    } catch {
+      // A presentation listener cannot alter run authority or lifecycle progression.
+    }
   }
 }

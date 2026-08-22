@@ -208,3 +208,8 @@
 
 - Every published ADE run ID is now one-shot for the adapter lifetime, not merely unique while active. Completed, blocked, failed, and cancelled run IDs cannot be reused to overwrite their snapshot/history identity or trigger a second Context/provider dispatch under the same task identity.
 - TDD red proved a completed run ID could be replayed with a different request ID and dispatched twice. Fresh adjacent Gateway/ADE/terminal verification passed 7 files / 49 tests, including active-run collision and terminal cancellation coverage. Full TypeScript verification passed with zero diagnostics.
+
+## 2026-08-22 — ADE lifecycle streaming checkpoint
+
+- The ADE adapter now exposes a run-scoped snapshot subscription for its UI. Subscribers receive safe `preparing-context`, `dispatching`, and terminal snapshots as the authoritative lifecycle advances; late subscribers receive only the current terminal state, terminal listener sets are released, and a broken presentation listener cannot interrupt context enforcement or dispatch.
+- TDD red proved no executable subscription surface existed. Fresh ADE verification passed 3 files / 16 tests and adjacent Gateway/ADE/terminal verification passed 7 files / 50 tests. Full TypeScript verification passed with zero diagnostics.

@@ -378,4 +378,23 @@ describe('ChatGptAdeAdapter', () => {
       status: 'completed',
     });
   });
+
+  it('streams safe run snapshots to ADE UI subscribers and replays only current state', async () => {
+    const deps = dependencies();
+    const adapter = new ChatGptAdeAdapter(deps);
+    const statuses: string[] = [];
+    const unsubscribe = adapter.subscribe('ade-run-a', (snapshot) => {
+      statuses.push(snapshot.status);
+      if (snapshot.status === 'dispatching') throw new Error('broken UI listener');
+    });
+
+    const result = await adapter.run(request());
+    expect(result.status).toBe('completed');
+    expect(statuses).toEqual(['preparing-context', 'dispatching', 'completed']);
+    unsubscribe();
+
+    const replayed: string[] = [];
+    adapter.subscribe('ade-run-a', (snapshot) => replayed.push(snapshot.status))();
+    expect(replayed).toEqual(['completed']);
+  });
 });
