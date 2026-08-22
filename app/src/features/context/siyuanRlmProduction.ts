@@ -132,6 +132,9 @@ export function createProductionSiyuanRlmPort(
     getBlock(projectId: string, id: string) {
       return enqueue(projectId, (bridge) => bridge.getBlock(id));
     },
+    listInboundBacklinks(projectId: string, id: string) {
+      return enqueue(projectId, (bridge) => bridge.listInboundBacklinks(id));
+    },
     readManagedDocument(projectId, lookup) {
       return enqueue(projectId, async (bridge) => {
         const notebook = await exactNotebook(bridge, false);

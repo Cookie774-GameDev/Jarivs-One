@@ -6,6 +6,7 @@ use reqwest::redirect::Policy;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::fmt;
 use std::io::Read;
 use std::sync::Mutex;
@@ -14,6 +15,7 @@ use std::time::Duration;
 pub const MAX_IDENTIFIER_BYTES: usize = 128;
 pub const MAX_QUERY_BYTES: usize = 512;
 pub const MAX_SEARCH_RESULTS: u16 = 100;
+pub const MAX_RELATION_RESULTS: usize = 100;
 pub const MAX_BLOCK_CONTENT_BYTES: usize = 1_048_576;
 pub const MAX_DOCUMENT_PATH_BYTES: usize = 4_096;
 pub const MAX_SNAPSHOT_MEMO_BYTES: usize = 256;
@@ -76,6 +78,9 @@ pub enum BrokerRequest<'a> {
     GetBlock {
         id: &'a str,
     },
+    ListInboundBacklinks {
+        id: &'a str,
+    },
     CreateDocument {
         notebook_id: &'a str,
         path: &'a str,
@@ -105,6 +110,7 @@ pub enum BrokerResponse {
     NotebookCreated(Notebook),
     SearchResults(Vec<BlockSummary>),
     Block(Block),
+    BlockRelationIds(Vec<String>),
     Identifier(String),
     MutationApplied,
 }
@@ -218,6 +224,28 @@ struct BlockInfoData {
 struct BlockKramdownData {
     id: String,
     kramdown: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BacklinkData {
+    unchanged: bool,
+    revision: String,
+    backlinks: Vec<BacklinkWire>,
+    #[serde(rename = "linkRefsCount")]
+    _link_refs_count: usize,
+    backmentions: Vec<Value>,
+    #[serde(rename = "mentionsCount")]
+    _mentions_count: usize,
+    k: String,
+    mk: String,
+    #[serde(rename = "box")]
+    _notebook_id: String,
+}
+
+#[derive(Deserialize)]
+struct BacklinkWire {
+    id: String,
 }
 
 #[derive(Deserialize)]
@@ -503,6 +531,37 @@ impl HttpSiyuanTransport {
         })
     }
 
+    fn inbound_backlinks(&self, id: &str) -> Result<Vec<String>, ClientError> {
+        let data: BacklinkData = self.post(
+            "/api/ref/getBacklink2",
+            json!({
+                "id": id,
+                "k": "",
+                "mk": "",
+                "sort": "3",
+                "mSort": "3",
+                "containChildren": false,
+            }),
+        )?;
+        if data.backlinks.len() > MAX_RELATION_RESULTS
+            || data.backmentions.len() > MAX_RELATION_RESULTS
+        {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        if data.unchanged || data.revision.is_empty() || !data.k.is_empty() || !data.mk.is_empty() {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        let mut seen = HashSet::new();
+        let mut block_ids = Vec::with_capacity(data.backlinks.len());
+        for backlink in data.backlinks {
+            validate_identifier(&backlink.id)?;
+            if seen.insert(backlink.id.clone()) {
+                block_ids.push(backlink.id);
+            }
+        }
+        Ok(block_ids)
+    }
+
     fn create_document(
         &self,
         notebook_id: &str,
@@ -575,6 +634,9 @@ impl SiyuanTransport for HttpSiyuanTransport {
                 self.search(query, limit).map(BrokerResponse::SearchResults)
             }
             BrokerRequest::GetBlock { id } => self.block(id).map(BrokerResponse::Block),
+            BrokerRequest::ListInboundBacklinks { id } => self
+                .inbound_backlinks(id)
+                .map(BrokerResponse::BlockRelationIds),
             BrokerRequest::CreateDocument {
                 notebook_id,
                 path,
@@ -699,6 +761,18 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
         }
     }
 
+    pub fn list_inbound_backlinks(&self, id: &str) -> Result<Vec<String>, ClientError> {
+        self.require_enabled()?;
+        validate_identifier(id)?;
+        match self
+            .transport
+            .send(BrokerRequest::ListInboundBacklinks { id })?
+        {
+            BrokerResponse::BlockRelationIds(ids) => validate_relation_ids(ids),
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
     pub fn create_document(
         &self,
         notebook_id: &str,
@@ -796,6 +870,20 @@ fn validate_identifier(value: &str) -> Result<(), ClientError> {
     }
 }
 
+fn validate_relation_ids(ids: Vec<String>) -> Result<Vec<String>, ClientError> {
+    if ids.len() > MAX_RELATION_RESULTS {
+        return Err(ClientError::ResponseTooLarge);
+    }
+    let mut seen = HashSet::new();
+    for id in &ids {
+        validate_identifier(id)?;
+        if !seen.insert(id) {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+    }
+    Ok(ids)
+}
+
 fn validate_query(value: &str) -> Result<(), ClientError> {
     let trimmed = value.trim();
     if trimmed.is_empty()
@@ -885,6 +973,7 @@ mod tests {
                 }
                 BrokerRequest::SearchBlocks { query, limit } => format!("search:{query}:{limit}"),
                 BrokerRequest::GetBlock { id } => format!("get:{id}"),
+                BrokerRequest::ListInboundBacklinks { id } => format!("inbound:{id}"),
                 BrokerRequest::CreateDocument {
                     notebook_id,
                     path,
@@ -988,6 +1077,43 @@ mod tests {
         assert_eq!(
             client.transport.requests.borrow().as_slice(),
             ["search:pinned:10"]
+        );
+    }
+
+    #[test]
+    fn typed_relation_requests_validate_ids_counts_and_response_variants() {
+        let malformed = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::BlockRelationIds(vec![
+                "../escape".to_owned()
+            ])),
+        );
+        assert_eq!(
+            malformed.list_inbound_backlinks("target-1"),
+            Err(ClientError::InvalidIdentifier)
+        );
+        let duplicate = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::BlockRelationIds(vec![
+                "source-1".to_owned(),
+                "source-1".to_owned(),
+            ])),
+        );
+        assert_eq!(
+            duplicate.list_inbound_backlinks("target-1"),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let over_limit = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::BlockRelationIds(
+                (0..=MAX_RELATION_RESULTS)
+                    .map(|index| format!("block-{index}"))
+                    .collect(),
+            )),
+        );
+        assert_eq!(
+            over_limit.list_inbound_backlinks("target-1"),
+            Err(ClientError::ResponseTooLarge)
         );
     }
 
@@ -1315,6 +1441,56 @@ mod tests {
         assert!(second.starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
         assert!(!first.contains(token.as_str()));
         assert!(!second.contains(token.as_str()));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_backlinks_use_only_the_fixed_official_list_endpoint() {
+        let token = "r".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"unchanged":false,"revision":"bl1:revision","backlinks":[{"id":"source-2","box":"book-1","name":"Source","hPath":"/Source","type":"path","nodeType":"NodeDocument","subType":"","depth":0,"count":1,"folded":false,"updated":"20260820","created":"20260820"}],"linkRefsCount":1,"backmentions":[],"mentionsCount":0,"k":"","mk":"","box":"book-1"}}"#.to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+        assert_eq!(
+            client.list_inbound_backlinks("target-1").unwrap(),
+            ["source-2"]
+        );
+
+        let login = requests.recv().unwrap();
+        let inbound = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(inbound.starts_with("POST /api/ref/getBacklink2 HTTP/1.1"));
+        let body: Value = serde_json::from_str(
+            inbound
+                .split("\r\n\r\n")
+                .nth(1)
+                .expect("captured request body"),
+        )
+        .unwrap();
+        let mut keys = body
+            .as_object()
+            .expect("JSON object body")
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(keys, ["containChildren", "id", "k", "mSort", "mk", "sort"]);
+        for required in [
+            "\"id\":\"target-1\"",
+            "\"k\":\"\"",
+            "\"mk\":\"\"",
+            "\"sort\":\"3\"",
+            "\"mSort\":\"3\"",
+            "\"containChildren\":false",
+        ] {
+            assert!(inbound.contains(required), "missing fixed field {required}");
+        }
+        assert!(!inbound.contains(&token));
+        assert!(!inbound.contains("/api/query/sql"));
+        assert!(!inbound.contains("getBacklinkDoc"));
+        assert!(!inbound.contains("getBackmentionDoc"));
         server.join().unwrap();
     }
 

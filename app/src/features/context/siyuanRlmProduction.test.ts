@@ -53,6 +53,10 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
         markdown: `body:${projectId}`,
       };
     }),
+    listInboundBacklinks: vi.fn(async (id: string) => {
+      events.push(`inbound:${projectId}:${id}`);
+      return [`source-${projectId}`];
+    }),
     createDocument: vi.fn(async (_notebookId, path) => {
       events.push(`create-document:${projectId}:${path}`);
       return { id: `document-${projectId}` };
@@ -95,6 +99,20 @@ describe('production SiYuan RLM port', () => {
     ]);
   });
 
+  it('exposes only typed inbound backlinks under one project authority', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+
+    await expect(port.listInboundBacklinks('project-a', 'block-project-a')).resolves.toEqual([
+      'source-project-a',
+    ]);
+    expect(events).toEqual(['start:project-a', 'inbound:project-a:block-project-a']);
+  });
+
   it('stops the previous project before starting a different project authority', async () => {
     const events: string[] = [];
     const createBridge = vi.fn((projectId: string) => mockBridge(projectId, events));
@@ -126,11 +144,7 @@ describe('production SiYuan RLM port', () => {
     await expect(port.searchBlocks('project-a', 'needle', 2)).resolves.toHaveLength(1);
 
     expect(createBridge).toHaveBeenCalledTimes(2);
-    expect(events).toEqual([
-      'start:project-a-stale',
-      'start:project-a',
-      'search:project-a:needle',
-    ]);
+    expect(events).toEqual(['start:project-a-stale', 'start:project-a', 'search:project-a:needle']);
   });
 
   it('does not retry unrelated bridge failures', async () => {

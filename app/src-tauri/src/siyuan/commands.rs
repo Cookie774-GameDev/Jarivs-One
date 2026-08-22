@@ -35,6 +35,12 @@ pub struct SiyuanBlockResponse {
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SiyuanBlockRelationIdsResponse {
+    block_ids: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SiyuanDocumentResponse {
     id: String,
 }
@@ -154,6 +160,26 @@ pub fn siyuan_get_block(
         .get_block(&id)
         .map(|block| SiyuanBlockResponse { block })
         .map_err(client_error)
+}
+
+#[tauri::command]
+pub async fn siyuan_list_inbound_backlinks(
+    project_id: String,
+    id: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanBlockRelationIdsResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .list_inbound_backlinks(&id)
+            .map(|block_ids| SiyuanBlockRelationIdsResponse { block_ids })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
 }
 
 #[tauri::command]
@@ -280,6 +306,23 @@ mod tests {
         );
         assert!(command.contains("runtime_transport(&project_id)"));
         assert!(command.contains("search_blocks(&query, limit)"));
+    }
+
+    #[test]
+    fn relation_commands_offload_blocking_http_transport() {
+        let source = include_str!("commands.rs");
+        let command = source
+            .split("pub async fn siyuan_list_inbound_backlinks")
+            .nth(1)
+            .and_then(|remainder| {
+                remainder
+                    .split("pub async fn siyuan_create_document")
+                    .next()
+            })
+            .expect("backlink command must remain async");
+        assert!(command.contains("tauri::async_runtime::spawn_blocking"));
+        assert!(command.contains("runtime_transport(&project_id)"));
+        assert!(command.contains("list_inbound_backlinks(&id)"));
     }
 
     #[test]

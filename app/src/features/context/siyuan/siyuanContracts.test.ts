@@ -9,6 +9,7 @@ import {
   assertSiyuanQuery,
   assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
+  parseSiyuanBlockRelationIds,
   parseSiyuanDocumentMutation,
   parseSiyuanMutationResult,
   parseSiyuanNotebook,
@@ -89,6 +90,21 @@ describe('SiYuan renderer contracts', () => {
         },
       }),
     ).toThrow(/siyuan_block_keys_invalid/u);
+    expect(parseSiyuanBlockRelationIds({ blockIds: ['target-1', 'target-2'] })).toEqual([
+      'target-1',
+      'target-2',
+    ]);
+    expect(() =>
+      parseSiyuanBlockRelationIds({ blockIds: ['target-1'], rawDom: '<div />' }),
+    ).toThrow(/siyuan_relation_keys_invalid/u);
+    expect(() => parseSiyuanBlockRelationIds({ blockIds: ['target-1', 'target-1'] })).toThrow(
+      /siyuan_relation_ids_invalid/u,
+    );
+    expect(() =>
+      parseSiyuanBlockRelationIds({
+        blockIds: Array.from({ length: 101 }, (_, index) => `b-${index}`),
+      }),
+    ).toThrow(/siyuan_relation_ids_invalid/u);
   });
 
   it('accepts bounded multiline SiYuan evidence while rejecting unsafe controls', () => {

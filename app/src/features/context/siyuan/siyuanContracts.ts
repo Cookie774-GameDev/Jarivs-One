@@ -9,6 +9,7 @@ export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   createNotebook: 'siyuan_create_notebook',
   searchBlocks: 'siyuan_search_blocks',
   getBlock: 'siyuan_get_block',
+  listInboundBacklinks: 'siyuan_list_inbound_backlinks',
   createDocument: 'siyuan_create_document',
   updateBlock: 'siyuan_update_block',
   deleteBlock: 'siyuan_delete_block',
@@ -19,6 +20,7 @@ export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
 export const SIYUAN_MAX_IDENTIFIER_LENGTH = 128;
 export const SIYUAN_MAX_QUERY_LENGTH = 512;
 export const SIYUAN_MAX_SEARCH_RESULTS = 100;
+export const SIYUAN_MAX_RELATION_RESULTS = 100;
 export const SIYUAN_MAX_BLOCK_CONTENT_LENGTH = 1_048_576;
 export const SIYUAN_MAX_DOCUMENT_PATH_LENGTH = 4_096;
 export const SIYUAN_MAX_SNAPSHOT_MEMO_LENGTH = 256;
@@ -60,6 +62,10 @@ export interface SiyuanBlock {
   notebookId: string;
   path: string;
   markdown: string;
+}
+
+export interface SiyuanBlockRelationIds {
+  blockIds: string[];
 }
 
 export interface SiyuanDocumentMutation {
@@ -297,6 +303,19 @@ export function parseSiyuanBlock(value: unknown): SiyuanBlock {
       true,
     ),
   };
+}
+
+export function parseSiyuanBlockRelationIds(value: unknown): string[] {
+  const response = record(value, 'siyuan_relation_ids_invalid');
+  exactKeys(response, ['blockIds'], 'siyuan_relation_keys_invalid');
+  if (!Array.isArray(response.blockIds) || response.blockIds.length > SIYUAN_MAX_RELATION_RESULTS) {
+    fail('siyuan_relation_ids_invalid');
+  }
+  const blockIds = response.blockIds.map((id) =>
+    assertSiyuanIdentifier(id, 'siyuan_relation_id_invalid'),
+  );
+  if (new Set(blockIds).size !== blockIds.length) fail('siyuan_relation_ids_invalid');
+  return blockIds;
 }
 
 export function parseSiyuanDocumentMutation(value: unknown): SiyuanDocumentMutation {

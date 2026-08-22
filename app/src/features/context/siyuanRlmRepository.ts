@@ -15,6 +15,8 @@ import type {
 const SAFE_NATIVE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const MAX_QUERY_CHARACTERS = 512;
 const MAX_SEARCH_RESULTS = 20;
+const MAX_RELATION_RESULTS = 100;
+const MAX_VERIFIED_RELATION_RESULTS = 21;
 const MAX_BLOCK_CHARACTERS = 1_048_576;
 const MAX_POINTER_BYTES = 64 * 1024;
 const MAX_AUTHORITIES = 2_000;
@@ -40,6 +42,7 @@ export interface SiyuanRlmBlock {
 export interface SiyuanRlmPort {
   searchBlocks(projectId: string, query: string, limit: number): Promise<SiyuanRlmBlockSummary[]>;
   getBlock(projectId: string, id: string): Promise<SiyuanRlmBlock>;
+  listInboundBacklinks?(projectId: string, id: string): Promise<string[]>;
 }
 
 interface SiyuanAuthority {
@@ -317,8 +320,7 @@ export function createSiyuanRlmRepository(
           pointer,
           preview: (summary.content || authority.block.markdown).slice(0, 320),
           score:
-            exactIdentifier &&
-            containsExactIdentifier(authority.block.markdown, exactIdentifier)
+            exactIdentifier && containsExactIdentifier(authority.block.markdown, exactIdentifier)
               ? EXACT_STRUCTURED_IDENTIFIER_SCORE + MAX_SEARCH_RESULTS - hits.length
               : MAX_SEARCH_RESULTS - hits.length,
         });
@@ -388,17 +390,38 @@ export function createSiyuanRlmRepository(
 
     async relatedRecordIds(id, signal) {
       abortIfNeeded(signal);
-      const authority = authorities.get(id);
-      if (!authority) return [];
-      return [...authorities.values()]
-        .filter(
-          (candidate) =>
-            candidate.record.id !== id &&
-            candidate.record.accountId === authority.record.accountId &&
-            candidate.record.projectId === authority.record.projectId &&
-            candidate.block.notebookId === authority.block.notebookId,
-        )
-        .map((candidate) => candidate.record.id);
+      const parsed = parseRecordId(id);
+      if (!parsed || !authorities.has(id)) return [];
+      const scope = scopesByDigest.get(parsed.digest);
+      if (!scope) return [];
+      if (!port.listInboundBacklinks) return [];
+      const source = await loadAuthority(scope, parsed.digest, parsed.blockId, signal);
+      if (!source || source.record.id !== id) return [];
+      let inboundBlockIds: string[];
+      try {
+        inboundBlockIds = await port.listInboundBacklinks(scope.projectId, parsed.blockId);
+      } catch {
+        return [];
+      }
+      abortIfNeeded(signal);
+      if (
+        !Array.isArray(inboundBlockIds) ||
+        inboundBlockIds.length > MAX_RELATION_RESULTS ||
+        inboundBlockIds.some((blockId) => !safeNativeId(blockId))
+      ) {
+        return [];
+      }
+      const relatedIds = [...new Set(inboundBlockIds)].filter(
+        (blockId) => blockId !== parsed.blockId,
+      );
+      const verified: string[] = [];
+      for (const blockId of relatedIds) {
+        if (verified.length >= MAX_VERIFIED_RELATION_RESULTS) break;
+        abortIfNeeded(signal);
+        const authority = await loadAuthority(scope, parsed.digest, blockId, signal);
+        if (authority) verified.push(authority.record.id);
+      }
+      return verified;
     },
   };
   return Object.freeze(repository);

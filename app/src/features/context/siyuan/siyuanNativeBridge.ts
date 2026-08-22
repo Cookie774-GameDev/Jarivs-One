@@ -10,6 +10,7 @@ import {
   assertSiyuanSearchLimit,
   assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
+  parseSiyuanBlockRelationIds,
   parseSiyuanDocumentMutation,
   parseSiyuanMutationResult,
   parseSiyuanNotebook,
@@ -40,6 +41,7 @@ export interface SiyuanNativeBridge {
   createNotebook(name: string): Promise<SiyuanNotebook>;
   searchBlocks(query: string, limit?: number): Promise<SiyuanBlockSummary[]>;
   getBlock(id: string): Promise<SiyuanBlock>;
+  listInboundBacklinks(id: string): Promise<string[]>;
   createDocument(
     notebookId: string,
     path: string,
@@ -140,6 +142,17 @@ export function createSiyuanNativeBridge(
       const validatedId = assertSiyuanIdentifier(id, 'siyuan_block_id_invalid');
       return parseSiyuanBlock(
         await invokeNative(SIYUAN_NATIVE_COMMANDS.getBlock, {
+          ...projectArguments(),
+          id: validatedId,
+        }),
+      );
+    },
+
+    async listInboundBacklinks(id: string) {
+      if (!featureEnabled) return featureDisabled();
+      const validatedId = assertSiyuanIdentifier(id, 'siyuan_block_id_invalid');
+      return parseSiyuanBlockRelationIds(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.listInboundBacklinks, {
           ...projectArguments(),
           id: validatedId,
         }),

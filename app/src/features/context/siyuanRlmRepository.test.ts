@@ -29,6 +29,7 @@ function port(markdown = '# Project Atlas\nThe launch phrase is cobalt fern.'): 
       path: '/Project Atlas.sy',
       markdown,
     })),
+    listInboundBacklinks: vi.fn(async () => []),
   };
 }
 
@@ -76,7 +77,10 @@ describe('SiYuan RLM repository', () => {
       'compare artifact demo-0042 with record DEMO-0042',
     );
     const [ordinary] = await repository.search(scope, 'what is authoritative for this project?');
-    const [partial] = await repository.search(scope, 'what is authoritative for artifact demo-004?');
+    const [partial] = await repository.search(
+      scope,
+      'what is authoritative for artifact demo-004?',
+    );
     const [ambiguous] = await repository.search(
       scope,
       'compare artifact demo-0042 with record demo-0043',
@@ -135,6 +139,7 @@ describe('SiYuan RLM repository', () => {
         path: '/value.sy',
         markdown: 'bounded markdown',
       })),
+      listInboundBacklinks: vi.fn(async () => []),
     };
     const repository = createSiyuanRlmRepository(native);
     await expect(repository.search(scope, 'bounded')).resolves.toHaveLength(1);
@@ -189,5 +194,100 @@ describe('SiYuan RLM repository', () => {
     await expect(service.open({ scope, pointer: found.items[0]!.pointer })).rejects.toEqual(
       expect.objectContaining<Partial<ContextQueryError>>({ code: 'source_stale' }),
     );
+  });
+
+  it('uses only verified native relations and never substitutes notebook neighbors', async () => {
+    const native = port();
+    vi.mocked(native.searchBlocks).mockResolvedValue([
+      {
+        id: 'source-block',
+        notebookId: 'shared-book',
+        path: '/source.sy',
+        content: 'source',
+      },
+      {
+        id: 'unrelated-block',
+        notebookId: 'shared-book',
+        path: '/unrelated.sy',
+        content: 'unrelated',
+      },
+    ]);
+    vi.mocked(native.listInboundBacklinks).mockResolvedValue([
+      'target-block',
+      'missing-block',
+      'backlink-block',
+      'target-block',
+    ]);
+    vi.mocked(native.getBlock).mockImplementation(async (projectId, id) => ({
+      id: id === 'missing-block' ? 'different-block' : id,
+      notebookId:
+        id === 'target-block'
+          ? 'other-project-notebook'
+          : projectId === 'project-1'
+            ? 'shared-book'
+            : 'other-book',
+      path: `/${id}.sy`,
+      markdown: `authority:${id}`,
+    }));
+    const repository = createSiyuanRlmRepository(native);
+    const hits = await repository.search(scope, 'source');
+    const source = hits.find((hit) => hit.recordId.endsWith(':source-block'))!;
+
+    await expect(repository.relatedRecordIds!(source.recordId)).resolves.toEqual([
+      expect.stringMatching(/:target-block$/u),
+      expect.stringMatching(/:backlink-block$/u),
+    ]);
+    expect(native.listInboundBacklinks).toHaveBeenCalledExactlyOnceWith(
+      'project-1',
+      'source-block',
+    );
+    expect(native.getBlock).toHaveBeenCalledWith('project-1', 'target-block');
+    expect(native.getBlock).toHaveBeenCalledWith('project-1', 'backlink-block');
+    expect(native.getBlock).toHaveBeenCalledWith('project-1', 'missing-block');
+    expect(await repository.relatedRecordIds!(source.recordId)).not.toContain(
+      expect.stringMatching(/:unrelated-block$/u),
+    );
+  });
+
+  it('fails closed when the typed relation route is unavailable', async () => {
+    const native = port();
+    vi.mocked(native.listInboundBacklinks).mockRejectedValue(
+      new Error('siyuan_transport_unavailable'),
+    );
+    const repository = createSiyuanRlmRepository(native);
+    const [hit] = await repository.search(scope, 'source');
+
+    await expect(repository.relatedRecordIds!(hit!.recordId)).resolves.toEqual([]);
+
+    const legacyPort = port();
+    delete legacyPort.listInboundBacklinks;
+    const legacyRepository = createSiyuanRlmRepository(legacyPort);
+    const [legacyHit] = await legacyRepository.search(scope, 'source');
+    await expect(legacyRepository.relatedRecordIds!(legacyHit!.recordId)).resolves.toEqual([]);
+  });
+
+  it('skips stale roots, verifies 21 records, and reports a 20-item service page as truncated', async () => {
+    const native = port();
+    vi.mocked(native.listInboundBacklinks).mockResolvedValue([
+      ...Array.from({ length: 5 }, (_, index) => `missing-${index}`),
+      ...Array.from({ length: 25 }, (_, index) => `target-${index}`),
+    ]);
+    vi.mocked(native.getBlock).mockImplementation(async (_projectId, id) => ({
+      id: id.startsWith('missing-') ? `stale-${id}` : id,
+      notebookId: '20260820-book',
+      path: `/${id}.sy`,
+      markdown: `authority:${id}`,
+    }));
+    const repository = createSiyuanRlmRepository(native);
+    const [hit] = await repository.search(scope, 'source');
+    vi.mocked(native.getBlock).mockClear();
+    const service = createContextQueryService({ repository });
+
+    const related = await service.related({ scope, recordId: hit!.recordId, limit: 20 });
+    expect(related.items).toHaveLength(20);
+    expect(related.truncated).toBe(true);
+    expect(native.getBlock).toHaveBeenCalledWith('project-1', 'missing-0');
+    expect(native.getBlock).toHaveBeenCalledWith('project-1', 'target-20');
+    expect(native.getBlock).not.toHaveBeenCalledWith('project-1', 'target-21');
   });
 });
