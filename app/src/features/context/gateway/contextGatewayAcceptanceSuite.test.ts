@@ -121,6 +121,14 @@ function completeInput(): ContextGatewayAcceptanceInput {
     nativeProofs: REQUIRED_CONTEXT_GATEWAY_SURFACES.map(nativeProof),
     featureParityPassed: true,
     concurrentScopeIsolationPassed: true,
+    rollbackProof: {
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      runtimeGeneration: 'generation-42',
+      oldRouteAvailable: true,
+      noShadowProviderDispatch: true,
+      userDataPreserved: true,
+      runtimePointerRestorable: true,
+    },
     rollbackNotes: 'Disable the unified route and retain journals and saved data.',
     externalBlockers: [],
   };
@@ -312,11 +320,32 @@ describe('evaluateContextGatewayAcceptance', () => {
   it('keeps missing exact build or rollback evidence incomplete', () => {
     const input = completeInput();
     input.build = { ...input.build, runtimeGeneration: '' };
+    delete input.rollbackProof;
     input.rollbackNotes = '  ';
 
     expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
       status: 'incomplete',
-      missing: ['build:runtimeGeneration', 'rollbackNotes'],
+      missing: ['build:runtimeGeneration', 'rollbackProof', 'rollbackNotes'],
+    });
+  });
+
+  it('fails rollback proof that permits shadow provider dispatch', () => {
+    const input = completeInput();
+    input.rollbackProof = { ...input.rollbackProof!, noShadowProviderDispatch: false };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['rollback:noShadowProviderDispatch'],
+    });
+  });
+
+  it('fails rollback proof captured from a different build', () => {
+    const input = completeInput();
+    input.rollbackProof = { ...input.rollbackProof!, runtimeGeneration: 'other-generation' };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['rollback:buildBinding'],
     });
   });
 

@@ -223,7 +223,7 @@ export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatew
       'externalBlockers',
     ],
     'acceptance',
-    ['focusedReport', 'deepReport'],
+    ['focusedReport', 'deepReport', 'rollbackProof'],
   );
 
   const build = record(input.build, 'acceptance.build');
@@ -296,6 +296,31 @@ export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatew
 
   bool(input.featureParityPassed, 'acceptance.featureParityPassed');
   bool(input.concurrentScopeIsolationPassed, 'acceptance.concurrentScopeIsolationPassed');
+  if ('rollbackProof' in input) {
+    const proof = record(input.rollbackProof, 'acceptance.rollbackProof');
+    exactKeys(
+      proof,
+      [
+        'commitSha',
+        'runtimeGeneration',
+        'oldRouteAvailable',
+        'noShadowProviderDispatch',
+        'userDataPreserved',
+        'runtimePointerRestorable',
+      ],
+      'acceptance.rollbackProof',
+    );
+    safeString(proof.commitSha, 'acceptance.rollbackProof.commitSha', 64);
+    safeString(proof.runtimeGeneration, 'acceptance.rollbackProof.runtimeGeneration', 256);
+    for (const field of [
+      'oldRouteAvailable',
+      'noShadowProviderDispatch',
+      'userDataPreserved',
+      'runtimePointerRestorable',
+    ]) {
+      bool(proof[field], `acceptance.rollbackProof.${field}`);
+    }
+  }
   safeString(input.rollbackNotes, 'acceptance.rollbackNotes', 8_192);
   for (const [index, blockerValue] of boundedArray(
     input.externalBlockers,

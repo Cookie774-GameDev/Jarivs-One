@@ -377,3 +377,9 @@
 - Ran the complete ADE, Context Gateway, Context RLM, and terminal feature directories together after the quality/resource/lifecycle/retrieval-stage acceptance additions: 84 files / 726 tests passed with zero failures.
 - The root production command reached only the same four actively owned SiYuan test nullability diagnostics and emitted no owned-file diagnostic. A direct Vite production bundle then completed across 4,927 transformed modules in 40.85 seconds; existing tree-sitter externalization/eval, mixed-import, and large-chunk notices remained warnings.
 - This is fresh automated and bundle evidence only. It does not substitute for current-source native backend execution, paired provider runs, the still-unbound complete observed ADE dispatcher identity, or official native acceptance.
+
+## 2026-08-22 — Structured controlled-rollback proof checkpoint
+
+- Final acceptance can no longer pass on free-form rollback notes alone. It additionally requires build-bound proof that the old internal route remains available only for rollback, shadow provider dispatch is disabled, user data is preserved, and the managed runtime pointer is restorable.
+- Rollback proof carries an exact commit SHA and runtime generation and must match the evaluated build. Every false invariant is reported separately; absent proof remains `incomplete`, while a cross-build or failed invariant is `failed`.
+- The exact-key JSON schema accepts only this safe boolean/build metadata and rejects extra fields such as output content. TDD RED reproduced notes-only acceptance, shadow-dispatch acceptance, cross-build acceptance, and schema rejection of the legitimate proof before implementation; focused closure/schema verification passed 2 files / 24 tests.

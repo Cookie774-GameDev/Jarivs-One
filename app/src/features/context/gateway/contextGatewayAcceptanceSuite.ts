@@ -57,6 +57,14 @@ export interface ContextGatewayAcceptanceInput {
   nativeProofs: NativeSurfaceProof[];
   featureParityPassed: boolean;
   concurrentScopeIsolationPassed: boolean;
+  rollbackProof?: {
+    commitSha: string;
+    runtimeGeneration: string;
+    oldRouteAvailable: boolean;
+    noShadowProviderDispatch: boolean;
+    userDataPreserved: boolean;
+    runtimePointerRestorable: boolean;
+  };
   rollbackNotes: string;
   externalBlockers: Array<{ code: string; recovery: string }>;
 }
@@ -84,6 +92,13 @@ const nativeProofFields = [
   'streamingVerified',
   'noDuplicateDispatchVerified',
 ] as const satisfies readonly (keyof NativeSurfaceProof)[];
+
+const rollbackProofFields = [
+  'oldRouteAvailable',
+  'noShadowProviderDispatch',
+  'userDataPreserved',
+  'runtimePointerRestorable',
+] as const;
 
 function requireKnownUniqueRows<T extends { surfaceId: string }>(
   rows: readonly T[],
@@ -273,6 +288,27 @@ export function evaluateContextGatewayAcceptance(
 
   if (!input.featureParityPassed) failures.push('featureParity');
   if (!input.concurrentScopeIsolationPassed) failures.push('concurrentScopeIsolation');
+  if (!input.rollbackProof) {
+    missing.push('rollbackProof');
+  } else {
+    if (!/^[0-9a-f]{40}$/i.test(input.rollbackProof.commitSha)) {
+      throw new Error('rollback commitSha must be a full Git SHA');
+    }
+    if (input.rollbackProof.runtimeGeneration.trim().length === 0) {
+      throw new Error('rollback runtimeGeneration must be non-empty');
+    }
+    if (
+      (validBuildCommit &&
+        input.rollbackProof.commitSha.toLowerCase() !== input.build.commitSha.toLowerCase()) ||
+      (validRuntimeGeneration &&
+        input.rollbackProof.runtimeGeneration !== input.build.runtimeGeneration)
+    ) {
+      failures.push('rollback:buildBinding');
+    }
+    for (const field of rollbackProofFields) {
+      if (!input.rollbackProof[field]) failures.push(`rollback:${field}`);
+    }
+  }
   if (input.rollbackNotes.trim().length === 0) missing.push('rollbackNotes');
 
   const blockerCodes = new Set<string>();

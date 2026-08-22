@@ -19,6 +19,27 @@ describe('parseContextGatewayAcceptanceInput', () => {
     expect(parseContextGatewayAcceptanceInput(incompleteEnvelope())).toEqual(incompleteEnvelope());
   });
 
+  it('accepts only exact structured rollback proof metadata', () => {
+    const input = {
+      ...incompleteEnvelope(),
+      rollbackProof: {
+        commitSha: '0123456789abcdef0123456789abcdef01234567',
+        runtimeGeneration: 'generation-1',
+        oldRouteAvailable: true,
+        noShadowProviderDispatch: true,
+        userDataPreserved: true,
+        runtimePointerRestorable: true,
+      },
+    };
+    expect(parseContextGatewayAcceptanceInput(input)).toEqual(input);
+    expect(() =>
+      parseContextGatewayAcceptanceInput({
+        ...input,
+        rollbackProof: { ...input.rollbackProof, output: 'private output' },
+      }),
+    ).toThrow('unknown field');
+  });
+
   it('rejects an unknown top-level prompt field', () => {
     expect(() =>
       parseContextGatewayAcceptanceInput({
