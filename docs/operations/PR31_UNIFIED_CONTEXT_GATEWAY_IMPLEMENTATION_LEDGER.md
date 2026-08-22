@@ -333,3 +333,9 @@
 - Re-audited the live shared provider entry points against the ADE completion contract. `runAgent` provides streaming/cancellation and returns observed provider/model text, but it does not return the complete observed connection, transport adapter, auth/billing route, effort, Fast variant, or catalog revision required to construct an authoritative ADE `ExecutionIdentity`.
 - Copying the selected values into the observed result would fabricate execution proof, and dispatching through the `jarvis:send` UI event would duplicate Chat persistence/lifecycle while still lacking run-bound output authority. Neither path was implemented.
 - The required API extension belongs to the actively owned router/runtime/kernel integration boundary. Until that owner exposes the existing authoritative completion identity through one shared return contract and official native acceptance passes, the first-class ADE route correctly remains `NOT IMPLEMENTED`.
+
+## 2026-08-22 — Fresh combined owned-boundary verification
+
+- Ran the complete currently owned ADE, Context Gateway, Gateway acceptance, RLM, terminal bridge identity, terminal CLI/runtime/install/production, Context Pack, command palette, and terminal execution matrix together: 29 files / 254 tests passed.
+- A fresh direct Vite production bundle then succeeded across 4,927 transformed modules. Existing tree-sitter browser externalization/eval and large-chunk warnings remain warnings; no new build failure occurred.
+- Official native VibeSpace remained open throughout. This combined automated/build pass strengthens the owned implementation boundary but does not substitute for the still-missing full observed ADE dispatcher identity, current-source native backend acceptance, or required paired native/provider runs.
