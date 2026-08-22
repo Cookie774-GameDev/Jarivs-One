@@ -3,6 +3,7 @@ import {
   DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS,
   DIRECT_GATEWAY_P99_ABSOLUTE_LIMIT_MS,
   DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT,
+  DIRECT_GATEWAY_STAGE_NAMES,
   type DirectGatewayAcceptanceReport,
 } from './contextGatewayAcceptanceMetrics';
 import {
@@ -120,6 +121,9 @@ function directReportPasses(report: Readonly<DirectGatewayAcceptanceReport>): bo
     report.baselineMs.p50 > 0 &&
     validDistribution(report.overheadMs) &&
     validDistribution(report.overheadRatio) &&
+    DIRECT_GATEWAY_STAGE_NAMES.every((stage) =>
+      validDistribution(report.gatewayStageTimingsMs[stage]),
+    ) &&
     report.overheadRatio.p95 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
     report.overheadRatio.p99 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
     report.overheadMs.p95 <= DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS &&

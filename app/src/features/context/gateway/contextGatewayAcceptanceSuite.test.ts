@@ -173,6 +173,25 @@ describe('evaluateContextGatewayAcceptance', () => {
     });
   });
 
+  it('rejects a passed-looking direct report with malformed local stage distributions', () => {
+    const input = completeInput();
+    input.directReports[0] = {
+      ...input.directReports[0],
+      report: {
+        ...directReport,
+        gatewayStageTimingsMs: {
+          ...directReport.gatewayStageTimingsMs,
+          routeDecision: { p50: 20, p95: -1, p99: 20 },
+        },
+      },
+    };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['direct:chat'],
+    });
+  });
+
   it('keeps missing exact build or rollback evidence incomplete', () => {
     const input = completeInput();
     input.build = { ...input.build, runtimeGeneration: '' };
