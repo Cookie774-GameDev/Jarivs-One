@@ -16,6 +16,13 @@ const directReport: DirectGatewayAcceptanceReport = {
   baselineMs: { p50: 1_000, p95: 1_100, p99: 1_200 },
   overheadMs: { p50: 100, p95: 120, p99: 130 },
   overheadRatio: { p50: 0.1, p95: 0.11, p99: 0.12 },
+  gatewayStageTimingsMs: {
+    contextPack: { p50: 20, p95: 20, p99: 20 },
+    routeDecision: { p50: 20, p95: 20, p99: 20 },
+    queueWait: { p50: 0, p95: 0, p99: 0 },
+    dispatch: { p50: 60, p95: 80, p99: 90 },
+    adeAdapter: { p50: 0, p95: 0, p99: 0 },
+  },
   relativeBudgetsMs: { p95: 220, p99: 240 },
   effectiveBudgetsMs: { p95: 150, p99: 240 },
 };

@@ -20,22 +20,32 @@ const identity: ExecutionIdentity = {
 };
 
 function pairs(overrides: Partial<DirectGatewayPair> = {}): DirectGatewayPair[] {
-  return Array.from({ length: 30 }, (_, index) => ({
-    pairId: `pair-${index}`,
-    baselineId: `baseline-${index}`,
-    gatewayReceiptId: `receipt-${index}`,
-    harnessId: 'vibespace-chat',
-    promptHash: 'sha256:prompt',
-    sourceRevision: 'revision-1',
-    scopeKey: 'account/workspace/project/worktree',
-    route: 'direct' as const,
-    warm: true,
-    baselineExecutionIdentity: identity,
-    gatewayExecutionIdentity: identity,
-    baselineMs: 1_000 + index,
-    gatewayOverheadMs: 100 + index,
-    ...overrides,
-  }));
+  return Array.from({ length: 30 }, (_, index) => {
+    const gatewayOverheadMs = overrides.gatewayOverheadMs ?? 100 + index;
+    return {
+      pairId: `pair-${index}`,
+      baselineId: `baseline-${index}`,
+      gatewayReceiptId: `receipt-${index}`,
+      harnessId: 'vibespace-chat',
+      promptHash: 'sha256:prompt',
+      sourceRevision: 'revision-1',
+      scopeKey: 'account/workspace/project/worktree',
+      route: 'direct' as const,
+      warm: true,
+      baselineExecutionIdentity: identity,
+      gatewayExecutionIdentity: identity,
+      baselineMs: 1_000 + index,
+      ...overrides,
+      gatewayOverheadMs,
+      gatewayStageTimingsMs: overrides.gatewayStageTimingsMs ?? {
+        contextPack: 0,
+        routeDecision: gatewayOverheadMs,
+        queueWait: 0,
+        dispatch: 0,
+        adeAdapter: 0,
+      },
+    };
+  });
 }
 
 describe('buildDirectGatewayAcceptanceReport', () => {
@@ -46,6 +56,7 @@ describe('buildDirectGatewayAcceptanceReport', () => {
     expect(report.passed).toBe(true);
     expect(report.overheadMs.p95).toBe(128);
     expect(report.overheadMs.p99).toBe(129);
+    expect(report.gatewayStageTimingsMs.routeDecision.p95).toBe(128);
     expect(report.relativeBudgetsMs.p95).toBeCloseTo(205.6);
     expect(report.relativeBudgetsMs.p99).toBeCloseTo(205.8);
     expect(report.effectiveBudgetsMs.p95).toBe(150);
@@ -74,7 +85,12 @@ describe('buildDirectGatewayAcceptanceReport', () => {
 
   it('uses paired ratios so unrelated slow baselines cannot hide a p99 regression', () => {
     const samples = pairs({ baselineMs: 1_000, gatewayOverheadMs: 0 });
-    samples[29] = { ...samples[29], baselineMs: 1, gatewayOverheadMs: 1 };
+    samples[29] = {
+      ...samples[29],
+      baselineMs: 1,
+      gatewayOverheadMs: 1,
+      gatewayStageTimingsMs: { ...samples[29].gatewayStageTimingsMs, routeDecision: 1 },
+    };
 
     const report = buildDirectGatewayAcceptanceReport(samples);
 
@@ -134,6 +150,23 @@ describe('buildDirectGatewayAcceptanceReport', () => {
         }),
       ),
     ).toThrow('baseline and Gateway execution identities');
+  });
+
+  it('rejects Gateway overhead that does not reconcile to its local stage timings', () => {
+    expect(() =>
+      buildDirectGatewayAcceptanceReport(
+        pairs({
+          gatewayOverheadMs: 100,
+          gatewayStageTimingsMs: {
+            contextPack: 10,
+            routeDecision: 10,
+            queueWait: 10,
+            dispatch: 10,
+            adeAdapter: 10,
+          },
+        }),
+      ),
+    ).toThrow('gatewayStageTimingsMs');
   });
 
   it('rejects acceptance evidence without an observed provider identity', () => {

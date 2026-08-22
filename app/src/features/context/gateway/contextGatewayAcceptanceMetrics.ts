@@ -4,6 +4,16 @@ export const DIRECT_GATEWAY_MINIMUM_PAIRED_RUNS = 30;
 export const DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT = 0.2;
 export const DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS = 150;
 export const DIRECT_GATEWAY_P99_ABSOLUTE_LIMIT_MS = 250;
+export const DIRECT_GATEWAY_STAGE_NAMES = [
+  'contextPack',
+  'routeDecision',
+  'queueWait',
+  'dispatch',
+  'adeAdapter',
+] as const;
+
+export type DirectGatewayStageName = (typeof DIRECT_GATEWAY_STAGE_NAMES)[number];
+export type DirectGatewayStageTimings = Readonly<Record<DirectGatewayStageName, number>>;
 
 export interface DirectGatewayPair {
   pairId: string;
@@ -17,6 +27,7 @@ export interface DirectGatewayPair {
   warm: boolean;
   baselineExecutionIdentity: Readonly<ExecutionIdentity>;
   gatewayExecutionIdentity: Readonly<ExecutionIdentity>;
+  gatewayStageTimingsMs: DirectGatewayStageTimings;
   /** Comparable same-harness/provider time with the VibeSpace Gateway boundary removed. */
   baselineMs: number;
   /** VibeSpace-owned warm overhead only; provider/network/model time must be excluded. */
@@ -36,6 +47,9 @@ export interface DirectGatewayAcceptanceReport {
   baselineMs: Readonly<{ p50: number; p95: number; p99: number }>;
   overheadMs: Readonly<{ p50: number; p95: number; p99: number }>;
   overheadRatio: Readonly<{ p50: number; p95: number; p99: number }>;
+  gatewayStageTimingsMs: Readonly<
+    Record<DirectGatewayStageName, Readonly<{ p50: number; p95: number; p99: number }>>
+  >;
   relativeBudgetsMs: Readonly<{ p95: number; p99: number }>;
   effectiveBudgetsMs: Readonly<{ p95: number; p99: number }>;
 }
@@ -124,6 +138,24 @@ function requireComparable(pairs: readonly Readonly<DirectGatewayPair>[]): void 
     if (!Number.isFinite(pair.gatewayOverheadMs) || pair.gatewayOverheadMs < 0) {
       throw new Error('gatewayOverheadMs must be finite and non-negative');
     }
+    const stageKeys = Object.keys(pair.gatewayStageTimingsMs);
+    if (
+      stageKeys.length !== DIRECT_GATEWAY_STAGE_NAMES.length ||
+      DIRECT_GATEWAY_STAGE_NAMES.some((stage) => !stageKeys.includes(stage))
+    ) {
+      throw new Error('gatewayStageTimingsMs must contain exactly the approved local stages');
+    }
+    let stageTotal = 0;
+    for (const stage of DIRECT_GATEWAY_STAGE_NAMES) {
+      const value = pair.gatewayStageTimingsMs[stage];
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`gatewayStageTimingsMs.${stage} must be finite and non-negative`);
+      }
+      stageTotal += value;
+    }
+    if (Math.abs(stageTotal - pair.gatewayOverheadMs) > 0.001) {
+      throw new Error('gatewayStageTimingsMs must reconcile to gatewayOverheadMs');
+    }
     for (const field of comparableFields) {
       requireNonEmpty(pair[field], field);
       if (pair[field] !== first[field]) throw new Error(`${field} must be identical across pairs`);
@@ -182,6 +214,12 @@ export function buildDirectGatewayAcceptanceReport(
     baselineMs,
     overheadMs,
     overheadRatio,
+    gatewayStageTimingsMs: Object.fromEntries(
+      DIRECT_GATEWAY_STAGE_NAMES.map((stage) => [
+        stage,
+        distribution(pairs.map((pair) => pair.gatewayStageTimingsMs[stage])),
+      ]),
+    ) as DirectGatewayAcceptanceReport['gatewayStageTimingsMs'],
     relativeBudgetsMs,
     effectiveBudgetsMs,
   };
