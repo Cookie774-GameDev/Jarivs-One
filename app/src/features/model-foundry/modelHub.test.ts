@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifySource,
   compatibleModels,
+  defaultFoundryTrainingConfiguration,
   formatFoundryStorageBytes,
   foundryModelOptions,
   newlyCompletedJobId,
@@ -25,6 +26,22 @@ const workstation = {
 };
 
 describe('model foundry domain', () => {
+  it('creates an explicit reproducible baseline instead of relying on worker defaults', () => {
+    expect(defaultFoundryTrainingConfiguration('lora')).toEqual({
+      method: 'lora',
+      seed: 7,
+      epochs: 1,
+      batchSize: 1,
+      gradientAccumulation: 4,
+      maxSequenceLength: 2048,
+      learningRate: 0.0002,
+      loraRank: 16,
+      loraAlpha: 32,
+      loraDropout: 0.05,
+    });
+    expect(defaultFoundryTrainingConfiguration('full').learningRate).toBe(0.00002);
+  });
+
   it('recommends the strongest model that genuinely fits', () => {
     const assessed = compatibleModels(workstation);
     expect(assessed.filter((item) => item.recommended)).toHaveLength(1);
@@ -207,10 +224,12 @@ describe('model foundry domain', () => {
 
   it('fails closed with source-specific recovery guidance when an extractor is unavailable', () => {
     const pdf = classifySource('manual.pdf', 'knowledge', false);
+    const docx = classifySource('manual.docx', 'knowledge', false);
     const audio = classifySource('recording.wav', 'knowledge', false);
     const video = classifySource('demo.mp4', 'knowledge', false);
     expect(pdf).toMatchObject({ kind: 'document', use: 'unsupported' });
     expect(pdf.explanation).toContain('document extractor');
+    expect(docx).toMatchObject({ kind: 'document', use: 'retrieval' });
     expect(audio).toMatchObject({ kind: 'audio', use: 'unsupported' });
     expect(audio.explanation).toContain('transcription');
     expect(video).toMatchObject({ kind: 'video', use: 'unsupported' });

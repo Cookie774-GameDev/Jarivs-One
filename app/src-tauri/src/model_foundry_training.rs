@@ -18,6 +18,10 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const WORKER_PROTOCOL: u8 = 1;
 const WORKER_SOURCE: &str = include_str!("../workers/model_foundry/worker.py");
 const TRAINING_CATALOG_SOURCE: &str = include_str!("../workers/model_foundry/training-models.json");
+const TRAINING_REAL_REQUIREMENTS: &str =
+    include_str!("../workers/model_foundry/requirements-real.lock");
+const TRAINING_QLORA_REQUIREMENTS: &str =
+    include_str!("../workers/model_foundry/requirements-qlora.lock");
 const TRAINING_ARTIFACT_MANIFEST: &str = ".vibespace-artifact.json";
 const MAX_ARTIFACT_FILES: usize = 4_096;
 const MAX_ARTIFACT_DEPTH: usize = 8;
@@ -28,14 +32,6 @@ const INFERENCE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const TRAINING_MODEL_MARKER: &str = ".vibespace-model.json";
 const MAX_TRAINING_MODEL_MARKER_BYTES: u64 = 4 * 1024;
 const DOWNLOAD_BUFFER_BYTES: usize = 1024 * 1024;
-const TRAINING_TORCH_REQUIREMENT: &str = "torch==2.13.0+cpu";
-const TRAINING_TORCH_INDEX: &str = "https://download.pytorch.org/whl/cpu";
-const TRAINING_CORE_REQUIREMENTS: &[&str] = &[
-    "transformers==5.9.0",
-    "datasets==5.0.1",
-    "accelerate==1.13.0",
-    "peft==0.20.0",
-];
 static ACTIVE_TRAINING: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 static ACTIVE_INFERENCE: LazyLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> =
@@ -459,20 +455,84 @@ pub(crate) struct TrainingArtifactEvidence {
     pub(crate) sha256: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct TrainingConfiguration {
+    pub(crate) method: String,
+    pub(crate) seed: u64,
+    pub(crate) epochs: u8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_steps: Option<u32>,
+    pub(crate) batch_size: u16,
+    pub(crate) gradient_accumulation: u16,
+    pub(crate) max_sequence_length: u32,
+    pub(crate) learning_rate: f64,
+    pub(crate) lora_rank: u16,
+    pub(crate) lora_alpha: u16,
+    pub(crate) lora_dropout: f64,
+}
+
+impl TrainingConfiguration {
+    pub(crate) fn validated(self, method: &str) -> Result<Self, String> {
+        if self.method != method
+            || !matches!(method, "lora" | "qlora" | "full")
+            || !(1..=20).contains(&self.epochs)
+            || self
+                .max_steps
+                .is_some_and(|value| !(1..=1_000_000).contains(&value))
+            || !(1..=64).contains(&self.batch_size)
+            || !(1..=1_024).contains(&self.gradient_accumulation)
+            || !(64..=32_768).contains(&self.max_sequence_length)
+            || !self.learning_rate.is_finite()
+            || !(0.0 < self.learning_rate && self.learning_rate <= 1.0)
+            || !(1..=512).contains(&self.lora_rank)
+            || !(1..=1_024).contains(&self.lora_alpha)
+            || !self.lora_dropout.is_finite()
+            || !(0.0..1.0).contains(&self.lora_dropout)
+        {
+            return Err("Model Foundry training configuration is invalid or inconsistent.".into());
+        }
+        Ok(self)
+    }
+
+    pub(crate) fn legacy_defaults(
+        method: &str,
+        epochs: Option<u8>,
+        max_steps: Option<u32>,
+    ) -> Result<Self, String> {
+        Self {
+            method: method.to_string(),
+            seed: 7,
+            epochs: epochs.unwrap_or(1),
+            max_steps,
+            batch_size: 1,
+            gradient_accumulation: 4,
+            max_sequence_length: 2_048,
+            learning_rate: if method == "full" { 0.000_02 } else { 0.000_2 },
+            lora_rank: 16,
+            lora_alpha: 32,
+            lora_dropout: 0.05,
+        }
+        .validated(method)
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TrainingRunRequest {
+    schema_version: u8,
     protocol: u8,
     local_only: bool,
     method: String,
     base_model_path: String,
     dataset_path: String,
+    validation_dataset_path: String,
     output_dir: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     resume_from_checkpoint: Option<String>,
-    epochs: u8,
+    training_config: TrainingConfiguration,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_steps: Option<u32>,
+    target_modules: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -840,36 +900,46 @@ fn create_private_python(root: &Path) -> Result<PathBuf, String> {
     Ok(python)
 }
 
-fn install_private_training_packages(python: &Path) -> Result<(), String> {
+fn install_private_training_packages(
+    python: &Path,
+    root: &Path,
+    include_qlora: bool,
+) -> Result<(), String> {
     let program = python.to_string_lossy();
-    let pip_base = [
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--no-input",
-    ];
-    let torch_status = hidden_command(&program)
-        .args(pip_base)
+    let requirements_path = root.join(if include_qlora {
+        "requirements-qlora.lock"
+    } else {
+        "requirements-real.lock"
+    });
+    let requirements_source = if include_qlora {
+        TRAINING_QLORA_REQUIREMENTS
+    } else {
+        TRAINING_REAL_REQUIREMENTS
+    };
+    let temporary = requirements_path.with_extension("lock.tmp");
+    fs::write(&temporary, requirements_source.as_bytes()).map_err(|error| {
+        format!("Could not stage the pinned training runtime manifest: {error}")
+    })?;
+    fs::rename(&temporary, &requirements_path).map_err(|error| {
+        format!("Could not activate the pinned training runtime manifest: {error}")
+    })?;
+    let install_status = hidden_command(&program)
         .args([
-            "--index-url",
-            TRAINING_TORCH_INDEX,
-            TRAINING_TORCH_REQUIREMENT,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-input",
+            "--require-hashes",
+            "--requirement",
         ])
-        .status()
-        .map_err(|error| format!("Could not install the private PyTorch runtime: {error}"))?;
-    if !torch_status.success() {
-        return Err("The private PyTorch runtime installation failed.".into());
-    }
-    let core_status = hidden_command(&program)
-        .args(pip_base)
-        .args(TRAINING_CORE_REQUIREMENTS)
+        .arg(&requirements_path)
         .status()
         .map_err(|error| {
-            format!("Could not install the private Model Foundry libraries: {error}")
+            format!("Could not install the pinned private Model Foundry runtime: {error}")
         })?;
-    if !core_status.success() {
-        return Err("The private Model Foundry library installation failed.".into());
+    if !install_status.success() {
+        return Err("The pinned private Model Foundry runtime installation failed.".into());
     }
     Ok(())
 }
@@ -1408,7 +1478,10 @@ pub fn model_foundry_remove_training_model(
     Ok(training_model_status(&root, model))
 }
 
-fn install_training_runtime(app: &tauri::AppHandle) -> Result<TrainingWorkerStatus, String> {
+fn install_training_runtime(
+    app: &tauri::AppHandle,
+    include_qlora: bool,
+) -> Result<TrainingWorkerStatus, String> {
     let root = training_root(app)?;
     fs::create_dir_all(&root)
         .map_err(|error| format!("Could not create the private training directory: {error}"))?;
@@ -1423,14 +1496,21 @@ fn install_training_runtime(app: &tauri::AppHandle) -> Result<TrainingWorkerStat
     let python = create_private_python(&root)?;
     let python_text = python.to_string_lossy().into_owned();
     let needs_packages = probe_worker(&python_text, &path)
-        .map(|probe| !probe.ready || !probe.methods.iter().any(|method| method == "lora"))
+        .map(|probe| {
+            !probe.ready
+                || !probe.methods.iter().any(|method| method == "lora")
+                || (include_qlora && !probe.methods.iter().any(|method| method == "qlora"))
+        })
         .unwrap_or(true);
     if needs_packages {
-        install_private_training_packages(&python)?;
+        install_private_training_packages(&python, &root, include_qlora)?;
     }
 
     let status = inspect_worker(&root);
-    if !status.attested || !status.methods.iter().any(|method| method == "lora") {
+    if !status.attested
+        || !status.methods.iter().any(|method| method == "lora")
+        || (include_qlora && !status.methods.iter().any(|method| method == "qlora"))
+    {
         return Err(status
             .reason
             .unwrap_or_else(|| "Private Model Foundry runtime verification failed.".into()));
@@ -1441,10 +1521,13 @@ fn install_training_runtime(app: &tauri::AppHandle) -> Result<TrainingWorkerStat
 #[tauri::command]
 pub async fn model_foundry_install_training_worker(
     app: tauri::AppHandle,
+    include_qlora: Option<bool>,
 ) -> Result<TrainingWorkerStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || install_training_runtime(&app))
-        .await
-        .map_err(|error| format!("Model Foundry setup worker failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        install_training_runtime(&app, include_qlora.unwrap_or(false))
+    })
+    .await
+    .map_err(|error| format!("Model Foundry setup worker failed: {error}"))?
 }
 
 fn safe_job_id(value: &str) -> Result<&str, String> {
@@ -1531,19 +1614,29 @@ pub(crate) fn run_training_worker(
     base_model_id: &str,
     method: &str,
     dataset_path: &Path,
+    validation_dataset_path: &Path,
     job_dir: &Path,
-    epochs: u8,
-    max_steps: Option<u32>,
+    training_config: TrainingConfiguration,
+    target_modules: Option<Vec<String>>,
     resume_checkpoint: Option<&Path>,
 ) -> Result<TrainingRunResult, String> {
     let job_id = safe_job_id(job_id)?;
     if !matches!(method, "lora" | "qlora" | "full") {
         return Err("Unsupported Model Foundry weight-training method.".into());
     }
-    if !(1..=20).contains(&epochs)
-        || max_steps.is_some_and(|value| !(1..=1_000_000).contains(&value))
-    {
-        return Err("Model Foundry training limits are invalid.".into());
+    let training_config = training_config.validated(method)?;
+    if target_modules.as_ref().is_some_and(|modules| {
+        modules.is_empty()
+            || modules.len() > 128
+            || modules.iter().any(|module| {
+                module.is_empty()
+                    || module.len() > 128
+                    || !module
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            })
+    }) {
+        return Err("Model Foundry target modules are invalid.".into());
     }
     let root = training_root(app)?;
     let storage_guard = MODEL_STORAGE_LOCK
@@ -1581,6 +1674,17 @@ pub(crate) fn run_training_worker(
     {
         return Err("Weight training requires one local JSONL dataset.".into());
     }
+    let validation_dataset = validation_dataset_path
+        .canonicalize()
+        .map_err(|_| "The local validation dataset is unavailable.".to_string())?;
+    if !validation_dataset.is_file()
+        || validation_dataset
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_none_or(|value| !value.eq_ignore_ascii_case("jsonl"))
+    {
+        return Err("Weight training requires one local validation JSONL dataset.".into());
+    }
     fs::create_dir_all(job_dir)
         .map_err(|error| format!("Could not prepare the private training job: {error}"))?;
     let output = job_dir.join("weight-artifact");
@@ -1601,17 +1705,19 @@ pub(crate) fn run_training_worker(
     };
     let request_path = job_dir.join("worker-request.json");
     let request = TrainingRunRequest {
+        schema_version: 2,
         protocol: WORKER_PROTOCOL,
         local_only: true,
         method: method.to_string(),
         base_model_path: model.to_string_lossy().into_owned(),
         dataset_path: dataset.to_string_lossy().into_owned(),
+        validation_dataset_path: validation_dataset.to_string_lossy().into_owned(),
         output_dir: output.to_string_lossy().into_owned(),
         resume_from_checkpoint: verified_resume
             .as_ref()
             .map(|path| path.to_string_lossy().into_owned()),
-        epochs,
-        max_steps,
+        training_config,
+        target_modules,
     };
     let request_bytes = serde_json::to_vec_pretty(&request)
         .map_err(|error| format!("Could not encode the local training request: {error}"))?;
@@ -1912,6 +2018,41 @@ pub(crate) fn cancel_training_worker(job_id: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pinned_runtime_profiles_are_hash_locked_and_do_not_force_cpu_torch() {
+        assert!(TRAINING_REAL_REQUIREMENTS.contains("--hash=sha256:"));
+        assert!(TRAINING_REAL_REQUIREMENTS.contains("torch==2.7.1"));
+        assert!(TRAINING_QLORA_REQUIREMENTS.contains("bitsandbytes==0.46.1"));
+        assert!(TRAINING_QLORA_REQUIREMENTS.contains("--hash=sha256:"));
+        assert!(!TRAINING_REAL_REQUIREMENTS.contains("download.pytorch.org/whl/cpu"));
+        assert!(!TRAINING_QLORA_REQUIREMENTS.contains("download.pytorch.org/whl/cpu"));
+    }
+
+    #[test]
+    fn versioned_training_configuration_rejects_method_drift_and_unsafe_bounds() {
+        let valid = TrainingConfiguration {
+            method: "lora".into(),
+            seed: 23,
+            epochs: 3,
+            max_steps: Some(77),
+            batch_size: 2,
+            gradient_accumulation: 8,
+            max_sequence_length: 1_024,
+            learning_rate: 0.000_08,
+            lora_rank: 32,
+            lora_alpha: 64,
+            lora_dropout: 0.1,
+        };
+        assert!(valid.clone().validated("lora").is_ok());
+        assert!(valid.clone().validated("qlora").is_err());
+        assert!(TrainingConfiguration {
+            batch_size: 0,
+            ..valid
+        }
+        .validated("lora")
+        .is_err());
+    }
 
     fn fixture_training_model() -> TrainingCatalogModel {
         TrainingCatalogModel {

@@ -9,10 +9,43 @@ export interface HardwareProfile {
   freeStorageGb: number;
   os: string;
   accelerators: string[];
+  storageRoot?: string;
+  recommendedStorageRoot?: string | null;
 }
 
 export type TrainingModality = 'text' | 'image' | 'video' | 'audio';
 export type TrainingPrecision = 'fp32' | 'fp16' | 'bf16' | 'int8' | 'int4';
+
+export interface FoundryTrainingConfiguration {
+  method: Exclude<TrainingMethod, 'knowledge'>;
+  seed: number;
+  epochs: number;
+  maxSteps?: number;
+  batchSize: number;
+  gradientAccumulation: number;
+  maxSequenceLength: number;
+  learningRate: number;
+  loraRank: number;
+  loraAlpha: number;
+  loraDropout: number;
+}
+
+export function defaultFoundryTrainingConfiguration(
+  method: Exclude<TrainingMethod, 'knowledge'>,
+): FoundryTrainingConfiguration {
+  return {
+    method,
+    seed: 7,
+    epochs: 1,
+    batchSize: 1,
+    gradientAccumulation: 4,
+    maxSequenceLength: 2_048,
+    learningRate: method === 'full' ? 0.000_02 : 0.000_2,
+    loraRank: 16,
+    loraAlpha: 32,
+    loraDropout: 0.05,
+  };
+}
 
 export interface TrainingWorkerCapability {
   installed: boolean;
@@ -332,6 +365,7 @@ export function classifySource(
     'jsx',
     'py',
     'rs',
+    'docx',
   ].includes(ext);
   if (!hasVerifiedTextExtractor) {
     const explanation =

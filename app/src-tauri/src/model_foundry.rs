@@ -2,10 +2,18 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use tauri::{Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
 const ALLOWED_MODELS: &[&str] = &[
@@ -55,6 +63,8 @@ impl Drop for ActiveJobGuard {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartRequest {
+    #[serde(default)]
+    schema_version: Option<u8>,
     name: String,
     description: String,
     purpose: String,
@@ -72,9 +82,17 @@ pub struct StartRequest {
     #[serde(default)]
     dataset_jsonl: Option<String>,
     #[serde(default)]
+    validation_dataset_jsonl: Option<String>,
+    #[serde(default)]
+    dataset_version_id: Option<String>,
+    #[serde(default)]
     dataset_manifest_hash: Option<String>,
     #[serde(default)]
     dataset_fingerprint: Option<String>,
+    #[serde(default)]
+    training_config: Option<crate::model_foundry_training::TrainingConfiguration>,
+    #[serde(default)]
+    target_modules: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -116,7 +134,20 @@ struct KnowledgeArtifact {
     base_model_id: String,
     processing: String,
     source_count: usize,
+    #[serde(default)]
+    sources: Vec<SourceManifestEntry>,
     chunks: Vec<KnowledgeChunk>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceManifestEntry {
+    source_name: String,
+    format: String,
+    source_bytes: u64,
+    source_sha256: String,
+    prepared_sha256: String,
+    chunk_count: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -124,6 +155,8 @@ struct KnowledgeArtifact {
 struct KnowledgeChunk {
     id: String,
     source_name: String,
+    #[serde(default)]
+    source_anchor: Option<String>,
     text: String,
     sha256: String,
 }
@@ -188,6 +221,36 @@ pub struct FoundryHardwareProfile {
     free_storage_gb: f64,
     os: String,
     accelerators: Vec<String>,
+    storage_root: String,
+    recommended_storage_root: Option<String>,
+}
+
+fn parse_nvidia_smi_csv(value: &str) -> Option<(String, f64)> {
+    value.lines().find_map(|line| {
+        let (name, memory_mib) = line.rsplit_once(',')?;
+        let name = name.trim();
+        let memory_mib = memory_mib.trim().parse::<f64>().ok()?;
+        (!name.is_empty() && memory_mib.is_finite() && memory_mib > 0.0)
+            .then(|| (name.to_string(), memory_mib / 1_024.0))
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn detect_nvidia_accelerator() -> Option<(String, f64)> {
+    let output = Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=name,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8(output.stdout).ok())
+        .flatten()
+        .and_then(|value| parse_nvidia_smi_csv(&value))
 }
 
 fn now() -> String {
@@ -238,10 +301,27 @@ fn validate_artifact(path: &Path) -> Result<KnowledgeArtifact, String> {
     {
         return Err("Artifact metadata is incomplete or unsupported.".into());
     }
+    if !artifact.sources.is_empty()
+        && (artifact.sources.len() != artifact.source_count
+            || artifact.sources.iter().any(|source| {
+                source.source_name.trim().is_empty()
+                    || source.format.trim().is_empty()
+                    || source.source_bytes == 0
+                    || source.chunk_count == 0
+                    || !is_sha256(&source.source_sha256)
+                    || !is_sha256(&source.prepared_sha256)
+            }))
+    {
+        return Err("Artifact source provenance is incomplete or unsupported.".into());
+    }
     for chunk in &artifact.chunks {
         let digest = format!("{:x}", Sha256::digest(chunk.text.as_bytes()));
         if chunk.id.trim().is_empty()
             || chunk.source_name.trim().is_empty()
+            || chunk
+                .source_anchor
+                .as_deref()
+                .is_some_and(|anchor| anchor.trim().is_empty())
             || chunk.text.trim().is_empty()
             || chunk.sha256 != digest
         {
@@ -252,6 +332,10 @@ fn validate_artifact(path: &Path) -> Result<KnowledgeArtifact, String> {
         }
     }
     Ok(artifact)
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
 fn query_terms(value: &str) -> BTreeSet<String> {
@@ -318,18 +402,35 @@ fn detect_hardware(app: &tauri::AppHandle) -> Result<FoundryHardwareProfile, Str
     let mut free_bytes = 0_u64;
     unsafe { GetDiskFreeSpaceExW(&directory, Some(&mut free_bytes), None, None) }
         .map_err(|error| format!("Could not inspect free storage: {error}"))?;
+    let mut recommended_storage_root = None;
+    let mut secondary_free_bytes = 0_u64;
+    let secondary = HSTRING::from("D:\\");
+    if unsafe { GetDiskFreeSpaceExW(&secondary, Some(&mut secondary_free_bytes), None, None) }
+        .is_ok()
+        && secondary_free_bytes > free_bytes.saturating_add(20 * 1024 * 1024 * 1024)
+    {
+        recommended_storage_root = Some("D:\\VibeSpace-Model-Foundry".into());
+    }
 
     let threads = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
+    let accelerator = detect_nvidia_accelerator();
     Ok(FoundryHardwareProfile {
         cpu: format!("{threads} logical CPU threads"),
-        gpu: None,
+        gpu: accelerator.as_ref().map(|(name, _)| name.clone()),
         ram_gb: memory.ullTotalPhys as f64 / 1024_f64.powi(3),
-        vram_gb: 0.0,
+        vram_gb: accelerator.as_ref().map(|(_, vram)| *vram).unwrap_or(0.0),
         free_storage_gb: free_bytes as f64 / 1024_f64.powi(3),
         os: "Windows".into(),
-        accelerators: Vec::new(),
+        accelerators: accelerator
+            .map(|_| vec!["NVIDIA CUDA (runtime verification required)".into()])
+            .unwrap_or_default(),
+        storage_root: data_dir
+            .join("model-foundry")
+            .to_string_lossy()
+            .into_owned(),
+        recommended_storage_root,
     })
 }
 
@@ -346,6 +447,8 @@ fn detect_hardware(_app: &tauri::AppHandle) -> Result<FoundryHardwareProfile, St
         free_storage_gb: 0.0,
         os: std::env::consts::OS.into(),
         accelerators: Vec::new(),
+        storage_root: "application-data/model-foundry".into(),
+        recommended_storage_root: None,
     })
 }
 
@@ -419,6 +522,22 @@ fn canonicalize_inline_dataset(
     Ok(canonical.join("\n"))
 }
 
+fn split_training_dataset(dataset: &Path) -> Result<(String, String), String> {
+    let raw = fs::read_to_string(dataset)
+        .map_err(|error| format!("Could not read the local JSONL dataset: {error}"))?;
+    let canonical = canonicalize_inline_dataset(&raw, None)?;
+    let rows = canonical.lines().collect::<Vec<_>>();
+    if rows.len() < 2 {
+        return Err(
+            "Weight training requires at least two reviewed examples so validation remains separate."
+                .into(),
+        );
+    }
+    let validation_count = (rows.len() / 10).max(1).min(rows.len() - 1);
+    let split_at = rows.len() - validation_count;
+    Ok((rows[..split_at].join("\n"), rows[split_at..].join("\n")))
+}
+
 fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
     if paths.is_empty() {
         return Err("Choose at least one local source with the native picker.".into());
@@ -458,6 +577,7 @@ fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
                     | "jsx"
                     | "py"
                     | "rs"
+                    | "docx"
             ) {
                 return Err(format!(
                     "{} requires a verified extractor or transcription backend that is not currently available.",
@@ -469,18 +589,222 @@ fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
         .collect()
 }
 
-fn clean_chunks(sources: &[PathBuf]) -> Result<Vec<KnowledgeChunk>, String> {
+struct PreparedKnowledge {
+    chunks: Vec<KnowledgeChunk>,
+    sources: Vec<SourceManifestEntry>,
+}
+
+fn contains_high_confidence_secret(value: &str) -> bool {
+    let upper = value.to_ascii_uppercase();
+    if upper.contains("-----BEGIN PRIVATE KEY-----")
+        || upper.contains("-----BEGIN RSA PRIVATE KEY-----")
+    {
+        return true;
+    }
+    value
+        .split(|character: char| character.is_whitespace() || "\"'=:,;()[]{}".contains(character))
+        .any(|token| {
+            (token.starts_with("sk-") && token.len() >= 23)
+                || (token.starts_with("ghp_") && token.len() >= 24)
+                || (token.starts_with("AKIA")
+                    && token.len() == 20
+                    && token
+                        .chars()
+                        .all(|character| character.is_ascii_alphanumeric()))
+        })
+}
+
+fn parse_csv_records(value: &str) -> Result<Vec<Vec<String>>, String> {
+    let mut records = Vec::new();
+    let mut record = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut characters = value.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            '"' if quoted && characters.peek() == Some(&'"') => {
+                field.push('"');
+                characters.next();
+            }
+            '"' => quoted = !quoted,
+            ',' if !quoted => record.push(std::mem::take(&mut field)),
+            '\n' if !quoted => {
+                if field.ends_with('\r') {
+                    field.pop();
+                }
+                record.push(std::mem::take(&mut field));
+                if record.iter().any(|entry| !entry.trim().is_empty()) {
+                    records.push(std::mem::take(&mut record));
+                } else {
+                    record.clear();
+                }
+            }
+            _ => field.push(character),
+        }
+    }
+    if quoted {
+        return Err("CSV source contains an unterminated quoted field.".into());
+    }
+    if !field.is_empty() || !record.is_empty() {
+        record.push(field);
+        if record.iter().any(|entry| !entry.trim().is_empty()) {
+            records.push(record);
+        }
+    }
+    let width = records.first().map(Vec::len).unwrap_or(0);
+    if records.len() < 2 || width == 0 || records.iter().any(|row| row.len() != width) {
+        return Err("CSV source requires one header row and consistently shaped data rows.".into());
+    }
+    Ok(records)
+}
+
+fn decode_docx_xml(value: &str) -> String {
+    let with_boundaries = value
+        .replace("</w:p>", "\n\n")
+        .replace("</w:tr>", "\n\n")
+        .replace("</w:tc>", "\t")
+        .replace("<w:tab/>", "\t")
+        .replace("<w:br/>", "\n");
+    let mut output = String::new();
+    let mut in_tag = false;
+    for character in with_boundaries.chars() {
+        match character {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => output.push(character),
+            _ => {}
+        }
+    }
+    output
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+fn extract_docx_text(source: &Path, bytes: &[u8]) -> Result<String, String> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
+        .map_err(|_| format!("{} is not a valid DOCX container.", source.display()))?;
+    let mut document = archive
+        .by_name("word/document.xml")
+        .map_err(|_| format!("{} has no Word document body.", source.display()))?;
+    if document.size() > 32 * 1024 * 1024 {
+        return Err(format!(
+            "{} exceeds the 32 MB decompressed DOCX text limit.",
+            source.display()
+        ));
+    }
+    let mut xml = String::new();
+    document
+        .read_to_string(&mut xml)
+        .map_err(|_| format!("{} contains invalid DOCX XML text.", source.display()))?;
+    let text = decode_docx_xml(&xml);
+    if text.trim().is_empty() {
+        return Err(format!(
+            "{} contains no extractable DOCX text.",
+            source.display()
+        ));
+    }
+    Ok(text)
+}
+
+fn prepare_source_text(source: &Path, bytes: &[u8]) -> Result<(String, String), String> {
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension == "docx" {
+        let prepared = extract_docx_text(source, bytes)?;
+        if contains_high_confidence_secret(&prepared) {
+            return Err(format!(
+                "{} contains a high-confidence credential or private-key pattern. Redact and review it before training.",
+                source.display()
+            ));
+        }
+        return Ok((prepared, extension));
+    }
+    let decoded = std::str::from_utf8(bytes)
+        .map_err(|_| format!("{} is not valid UTF-8 text.", source.display()))?
+        .trim_start_matches('\u{feff}');
+    let prepared = match extension.as_str() {
+        "json" => {
+            let parsed: serde_json::Value = serde_json::from_str(decoded)
+                .map_err(|_| format!("{} is not valid JSON.", source.display()))?;
+            serde_json::to_string_pretty(&parsed)
+                .map_err(|error| format!("Could not normalize JSON: {error}"))?
+        }
+        "jsonl" => {
+            let mut records = Vec::new();
+            for (index, line) in decoded.lines().enumerate() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let parsed: serde_json::Value = serde_json::from_str(line).map_err(|_| {
+                    format!(
+                        "{} has invalid JSON on line {}.",
+                        source.display(),
+                        index + 1
+                    )
+                })?;
+                records.push(parsed.to_string());
+            }
+            if records.is_empty() {
+                return Err(format!("{} contains no JSONL records.", source.display()));
+            }
+            records.join("\n\n")
+        }
+        "csv" => {
+            let records = parse_csv_records(decoded)?;
+            let headers = &records[0];
+            records[1..]
+                .iter()
+                .map(|row| {
+                    headers
+                        .iter()
+                        .zip(row)
+                        .map(|(header, value)| format!("{}: {}", header.trim(), value.trim()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        }
+        _ => decoded.replace("\r\n", "\n"),
+    };
+    if contains_high_confidence_secret(&prepared) {
+        return Err(format!(
+            "{} contains a high-confidence credential or private-key pattern. Redact and review it before training.",
+            source.display()
+        ));
+    }
+    Ok((prepared, extension))
+}
+
+fn clean_chunks(sources: &[PathBuf]) -> Result<PreparedKnowledge, String> {
     let mut seen = BTreeSet::new();
     let mut chunks = Vec::new();
+    let mut source_manifests = Vec::new();
     for source in sources {
-        let text = fs::read_to_string(source).map_err(|error| {
-            format!("Could not read {} as UTF-8 text: {error}", source.display())
-        })?;
-        for part in text
-            .split("\n\n")
-            .map(str::trim)
-            .filter(|value| value.len() >= 20)
-        {
+        let bytes = fs::read(source)
+            .map_err(|error| format!("Could not read {}: {error}", source.display()))?;
+        let (text, format) = prepare_source_text(source, &bytes)?;
+        let source_name = source
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("source")
+            .to_string();
+        let chunk_start = chunks.len();
+        let mut offset = 0usize;
+        for raw_part in text.split("\n\n") {
+            let line_start = text[..offset].bytes().filter(|byte| *byte == b'\n').count() + 1;
+            let line_end = line_start + raw_part.bytes().filter(|byte| *byte == b'\n').count();
+            offset = offset.saturating_add(raw_part.len() + 2).min(text.len());
+            let part = raw_part.trim();
+            if part.len() < 20 {
+                continue;
+            }
             let normalized = part.split_whitespace().collect::<Vec<_>>().join(" ");
             let digest = format!("{:x}", Sha256::digest(normalized.as_bytes()));
             if !seen.insert(digest.clone()) {
@@ -488,20 +812,31 @@ fn clean_chunks(sources: &[PathBuf]) -> Result<Vec<KnowledgeChunk>, String> {
             }
             chunks.push(KnowledgeChunk {
                 id: format!("chunk-{}", &digest[..16]),
-                source_name: source
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or("source")
-                    .to_string(),
+                source_name: source_name.clone(),
+                source_anchor: Some(format!("lines {line_start}-{line_end}")),
                 text: normalized,
                 sha256: digest,
+            });
+        }
+        let chunk_count = chunks.len() - chunk_start;
+        if chunk_count > 0 {
+            source_manifests.push(SourceManifestEntry {
+                source_name,
+                format,
+                source_bytes: bytes.len() as u64,
+                source_sha256: format!("{:x}", Sha256::digest(&bytes)),
+                prepared_sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
+                chunk_count,
             });
         }
     }
     if chunks.is_empty() {
         return Err("Sources did not contain enough usable text after cleaning.".into());
     }
-    Ok(chunks)
+    Ok(PreparedKnowledge {
+        chunks,
+        sources: source_manifests,
+    })
 }
 
 fn process_knowledge(
@@ -531,7 +866,7 @@ fn process_knowledge(
     }
 
     match clean_chunks(&sources) {
-        Ok(chunks) => {
+        Ok(prepared) => {
             if cancellation_path.exists() {
                 job.status = "cancelled".into();
                 job.error = Some("Cancelled after local source processing.".into());
@@ -553,7 +888,8 @@ fn process_knowledge(
                 base_model_id: request.base_model_id,
                 processing: "local-rag-knowledge".into(),
                 source_count: sources.len(),
-                chunks,
+                sources: prepared.sources,
+                chunks: prepared.chunks,
             };
             let artifact_path = job_dir.join("knowledge-artifact.json");
             let result = serde_json::to_vec_pretty(&artifact)
@@ -615,6 +951,7 @@ fn process_weight(
     app: tauri::AppHandle,
     request: StartRequest,
     dataset: PathBuf,
+    validation_dataset: PathBuf,
     job_dir: PathBuf,
     mut job: FoundryJob,
     resume_checkpoint: Option<PathBuf>,
@@ -638,17 +975,42 @@ fn process_weight(
         return;
     }
 
-    let epochs = request.epochs.unwrap_or(1);
-    let max_steps = request.max_steps;
+    let training_config = match request.training_config.clone() {
+        Some(config) => match config.validated(&request.method) {
+            Ok(config) => config,
+            Err(error) => {
+                job.status = "failed".into();
+                job.error = Some(error);
+                job.updated_at = now();
+                finish(&job);
+                return;
+            }
+        },
+        None => match crate::model_foundry_training::TrainingConfiguration::legacy_defaults(
+            &request.method,
+            request.epochs,
+            request.max_steps,
+        ) {
+            Ok(config) => config,
+            Err(error) => {
+                job.status = "failed".into();
+                job.error = Some(error);
+                job.updated_at = now();
+                finish(&job);
+                return;
+            }
+        },
+    };
     match crate::model_foundry_training::run_training_worker(
         &app,
         &job.id,
         &request.base_model_id,
         &request.method,
         &dataset,
+        &validation_dataset,
         &job_dir,
-        epochs,
-        max_steps,
+        training_config,
+        request.target_modules.clone(),
         resume_checkpoint.as_deref(),
     ) {
         Ok(result) if !cancellation_path.exists() => {
@@ -708,6 +1070,9 @@ pub fn model_foundry_start_training(
     if !request.local_only {
         return Err("Model Foundry only accepts local processing in this build.".into());
     }
+    if request.schema_version.is_some_and(|version| version != 2) {
+        return Err("Unsupported Model Foundry training request version.".into());
+    }
     if request.name.trim().is_empty() || request.name.chars().count() > 80 {
         return Err("Model name must contain 1 to 80 characters.".into());
     }
@@ -728,6 +1093,18 @@ pub fn model_foundry_start_training(
         {
             return Err("Model Foundry max steps must be between 1 and 1000000.".into());
         }
+        if let Some(config) = request.training_config.clone() {
+            let config = config.validated(&request.method)?;
+            if request.epochs.is_some_and(|epochs| epochs != config.epochs)
+                || request
+                    .max_steps
+                    .is_some_and(|max_steps| Some(max_steps) != config.max_steps)
+            {
+                return Err("Model Foundry legacy and versioned training limits disagree.".into());
+            }
+        } else if request.schema_version == Some(2) {
+            return Err("TrainingRequestV2 requires an explicit training configuration.".into());
+        }
     }
     let inline_dataset = request
         .dataset_jsonl
@@ -740,6 +1117,7 @@ pub fn model_foundry_start_training(
         );
     }
     let mut canonicalized: Option<String> = None;
+    let mut canonicalized_validation: Option<String> = None;
     let mut sources: Vec<PathBuf> = if let Some(dataset) = inline_dataset {
         if method != FoundryMethod::Weight {
             return Err("Inline Dataset Studio exports are only valid for weight training.".into());
@@ -747,6 +1125,15 @@ pub fn model_foundry_start_training(
         let canonical_dataset =
             canonicalize_inline_dataset(dataset, request.dataset_fingerprint.as_deref())?;
         canonicalized = Some(canonical_dataset);
+        let validation_dataset = request
+            .validation_dataset_jsonl
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                "TrainingRequestV2 requires an approved validation dataset.".to_string()
+            })?;
+        canonicalized_validation = Some(canonicalize_inline_dataset(validation_dataset, None)?);
         Vec::new()
     } else {
         validated_sources(&request.source_paths)?
@@ -770,7 +1157,34 @@ pub fn model_foundry_start_training(
         write_atomic(&dataset_path, canonical_dataset.as_bytes())
             .map_err(|error| format!("Could not store the private inline dataset: {error}"))?;
         sources = vec![dataset_path];
+    } else if method == FoundryMethod::Weight {
+        let (train, validation) = split_training_dataset(
+            sources
+                .first()
+                .ok_or_else(|| "A local training dataset is required.".to_string())?,
+        )?;
+        let dataset_path = job_dir.join("dataset.jsonl");
+        write_atomic(&dataset_path, train.as_bytes())
+            .map_err(|error| format!("Could not store the private training split: {error}"))?;
+        let validation_path = job_dir.join("validation-dataset.jsonl");
+        write_atomic(&validation_path, validation.as_bytes())
+            .map_err(|error| format!("Could not store the private validation split: {error}"))?;
+        sources = vec![dataset_path];
     }
+    let validation_dataset = if let Some(canonical_validation) = canonicalized_validation.as_deref()
+    {
+        let validation_path = job_dir.join("validation-dataset.jsonl");
+        write_atomic(&validation_path, canonical_validation.as_bytes())
+            .map_err(|error| format!("Could not store the private validation dataset: {error}"))?;
+        validation_path
+    } else if job_dir.join("validation-dataset.jsonl").is_file() {
+        job_dir.join("validation-dataset.jsonl")
+    } else {
+        sources
+            .first()
+            .cloned()
+            .ok_or_else(|| "A local validation dataset is required.".to_string())?
+    };
     let timestamp = now();
     let job = FoundryJob {
         id,
@@ -808,7 +1222,15 @@ pub fn model_foundry_start_training(
                 .into_iter()
                 .next()
                 .expect("weight source validation requires exactly one path");
-            process_weight(app, request, dataset, job_dir, worker_job, None);
+            process_weight(
+                app,
+                request,
+                dataset,
+                validation_dataset,
+                job_dir,
+                worker_job,
+                None,
+            );
         }
     });
     Ok(job)
@@ -1174,7 +1596,11 @@ pub fn model_foundry_resume_job(
     {
         return Err("The private resume record does not match this verified local job.".into());
     }
-    let sources = validated_sources(&request.source_paths)?;
+    let sources = if request.source_paths.is_empty() {
+        vec![job_dir.join("dataset.jsonl")]
+    } else {
+        validated_sources(&request.source_paths)?
+    };
     if sources.len() != 1
         || sources[0]
             .extension()
@@ -1206,8 +1632,21 @@ pub fn model_foundry_resume_job(
         .into_iter()
         .next()
         .expect("resume validation requires exactly one dataset");
+    let validation_dataset = if job_dir.join("validation-dataset.jsonl").is_file() {
+        job_dir.join("validation-dataset.jsonl")
+    } else {
+        dataset.clone()
+    };
     std::thread::spawn(move || {
-        process_weight(app, request, dataset, job_dir, worker_job, Some(checkpoint))
+        process_weight(
+            app,
+            request,
+            dataset,
+            validation_dataset,
+            job_dir,
+            worker_job,
+            Some(checkpoint),
+        )
     });
     Ok(job)
 }
@@ -1391,6 +1830,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_nvidia_smi_memory_without_trusting_wmi_adapter_ram() {
+        let parsed = parse_nvidia_smi_csv("NVIDIA GeForce RTX 4050 Laptop GPU, 6141\r\n")
+            .expect("valid nvidia-smi output");
+        assert_eq!(parsed.0, "NVIDIA GeForce RTX 4050 Laptop GPU");
+        assert!((parsed.1 - 5.997).abs() < 0.01);
+        assert!(parse_nvidia_smi_csv("not a device").is_none());
+    }
+
+    #[test]
+    fn creates_a_deterministic_separate_validation_split_for_local_jsonl() {
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-split-{}", nanoid::nanoid!()));
+        fs::create_dir_all(&root).unwrap();
+        let dataset = root.join("dataset.jsonl");
+        fs::write(
+            &dataset,
+            (0..10)
+                .map(|index| {
+                    serde_json::json!({
+                        "prompt": format!("Prompt {index}"),
+                        "completion": format!("Completion {index}")
+                    })
+                    .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+
+        let (train, validation) = split_training_dataset(&dataset).unwrap();
+        assert_eq!(train.lines().count(), 9);
+        assert_eq!(validation.lines().count(), 1);
+        assert!(validation.contains("Prompt 9"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn accepts_only_the_distinct_supported_build_methods() {
         assert_eq!(
             parsed_method("knowledge").unwrap(),
@@ -1436,8 +1912,9 @@ mod tests {
             "This is a sufficiently long training paragraph.\n\nThis is a sufficiently long training paragraph.",
         )
         .unwrap();
-        let chunks = clean_chunks(&[path]).unwrap();
-        assert_eq!(chunks.len(), 1);
+        let prepared = clean_chunks(&[path]).unwrap();
+        assert_eq!(prepared.chunks.len(), 1);
+        assert_eq!(prepared.sources.len(), 1);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1458,9 +1935,11 @@ mod tests {
             base_model_id: "qwen2.5:1.5b-instruct-q4_K_M".into(),
             processing: "local-rag-knowledge".into(),
             source_count: 1,
+            sources: Vec::new(),
             chunks: vec![KnowledgeChunk {
                 id: format!("chunk-{}", &digest[..16]),
                 source_name: "release.md".into(),
+                source_anchor: Some("lines 1-1".into()),
                 text: text.into(),
                 sha256: digest,
             }],
@@ -1484,12 +1963,14 @@ mod tests {
             KnowledgeChunk {
                 id: "one".into(),
                 source_name: "billing.md".into(),
+                source_anchor: None,
                 text: "Stripe webhooks reconcile subscriptions and credits.".into(),
                 sha256: "unused".into(),
             },
             KnowledgeChunk {
                 id: "two".into(),
                 source_name: "release.md".into(),
+                source_anchor: None,
                 text: "Release manifests require signatures and checksums.".into(),
                 sha256: "unused".into(),
             },
@@ -1497,6 +1978,76 @@ mod tests {
         let selected = rank_chunks(&chunks, "How are subscription credits reconciled?", 1);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].source_name, "billing.md");
+    }
+
+    #[test]
+    fn prepares_csv_as_source_anchored_reproducible_chunks() {
+        let root = std::env::temp_dir().join(format!("vibespace-foundry-{}", nanoid::nanoid!()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("examples.csv");
+        fs::write(
+            &path,
+            "prompt,response\r\n\"Explain, safely\",\"Use a reviewed local dataset only.\"\r\nSecond prompt,Second sufficiently detailed response",
+        )
+        .unwrap();
+
+        let prepared = clean_chunks(&[path]).unwrap();
+        assert_eq!(prepared.sources.len(), 1);
+        assert_eq!(prepared.sources[0].format, "csv");
+        assert!(is_sha256(&prepared.sources[0].source_sha256));
+        assert!(is_sha256(&prepared.sources[0].prepared_sha256));
+        assert_eq!(prepared.sources[0].chunk_count, prepared.chunks.len());
+        assert!(prepared.chunks.iter().all(|chunk| chunk
+            .source_anchor
+            .as_deref()
+            .is_some_and(|value| value.starts_with("lines "))));
+        assert!(prepared.chunks[0].text.contains("prompt: Explain, safely"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn quarantines_high_confidence_credentials_before_source_preparation() {
+        let root = std::env::temp_dir().join(format!("vibespace-foundry-{}", nanoid::nanoid!()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("unsafe.md");
+        fs::write(
+            &path,
+            "Deployment notes\n\nSecret: ghp_abcdefghijklmnopqrstuvwxyz123456",
+        )
+        .unwrap();
+
+        let error = clean_chunks(&[path]).err().unwrap();
+        assert!(error.contains("credential") || error.contains("private-key"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn extracts_docx_text_locally_with_source_provenance() {
+        use std::io::Write as _;
+
+        let root = std::env::temp_dir().join(format!("vibespace-foundry-{}", nanoid::nanoid!()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("reviewed.docx");
+        let file = fs::File::create(&path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(
+                "word/document.xml",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        archive
+            .write_all(
+                br#"<?xml version="1.0"?><w:document xmlns:w="urn:test"><w:body><w:p><w:r><w:t>First reviewed document paragraph with enough local text.</w:t></w:r></w:p><w:p><w:r><w:t>Second paragraph &amp; source provenance.</w:t></w:r></w:p></w:body></w:document>"#,
+            )
+            .unwrap();
+        archive.finish().unwrap();
+
+        let prepared = clean_chunks(&[path]).unwrap();
+        assert_eq!(prepared.sources[0].format, "docx");
+        assert_eq!(prepared.chunks.len(), 2);
+        assert!(prepared.chunks[1].text.contains("& source provenance"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

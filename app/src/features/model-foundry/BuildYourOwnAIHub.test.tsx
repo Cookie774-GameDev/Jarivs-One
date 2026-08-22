@@ -96,6 +96,33 @@ describe('BuildYourOwnAIHub', () => {
     expect(screen.getByText(/Operating system:/)).toBeTruthy();
     expect(screen.getByText(/GPU:/)).toBeTruthy();
     expect(screen.getByText(/Acceleration:/)).toBeTruthy();
+    expect(screen.getByText(/Managed storage:/)).toBeTruthy();
+  });
+
+  it('shows the native managed storage root and a higher-capacity recommendation', async () => {
+    tauriInvoke.mockImplementation(async (command: string) => {
+      if (command === 'model_foundry_detect_hardware') {
+        return {
+          cpu: 'Test CPU',
+          gpu: 'Test GPU',
+          ramGb: 32,
+          vramGb: 12,
+          freeStorageGb: 100,
+          os: 'Test OS',
+          accelerators: ['CUDA'],
+          storageRoot: 'C:\\Users\\test\\AppData\\Roaming\\VibeSpace\\model-foundry',
+          recommendedStorageRoot: 'D:\\VibeSpace-Model-Foundry',
+        };
+      }
+      if (command === 'model_foundry_list_jobs') return [];
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByText(/Managed storage: C:\\Users\\test/)).toBeTruthy();
+    expect(screen.getByText(/Storage recommendation: D:\\VibeSpace-Model-Foundry/)).toBeTruthy();
   });
 
   it('shows the verified checkpoint catalog for attested weight training', () => {

@@ -8,6 +8,7 @@ cloud execution or uploads.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -23,15 +24,34 @@ MAX_LINE_CHARS = 1_000_000
 ALLOWED_METHODS = frozenset(("lora", "qlora", "full"))
 ALLOWED_REQUEST_KEYS = frozenset(
     (
+        "schemaVersion",
         "protocol",
         "localOnly",
         "method",
         "baseModelPath",
         "datasetPath",
+        "validationDatasetPath",
         "outputDir",
         "resumeFromCheckpoint",
         "epochs",
         "maxSteps",
+        "trainingConfig",
+        "targetModules",
+    )
+)
+ALLOWED_TRAINING_CONFIG_KEYS = frozenset(
+    (
+        "method",
+        "seed",
+        "epochs",
+        "maxSteps",
+        "batchSize",
+        "gradientAccumulation",
+        "maxSequenceLength",
+        "learningRate",
+        "loraRank",
+        "loraAlpha",
+        "loraDropout",
     )
 )
 ALLOWED_INFERENCE_KEYS = frozenset(
@@ -68,13 +88,12 @@ def probe() -> int:
             packages[name] = str(getattr(module, "__version__", "unknown"))
         except Exception:
             packages[name] = None
-    core_ready = all(
-        packages.get(name) for name in ("torch", "transformers", "datasets", "accelerate")
-    )
+    core_ready = all(packages.get(name) for name in ("torch", "transformers", "accelerate"))
     methods: list[str] = []
     precisions: list[str] = []
     cuda_ready = False
     bf16_ready = False
+    qlora_smoke_ready = False
     if core_ready:
         methods.append("full")
         precisions.append("fp32")
@@ -95,12 +114,24 @@ def probe() -> int:
             precisions.append("bf16")
     if core_ready and packages.get("peft"):
         methods.append("lora")
-    if (
-        core_ready
-        and packages.get("peft")
-        and packages.get("bitsandbytes")
-        and cuda_ready
-    ):
+    if core_ready and packages.get("peft") and packages.get("bitsandbytes") and cuda_ready:
+        try:
+            import bitsandbytes.functional as bnb_functional
+            import torch
+
+            probe_tensor = torch.zeros(64, device="cuda", dtype=torch.float16)
+            quantized, quantization_state = bnb_functional.quantize_4bit(
+                probe_tensor, quant_type="nf4"
+            )
+            restored = bnb_functional.dequantize_4bit(
+                quantized, quant_state=quantization_state
+            )
+            qlora_smoke_ready = bool(restored.shape == probe_tensor.shape)
+            del restored, quantized, quantization_state, probe_tensor
+            torch.cuda.empty_cache()
+        except Exception:
+            qlora_smoke_ready = False
+    if qlora_smoke_ready:
         methods.append("qlora")
         precisions.extend(("int8", "int4"))
     ready = bool(methods)
@@ -140,6 +171,14 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         _fail("Training method is not supported.")
     model = _absolute_path(payload.get("baseModelPath"), "baseModelPath")
     dataset = _absolute_path(payload.get("datasetPath"), "datasetPath")
+    schema_version = payload.get("schemaVersion", 1)
+    if schema_version not in (1, 2):
+        _fail("Training request schema version is not supported.")
+    validation_dataset = (
+        _absolute_path(payload.get("validationDatasetPath"), "validationDatasetPath")
+        if schema_version == 2
+        else dataset
+    )
     output = _absolute_path(payload.get("outputDir"), "outputDir")
     resume_checkpoint_value = payload.get("resumeFromCheckpoint")
     resume_checkpoint: Path | None = None
@@ -162,61 +201,135 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         _fail("Base model must be a local Transformers directory with config.json.")
     if not dataset.is_file() or dataset.suffix.lower() != ".jsonl":
         _fail("Dataset must be a local JSONL file.")
+    if not validation_dataset.is_file() or validation_dataset.suffix.lower() != ".jsonl":
+        _fail("Validation dataset must be a local JSONL file.")
     if dataset.stat().st_size > MAX_DATASET_BYTES:
         _fail("Dataset exceeds the safe local size limit.")
     if output == model or output == dataset or model in output.parents:
         _fail("Output directory must be separate from source and base-model paths.")
-    epochs = _bounded_integer(payload.get("epochs"), "epochs", 1, 20)
-    raw_max_steps = payload.get("maxSteps")
-    max_steps = (
-        None
-        if raw_max_steps is None
-        else _bounded_integer(raw_max_steps, "maxSteps", 1, 1_000_000)
-    )
+    if schema_version == 2:
+        raw_config = payload.get("trainingConfig")
+        if not isinstance(raw_config, dict) or set(raw_config) - ALLOWED_TRAINING_CONFIG_KEYS:
+            _fail("TrainingRequestV2 requires a closed trainingConfig object.")
+        if raw_config.get("method") != method:
+            _fail("Training method and trainingConfig method must match.")
+        config = {
+            "method": method,
+            "seed": _bounded_integer(raw_config.get("seed"), "seed", 0, 2**32 - 1),
+            "epochs": _bounded_integer(raw_config.get("epochs"), "epochs", 1, 20),
+            "maxSteps": (
+                None
+                if raw_config.get("maxSteps") is None
+                else _bounded_integer(raw_config.get("maxSteps"), "maxSteps", 1, 1_000_000)
+            ),
+            "batchSize": _bounded_integer(raw_config.get("batchSize"), "batchSize", 1, 64),
+            "gradientAccumulation": _bounded_integer(
+                raw_config.get("gradientAccumulation"), "gradientAccumulation", 1, 1_024
+            ),
+            "maxSequenceLength": _bounded_integer(
+                raw_config.get("maxSequenceLength"), "maxSequenceLength", 64, 32_768
+            ),
+            "learningRate": _bounded_float(raw_config.get("learningRate"), "learningRate", 0.0, 1.0),
+            "loraRank": _bounded_integer(raw_config.get("loraRank"), "loraRank", 1, 512),
+            "loraAlpha": _bounded_integer(raw_config.get("loraAlpha"), "loraAlpha", 1, 1_024),
+            "loraDropout": _bounded_float(
+                raw_config.get("loraDropout"),
+                "loraDropout",
+                0.0,
+                1.0,
+                minimum_inclusive=True,
+                maximum_inclusive=False,
+            ),
+        }
+        if payload.get("epochs") is not None and payload.get("epochs") != config["epochs"]:
+            _fail("Legacy epochs and TrainingRequestV2 configuration disagree.")
+        if payload.get("maxSteps") is not None and payload.get("maxSteps") != config["maxSteps"]:
+            _fail("Legacy maxSteps and TrainingRequestV2 configuration disagree.")
+    else:
+        epochs = _bounded_integer(payload.get("epochs"), "epochs", 1, 20)
+        raw_max_steps = payload.get("maxSteps")
+        max_steps = (
+            None
+            if raw_max_steps is None
+            else _bounded_integer(raw_max_steps, "maxSteps", 1, 1_000_000)
+        )
+        config = {
+            "method": method,
+            "seed": 7,
+            "epochs": epochs,
+            "maxSteps": max_steps,
+            "batchSize": 1,
+            "gradientAccumulation": 4,
+            "maxSequenceLength": 2_048,
+            "learningRate": 2e-5 if method == "full" else 2e-4,
+            "loraRank": 16,
+            "loraAlpha": 32,
+            "loraDropout": 0.05,
+        }
+    target_modules = payload.get("targetModules")
+    if target_modules is not None and (
+        not isinstance(target_modules, list)
+        or not target_modules
+        or len(target_modules) > 128
+        or any(
+            not isinstance(module, str)
+            or not module
+            or len(module) > 128
+            or not all(character.isalnum() or character == "_" for character in module)
+            for module in target_modules
+        )
+    ):
+        _fail("targetModules must be a bounded list of module names.")
 
-    examples = 0
-    with dataset.open("r", encoding="utf-8") as stream:
-        for line_number, line in enumerate(stream, start=1):
-            if len(line) > MAX_LINE_CHARS:
-                _fail(f"Dataset line {line_number} exceeds the safe size limit.")
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError as error:
-                _fail(f"Dataset line {line_number} is invalid JSON: {error.msg}.")
-            if not isinstance(record, dict):
-                _fail(f"Dataset line {line_number} must be a JSON object.")
-            text = record.get("text")
-            prompt = record.get("prompt")
-            response = record.get("response")
-            has_text = isinstance(text, str) and bool(text.strip())
-            has_pair = (
-                isinstance(prompt, str)
-                and bool(prompt.strip())
-                and isinstance(response, str)
-                and bool(response.strip())
-            )
-            if not has_text and not has_pair:
-                _fail(
-                    f"Dataset line {line_number} needs non-empty text or prompt/response fields."
+    def validate_examples(path: Path, label: str) -> int:
+        examples = 0
+        with path.open("r", encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if len(line) > MAX_LINE_CHARS:
+                    _fail(f"{label} line {line_number} exceeds the safe size limit.")
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError as error:
+                    _fail(f"{label} line {line_number} is invalid JSON: {error.msg}.")
+                if not isinstance(record, dict):
+                    _fail(f"{label} line {line_number} must be a JSON object.")
+                text = record.get("text")
+                prompt = record.get("prompt")
+                response = record.get("response", record.get("completion"))
+                has_text = isinstance(text, str) and bool(text.strip())
+                has_pair = (
+                    isinstance(prompt, str)
+                    and bool(prompt.strip())
+                    and isinstance(response, str)
+                    and bool(response.strip())
                 )
-            examples += 1
-            if examples > MAX_EXAMPLES:
-                _fail("Dataset exceeds the safe example limit.")
-    if examples == 0:
-        _fail("Dataset contains no usable examples.")
+                if not has_text and not has_pair:
+                    _fail(
+                        f"{label} line {line_number} needs non-empty text or prompt/response fields."
+                    )
+                examples += 1
+                if examples > MAX_EXAMPLES:
+                    _fail(f"{label} exceeds the safe example limit.")
+        if examples == 0:
+            _fail(f"{label} contains no usable examples.")
+        return examples
+
+    examples = validate_examples(dataset, "Training dataset")
+    validation_examples = validate_examples(validation_dataset, "Validation dataset")
 
     normalized = {
         **payload,
         "baseModelPath": str(model),
         "datasetPath": str(dataset),
+        "validationDatasetPath": str(validation_dataset),
         "outputDir": str(output),
         "resumeFromCheckpoint": (
             str(resume_checkpoint) if resume_checkpoint is not None else None
         ),
-        "epochs": epochs,
-        "maxSteps": max_steps,
+        "trainingConfig": config,
+        "targetModules": target_modules,
     }
     summary = {
         "protocol": PROTOCOL,
@@ -224,8 +337,8 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         "valid": True,
         "method": method,
         "examples": examples,
-        "epochs": epochs,
-        "maxSteps": max_steps,
+        "validationExamples": validation_examples,
+        "trainingConfig": config,
     }
     return normalized, summary
 
@@ -234,7 +347,8 @@ def _example_text(record: dict[str, Any]) -> str:
     text = record.get("text")
     if isinstance(text, str) and text.strip():
         return text.strip()
-    return f"User: {str(record['prompt']).strip()}\nAssistant: {str(record['response']).strip()}"
+    response = record.get("response", record.get("completion"))
+    return f"User: {str(record['prompt']).strip()}\nAssistant: {str(response).strip()}"
 
 
 def _example_prompt_prefix(record: dict[str, Any]) -> str:
@@ -268,11 +382,10 @@ def train(request_path: str) -> int:
 
     try:
         import torch
-        from datasets import load_dataset
         from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
-            DataCollatorForLanguageModeling,
+            DataCollatorForSeq2Seq,
             Trainer,
             TrainingArguments,
         )
@@ -280,6 +393,7 @@ def train(request_path: str) -> int:
         _fail(f"Verified local training libraries are unavailable: {type(error).__name__}.")
 
     method = str(request["method"])
+    config = request["trainingConfig"]
     model_path = str(request["baseModelPath"])
     output_dir = Path(str(request["outputDir"]))
     resume_checkpoint = request.get("resumeFromCheckpoint")
@@ -339,21 +453,30 @@ def train(request_path: str) -> int:
         model = get_peft_model(
             model,
             LoraConfig(
-                r=16,
-                lora_alpha=32,
-                lora_dropout=0.05,
+                r=int(config["loraRank"]),
+                lora_alpha=int(config["loraAlpha"]),
+                lora_dropout=float(config["loraDropout"]),
                 bias="none",
                 task_type="CAUSAL_LM",
+                target_modules=request.get("targetModules"),
             ),
         )
 
-    dataset = load_dataset(
-        "json",
-        data_files={"train": str(request["datasetPath"])},
-        split="train",
-    )
+    def load_records(path: str) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        with Path(path).open("r", encoding="utf-8") as stream:
+            for line in stream:
+                if line.strip():
+                    records.append(json.loads(line))
+        return records
 
-    max_length = min(int(getattr(tokenizer, "model_max_length", 2048)), 4096)
+    dataset = load_records(str(request["datasetPath"]))
+    validation_dataset = load_records(str(request["validationDatasetPath"]))
+
+    max_length = min(
+        int(getattr(tokenizer, "model_max_length", config["maxSequenceLength"])),
+        int(config["maxSequenceLength"]),
+    )
 
     def tokenize(record: dict[str, Any]) -> dict[str, Any]:
         encoded = tokenizer(
@@ -371,11 +494,18 @@ def train(request_path: str) -> int:
             encoded["labels"] = completion_only_labels(encoded["input_ids"], len(prompt_ids))
         return encoded
 
-    tokenized = dataset.map(
-        tokenize,
-        remove_columns=dataset.column_names,
-        desc="Tokenizing local training examples",
-    )
+    tokenized = [tokenize(record) for record in dataset]
+    tokenized_validation = [tokenize(record) for record in validation_dataset]
+
+    class ListDataset(torch.utils.data.Dataset):
+        def __init__(self, rows: list[dict[str, Any]]) -> None:
+            self.rows = rows
+
+        def __len__(self) -> int:
+            return len(self.rows)
+
+        def __getitem__(self, index: int) -> dict[str, Any]:
+            return self.rows[index]
     output_dir.mkdir(parents=True, exist_ok=bool(resume_checkpoint))
     use_bf16 = bool(
         torch.cuda.is_available()
@@ -385,14 +515,19 @@ def train(request_path: str) -> int:
     arguments = TrainingArguments(
         output_dir=str(output_dir),
         overwrite_output_dir=False,
-        num_train_epochs=float(request["epochs"]),
-        max_steps=(int(request["maxSteps"]) if request["maxSteps"] is not None else -1),
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=4,
-        learning_rate=2e-4 if method in ("lora", "qlora") else 2e-5,
+        num_train_epochs=float(config["epochs"]),
+        max_steps=(int(config["maxSteps"]) if config["maxSteps"] is not None else -1),
+        per_device_train_batch_size=int(config["batchSize"]),
+        per_device_eval_batch_size=int(config["batchSize"]),
+        gradient_accumulation_steps=int(config["gradientAccumulation"]),
+        learning_rate=float(config["learningRate"]),
+        seed=int(config["seed"]),
+        data_seed=int(config["seed"]),
+        do_eval=True,
+        eval_strategy="epoch",
         logging_steps=1,
         save_strategy="steps",
-        save_steps=max(1, min(50, int(request["maxSteps"] or 50))),
+        save_steps=max(1, min(50, int(config["maxSteps"] or 50))),
         save_total_limit=2,
         report_to=[],
         dataloader_num_workers=0,
@@ -402,10 +537,16 @@ def train(request_path: str) -> int:
     trainer = Trainer(
         model=model,
         args=arguments,
-        train_dataset=tokenized,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        train_dataset=ListDataset(tokenized),
+        eval_dataset=ListDataset(tokenized_validation),
+        data_collator=DataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            padding=True,
+            label_pad_token_id=-100,
+        ),
     )
     trainer.train(resume_from_checkpoint=resume_checkpoint or None)
+    evaluation_metrics = trainer.evaluate()
     trainer.save_model(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
     (output_dir / "vibespace-training.json").write_text(
@@ -414,6 +555,28 @@ def train(request_path: str) -> int:
                 **summary,
                 "artifactType": "adapter" if method in ("lora", "qlora") else "full-model",
                 "baseModelPath": model_path,
+                "schemaVersion": request.get("schemaVersion", 1),
+                "requestedConfig": config,
+                "effectiveConfig": {
+                    **config,
+                    "precision": (
+                        "bf16"
+                        if use_bf16
+                        else "fp16"
+                        if torch.cuda.is_available()
+                        else "fp32"
+                    ),
+                },
+                "targetModules": request.get("targetModules"),
+                "datasetSha256": _sha256_file(Path(str(request["datasetPath"]))),
+                "validationDatasetSha256": _sha256_file(
+                    Path(str(request["validationDatasetPath"]))
+                ),
+                "evaluationMetrics": {
+                    key: value
+                    for key, value in evaluation_metrics.items()
+                    if isinstance(value, (int, float))
+                },
             },
             separators=(",", ":"),
         ),
@@ -627,6 +790,34 @@ def _bounded_integer(value: Any, field: str, minimum: int, maximum: int) -> int:
     if value < minimum or value > maximum:
         _fail(f"{field} must be between {minimum} and {maximum}.")
     return value
+
+
+def _bounded_float(
+    value: Any,
+    field: str,
+    minimum: float,
+    maximum: float,
+    *,
+    minimum_inclusive: bool = False,
+    maximum_inclusive: bool = True,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(f"{field} must be numeric.")
+    normalized = float(value)
+    lower_ok = normalized >= minimum if minimum_inclusive else normalized > minimum
+    upper_ok = normalized <= maximum if maximum_inclusive else normalized < maximum
+    if not lower_ok or not upper_ok:
+        comparator = "at most" if maximum_inclusive else "less than"
+        _fail(f"{field} must be greater than {minimum} and {comparator} {maximum}.")
+    return normalized
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def main() -> int:

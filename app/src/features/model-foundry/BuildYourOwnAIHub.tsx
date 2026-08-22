@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import {
   classifySource,
   compatibleModels,
+  defaultFoundryTrainingConfiguration,
   formatFoundryStorageBytes,
   foundryModelOptions,
   isModelInstalled,
@@ -304,12 +305,16 @@ export function BuildYourOwnAIHub({
       const { invoke } = await import('@tauri-apps/api/core');
       const created = await invoke<FoundryJob>('model_foundry_start_training', {
         request: {
+          schemaVersion: method === 'knowledge' ? undefined : 2,
           name: name.trim(),
           description: description.trim(),
           purpose: purpose.trim(),
           instructions: instructions.trim() || null,
           baseModelId: selectedModel.id,
           method,
+          ...(method === 'knowledge'
+            ? {}
+            : { trainingConfig: defaultFoundryTrainingConfiguration(method) }),
           sourcePaths: sources
             .filter((source) => source.use !== 'unsupported')
             .map((source) => source.path)
@@ -642,6 +647,14 @@ export function BuildYourOwnAIHub({
                     ? hardware.accelerators.join(', ')
                     : 'Not reported'}
                 </span>
+                <span className="break-all">
+                  Managed storage: {hardware.storageRoot ?? 'Application data (default)'}
+                </span>
+                {hardware.recommendedStorageRoot && (
+                  <span className="break-all text-emerald-300">
+                    Storage recommendation: {hardware.recommendedStorageRoot}
+                  </span>
+                )}
               </div>
               <div className="grid gap-3">
                 {assessed.map(({ model, compatible, recommended, warning }) => {

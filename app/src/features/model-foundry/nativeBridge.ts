@@ -268,7 +268,11 @@ export async function getFoundryRuntimeStatus(): Promise<FoundryWorkerRuntimeSta
 
 export async function prepareFoundryRuntime(): Promise<FoundryWorkerRuntimeStatus> {
   if (!isTauri) throw new Error('Native worker runtime is available only in the desktop app.');
-  return mapWorkerRuntimeStatus(await invoke<CurrentTrainingWorkerStatus>('model_foundry_install_training_worker'));
+  return mapWorkerRuntimeStatus(
+    await invoke<CurrentTrainingWorkerStatus>('model_foundry_install_training_worker', {
+      includeQlora: false,
+    }),
+  );
 }
 
 export async function getFoundryTrainingRuntimeStatus(): Promise<FoundryTrainingRuntimeStatus> {
@@ -283,8 +287,10 @@ export async function getFoundryTrainingRuntimeStatus(): Promise<FoundryTraining
 
 export async function installFoundryTrainingDependencies(includeQlora = false): Promise<FoundryTrainingRuntimeStatus> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
-  void includeQlora;
-  const status = await invoke<CurrentTrainingWorkerStatus>('model_foundry_install_training_worker');
+  const status = await invoke<CurrentTrainingWorkerStatus>(
+    'model_foundry_install_training_worker',
+    { includeQlora },
+  );
   return {
     installed: status.installed,
     qloraInstalled: status.methods.includes('qlora'),
@@ -299,9 +305,17 @@ function serializeDatasetJsonl(examples: readonly FoundryNativeTrainingExample[]
 export async function startFoundryTraining(request: FoundryNativeTrainingRequest): Promise<FoundryNativeTrainingStart> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
   if (!request.datasetApproved) throw new Error('Dataset approval is required before local training can start.');
+  if (request.trainExamples.length === 0) {
+    throw new Error('At least one approved training example is required.');
+  }
+  if (request.validationExamples.length === 0) {
+    throw new Error('At least one approved validation example is required.');
+  }
   const datasetJsonl = serializeDatasetJsonl(request.trainExamples);
+  const validationDatasetJsonl = serializeDatasetJsonl(request.validationExamples);
   const created = await invoke<CurrentFoundryJob>('model_foundry_start_training', {
     request: {
+      schemaVersion: 2,
       name: 'Foundry ' + request.jobId,
       description: 'Dataset Studio training run for project ' + request.projectId,
       purpose: 'Local adapter training from a reviewed Dataset Studio version.',
@@ -314,8 +328,12 @@ export async function startFoundryTraining(request: FoundryNativeTrainingRequest
         : { maxSteps: request.trainingConfig.maxSteps }),
       sourcePaths: [],
       datasetJsonl,
+      validationDatasetJsonl,
+      datasetVersionId: request.datasetVersionId,
       datasetManifestHash: request.datasetManifestHash,
       datasetFingerprint: request.datasetFingerprint,
+      trainingConfig: request.trainingConfig,
+      ...(request.targetModules ? { targetModules: request.targetModules } : {}),
       localOnly: true,
     },
   });
