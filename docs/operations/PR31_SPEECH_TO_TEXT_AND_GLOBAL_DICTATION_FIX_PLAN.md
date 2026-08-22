@@ -1,6 +1,6 @@
 # PR31 speech-to-text and global dictation repair plan
 
-Status: **IMPLEMENTING — TEST-FIRST**
+Status: **SOURCE COMMITTED — NATIVE QA BLOCKED BY WINDOWS APPLICATION CONTROL**
 
 ## Ownership and baseline
 
@@ -74,8 +74,8 @@ Use only the official running/built VibeSpace desktop app—never a regular brow
 
 ## Commit and completion record
 
-- Source commit: pending.
-- Coordination commit: pending.
+- Source commit: `51b0819f3b0f4c0eaba63ac4034fd2c5af387013` — `fix(pr31): honor selected dictation engine`.
+- Coordination ledger: append-only final record pending release of this task's lock; it is intentionally not staged because the shared ledger contains other agents' dirty entries.
 - Focused tests:
   - PASS 2026-08-22 13:05 CT: focused PR31 renderer matrix: `Composer.stt.test.tsx` (1), `dictationSession.test.ts` (9), `deepgramDictation.test.ts` (3), `GlobalSttHost.test.tsx` (10), `Accessibility.test.tsx` (5), `ComposerStt.test.tsx` (5), `catalog.test.ts` (7), and `TerminalView.execution.test.tsx` (29): **8 files / 69 tests**. The terminal suite prints two expected jsdom canvas capability warnings and Accessibility prints two expected jsdom media-play warnings.
   - TDD: the new composer fallback regression failed first because `trySystemSttFallbacks` remained in the source, then passed after exact-provider behavior replaced Groq/Windows fallback.
