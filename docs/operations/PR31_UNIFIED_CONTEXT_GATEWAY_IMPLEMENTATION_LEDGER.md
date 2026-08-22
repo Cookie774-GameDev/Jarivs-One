@@ -327,3 +327,9 @@
 - Added `npm run verify:context-gateway-acceptance -- <local-evidence.json>` so native/CI evidence can execute the same fail-closed evaluator rather than copying its logic into an ad hoc report. The command emits only the sanitized evaluation (`passed`, `failed`, `incomplete`, or `blocked-external`) and never echoes malformed evidence, parse errors, prompts, model output, credentials, or input contents.
 - A repository fixture intentionally exercises the truthful incomplete state and lists every missing Chat/ADE/Codex/Claude/OpenCode, retrieval, native, build, and rollback gate with no false failures. Pass exits zero; every non-pass or invalid input exits nonzero, while the JSON status preserves the exact non-pass category.
 - Manual CLI verification covered the incomplete fixture, missing argument usage, and an invalid JSON-shaped evidence file. The invalid case returned only the fixed safe error message.
+
+## 2026-08-22 — ADE production-dispatch boundary re-audit
+
+- Re-audited the live shared provider entry points against the ADE completion contract. `runAgent` provides streaming/cancellation and returns observed provider/model text, but it does not return the complete observed connection, transport adapter, auth/billing route, effort, Fast variant, or catalog revision required to construct an authoritative ADE `ExecutionIdentity`.
+- Copying the selected values into the observed result would fabricate execution proof, and dispatching through the `jarvis:send` UI event would duplicate Chat persistence/lifecycle while still lacking run-bound output authority. Neither path was implemented.
+- The required API extension belongs to the actively owned router/runtime/kernel integration boundary. Until that owner exposes the existing authoritative completion identity through one shared return contract and official native acceptance passes, the first-class ADE route correctly remains `NOT IMPLEMENTED`.
