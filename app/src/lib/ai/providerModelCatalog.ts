@@ -299,6 +299,13 @@ function isOpenAiCompatibleModelRow(value: unknown): value is OpenAiCompatibleMo
   return typeof value === 'object' && value !== null;
 }
 
+const NON_CHAT_MODEL_ID_SEGMENT_RE =
+  /(?:^|[./_-])(?:asr|audio|embed(?:ding)?s?|image|livetranslate|moderation|realtime|rerank|speech|transcri(?:be|ption)|tts|video|whisper)(?:$|[./_-])/iu;
+
+function isChatTransportCompatibleModelId(id: string): boolean {
+  return !NON_CHAT_MODEL_ID_SEGMENT_RE.test(id);
+}
+
 function parseOpenAiCompatibleModels(
   providerId: ProviderId,
   payload: { data?: unknown[] } | unknown[],
@@ -313,7 +320,7 @@ function parseOpenAiCompatibleModels(
     .filter((row) => row.capabilities?.completion_chat !== false)
     .map((row) => row.id?.trim())
     .filter((id): id is string => Boolean(id))
-    .filter((id) => !id.includes('embed') && !id.includes('whisper') && !id.includes('tts'))
+    .filter(isChatTransportCompatibleModelId)
     .slice(0, 40)
     .map((id) => ({
       id,

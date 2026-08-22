@@ -50,10 +50,23 @@ describe('providerModelCatalog', () => {
       'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
     );
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ data: [{ id: 'qwen3.7-plus' }, { id: 'qwen3-coder-next' }] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: 'qwen3.7-plus' },
+            { id: 'qwen3-coder-next' },
+            { id: 'qwen3.5-omni-plus' },
+            { id: 'qwen-image-3.0-pro' },
+            { id: 'qwen-audio-3.0-asr-flash' },
+            { id: 'qwen3.5-livetranslate-flash-realtime' },
+            { id: 'qwen3.5-omni-plus-realtime' },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      ),
     );
     const qwenCtx = { ...ctx, apiKeys: { qwen: 'qwen-test-key' } };
 
@@ -66,7 +79,15 @@ describe('providerModelCatalog', () => {
       }),
     );
     expect(models.map((model) => model.id)).toEqual(
-      expect.arrayContaining(['qwen3.7-plus', 'qwen3-coder-next']),
+      expect.arrayContaining(['qwen3.7-plus', 'qwen3-coder-next', 'qwen3.5-omni-plus']),
+    );
+    expect(models.map((model) => model.id)).not.toEqual(
+      expect.arrayContaining([
+        'qwen-image-3.0-pro',
+        'qwen-audio-3.0-asr-flash',
+        'qwen3.5-livetranslate-flash-realtime',
+        'qwen3.5-omni-plus-realtime',
+      ]),
     );
     fetchMock.mockRestore();
     setActiveQwenCompatibleBaseUrlForTests(undefined);
