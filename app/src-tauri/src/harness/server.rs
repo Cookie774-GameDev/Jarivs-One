@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
@@ -22,6 +22,8 @@ const MAX_HEALTH_BODY_BYTES: u64 = 4_096;
 const HEALTH_ATTEMPTS: usize = 60;
 const HEALTH_RETRY_DELAY: Duration = Duration::from_millis(100);
 const MAX_START_ATTEMPTS: usize = 3;
+const START_RETRY_DELAYS: [Duration; MAX_START_ATTEMPTS - 1] =
+    [Duration::from_millis(100), Duration::from_millis(250)];
 const MAX_AUTOMATIC_RESTARTS: usize = 2;
 const CRASH_WINDOW: Duration = Duration::from_secs(5 * 60);
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
@@ -232,6 +234,9 @@ impl fmt::Debug for RunningServer {
 struct ServerInner {
     running: Option<RunningServer>,
     starting: bool,
+    start_epoch: u64,
+    starting_executable_id: Option<String>,
+    last_start_failure: Option<(u64, String, ServerFailure)>,
     recent_crashes: VecDeque<Instant>,
     active_streams: BTreeMap<String, ActiveStream>,
 }
@@ -246,6 +251,12 @@ struct ActiveStream {
 #[derive(Default)]
 pub struct OpenCodeServerState {
     inner: Mutex<ServerInner>,
+    start_finished: Condvar,
+}
+
+enum StartClaim {
+    Reused(OpenCodeServerConnection),
+    Start(u64),
 }
 
 struct TemporaryFile {
@@ -262,6 +273,69 @@ impl Drop for TemporaryFile {
 }
 
 impl OpenCodeServerState {
+    fn claim_or_join_start(&self, executable_id: &str) -> Result<StartClaim, ServerFailure> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| failure("OpenCode server state is unavailable."))?;
+        loop {
+            if let Some(connection) = reuse_or_stop_existing(&mut inner, executable_id)? {
+                return Ok(StartClaim::Reused(connection));
+            }
+            if !inner.starting {
+                claim_start(&mut inner)?;
+                inner.start_epoch = inner.start_epoch.wrapping_add(1);
+                inner.starting_executable_id = Some(executable_id.to_string());
+                inner.last_start_failure = None;
+                return Ok(StartClaim::Start(inner.start_epoch));
+            }
+
+            let joined_epoch = inner.start_epoch;
+            let joined_executable_id = inner.starting_executable_id.clone();
+            inner = self
+                .start_finished
+                .wait_while(inner, |state| {
+                    state.starting && state.start_epoch == joined_epoch
+                })
+                .map_err(|_| failure("OpenCode server state is unavailable."))?;
+            if joined_executable_id.as_deref() == Some(executable_id) {
+                if let Some((epoch, failed_executable_id, error)) = &inner.last_start_failure {
+                    if *epoch == joined_epoch && failed_executable_id == executable_id {
+                        return Err(error.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    fn finish_start(
+        &self,
+        epoch: u64,
+        executable_id: &str,
+        result: Result<RunningServer, ServerFailure>,
+    ) -> Result<OpenCodeServerConnection, ServerFailure> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| failure("OpenCode server state is unavailable."))?;
+        inner.starting = false;
+        inner.starting_executable_id = None;
+        let outcome = match result {
+            Ok(running) => {
+                let connection = running.connection.clone();
+                inner.running = Some(running);
+                inner.last_start_failure = None;
+                Ok(connection)
+            }
+            Err(error) => {
+                inner.last_start_failure = Some((epoch, executable_id.to_string(), error.clone()));
+                Err(error)
+            }
+        };
+        self.start_finished.notify_all();
+        outcome
+    }
+
     fn record_crash(&self, now: Instant) -> Result<bool, ServerFailure> {
         let mut inner = self
             .inner
@@ -925,6 +999,10 @@ fn start_server_attempt(
     )
 }
 
+fn start_retry_delay(failed_attempt: usize) -> Option<Duration> {
+    START_RETRY_DELAYS.get(failed_attempt).copied()
+}
+
 fn server_root(app: &AppHandle) -> Result<PathBuf, ServerFailure> {
     app.path()
         .app_local_data_dir()
@@ -937,16 +1015,10 @@ fn ensure_server_internal(
     executable_id: &str,
 ) -> Result<OpenCodeServerConnection, ServerFailure> {
     let server_state = app.state::<OpenCodeServerState>();
-    {
-        let mut inner = server_state
-            .inner
-            .lock()
-            .map_err(|_| failure("OpenCode server state is unavailable."))?;
-        if let Some(connection) = reuse_or_stop_existing(&mut inner, executable_id)? {
-            return Ok(connection);
-        }
-        claim_start(&mut inner)?;
-    }
+    let start_epoch = match server_state.claim_or_join_start(executable_id)? {
+        StartClaim::Reused(connection) => return Ok(connection),
+        StartClaim::Start(epoch) => epoch,
+    };
 
     let result = (|| {
         let runtime = app
@@ -961,7 +1033,7 @@ fn ensure_server_internal(
         fs::create_dir_all(&root)
             .map_err(|_| failure("OpenCode server storage could not be created."))?;
         let mut last_error = failure("OpenCode server could not be started.");
-        for _ in 0..MAX_START_ATTEMPTS {
+        for attempt in 0..MAX_START_ATTEMPTS {
             match start_server_attempt(&runtime, &root, &tool_gateway) {
                 Ok((connection, process)) => {
                     return Ok(RunningServer {
@@ -970,23 +1042,20 @@ fn ensure_server_internal(
                         process,
                     });
                 }
-                Err(error) => last_error = error,
+                Err(error) => {
+                    last_error = error;
+                    if let Some(delay) = start_retry_delay(attempt) {
+                        thread::sleep(delay);
+                    }
+                }
             }
         }
         Err(last_error)
     })();
 
-    let mut inner = server_state
-        .inner
-        .lock()
-        .map_err(|_| failure("OpenCode server state is unavailable."))?;
-    inner.starting = false;
-    match result {
-        Ok(running) => {
-            let connection = running.connection.clone();
+    match server_state.finish_start(start_epoch, executable_id, result) {
+        Ok(connection) => {
             let generation = connection.generation.clone();
-            inner.running = Some(running);
-            drop(inner);
             spawn_crash_watcher(app.clone(), generation);
             Ok(connection)
         }
@@ -1952,13 +2021,13 @@ mod tests {
     use super::{
         build_launch_spec_with, claim_start, event_data, failure, probe_health_once,
         reserve_loopback_port, reuse_or_stop_existing, server_status, sse_frame_boundary,
-        start_server_attempt_with, stop_server, take_crashed_runtime, transport_caller_allowed,
-        transport_route_parts, validate_transport_body, validate_transport_directory,
-        write_scoped_config, ActiveStream, CredentialSource, HealthWaiter, LocalModelSource,
-        OpenCodeServerConnection, OpenCodeServerState, OpenCodeTransportRequest,
-        OpenCodeTransportRoute, OwnedProcess, ProcessLauncher, ResolvedTrustedRuntime,
-        RunningServer, RuntimeSource, ServerFailure, ServerRuntimeEvent, CRASH_WINDOW,
-        MAX_AUTOMATIC_RESTARTS,
+        start_retry_delay, start_server_attempt_with, stop_server, take_crashed_runtime,
+        transport_caller_allowed, transport_route_parts, validate_transport_body,
+        validate_transport_directory, write_scoped_config, ActiveStream, CredentialSource,
+        HealthWaiter, LocalModelSource, OpenCodeServerConnection, OpenCodeServerState,
+        OpenCodeTransportRequest, OpenCodeTransportRoute, OwnedProcess, ProcessLauncher,
+        ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure, ServerRuntimeEvent,
+        StartClaim, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
     };
     use crate::harness::tool_gateway::ToolGatewayEndpoint;
     use base64::Engine as _;
@@ -1967,7 +2036,7 @@ mod tests {
     use std::net::TcpListener;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{mpsc, Arc};
     use std::thread;
     use std::time::{Duration, Instant};
 
@@ -2616,6 +2685,74 @@ mod tests {
             claim_start(&mut inner).unwrap_err().message,
             "OpenCode server startup is already running."
         );
+    }
+
+    #[test]
+    fn concurrent_start_callers_join_and_reuse_the_one_started_process() {
+        let state = Arc::new(OpenCodeServerState::default());
+        let epoch = match state.claim_or_join_start("runtime-a").unwrap() {
+            StartClaim::Start(epoch) => epoch,
+            StartClaim::Reused(_) => panic!("unexpected existing server"),
+        };
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        let waiting_state = Arc::clone(&state);
+        let waiter = thread::spawn(move || {
+            entered_tx.send(()).unwrap();
+            let result = waiting_state
+                .claim_or_join_start("runtime-a")
+                .map(|claim| match claim {
+                    StartClaim::Reused(connection) => connection.generation,
+                    StartClaim::Start(_) => "unexpected-second-start".to_string(),
+                });
+            result_tx.send(result).unwrap();
+        });
+        entered_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(result_rx.recv_timeout(Duration::from_millis(25)).is_err());
+
+        state
+            .finish_start(
+                epoch,
+                "runtime-a",
+                Ok(RunningServer {
+                    executable_id: "runtime-a".to_string(),
+                    connection: connection("http://127.0.0.1:43123".to_string()),
+                    process: fake_process(
+                        43,
+                        Arc::new(AtomicBool::new(false)),
+                        Arc::new(AtomicBool::new(false)),
+                    ),
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(
+            result_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap(),
+            "generation"
+        );
+        waiter.join().unwrap();
+        assert_eq!(
+            state
+                .inner
+                .lock()
+                .unwrap()
+                .running
+                .as_ref()
+                .unwrap()
+                .process
+                .id(),
+            43
+        );
+    }
+
+    #[test]
+    fn startup_backoff_is_bounded_and_only_exists_between_failed_attempts() {
+        assert_eq!(start_retry_delay(0), Some(Duration::from_millis(100)));
+        assert_eq!(start_retry_delay(1), Some(Duration::from_millis(250)));
+        assert_eq!(start_retry_delay(2), None);
     }
 
     #[test]

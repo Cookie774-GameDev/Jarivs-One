@@ -360,7 +360,9 @@ describe('harness runtime manager', () => {
   });
 
   it('invokes explicit install and cancellation and refreshes from the install result', async () => {
-    const native = adapter();
+    const native = adapter({
+      detect: vi.fn().mockResolvedValue({ status: 'missing' }),
+    });
     const manager = createHarnessRuntimeManager(native);
 
     await manager.download();
@@ -373,6 +375,58 @@ describe('harness runtime manager', () => {
     });
     await manager.cancel();
     expect(native.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an already compatible runtime on retry without downloading it again', async () => {
+    const native = adapter({
+      detect: vi.fn().mockResolvedValue({
+        ...readyDetection,
+        status: 'systemCompatible',
+        source: 'system',
+        version: '1.18.21',
+      }),
+      ensureServer: vi.fn().mockResolvedValue({
+        ...readyConnection,
+        source: 'system',
+        version: '1.18.21',
+      }),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    await manager.download();
+
+    expect(native.detect).toHaveBeenCalledTimes(1);
+    expect(native.install).not.toHaveBeenCalled();
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'system',
+      version: '1.18.21',
+    });
+  });
+
+  it('shares one detection, download, and startup across concurrent retry callers', async () => {
+    const detection = deferred<NativeRuntimeDetection>();
+    const installation = deferred<NativeRuntimeDetection>();
+    const native = adapter({
+      detect: vi.fn(() => detection.promise),
+      install: vi.fn(() => installation.promise),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    const first = manager.download();
+    const second = manager.download();
+    expect(first).toBe(second);
+    expect(native.detect).toHaveBeenCalledTimes(1);
+
+    detection.resolve({ status: 'missing' });
+    await settle();
+    expect(native.install).toHaveBeenCalledTimes(1);
+    installation.resolve(readyDetection);
+    await Promise.all([first, second]);
+
+    expect(native.ensureServer).toHaveBeenCalledTimes(1);
+    expect(manager.getSnapshot().kind).toBe('ready');
   });
 
   it('maps cancellation failures without an unhandled rejection', async () => {
@@ -449,7 +503,10 @@ describe('harness runtime manager', () => {
 
   it('preserves the native failed event and supports retry after install rejection', async () => {
     const first = deferred<NativeRuntimeDetection>();
-    const native = adapter({ install: vi.fn(() => first.promise) });
+    const native = adapter({
+      detect: vi.fn().mockResolvedValue({ status: 'missing' }),
+      install: vi.fn(() => first.promise),
+    });
     const manager = createHarnessRuntimeManager(native);
 
     const installing = manager.download();
