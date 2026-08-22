@@ -238,6 +238,80 @@ describe('ContextGateway', () => {
     ).resolves.toMatchObject({ text: 'the bounded source text' });
   });
 
+  it('fails closed when a backend returns duplicate evidence-handle authority', async () => {
+    const port = backend();
+    vi.mocked(port.ask).mockResolvedValueOnce({
+      promptBlock: 'ambiguous evidence',
+      sourceRevisions: [{ sourceId: 'source-1', revision: 'source-v1' }],
+      evidence: [
+        {
+          handle: 'evidence-duplicate',
+          sourceId: 'source-1',
+          sourceRevision: 'source-v1',
+          contentHash: `sha256:${'a'.repeat(64)}`,
+          byteStart: '0',
+          byteEnd: '12',
+          text: 'first source',
+        },
+        {
+          handle: 'evidence-duplicate',
+          sourceId: 'source-1',
+          sourceRevision: 'source-v1',
+          contentHash: `sha256:${'b'.repeat(64)}`,
+          byteStart: '12',
+          byteEnd: '25',
+          text: 'second source',
+        },
+      ],
+      stageTimingsMs: { search: 1 },
+    });
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: () => 'receipt-duplicate',
+    });
+
+    await expect(gateway.ask(baseRequest)).rejects.toMatchObject({
+      name: 'ContextRequiredUnavailableError',
+      receipt: { safeFailure: 'retrieval-failed', evidenceHandles: [] },
+    });
+    await expect(
+      gateway.openEvidence({
+        receiptId: 'receipt-duplicate',
+        handle: 'evidence-duplicate',
+        scope: baseRequest.scope,
+      }),
+    ).rejects.toThrow('missing or expired');
+  });
+
+  it('fails closed when evidence is not bound to an issued source revision', async () => {
+    const port = backend();
+    vi.mocked(port.ask).mockResolvedValueOnce({
+      promptBlock: 'misbound evidence',
+      sourceRevisions: [{ sourceId: 'source-1', revision: 'source-v1' }],
+      evidence: [
+        {
+          handle: 'evidence-misbound',
+          sourceId: 'source-1',
+          sourceRevision: 'source-v2',
+          contentHash: `sha256:${'a'.repeat(64)}`,
+          byteStart: '0',
+          byteEnd: '12',
+          text: 'wrong revision',
+        },
+      ],
+      stageTimingsMs: { search: 1 },
+    });
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: () => 'receipt-misbound',
+    });
+
+    await expect(gateway.ask(baseRequest)).rejects.toMatchObject({
+      name: 'ContextRequiredUnavailableError',
+      receipt: { safeFailure: 'stale-source', evidenceHandles: [] },
+    });
+  });
+
   it('bounds distinct same-scope retrievals and records cancellation-safe queue telemetry', async () => {
     const releases: Array<() => void> = [];
     let now = 100;

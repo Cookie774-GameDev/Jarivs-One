@@ -182,3 +182,8 @@
 - The ADE dispatcher completion contract now requires the actually observed account/workspace/project/worktree revision as well as the actually observed provider/model/effort/Fast identity. A completion from any different scope fails closed, drops its output, and records the existing safe `context-scope-mismatch` lifecycle result.
 - TDD red proved a wrong-worktree completion was previously accepted. Fresh focused/adjacent verification passed 7 files / 44 tests across ADE lifecycle, exact completion identity/scope, shared Gateway policy, terminal linking/revocation, and cancellation. Full TypeScript project verification passed with zero diagnostics.
 - Fresh app-scoped native inspection kept VibeSpace open on Local Models, confirmed Ollama 0.21.0 ready with both registered exact model IDs, and the in-app `llama3.2:latest` compatibility probe completed as `Agent ready` with a safe structured tool-call roundtrip. This supplements, rather than replaces, the earlier 55-minute alternating two-model endurance evidence.
+
+## 2026-08-22 — Evidence-authority ambiguity checkpoint
+
+- The shared Gateway now rejects backend results before caching or receipt issuance when an evidence handle is duplicated or an evidence item is not bound to an exact issued source ID/revision pair. This prevents last-write-wins handle replacement and stale-source evidence from receiving scoped open authority.
+- TDD red proved two different evidence records with one handle previously collapsed into the receipt map. Focused regressions also cover mismatched source revisions. Fresh focused/adjacent verification passed 7 files / 46 tests across Gateway, ADE, production policy, and terminal revocation; the full TypeScript project check remained clean.

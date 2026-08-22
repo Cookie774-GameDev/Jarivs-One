@@ -89,6 +89,22 @@ function sameScope(a: Readonly<ContextScopeRevision>, b: Readonly<ContextScopeRe
   );
 }
 
+function assertUnambiguousEvidenceAuthority(result: Readonly<ContextGatewayBackendResult>): void {
+  const sourceRevisions = new Set(
+    result.sourceRevisions.map(({ sourceId, revision }) => JSON.stringify([sourceId, revision])),
+  );
+  const handles = new Set<string>();
+  for (const evidence of result.evidence) {
+    if (handles.has(evidence.handle)) {
+      throw new Error('Context backend returned a duplicate evidence handle.');
+    }
+    handles.add(evidence.handle);
+    if (!sourceRevisions.has(JSON.stringify([evidence.sourceId, evidence.sourceRevision]))) {
+      throw new Error('Context backend evidence does not match an issued source revision.');
+    }
+  }
+}
+
 function safeFailure(error: unknown): ContextSafeFailure {
   if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
   const message = error instanceof Error ? error.message : String(error);
@@ -451,6 +467,7 @@ export class ContextGateway {
           )
             .then((queued) => {
               if (flightController.signal.aborted) throw abortError();
+              assertUnambiguousEvidenceAuthority(queued.result);
               this.cache.set(key, {
                 expiresAt: this.dependencies.now() + this.cacheTtlMs,
                 result: queued.result,
