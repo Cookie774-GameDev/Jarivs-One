@@ -66,27 +66,47 @@ function eventTimestamp(at: string): number {
   return value;
 }
 
-function receiptSourceRef(
+function eventSourceRefs(
   event: Readonly<ChatGptAdeLifecycleEvent>,
   seed: Readonly<JarvisRun>,
 ): JarvisSourceRef[] {
-  if (event.receiptId === null) return [];
-  if (!SAFE_ID.test(event.receiptId)) {
+  if (
+    (event.receiptId !== null && !SAFE_ID.test(event.receiptId)) ||
+    (event.terminalSessionId !== null && !SAFE_ID.test(event.terminalSessionId)) ||
+    (event.receiptId !== null && event.receiptId === event.terminalSessionId)
+  ) {
     throw new ChatGptAdeHistoryError('event-scope-mismatch');
   }
-  return [
-    Object.freeze({
-      id: event.receiptId,
-      kind: 'context_node' as const,
-      label: 'VibeSpace Context receipt',
-      accountId: seed.accountId,
-      ...(seed.projectId === undefined ? {} : { projectId: seed.projectId }),
-      trust: 'app_verified' as const,
-      origin: 'app_observed' as const,
-      sensitivity: 'private' as const,
-      observedAt: eventTimestamp(event.at),
-    }),
-  ];
+  const common = {
+    accountId: seed.accountId,
+    ...(seed.projectId === undefined ? {} : { projectId: seed.projectId }),
+    trust: 'app_verified' as const,
+    origin: 'app_observed' as const,
+    sensitivity: 'private' as const,
+    observedAt: eventTimestamp(event.at),
+  };
+  const refs: JarvisSourceRef[] = [];
+  if (event.receiptId !== null) {
+    refs.push(
+      Object.freeze({
+        ...common,
+        id: event.receiptId,
+        kind: 'context_node' as const,
+        label: 'VibeSpace Context receipt',
+      }),
+    );
+  }
+  if (event.terminalSessionId !== null) {
+    refs.push(
+      Object.freeze({
+        ...common,
+        id: event.terminalSessionId,
+        kind: 'terminal' as const,
+        label: 'Linked VibeSpace terminal',
+      }),
+    );
+  }
+  return refs;
 }
 
 function transitionEvent(
@@ -100,7 +120,7 @@ function transitionEvent(
     safeSummary: event.safeFailure
       ? `ChatGPT ADE lifecycle: ${event.type} (${event.safeFailure}).`
       : `ChatGPT ADE lifecycle: ${event.type}.`,
-    sourceRefs: receiptSourceRef(event, seed),
+    sourceRefs: eventSourceRefs(event, seed),
     artifactIds: [],
     createdAt: timestamp,
   });

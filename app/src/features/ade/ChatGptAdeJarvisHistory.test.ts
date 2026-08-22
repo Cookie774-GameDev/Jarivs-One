@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import type { JarvisRun } from '@/lib/jarvis/contracts/execution';
+import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import {
   ChatGptAdeHistoryError,
   ChatGptAdeJarvisHistory,
@@ -115,6 +118,53 @@ describe('ChatGptAdeJarvisHistory', () => {
     expect(JSON.stringify(transitions)).not.toContain('terminal-session-secret');
   });
 
+  it('survives a real repository close and reopen with safe receipt provenance', async () => {
+    const name = uniqueTestDbName('chatgpt-ade-history');
+    let database: JarvisDexie | null = createJarvisDb(name, TEST_INDEXED_DB);
+    try {
+      await database.open();
+      const repositories = createJarvisRepositories(database);
+      const history = new ChatGptAdeJarvisHistory(repositories.run, seed);
+      history.recordEvent(lifecycle('preparing-context'));
+      history.recordEvent(lifecycle('dispatching'));
+      history.recordEvent(
+        lifecycle('completed', {
+          terminalSessionId: 'terminal-session-a',
+        }),
+      );
+      await history.flush();
+      database.close();
+
+      database = createJarvisDb(name, TEST_INDEXED_DB);
+      await database.open();
+      const reopened = createJarvisRepositories(database);
+      expect(await reopened.run.getById(seed.accountId, seed.id)).toMatchObject({
+        id: seed.id,
+        source: 'chatgpt_ade',
+        status: 'completed',
+      });
+      const events = await reopened.event.listByRun(seed.accountId, seed.id);
+      expect(events.map((event) => event.status)).toEqual(['compiling', 'running', 'completed']);
+      expect(events[1]?.sourceRefs).toEqual([
+        expect.objectContaining({
+          id: 'receipt-a',
+          kind: 'context_node',
+          accountId: seed.accountId,
+          projectId: seed.projectId,
+          trust: 'app_verified',
+          sensitivity: 'private',
+        }),
+      ]);
+      expect(events[2]?.sourceRefs.map((source) => [source.kind, source.id])).toEqual([
+        ['context_node', 'receipt-a'],
+        ['terminal', 'terminal-session-a'],
+      ]);
+    } finally {
+      database?.close();
+      if (database) await database.delete();
+    }
+  });
+
   it('rejects cross-run events before they enter the durable queue', () => {
     const history = new ChatGptAdeJarvisHistory(repository(), seed);
     expect(() => history.recordEvent(lifecycle('dispatching', { runId: 'ade-run-other' }))).toThrow(
@@ -143,6 +193,35 @@ describe('ChatGptAdeJarvisHistory', () => {
     );
   });
 
+  it('persists an authorized linked terminal as a private source reference', async () => {
+    const repo = repository();
+    const history = new ChatGptAdeJarvisHistory(repo, seed);
+    history.recordEvent(
+      lifecycle('preparing-context', {
+        terminalSessionId: 'terminal-session-a',
+      }),
+    );
+
+    await history.flush();
+
+    expect(repo.compareAndAppendTransitionEvent.mock.calls[0]?.[0].event.sourceRefs).toEqual([
+      {
+        id: 'terminal-session-a',
+        kind: 'terminal',
+        label: 'Linked VibeSpace terminal',
+        accountId: seed.accountId,
+        projectId: seed.projectId,
+        trust: 'app_verified',
+        origin: 'app_observed',
+        sensitivity: 'private',
+        observedAt: 1_725_000_000_000,
+      },
+    ]);
+    expect(repo.compareAndAppendTransitionEvent.mock.calls[0]?.[0].event.safeSummary).not.toContain(
+      'terminal-session-a',
+    );
+  });
+
   it('detaches queued history from caller mutation and rejects unsafe receipt IDs', async () => {
     const repo = repository();
     const history = new ChatGptAdeJarvisHistory(repo, seed);
@@ -160,6 +239,14 @@ describe('ChatGptAdeJarvisHistory', () => {
     unsafe.recordEvent(lifecycle('preparing-context'));
     unsafe.recordEvent(lifecycle('dispatching', { receiptId: 'unsafe receipt' }));
     await expect(unsafe.flush()).rejects.toMatchObject({ code: 'event-scope-mismatch' });
+
+    const unsafeTerminal = new ChatGptAdeJarvisHistory(repository(), seed);
+    unsafeTerminal.recordEvent(
+      lifecycle('preparing-context', { terminalSessionId: 'unsafe terminal' }),
+    );
+    await expect(unsafeTerminal.flush()).rejects.toMatchObject({
+      code: 'event-scope-mismatch',
+    });
   });
 
   it('surfaces a durable transition conflict without dispatching later history', async () => {

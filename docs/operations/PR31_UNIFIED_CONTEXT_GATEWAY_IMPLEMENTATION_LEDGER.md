@@ -235,3 +235,9 @@
 - Added a run-scoped production factory that binds the ADE adapter to the existing Jarvis run repository. It validates the durable account/workspace/project/connection/provider/model selection, persists the queued seed before context work, settles compiling/running history before provider dispatch, and settles the terminal transition before returning.
 - Lifecycle-storage failure now fails closed before provider dispatch as `history-unavailable`. Initial validation or terminal-authorization blocks correctly persist queued -> failed rather than creating a transition conflict.
 - Fresh ADE/Jarvis verification passed 6 files / 505 tests. Exact formatting passed; full typecheck again reports only the same four active, out-of-scope SiYuan test diagnostics and no owned-file diagnostics.
+
+## 2026-08-22 — ADE durable reopen and terminal-link proof
+
+- Added a real fake-IndexedDB/Dexie integration test that writes the complete ADE lifecycle through the production Jarvis repository implementation, closes the database, reopens it, and verifies the `chatgpt_ade` run plus ordered compiling/running/completed events and private receipt provenance.
+- Authorized terminal linkage now persists as a separate app-verified private `terminal` source reference. Receipt and terminal identifiers remain absent from titles/summaries, invalid identifiers and cross-kind ID collisions fail closed, and no terminal permission or credential material is persisted.
+- Fresh ADE/Jarvis verification passed 6 files / 507 tests; the corrected exact-model endurance run reached 33/33 with zero failures across both literal installed Ollama tags at this checkpoint.
