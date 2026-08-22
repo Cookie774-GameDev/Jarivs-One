@@ -379,7 +379,7 @@ export class ContextGateway {
     const generation = this.generations.get(input.requestId) ?? 0;
     const controller = new AbortController();
     this.active.set(input.requestId, { controller, generation });
-    const onExternalAbort = () => controller.abort();
+    const onExternalAbort = () => this.cancel(input.requestId);
     input.signal?.addEventListener('abort', onExternalAbort, { once: true });
     const decisionMs = Math.max(0, this.dependencies.now() - decisionStartedAt);
 

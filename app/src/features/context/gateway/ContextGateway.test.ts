@@ -338,6 +338,33 @@ describe('ContextGateway', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('propagates an external abort to the backend when its last consumer leaves', async () => {
+    let release!: () => void;
+    let backendSignal!: AbortSignal;
+    const port = backend();
+    vi.mocked(port.ask).mockImplementation(async (input) => {
+      backendSignal = input.signal;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { promptBlock: 'late', sourceRevisions: [], evidence: [], stageTimingsMs: {} };
+    });
+    const external = new AbortController();
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: () => 'receipt-1',
+    });
+    const pending = gateway.ask({ ...baseRequest, signal: external.signal });
+    await vi.waitFor(() => expect(port.ask).toHaveBeenCalledTimes(1));
+
+    external.abort();
+    const backendWasAborted = backendSignal.aborted;
+    release();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(backendWasAborted).toBe(true);
+  });
+
   it('fails closed when required context is unavailable even when RLM is off', async () => {
     const port = backend();
     port.available = () => false;
