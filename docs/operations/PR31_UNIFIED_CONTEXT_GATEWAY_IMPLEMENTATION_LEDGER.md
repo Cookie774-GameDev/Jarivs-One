@@ -124,3 +124,10 @@
 - Every open receives an equal deterministic byte allocation, each result is checked against its allocation, the aggregate is checked against the route ceiling, and cancellation is checked before dispatch, after each open, and before returning. A cancelled request rejects late evidence rather than publishing it.
 - TDD red reproduced the bottleneck with one active open where two were required. Focused verification passed 2 files / 10 tests, including bounded concurrency, order, late-cancel rejection, and byte-ceiling failure. The broader owned Gateway/RLM/terminal matrix passed 13 files / 95 tests; only the existing non-fatal jsdom canvas notices were emitted.
 - Full app typecheck reaches only the same four pre-existing diagnostics in actively owned SiYuan tests (`siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`); no owned file produces a diagnostic.
+
+## 2026-08-22 — Bounded deep-subquery search checkpoint
+
+- The production deep investigation worker now honors the existing `maxConcurrentSubcalls` policy for repository searches instead of serializing all three bounded subqueries. Quality mode uses two workers; no new concurrency setting or route authority was introduced.
+- Search retrieval runs concurrently, while candidate accounting and pointer issuance are released in invocation order. Evidence hydration therefore remains deterministic by subquery rank even when the second search completes before the first.
+- Cancellation is checked before each worker dispatch, after the bounded search pool, during hydration, and before return. A cancelled two-search flight does not launch the queued third subquery and cannot publish late evidence.
+- TDD red reproduced one active search where the policy required two. Fresh focused verification passed 2 files / 12 tests; the broader owned Gateway/RLM/terminal matrix passed 13 files / 97 tests. Full typecheck reaches only the same four pre-existing diagnostics in actively owned SiYuan tests; no owned file produces a diagnostic.

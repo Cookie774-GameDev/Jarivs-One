@@ -140,6 +140,93 @@ describe('production Context/RLM adapter', () => {
     expect(retrieveRepository).toHaveBeenCalled();
   });
 
+  it('bounds concurrent deep subquery searches with the existing performance policy', async () => {
+    const gates = Array.from({ length: 3 }, () => {
+      let resolve!: (value: RepositoryRetrievalResult) => void;
+      return {
+        promise: new Promise<RepositoryRetrievalResult>((done) => {
+          resolve = done;
+        }),
+        resolve,
+      };
+    });
+    let active = 0;
+    let maxActive = 0;
+    const retrieveRepository = vi.fn(async () => {
+      const index = retrieveRepository.mock.calls.length - 1;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      const value = await gates[index]!.promise;
+      active -= 1;
+      return value;
+    });
+    const pending = prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'Check the entire project archive and explain the root cause across all files.',
+        settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+      },
+      dependencies(retrieveRepository),
+    );
+
+    try {
+      await vi.waitFor(() => expect(retrieveRepository).toHaveBeenCalledTimes(2));
+      expect(maxActive).toBe(2);
+      gates[1]!.resolve(result('src/second.ts'));
+      gates[0]!.resolve(result('src/first.ts'));
+      await vi.waitFor(() => expect(retrieveRepository).toHaveBeenCalledTimes(3));
+      expect(maxActive).toBe(2);
+      gates[2]!.resolve(result('src/third.ts'));
+
+      const value = await pending;
+      expect(value.route).toBe('rlm');
+      expect(value.childCalls).toBe(3);
+      expect(value.evidence.map((item) => item.text)).toEqual([
+        expect.stringContaining('src/first.ts'),
+        expect.stringContaining('src/second.ts'),
+        expect.stringContaining('src/third.ts'),
+      ]);
+      expect(maxActive).toBe(2);
+    } finally {
+      for (const gate of gates) gate.resolve(result());
+    }
+  });
+
+  it('does not launch another deep subquery after concurrent search cancellation', async () => {
+    const gates = Array.from({ length: 2 }, () => {
+      let resolve!: (value: RepositoryRetrievalResult) => void;
+      return {
+        promise: new Promise<RepositoryRetrievalResult>((done) => {
+          resolve = done;
+        }),
+        resolve,
+      };
+    });
+    const controller = new AbortController();
+    const retrieveRepository = vi.fn(async () => {
+      const index = retrieveRepository.mock.calls.length - 1;
+      return gates[index]!.promise;
+    });
+    const pending = prepareProductionRlmContext(
+      {
+        accountId: 'account-1',
+        projectId: 'project-1',
+        question: 'Check the entire project archive and explain the root cause across all files.',
+        settings: DEFAULT_CHAT_RUNTIME_SETTINGS,
+        signal: controller.signal,
+      },
+      dependencies(retrieveRepository),
+    );
+    await vi.waitFor(() => expect(retrieveRepository).toHaveBeenCalledTimes(2));
+
+    controller.abort();
+    for (const gate of gates) gate.resolve(result());
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(retrieveRepository).toHaveBeenCalledTimes(2);
+  });
+
   it('honors /rlm off without hidden retrieval', async () => {
     const retrieveRepository = vi.fn(async () => result());
     const value = await prepareProductionRlmContext(

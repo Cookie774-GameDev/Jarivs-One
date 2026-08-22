@@ -145,6 +145,7 @@ class RepositoryContextQueryService implements ContextQueryService {
   private readonly hydratedPointers = new Set<string>();
   private pointerSequence = 0;
   private candidateCount = 0;
+  private searchIssuanceTail = Promise.resolve();
 
   constructor(
     private readonly input: Readonly<ProductionRlmContextInput>,
@@ -223,27 +224,44 @@ class RepositoryContextQueryService implements ContextQueryService {
     ) {
       throw new Error('RLM_POINTER_INVALID: context query scope mismatch.');
     }
-    const result = await this.dependencies.retrieveRepository({
-      accountId: this.input.accountId,
-      projectId: this.input.projectId,
-      taskText: input.question,
-      tokenBudget: tokenBudget(this.input.settings, this.route),
-      activePaths: this.input.activePaths,
-      explicitEntityIds: this.input.explicitEntityIds,
+    const previousIssuance = this.searchIssuanceTail;
+    let releaseIssuance!: () => void;
+    this.searchIssuanceTail = new Promise<void>((resolve) => {
+      releaseIssuance = resolve;
     });
-    throwIfCancelled(input.signal ?? this.input.signal);
-    this.candidateCount += result.items.length;
-    const hits: ContextSearchHit[] = [];
-    for (const item of result.items.slice(0, Math.min(MAX_VISIBLE_HITS, input.limit))) {
-      const stored = this.issue(item, result);
-      if (!stored) continue;
-      hits.push({
-        pointer: stored.pointer,
-        preview: `${item.path}: ${item.content.slice(0, 400)}`,
-        score: Math.max(0.1, 1 - hits.length / Math.max(1, result.items.length)),
+    let result: RepositoryRetrievalResult;
+    let retrievalError: unknown;
+    try {
+      result = await this.dependencies.retrieveRepository({
+        accountId: this.input.accountId,
+        projectId: this.input.projectId,
+        taskText: input.question,
+        tokenBudget: tokenBudget(this.input.settings, this.route),
+        activePaths: this.input.activePaths,
+        explicitEntityIds: this.input.explicitEntityIds,
       });
+    } catch (error) {
+      retrievalError = error;
     }
-    return Object.freeze(hits);
+    await previousIssuance;
+    try {
+      if (retrievalError) throw retrievalError;
+      throwIfCancelled(input.signal ?? this.input.signal);
+      this.candidateCount += result!.items.length;
+      const hits: ContextSearchHit[] = [];
+      for (const item of result!.items.slice(0, Math.min(MAX_VISIBLE_HITS, input.limit))) {
+        const stored = this.issue(item, result!);
+        if (!stored) continue;
+        hits.push({
+          pointer: stored.pointer,
+          preview: `${item.path}: ${item.content.slice(0, 400)}`,
+          score: Math.max(0.1, 1 - hits.length / Math.max(1, result!.items.length)),
+        });
+      }
+      return Object.freeze(hits);
+    } finally {
+      releaseIssuance();
+    }
   }
 
   async open(input: {
@@ -278,18 +296,32 @@ function investigationWorker(service: RepositoryContextQueryService): RlmInvesti
   return Object.freeze({
     async investigate(input: RlmInvestigationInput) {
       const queries = subqueries(input.question).slice(0, Math.max(1, input.maxSubcalls));
+      const hitsByQuery = new Array<readonly ContextSearchHit[] | undefined>(queries.length);
+      let nextQueryIndex = 0;
+      const searchWorker = async (): Promise<void> => {
+        while (true) {
+          throwIfCancelled(input.signal);
+          const index = nextQueryIndex++;
+          const query = queries[index];
+          if (!query) return;
+          hitsByQuery[index] = await service.search({
+            question: query,
+            scope: input.scope,
+            limit: Math.max(1, Math.min(3, input.maxSubcalls)),
+            signal: input.signal,
+          });
+        }
+      };
+      const workerCount = Math.min(queries.length, Math.max(1, input.maxConcurrentSubcalls));
+      await Promise.all(Array.from({ length: workerCount }, () => searchWorker()));
+      throwIfCancelled(input.signal);
+
       const evidence: EvidenceSpan[] = [];
       const seen = new Set<string>();
       let evidenceBytes = 0;
-      for (const query of queries) {
+      for (const hits of hitsByQuery) {
         throwIfCancelled(input.signal);
-        const hits = await service.search({
-          question: query,
-          scope: input.scope,
-          limit: Math.max(1, Math.min(3, input.maxSubcalls)),
-          signal: input.signal,
-        });
-        for (const hit of hits) {
+        for (const hit of hits ?? []) {
           if (seen.has(hit.pointer.pointerId)) continue;
           const remaining = input.maxEvidenceBytes - evidenceBytes;
           if (remaining <= 0) break;
