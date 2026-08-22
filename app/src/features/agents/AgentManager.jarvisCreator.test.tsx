@@ -133,7 +133,7 @@ describe('AgentManager Jarvis creator integration', () => {
     expect(screen.getByRole('button', { name: /Save/i })).toHaveProperty('disabled', false);
   });
 
-  it('keeps agent model selection as a connected dropdown without custom id entry', () => {
+  it('keeps the custom-agent editor route-neutral and limits its scope choices', () => {
     useAgentStore.setState({ agents: {}, runStates: {}, verbs: {}, tokens: {} });
     useAgentStore.getState().registerAgent({
       ...baseAgent,
@@ -142,12 +142,17 @@ describe('AgentManager Jarvis creator integration', () => {
 
     render(<AgentManager />);
 
-    const modelField = screen.getByLabelText('Model');
-    expect(modelField.tagName).toBe('SELECT');
-    expect(
-      screen.getByRole('option', { name: 'Gemini 2.5 Flash (gemini-2.5-flash)' }),
-    ).toBeTruthy();
-    expect(screen.queryByRole('checkbox', { name: /Advanced: custom model ID/i })).toBeNull();
-    expect(screen.queryByDisplayValue('legacy-manual-model')).toBeNull();
+    expect(screen.queryByLabelText('Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    expect(screen.queryByLabelText('Reasoning effort')).toBeNull();
+    expect(screen.getByText('Run model')).toBeTruthy();
+    expect(screen.getByText(/does not set a provider, model, or reasoning effort/i)).toBeTruthy();
+
+    const scope = screen.getByLabelText('Scope') as HTMLSelectElement;
+    expect(Array.from(scope.options).map((option) => option.textContent)).toEqual([
+      'Project',
+      'Workspace (approved computer folders)',
+    ]);
+    expect(scope.value).toBe('project');
   });
 });

@@ -398,6 +398,7 @@ export function AgentManager() {
   const accountIdentity = resolveAccountIdentity({ cloudSession, localUserId });
   const currentAccountScopeKey = accountIdentity ? accountScopeKey(accountIdentity) : null;
   const protectedJarvis = selectedAgent ? isProtectedJarvisAgent(selectedAgent) : false;
+  const customAgent = Boolean(selectedAgent && !selectedAgent.builtin);
   const ollamaOptions = useOllamaModelOptions();
 
   React.useEffect(() => {
@@ -569,6 +570,7 @@ export function AgentManager() {
     saveState !== 'saving'
   );
   const agentModelAvailable =
+    customAgent ||
     !draft ||
     draft.providerChoice === 'default' ||
     modelOptions.some((option) => option.id === draft.model);
@@ -686,14 +688,10 @@ export function AgentManager() {
     savingRef.current = true;
     setSaveState('saving');
     setSaveError(null);
+    const customAgentBeingSaved = !selectedAgent.builtin;
     const patch: Partial<Agent> = {
       name: currentDraft.name,
       description: currentDraft.description,
-      model: {
-        ...selectedAgent.model,
-        provider: currentDraft.provider,
-        model: currentDraft.model,
-      },
       temperature: currentDraft.temperature,
       tools_allowed: normalizeUnordered(currentDraft.tools_allowed),
       memory_scope: currentDraft.memory_scope,
@@ -702,12 +700,21 @@ export function AgentManager() {
       max_output_tokens: currentDraft.max_output_tokens ?? undefined,
       color_hue: currentDraft.color_hue ?? undefined,
       emoji: currentDraft.emoji,
-      effort: currentDraft.effort,
-      effort_custom:
-        currentDraft.effort === 'custom' && currentDraft.effort_custom
-          ? { ...currentDraft.effort_custom }
-          : undefined,
       persona: currentDraft.persona,
+      ...(customAgentBeingSaved
+        ? {}
+        : {
+            model: {
+              ...selectedAgent.model,
+              provider: currentDraft.provider,
+              model: currentDraft.model,
+            },
+            effort: currentDraft.effort,
+            effort_custom:
+              currentDraft.effort === 'custom' && currentDraft.effort_custom
+                ? { ...currentDraft.effort_custom }
+                : undefined,
+          }),
     };
     if (!currentProtectedJarvis) patch.system_prompt = currentDraft.system_prompt;
     let agentChangesSaved = false;
@@ -1287,58 +1294,32 @@ export function AgentManager() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="agent-provider">Provider</Label>
-                    <div className="flex items-center gap-2">
-                      <ProviderMark provider={draft.providerChoice} />
-                      <select
-                        id="agent-provider"
-                        value={draft.providerChoice}
-                        onChange={(e) =>
-                          handleProviderChoice(e.target.value as AgentEditorProviderChoice)
-                        }
-                        className={cn(
-                          'flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground',
-                          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                          'transition-colors',
-                        )}
-                      >
-                        {!providerChoiceAvailable && draft.providerChoice !== 'default' ? (
-                          <option value={draft.providerChoice} disabled>
-                            ⚠ {getProviderDisplayName(draft.providerChoice)} — unavailable (current)
-                          </option>
-                        ) : null}
-                        {providerOptions.map((opt) => (
-                          <option key={opt.id} value={opt.id}>
-                            {opt.id === 'ollama' || opt.id === 'local'
-                              ? `● ${opt.label}`
-                              : opt.id === 'default'
-                                ? opt.label
-                                : `☁ ${opt.label}`}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="agent-model">Model</Label>
-                    {draft.providerChoice === 'default' ? (
-                      <p
-                        id="agent-model"
-                        className="flex h-8 items-center gap-2 rounded-md border border-dashed border-border px-2 text-secondary text-muted-foreground"
-                      >
-                        <ProviderMark provider="default" />
-                        Follows Settings → Providers → Default provider
-                      </p>
-                    ) : modelOptions.length > 0 ? (
+                {customAgent ? (
+                  <section
+                    aria-label="Run model"
+                    className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-secondary"
+                  >
+                    <h3 className="font-medium text-foreground">Run model</h3>
+                    <p className="mt-1 text-muted-foreground">
+                      This editor does not set a provider, model, or reasoning effort. The current
+                      authenticated route is resolved when this agent runs.
+                    </p>
+                    <p className="mt-1 text-metadata text-muted-foreground">
+                      Any saved route and effort stay as historical metadata until runtime discloses
+                      the active route.
+                    </p>
+                  </section>
+                ) : (
+                  <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="agent-provider">Provider</Label>
                       <div className="flex items-center gap-2">
                         <ProviderMark provider={draft.providerChoice} />
                         <select
-                          id="agent-model"
-                          value={agentModelAvailable ? draft.model : ''}
+                          id="agent-provider"
+                          value={draft.providerChoice}
                           onChange={(e) =>
-                            setDraft((d) => (d ? { ...d, model: e.target.value } : d))
+                            handleProviderChoice(e.target.value as AgentEditorProviderChoice)
                           }
                           className={cn(
                             'flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground',
@@ -1346,41 +1327,85 @@ export function AgentManager() {
                             'transition-colors',
                           )}
                         >
-                          {!agentModelAvailable ? (
-                            <option value="" disabled>
-                              Select a connected model
+                          {!providerChoiceAvailable && draft.providerChoice !== 'default' ? (
+                            <option value={draft.providerChoice} disabled>
+                              ⚠ {getProviderDisplayName(draft.providerChoice)} — unavailable
+                              (current)
                             </option>
                           ) : null}
-                          {modelOptions.map((opt) => (
+                          {providerOptions.map((opt) => (
                             <option key={opt.id} value={opt.id}>
-                              {opt.label}
-                              {opt.subtitle && opt.subtitle !== opt.label
-                                ? ` (${opt.subtitle})`
-                                : ''}
+                              {opt.id === 'ollama' || opt.id === 'local'
+                                ? `● ${opt.label}`
+                                : opt.id === 'default'
+                                  ? opt.label
+                                  : `☁ ${opt.label}`}
                             </option>
                           ))}
                         </select>
                       </div>
-                    ) : (
-                      <p
-                        id="agent-model"
-                        className="flex min-h-8 items-center gap-2 rounded-md border border-dashed border-accent-copper/35 bg-accent-copper/5 px-2 text-secondary text-muted-foreground"
-                      >
-                        <ProviderMark provider={draft.providerChoice} />
-                        {unavailableMockDefault
-                          ? `This agent is configured for Mock (demo), which is unavailable. Choose ${defaultProviderGuidance} or another connected provider.`
-                          : draft.providerChoice === 'ollama' || draft.providerChoice === 'local'
-                            ? 'No local models found — open Settings → Local Models to download one'
-                            : `Connect ${getProviderDisplayName(draft.providerChoice)} in Settings → Providers to load models`}
-                      </p>
-                    )}
-                    {!agentModelAvailable && modelOptions.length > 0 ? (
-                      <p className="mt-1 text-[11px] text-destructive">
-                        Select one of the connected models before saving this agent.
-                      </p>
-                    ) : null}
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label htmlFor="agent-model">Model</Label>
+                      {draft.providerChoice === 'default' ? (
+                        <p
+                          id="agent-model"
+                          className="flex h-8 items-center gap-2 rounded-md border border-dashed border-border px-2 text-secondary text-muted-foreground"
+                        >
+                          <ProviderMark provider="default" />
+                          Follows Settings → Providers → Default provider
+                        </p>
+                      ) : modelOptions.length > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <ProviderMark provider={draft.providerChoice} />
+                          <select
+                            id="agent-model"
+                            value={agentModelAvailable ? draft.model : ''}
+                            onChange={(e) =>
+                              setDraft((d) => (d ? { ...d, model: e.target.value } : d))
+                            }
+                            className={cn(
+                              'flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground',
+                              'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                              'transition-colors',
+                            )}
+                          >
+                            {!agentModelAvailable ? (
+                              <option value="" disabled>
+                                Select a connected model
+                              </option>
+                            ) : null}
+                            {modelOptions.map((opt) => (
+                              <option key={opt.id} value={opt.id}>
+                                {opt.label}
+                                {opt.subtitle && opt.subtitle !== opt.label
+                                  ? ` (${opt.subtitle})`
+                                  : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <p
+                          id="agent-model"
+                          className="flex min-h-8 items-center gap-2 rounded-md border border-dashed border-accent-copper/35 bg-accent-copper/5 px-2 text-secondary text-muted-foreground"
+                        >
+                          <ProviderMark provider={draft.providerChoice} />
+                          {unavailableMockDefault
+                            ? `This agent is configured for Mock (demo), which is unavailable. Choose ${defaultProviderGuidance} or another connected provider.`
+                            : draft.providerChoice === 'ollama' || draft.providerChoice === 'local'
+                              ? 'No local models found — open Settings → Local Models to download one'
+                              : `Connect ${getProviderDisplayName(draft.providerChoice)} in Settings → Providers to load models`}
+                        </p>
+                      )}
+                      {!agentModelAvailable && modelOptions.length > 0 ? (
+                        <p className="mt-1 text-[11px] text-destructive">
+                          Select one of the connected models before saving this agent.
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-1.5">
                   <Label htmlFor="agent-temp">
@@ -1547,10 +1572,16 @@ export function AgentManager() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="agent-memory-scope">Memory scope</Label>
+                    <Label htmlFor="agent-memory-scope">
+                      {customAgent ? 'Scope' : 'Memory scope'}
+                    </Label>
                     <select
                       id="agent-memory-scope"
-                      value={draft.memory_scope}
+                      value={
+                        customAgent && draft.memory_scope === 'agent'
+                          ? 'project'
+                          : draft.memory_scope
+                      }
                       onChange={(event) =>
                         setDraft((current) =>
                           current
@@ -1563,35 +1594,43 @@ export function AgentManager() {
                       }
                       className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      <option value="agent">Agent</option>
                       <option value="project">Project</option>
-                      <option value="workspace">Workspace</option>
+                      <option value="workspace">Workspace (approved computer folders)</option>
+                      {!customAgent ? <option value="agent">Agent</option> : null}
                     </select>
+                    {customAgent && draft.memory_scope === 'agent' ? (
+                      <p className="text-metadata text-muted-foreground">
+                        Legacy Agent scope is preserved until you explicitly choose Project or
+                        Workspace.
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="agent-effort">Reasoning effort</Label>
-                    <select
-                      id="agent-effort"
-                      value={draft.effort}
-                      onChange={(event) =>
-                        setDraft((current) =>
-                          current
-                            ? {
-                                ...current,
-                                effort: event.target.value as AgentEffort,
-                              }
-                            : current,
-                        )
-                      }
-                      className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    >
-                      {['minimal', 'low', 'medium', 'high', 'max', 'custom'].map((effort) => (
-                        <option key={effort} value={effort}>
-                          {effort}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {!customAgent ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="agent-effort">Reasoning effort</Label>
+                      <select
+                        id="agent-effort"
+                        value={draft.effort}
+                        onChange={(event) =>
+                          setDraft((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  effort: event.target.value as AgentEffort,
+                                }
+                              : current,
+                          )
+                        }
+                        className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        {['minimal', 'low', 'medium', 'high', 'max', 'custom'].map((effort) => (
+                          <option key={effort} value={effort}>
+                            {effort}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
                   <div className="space-y-1.5">
                     <Label htmlFor="agent-persona">Persona</Label>
                     <select

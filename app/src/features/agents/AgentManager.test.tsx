@@ -239,6 +239,7 @@ describe('AgentManager save lifecycle', () => {
     const mockDefaultAgent: Agent = {
       ...baseAgent,
       model: { provider: 'mock', model: 'mock-default' },
+      builtin: true,
     };
     const agentRepo = await repoMocks(mockDefaultAgent);
     useAuthStore.setState({
@@ -273,8 +274,9 @@ describe('AgentManager save lifecycle', () => {
   });
 
   it('keeps a connected provider as a normal available provider', async () => {
-    registerOnly(baseAgent);
-    await repoMocks(baseAgent);
+    const builtinAgent = { ...baseAgent, builtin: true };
+    registerOnly(builtinAgent);
+    await repoMocks(builtinAgent);
 
     render(<AgentManager />);
 
@@ -289,6 +291,7 @@ describe('AgentManager save lifecycle', () => {
     const defaultAgent: Agent = {
       ...baseAgent,
       model: { provider: 'mock', model: 'default-provider' },
+      builtin: true,
     };
     useAuthStore.setState({
       apiKeys: {},
@@ -366,7 +369,7 @@ describe('AgentManager save lifecycle', () => {
     expect(agentRepo.update).not.toHaveBeenCalled();
   });
 
-  it('tracks skills, tools, capabilities, model settings, toggles, and advanced fields', async () => {
+  it('tracks skills, tools, capabilities, scope, toggles, and advanced fields for a custom agent', async () => {
     const agentRepo = await repoMocks();
     render(<AgentManager />);
 
@@ -377,8 +380,7 @@ describe('AgentManager save lifecycle', () => {
     fireEvent.change(screen.getByLabelText('Capabilities'), {
       target: { value: 'writing, planning' },
     });
-    fireEvent.change(screen.getByLabelText('Memory scope'), { target: { value: 'workspace' } });
-    fireEvent.change(screen.getByLabelText('Reasoning effort'), { target: { value: 'high' } });
+    fireEvent.change(screen.getByLabelText('Scope'), { target: { value: 'workspace' } });
     fireEvent.change(screen.getByLabelText('Persona'), { target: { value: 'friday' } });
     fireEvent.change(screen.getByLabelText('Max output tokens'), {
       target: { value: 'custom' },
@@ -397,12 +399,14 @@ describe('AgentManager save lifecycle', () => {
         tools_allowed: ['files.read', 'files.write'],
         capabilities: ['planning', 'writing'],
         memory_scope: 'workspace',
-        effort: 'high',
         persona: 'friday',
         max_output_tokens: 4096,
         color_hue: 210,
       }),
     );
+    const updatePatch = vi.mocked(agentRepo.update).mock.calls[0]?.[1];
+    expect(updatePatch).not.toHaveProperty('model');
+    expect(updatePatch).not.toHaveProperty('effort');
   });
 
   it('persists a selected VibeSpace emoji through the agent repository', async () => {

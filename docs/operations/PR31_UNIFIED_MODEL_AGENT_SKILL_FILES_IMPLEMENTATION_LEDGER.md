@@ -23,3 +23,18 @@
 - Result: proposal review is additive and editor-only; it neither changes provider routing nor creates/installs a skill package. The existing custom-event handoff remains intact for the editor’s separate Save confirmation.
 - Verification carried with the commit: focused suite 22/22 passed, exit 0. Repository-wide typecheck is not recorded as passing because its two attempted runs were interrupted before a final exit; branch-level/native acceptance remains external to this completed slice.
 - Lock state: released only `VS-CODEX-ROOT-UNIFIED-MODEL-AGENT-SKILL-FILES-20260822`; all other active locks and worktree changes remain untouched.
+
+## 2026-08-22 — Slice 4 custom-agent editor claim
+
+- Agent/task: `VS-CODEX-ROOT-UNIFIED-CUSTOM-AGENT-SCOPE-20260822` / `PR31-UNIFIED-CUSTOM-AGENT-SCOPE-EDITOR`.
+- Branch/base: `integration/UnifiedChungus-final` at `ac53fdda2470b2027b30c6df28b3e40852e8fdaa`; upstream `origin/UnifiedChungus`; concurrent dirty work remains preserved. No merge, rebase, or cherry-pick is active.
+- Exact source/test ownership: `AgentManager.tsx`, its general and Jarvis-creator tests, this ledger, and this lock. The custom-agent editor is the smallest independent plan slice available while shared Composer/catalog/runtime/Schedule paths retain active ownership or uncommitted changes.
+- Intent: hide editable provider/model and reasoning effort only for non-built-in agents, preserve historical stored values without a silent migration, offer only `Project` or `Workspace (approved computer folders)` for new scope choices, and state accurately that model/effort resolution happens at run time outside this editor. Built-in agent behavior and all route/provider/runtime code remain untouched.
+
+## 2026-08-22 — Slice 4 implementation and verification checkpoint
+
+- Root cause: `AgentManager` rendered provider/model/effort controls for every agent and rejected a save when any stored model was absent from the current catalog. That made legacy custom-agent route metadata both editable and capable of blocking unrelated custom-agent edits.
+- Owned implementation: explicit custom-agent views now show a route-neutral run-model disclosure, remove the editable provider/model/reasoning-effort controls, and constrain new scope choices to `Project` and `Workspace (approved computer folders)`. Custom-agent saves intentionally omit `model`, `effort`, and `effort_custom`, preserving historical values through the repository merge. Built-in editor behavior remains in its existing branch.
+- Fresh focused verification: `npx vitest run src/features/agents/AgentManager.jarvisCreator.test.tsx --reporter=verbose` — **4/4 passed**, exit 0; `npx vitest run src/features/agents/AgentManager.test.tsx -t "tracks skills, tools, capabilities, scope, toggles, and advanced fields for a custom agent" --reporter=verbose` — **1/1 selected passed**, exit 0 (2026-08-22 local).
+- Broader test evidence: the full `AgentManager.test.tsx` run reached the new custom-agent test successfully but reported protected-JARVIS profile lifecycle failures because that protected built-in's stored route is rejected by existing live-catalog validation before its profile save. This occurs in the pre-existing built-in/provider-validation path, outside this slice's claimed custom-editor boundary; no runtime/catalog change was made here.
+- Typecheck: `npm run typecheck` was started twice in `app/`, but this environment ended output at the 30-second command boundary before an exit result. It is therefore not claimed as passing. Native QA was not run; no browser substitute is claimed.
