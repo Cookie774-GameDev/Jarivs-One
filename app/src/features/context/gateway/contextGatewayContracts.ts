@@ -92,8 +92,7 @@ export interface ContextPolicyDecision {
   safeFailure: ContextSafeFailure | null;
 }
 
-export interface ContextGatewayRequest
-  extends Omit<ContextPolicyInput, 'gatewayAvailable'> {
+export interface ContextGatewayRequest extends Omit<ContextPolicyInput, 'gatewayAvailable'> {
   requestId: string;
   question: string;
   executionIdentity: Readonly<ExecutionIdentity>;
@@ -137,7 +136,9 @@ export interface ContextGatewayBackendResult {
 
 export interface ContextGatewayBackend {
   available(): boolean;
-  ask(input: Readonly<ContextGatewayBackendRequest>): Promise<Readonly<ContextGatewayBackendResult>>;
+  ask(
+    input: Readonly<ContextGatewayBackendRequest>,
+  ): Promise<Readonly<ContextGatewayBackendResult>>;
 }
 
 export interface ContextReceipt {
@@ -151,6 +152,8 @@ export interface ContextReceipt {
   sourceRevisions: readonly Readonly<ContextSourceRevision>[];
   evidenceHandles: readonly string[];
   cacheStatus: 'miss' | 'hit' | 'shared' | 'not-applicable';
+  /** Number of same-scope retrieval flights waiting ahead when this flight entered the queue. */
+  queueDepthAtStart: number;
   stageTimingsMs: Readonly<Record<string, number>>;
   cancellationGeneration: number;
   safeFailure: ContextSafeFailure | null;

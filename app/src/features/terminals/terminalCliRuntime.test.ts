@@ -134,6 +134,7 @@ function dependencies(): TerminalCliRuntimeDependencies {
         sourceRevisions: [{ sourceId: 'source-1', revision: 'source-v1' }],
         evidenceHandles: ['pointer-1'],
         cacheStatus: 'miss' as const,
+        queueDepthAtStart: 0,
         stageTimingsMs: { retrieval: 12 },
         cancellationGeneration: 0,
         safeFailure: null,

@@ -17,6 +17,7 @@ interface ContextGatewayDependencies {
   now(): number;
   createId(): string;
   cacheTtlMs?: number;
+  maxConcurrentPerScope?: number;
 }
 
 interface CachedResult {
@@ -27,7 +28,33 @@ interface CachedResult {
 interface InflightResult {
   controller: AbortController;
   consumers: Set<string>;
-  promise: Promise<Readonly<ContextGatewayBackendResult>>;
+  promise: Promise<Readonly<QueuedBackendResult>>;
+}
+
+interface QueuedBackendResult {
+  result: Readonly<ContextGatewayBackendResult>;
+  queueDepthAtStart: number;
+  queueWaitMs: number;
+}
+
+interface ScopeQueueWaiter {
+  startedAt: number;
+  queueDepthAtStart: number;
+  signal: AbortSignal;
+  onAbort: () => void;
+  resolve: (permit: ScopeQueuePermit) => void;
+  reject: (error: DOMException) => void;
+}
+
+interface ScopeQueueState {
+  active: number;
+  waiters: ScopeQueueWaiter[];
+}
+
+interface ScopeQueuePermit {
+  queueDepthAtStart: number;
+  queueWaitMs: number;
+  release(): void;
 }
 
 interface ActiveRequest {
@@ -48,8 +75,13 @@ function abortError(): DOMException {
 }
 
 function sameScope(a: Readonly<ContextScopeRevision>, b: Readonly<ContextScopeRevision>): boolean {
-  return a.accountId === b.accountId && a.workspaceId === b.workspaceId &&
-    a.projectId === b.projectId && a.worktreeId === b.worktreeId && a.revision === b.revision;
+  return (
+    a.accountId === b.accountId &&
+    a.workspaceId === b.workspaceId &&
+    a.projectId === b.projectId &&
+    a.worktreeId === b.worktreeId &&
+    a.revision === b.revision
+  );
 }
 
 function safeFailure(error: unknown): ContextSafeFailure {
@@ -68,7 +100,9 @@ function immutableIdentity<T extends object>(value: Readonly<T>): Readonly<T> {
 
 export class ContextRequiredUnavailableError extends Error {
   constructor(public readonly receipt: Readonly<ContextReceipt>) {
-    super(`Required VibeSpace context is unavailable (${receipt.safeFailure ?? 'retrieval-failed'}).`);
+    super(
+      `Required VibeSpace context is unavailable (${receipt.safeFailure ?? 'retrieval-failed'}).`,
+    );
     this.name = 'ContextRequiredUnavailableError';
   }
 }
@@ -79,13 +113,16 @@ export class ContextGateway {
   private readonly generations = new Map<string, number>();
   private readonly active = new Map<string, ActiveRequest>();
   private readonly receiptEvidence = new Map<string, ReceiptEvidence>();
+  private readonly scopeQueues = new Map<string, ScopeQueueState>();
   private readonly cacheTtlMs: number;
+  private readonly maxConcurrentPerScope: number;
 
   constructor(
     private readonly backend: Readonly<ContextGatewayBackend>,
     private readonly dependencies: Readonly<ContextGatewayDependencies>,
   ) {
     this.cacheTtlMs = Math.max(0, dependencies.cacheTtlMs ?? 30_000);
+    this.maxConcurrentPerScope = Math.max(1, Math.floor(dependencies.maxConcurrentPerScope ?? 4));
   }
 
   prepareTurn(input: Readonly<ContextGatewayRequest>): Promise<Readonly<PreparedContextTurn>> {
@@ -121,13 +158,22 @@ export class ContextGateway {
     return evidence;
   }
 
-  verifyRequiredReceipt(input: Readonly<VerifyContextReceiptRequest>): Readonly<ContextReceipt> | null {
+  verifyRequiredReceipt(
+    input: Readonly<VerifyContextReceiptRequest>,
+  ): Readonly<ContextReceipt> | null {
     const record = this.receiptEvidence.get(input.receiptId);
-    if (!record || record.requestId !== input.requestId || !sameScope(record.scope, input.scope)) return null;
+    if (!record || record.requestId !== input.requestId || !sameScope(record.scope, input.scope))
+      return null;
     const receipt = record.receipt;
     if (!receipt.required || receipt.safeFailure !== null) return null;
-    if ((this.generations.get(input.requestId) ?? 0) !== receipt.cancellationGeneration) return null;
-    const strength = receipt.route === 'deep' ? 2 : receipt.route === 'focused' || receipt.route === 'exact' ? 1 : 0;
+    if ((this.generations.get(input.requestId) ?? 0) !== receipt.cancellationGeneration)
+      return null;
+    const strength =
+      receipt.route === 'deep'
+        ? 2
+        : receipt.route === 'focused' || receipt.route === 'exact'
+          ? 1
+          : 0;
     const minimum = input.minimumRoute === 'deep' ? 2 : 1;
     return strength >= minimum ? receipt : null;
   }
@@ -143,6 +189,109 @@ export class ContextGateway {
     });
   }
 
+  private scopeQueueKey(scope: Readonly<ContextScopeRevision>): string {
+    return JSON.stringify(scope);
+  }
+
+  private createScopePermit(
+    key: string,
+    queueDepthAtStart: number,
+    queueWaitMs: number,
+  ): ScopeQueuePermit {
+    let released = false;
+    return {
+      queueDepthAtStart,
+      queueWaitMs,
+      release: () => {
+        if (released) return;
+        released = true;
+        this.releaseScopePermit(key);
+      },
+    };
+  }
+
+  private releaseScopePermit(key: string): void {
+    const state = this.scopeQueues.get(key);
+    if (!state) return;
+    while (state.waiters.length > 0) {
+      const waiter = state.waiters.shift()!;
+      waiter.signal.removeEventListener('abort', waiter.onAbort);
+      if (waiter.signal.aborted) continue;
+      waiter.resolve(
+        this.createScopePermit(
+          key,
+          waiter.queueDepthAtStart,
+          Math.max(0, this.dependencies.now() - waiter.startedAt),
+        ),
+      );
+      return;
+    }
+    state.active = Math.max(0, state.active - 1);
+    if (state.active === 0) this.scopeQueues.delete(key);
+  }
+
+  private acquireScopePermit(
+    scope: Readonly<ContextScopeRevision>,
+    signal: AbortSignal,
+  ): Promise<ScopeQueuePermit> {
+    if (signal.aborted) return Promise.reject(abortError());
+    const key = this.scopeQueueKey(scope);
+    const state = this.scopeQueues.get(key) ?? { active: 0, waiters: [] };
+    this.scopeQueues.set(key, state);
+    if (state.active < this.maxConcurrentPerScope) {
+      state.active += 1;
+      return Promise.resolve(this.createScopePermit(key, 0, 0));
+    }
+
+    const startedAt = this.dependencies.now();
+    const queueDepthAtStart = state.waiters.length + 1;
+    return new Promise<ScopeQueuePermit>((resolve, reject) => {
+      const waiter = {} as ScopeQueueWaiter;
+      waiter.startedAt = startedAt;
+      waiter.queueDepthAtStart = queueDepthAtStart;
+      waiter.signal = signal;
+      waiter.resolve = resolve;
+      waiter.reject = reject;
+      waiter.onAbort = () => {
+        const index = state.waiters.indexOf(waiter);
+        if (index >= 0) state.waiters.splice(index, 1);
+        signal.removeEventListener('abort', waiter.onAbort);
+        reject(abortError());
+      };
+      state.waiters.push(waiter);
+      signal.addEventListener('abort', waiter.onAbort, { once: true });
+    });
+  }
+
+  private async runBackendWithPermit(
+    input: Readonly<ContextGatewayRequest>,
+    route: Exclude<ReturnType<typeof decideContextPolicy>['route'], 'direct'>,
+    generation: number,
+    signal: AbortSignal,
+  ): Promise<Readonly<QueuedBackendResult>> {
+    const permit = await this.acquireScopePermit(input.scope, signal);
+    try {
+      const result = await this.backend.ask({
+        route,
+        question: input.question,
+        scope: input.scope,
+        performance: input.performance,
+        activePaths: input.activePaths,
+        exactIdentifiers: input.exactIdentifiers,
+        cancellationGeneration: generation,
+        signal,
+      });
+      if (signal.aborted) throw abortError();
+      return Object.freeze({
+        result,
+        queueDepthAtStart: permit.queueDepthAtStart,
+        queueWaitMs: permit.queueWaitMs,
+      });
+    } finally {
+      permit.release();
+    }
+  }
+
   private receipt(
     input: Readonly<ContextGatewayRequest>,
     decision: ReturnType<typeof decideContextPolicy>,
@@ -150,6 +299,7 @@ export class ContextGateway {
     cacheStatus: ContextReceipt['cacheStatus'],
     sourceRevisions: ContextReceipt['sourceRevisions'],
     evidenceHandles: readonly string[],
+    queueDepthAtStart: number,
     stageTimingsMs: Readonly<Record<string, number>>,
     failure: ContextSafeFailure | null,
   ): Readonly<ContextReceipt> {
@@ -164,6 +314,7 @@ export class ContextGateway {
       sourceRevisions: Object.freeze(sourceRevisions.map((item) => immutableIdentity(item))),
       evidenceHandles: Object.freeze([...evidenceHandles]),
       cacheStatus,
+      queueDepthAtStart,
       stageTimingsMs: immutableIdentity(stageTimingsMs),
       cancellationGeneration: generation,
       safeFailure: failure,
@@ -171,7 +322,9 @@ export class ContextGateway {
     });
   }
 
-  private async execute(input: Readonly<ContextGatewayRequest>): Promise<Readonly<PreparedContextTurn>> {
+  private async execute(
+    input: Readonly<ContextGatewayRequest>,
+  ): Promise<Readonly<PreparedContextTurn>> {
     const decisionStartedAt = this.dependencies.now();
     const available = this.backend.available();
     const decision = decideContextPolicy({ ...input, gatewayAvailable: available });
@@ -186,7 +339,14 @@ export class ContextGateway {
       if (controller.signal.aborted || input.signal?.aborted) throw abortError();
       if (decision.decision === 'blocked-context-unavailable') {
         const receipt = this.receipt(
-          input, decision, generation, 'not-applicable', [], [], { decision: decisionMs },
+          input,
+          decision,
+          generation,
+          'not-applicable',
+          [],
+          [],
+          0,
+          { decision: decisionMs },
           decision.safeFailure,
         );
         throw new ContextRequiredUnavailableError(receipt);
@@ -194,10 +354,20 @@ export class ContextGateway {
       if (decision.route === 'direct') {
         return Object.freeze({
           promptBlock: '',
-          receipt: this.receipt(input, decision, generation, 'not-applicable', [], [], {
-            decision: decisionMs,
-            total: decisionMs,
-          }, null),
+          receipt: this.receipt(
+            input,
+            decision,
+            generation,
+            'not-applicable',
+            [],
+            [],
+            0,
+            {
+              decision: decisionMs,
+              total: decisionMs,
+            },
+            null,
+          ),
         });
       }
 
@@ -206,6 +376,8 @@ export class ContextGateway {
       if (active) active.cacheKey = key;
       let cacheStatus: ContextReceipt['cacheStatus'];
       let backendResult: Readonly<ContextGatewayBackendResult>;
+      let queueDepthAtStart = 0;
+      let queueWaitMs = 0;
       const cached = this.cache.get(key);
       if (cached && cached.expiresAt >= this.dependencies.now()) {
         cacheStatus = 'hit';
@@ -219,30 +391,36 @@ export class ContextGateway {
         } else {
           cacheStatus = 'miss';
           const flightController = new AbortController();
-          const promise = this.backend.ask({
-            route: decision.route,
-            question: input.question,
-            scope: input.scope,
-            performance: input.performance,
-            activePaths: input.activePaths,
-            exactIdentifiers: input.exactIdentifiers,
-            cancellationGeneration: generation,
-            signal: flightController.signal,
-          }).then((result) => {
-            if (flightController.signal.aborted) throw abortError();
-            this.cache.set(key, { expiresAt: this.dependencies.now() + this.cacheTtlMs, result });
-            return result;
-          }).finally(() => this.inflight.delete(key));
+          const promise = this.runBackendWithPermit(
+            input,
+            decision.route,
+            generation,
+            flightController.signal,
+          )
+            .then((queued) => {
+              if (flightController.signal.aborted) throw abortError();
+              this.cache.set(key, {
+                expiresAt: this.dependencies.now() + this.cacheTtlMs,
+                result: queued.result,
+              });
+              return queued;
+            })
+            .finally(() => this.inflight.delete(key));
           flight = { controller: flightController, consumers: new Set([input.requestId]), promise };
           this.inflight.set(key, flight);
         }
-        backendResult = await flight.promise;
+        const queued = await flight.promise;
+        backendResult = queued.result;
+        queueDepthAtStart = queued.queueDepthAtStart;
+        queueWaitMs = queued.queueWaitMs;
       }
 
       if (
-        controller.signal.aborted || input.signal?.aborted ||
+        controller.signal.aborted ||
+        input.signal?.aborted ||
         (this.generations.get(input.requestId) ?? 0) !== generation
-      ) throw abortError();
+      )
+        throw abortError();
 
       const receipt = this.receipt(
         input,
@@ -251,14 +429,17 @@ export class ContextGateway {
         cacheStatus,
         backendResult.sourceRevisions,
         backendResult.evidence.map(({ handle }) => handle),
-        { decision: decisionMs, ...backendResult.stageTimingsMs },
+        queueDepthAtStart,
+        { decision: decisionMs, ...backendResult.stageTimingsMs, queueWait: queueWaitMs },
         null,
       );
       this.receiptEvidence.set(receipt.receiptId, {
         requestId: input.requestId,
         receipt,
         scope: receipt.scopeRevision,
-        evidence: new Map(backendResult.evidence.map((item) => [item.handle, immutableIdentity(item)])),
+        evidence: new Map(
+          backendResult.evidence.map((item) => [item.handle, immutableIdentity(item)]),
+        ),
       });
       return Object.freeze({ promptBlock: backendResult.promptBlock, receipt });
     } catch (error) {
@@ -266,10 +447,22 @@ export class ContextGateway {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
       const failure = safeFailure(error);
       const failureDecision = decision.required
-        ? Object.freeze({ ...decision, decision: 'blocked-context-unavailable' as const, safeFailure: failure })
+        ? Object.freeze({
+            ...decision,
+            decision: 'blocked-context-unavailable' as const,
+            safeFailure: failure,
+          })
         : decision;
       const receipt = this.receipt(
-        input, failureDecision, generation, 'not-applicable', [], [], { decision: decisionMs }, failure,
+        input,
+        failureDecision,
+        generation,
+        'not-applicable',
+        [],
+        [],
+        0,
+        { decision: decisionMs },
+        failure,
       );
       if (decision.required) throw new ContextRequiredUnavailableError(receipt);
       return Object.freeze({ promptBlock: '', receipt });
