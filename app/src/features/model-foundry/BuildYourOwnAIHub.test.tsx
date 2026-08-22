@@ -155,6 +155,46 @@ describe('BuildYourOwnAIHub', () => {
     expect(screen.queryByText(/Q4_K_M \(4-bit inference\)/)).toBeNull();
   });
 
+  it('exposes validated reproducible settings for weight training', () => {
+    render(
+      <BuildYourOwnAIHub
+        open
+        onOpenChange={vi.fn()}
+        trainingWorker={{
+          installed: true,
+          attested: true,
+          localOnly: true,
+          protocol: 1,
+          sourceSha256: 'a'.repeat(64),
+          python: 'python',
+          methods: ['lora', 'qlora', 'full'],
+          modalities: ['text'],
+          precisions: ['bf16'],
+          reason: null,
+        }}
+        verifiedTrainingModels={[
+          {
+            ...verifiedModel,
+            installed: true,
+            verified: true,
+            installedBytes: verifiedModel.downloadBytes,
+            status: 'ready',
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^LoRA fine-tuning/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect((screen.getByLabelText('Seed') as HTMLInputElement).value).toBe('7');
+    expect((screen.getByLabelText('Learning rate') as HTMLInputElement).value).toBe('0.0002');
+    expect((screen.getByLabelText('LoRA rank') as HTMLInputElement).value).toBe('16');
+    fireEvent.change(screen.getByLabelText('Learning rate'), { target: { value: '' } });
+    expect(screen.getByText(/Learning rate must be/)).toBeTruthy();
+  });
+
   it('resumes an interrupted weight job only when native checkpoint evidence exists', async () => {
     const interrupted = {
       id: 'job_resume123',

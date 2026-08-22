@@ -3,6 +3,7 @@ import {
   classifySource,
   compatibleModels,
   defaultFoundryTrainingConfiguration,
+  validateFoundryTrainingConfiguration,
   formatFoundryStorageBytes,
   foundryModelOptions,
   newlyCompletedJobId,
@@ -40,6 +41,15 @@ describe('model foundry domain', () => {
       loraDropout: 0.05,
     });
     expect(defaultFoundryTrainingConfiguration('full').learningRate).toBe(0.00002);
+    expect(
+      validateFoundryTrainingConfiguration(defaultFoundryTrainingConfiguration('lora')),
+    ).toBeNull();
+    expect(
+      validateFoundryTrainingConfiguration({
+        ...defaultFoundryTrainingConfiguration('qlora'),
+        learningRate: Number.NaN,
+      }),
+    ).toMatch(/Learning rate/);
   });
 
   it('recommends the strongest model that genuinely fits', () => {

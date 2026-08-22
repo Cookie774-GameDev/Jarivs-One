@@ -226,6 +226,60 @@ pub struct FoundryHardwareProfile {
     recommended_storage_root: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WeightTrainingRequirements {
+    vram_gb: f64,
+    ram_gb: f64,
+    storage_gb: f64,
+}
+
+fn weight_training_requirements(method: &str, parameters_b: f64) -> WeightTrainingRequirements {
+    let parameters_b = parameters_b.max(0.1);
+    match method {
+        "qlora" => WeightTrainingRequirements {
+            vram_gb: (parameters_b * 4.0).max(6.0).ceil(),
+            ram_gb: (parameters_b * 12.0).max(16.0).ceil(),
+            storage_gb: (parameters_b * 8.0).max(10.0).ceil(),
+        },
+        "lora" => WeightTrainingRequirements {
+            vram_gb: (parameters_b * 8.0).max(8.0).ceil(),
+            ram_gb: (parameters_b * 16.0).max(16.0).ceil(),
+            storage_gb: (parameters_b * 12.0).max(12.0).ceil(),
+        },
+        _ => WeightTrainingRequirements {
+            vram_gb: (parameters_b * 16.0).max(12.0).ceil(),
+            ram_gb: (parameters_b * 32.0).max(32.0).ceil(),
+            storage_gb: (parameters_b * 40.0).max(30.0).ceil(),
+        },
+    }
+}
+
+fn validate_weight_hardware(
+    method: &str,
+    hardware: &FoundryHardwareProfile,
+    requirements: WeightTrainingRequirements,
+) -> Result<(), String> {
+    if hardware.free_storage_gb < requirements.storage_gb {
+        return Err(format!(
+            "{method} training requires about {} GB free managed storage; {:.1} GB is available at {}.",
+            requirements.storage_gb, hardware.free_storage_gb, hardware.storage_root
+        ));
+    }
+    if method == "qlora" && hardware.vram_gb < requirements.vram_gb {
+        return Err(format!(
+            "QLoRA requires about {} GB verified CUDA VRAM; {:.1} GB is available.",
+            requirements.vram_gb, hardware.vram_gb
+        ));
+    }
+    if hardware.vram_gb < requirements.vram_gb && hardware.ram_gb < requirements.ram_gb {
+        return Err(format!(
+            "{method} training requires about {} GB VRAM or {} GB system RAM; this machine reports {:.1} GB VRAM and {:.1} GB RAM.",
+            requirements.vram_gb, requirements.ram_gb, hardware.vram_gb, hardware.ram_gb
+        ));
+    }
+    Ok(())
+}
+
 fn parse_nvidia_smi_csv(value: &str) -> Option<(String, f64)> {
     value.lines().find_map(|line| {
         let (name, memory_mib) = line.rsplit_once(',')?;
@@ -1148,6 +1202,10 @@ pub fn model_foundry_start_training(
         } else if request.schema_version == Some(2) {
             return Err("TrainingRequestV2 requires an explicit training configuration.".into());
         }
+        let parameters_b =
+            crate::model_foundry_training::training_model_parameters_b(&request.base_model_id)?;
+        let requirements = weight_training_requirements(&request.method, parameters_b);
+        validate_weight_hardware(&request.method, &detect_hardware(&app)?, requirements)?;
     }
     let inline_dataset = request
         .dataset_jsonl
@@ -1879,6 +1937,35 @@ mod tests {
         assert_eq!(parsed.0, "NVIDIA GeForce RTX 4050 Laptop GPU");
         assert!((parsed.1 - 5.997).abs() < 0.01);
         assert!(parse_nvidia_smi_csv("not a device").is_none());
+    }
+
+    #[test]
+    fn weight_training_preflight_fails_closed_on_storage_and_cuda_vram() {
+        let qlora = weight_training_requirements("qlora", 1.5);
+        assert_eq!(qlora.vram_gb, 6.0);
+        assert_eq!(qlora.ram_gb, 18.0);
+        assert_eq!(qlora.storage_gb, 12.0);
+        let mut hardware = FoundryHardwareProfile {
+            cpu: "test".into(),
+            gpu: Some("test GPU".into()),
+            ram_gb: 64.0,
+            vram_gb: 5.9,
+            free_storage_gb: 100.0,
+            os: "test".into(),
+            accelerators: vec!["CUDA".into()],
+            storage_root: "C:\\Foundry".into(),
+            recommended_storage_root: Some("D:\\Foundry".into()),
+        };
+        assert!(validate_weight_hardware("qlora", &hardware, qlora)
+            .unwrap_err()
+            .contains("CUDA VRAM"));
+        hardware.vram_gb = 6.0;
+        hardware.free_storage_gb = 11.9;
+        assert!(validate_weight_hardware("qlora", &hardware, qlora)
+            .unwrap_err()
+            .contains("managed storage"));
+        hardware.free_storage_gb = 12.0;
+        validate_weight_hardware("qlora", &hardware, qlora).unwrap();
     }
 
     #[test]

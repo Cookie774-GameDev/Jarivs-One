@@ -400,6 +400,14 @@ pub(crate) fn training_model_id_allowed(base_model_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn training_model_parameters_b(base_model_id: &str) -> Result<f64, String> {
+    training_catalog()?
+        .into_iter()
+        .find(|model| model.id == base_model_id)
+        .map(|model| model.parameters_b)
+        .ok_or_else(|| "The selected model has no verified local training manifest.".to_string())
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrainingWorkerStatus {

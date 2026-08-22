@@ -20,7 +20,9 @@ import {
   planLocalTrainingMethod,
   saveJobs,
   TRAINABLE_MODELS,
+  validateFoundryTrainingConfiguration,
   type ClassifiedSource,
+  type FoundryTrainingConfiguration,
   type FoundryJob,
   type HardwareProfile,
   type TrainingMethod,
@@ -46,6 +48,10 @@ interface Props {
 }
 
 const steps = ['Purpose', 'Base model', 'Identity', 'Sources', 'Review', 'Train'] as const;
+
+function numericInputValue(value: number): number | '' {
+  return Number.isFinite(value) ? value : '';
+}
 
 export async function detectHardware(): Promise<HardwareProfile> {
   try {
@@ -89,6 +95,9 @@ export function BuildYourOwnAIHub({
 }: Props) {
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState<TrainingMethod>('knowledge');
+  const [trainingConfig, setTrainingConfig] = React.useState<FoundryTrainingConfiguration>(() =>
+    defaultFoundryTrainingConfiguration('lora'),
+  );
   const [purpose, setPurpose] = React.useState('');
   const [name, setName] = React.useState('');
   const [description, setDescription] = React.useState('');
@@ -276,7 +285,8 @@ export function BuildYourOwnAIHub({
       : validationError) ??
     (!selectedModelInstalled
       ? `Download and verify ${selectedModel.label} before local processing.`
-      : null);
+      : null) ??
+    (method === 'knowledge' ? null : validateFoundryTrainingConfiguration(trainingConfig));
 
   const addSources = (files: FileList | null) => {
     if (!files) return;
@@ -329,7 +339,7 @@ export function BuildYourOwnAIHub({
           method,
           ...(method === 'knowledge'
             ? {}
-            : { trainingConfig: defaultFoundryTrainingConfiguration(method) }),
+            : { trainingConfig: { ...trainingConfig, method } }),
           sourcePaths: sources
             .filter((source) => source.use !== 'unsupported')
             .map((source) => source.path)
@@ -622,7 +632,12 @@ export function BuildYourOwnAIHub({
                       key={id}
                       type="button"
                       disabled={!availability.available}
-                      onClick={() => setMethod(id)}
+                      onClick={() => {
+                        setMethod(id);
+                        if (id !== 'knowledge') {
+                          setTrainingConfig(defaultFoundryTrainingConfiguration(id));
+                        }
+                      }}
                       className={cn(
                         'rounded-lg border p-4 text-left disabled:cursor-not-allowed disabled:opacity-60',
                         method === id ? 'border-accent-cyan bg-accent-cyan/10' : 'border-border',
@@ -875,6 +890,199 @@ export function BuildYourOwnAIHub({
                   placeholder="This does not train weights."
                 />
               </div>
+              {method !== 'knowledge' && (
+                <details className="rounded-lg border border-border p-4" open>
+                  <summary className="cursor-pointer font-semibold">
+                    Reproducible training settings
+                  </summary>
+                  <p className="mt-2 text-secondary text-muted-foreground">
+                    These exact requested values are validated locally and recorded with the final
+                    artifact. Blank maximum steps means the epoch limit controls the run.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                      <Label htmlFor="foundry-seed">Seed</Label>
+                      <Input
+                        id="foundry-seed"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={numericInputValue(trainingConfig.seed)}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            seed: event.currentTarget.valueAsNumber,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="foundry-epochs">Epochs</Label>
+                      <Input
+                        id="foundry-epochs"
+                        type="number"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={numericInputValue(trainingConfig.epochs)}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            epochs: event.currentTarget.valueAsNumber,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="foundry-max-steps">Maximum steps (optional)</Label>
+                      <Input
+                        id="foundry-max-steps"
+                        type="number"
+                        min={1}
+                        max={1_000_000}
+                        step={1}
+                        value={trainingConfig.maxSteps ?? ''}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            maxSteps: event.currentTarget.value
+                              ? event.currentTarget.valueAsNumber
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="foundry-learning-rate">Learning rate</Label>
+                      <Input
+                        id="foundry-learning-rate"
+                        type="number"
+                        min={0.000_000_01}
+                        max={1}
+                        step="any"
+                        value={numericInputValue(trainingConfig.learningRate)}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            learningRate: event.currentTarget.valueAsNumber,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="foundry-batch-size">Batch size</Label>
+                      <Input
+                        id="foundry-batch-size"
+                        type="number"
+                        min={1}
+                        max={128}
+                        step={1}
+                        value={numericInputValue(trainingConfig.batchSize)}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            batchSize: event.currentTarget.valueAsNumber,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="foundry-gradient-accumulation">Gradient accumulation</Label>
+                      <Input
+                        id="foundry-gradient-accumulation"
+                        type="number"
+                        min={1}
+                        max={1_024}
+                        step={1}
+                        value={numericInputValue(trainingConfig.gradientAccumulation)}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            gradientAccumulation: event.currentTarget.valueAsNumber,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="foundry-sequence-length">Maximum sequence length</Label>
+                      <Input
+                        id="foundry-sequence-length"
+                        type="number"
+                        min={64}
+                        max={131_072}
+                        step={1}
+                        value={numericInputValue(trainingConfig.maxSequenceLength)}
+                        onChange={(event) =>
+                          setTrainingConfig((current) => ({
+                            ...current,
+                            maxSequenceLength: event.currentTarget.valueAsNumber,
+                          }))
+                        }
+                      />
+                    </div>
+                    {method !== 'full' && (
+                      <>
+                        <div>
+                          <Label htmlFor="foundry-lora-rank">LoRA rank</Label>
+                          <Input
+                            id="foundry-lora-rank"
+                            type="number"
+                            min={1}
+                            max={1_024}
+                            step={1}
+                            value={numericInputValue(trainingConfig.loraRank)}
+                            onChange={(event) =>
+                              setTrainingConfig((current) => ({
+                                ...current,
+                                loraRank: event.currentTarget.valueAsNumber,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="foundry-lora-alpha">LoRA alpha</Label>
+                          <Input
+                            id="foundry-lora-alpha"
+                            type="number"
+                            min={1}
+                            max={8_192}
+                            step={1}
+                            value={numericInputValue(trainingConfig.loraAlpha)}
+                            onChange={(event) =>
+                              setTrainingConfig((current) => ({
+                                ...current,
+                                loraAlpha: event.currentTarget.valueAsNumber,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="foundry-lora-dropout">LoRA dropout</Label>
+                          <Input
+                            id="foundry-lora-dropout"
+                            type="number"
+                            min={0}
+                            max={0.999}
+                            step="any"
+                            value={numericInputValue(trainingConfig.loraDropout)}
+                            onChange={(event) =>
+                              setTrainingConfig((current) => ({
+                                ...current,
+                                loraDropout: event.currentTarget.valueAsNumber,
+                              }))
+                            }
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {validateFoundryTrainingConfiguration(trainingConfig) && (
+                    <p className="mt-3 text-secondary text-amber-300">
+                      {validateFoundryTrainingConfiguration(trainingConfig)}
+                    </p>
+                  )}
+                </details>
+              )}
             </div>
           )}
 

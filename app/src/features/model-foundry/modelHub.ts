@@ -47,6 +47,54 @@ export function defaultFoundryTrainingConfiguration(
   };
 }
 
+export function validateFoundryTrainingConfiguration(
+  configuration: FoundryTrainingConfiguration,
+): string | null {
+  const integerBounds: ReadonlyArray<[
+    keyof FoundryTrainingConfiguration,
+    string,
+    number,
+    number,
+  ]> = [
+    ['seed', 'Seed', 0, 0xffff_ffff],
+    ['epochs', 'Epochs', 1, 20],
+    ['batchSize', 'Batch size', 1, 128],
+    ['gradientAccumulation', 'Gradient accumulation', 1, 1_024],
+    ['maxSequenceLength', 'Sequence length', 64, 131_072],
+    ['loraRank', 'LoRA rank', 1, 1_024],
+    ['loraAlpha', 'LoRA alpha', 1, 8_192],
+  ];
+  for (const [key, label, minimum, maximum] of integerBounds) {
+    const value = configuration[key];
+    if (!Number.isInteger(value) || Number(value) < minimum || Number(value) > maximum) {
+      return `${label} must be a whole number from ${minimum} to ${maximum}.`;
+    }
+  }
+  if (
+    configuration.maxSteps !== undefined &&
+    (!Number.isInteger(configuration.maxSteps) ||
+      configuration.maxSteps < 1 ||
+      configuration.maxSteps > 1_000_000)
+  ) {
+    return 'Maximum steps must be blank or a whole number from 1 to 1,000,000.';
+  }
+  if (
+    !Number.isFinite(configuration.learningRate) ||
+    configuration.learningRate < 0.000_000_01 ||
+    configuration.learningRate > 1
+  ) {
+    return 'Learning rate must be from 0.00000001 to 1.';
+  }
+  if (
+    !Number.isFinite(configuration.loraDropout) ||
+    configuration.loraDropout < 0 ||
+    configuration.loraDropout >= 1
+  ) {
+    return 'LoRA dropout must be from 0 up to (but not including) 1.';
+  }
+  return null;
+}
+
 export interface TrainingWorkerCapability {
   installed: boolean;
   attested: boolean;
