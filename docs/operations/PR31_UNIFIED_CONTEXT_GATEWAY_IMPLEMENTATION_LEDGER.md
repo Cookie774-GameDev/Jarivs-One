@@ -298,3 +298,9 @@
 - Added a separate retrieval acceptance calculator that requires at least 30 comparable warm runs from one route, harness, corpus revision, scope, and exact execution identity. Duplicate sample/receipt IDs, direct/cold rows, invalid timings, malformed candidate/hydration counts, mixed authority, and hydration beyond the ranked candidate count are rejected before reporting.
 - Focused retrieval fails above 4 seconds p95. Deep retrieval independently fails above 8 seconds p95 or when any run crosses the 10-second hard pre-dispatch deadline; candidate and hydrated-count distributions remain visible without treating them as quality proof.
 - No native/provider measurement or retrieval-quality result is invented. TDD RED proved the gate was absent. Fresh combined direct/focused/deep Gateway acceptance verification passed 5 files / 63 tests. Full TypeScript verification remains limited to the same four active, out-of-scope SiYuan test diagnostics from the immediately preceding slice.
+
+## 2026-08-22 — Official native truthful-ADE-route verification
+
+- Verified in the already-running official VibeSpace `jarvis.exe` process without using a browser preview or closing/restarting the app. The live navigation exposes `ChatGPT ADE`; selecting it updates the native breadcrumb to `Current route: ChatGPT ADE` and renders the first-class route successfully.
+- The native page visibly reports `NOT IMPLEMENTED`, `Production model dispatcher is not bound to the exact observed route`, and `Official native acceptance is pending for task, terminal, cancellation, and route identity behavior`. It exposes no runnable task control, performs no provider dispatch, changes no saved model/settings/data, and makes no unsupported ADE acceptance claim.
+- This proves the truthful route presentation only. It does not satisfy production dispatcher binding, complete native ADE task acceptance, or the remaining paired/provider/native merge-plan gates.
