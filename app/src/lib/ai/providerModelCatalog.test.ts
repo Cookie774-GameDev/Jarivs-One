@@ -32,6 +32,16 @@ describe('providerModelCatalog', () => {
     const models = getModelsForProvider('google', ctx);
     expect(models.some((model) => model.id === 'gemini-3.5-flash')).toBe(true);
     expect(models.every((model) => model.provider === 'google')).toBe(true);
+    expect(models.some((model) => model.id === 'gemini-3.1-pro')).toBe(false);
+  });
+
+  it('does not overlay stale Hive frontier ids onto provider catalogs', () => {
+    const openai = getModelsForProvider('openai', {
+      ...ctx,
+      apiKeys: { openai: 'test-key' },
+    });
+    expect(openai.some((model) => model.id === 'gpt-5.5-pro')).toBe(false);
+    expect(openai.some((model) => model.id === 'gpt-5.5-codex')).toBe(false);
   });
 
   it('discovers the Qwen models from the authenticated region endpoint only', async () => {

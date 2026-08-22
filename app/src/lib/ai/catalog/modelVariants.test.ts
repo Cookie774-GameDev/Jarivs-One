@@ -31,7 +31,11 @@ describe('model-specific variants and fast mode', () => {
   });
 
   it('prefers the exact Fast service tier and preserves model identity', () => {
-    expect(resolveFastMode(true, { serviceTiers: ['priority'] })).toEqual({
+    expect(resolveFastMode(true, {
+      connectionId: 'opencode-cli',
+      modelId: 'openai/gpt-5.6-sol',
+      serviceTiers: ['priority'],
+    })).toEqual({
       enabled: true,
       supported: true,
       transport: 'service-tier',
@@ -41,14 +45,35 @@ describe('model-specific variants and fast mode', () => {
   });
 
   it('uses native OpenCode fast or a live fast variant only when exposed', () => {
-    expect(resolveFastMode(true, { supportsOpenCodeFastMode: true })).toMatchObject({
+    expect(resolveFastMode(true, {
+      connectionId: 'openai-codex',
+      modelId: 'gpt-5.6-sol',
+      supportsOpenCodeFastMode: true,
+    })).toMatchObject({
       transport: 'opencode-native',
       openCodeFastMode: true,
     });
-    expect(resolveFastMode(true, [{ id: 'fast' }])).toMatchObject({
+    expect(resolveFastMode(true, {
+      connectionId: 'opencode-cli',
+      modelId: 'openai/gpt-5.6-terra',
+      variants: [{ id: 'fast' }],
+    })).toMatchObject({
       transport: 'variant',
       upstreamVariant: 'fast',
     });
-    expect(resolveFastMode(true, [])).toMatchObject({ supported: false, transport: 'off' });
+    expect(resolveFastMode(true, {
+      connectionId: 'opencode-cli',
+      modelId: 'openai/gpt-5.6-sol',
+    })).toMatchObject({ supported: false, transport: 'off' });
+  });
+
+  it('rejects Fast metadata on API, aggregator, and non-Codex routes', () => {
+    for (const metadata of [
+      { connectionId: 'openai-api', modelId: 'gpt-5.6-sol', serviceTiers: ['fast'] },
+      { connectionId: 'opencode-cli', modelId: 'openrouter/openai/gpt-5.6-sol', serviceTiers: ['fast'] },
+      { connectionId: 'opencode-cli', modelId: 'qwen/qwen3.8-max', variants: [{ id: 'fast' }] },
+    ]) {
+      expect(resolveFastMode(true, metadata)).toMatchObject({ supported: false, transport: 'off' });
+    }
   });
 });

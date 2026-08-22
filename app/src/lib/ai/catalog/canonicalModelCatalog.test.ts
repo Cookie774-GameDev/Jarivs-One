@@ -3,6 +3,7 @@ import {
   ModelCatalogController,
   buildCanonicalModelRows,
   canonicalProviderModelId,
+  logicalProviderModelId,
   dedupeConnectionModels,
   dedupeModelMetadata,
   suppressHealthyLegacyRoutes,
@@ -104,6 +105,14 @@ describe('canonical model catalog', () => {
     ]);
     expect(rows).toHaveLength(1);
     expect(rows[0].serviceTiers).toEqual(['fast']);
+  });
+
+  it('deduplicates the documented GPT-5.6 alias only at the logical picker boundary', () => {
+    expect(canonicalProviderModelId('openai', 'gpt-5.6')).toBe('gpt-5.6');
+    expect(logicalProviderModelId('openai', 'gpt-5.6')).toBe('gpt-5.6-sol');
+    expect(logicalProviderModelId('openai', 'openrouter/openai/gpt-5.6')).toBe(
+      'openrouter/openai/gpt-5.6',
+    );
   });
 
   it('renders one visible model while retaining exact API and subscription routes', () => {

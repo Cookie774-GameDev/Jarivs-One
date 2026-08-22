@@ -125,7 +125,7 @@ export function resolveRuntimeModelControls(
   }
 
   const controls: ResolvedRuntimeControls = {};
-  if (preferences.fastMode === 'off' && (metadata.serviceTiers ?? []).some((tier) =>
+  if (preferences.fastMode === 'off' && fast.supported && (metadata.serviceTiers ?? []).some((tier) =>
     ['fast', 'priority'].includes(tier.trim().toLocaleLowerCase('en-US')),
   )) {
     controls.serviceTier = 'default';

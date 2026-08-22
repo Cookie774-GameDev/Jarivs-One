@@ -41,6 +41,7 @@ import {
 import {
   canonicalModelId,
   canonicalProviderModelId,
+  logicalProviderModelId,
   dedupeModelMetadata,
   modelRouteLabel,
   type SimpleModelCatalogRecord,
@@ -278,7 +279,8 @@ function pickerRouteDisplayName(option: ModelPickerOption): string | undefined {
 function openCodeBaseLeaf(option: ModelPickerOption): string {
   const segments = canonicalModelId(option.modelId).split('/').filter(Boolean);
   const leaf = segments.at(-1) ?? '';
-  return leaf.endsWith('-fast') ? leaf.slice(0, -'-fast'.length) : leaf;
+  const base = leaf.endsWith('-fast') ? leaf.slice(0, -'-fast'.length) : leaf;
+  return segments.at(-2) === 'openai' && base === 'gpt-5.6' ? 'gpt-5.6-sol' : base;
 }
 
 function openCodeSourceProductKey(option: ModelPickerOption): string {
@@ -471,17 +473,28 @@ export function buildConnectionPickerGroups(args: {
     groups.set(groupId, group);
   }
 
-  // Dedupe only within an exact connection+canonical-model route. Distinct
-  // API/subscription routes—including unavailable sign-in rows—remain visible
-  // so auth, billing, and provider identity are never silently collapsed.
+  // Present documented aliases once inside an exact connection while retaining
+  // every exact upstream route for selection and dispatch.
   for (const group of groups.values()) {
-    const uniqueByRoute = new Map<string, ModelPickerOption>();
+    const routesByLogicalModel = new Map<string, ModelPickerOption[]>();
     for (const option of group.options) {
-      const modelKey = pickerCanonicalModelId(group.provider, option.modelId);
+      const modelKey = logicalProviderModelId(group.provider, option.modelId);
       const routeKey = `${option.connectionId ?? ''}\u0000${modelKey}`;
-      if (!uniqueByRoute.has(routeKey)) uniqueByRoute.set(routeKey, option);
+      const routes = routesByLogicalModel.get(routeKey) ?? [];
+      routes.push(option);
+      routesByLogicalModel.set(routeKey, routes);
     }
-    const visible = [...uniqueByRoute.values()];
+    const visible = [...routesByLogicalModel.values()].map((routes) => {
+      const exact = dedupeModelMetadataInOrder(
+        routes.map((route) => ({ id: route.id, label: route.label })),
+      );
+      const exactIds = new Set(exact.map((route) => route.id));
+      const uniqueRoutes = routes.filter((route) => exactIds.has(route.id));
+      const preferred = uniqueRoutes[0]!;
+      return uniqueRoutes.length > 1
+        ? { ...preferred, alternativeRoutes: uniqueRoutes }
+        : preferred;
+    });
     const routeCounts = new Map<string, number>();
     const labelCounts = new Map<string, number>();
     for (const option of visible) {
@@ -858,9 +871,7 @@ export function useAccessibleChatModels() {
     for (const connection of pickerConnections) {
       const discovered = getDiscoveredConnectionModels(connection.id);
       if (discovered.length === 0) continue;
-      modelsByConnection[connection.id] = dedupeModelMetadataInOrder([
-        ...(modelsByConnection[connection.id] ?? []),
-        ...discovered.map((model) => ({
+      const discoveredModels = discovered.map((model) => ({
           id: model.id,
           label: model.label,
           source:
@@ -871,8 +882,13 @@ export function useAccessibleChatModels() {
                 : ('provider-live' as const),
           lastVerifiedAt: model.lastVerifiedAt,
           available: model.unverified !== true,
-        })),
-      ]);
+        }));
+      const hasCurrentLiveAuthority = discovered.some((model) => model.unverified !== true);
+      modelsByConnection[connection.id] = dedupeModelMetadataInOrder(
+        hasCurrentLiveAuthority
+          ? discoveredModels
+          : [...(modelsByConnection[connection.id] ?? []), ...discoveredModels],
+      );
     }
 
     const alwaysOnOpenCode = asCatalogModels(

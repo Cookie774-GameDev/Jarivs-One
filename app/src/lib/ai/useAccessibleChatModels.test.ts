@@ -81,6 +81,29 @@ describe('useAccessibleChatModels', () => {
     ]);
   });
 
+  it('shows one logical GPT-5.6 row while preserving both exact live alias routes', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [OPENAI_API_CONNECTION],
+      modelsByProvider: {},
+      modelsByConnection: {
+        [OPENAI_API_CONNECTION.id]: [
+          { id: 'gpt-5.6', label: 'GPT-5.6', source: 'provider-live' },
+          { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', source: 'provider-live' },
+        ],
+      },
+      stateByConnection: {
+        [OPENAI_API_CONNECTION.id]: { available: true, auth: 'authenticated' },
+      },
+      credentialSavedByProvider: { openai: true },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.options).toHaveLength(1);
+    expect(groups[0]?.options[0]?.alternativeRoutes?.map((route) => route.modelId)).toEqual([
+      'gpt-5.6',
+      'gpt-5.6-sol',
+    ]);
+  });
+
   it('reacts when Ollama discovery updates', () => {
     const { result, rerender } = renderHook(() => useAccessibleChatModels());
     expect(result.current.hasAny).toBe(false);
@@ -408,9 +431,10 @@ describe('useAccessibleChatModels', () => {
       ).toBe(false);
       expect(
         result.current.flatOptions.some(
-          (option) => option.connectionId === 'openai-api' && option.modelId === 'gpt-4o',
+          (option) => option.connectionId === 'openai-api' && option.modelId === 'gpt-5.4-nano',
         ),
       ).toBe(true);
+      expect(subscription.some((option) => option.modelId === 'gpt-5.4-nano')).toBe(false);
       expect(
         result.current.groups.find((group) => group.id === 'opencode:openrouter')?.options,
       ).toEqual([expect.objectContaining({ modelId: 'openrouter/openai/gpt-5.1' })]);

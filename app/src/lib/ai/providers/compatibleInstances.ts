@@ -3,11 +3,11 @@ import { activeQwenCompatibleBaseUrl } from '../nativeConnectionProbe';
 
 export const OPENROUTER_DEFAULT_MODEL = 'openrouter/auto';
 export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
-export const MISTRAL_DEFAULT_MODEL = 'mistral-large-latest';
-export const TOGETHER_DEFAULT_MODEL = 'Qwen/Qwen3.5-397B-A17B';
-export const XAI_DEFAULT_MODEL = 'grok-4.5';
+export const MISTRAL_DEFAULT_MODEL = 'mistral-medium-latest';
+export const TOGETHER_DEFAULT_MODEL = 'Qwen/Qwen3.7-Plus';
+export const XAI_DEFAULT_MODEL = 'grok-4.6';
 export const QWEN_DEFAULT_MODEL = 'qwen3.7-plus';
-export const ZAI_DEFAULT_MODEL = 'glm-5.1';
+export const ZAI_DEFAULT_MODEL = 'glm-5.3';
 
 export const openrouterProvider = makeOpenAICompatibleProvider({
   id: 'openrouter',

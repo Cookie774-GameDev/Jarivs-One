@@ -40,17 +40,58 @@ describe('chat model catalog', () => {
       .concat(getModelOptions('groq'))
       .concat(getModelOptions('deepseek'))
       .map((model) => model.id);
-    expect(ids).not.toEqual(expect.arrayContaining([
-      'deepseek-chat',
-      'deepseek-reasoner',
-      'gemini-2.0-flash',
-      'claude-3-5-haiku-20241022',
-      'mixtral-8x7b-32768',
-      'llama-3.1-8b-instant',
-    ]));
+    expect(ids).not.toEqual(
+      expect.arrayContaining([
+        'deepseek-chat',
+        'deepseek-reasoner',
+        'gemini-2.0-flash',
+        'claude-3-5-haiku-20241022',
+        'mixtral-8x7b-32768',
+        'llama-3.1-8b-instant',
+      ]),
+    );
     expect(defaultModelForProvider('deepseek')).toBe('deepseek-v4-flash');
-    expect(defaultModelForProvider('zai')).toBe('glm-5.1');
+    expect(defaultModelForProvider('zai')).toBe('glm-5.3');
     expect(defaultModelForProvider('groq')).toBe('openai/gpt-oss-20b');
+  });
+
+  it('uses the supplied current fallback inventory without duplicate or incompatible rows', () => {
+    const apiKeys = {
+      openai: 'test-openai-key',
+      groq: 'test-groq-key',
+      zai: 'test-zai-key',
+      together: 'test-together-key',
+      mistral: 'test-mistral-key',
+      xai: 'test-xai-key',
+    };
+    const options = Object.keys(apiKeys).flatMap((provider) =>
+      getAccessibleModelOptions(provider as never, apiKeys, false),
+    );
+    const exactIds = options.map((option) => `${option.provider}:${option.id}`);
+
+    expect(new Set(exactIds).size).toBe(exactIds.length);
+    expect(defaultModelForProvider('openai')).toBe('gpt-5.6-terra');
+    expect(defaultModelForProvider('mistral')).toBe('mistral-medium-latest');
+    expect(defaultModelForProvider('together')).toBe('Qwen/Qwen3.7-Plus');
+    expect(defaultModelForProvider('xai')).toBe('grok-4.6');
+    expect(exactIds).toEqual(
+      expect.arrayContaining([
+        'openai:gpt-5.6-sol',
+        'openai:gpt-5.4-nano',
+        'groq:qwen/qwen3.6-27b',
+        'zai:glm-5.3',
+        'together:deepseek-ai/DeepSeek-V4-Flash-0731',
+        'mistral:codestral-latest',
+        'xai:grok-4.20-0309-reasoning',
+      ]),
+    );
+    expect(exactIds).not.toEqual(
+      expect.arrayContaining([
+        'openai:gpt-5.5-pro',
+        'openai:gpt-5.5-codex',
+        'groq:llama-3.3-70b-versatile',
+      ]),
+    );
   });
 
   it('ships the current Qwen catalog with Qwen 3.7 Plus as the safe default', () => {
@@ -69,10 +110,9 @@ describe('chat model catalog', () => {
         'qwen3.6-plus-2026-04-02',
         'qwen3.6-flash',
         'qwen3.6-flash-2026-04-16',
-        'qwen3.6-27b',
-        'qwen3-coder-next',
       ]),
     );
+    expect(ids).not.toEqual(expect.arrayContaining(['qwen3.6-27b', 'qwen3-coder-next']));
     expect(getAccessibleProviders(apiKeys, false)).toContain('qwen');
   });
 

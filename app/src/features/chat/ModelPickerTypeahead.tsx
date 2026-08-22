@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
@@ -18,6 +19,8 @@ import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMot
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { getLivePanelUiScale } from '@/lib/ui/panelScale';
+import { listEffortOptions, type EffortLabel } from '@/lib/ai/catalog/modelVariants';
+import type { ModelPickerOption } from '@/lib/ai/useAccessibleChatModels';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -35,6 +38,8 @@ const PROVIDER_ICONS: Partial<Record<ProviderId, LucideIcon>> = {
 export interface ModelPickerTypeaheadProps {
   groups: ModelPickerGroup[];
   selectedId: string;
+  /** Saved effort to restore when this exact model supports it. */
+  initialEffort?: EffortLabel;
   activeProvider?: ProviderId;
   activeModel?: string;
   /** Whether the Hive ensemble is the active chat selection. */
@@ -43,7 +48,8 @@ export interface ModelPickerTypeaheadProps {
   onSelect: (
     provider: ProviderId,
     modelId: string,
-    connection?: Readonly<ProviderConnection>,
+    connection: Readonly<ProviderConnection> | undefined,
+    effort: EffortLabel,
   ) => void;
   /** Select the pinned Hive ensemble entry. When omitted, the row is hidden. */
   onSelectHive?: () => void;
@@ -57,6 +63,7 @@ export interface ModelPickerTypeaheadRef {
   moveUp: () => void;
   moveDown: () => void;
   selectCurrent: () => void;
+  cancelPending: () => void;
 }
 
 export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPickerTypeaheadProps>(
@@ -64,6 +71,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     {
       groups,
       selectedId,
+      initialEffort = 'auto',
       activeProvider,
       activeModel,
       hiveActive,
@@ -81,6 +89,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
     const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
     const panelScale = compact ? getLivePanelUiScale() : 1;
+    const [pendingOption, setPendingOption] = useState<ModelPickerOption | null>(null);
+    const [effortIndex, setEffortIndex] = useState(0);
 
     const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
     const exactOptions = useMemo(
@@ -103,35 +113,82 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       return onSelectHive ? [HIVE_OPTION_ID, ...usable] : usable;
     }, [flatOptions, onSelectHive]);
 
+    const effortOptions = useMemo(
+      () =>
+        listEffortOptions((pendingOption?.variants ?? []).map((id) => ({ id }))).filter(
+          (option) => option.available,
+        ),
+      [pendingOption],
+    );
+
+    const beginSelection = (option: ModelPickerOption) => {
+      if (option.available === false) return;
+      setPendingOption(option);
+      const supported = listEffortOptions((option.variants ?? []).map((id) => ({ id }))).filter(
+        (candidate) => candidate.available,
+      );
+      const savedIndex = supported.findIndex((candidate) => candidate.label === initialEffort);
+      setEffortIndex(savedIndex >= 0 ? savedIndex : 0);
+    };
+
+    const commitEffort = (effort: EffortLabel) => {
+      if (!pendingOption) return;
+      onSelect(pendingOption.provider, pendingOption.modelId, pendingOption.connection, effort);
+      setPendingOption(null);
+      setEffortIndex(0);
+    };
+
     const selectId = (id: string) => {
       if (id === HIVE_OPTION_ID) {
         onSelectHive?.();
         return;
       }
       const option = exactOptions.find((item) => item.id === id);
-      if (option && option.available !== false)
-        onSelect(option.provider, option.modelId, option.connection);
+      if (option) beginSelection(option);
     };
 
     useImperativeHandle(ref, () => ({
       moveUp: () => {
+        if (pendingOption) {
+          setEffortIndex((current) =>
+            effortOptions.length === 0
+              ? 0
+              : (current - 1 + effortOptions.length) % effortOptions.length,
+          );
+          return;
+        }
         if (navIds.length === 0) return;
         const index = navIds.indexOf(selectedRowId);
         const next = navIds[(index - 1 + navIds.length) % navIds.length]!;
         onHoverId?.(next);
       },
       moveDown: () => {
+        if (pendingOption) {
+          setEffortIndex((current) =>
+            effortOptions.length === 0 ? 0 : (current + 1) % effortOptions.length,
+          );
+          return;
+        }
         if (navIds.length === 0) return;
         const index = navIds.indexOf(selectedRowId);
         const next = navIds[(index + 1) % navIds.length]!;
         onHoverId?.(next);
       },
       selectCurrent: () => {
+        if (pendingOption) {
+          const effort = effortOptions[effortIndex]?.label;
+          if (effort) commitEffort(effort);
+          return;
+        }
         const selectedExactRoute = exactOptions.find((option) => option.id === selectedId);
         const id = navIds.includes(selectedRowId)
           ? (selectedExactRoute?.id ?? selectedRowId)
           : navIds[0];
         if (id) selectId(id);
+      },
+      cancelPending: () => {
+        setPendingOption(null);
+        setEffortIndex(0);
       },
     }));
 
@@ -183,7 +240,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   compact ? 'text-[13px] leading-4' : 'text-[17px] leading-5',
                 )}
               >
-                AI model
+                {pendingOption ? 'Choose effort' : 'AI model'}
               </div>
               <div
                 className={cn(
@@ -191,7 +248,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   compact ? 'text-[10px] leading-3' : 'text-[12px] leading-4',
                 )}
               >
-                Choose provider and model
+                {pendingOption ? pendingOption.label : 'Choose provider and model'}
               </div>
             </div>
           </div>
@@ -204,7 +261,32 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
             compact ? 'max-h-[min(200px,42vh)] py-1' : 'max-h-[280px] py-2',
           )}
         >
-          {onSelectHive ? (
+          {pendingOption ? (
+            <div role="group" aria-label={`${pendingOption.label} effort`} className="py-1">
+              {effortOptions.map((effort, index) => (
+                <button
+                  key={effort.label}
+                  type="button"
+                  aria-pressed={index === effortIndex}
+                  onMouseEnter={() => setEffortIndex(index)}
+                  onClick={() => commitEffort(effort.label)}
+                  className={cn(
+                    'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-[10px] border px-3 py-2 text-left capitalize transition-colors',
+                    index === effortIndex
+                      ? 'border-accent-copper/60 bg-accent-copper/12 text-foreground'
+                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
+                  )}
+                >
+                  <span>{effort.label}</span>
+                  {effort.label === 'auto' ? (
+                    <span className="text-[10px] normal-case text-muted-foreground">
+                      Provider default
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : onSelectHive ? (
             <div className="mb-1">
               <div className="px-4 pb-1 pt-0.5 text-[11px] uppercase tracking-[0.2em] text-accent-copper/70">
                 Featured
@@ -245,7 +327,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
               })()}
             </div>
           ) : null}
-          {groups.length === 0 ? (
+          {!pendingOption && groups.length === 0 ? (
             onSelectHive ? null : (
               <div className="px-4 py-6 text-center">
                 <p className="text-[13px] text-muted-foreground">No models available yet.</p>
@@ -255,7 +337,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 </p>
               </div>
             )
-          ) : (
+          ) : !pendingOption ? (
             groups.map((group) => {
               const GroupIcon = PROVIDER_ICONS[group.provider] ?? Sparkles;
               return (
@@ -285,10 +367,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                                 ? SIK_CONTROL.modelTransportCli
                                 : undefined
                           }
-                          onClick={() =>
-                            option.available !== false &&
-                            onSelect(option.provider, option.modelId, option.connection)
-                          }
+                          onClick={() => option.available !== false && beginSelection(option)}
                           onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
                           aria-disabled={option.available === false}
                           data-model-price={option.pricingStatus ?? 'unknown'}
@@ -356,9 +435,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                                 disabled={route.available === false}
                                 aria-label={`Use ${route.label}`}
                                 aria-pressed={route.id === selectedId}
-                                onClick={() =>
-                                  onSelect(route.provider, route.modelId, route.connection)
-                                }
+                                onClick={() => beginSelection(route)}
                                 className={cn(
                                   'rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground',
                                   route.id === selectedId &&
@@ -376,10 +453,12 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 </div>
               );
             })
-          )}
+          ) : null}
         </div>
 
-        {typeof automaticRoutingEnabled === 'boolean' && onAutomaticRoutingChange ? (
+        {!pendingOption &&
+        typeof automaticRoutingEnabled === 'boolean' &&
+        onAutomaticRoutingChange ? (
           <button
             type="button"
             role="switch"

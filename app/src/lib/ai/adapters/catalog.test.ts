@@ -309,17 +309,18 @@ describe('provider capability catalog', () => {
     expect(CONNECTION_MODEL_OPTIONS['openai-codex']?.map((option) => option.id)).toEqual([
       'gpt-5.3-codex-spark',
       'gpt-5.3-codex',
+      'gpt-5.2',
       'gpt-5.4-mini',
       'gpt-5.4',
-      'gpt-5.5-codex',
       'gpt-5.5',
-      'gpt-5.5-pro',
       'gpt-5.6-luna',
       'gpt-5.6-terra',
       'gpt-5.6-sol',
     ]);
     expect(
-      CONNECTION_MODEL_OPTIONS['openai-codex']?.find((option) => option.id === 'gpt-5.3-codex-spark'),
+      CONNECTION_MODEL_OPTIONS['openai-codex']?.find(
+        (option) => option.id === 'gpt-5.3-codex-spark',
+      ),
     ).toEqual({
       id: 'gpt-5.3-codex-spark',
       label: 'GPT-5.3 Codex Spark',
@@ -331,6 +332,23 @@ describe('provider capability catalog', () => {
     ]);
     expect(
       CONNECTION_MODEL_OPTIONS['opencode-cli']?.every((option) => option.available === false),
+    ).toBe(true);
+    expect(CONNECTION_MODEL_OPTIONS['github-copilot-cli']?.map((option) => option.id)).toEqual([
+      'auto',
+      'claude-sonnet-4.6',
+      'gpt-5.4',
+      'claude-haiku-4.5',
+      'gpt-5.3-codex',
+      'gemini-3.1-pro-preview',
+      'gemini-3.5-flash',
+      'gemini-3.6-flash',
+      'gemini-3.7-flash',
+      'mai-code-1-flash',
+    ]);
+    expect(
+      CONNECTION_MODEL_OPTIONS['github-copilot-cli']?.every(
+        (option) => option.available === false,
+      ),
     ).toBe(true);
     expect(PROVIDER_CATALOG.opencode.displayName).toBe('OpenCode Models');
     expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);

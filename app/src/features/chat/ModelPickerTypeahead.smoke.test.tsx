@@ -70,7 +70,9 @@ describe('ModelPickerTypeahead smoke transports', () => {
     const option = container.querySelector('[data-model-price="free"]');
     expect(option).not.toBeNull();
     fireEvent.click(option!);
-    expect(onSelect).toHaveBeenCalledWith('opencode', 'openai/gpt-free', openCode);
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /auto/i }));
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'openai/gpt-free', openCode, 'auto');
   });
 
   it('exposes and selects each exact real connection through its closed control', () => {
@@ -117,7 +119,9 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(surface?.className).toContain('[html[data-theme=monochrome]_&_*]:bg-none');
     expect(surface?.className).toContain('[html[data-theme=monochrome]_&_*]:shadow-none');
     fireEvent.click(cliControl!);
-    expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli);
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /auto/i }));
+    expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli, 'auto');
   });
 
   it('renders one logical model row while selecting an exact live alias route', () => {
@@ -171,11 +175,10 @@ describe('ModelPickerTypeahead smoke transports', () => {
 
     expect(screen.getAllByText('Qwen 3.7 Plus')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Use Qwen 3.7 Plus Fast' }));
-    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus-fast', openCode);
-    expect(screen.getByRole('group', { name: 'Qwen 3.7 Plus routes' })).not.toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Use Qwen 3.7 Plus Fast' }).getAttribute('aria-pressed'),
-    ).toBe('false');
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole('group', { name: 'Qwen 3.7 Plus routes' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /auto/i }));
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus-fast', openCode, 'auto');
   });
 
   it('preserves an exact selected alias when keyboard activation repeats the current row', () => {
@@ -235,7 +238,150 @@ describe('ModelPickerTypeahead smoke transports', () => {
         .getAttribute('aria-pressed'),
     ).toBe('true');
     act(() => ref.current?.selectCurrent());
-    expect(onSelect).toHaveBeenCalledWith('opencode', 'openrouter/openai/gpt-5.6-sol', openCode);
+    expect(onSelect).not.toHaveBeenCalled();
+    act(() => ref.current?.selectCurrent());
+    expect(onSelect).toHaveBeenCalledWith(
+      'opencode',
+      'openrouter/openai/gpt-5.6-sol',
+      openCode,
+      'auto',
+    );
+  });
+
+  it('commits the exact route and only a genuinely supported effort on the second Enter', () => {
+    const openCode = {
+      ...connection('opencode-cli', 'external-cli'),
+      adapterId: 'opencode-cli',
+      providerId: 'opencode',
+      displayName: 'OpenCode Bridge',
+    };
+    const ref = createRef<ModelPickerTypeaheadRef>();
+    const onSelect = vi.fn();
+    render(
+      <ModelPickerTypeahead
+        ref={ref}
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openrouter/openai/gpt-5.6-sol',
+                provider: 'opencode' as never,
+                modelId: 'openrouter/openai/gpt-5.6-sol',
+                label: 'GPT-5.6 Sol',
+                connection: openCode,
+                available: true,
+                variants: ['medium'],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openrouter/openai/gpt-5.6-sol"
+        onSelect={onSelect}
+      />,
+    );
+
+    act(() => ref.current?.selectCurrent());
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /auto/i })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'medium' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'low' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'high' })).toBeNull();
+    expect(screen.queryByText(/fast/i)).toBeNull();
+    act(() => ref.current?.moveDown());
+    act(() => ref.current?.selectCurrent());
+    expect(onSelect).toHaveBeenCalledWith(
+      'opencode',
+      'openrouter/openai/gpt-5.6-sol',
+      openCode,
+      'medium',
+    );
+  });
+
+  it('cancels a pending model without changing the committed selection', () => {
+    const openCode = connection('opencode-cli', 'external-cli');
+    const ref = createRef<ModelPickerTypeaheadRef>();
+    const onSelect = vi.fn();
+    render(
+      <ModelPickerTypeahead
+        ref={ref}
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-terra',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-5.6-terra',
+                label: 'GPT-5.6 Terra',
+                connection: openCode,
+                available: true,
+                variants: ['low'],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openai/gpt-5.6-terra"
+        onSelect={onSelect}
+      />,
+    );
+
+    act(() => ref.current?.selectCurrent());
+    expect(screen.getByText('Choose effort')).not.toBeNull();
+    act(() => ref.current?.cancelPending());
+    expect(screen.queryByText('Choose effort')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('restores a supported saved effort and falls back to Auto when unsupported', () => {
+    const openCode = connection('opencode-cli', 'external-cli');
+    const onSelect = vi.fn();
+    const { unmount } = render(
+      <ModelPickerTypeahead
+        groups={[{
+          provider: 'opencode' as never,
+          label: 'OpenCode Models',
+          options: [{
+            id: 'opencode-cli:openai/gpt-5.6-sol',
+            provider: 'opencode' as never,
+            modelId: 'openai/gpt-5.6-sol',
+            label: 'GPT-5.6 Sol',
+            connection: openCode,
+            variants: ['medium'],
+          }],
+        }]}
+        selectedId="opencode-cli:openai/gpt-5.6-sol"
+        initialEffort="medium"
+        onSelect={onSelect}
+      />,
+    );
+    fireEvent.click(screen.getByText('GPT-5.6 Sol'));
+    expect(screen.getByRole('button', { name: 'medium' }).getAttribute('aria-pressed')).toBe('true');
+
+    unmount();
+    render(
+      <ModelPickerTypeahead
+        groups={[{
+          provider: 'opencode' as never,
+          label: 'OpenCode Models',
+          options: [{
+            id: 'opencode-cli:openai/gpt-5.6-terra',
+            provider: 'opencode' as never,
+            modelId: 'openai/gpt-5.6-terra',
+            label: 'GPT-5.6 Terra',
+            connection: openCode,
+            variants: ['low'],
+          }],
+        }]}
+        selectedId="opencode-cli:openai/gpt-5.6-terra"
+        initialEffort="medium"
+        onSelect={onSelect}
+      />,
+    );
+    fireEvent.click(screen.getByText('GPT-5.6 Terra'));
+    expect(screen.getByRole('button', { name: /auto/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('exposes an accessible user control for disabling automatic routing', () => {

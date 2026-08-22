@@ -15,6 +15,7 @@ import {
   TOGETHER_DEFAULT_MODEL,
   XAI_DEFAULT_MODEL,
   QWEN_DEFAULT_MODEL,
+  ZAI_DEFAULT_MODEL,
 } from './providers/compatibleInstances';
 
 export interface ModelOption {
@@ -74,6 +75,7 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     maximumCostPerMillionUsd: 2.5,
     costMetadataSource: 'embedded_snapshot',
   },
+  { provider: 'google', id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
   {
     provider: 'google',
     id: 'gemini-3.5-flash',
@@ -84,16 +86,17 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   },
   {
     provider: 'google',
-    id: 'gemini-3.1-pro',
-    label: 'Gemini 3.1 Pro',
-    contextWindowTokens: 1_000_000,
-  },
-  {
-    provider: 'google',
     id: 'gemini-3.1-pro-preview',
     label: 'Gemini 3.1 Pro Preview',
     contextWindowTokens: 1_000_000,
   },
+  { provider: 'google', id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite' },
+  { provider: 'google', id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
+  { provider: 'google', id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
+  { provider: 'google', id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  { provider: 'google', id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+  { provider: 'google', id: 'gemma-4-31b-it', label: 'Gemma 4 31B IT' },
+  { provider: 'google', id: 'gemma-4-26b-a4b-it', label: 'Gemma 4 26B A4B IT' },
   {
     provider: 'groq',
     id: GROQ_DEFAULT_MODEL,
@@ -106,34 +109,12 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     label: 'GPT-OSS 120B (Groq)',
     contextWindowTokens: 131_072,
   },
-  {
-    provider: 'groq',
-    id: 'llama-3.3-70b-versatile',
-    label: 'Llama 3.3 70B (Groq)',
-    contextWindowTokens: 128_000,
-  },
+  { provider: 'groq', id: 'qwen/qwen3.6-27b', label: 'Qwen 3.6 27B (Groq)' },
+  { provider: 'groq', id: 'minimaxai/minimax-m2.7', label: 'MiniMax M2.7 (Groq)' },
   {
     provider: 'openai',
     id: OPENAI_DEFAULT_MODEL,
-    label: 'GPT-5.1',
-  },
-  {
-    provider: 'openai',
-    id: 'gpt-4o',
-    label: 'GPT-4o',
-    contextWindowTokens: 128_000,
-  },
-  {
-    provider: 'openai',
-    id: 'gpt-4.1-mini',
-    label: 'GPT-4.1 Mini',
-    contextWindowTokens: 1_000_000,
-  },
-  {
-    provider: 'openai',
-    id: 'gpt-5.3-codex-spark',
-    label: 'GPT-5.3 Codex Spark',
-    contextWindowTokens: 128_000,
+    label: 'GPT-5.6 Terra',
   },
   {
     provider: 'openai',
@@ -159,28 +140,11 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     label: 'GPT-5.5',
     contextWindowTokens: 1_000_000,
   },
-  {
-    provider: 'openai',
-    id: 'gpt-5.5-pro',
-    label: 'GPT-5.5 Pro',
-    contextWindowTokens: 1_000_000,
-  },
-  {
-    provider: 'openai',
-    id: 'gpt-5.5-codex',
-    label: 'GPT-5.5 Codex',
-    contextWindowTokens: 1_000_000,
-  },
+  { provider: 'openai', id: 'gpt-5.4-nano', label: 'GPT-5.4 Nano' },
   {
     provider: 'openai',
     id: 'gpt-5.6-luna',
     label: 'GPT-5.6 Luna',
-    contextWindowTokens: 1_000_000,
-  },
-  {
-    provider: 'openai',
-    id: 'gpt-5.6-terra',
-    label: 'GPT-5.6 Terra',
     contextWindowTokens: 1_000_000,
   },
   {
@@ -196,14 +160,14 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   },
   {
     provider: 'anthropic',
-    id: 'claude-haiku-4-5',
+    id: 'claude-haiku-4-5-20251001',
     label: 'Claude Haiku 4.5',
     contextWindowTokens: 200_000,
   },
   {
     provider: 'anthropic',
-    id: 'claude-opus-4-8',
-    label: 'Claude Opus 4.8',
+    id: 'claude-opus-5',
+    label: 'Claude Opus 5',
     contextWindowTokens: 1_000_000,
   },
   {
@@ -226,38 +190,93 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   },
   {
     provider: 'zai',
-    id: 'glm-5.1',
-    label: 'GLM 5.1',
+    id: ZAI_DEFAULT_MODEL,
+    label: 'GLM 5.3',
     contextWindowTokens: 200_000,
   },
+  ...[
+    'glm-5.2',
+    'glm-5.1',
+    'glm-5-turbo',
+    'glm-5',
+    'glm-4.7',
+    'glm-4.7-flash',
+    'glm-4.7-flashx',
+    'glm-4.6',
+    'glm-4.5',
+    'glm-4.5-air',
+    'glm-4.5-x',
+    'glm-4.5-airx',
+    'glm-4.5-flash',
+    'glm-4-32b-0414-128k',
+  ].map((id) => ({ provider: 'zai' as const, id, label: id.toUpperCase() })),
   {
     provider: 'openrouter',
     id: OPENROUTER_DEFAULT_MODEL,
     label: 'OpenRouter Auto',
   },
   {
-    provider: 'openrouter',
-    id: 'google/gemini-2.5-flash',
-    label: 'Gemini 2.5 Flash (OR)',
-    contextWindowTokens: 1_000_000,
-  },
-  {
     provider: 'mistral',
     id: MISTRAL_DEFAULT_MODEL,
-    label: 'Mistral Large',
+    label: 'Mistral Medium 3.5',
     contextWindowTokens: 128_000,
   },
+  ...[
+    'zai-glm-5-2',
+    'mistral-large-latest',
+    'mistral-small-latest',
+    'codestral-latest',
+    'ministral-14b-latest',
+    'ministral-8b-latest',
+    'ministral-3b-latest',
+    'mistral-medium-3-5',
+    'mistral-small-2603',
+    'mistral-large-2512',
+    'codestral-2508',
+    'ministral-14b-2512',
+    'ministral-8b-2512',
+    'ministral-3b-2512',
+  ].map((id) => ({ provider: 'mistral' as const, id, label: id })),
   {
     provider: 'together',
     id: TOGETHER_DEFAULT_MODEL,
-    label: 'Qwen 3.5 397B A17B (Together)',
+    label: 'Qwen 3.7 Plus (Together)',
     contextWindowTokens: 262_144,
   },
+  ...[
+    'thinkingmachines/Inkling',
+    'thinkingmachines/Inkling-Small',
+    'MiniMaxAI/MiniMax-M3',
+    'Qwen/Qwen3.8-2.4T-A95B',
+    'Qwen/Qwen3.7-Max',
+    'Qwen/Qwen3.6-Plus',
+    'Qwen/Qwen3.5-9B',
+    'Qwen/Qwen2.5-7B-Instruct-Turbo',
+    'moonshotai/Kimi-K3',
+    'moonshotai/Kimi-K2.7-Code',
+    'zai-org/GLM-5.2',
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'deepseek-ai/DeepSeek-V4-Pro',
+    'deepseek-ai/DeepSeek-V4-Flash-0731',
+    'deepseek-ai/DeepSeek-V4-Pro-0813',
+    'nvidia/nemotron-3-ultra-550b-a55b',
+    'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    'google/gemma-4-31B-it',
+    'google/gemma-3n-E4B-it',
+    'pearl-ai/gemma-4-31b-it',
+    'Prism-ML/Ternary-Bonsai-27B',
+    'meta-models/Muse-Glimmer-30B',
+  ].map((id) => ({ provider: 'together' as const, id, label: id })),
   {
     provider: 'xai',
     id: XAI_DEFAULT_MODEL,
-    label: 'Grok 4.5',
+    label: 'Grok 4.6',
   },
+  { provider: 'xai', id: 'grok-4.20-0309-reasoning', label: 'Grok 4.20 Reasoning' },
+  { provider: 'xai', id: 'grok-4.20-0309-non-reasoning', label: 'Grok 4.20 Non-Reasoning' },
+  { provider: 'xai', id: 'grok-4.20-multi-agent-0309', label: 'Grok 4.20 Multi-Agent' },
+  { provider: 'xai', id: 'grok-4.5', label: 'Grok 4.5' },
   {
     provider: 'xai',
     id: 'grok-4.3',
@@ -275,6 +294,11 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     id: 'qwen3.7-max',
     label: 'Qwen 3.7 Max',
   },
+  { provider: 'qwen', id: 'qwen3.7-flash', label: 'Qwen 3.7 Flash' },
+  { provider: 'qwen', id: 'qwen3.7-flash-2026-07-15', label: 'Qwen 3.7 Flash (2026-07-15)' },
+  { provider: 'qwen', id: 'qwen3.7-max-preview', label: 'Qwen 3.7 Max Preview' },
+  { provider: 'qwen', id: 'qwen3.7-max-2026-05-20', label: 'Qwen 3.7 Max (2026-05-20)' },
+  { provider: 'qwen', id: 'qwen3.7-max-2026-05-17', label: 'Qwen 3.7 Max (2026-05-17)' },
   {
     provider: 'qwen',
     id: 'qwen3.7-max-2026-06-08',
@@ -309,16 +333,6 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
     provider: 'qwen',
     id: 'qwen3.6-flash-2026-04-16',
     label: 'Qwen 3.6 Flash (2026-04-16)',
-  },
-  {
-    provider: 'qwen',
-    id: 'qwen3.6-27b',
-    label: 'Qwen 3.6 27B',
-  },
-  {
-    provider: 'qwen',
-    id: 'qwen3-coder-next',
-    label: 'Qwen3 Coder Next',
   },
 ];
 
@@ -556,7 +570,7 @@ export function defaultModelForProvider(
     case 'deepseek':
       return DEEPSEEK_DEFAULT_MODEL;
     case 'zai':
-      return 'glm-5.1';
+      return ZAI_DEFAULT_MODEL;
     case 'openrouter':
       return OPENROUTER_DEFAULT_MODEL;
     case 'mistral':

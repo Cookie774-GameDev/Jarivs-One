@@ -115,6 +115,8 @@ export function resolveEffortValue(
 }
 
 export interface FastCapabilityMetadata {
+  connectionId: string;
+  modelId: string;
   variants?: readonly LiveVariant[];
   /** API/transport tiers exposed for this exact connection. `priority` is an accepted legacy alias. */
   serviceTiers?: readonly string[];
@@ -142,15 +144,30 @@ export interface FastResolution {
  */
 export function resolveFastMode(
   enabled: boolean,
-  metadata: readonly LiveVariant[] | FastCapabilityMetadata,
+  metadata: FastCapabilityMetadata,
 ): FastResolution {
+  const connectionId = normalize(metadata.connectionId);
+  const modelId = normalize(metadata.modelId);
+  const codexModelId = connectionId === 'opencode-cli'
+    ? (/^openai\/[^/]+$/u.test(modelId) ? modelId.slice('openai/'.length) : '')
+    : connectionId === 'openai-codex' && !modelId.includes('/')
+      ? modelId
+      : '';
+  const eligibleCodexModel = /^(?:gpt-5\.2|gpt-5\.3-codex(?:-spark)?|gpt-5\.4(?:-mini)?|gpt-5\.5|gpt-5\.6(?:-(?:sol|terra|luna))?)$/u.test(
+    codexModelId,
+  );
   if (!enabled) {
-    return { enabled: false, supported: true, transport: 'off', usageWarningRequired: false };
+    return {
+      enabled: false,
+      supported: eligibleCodexModel,
+      transport: 'off',
+      usageWarningRequired: false,
+    };
   }
-  const structured: FastCapabilityMetadata = Array.isArray(metadata)
-    ? { variants: metadata as readonly LiveVariant[] }
-    : (metadata as FastCapabilityMetadata);
-  const tiers = new Set((structured.serviceTiers ?? []).map(normalize));
+  if (!eligibleCodexModel) {
+    return { enabled: true, supported: false, transport: 'off', usageWarningRequired: false };
+  }
+  const tiers = new Set((metadata.serviceTiers ?? []).map(normalize));
   if (tiers.has('fast') || tiers.has('priority')) {
     return {
       enabled: true,
@@ -160,7 +177,7 @@ export function resolveFastMode(
       usageWarningRequired: true,
     };
   }
-  if (structured.supportsOpenCodeFastMode === true) {
+  if (metadata.supportsOpenCodeFastMode === true) {
     return {
       enabled: true,
       supported: true,
@@ -169,9 +186,9 @@ export function resolveFastMode(
       usageWarningRequired: true,
     };
   }
-  const variant = (structured.variants ?? []).find(
+  const variant = (metadata.variants ?? []).find(
     (candidate) => isFastVariant(candidate) && !isCombinedVariant(candidate),
-  ) ?? (structured.variants ?? []).find(isFastVariant);
+  ) ?? (metadata.variants ?? []).find(isFastVariant);
   if (variant) {
     return {
       enabled: true,

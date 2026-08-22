@@ -300,6 +300,7 @@ import {
   writeChatReasoningEffort,
   writeChatReasoningMode,
 } from './reasoningSlashStore';
+import type { EffortLabel } from '@/lib/ai/catalog/modelVariants';
 import {
   applyChatRuntimeCommand,
   parseChatRuntimeCommand,
@@ -3247,7 +3248,7 @@ export function Composer({
         modelPickerRef.current?.moveUp();
         return;
       }
-      if (e.key === 'Enter' || e.key === 'Tab') {
+      if (e.key === 'Enter') {
         e.preventDefault();
         modelPickerRef.current?.selectCurrent();
         return;
@@ -5014,11 +5015,16 @@ export function Composer({
                     modelCtx={modelCtx}
                     open={modelPickerOpen}
                     onOpenChange={setModelPickerOpen}
+                    initialEffort={reasoningPreference.effortOverride ?? 'auto'}
                     pickerRef={modelPickerRef}
                     compact={compact}
                     groups={accessibleChatModels.groups}
                     flatOptions={accessibleChatModels.flatOptions}
-                    onSelect={(next) => {
+                    onSelect={(next, effort) => {
+                      if (effort) {
+                        writeChatReasoningEffort(String(chatId), effort === 'auto' ? null : effort);
+                        setReasoningPreference(readChatReasoningPreference(String(chatId)));
+                      }
                       setChatModelSelection(next);
                       if (next.mode === 'single' && next.connectionId) {
                         const descriptor = getProviderConnectionDescriptor(next.connectionId);
@@ -5270,7 +5276,8 @@ interface ModelPickerProps {
   modelCtx: ModelSelectionContext;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (selection: ChatModelSelection) => void;
+  onSelect: (selection: ChatModelSelection, effort?: EffortLabel) => void;
+  initialEffort: EffortLabel;
   pickerRef: React.RefObject<ModelPickerTypeaheadRef | null>;
   compact?: boolean;
   groups: ModelPickerGroup[];
@@ -5283,6 +5290,7 @@ function ModelPicker({
   open,
   onOpenChange,
   onSelect,
+  initialEffort,
   pickerRef,
   compact = false,
   groups,
@@ -5334,10 +5342,16 @@ function ModelPicker({
   }, [open, flatOptionIds, flatOptions, hiveEnabled, selectionHighlightId, selection]);
 
   useEffect(() => {
+    if (!open) pickerRef.current?.cancelPending();
+  }, [open, pickerRef]);
+
+  useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
+        pickerRef.current?.cancelPending();
         onOpenChange(false);
         return;
       }
@@ -5364,8 +5378,9 @@ function ModelPicker({
     nextProvider: ProviderId,
     nextModel: string,
     connection?: Readonly<import('@/lib/ai/adapters/types').ProviderConnection>,
+    effort: EffortLabel = 'auto',
   ) => {
-    onSelect(selectionFromOption(nextProvider, nextModel, connection));
+    onSelect(selectionFromOption(nextProvider, nextModel, connection), effort);
     onOpenChange(false);
   };
 
@@ -5418,6 +5433,7 @@ function ModelPicker({
           ref={pickerRef as React.Ref<ModelPickerTypeaheadRef>}
           groups={groups}
           selectedId={selectedId}
+          initialEffort={initialEffort}
           activeProvider={activeProvider}
           activeModel={activeModel}
           hiveActive={hiveEnabled && selection.mode === 'hive'}

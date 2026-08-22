@@ -152,11 +152,10 @@ export const CONNECTION_MODEL_OPTIONS: Readonly<
   'openai-codex': Object.freeze([
     frozenModelOption('gpt-5.3-codex-spark', 'GPT-5.3 Codex Spark', 128_000),
     frozenModelOption('gpt-5.3-codex', 'GPT-5.3 Codex', 1_000_000),
+    frozenModelOption('gpt-5.2', 'GPT-5.2', 1_000_000),
     frozenModelOption('gpt-5.4-mini', 'GPT-5.4 Mini', 1_000_000),
     frozenModelOption('gpt-5.4', 'GPT-5.4', 1_000_000),
-    frozenModelOption('gpt-5.5-codex', 'GPT-5.5 Codex', 1_000_000),
     frozenModelOption('gpt-5.5', 'GPT-5.5', 1_000_000),
-    frozenModelOption('gpt-5.5-pro', 'GPT-5.5 Pro', 1_000_000),
     frozenModelOption('gpt-5.6-luna', 'GPT-5.6 Luna', 1_000_000),
     frozenModelOption('gpt-5.6-terra', 'GPT-5.6 Terra', 1_000_000),
     frozenModelOption('gpt-5.6-sol', 'GPT-5.6 Sol', 1_000_000),
@@ -164,6 +163,18 @@ export const CONNECTION_MODEL_OPTIONS: Readonly<
   'opencode-cli': Object.freeze([
     displayOnlyModelOption('deepseek/deepseek-v4-flash', 'DeepSeek V4 Flash', 128_000),
     displayOnlyModelOption('qwen/qwen3.8-max', 'Qwen 3.8 Max', 1_000_000),
+  ]),
+  'github-copilot-cli': Object.freeze([
+    displayOnlyModelOption('auto', 'Auto'),
+    displayOnlyModelOption('claude-sonnet-4.6', 'Claude Sonnet 4.6'),
+    displayOnlyModelOption('gpt-5.4', 'GPT-5.4'),
+    displayOnlyModelOption('claude-haiku-4.5', 'Claude Haiku 4.5'),
+    displayOnlyModelOption('gpt-5.3-codex', 'GPT-5.3 Codex'),
+    displayOnlyModelOption('gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview'),
+    displayOnlyModelOption('gemini-3.5-flash', 'Gemini 3.5 Flash'),
+    displayOnlyModelOption('gemini-3.6-flash', 'Gemini 3.6 Flash'),
+    displayOnlyModelOption('gemini-3.7-flash', 'Gemini 3.7 Flash'),
+    displayOnlyModelOption('mai-code-1-flash', 'MAI Code 1 Flash'),
   ]),
 });
 
@@ -348,12 +359,7 @@ const BASE_PROVIDER_CATALOG: Readonly<
   mistral: family('mistral', 'Mistral', [MISTRAL_API_CONNECTION]),
   together: family('together', 'Together AI', [TOGETHER_API_CONNECTION]),
   ollama: family('ollama', 'Ollama', [OLLAMA_LOCAL_CONNECTION]),
-  opencode: family(
-    'opencode',
-    'OpenCode Models',
-    [OPENCODE_CLI_CONNECTION],
-    OPENCODE_CLI_SURFACE,
-  ),
+  opencode: family('opencode', 'OpenCode Models', [OPENCODE_CLI_CONNECTION], OPENCODE_CLI_SURFACE),
 });
 
 const BASE_PROVIDER_CONNECTIONS: readonly Readonly<ProviderConnection>[] = Object.freeze([

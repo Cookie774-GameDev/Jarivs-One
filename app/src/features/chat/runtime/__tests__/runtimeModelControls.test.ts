@@ -6,8 +6,8 @@ import {
 } from '../runtimeModelControls';
 
 const sol = {
-  connectionId: 'openai-api',
-  modelId: 'gpt-5.6-sol',
+  connectionId: 'opencode-cli',
+  modelId: 'openai/gpt-5.6-sol',
   variants: ['none', 'low', 'medium', 'high', 'xhigh', 'max'].map((id) => ({ id })),
   supportsIndependentReasoningEffort: true,
   serviceTiers: ['fast'],
@@ -74,6 +74,18 @@ describe('runtime model controls', () => {
         usageWarningRequired: true,
       },
     });
+  });
+
+  it('hides Fast for direct API and aggregator routes even when metadata looks fast', () => {
+    for (const metadata of [
+      { ...sol, connectionId: 'openai-api', modelId: 'gpt-5.6-sol' },
+      { ...sol, modelId: 'openrouter/openai/gpt-5.6-sol' },
+    ]) {
+      expect(resolveRuntimeModelControls({ effort: 'auto', fastMode: 'on' }, metadata)).toMatchObject({
+        ok: false,
+        code: 'FAST_MODE_UNSUPPORTED',
+      });
+    }
   });
 
   it('fails unsupported Spark max and unsupported Fast before provider send', () => {

@@ -119,6 +119,17 @@ function simpleRecordScore(record: Readonly<SimpleModelCatalogRecord>): number {
   return available + source * 1_000_000 + freshness;
 }
 
+/**
+ * Picker-only logical identity. Exact route identity remains untouched; this
+ * collapses only provider-documented aliases that name the same product.
+ */
+export function logicalProviderModelId(providerId: string, modelId: string): string {
+  const provider = canonicalIdentifier(providerId);
+  const exact = canonicalProviderModelId(provider, modelId);
+  if (provider === 'openai' && exact === 'gpt-5.6') return 'gpt-5.6-sol';
+  return exact;
+}
+
 function normalizedPricing(value: unknown): {
   pricing?: Readonly<HarnessModelPricing>;
   pricingStatus: HarnessPricingClassification;

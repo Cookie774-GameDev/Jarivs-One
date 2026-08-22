@@ -29,7 +29,7 @@ import { sanitizeReasoningProviderOptions } from '../reasoningControls';
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 
 /** Default OpenAI model used when promoting a mock-default agent. */
-export const OPENAI_DEFAULT_MODEL = 'gpt-5.1';
+export const OPENAI_DEFAULT_MODEL = 'gpt-5.6-terra';
 
 function toOpenAiContent(content: string | LLMContentPart[]) {
   if (typeof content === 'string') return content;

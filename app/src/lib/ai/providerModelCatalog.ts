@@ -7,7 +7,6 @@ import {
   getAccessibleModelOptions,
   type ModelOption,
 } from './models';
-import { HIVE_FRONTIER_MODELS } from './stacks/frontierModels';
 import {
   getProviderDisplayName,
   getProviderRegistryEntry,
@@ -57,34 +56,6 @@ export interface ProviderModelValidation {
   isCustomModel?: boolean;
 }
 
-const FRONTIER_LABELS: Record<string, string> = {
-  [HIVE_FRONTIER_MODELS.google_flash]: 'Gemini 3.5 Flash',
-  [HIVE_FRONTIER_MODELS.google_pro]: 'Gemini 3.1 Pro',
-  [HIVE_FRONTIER_MODELS.anthropic_opus]: 'Claude Opus 4.8',
-  [HIVE_FRONTIER_MODELS.anthropic_fable]: 'Claude Fable 5',
-  [HIVE_FRONTIER_MODELS.openai_flagship]: 'GPT-5.5',
-  [HIVE_FRONTIER_MODELS.openai_flagship_pro]: 'GPT-5.5 Pro',
-  [HIVE_FRONTIER_MODELS.openai_coding]: 'GPT-5.5 Codex',
-  [HIVE_FRONTIER_MODELS.grok]: 'Grok 4.3',
-  [HIVE_FRONTIER_MODELS.deepseek_pro]: 'DeepSeek V4 Pro',
-  [HIVE_FRONTIER_MODELS.deepseek_flash]: 'DeepSeek V4 Flash',
-  [HIVE_FRONTIER_MODELS.mistral_large]: 'Mistral Large',
-};
-
-const FRONTIER_BY_PROVIDER: Partial<Record<ProviderId, string[]>> = {
-  google: [HIVE_FRONTIER_MODELS.google_flash, HIVE_FRONTIER_MODELS.google_pro],
-  anthropic: [HIVE_FRONTIER_MODELS.anthropic_opus, HIVE_FRONTIER_MODELS.anthropic_fable],
-  openai: [
-    HIVE_FRONTIER_MODELS.openai_flagship,
-    HIVE_FRONTIER_MODELS.openai_flagship_pro,
-    HIVE_FRONTIER_MODELS.openai_coding,
-  ],
-  xai: [HIVE_FRONTIER_MODELS.grok],
-  deepseek: [HIVE_FRONTIER_MODELS.deepseek_pro, HIVE_FRONTIER_MODELS.deepseek_flash],
-  mistral: [HIVE_FRONTIER_MODELS.mistral_large],
-  groq: ['openai/gpt-oss-20b'],
-};
-
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -117,17 +88,6 @@ function toRegistryOption(
     availability,
     subtitle: option.id,
   };
-}
-
-function frontierOptionsForProvider(providerId: ProviderId): RegistryModelOption[] {
-  const ids = FRONTIER_BY_PROVIDER[providerId] ?? [];
-  return ids.map((id) => ({
-    id,
-    label: FRONTIER_LABELS[id] ?? id,
-    provider: providerId,
-    availability: 'preview' as const,
-    subtitle: id,
-  }));
 }
 
 function staticOptionsForProvider(
@@ -164,7 +124,7 @@ function mergeModelOptions(
   return merged;
 }
 
-/** Resolve dropdown models for a provider (static + frontier + cached dynamic only). */
+/** Resolve dropdown models for a provider (full static fallback + cached live catalog). */
 export function getModelsForProvider(
   providerId: ProviderId,
   ctx: ProviderConnectionContext,
@@ -182,11 +142,7 @@ export function getModelsForProvider(
     ...option,
     availability: 'unverified' as const,
   }));
-  const frontier = frontierOptionsForProvider(providerId).map((option) => ({
-    ...option,
-    availability: 'unverified' as const,
-  }));
-  return mergeModelOptions(providerId, [frontier, staticModels]);
+  return mergeModelOptions(providerId, [staticModels]);
 }
 
 export function getModelLabelForProvider(
@@ -219,8 +175,6 @@ export function modelBelongsToProvider(providerId: ProviderId, modelId: string):
     (option) => option.provider === providerId && option.id.toLowerCase() === id.toLowerCase(),
   );
   if (staticMatch) return true;
-  const frontier = FRONTIER_BY_PROVIDER[providerId] ?? [];
-  if (frontier.some((candidate) => candidate.toLowerCase() === id.toLowerCase())) return true;
   return (dynamicModelCache.get(providerId)?.models ?? []).some(
     (option) => option.id.toLowerCase() === id.toLowerCase(),
   );
@@ -379,7 +333,7 @@ function parseGoogleModels(payload: {
     if (!raw) continue;
     rows.push({
       id: raw,
-      label: row.displayName?.trim() || FRONTIER_LABELS[raw] || raw,
+      label: row.displayName?.trim() || raw,
       provider: 'google',
       availability: raw.includes('preview') || raw.includes('exp') ? 'preview' : 'stable',
       subtitle: raw,
