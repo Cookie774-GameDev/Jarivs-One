@@ -30,7 +30,8 @@ function pairs(overrides: Partial<DirectGatewayPair> = {}): DirectGatewayPair[] 
     scopeKey: 'account/workspace/project/worktree',
     route: 'direct' as const,
     warm: true,
-    executionIdentity: identity,
+    baselineExecutionIdentity: identity,
+    gatewayExecutionIdentity: identity,
     baselineMs: 1_000 + index,
     gatewayOverheadMs: 100 + index,
     ...overrides,
@@ -117,17 +118,31 @@ describe('buildDirectGatewayAcceptanceReport', () => {
     const samples = pairs();
     samples[29] = {
       ...samples[29],
-      executionIdentity: { ...identity, upstreamModelId: 'different-model' },
+      baselineExecutionIdentity: { ...identity, upstreamModelId: 'different-model' },
+      gatewayExecutionIdentity: { ...identity, upstreamModelId: 'different-model' },
     };
 
-    expect(() => buildDirectGatewayAcceptanceReport(samples)).toThrow('executionIdentity');
+    expect(() => buildDirectGatewayAcceptanceReport(samples)).toThrow('baselineExecutionIdentity');
+  });
+
+  it('rejects a baseline and Gateway pair whose exact identities disagree', () => {
+    expect(() =>
+      buildDirectGatewayAcceptanceReport(
+        pairs({
+          baselineExecutionIdentity: identity,
+          gatewayExecutionIdentity: { ...identity, fastVariant: 'standard' },
+        }),
+      ),
+    ).toThrow('baseline and Gateway execution identities');
   });
 
   it('rejects acceptance evidence without an observed provider identity', () => {
     expect(() =>
       buildDirectGatewayAcceptanceReport(
-        pairs({ executionIdentity: { ...identity, observedProviderIdentity: undefined } }),
+        pairs({
+          gatewayExecutionIdentity: { ...identity, observedProviderIdentity: undefined },
+        }),
       ),
-    ).toThrow('observedProviderIdentity');
+    ).toThrow('gatewayExecutionIdentity.observedProviderIdentity');
   });
 });

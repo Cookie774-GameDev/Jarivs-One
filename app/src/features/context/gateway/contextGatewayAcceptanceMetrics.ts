@@ -15,7 +15,8 @@ export interface DirectGatewayPair {
   scopeKey: string;
   route: ContextRoute;
   warm: boolean;
-  executionIdentity: Readonly<ExecutionIdentity>;
+  baselineExecutionIdentity: Readonly<ExecutionIdentity>;
+  gatewayExecutionIdentity: Readonly<ExecutionIdentity>;
   /** Comparable same-harness/provider time with the VibeSpace Gateway boundary removed. */
   baselineMs: number;
   /** VibeSpace-owned warm overhead only; provider/network/model time must be excluded. */
@@ -56,10 +57,10 @@ function requireNonEmpty(value: string, field: string): void {
   if (value.trim().length === 0) throw new Error(`${field} must be non-empty`);
 }
 
-function executionIdentityKey(identity: Readonly<ExecutionIdentity>): string {
+function executionIdentityKey(identity: Readonly<ExecutionIdentity>, label: string): string {
   const values = identityFields.map((field) => {
     const value = identity[field];
-    requireNonEmpty(value ?? '', `executionIdentity.${field}`);
+    requireNonEmpty(value ?? '', `${label}.${field}`);
     return value ?? null;
   });
   return JSON.stringify(values);
@@ -102,7 +103,17 @@ function requireComparable(pairs: readonly Readonly<DirectGatewayPair>[]): void 
   const first = pairs[0];
   const comparableFields = ['harnessId', 'promptHash', 'sourceRevision', 'scopeKey'] as const;
   for (const field of comparableFields) requireNonEmpty(first[field], field);
-  const expectedIdentity = executionIdentityKey(first.executionIdentity);
+  const expectedBaselineIdentity = executionIdentityKey(
+    first.baselineExecutionIdentity,
+    'baselineExecutionIdentity',
+  );
+  const expectedGatewayIdentity = executionIdentityKey(
+    first.gatewayExecutionIdentity,
+    'gatewayExecutionIdentity',
+  );
+  if (expectedBaselineIdentity !== expectedGatewayIdentity) {
+    throw new Error('baseline and Gateway execution identities must match exactly');
+  }
 
   for (const pair of pairs) {
     if (!pair.warm) throw new Error('warm must be true');
@@ -117,8 +128,22 @@ function requireComparable(pairs: readonly Readonly<DirectGatewayPair>[]): void 
       requireNonEmpty(pair[field], field);
       if (pair[field] !== first[field]) throw new Error(`${field} must be identical across pairs`);
     }
-    if (executionIdentityKey(pair.executionIdentity) !== expectedIdentity) {
-      throw new Error('executionIdentity must be identical across pairs');
+    const baselineIdentity = executionIdentityKey(
+      pair.baselineExecutionIdentity,
+      'baselineExecutionIdentity',
+    );
+    const gatewayIdentity = executionIdentityKey(
+      pair.gatewayExecutionIdentity,
+      'gatewayExecutionIdentity',
+    );
+    if (baselineIdentity !== gatewayIdentity) {
+      throw new Error('baseline and Gateway execution identities must match exactly');
+    }
+    if (baselineIdentity !== expectedBaselineIdentity) {
+      throw new Error('baselineExecutionIdentity must be identical across pairs');
+    }
+    if (gatewayIdentity !== expectedGatewayIdentity) {
+      throw new Error('gatewayExecutionIdentity must be identical across pairs');
     }
   }
 }

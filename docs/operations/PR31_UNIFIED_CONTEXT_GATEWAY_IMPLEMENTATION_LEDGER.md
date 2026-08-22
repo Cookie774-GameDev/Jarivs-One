@@ -299,6 +299,7 @@
 - Focused retrieval fails above 4 seconds p95. Deep retrieval independently fails above 8 seconds p95 or when any run crosses the 10-second hard pre-dispatch deadline; candidate and hydrated-count distributions remain visible without treating them as quality proof.
 - No native/provider measurement or retrieval-quality result is invented. TDD RED proved the gate was absent. Fresh combined direct/focused/deep Gateway acceptance verification passed 5 files / 63 tests. Full TypeScript verification remains limited to the same four active, out-of-scope SiYuan test diagnostics from the immediately preceding slice.
 - Follow-up TDD proved the general `ExecutionIdentity` type's optional observed-provider field could still enter an acceptance report. Both direct and retrieval gates now require a non-empty observed provider identity before scoring; the fresh combined matrix passes 5 files / 65 tests.
+- A second direct-pair audit proved one shared identity field could not demonstrate that the baseline and Gateway observations actually agreed. Each pair now carries separate baseline and Gateway identities; every exact field must match within the pair and across the controlled run set before latency is scored. TDD RED reproduced the missing proof, and the combined Gateway matrix passes 5 files / 66 tests.
 
 ## 2026-08-22 — Official native truthful-ADE-route verification
 
