@@ -268,23 +268,30 @@ export function createHarnessRuntimeManager(
       }
       if (!current()) return;
       const previous = snapshot.kind === 'ready' ? connection : undefined;
-      if (previous) {
-        try {
-          const status = await native.serverStatus();
-          if (!current()) return;
-          if (status) {
-            const ready = validatedConnection(status);
-            if (
-              ready.generation === previous.generation &&
-              ready.source === previous.source &&
-              ready.version === previous.version
-            ) {
-              return;
+      try {
+        const status = await native.serverStatus();
+        if (!current()) return;
+        if (status) {
+          const ready = validatedConnection(status);
+          const sameAsPrevious =
+            previous &&
+            ready.generation === previous.generation &&
+            ready.source === previous.source &&
+            ready.version === previous.version;
+          if (!previous || sameAsPrevious) {
+            connection = ready;
+            if (!previous) {
+              publish({
+                kind: 'ready',
+                source: ready.source,
+                version: boundedCopy(ready.version, 'unknown'),
+              });
             }
+            return;
           }
-        } catch {
-          if (!current()) return;
         }
+      } catch {
+        if (!current()) return;
       }
       publish({ kind: 'checking' });
       try {

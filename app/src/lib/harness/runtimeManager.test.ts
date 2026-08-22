@@ -40,7 +40,7 @@ function adapter(
     install: vi.fn().mockResolvedValue(readyDetection),
     cancel: vi.fn().mockResolvedValue(true),
     ensureServer: vi.fn().mockResolvedValue(readyConnection),
-    serverStatus: vi.fn().mockResolvedValue(readyConnection),
+    serverStatus: vi.fn().mockResolvedValue(null),
     listen: vi.fn(async (next) => {
       listener = next;
       return () => {
@@ -61,6 +61,25 @@ async function settle(): Promise<void> {
 }
 
 describe('harness runtime manager', () => {
+  it('adopts an already supervised server before slow install detection on a cold refresh', async () => {
+    const native = adapter({
+      serverStatus: vi.fn().mockResolvedValue(readyConnection),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    await manager.refresh();
+
+    expect(native.serverStatus).toHaveBeenCalledTimes(1);
+    expect(native.detect).not.toHaveBeenCalled();
+    expect(native.ensureServer).not.toHaveBeenCalled();
+    expect(manager.getConnection()).toEqual(readyConnection);
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+    });
+  });
+
   it('detects lazily for the first subscriber and maps compatible native results', async () => {
     const native = adapter();
     const manager = createHarnessRuntimeManager(native);
@@ -88,6 +107,7 @@ describe('harness runtime manager', () => {
 
     const first = manager.refresh();
     const second = manager.refresh();
+    await settle();
     expect(native.detect).toHaveBeenCalledTimes(1);
 
     detection.resolve(readyDetection);
@@ -103,6 +123,7 @@ describe('harness runtime manager', () => {
     vi.mocked(native.detect).mockClear();
     vi.mocked(native.ensureServer).mockClear();
     vi.mocked(native.serverStatus).mockClear();
+    vi.mocked(native.serverStatus).mockResolvedValueOnce(readyConnection);
     const notifications = vi.fn();
     const unsubscribe = manager.subscribe(notifications);
     await settle();
@@ -237,7 +258,10 @@ describe('harness runtime manager', () => {
     const status = deferred<OpenCodeServerConnection | null>();
     const native = adapter({
       detect: vi.fn().mockResolvedValue({ status: 'missing' }),
-      serverStatus: vi.fn(() => status.promise),
+      serverStatus: vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockImplementation(() => status.promise),
     });
     const manager = createHarnessRuntimeManager(native);
     const notifications = vi.fn();
@@ -250,7 +274,7 @@ describe('harness runtime manager', () => {
       version: readyConnection.version,
       generation: readyConnection.generation,
     });
-    expect(native.serverStatus).toHaveBeenCalledTimes(1);
+    expect(native.serverStatus).toHaveBeenCalledTimes(2);
     unsubscribe();
     await settle();
     notifications.mockClear();
@@ -326,6 +350,7 @@ describe('harness runtime manager', () => {
   it('clamps progress events and refreshes credentials for a server-ready generation', async () => {
     const native = adapter({
       detect: vi.fn().mockResolvedValue({ status: 'missing' }),
+      serverStatus: vi.fn().mockResolvedValueOnce(null).mockResolvedValue(readyConnection),
     });
     const manager = createHarnessRuntimeManager(native);
     const unsubscribe = manager.subscribe(() => {});
@@ -350,7 +375,7 @@ describe('harness runtime manager', () => {
       generation: readyConnection.generation,
     });
     await settle();
-    expect(native.serverStatus).toHaveBeenCalledTimes(1);
+    expect(native.serverStatus).toHaveBeenCalledTimes(2);
     expect(manager.getSnapshot()).toEqual({
       kind: 'ready',
       source: 'managed',

@@ -19,3 +19,10 @@
 - Download was exercised twice concurrently. Both callers received the same promise, the compatible install was accepted without invoking a new download, and the one VibeSpace-owned `opencode.exe serve` PID 5888 was unchanged before/after.
 - Exact private transport was exercised through `nativeOpenCodeRequest` using the manager's opaque generation. `/global/health` returned HTTP 200 with `healthy: true` and version 1.18.21 in 910 ms. No inference, prompt, provider mutation, or credential operation was performed.
 - Automated verification: runtime manager, readiness gate, and catalog refresh suites passed 61/61. Exact TypeScript/Rust formatting and diff checks passed. The rebuilt native executable successfully compiled and ran the owned native server changes; focused Rust behavior is also covered by the new one-start-only and bounded-backoff unit tests.
+
+## 2026-08-22 — cold renderer refresh fast-path checkpoint
+
+- Root cause: a full renderer/HMR refresh creates a new runtime-manager singleton with no in-memory connection. The old refresh path skipped native server status in that cold state and unnecessarily entered the slower install-detection path even while VibeSpace already owned a healthy supervised OpenCode server.
+- Repair: every refresh now asks the native supervisor for its current opaque connection first. A valid existing connection is adopted immediately; absent, changed, invalid, or failed status still falls through to the existing detection and health-gated startup path.
+- Official native proof: a fresh runtime-manager module inside the real Tauri WebView (`jarvis.exe` PID 26192, official `ai.jarvis.desktop` profile) adopted system OpenCode 1.18.21 in 19 ms. The single VibeSpace-owned `opencode.exe serve` PID remained 37596 before and after; no second service process or update flow was created.
+- Verification: focused OpenCode runtime manager 27/27; combined Doctor/Composer/storage/OpenCode matrix 68/68; full app TypeScript typecheck passed.
