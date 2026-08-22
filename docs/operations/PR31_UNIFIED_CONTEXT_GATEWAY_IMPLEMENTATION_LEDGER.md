@@ -213,3 +213,8 @@
 
 - The ADE adapter now exposes a run-scoped snapshot subscription for its UI. Subscribers receive safe `preparing-context`, `dispatching`, and terminal snapshots as the authoritative lifecycle advances; late subscribers receive only the current terminal state, terminal listener sets are released, and a broken presentation listener cannot interrupt context enforcement or dispatch.
 - TDD red proved no executable subscription surface existed. Fresh ADE verification passed 3 files / 16 tests and adjacent Gateway/ADE/terminal verification passed 7 files / 50 tests. Full TypeScript verification passed with zero diagnostics.
+
+## 2026-08-22 — Terminal identity expiry-boundary checkpoint
+
+- App-minted terminal/ADE link identities now expire at `expiresAt`, not one millisecond after it. Binding and authorization use the same closed boundary, and authorization at that boundary cancels every registered Gateway/ADE request before deleting authority.
+- TDD red reproduced both continued authorization and missing cancellation at the exact expiry timestamp. Fresh terminal/ADE verification passed 5 files / 33 tests, and full TypeScript verification passed with zero diagnostics.

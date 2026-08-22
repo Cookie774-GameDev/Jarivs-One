@@ -90,7 +90,7 @@ describe('terminal Context bridge identity authority', () => {
     expect(
       authorizeTerminalContextBridgeIdentity({ ...request, terminalSessionId: 'tty-2' }, 120),
     ).toBeNull();
-    expect(authorizeTerminalContextBridgeIdentity(request, 151)).toBeNull();
+    expect(authorizeTerminalContextBridgeIdentity(request, 150)).toBeNull();
 
     const replacement = mintTerminalContextBridgeIdentity(
       {
@@ -164,7 +164,7 @@ describe('terminal Context bridge identity authority', () => {
           paneId: 'pane-1',
           projectId: 'project-1',
         },
-        251,
+        250,
       ),
     ).toBeNull();
     expect(expiredCancel).toHaveBeenCalledTimes(1);

@@ -137,7 +137,7 @@ export function bindTerminalContextBridgeIdentity(
   const current = identities.get(identityId);
   if (
     !current ||
-    current.expiresAt < now ||
+    current.expiresAt <= now ||
     current.paneId !== scope.paneId ||
     current.projectId !== scope.projectId ||
     !safeId(scope.terminalSessionId) ||
@@ -160,7 +160,7 @@ export function authorizeTerminalContextBridgeIdentity(
 ): TerminalContextBridgeIdentity | null {
   const identity = identities.get(scope.identityId);
   if (!identity) return null;
-  if (identity.expiresAt < now) {
+  if (identity.expiresAt <= now) {
     cancelActiveRequests(scope.identityId);
     identities.delete(scope.identityId);
     return null;
