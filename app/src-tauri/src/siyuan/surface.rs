@@ -42,6 +42,18 @@ fn public_error(code: &'static str) -> String {
     code.to_owned()
 }
 
+fn siyuan_session_cookie_for_deletion() -> Cookie<'static> {
+    Cookie::build(("siyuan", ""))
+        .domain("127.0.0.1")
+        .path("/")
+        .build()
+}
+
+fn retire_surface_window(window: &WebviewWindow) -> Result<(), tauri::Error> {
+    let _ = window.delete_cookie(siyuan_session_cookie_for_deletion());
+    window.destroy()
+}
+
 fn validate_bounds(bounds: &SiyuanSurfaceBounds) -> Result<(), String> {
     if !bounds.x.is_finite()
         || !bounds.y.is_finite()
@@ -187,8 +199,7 @@ pub async fn siyuan_surface_open(
                 });
             return Ok(status(&app));
         }
-        let _ = existing.clear_all_browsing_data();
-        let _ = existing.destroy();
+        let _ = retire_surface_window(&existing);
         *SURFACE_STATE
             .lock()
             .map_err(|_| public_error("siyuan_surface_state_unavailable"))? = None;
@@ -295,9 +306,7 @@ pub fn siyuan_surface_close(app: AppHandle) -> Result<bool, String> {
     let Some(window) = app.get_webview_window(SURFACE_LABEL) else {
         return Ok(false);
     };
-    let _ = window.clear_all_browsing_data();
-    window
-        .destroy()
+    retire_surface_window(&window)
         .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
     *SURFACE_STATE
         .lock()
@@ -312,8 +321,7 @@ pub fn siyuan_surface_status(app: AppHandle) -> SiyuanSurfaceStatus {
 
 pub fn shutdown_surface(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(SURFACE_LABEL) {
-        let _ = window.clear_all_browsing_data();
-        let _ = window.destroy();
+        let _ = retire_surface_window(&window);
     }
     if let Ok(mut state) = SURFACE_STATE.lock() {
         *state = None;
@@ -424,5 +432,21 @@ mod tests {
             main_window["additionalBrowserArgs"].as_str(),
             Some(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
         );
+    }
+
+    #[test]
+    fn surface_retirement_never_clears_the_shared_webview_profile() {
+        let source = include_str!("surface.rs");
+        let profile_wide_clear = ["clear", "all", "browsing", "data"].join("_");
+        let retirement_symbol = ["retire", "surface", "window"].join("_");
+        let retirement_call = format!("{retirement_symbol}(");
+        let cookie = siyuan_session_cookie_for_deletion();
+
+        assert!(!source.contains(&profile_wide_clear));
+        assert_eq!(source.matches(&retirement_call).count(), 4);
+        assert_eq!(cookie.name(), "siyuan");
+        assert_eq!(cookie.value(), "");
+        assert_eq!(cookie.domain(), Some("127.0.0.1"));
+        assert_eq!(cookie.path(), Some("/"));
     }
 }
