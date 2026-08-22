@@ -111,6 +111,14 @@ describe('orderSlashCommandsForDisplay', () => {
     });
   });
 
+  it('registers /doctor as a local repair command', () => {
+    expect(findSlashCommandDef('doctor')).toMatchObject({
+      cmd: 'doctor',
+      category: 'utility',
+      takesArg: true,
+    });
+  });
+
   it('marks /file as a project-file attach picker command', () => {
     expect(findSlashCommandDef('file')?.hasOptions).toBe(true);
     expect(isChatAttachSlashCmd('file')).toBe(true);

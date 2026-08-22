@@ -67,6 +67,7 @@ const ROUTES = {
   schedule: { owner: 'vibespace-tool', execution: 'reference' },
   chat: { owner: 'vibespace-ui', execution: 'local' },
   usage: { owner: 'vibespace-ui', execution: 'local' },
+  doctor: { owner: 'vibespace-ui', execution: 'local' },
   theme: { owner: 'vibespace-ui', execution: 'local' },
   appearance: { owner: 'vibespace-ui', execution: 'local' },
   undo: { owner: 'vibespace-ui', execution: 'local' },

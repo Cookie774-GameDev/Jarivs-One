@@ -28,6 +28,7 @@ import {
   Shield,
   SlidersHorizontal,
   Sparkles,
+  Stethoscope,
   Terminal,
   Undo2,
   Users,
@@ -345,6 +346,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     icon: BarChart3,
     category: 'utility',
     argPlaceholder: '[refresh|session|all]',
+  },
+  {
+    cmd: 'doctor',
+    description: 'Check and safely repair supported VibeSpace systems',
+    icon: Stethoscope,
+    category: 'utility',
+    takesArg: true,
+    argPlaceholder: '[run]',
   },
   {
     cmd: 'theme',

@@ -62,6 +62,7 @@ import { MicWaveform } from './MicWaveform';
 import { formatComposerVoiceFailure } from './composerVoiceFailures';
 import { formatComposerSendFailure } from './composerSendFailures';
 import { HarnessReadinessGate, useHarnessRuntimeState } from './HarnessReadinessGate';
+import { runVibeSpaceDoctor } from '@/features/doctor/vibeSpaceDoctor';
 
 export function getThemeCommandHelp(): string {
   return `Chat console themes: ${CONSOLE_PROFILES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`;
@@ -1544,6 +1545,15 @@ export function Composer({
 
     const canonicalCmd = normalizeSlashCmd(cmd.cmd);
 
+    // Doctor is an executable local command, not an argument prompt. Selecting
+    // it with Enter runs immediately and never reaches provider dispatch.
+    if (canonicalCmd === 'doctor') {
+      setText(before + after);
+      setSlashCtx(null);
+      requestAnimationFrame(() => void handleSend('/doctor'));
+      return;
+    }
+
     // `/hive` switches to the Hive ensemble when the product surface is enabled.
     if (canonicalCmd === 'hive') {
       setText(before + after);
@@ -2273,6 +2283,16 @@ export function Composer({
         ],
       });
       setText('');
+      return true;
+    }
+    if (cmd === 'doctor') {
+      if (rest && rest.toLowerCase() !== 'run') {
+        await addSystem('Use /doctor or /doctor run.');
+        return true;
+      }
+      await addSystem('VibeSpace Doctor is checking supported systems…');
+      const report = await runVibeSpaceDoctor();
+      await addSystem(report.text);
       return true;
     }
     if (cmd === 'appearance') {

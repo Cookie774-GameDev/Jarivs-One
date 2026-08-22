@@ -40,6 +40,7 @@ const expected = {
   schedule: ['vibespace-tool', 'reference'],
   chat: ['vibespace-ui', 'local'],
   usage: ['vibespace-ui', 'local'],
+  doctor: ['vibespace-ui', 'local'],
   theme: ['vibespace-ui', 'local'],
   appearance: ['vibespace-ui', 'local'],
   undo: ['vibespace-ui', 'local'],
