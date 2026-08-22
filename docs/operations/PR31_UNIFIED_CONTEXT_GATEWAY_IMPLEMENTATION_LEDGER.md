@@ -47,3 +47,4 @@
 - Fresh native verification using a D:-hosted Cargo target (to preserve the running app and avoid the full C: drive): `terminal_cli_contract` passed 22/22, including alias parsing, closed schemas, authenticated scope carriage, malformed/forged rejection, bounded plain output, reversible shims, and connection limits.
 - Full app typecheck reached only the same four pre-existing diagnostics in active SiYuan tests: `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no owned Gateway/terminal file produced a diagnostic.
 - Exact Prettier check, exact Rustfmt check, and owned diff whitespace check passed. Native in-app acceptance remains pending until the current-source Tauri shell is started without closing ChatGPT/Codex.
+- Reversible implementation commit: `72eca44e` (`feat(context): add managed terminal gateway bridge`), containing only the owned terminal/Gateway bridge slice and this ledger checkpoint.
