@@ -11,6 +11,12 @@ export const DIRECT_GATEWAY_STAGE_NAMES = [
   'dispatch',
   'adeAdapter',
 ] as const;
+export const DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES = [
+  'providerAccepted',
+  'firstOutput',
+  'firstVisiblePaint',
+  'completion',
+] as const;
 
 export type DirectGatewayStageName = (typeof DIRECT_GATEWAY_STAGE_NAMES)[number];
 export type DirectGatewayStageTimings = Readonly<Record<DirectGatewayStageName, number>>;
@@ -19,6 +25,11 @@ export interface DirectGatewayResourceMetrics {
   workingSetMiB: number;
   processCount: number;
 }
+export type DirectGatewayLifecycleTimingName =
+  (typeof DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES)[number];
+export type DirectGatewayLifecycleTimings = Readonly<
+  Record<DirectGatewayLifecycleTimingName, number>
+>;
 
 export interface DirectGatewayPair {
   pairId: string;
@@ -34,6 +45,12 @@ export interface DirectGatewayPair {
   gatewayExecutionIdentity: Readonly<ExecutionIdentity>;
   baselineResourceMetrics: Readonly<DirectGatewayResourceMetrics>;
   gatewayResourceMetrics: Readonly<DirectGatewayResourceMetrics>;
+  baselineLifecycleTimingsMs: DirectGatewayLifecycleTimings;
+  gatewayLifecycleTimingsMs: DirectGatewayLifecycleTimings;
+  baselineRetryCount: number;
+  gatewayRetryCount: number;
+  baselineCancelled: boolean;
+  gatewayCancelled: boolean;
   gatewayStageTimingsMs: DirectGatewayStageTimings;
   /** Comparable same-harness/provider time with the VibeSpace Gateway boundary removed. */
   baselineMs: number;
@@ -63,6 +80,17 @@ export interface DirectGatewayAcceptanceReport {
       Readonly<
         Record<
           keyof DirectGatewayResourceMetrics,
+          Readonly<{ p50: number; p95: number; p99: number }>
+        >
+      >
+    >
+  >;
+  lifecycle: Readonly<
+    Record<
+      'baseline' | 'gateway',
+      Readonly<
+        Record<
+          DirectGatewayLifecycleTimingName,
           Readonly<{ p50: number; p95: number; p99: number }>
         >
       >
@@ -126,6 +154,24 @@ function validateResourceMetrics(
   }
 }
 
+function validateLifecycleTimings(value: DirectGatewayLifecycleTimings, label: string): void {
+  const keys = Object.keys(value);
+  if (
+    keys.length !== DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES.length ||
+    DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES.some((field) => !keys.includes(field))
+  ) {
+    throw new Error(`${label} must contain exactly the approved lifecycle timings`);
+  }
+  let previous = 0;
+  for (const field of DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES) {
+    const timing = value[field];
+    if (!Number.isFinite(timing) || timing < previous) {
+      throw new Error(`${label}.${field} must be finite and monotonic`);
+    }
+    previous = timing;
+  }
+}
+
 function requireUnique(
   pairs: readonly Readonly<DirectGatewayPair>[],
   field: 'pairId' | 'baselineId' | 'gatewayReceiptId',
@@ -173,6 +219,15 @@ function requireComparable(pairs: readonly Readonly<DirectGatewayPair>[]): void 
     }
     validateResourceMetrics(pair.baselineResourceMetrics, 'baselineResourceMetrics');
     validateResourceMetrics(pair.gatewayResourceMetrics, 'gatewayResourceMetrics');
+    validateLifecycleTimings(pair.baselineLifecycleTimingsMs, 'baselineLifecycleTimingsMs');
+    validateLifecycleTimings(pair.gatewayLifecycleTimingsMs, 'gatewayLifecycleTimingsMs');
+    for (const field of ['baselineRetryCount', 'gatewayRetryCount'] as const) {
+      if (pair[field] !== 0) throw new Error(`${field} must be zero for a comparable direct run`);
+    }
+    for (const field of ['baselineCancelled', 'gatewayCancelled'] as const) {
+      if (pair[field] !== false)
+        throw new Error(`${field} must be false for a completed direct run`);
+    }
     const stageKeys = Object.keys(pair.gatewayStageTimingsMs);
     if (
       stageKeys.length !== DIRECT_GATEWAY_STAGE_NAMES.length ||
@@ -242,6 +297,15 @@ export function buildDirectGatewayAcceptanceReport(
         distribution(pairs.map((pair) => pair[field][metric])),
       ]),
     ) as DirectGatewayAcceptanceReport['resources']['baseline'];
+  const lifecycleDistributions = (
+    field: 'baselineLifecycleTimingsMs' | 'gatewayLifecycleTimingsMs',
+  ): DirectGatewayAcceptanceReport['lifecycle']['baseline'] =>
+    Object.fromEntries(
+      DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES.map((timing) => [
+        timing,
+        distribution(pairs.map((pair) => pair[field][timing])),
+      ]),
+    ) as DirectGatewayAcceptanceReport['lifecycle']['baseline'];
 
   if (overheadRatio.p95 > DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT) {
     failures.push('p95-relative');
@@ -268,6 +332,10 @@ export function buildDirectGatewayAcceptanceReport(
     resources: {
       baseline: resourceDistributions('baselineResourceMetrics'),
       gateway: resourceDistributions('gatewayResourceMetrics'),
+    },
+    lifecycle: {
+      baseline: lifecycleDistributions('baselineLifecycleTimingsMs'),
+      gateway: lifecycleDistributions('gatewayLifecycleTimingsMs'),
     },
     relativeBudgetsMs,
     effectiveBudgetsMs,

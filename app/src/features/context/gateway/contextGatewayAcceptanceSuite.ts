@@ -2,6 +2,7 @@ import {
   DIRECT_GATEWAY_MINIMUM_PAIRED_RUNS,
   DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS,
   DIRECT_GATEWAY_P99_ABSOLUTE_LIMIT_MS,
+  DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES,
   DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT,
   DIRECT_GATEWAY_STAGE_NAMES,
   type DirectGatewayAcceptanceReport,
@@ -125,6 +126,23 @@ function directReportPasses(report: Readonly<DirectGatewayAcceptanceReport>): bo
       )
     );
   };
+  const lifecyclePass = (side: 'baseline' | 'gateway'): boolean => {
+    const lifecycle = report.lifecycle[side];
+    if (
+      !DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES.every((field) => validDistribution(lifecycle[field]))
+    ) {
+      return false;
+    }
+    return (['p50', 'p95', 'p99'] as const).every((percentile) => {
+      let previous = 0;
+      for (const field of DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES) {
+        const timing = lifecycle[field][percentile];
+        if (timing < previous) return false;
+        previous = timing;
+      }
+      return true;
+    });
+  };
   return (
     report.passed &&
     report.failures.length === 0 &&
@@ -138,6 +156,8 @@ function directReportPasses(report: Readonly<DirectGatewayAcceptanceReport>): bo
     ) &&
     resourcesPass('baseline') &&
     resourcesPass('gateway') &&
+    lifecyclePass('baseline') &&
+    lifecyclePass('gateway') &&
     report.overheadRatio.p95 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
     report.overheadRatio.p99 <= DIRECT_GATEWAY_RELATIVE_OVERHEAD_LIMIT &&
     report.overheadMs.p95 <= DIRECT_GATEWAY_P95_ABSOLUTE_LIMIT_MS &&

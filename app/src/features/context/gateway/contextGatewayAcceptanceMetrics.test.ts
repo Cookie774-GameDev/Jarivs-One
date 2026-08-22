@@ -36,6 +36,22 @@ function pairs(overrides: Partial<DirectGatewayPair> = {}): DirectGatewayPair[] 
       gatewayExecutionIdentity: identity,
       baselineResourceMetrics: { cpuPercent: 12, workingSetMiB: 480, processCount: 6 },
       gatewayResourceMetrics: { cpuPercent: 14, workingSetMiB: 500, processCount: 7 },
+      baselineLifecycleTimingsMs: {
+        providerAccepted: 100,
+        firstOutput: 300,
+        firstVisiblePaint: 320,
+        completion: 900,
+      },
+      gatewayLifecycleTimingsMs: {
+        providerAccepted: 120,
+        firstOutput: 320,
+        firstVisiblePaint: 340,
+        completion: 930,
+      },
+      baselineRetryCount: 0,
+      gatewayRetryCount: 0,
+      baselineCancelled: false,
+      gatewayCancelled: false,
       baselineMs: 1_000 + index,
       ...overrides,
       gatewayOverheadMs,
@@ -61,6 +77,7 @@ describe('buildDirectGatewayAcceptanceReport', () => {
     expect(report.gatewayStageTimingsMs.routeDecision.p95).toBe(128);
     expect(report.resources.gateway.workingSetMiB.p95).toBe(500);
     expect(report.resources.baseline.processCount.p99).toBe(6);
+    expect(report.lifecycle.gateway.firstVisiblePaint.p95).toBe(340);
     expect(report.relativeBudgetsMs.p95).toBeCloseTo(205.6);
     expect(report.relativeBudgetsMs.p99).toBeCloseTo(205.8);
     expect(report.effectiveBudgetsMs.p95).toBe(150);
@@ -123,6 +140,19 @@ describe('buildDirectGatewayAcceptanceReport', () => {
       'fractional process count',
       pairs({ gatewayResourceMetrics: { cpuPercent: 14, workingSetMiB: 500, processCount: 7.5 } }),
     ],
+    [
+      'non-monotonic visible lifecycle',
+      pairs({
+        gatewayLifecycleTimingsMs: {
+          providerAccepted: 120,
+          firstOutput: 320,
+          firstVisiblePaint: 310,
+          completion: 930,
+        },
+      }),
+    ],
+    ['cancelled baseline', pairs({ baselineCancelled: true })],
+    ['retried Gateway run', pairs({ gatewayRetryCount: 1 })],
   ])('rejects %s rather than publishing an acceptance result', (_label, samples) => {
     expect(() => buildDirectGatewayAcceptanceReport(samples)).toThrow();
   });

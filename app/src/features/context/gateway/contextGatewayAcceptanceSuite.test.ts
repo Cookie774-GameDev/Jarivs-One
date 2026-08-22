@@ -35,6 +35,20 @@ const directReport: DirectGatewayAcceptanceReport = {
       processCount: { p50: 7, p95: 7, p99: 7 },
     },
   },
+  lifecycle: {
+    baseline: {
+      providerAccepted: { p50: 100, p95: 110, p99: 120 },
+      firstOutput: { p50: 300, p95: 320, p99: 340 },
+      firstVisiblePaint: { p50: 320, p95: 340, p99: 360 },
+      completion: { p50: 900, p95: 950, p99: 1_000 },
+    },
+    gateway: {
+      providerAccepted: { p50: 120, p95: 130, p99: 140 },
+      firstOutput: { p50: 320, p95: 340, p99: 360 },
+      firstVisiblePaint: { p50: 340, p95: 360, p99: 380 },
+      completion: { p50: 930, p95: 980, p99: 1_030 },
+    },
+  },
   relativeBudgetsMs: { p95: 220, p99: 240 },
   effectiveBudgetsMs: { p95: 150, p99: 240 },
 };
@@ -233,6 +247,28 @@ describe('evaluateContextGatewayAcceptance', () => {
           gateway: {
             ...directReport.resources.gateway,
             processCount: { p50: 7, p95: 7.5, p99: 8 },
+          },
+        },
+      },
+    };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['direct:chat'],
+    });
+  });
+
+  it('rejects a passed-looking direct report with non-monotonic lifecycle evidence', () => {
+    const input = completeInput();
+    input.directReports[0] = {
+      ...input.directReports[0],
+      report: {
+        ...directReport,
+        lifecycle: {
+          ...directReport.lifecycle,
+          gateway: {
+            ...directReport.lifecycle.gateway,
+            firstVisiblePaint: { p50: 300, p95: 300, p99: 300 },
           },
         },
       },

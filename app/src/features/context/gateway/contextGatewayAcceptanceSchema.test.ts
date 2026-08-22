@@ -112,6 +112,20 @@ describe('parseContextGatewayAcceptanceInput', () => {
                   processCount: { p50: 7, p95: 7, p99: 7 },
                 },
               },
+              lifecycle: {
+                baseline: {
+                  providerAccepted: { p50: 100, p95: 100, p99: 100 },
+                  firstOutput: { p50: 300, p95: 300, p99: 300 },
+                  firstVisiblePaint: { p50: 320, p95: 320, p99: 320 },
+                  completion: { p50: 900, p95: 900, p99: 900 },
+                },
+                gateway: {
+                  providerAccepted: { p50: 120, p95: 120, p99: 120 },
+                  firstOutput: { p50: 320, p95: 320, p99: 320 },
+                  firstVisiblePaint: { p50: 340, p95: 340, p99: 340 },
+                  completion: { p50: 930, p95: 930, p99: 930 },
+                },
+              },
               relativeBudgetsMs: { p95: 0.2, p99: 0.2 },
               effectiveBudgetsMs: { p95: 0.2, p99: 0.2 },
             },

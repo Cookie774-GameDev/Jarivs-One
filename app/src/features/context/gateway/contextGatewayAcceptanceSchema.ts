@@ -1,4 +1,7 @@
-import { DIRECT_GATEWAY_STAGE_NAMES } from './contextGatewayAcceptanceMetrics';
+import {
+  DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES,
+  DIRECT_GATEWAY_STAGE_NAMES,
+} from './contextGatewayAcceptanceMetrics';
 import type { ContextGatewayAcceptanceInput } from './contextGatewayAcceptanceSuite';
 
 type JsonRecord = Record<string, unknown>;
@@ -106,6 +109,7 @@ function directReport(value: unknown, label: string): void {
       'overheadRatio',
       'gatewayStageTimingsMs',
       'resources',
+      'lifecycle',
       'relativeBudgetsMs',
       'effectiveBudgetsMs',
     ],
@@ -140,6 +144,15 @@ function directReport(value: unknown, label: string): void {
         processCount[percentile],
         `${label}.resources.${side}.processCount.${percentile}`,
       );
+    }
+  }
+  const lifecycle = record(input.lifecycle, `${label}.lifecycle`);
+  exactKeys(lifecycle, ['baseline', 'gateway'], `${label}.lifecycle`);
+  for (const side of ['baseline', 'gateway'] as const) {
+    const timings = record(lifecycle[side], `${label}.lifecycle.${side}`);
+    exactKeys(timings, DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES, `${label}.lifecycle.${side}`);
+    for (const timing of DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES) {
+      distribution(timings[timing], `${label}.lifecycle.${side}.${timing}`);
     }
   }
   for (const field of ['relativeBudgetsMs', 'effectiveBudgetsMs'] as const) {
