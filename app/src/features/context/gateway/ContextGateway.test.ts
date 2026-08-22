@@ -376,6 +376,28 @@ describe('ContextGateway', () => {
     expect(port.ask).toHaveBeenCalledTimes(1);
   });
 
+  it('bounds the revision cache and evicts the oldest distinct lookup', async () => {
+    const port = backend();
+    let receiptId = 0;
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: () => `receipt-cache-bound-${++receiptId}`,
+      maxCacheEntries: 2,
+    });
+
+    await gateway.ask({ ...baseRequest, requestId: 'turn-cache-a', question: 'Lookup A.' });
+    await gateway.ask({ ...baseRequest, requestId: 'turn-cache-b', question: 'Lookup B.' });
+    await gateway.ask({ ...baseRequest, requestId: 'turn-cache-c', question: 'Lookup C.' });
+    const repeatedOldest = await gateway.ask({
+      ...baseRequest,
+      requestId: 'turn-cache-a-again',
+      question: 'Lookup A.',
+    });
+
+    expect(repeatedOldest.receipt.cacheStatus).toBe('miss');
+    expect(port.ask).toHaveBeenCalledTimes(4);
+  });
+
   it('releases a cancelled shared consumer immediately without aborting the live consumer', async () => {
     let release!: () => void;
     const port = backend();

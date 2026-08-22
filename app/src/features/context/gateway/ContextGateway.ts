@@ -19,6 +19,7 @@ interface ContextGatewayDependencies {
   cacheTtlMs?: number;
   receiptTtlMs?: number;
   maxConcurrentPerScope?: number;
+  maxCacheEntries?: number;
 }
 
 interface CachedResult {
@@ -74,6 +75,8 @@ interface ReceiptEvidence {
 
 const DEFAULT_RECEIPT_TTL_MS = 15 * 60 * 1_000;
 const MAX_RECEIPT_TTL_MS = 60 * 60 * 1_000;
+const DEFAULT_MAX_CACHE_ENTRIES = 256;
+const MAX_CACHE_ENTRIES = 2_048;
 
 function abortError(): DOMException {
   return new DOMException('VibeSpace Context Gateway request was cancelled.', 'AbortError');
@@ -152,6 +155,7 @@ export class ContextGateway {
   private readonly cacheTtlMs: number;
   private readonly receiptTtlMs: number;
   private readonly maxConcurrentPerScope: number;
+  private readonly maxCacheEntries: number;
 
   constructor(
     private readonly backend: Readonly<ContextGatewayBackend>,
@@ -163,6 +167,10 @@ export class ContextGateway {
       Math.max(1, dependencies.receiptTtlMs ?? DEFAULT_RECEIPT_TTL_MS),
     );
     this.maxConcurrentPerScope = Math.max(1, Math.floor(dependencies.maxConcurrentPerScope ?? 4));
+    this.maxCacheEntries = Math.min(
+      MAX_CACHE_ENTRIES,
+      Math.max(1, Math.floor(dependencies.maxCacheEntries ?? DEFAULT_MAX_CACHE_ENTRIES)),
+    );
   }
 
   prepareTurn(input: Readonly<ContextGatewayRequest>): Promise<Readonly<PreparedContextTurn>> {
@@ -240,6 +248,27 @@ export class ContextGateway {
     for (const [receiptId, record] of this.receiptEvidence) {
       if (record.expiresAt <= now) this.receiptEvidence.delete(receiptId);
     }
+  }
+
+  private pruneExpiredCache(): void {
+    const now = this.dependencies.now();
+    for (const [key, record] of this.cache) {
+      if (record.expiresAt < now) this.cache.delete(key);
+    }
+  }
+
+  private rememberCache(key: string, result: Readonly<ContextGatewayBackendResult>): void {
+    this.pruneExpiredCache();
+    this.cache.delete(key);
+    while (this.cache.size >= this.maxCacheEntries) {
+      const oldest = this.cache.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.cache.delete(oldest);
+    }
+    this.cache.set(key, {
+      expiresAt: this.dependencies.now() + this.cacheTtlMs,
+      result,
+    });
   }
 
   private cacheKey(input: Readonly<ContextGatewayRequest>, route: string): string {
@@ -423,6 +452,7 @@ export class ContextGateway {
       throw new ContextGatewayRequestConflictError(input.requestId);
     }
     this.pruneExpiredReceipts();
+    this.pruneExpiredCache();
     const decisionStartedAt = this.dependencies.now();
     const available = this.backend.available();
     const decision = decideContextPolicy({ ...input, gatewayAvailable: available });
@@ -498,10 +528,7 @@ export class ContextGateway {
             .then((queued) => {
               if (flightController.signal.aborted) throw abortError();
               assertUnambiguousEvidenceAuthority(queued.result);
-              this.cache.set(key, {
-                expiresAt: this.dependencies.now() + this.cacheTtlMs,
-                result: queued.result,
-              });
+              this.rememberCache(key, queued.result);
               return queued;
             })
             .finally(() => this.inflight.delete(key));

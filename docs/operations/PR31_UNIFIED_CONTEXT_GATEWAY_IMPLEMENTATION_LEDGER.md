@@ -198,3 +198,8 @@
 
 - A caller cancelled while sharing a single-flight retrieval now rejects immediately through its own request controller. Its consumer membership and receipt generation are revoked without aborting the shared backend while another authorized consumer remains; the live consumer still completes from the one backend call.
 - TDD red proved a cancelled shared caller waited on the surviving caller's full backend duration before rejecting. The focused Gateway suite passed 17/17 after the fix, including explicit sub-50 ms cancellation observation and proof that the shared backend signal stayed live. Fresh adjacent Gateway/ADE/terminal verification passed 7 files / 47 tests. Full TypeScript verification passed with zero diagnostics.
+
+## 2026-08-22 — Bounded revision-cache checkpoint
+
+- The shared revision/query cache is now bounded to 256 distinct entries by default and hard-capped at 2,048 even when configured higher. Expired entries are pruned before turns and insertions; when full, the oldest distinct lookup is evicted before a new validated backend result is cached.
+- TDD red proved three distinct lookups remained resident despite a configured two-entry ceiling. Focused verification passed 18/18 and fresh adjacent Gateway/ADE/terminal verification passed 7 files / 48 tests. Full TypeScript verification passed with zero diagnostics.
