@@ -247,3 +247,8 @@
 - Lifecycle replay now validates timestamp and receipt/terminal provenance before considering an already-durable status idempotent. Only an exact detached event signature may replay without another write; changed valid provenance, malformed provenance, and unverifiable external compare-and-set wins fail closed as transition conflicts.
 - TDD RED proved malformed and changed terminal provenance previously bypassed validation after the first durable transition. Fresh ADE/Jarvis verification passed 6 files / 510 tests, including exact replay idempotence and real database reopen coverage.
 - Fresh Vite production bundling succeeded across 4,926 transformed modules. The combined owned Gateway/RLM/terminal matrix passed 16 files / 130 tests. A fresh native Rust rebuild remains blocked only by Windows Application Control error 4551 on a newly compiled dependency helper; no native pass is claimed from that attempt.
+
+## 2026-08-22 — ADE repository postcondition checkpoint
+
+- The durable history boundary now verifies an `applied` repository result proves the exact ADE run/account/source, requested next status and timestamp, forced run-state event, and original idempotency key before advancing in-memory authority. A forged or inconsistent success result fails closed as a transition conflict.
+- TDD RED proved the injected repository result was previously trusted. Fresh ADE/Jarvis verification passed 6 files / 511 tests; the broader exact model-routing matrix also passed 8 files / 92 tests with no selection substitution.

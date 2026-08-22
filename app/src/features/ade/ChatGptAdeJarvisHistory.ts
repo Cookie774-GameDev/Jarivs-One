@@ -215,6 +215,19 @@ export class ChatGptAdeJarvisHistory {
     if (!result.applied) {
       throw new ChatGptAdeHistoryError('transition-conflict');
     }
+    if (
+      result.run.id !== this.seed.id ||
+      result.run.accountId !== this.seed.accountId ||
+      result.run.source !== 'chatgpt_ade' ||
+      result.run.status !== nextStatus ||
+      result.run.updatedAt !== timestamp ||
+      result.event.runId !== this.seed.id ||
+      result.event.type !== 'run_state' ||
+      result.event.status !== nextStatus ||
+      result.event.idempotencyKey !== transition.idempotencyKey
+    ) {
+      throw new ChatGptAdeHistoryError('transition-conflict');
+    }
     this.durableStatus = result.run.status;
     this.durableSignatures.set(result.run.status, signature);
   }

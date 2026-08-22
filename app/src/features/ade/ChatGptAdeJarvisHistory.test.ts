@@ -304,4 +304,27 @@ describe('ChatGptAdeJarvisHistory', () => {
     await expect(history.flush()).rejects.toMatchObject({ code: 'transition-conflict' });
     expect(repo.compareAndAppendTransitionEvent).toHaveBeenCalledTimes(1);
   });
+
+  it('rejects an applied repository result that does not prove the exact transition', async () => {
+    const repo = repository();
+    repo.compareAndAppendTransitionEvent.mockResolvedValueOnce({
+      applied: true,
+      run: { ...seed, id: 'ade-run-other', status: 'compiling' },
+      event: {
+        runId: 'ade-run-other',
+        seq: 1,
+        idempotencyKey: 'forged',
+        type: 'run_state',
+        status: 'compiling',
+        title: 'forged',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 1_725_000_000_000,
+      },
+    });
+    const history = new ChatGptAdeJarvisHistory(repo, seed);
+    history.recordEvent(lifecycle('preparing-context'));
+
+    await expect(history.flush()).rejects.toMatchObject({ code: 'transition-conflict' });
+  });
 });
