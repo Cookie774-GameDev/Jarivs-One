@@ -78,3 +78,10 @@
 - Committed owned files: `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/petPixiRealPlayback.test.tsx`, and this ledger. No unrelated dirty file was staged.
 - Evidence: focused/adjacent Pet renderer suite 28/28; owned diff check passed. Full typecheck remains blocked only by the four unowned SiYuan test diagnostics. Native/manual rows are still **BLOCKED**; no desktop-app result is asserted.
 - Lock release: `VS-CODEX-PET-PIXI-FALLBACK-20260822` is released after this ledger entry is committed.
+
+## 2026-08-22 14:45 CT — native acceptance feasibility checkpoint
+
+- Current source tip contains Pet commits `e6b736b6`, `2219b115`, and `383944c5` plus their ledger commits. The only observed running shared VibeSpace development executable is `D:\VibeSpace-CargoTarget-20260822\debug\jarvis.exe`, created at **14:35:10 CT**. It predates the Phase 3 renderer source and cannot be attributed to the current tip.
+- Attempted normal native launch: `npm run tauri:dev` exited 1 before Cargo compilation because Vite port `5173` is already owned. The existing shared Vite process started at 14:12:27 CT; its shared Cargo process started at 14:29:25 CT. Restarting, killing, or replacing either would disrupt another agent's work and is out of scope.
+- Official native acceptance matrix status for the current Pet commits: desktop overlay, click, drag, native panel Chat/Terminals/Activity, minimize/close/reopen survival, topmost over browser/windowed game, focus/no-focus-theft, and failure rows are all **BLOCKED**. No computer-control or browser/Playwright result has been substituted for these rows.
+- Required next authority/state: a current-tip native executable launched through the shared Vite process or an explicitly authorized isolated build/run that does not interrupt it, followed by app-only manual interaction. Until then, the completed evidence is limited to committed focused code tests and native Rust unit tests.
