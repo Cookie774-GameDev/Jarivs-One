@@ -249,6 +249,48 @@ describe('ChatGptAdeJarvisHistory', () => {
     });
   });
 
+  it('validates provenance again when an event replays an already-durable status', async () => {
+    const history = new ChatGptAdeJarvisHistory(repository(), seed);
+    history.recordEvent(lifecycle('preparing-context'));
+    history.recordEvent(
+      lifecycle('preparing-context', {
+        terminalSessionId: 'unsafe terminal',
+      }),
+    );
+
+    await expect(history.flush()).rejects.toMatchObject({ code: 'event-scope-mismatch' });
+  });
+
+  it('rejects a status replay whose otherwise-valid provenance changes', async () => {
+    const history = new ChatGptAdeJarvisHistory(repository(), seed);
+    history.recordEvent(
+      lifecycle('preparing-context', {
+        terminalSessionId: 'terminal-session-a',
+      }),
+    );
+    history.recordEvent(
+      lifecycle('preparing-context', {
+        terminalSessionId: 'terminal-session-b',
+      }),
+    );
+
+    await expect(history.flush()).rejects.toMatchObject({ code: 'transition-conflict' });
+  });
+
+  it('accepts only an exact lifecycle replay without a second durable write', async () => {
+    const repo = repository();
+    const history = new ChatGptAdeJarvisHistory(repo, seed);
+    const event = lifecycle('preparing-context', {
+      terminalSessionId: 'terminal-session-a',
+    });
+    history.recordEvent(event);
+    history.recordEvent({ ...event });
+
+    await history.flush();
+
+    expect(repo.compareAndAppendTransitionEvent).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces a durable transition conflict without dispatching later history', async () => {
     const repo = repository();
     repo.compareAndAppendTransitionEvent.mockResolvedValueOnce({

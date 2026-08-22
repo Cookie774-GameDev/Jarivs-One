@@ -126,10 +126,23 @@ function transitionEvent(
   });
 }
 
+function lifecycleSignature(event: Readonly<ChatGptAdeLifecycleEvent>): string {
+  return JSON.stringify([
+    event.runId,
+    event.requestId,
+    event.type,
+    event.at,
+    event.receiptId,
+    event.terminalSessionId,
+    event.safeFailure,
+  ]);
+}
+
 export class ChatGptAdeJarvisHistory {
   private pending: Promise<void> = Promise.resolve();
   private failure: unknown = null;
   private durableStatus: JarvisRunStatus;
+  private readonly durableSignatures = new Map<JarvisRunStatus, string>();
   private readonly seed: Readonly<JarvisRun>;
 
   constructor(
@@ -180,11 +193,16 @@ export class ChatGptAdeJarvisHistory {
 
   private async persist(event: Readonly<ChatGptAdeLifecycleEvent>): Promise<void> {
     const nextStatus = targetStatus(event.type);
-    if (this.durableStatus === nextStatus) return;
+    const transition = transitionEvent(event, this.seed);
+    const signature = lifecycleSignature(event);
+    if (this.durableStatus === nextStatus) {
+      if (this.durableSignatures.get(nextStatus) === signature) return;
+      throw new ChatGptAdeHistoryError('transition-conflict');
+    }
     if (!expectedStatuses(event.type).includes(this.durableStatus)) {
       throw new ChatGptAdeHistoryError('transition-conflict');
     }
-    const timestamp = eventTimestamp(event.at);
+    const timestamp = transition.createdAt;
     const result = await this.repository.compareAndAppendTransitionEvent({
       accountId: this.seed.accountId,
       runId: this.seed.id,
@@ -192,15 +210,12 @@ export class ChatGptAdeJarvisHistory {
       nextStatus,
       updatedAt: timestamp,
       ...(TERMINAL_STATUSES.has(event.type) ? { completedAt: timestamp } : {}),
-      event: transitionEvent(event, this.seed),
+      event: transition,
     });
     if (!result.applied) {
-      if (result.current.status === nextStatus) {
-        this.durableStatus = nextStatus;
-        return;
-      }
       throw new ChatGptAdeHistoryError('transition-conflict');
     }
     this.durableStatus = result.run.status;
+    this.durableSignatures.set(result.run.status, signature);
   }
 }

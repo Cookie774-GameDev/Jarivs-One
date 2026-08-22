@@ -241,3 +241,9 @@
 - Added a real fake-IndexedDB/Dexie integration test that writes the complete ADE lifecycle through the production Jarvis repository implementation, closes the database, reopens it, and verifies the `chatgpt_ade` run plus ordered compiling/running/completed events and private receipt provenance.
 - Authorized terminal linkage now persists as a separate app-verified private `terminal` source reference. Receipt and terminal identifiers remain absent from titles/summaries, invalid identifiers and cross-kind ID collisions fail closed, and no terminal permission or credential material is persisted.
 - Fresh ADE/Jarvis verification passed 6 files / 507 tests; the corrected exact-model endurance run reached 33/33 with zero failures across both literal installed Ollama tags at this checkpoint.
+
+## 2026-08-22 — ADE lifecycle replay hardening checkpoint
+
+- Lifecycle replay now validates timestamp and receipt/terminal provenance before considering an already-durable status idempotent. Only an exact detached event signature may replay without another write; changed valid provenance, malformed provenance, and unverifiable external compare-and-set wins fail closed as transition conflicts.
+- TDD RED proved malformed and changed terminal provenance previously bypassed validation after the first durable transition. Fresh ADE/Jarvis verification passed 6 files / 510 tests, including exact replay idempotence and real database reopen coverage.
+- Fresh Vite production bundling succeeded across 4,926 transformed modules. The combined owned Gateway/RLM/terminal matrix passed 16 files / 130 tests. A fresh native Rust rebuild remains blocked only by Windows Application Control error 4551 on a newly compiled dependency helper; no native pass is claimed from that attempt.
