@@ -48,3 +48,11 @@
 - Native manual matrix: **BLOCKED** for this source revision. The running official app has not been rebuilt/relaunched from these commits, and no browser/Playwright/computer-control result is product evidence. C: has approximately 9 GiB free after verification.
 - Remaining risks/queue: typed hide-overlay acknowledgement is still pending (so a rare hide failure after panel confirmation needs a separate lifecycle slice); panel renderer/session readiness is not claimed by native window state; Pixi/asset resilience, Chat/Terminal/Activity survival, and exact-commit native matrix remain pending.
 - Next: final staged ownership/diff review, narrow commit, final ledger SHA entry, release this lock, then claim the next non-overlapping lifecycle/render slice.
+
+## 2026-08-22 14:37 CT — Phase 2 committed
+
+- Commit: `2219b115` — `fix(pets): keep panel fallback native in tauri`.
+- Committed owned files: `app/src-tauri/src/pets.rs`, `app/src/features/pets/petTauriBridge.ts`, `app/src/features/pets/petPanelOpen.test.ts`, `app/src/features/pets/PetHost.tsx`, `app/src/features/pets/PetHost.nativePanel.test.tsx`, and this ledger. No unrelated dirty file was staged.
+- Evidence: focused Pet suite 15/15, native Pet suite 25/25, Cargo formatting and owned diff checks passed. Full TypeScript check remains blocked by the same four unowned SiYuan diagnostics only. Native desktop/manual rows remain **BLOCKED** because the official application has not been rebuilt/relaunched from `2219b115`.
+- Known risks: overlay hide still has no typed outcome; native lifecycle success cannot claim renderer/session readiness; no observed exact-commit panel UI, cross-app z-order, click, drag, or session-survival result yet.
+- Lock release: `VS-CODEX-PET-PANEL-ACK-20260822` is released after this ledger entry is committed. The next slice requires a new exact non-overlapping claim.
