@@ -37,6 +37,19 @@ export interface ModelControlPromptAdapter {
   toPromptFields(controls: Readonly<OpenCodeRequestControls>): Readonly<Record<string, unknown>>;
 }
 
+export function toProviderSafeOpenCodeTools(
+  tools: Readonly<Record<string, boolean>>,
+): Readonly<Record<string, boolean>> {
+  const safe: Record<string, boolean> = {};
+  for (const [semanticName, enabled] of Object.entries(tools)) {
+    const wireName = semanticName.replace(/[^a-zA-Z0-9_-]/gu, '_');
+    if (wireName in safe && safe[wireName] !== enabled) {
+      throw new Error(`OpenCode tool wire-name collision: ${wireName}`);
+    }
+    safe[wireName] = enabled;
+  }
+  return Object.freeze(safe);
+}
 
 export interface OpenCodeVariantTransportDescriptor {
   /** Exact variant IDs returned by the live catalog for each effort. */
@@ -132,7 +145,9 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
   ) {}
 
   async health(): Promise<{ healthy: true; version: string }> {
-    const data = unwrapData<{ healthy?: unknown; version?: unknown }>(await this.client.global.health());
+    const data = unwrapData<{ healthy?: unknown; version?: unknown }>(
+      await this.client.global.health(),
+    );
     if (data?.healthy !== true || typeof data.version !== 'string' || !data.version.trim()) {
       throw new Error('HARNESS_HEALTH_FAILED: OpenCode health/version response is invalid.');
     }
@@ -182,7 +197,8 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
     }
     const sessionId = input.sessionId.trim();
     const text = input.text.trim();
-    if (!sessionId || !text) throw new Error('A session id and non-empty prompt text are required.');
+    if (!sessionId || !text)
+      throw new Error('A session id and non-empty prompt text are required.');
 
     const controlFields = this.modelControls.toPromptFields(input.controls);
     await this.client.session.promptAsync({
@@ -195,7 +211,7 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
         ...controlFields,
         ...(input.agent?.trim() ? { agent: input.agent.trim() } : {}),
         ...(input.system?.trim() ? { system: input.system } : {}),
-        ...(input.tools ? { tools: input.tools } : {}),
+        ...(input.tools ? { tools: toProviderSafeOpenCodeTools(input.tools) } : {}),
         parts: [{ type: 'text', text }],
       },
     });
@@ -203,14 +219,17 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
 
   async subscribeEvents(): Promise<AsyncIterable<OpenCodeRawEvent>> {
     const subscription = await this.client.event.subscribe();
-    if (!subscription?.stream) throw new Error('HARNESS_EVENT_FAILED: OpenCode event stream is missing.');
+    if (!subscription?.stream)
+      throw new Error('HARNESS_EVENT_FAILED: OpenCode event stream is missing.');
     return subscription.stream;
   }
 
-  async *subscribeTextEvents(input: {
-    sessionId?: string;
-    accumulator?: OpenCodeTextAccumulator;
-  } = {}): AsyncIterable<OpenCodeTextEmission> {
+  async *subscribeTextEvents(
+    input: {
+      sessionId?: string;
+      accumulator?: OpenCodeTextAccumulator;
+    } = {},
+  ): AsyncIterable<OpenCodeTextEmission> {
     const stream = await this.subscribeEvents();
     const accumulator = input.accumulator ?? new OpenCodeTextAccumulator();
     const expectedSessionId = input.sessionId?.trim();

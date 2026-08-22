@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CatalogVariantPromptAdapter,
   OpenCodeSdkSessionClient,
+  toProviderSafeOpenCodeTools,
   type ModelControlPromptAdapter,
   type OpenCodeRawEvent,
 } from '../OpenCodeSdkSessionClient';
@@ -29,6 +30,38 @@ function fakeClient(events: readonly OpenCodeRawEvent[] = []) {
 }
 
 describe('OpenCodeSdkSessionClient', () => {
+  it('uses provider-safe wire names without changing semantic gateway identity', async () => {
+    expect(
+      toProviderSafeOpenCodeTools({
+        'terminal.list': true,
+        'app.getState': false,
+        vibespace_context: true,
+      }),
+    ).toEqual({ terminal_list: true, app_getState: false, vibespace_context: true });
+
+    const client = fakeClient();
+    const sdk = new OpenCodeSdkSessionClient(client);
+    await sdk.sendAsync({
+      sessionId: 'session-1',
+      controls: {
+        connectionId: 'opencode-cli',
+        providerId: 'opencode-go',
+        modelId: 'deepseek-v4-flash-vision-exp',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+      text: 'hello',
+      tools: { 'terminal.list': false, vibespace_context: true },
+    });
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          tools: { terminal_list: false, vibespace_context: true },
+        }),
+      }),
+    );
+  });
+
   it('uses async prompt on one persistent client with exact model identity', async () => {
     const client = fakeClient();
     const adapter: ModelControlPromptAdapter = {
@@ -70,14 +103,21 @@ describe('OpenCodeSdkSessionClient', () => {
     await sdk.sendAsync({
       sessionId: 'session-1',
       controls: {
-        connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'gpt-5.6-sol',
-        effort: 'high', serviceTier: 'fast', performance: 'quality', rlmEnabled: true,
+        connectionId: 'openai-chatgpt-pro',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        effort: 'high',
+        serviceTier: 'fast',
+        performance: 'quality',
+        rlmEnabled: true,
       },
       text: 'hello',
     });
-    expect(client.session.promptAsync).toHaveBeenCalledWith(expect.objectContaining({
-      body: expect.objectContaining({ variant: 'high-fast' }),
-    }));
+    expect(client.session.promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ variant: 'high-fast' }),
+      }),
+    );
   });
 
   it('refuses blocking/per-turn fallback when promptAsync is unavailable', async () => {
@@ -88,7 +128,11 @@ describe('OpenCodeSdkSessionClient', () => {
       sdk.sendAsync({
         sessionId: 's',
         controls: {
-          connectionId: 'c', providerId: 'openai', modelId: 'm', performance: 'quality', rlmEnabled: true,
+          connectionId: 'c',
+          providerId: 'openai',
+          modelId: 'm',
+          performance: 'quality',
+          rlmEnabled: true,
         },
         text: 'hello',
       }),
@@ -101,7 +145,12 @@ describe('OpenCodeSdkSessionClient', () => {
       sdk.sendAsync({
         sessionId: 's',
         controls: {
-          connectionId: 'c', providerId: 'openai', modelId: 'm', effort: 'max', performance: 'quality', rlmEnabled: true,
+          connectionId: 'c',
+          providerId: 'openai',
+          modelId: 'm',
+          effort: 'max',
+          performance: 'quality',
+          rlmEnabled: true,
         },
         text: 'hello',
       }),
@@ -110,17 +159,28 @@ describe('OpenCodeSdkSessionClient', () => {
 
   it('reconstructs snapshot-only text events and filters another session', async () => {
     const client = fakeClient([
-      { type: 'message.part.updated', properties: { part: { id: 'p', sessionID: 'other', type: 'text', text: 'wrong' } } },
-      { type: 'message.part.updated', properties: { part: { id: 'p', sessionID: 'session-1', type: 'text', text: 'Hello' } } },
-      { type: 'message.part.updated', properties: { part: { id: 'p', sessionID: 'session-1', type: 'text', text: 'Hello world' } } },
+      {
+        type: 'message.part.updated',
+        properties: { part: { id: 'p', sessionID: 'other', type: 'text', text: 'wrong' } },
+      },
+      {
+        type: 'message.part.updated',
+        properties: { part: { id: 'p', sessionID: 'session-1', type: 'text', text: 'Hello' } },
+      },
+      {
+        type: 'message.part.updated',
+        properties: {
+          part: { id: 'p', sessionID: 'session-1', type: 'text', text: 'Hello world' },
+        },
+      },
     ]);
     const sdk = new OpenCodeSdkSessionClient(client);
     const emissions = [];
     for await (const emission of sdk.subscribeTextEvents({ sessionId: 'session-1' })) {
       emissions.push(emission);
     }
-    expect(emissions.map((event) => event.kind === 'delta' ? event.text : event.fullText)).toEqual([
-      'Hello', ' world',
-    ]);
+    expect(
+      emissions.map((event) => (event.kind === 'delta' ? event.text : event.fullText)),
+    ).toEqual(['Hello', ' world']);
   });
 });

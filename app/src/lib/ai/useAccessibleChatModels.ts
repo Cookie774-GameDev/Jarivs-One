@@ -50,10 +50,7 @@ import {
   type SimpleModelCatalogRecord,
   type ModelCatalogSource,
 } from './catalog/canonicalModelCatalog';
-import {
-  setDiscoveredOpenAiSubscriptionModels,
-  subscribeDiscoveredOpenAiSubscriptionModels,
-} from './openCodeOpenAiCatalog';
+import { subscribeDiscoveredOpenAiSubscriptionModels } from './openCodeOpenAiCatalog';
 import {
   getDiscoveredConnectionModels,
   subscribeDiscoveredConnectionModels,
@@ -741,39 +738,6 @@ export function useAccessibleChatModels() {
     window.addEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
     return () => window.removeEventListener('vibespace:foundry-adapters-changed', refreshFoundry);
   }, []);
-
-  useEffect(() => {
-    if (offlineMode) return;
-    let cancelled = false;
-    // The legacy subscription bridge still consumes this provider-scoped
-    // allowlist for exact dispatch validation. Visible picker authority comes
-    // from the authenticated persistent catalog loaded below, never this copy.
-    void import('@/lib/harness/openCodeHarness')
-      .then(async ({ openCodeHarness }) => {
-        const openai = await openCodeHarness.listModels('openai');
-        if (!cancelled && openai.length > 0) {
-          setDiscoveredOpenAiSubscriptionModels(
-            openai.map((model) => ({ id: model.id, label: model.name || model.id })),
-          );
-        }
-        const zai = await openCodeHarness.listModels('zai');
-        if (cancelled || zai.length === 0) return;
-        const { setDiscoveredConnectionModels } = await import('./connectionCatalog');
-        setDiscoveredConnectionModels(
-          'zai-coding-plan',
-          zai.map((model) => ({
-            id: model.id,
-            label: model.name || model.id,
-            source: 'opencode_refresh' as const,
-            lastVerifiedAt: Date.now(),
-          })),
-        );
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [offlineMode]);
 
   useEffect(() => {
     if (offlineMode) return;
