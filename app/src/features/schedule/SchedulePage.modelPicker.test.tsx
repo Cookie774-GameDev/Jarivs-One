@@ -168,6 +168,7 @@ describe('SchedulePage Jarvis Action model picker', () => {
 
   it('saves a Jarvis Action with the selected connected model', async () => {
     const success = vi.spyOn(toast, 'success');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     render(<SchedulePage />);
 
     fireEvent.click(screen.getByRole('button', { name: /^Jarvis Action$/i }));
@@ -176,6 +177,10 @@ describe('SchedulePage Jarvis Action model picker', () => {
     // Redundant natural-language "schedule request" field is gone in Action mode.
     expect(screen.queryByLabelText(/schedule request/i)).toBeNull();
     fireEvent.click(screen.getByLabelText(/action model/i));
+    expect(consoleError.mock.calls.flat().join(' ')).not.toContain(
+      'Encountered two children with the same key',
+    );
+    consoleError.mockRestore();
     // Prefer non-Lite Flash when multiple Gemini 2.5 Flash options appear.
     const flashOptions = screen.getAllByRole('option', { name: /Gemini 2\.5 Flash/i });
     const nonLite = flashOptions.find((el) => !/Lite/i.test(el.textContent ?? ''));

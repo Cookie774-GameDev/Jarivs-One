@@ -1204,7 +1204,7 @@ export function SchedulePage() {
                       >
                         <div className="space-y-3" role="listbox" aria-label="Connected models">
                           {jarvisModelGroupsAvailable.map((group) => (
-                            <div key={group.provider}>
+                            <div key={group.id ?? `${group.provider}:${group.label}`}>
                               <div className="mb-1 px-1.5 text-metadata font-semibold uppercase tracking-wide text-muted-foreground">
                                 {group.label}
                               </div>
