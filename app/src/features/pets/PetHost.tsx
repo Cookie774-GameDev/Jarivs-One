@@ -12,12 +12,14 @@ import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
   hidePetOverlay,
+  isPetOverlayVisible,
   isPetPanelVisible,
   isTauriRuntime,
   openOrFocusPetMiniPanel,
   PET_OPEN_PANEL_EVENT,
   PET_PANEL_OPEN_FLAG_KEY,
   readPetPanelOpenFlag,
+  reassertPetOverlayTopmost,
   releasePetHostInstance,
   setPetPanelOpenFlag,
   showPetOverlay,
@@ -33,6 +35,7 @@ import { installPetDevPerfGlobal } from './petDevPerf';
 // attaching. Retrying a few times is enough to recover that startup race
 // without turning the Pet into a noisy background loop or a Tauri inline UI.
 const PET_OVERLAY_SHOW_RETRY_DELAYS_MS = [250, 1_000, 3_000] as const;
+const PET_OVERLAY_HEALTH_INTERVAL_MS = 5_000;
 
 export interface PetHostProps {
   enabled?: boolean;
@@ -239,6 +242,42 @@ export function PetHost({
     shuttingDown,
     tauri,
   ]);
+
+  // Startup retries intentionally stop, but an enabled desktop companion must
+  // not remain missing for the rest of the session after a late WebView/native
+  // recovery. This low-frequency supervisor verifies the real detached window,
+  // restores it when absent, and reasserts topmost only after visibility truth.
+  React.useEffect(() => {
+    if (!runtimeEffectsEnabled || !claimed || !tauri || !enabled || !overlayVisible) return;
+    let cancelled = false;
+    let busy = false;
+    const supervise = async () => {
+      if (
+        cancelled ||
+        busy ||
+        shuttingDownRef.current ||
+        hideSpriteForPanel ||
+        readPetPanelOpenFlag()
+      ) {
+        return;
+      }
+      busy = true;
+      try {
+        const alreadyVisible = await isPetOverlayVisible().catch(() => false);
+        if (cancelled) return;
+        const result = alreadyVisible ? null : await showPetOverlay().catch(() => null);
+        if (cancelled || (!alreadyVisible && !result?.visible)) return;
+        await reassertPetOverlayTopmost().catch(() => undefined);
+      } finally {
+        busy = false;
+      }
+    };
+    const id = window.setInterval(() => void supervise(), PET_OVERLAY_HEALTH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [claimed, enabled, hideSpriteForPanel, overlayVisible, runtimeEffectsEnabled, tauri]);
 
   React.useEffect(() => {
     if (!runtimeEffectsEnabled) return;

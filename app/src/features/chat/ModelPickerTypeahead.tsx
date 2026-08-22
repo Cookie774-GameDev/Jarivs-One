@@ -9,7 +9,19 @@ import {
   type CSSProperties,
 } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ChevronDown, Cpu, Search, Sparkles, X, type LucideIcon } from 'lucide-react';
+import {
+  BrainCircuit,
+  ChevronDown,
+  CircleDot,
+  Cpu,
+  Feather,
+  Flame,
+  Gauge,
+  Search,
+  Sparkles,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ProviderId } from '@/types';
 import { cn } from '@/lib/utils';
 import { HiveModelIcon } from '@/components/brand';
@@ -22,6 +34,7 @@ import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { getLivePanelUiScale } from '@/lib/ui/panelScale';
 import { listEffortOptions, type EffortLabel } from '@/lib/ai/catalog/modelVariants';
 import type { ModelPickerOption } from '@/lib/ai/useAccessibleChatModels';
+import './ModelPickerTypeahead.css';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -40,6 +53,33 @@ const CATALOG_ROW_SELECTED_STATE =
   'jarvis-slash-item-selected border-accent-copper/60 bg-accent-copper/[0.12] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]';
 const CATALOG_ROW_IDLE_STATE =
   'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground';
+
+const EFFORT_ICONS: Record<EffortLabel, LucideIcon> = {
+  auto: CircleDot,
+  minimal: Feather,
+  low: Gauge,
+  medium: BrainCircuit,
+  high: Flame,
+  ultra: Sparkles,
+  max: Cpu,
+};
+
+function UltraRoots() {
+  return (
+    <svg
+      data-ultra-roots="true"
+      aria-hidden="true"
+      viewBox="0 0 300 48"
+      preserveAspectRatio="none"
+      className="vibespace-ultra-roots pointer-events-none absolute inset-0 h-full w-full"
+    >
+      <path d="M0 4 C42 4 38 23 92 24 C116 24 123 16 150 24" />
+      <path d="M0 44 C34 44 48 28 94 28 C121 28 125 31 150 24" />
+      <path d="M300 4 C258 4 262 23 208 24 C184 24 177 16 150 24" />
+      <path d="M300 44 C266 44 252 28 206 28 C179 28 175 31 150 24" />
+    </svg>
+  );
+}
 
 function searchableOptionText(option: ModelPickerOption): string {
   return [
@@ -285,7 +325,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       >
         <div
           className={cn(
-            'border-b border-border bg-panel/90',
+            'border-b border-border/60 bg-transparent',
             compact ? 'px-2.5 py-1.5' : 'px-4 py-3',
           )}
         >
@@ -328,28 +368,48 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         >
           {pendingOption ? (
             <div role="group" aria-label={`${pendingOption.label} effort`} className="py-1">
-              {effortOptions.map((effort, index) => (
-                <button
-                  key={effort.label}
-                  type="button"
-                  aria-pressed={index === effortIndex}
-                  onMouseEnter={() => setEffortIndex(index)}
-                  onClick={() => commitEffort(effort.label)}
-                  className={cn(
-                    'mx-2 flex w-[calc(100%-1rem)] items-center justify-between rounded-[10px] border px-3 py-2 text-left capitalize transition-colors',
-                    index === effortIndex
-                      ? 'border-accent-copper/60 bg-accent-copper/12 text-foreground'
-                      : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
-                  )}
-                >
-                  <span>{effort.label}</span>
-                  {effort.label === 'auto' ? (
-                    <span className="text-[10px] normal-case text-muted-foreground">
-                      Provider default
-                    </span>
-                  ) : null}
-                </button>
-              ))}
+              {effortOptions.map((effort, index) =>
+                (() => {
+                  const EffortIcon = EFFORT_ICONS[effort.label];
+                  const selected = index === effortIndex;
+                  return (
+                    <button
+                      key={effort.label}
+                      type="button"
+                      data-effort-level={effort.label}
+                      aria-pressed={selected}
+                      onMouseEnter={() => setEffortIndex(index)}
+                      onClick={() => commitEffort(effort.label)}
+                      className={cn(
+                        'vibespace-effort-row relative mx-2 flex w-[calc(100%-1rem)] items-center gap-3 overflow-hidden rounded-[12px] border px-3 py-2.5 text-left capitalize transition-all duration-150',
+                        selected ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
+                        effort.label === 'ultra' && 'vibespace-effort-ultra',
+                      )}
+                    >
+                      {effort.label === 'ultra' ? <UltraRoots /> : null}
+                      <span
+                        data-effort-icon={effort.label}
+                        className={cn(
+                          'vibespace-effort-glyph relative z-[1] inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border',
+                          selected
+                            ? 'border-accent-copper/60 bg-accent-copper/15 text-accent-copper'
+                            : 'border-border/70 bg-background/35 text-muted-foreground',
+                        )}
+                      >
+                        <EffortIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="relative z-[1] min-w-0 flex-1 font-medium">
+                        {effort.label}
+                      </span>
+                      {effort.label === 'auto' ? (
+                        <span className="relative z-[1] text-[10px] normal-case text-muted-foreground">
+                          Provider default
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })(),
+              )}
             </div>
           ) : onSelectHive &&
             searchTerms.every((term) => `hive ensemble balanced`.includes(term)) ? (
@@ -561,7 +621,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
           </div>
         ) : null}
 
-        <div className="flex items-center gap-3 border-t border-border bg-panel/90 px-4 py-2.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-3 border-t border-border/60 bg-transparent px-4 py-2.5 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
             <kbd className="jarvis-kbd">up/down</kbd>
             <span>nav</span>

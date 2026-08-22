@@ -293,9 +293,8 @@ describe('ModelPickerTypeahead smoke transports', () => {
     const selectedEffort = screen.getByRole('button', { name: /auto/i });
     expect(selectedModel?.className).toContain('jarvis-slash-item-selected');
     expect(selectedEffort.className).toContain('border-accent-copper/60');
-    expect(selectedEffort.className).toContain('bg-accent-copper/12');
-    expect(selectedEffort.className).not.toContain('jarvis-slash-item-selected');
-    expect(selectedEffort.className).not.toContain('bg-accent-copper/[0.12]');
+    expect(selectedEffort.className).toContain('jarvis-slash-item-selected');
+    expect(selectedEffort.querySelector('[data-effort-icon="auto"]')).not.toBeNull();
     act(() => ref.current?.moveDown());
     act(() => ref.current?.selectCurrent());
     expect(onSelect).toHaveBeenCalledWith(
@@ -304,6 +303,38 @@ describe('ModelPickerTypeahead smoke transports', () => {
       openCode,
       'medium',
     );
+  });
+
+  it('contains animated effort glyphs and the Ultra root effect inside its own row', () => {
+    render(
+      <ModelPickerTypeahead
+        groups={[
+          {
+            provider: 'openai',
+            label: 'OpenAI',
+            options: [
+              {
+                id: 'openai-api:gpt-5.6-sol',
+                provider: 'openai',
+                modelId: 'gpt-5.6-sol',
+                label: 'GPT-5.6 Sol',
+                connection: connection('openai-api', 'native-api'),
+                variants: ['xhigh'],
+              },
+            ],
+          },
+        ]}
+        selectedId="openai-api:gpt-5.6-sol"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('GPT-5.6 Sol'));
+    expect(document.querySelector('[data-effort-icon="auto"]')).not.toBeNull();
+    expect(document.querySelector('[data-effort-icon="ultra"]')).not.toBeNull();
+    const ultra = screen.getByRole('button', { name: /ultra/i });
+    expect(ultra.querySelector('[data-ultra-roots="true"]')).not.toBeNull();
+    expect(ultra.className).toContain('vibespace-effort-row');
   });
 
   it('cancels a pending model without changing the committed selection', () => {

@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const bridge = vi.hoisted(() => ({
   showPetOverlay: vi.fn(),
   hidePetOverlay: vi.fn(async () => undefined),
+  isPetOverlayVisible: vi.fn(async () => false),
   isPetPanelVisible: vi.fn(async () => false),
+  reassertPetOverlayTopmost: vi.fn(async () => undefined),
 }));
 
 vi.mock('./PetOverlay', () => ({ PetOverlay: () => null }));
@@ -12,6 +14,7 @@ vi.mock('./PetMiniPanel', () => ({ PetMiniPanel: () => null }));
 vi.mock('./petTauriBridge', () => ({
   claimPetHostInstance: vi.fn(() => true),
   hidePetOverlay: bridge.hidePetOverlay,
+  isPetOverlayVisible: bridge.isPetOverlayVisible,
   isPetPanelVisible: bridge.isPetPanelVisible,
   isTauriRuntime: vi.fn(() => true),
   openOrFocusPetMiniPanel: vi.fn(),
@@ -19,6 +22,7 @@ vi.mock('./petTauriBridge', () => ({
   PET_PANEL_OPEN_FLAG_KEY: 'vibespace:pet-panel-open',
   readPetPanelOpenFlag: vi.fn(() => false),
   releasePetHostInstance: vi.fn(),
+  reassertPetOverlayTopmost: bridge.reassertPetOverlayTopmost,
   setPetPanelOpenFlag: vi.fn(),
   showPetOverlay: bridge.showPetOverlay,
 }));
@@ -74,6 +78,7 @@ describe('PetHost native overlay recovery', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     bridge.isPetPanelVisible.mockResolvedValue(false);
+    bridge.isPetOverlayVisible.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -97,6 +102,7 @@ describe('PetHost native overlay recovery', () => {
       await vi.advanceTimersByTimeAsync(250);
     });
     expect(bridge.showPetOverlay).toHaveBeenCalledTimes(2);
+    bridge.isPetOverlayVisible.mockResolvedValue(true);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
@@ -119,5 +125,28 @@ describe('PetHost native overlay recovery', () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(bridge.showPetOverlay).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps supervising an enabled detached overlay after startup retries are exhausted', async () => {
+    bridge.showPetOverlay
+      .mockResolvedValueOnce(hiddenNativeOverlay())
+      .mockResolvedValueOnce(hiddenNativeOverlay())
+      .mockResolvedValueOnce(hiddenNativeOverlay())
+      .mockResolvedValueOnce(hiddenNativeOverlay())
+      .mockResolvedValueOnce(visibleNativeOverlay());
+
+    render(<PetHost />);
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(4_250);
+    });
+    expect(bridge.showPetOverlay).toHaveBeenCalledTimes(4);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(bridge.isPetOverlayVisible).toHaveBeenCalled();
+    expect(bridge.showPetOverlay).toHaveBeenCalledTimes(5);
+    expect(bridge.reassertPetOverlayTopmost).toHaveBeenCalledTimes(1);
   });
 });
