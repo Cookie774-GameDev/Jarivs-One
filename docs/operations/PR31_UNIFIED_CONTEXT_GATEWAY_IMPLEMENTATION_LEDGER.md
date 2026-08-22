@@ -63,3 +63,10 @@
 - A separate 10,000-run focused cache-hit benchmark recorded p50 `0.0037 ms`, p95 `0.0105 ms`, p99 `0.0311 ms`, maximum `1.9170 ms`; the backend ran once for the warm miss and every measured request reported an exact cache hit.
 - A 100-request concurrent focused burst completed in `35.164 ms` wall time with one backend call, one `miss`, and 99 `shared` receipts, confirming live single-flight coalescing rather than duplicate retrieval.
 - These are isolated Gateway overhead measurements, not native/provider SLO acceptance. The required paired native 30-run route measurements remain pending because the current-source executable is blocked by Windows Application Control and the central Chat dispatch files remain under another active ownership lock.
+
+## 2026-08-22 — Schedule/Kanban parity regression checkpoint
+
+- Official native current-frontend inspection showed the unobstructed Kanban, Today's to-do, Milestones, and Schedule surfaces using the intended warm blended panels without an accidental hard-white shell. The secondary VibeSpace panel was minimized, not closed; no saved task, milestone, event, or inference was created or deleted.
+- The first 21-file parity run passed 124/127 tests and exposed three Schedule model tests relying implicitly on the live dynamic model catalog. That catalog now correctly fails closed without verified connection inventory, so the fixture no longer guaranteed a runnable model.
+- Repaired only `SchedulePage.modelPicker.test.tsx` by supplying an explicit connected Gemini API fixture with exact connection/provider/model IDs. No Schedule production code, provider catalog, routing, credential, or saved selection behavior changed.
+- Fresh exact rerun passed 12/12 Schedule model tests. Fresh full focused parity rerun passed 21 files / 127 tests covering natural-language title isolation, manual create/edit/cancel/reopen, reminders, custom recurrence, Jarvis route persistence, Kanban creation, Milestones, and warm-theme surface contracts. The environment emitted only its known non-fatal `HTMLMediaElement.play()` notice.

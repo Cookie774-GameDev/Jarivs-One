@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import { toast } from '@/components/ui/toast';
 import { OPENCODE_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
+import { GEMINI_API_CONNECTION } from '@/lib/ai/adapters/nativeCatalog';
 import type { WorkspaceId } from '@/types/common';
 import type { EventRow } from '@/types/event';
 import type { Task } from '@/types/task';
@@ -74,7 +75,38 @@ describe('SchedulePage Jarvis Action model picker', () => {
     deleteEvent.mockResolvedValue(undefined);
     completeTaskMock.mockReset();
     completeTaskMock.mockResolvedValue(undefined);
-    accessibleModelsState.current = null;
+    const geminiLite = {
+      id: `${GEMINI_API_CONNECTION.id}:gemini-2.5-flash-lite`,
+      provider: 'google',
+      modelId: 'gemini-2.5-flash-lite',
+      label: 'Gemini 2.5 Flash Lite',
+      connection: GEMINI_API_CONNECTION,
+      connectionId: GEMINI_API_CONNECTION.id,
+      available: true,
+    };
+    const geminiFlash = {
+      id: `${GEMINI_API_CONNECTION.id}:gemini-2.5-flash`,
+      provider: 'google',
+      modelId: 'gemini-2.5-flash',
+      label: 'Gemini 2.5 Flash',
+      connection: GEMINI_API_CONNECTION,
+      connectionId: GEMINI_API_CONNECTION.id,
+      available: true,
+    };
+    accessibleModelsState.current = {
+      groups: [
+        {
+          id: `connection:${GEMINI_API_CONNECTION.id}`,
+          provider: 'google',
+          label: 'Google Gemini API',
+          options: [geminiLite, geminiFlash],
+        },
+      ],
+      flatOptions: [geminiLite, geminiFlash],
+      hasAny: true,
+      ollamaCount: 0,
+      refreshModels: vi.fn(),
+    };
     jarvisEventsState.rows = [];
     upcomingEventsState.rows = [];
     upcomingTasksState.rows = [];
