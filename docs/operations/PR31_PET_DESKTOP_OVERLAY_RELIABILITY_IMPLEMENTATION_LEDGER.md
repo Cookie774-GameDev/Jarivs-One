@@ -101,3 +101,12 @@
 - Verification: `npm exec vitest run src/features/pets/PetHost.overlayRecovery.test.tsx src/features/pets/PetHost.nativePanel.test.tsx src/features/pets/petPanelOpen.test.ts src/features/pets/PetOverlayWindow.test.tsx src/features/pets/petPixiRealPlayback.test.tsx --reporter=dot` → **5 files / 30 tests passed**. `npm run typecheck` → **passed**. Exact-file Prettier check and `git diff --check` → **passed**.
 - Native acceptance: **NOT CLAIMED**. The shared desktop executable predates this source slice and the user has prohibited computer-control UI interaction. The shared Vite/Cargo process remains untouched. A current-source desktop observation is still needed to mark the reported Pet-visible row as passed.
 - Next: commit this exact source/test/ledger slice, then record its SHA and release only `VS-CODEX-PET-OVERLAY-RECOVERY-20260822`.
+
+## 2026-08-22 15:07 CT — reported-missing-Pet recovery committed / handoff
+
+- Product commit: `65947b3a` — `fix(pets): retry transient native overlay show`.
+- Committed owned files: `app/src/features/pets/PetHost.tsx`, `app/src/features/pets/PetHost.overlayRecovery.test.tsx`, and this ledger. No existing dirty file, native file, configuration, asset, build output, or other-agent file was staged.
+- Evidence: new recovery regression plus adjacent native-panel, native bridge, overlay-window, and Pixi fallback coverage: **5 files / 30 tests passed**. TypeScript typecheck, exact-file Prettier, and staged whitespace checks passed before the product commit.
+- Native evidence: **BLOCKED / not claimed**. The current desktop executable was built before this source slice; no process was stopped or replaced, and no prohibited computer-control/browser result is presented as desktop proof. The code can hot-reload through the shared Vite process, but user-observed confirmation of the Pet is still required before marking the runtime row PASS.
+- Remaining risk: if all three bounded native show retries fail, the native-only contract intentionally avoids a fake inline Pet; further diagnosis requires a current desktop native observation and its sanitized native failure category.
+- Lock release: `VS-CODEX-PET-OVERLAY-RECOVERY-20260822` is released immediately after this coordination entry is committed.
