@@ -112,6 +112,20 @@ export class ContextRequiredUnavailableError extends Error {
   }
 }
 
+export class ContextGatewayRequestConflictError extends Error {
+  constructor(public readonly requestId: string) {
+    super('A VibeSpace Context Gateway request with this ID is already active.');
+    this.name = 'ContextGatewayRequestConflictError';
+  }
+}
+
+export class ContextGatewayReceiptConflictError extends Error {
+  constructor(public readonly receiptId: string) {
+    super('A VibeSpace Context Gateway receipt ID is already authoritative.');
+    this.name = 'ContextGatewayReceiptConflictError';
+  }
+}
+
 export class ContextGateway {
   private readonly cache = new Map<string, CachedResult>();
   private readonly inflight = new Map<string, InflightResult>();
@@ -355,6 +369,9 @@ export class ContextGateway {
   private async execute(
     input: Readonly<ContextGatewayRequest>,
   ): Promise<Readonly<PreparedContextTurn>> {
+    if (this.active.has(input.requestId)) {
+      throw new ContextGatewayRequestConflictError(input.requestId);
+    }
     this.pruneExpiredReceipts();
     const decisionStartedAt = this.dependencies.now();
     const available = this.backend.available();
@@ -464,6 +481,9 @@ export class ContextGateway {
         { decision: decisionMs, ...backendResult.stageTimingsMs, queueWait: queueWaitMs },
         null,
       );
+      if (this.receiptEvidence.has(receipt.receiptId)) {
+        throw new ContextGatewayReceiptConflictError(receipt.receiptId);
+      }
       this.receiptEvidence.set(receipt.receiptId, {
         requestId: input.requestId,
         expiresAt: this.dependencies.now() + this.receiptTtlMs,

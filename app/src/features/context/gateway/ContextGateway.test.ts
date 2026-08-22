@@ -183,6 +183,54 @@ describe('ContextGateway', () => {
     expect([a.receipt.cacheStatus, b.receipt.cacheStatus].sort()).toEqual(['miss', 'shared']);
   });
 
+  it('rejects a duplicate active request ID without overwriting cancellation ownership', async () => {
+    let release!: () => void;
+    const port = backend();
+    vi.mocked(port.ask).mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { promptBlock: 'first', sourceRevisions: [], evidence: [], stageTimingsMs: {} };
+    });
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: () => 'receipt-1',
+    });
+    const first = gateway.ask(baseRequest);
+    await vi.waitFor(() => expect(port.ask).toHaveBeenCalledTimes(1));
+
+    await expect(
+      gateway.ask({ ...baseRequest, question: 'A conflicting request.' }),
+    ).rejects.toMatchObject({ name: 'ContextGatewayRequestConflictError' });
+    expect(port.ask).toHaveBeenCalledTimes(1);
+
+    gateway.cancel(baseRequest.requestId);
+    release();
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('fails closed on a receipt ID collision without replacing prior evidence authority', async () => {
+    const gateway = new ContextGateway(backend(), {
+      now: () => 100,
+      createId: () => 'receipt-collision',
+    });
+    const first = await gateway.ask(baseRequest);
+
+    await expect(
+      gateway.ask({ ...baseRequest, requestId: 'turn-2', question: 'A distinct lookup.' }),
+    ).rejects.toMatchObject({
+      name: 'ContextRequiredUnavailableError',
+      receipt: { safeFailure: 'retrieval-failed' },
+    });
+    await expect(
+      gateway.openEvidence({
+        receiptId: first.receipt.receiptId,
+        handle: 'evidence-1',
+        scope: baseRequest.scope,
+      }),
+    ).resolves.toMatchObject({ text: 'the bounded source text' });
+  });
+
   it('bounds distinct same-scope retrievals and records cancellation-safe queue telemetry', async () => {
     const releases: Array<() => void> = [];
     let now = 100;
