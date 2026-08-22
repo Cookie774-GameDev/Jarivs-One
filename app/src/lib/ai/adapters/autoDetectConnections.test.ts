@@ -58,6 +58,27 @@ function dependencies(
 }
 
 describe('automatic external CLI connection detection', () => {
+  it('shares one adapter detection while keeping connection auth probes separate', async () => {
+    const detect = vi.fn(async () => ({ status: 'available' as const, version: '1.18.21' }));
+    const probeAuth = vi.fn(async () => ({ status: 'authenticated' as const }));
+    const shared = { id: 'opencode-cli', detect, probeAuth } satisfies ProviderAdapter;
+
+    const result = await detectExternalConnectionStates(
+      dependencies({
+        connections: [
+          connection('zai-coding-plan', shared.id),
+          connection('opencode-cli', shared.id),
+        ],
+        adapters: { [shared.id]: shared },
+      }),
+    );
+
+    expect(detect).toHaveBeenCalledOnce();
+    expect(probeAuth).toHaveBeenCalledTimes(2);
+    expect(result['zai-coding-plan']?.auth).toBe('authenticated');
+    expect(result['opencode-cli']?.auth).toBe('authenticated');
+  });
+
   it('uses only read-only detect and auth probes and publishes authenticated Codex state', async () => {
     const detect = vi.fn(async () => ({
       status: 'available' as const,

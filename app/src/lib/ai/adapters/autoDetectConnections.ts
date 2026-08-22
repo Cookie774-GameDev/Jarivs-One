@@ -13,7 +13,7 @@ import { copilotCliAdapter } from './copilot';
 import { geminiCliAdapter } from './gemini';
 import { openCodePersistentAdapter } from './opencodePersistent';
 import { qwenCliAdapter } from './qwen';
-import type { ProviderAdapter, ProviderConnection } from './types';
+import type { DetectionResult, ProviderAdapter, ProviderConnection } from './types';
 
 const EXTERNAL_CLI_ADAPTERS: Readonly<Record<string, ProviderAdapter>> = Object.freeze(
   Object.fromEntries(
@@ -75,12 +75,13 @@ function sameMetadataRecord(
 async function inspectConnection(
   connection: Readonly<ProviderConnection>,
   adapter: ProviderAdapter,
+  detectionPromise: Promise<DetectionResult>,
   now: number,
   disabled?: boolean,
 ): Promise<ConnectionMetadataRecord> {
   let detection;
   try {
-    detection = await adapter.detect!();
+    detection = await detectionPromise;
   } catch {
     return unknownRecord(now, disabled);
   }
@@ -122,13 +123,21 @@ export async function detectExternalConnectionStates(
   const baselineRevisions = new Map(
     targets.map((connection) => [connection.id, dependencies.readMetadataRevision(connection.id)]),
   );
+  const detectionsByAdapter = new Map<string, Promise<DetectionResult>>();
   const inspected = await Promise.all(
     targets.map(async (connection) => {
       const existing = current[connection.id];
       if (existing?.disabled) return [connection.id, existing, false] as const;
+      const adapter = dependencies.adapters[connection.adapterId]!;
+      let detection = detectionsByAdapter.get(adapter.id);
+      if (!detection) {
+        detection = (async () => adapter.detect!())();
+        detectionsByAdapter.set(adapter.id, detection);
+      }
       const record = await inspectConnection(
         connection,
-        dependencies.adapters[connection.adapterId]!,
+        adapter,
+        detection,
         dependencies.now(),
         existing?.disabled,
       );
