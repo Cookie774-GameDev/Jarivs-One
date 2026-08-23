@@ -65,3 +65,8 @@
 - Corrected the nominal 6 GB RTX 4050 edge: 6141 MiB reports as 5.997 GiB, so UI and native preflight use the same narrow 0.01 GB measurement tolerance while 5.9 GB remains rejected.
 - Verification: focused Model Foundry Vitest `39/39`; Rust Foundry matrix `44/44`; Python worker Pytest `14/14`; `cargo check` passed with existing dead-code warnings; release-manifest tests `3/3`; exact scoped `git diff --check` passed. Repository typecheck remains blocked only by five unrelated errors in actively edited SiYuan/cloud-recovery tests (`siyuanRlmProduction.test.ts`, `siyuanRlmRepository.test.ts`, and `cloudRecovery.test.ts`); no Model Foundry error was reported, and the production build was not rerun because its first step is that same failing typecheck.
 - Native/manual acceptance remains pending by the user's explicit instruction not to control the running app during this task. No Supabase, Cloudflare, billing, production service, credentials, running-app state, or unrelated agent file was mutated.
+
+## 2026-08-22T20:51:00-05:00 — Expansion product commit and scope release
+
+- Product commit: `1bbf5cf6` (`feat(foundry): add drive-aware training profiles`), containing exactly the 12 claimed tracked Model Foundry source/test/catalog/ledger files. Exact staging, staged diff check, and staged Gitleaks passed; no unrelated dirty file was staged.
+- Agent-scoped ownership is released after this receipt. Native manual testing, true multimodal architecture-specific trainers, persistent live OpenCode serving/catalog confirmation, packaged PDF/image/video-frame extraction, and large-media streaming remain explicitly unclaimed rather than inferred complete.
